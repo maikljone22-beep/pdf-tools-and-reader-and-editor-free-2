@@ -32,13 +32,25 @@ fun AiSheet(docText: suspend () -> String, selectedText: String?, onDismiss: () 
     var loadingDoc by remember { mutableStateOf(false) }
     val hasKey = com.smartdocs.editor.core.ai.AiClient.available(settings)
 
-    suspend fun document(): String {
-        doc?.let { return it }
+    // MODULE_ai5: the whole document is indexed (no 12k truncation); questions get retrieved passages, quick
+    // actions get passages spread evenly over every part of the document.
+    var index by remember { mutableStateOf<com.smartdocs.editor.core.ai5.DocIndex?>(null) }
+
+    suspend fun docIndex(): com.smartdocs.editor.core.ai5.DocIndex {
+        index?.let { return it }
         loadingDoc = true
         val t = runCatching { docText() }.getOrDefault("")
-        val trimmed = if (t.length > AiClient.MAX_DOC_CHARS) AiClient.trimDocument(t.split(Regex("(?=\\[صفحة \\d+\\])"))) else t
-        doc = trimmed; loadingDoc = false
-        return trimmed
+        val pages = if (t.contains("[صفحة ")) t.split(Regex("\\[صفحة \\d+\\]")).drop(1) else listOf(t)
+        val idx = com.smartdocs.editor.core.ai5.DocIndex("sheet", "", "", pages.size, com.smartdocs.editor.core.ai5.Chunker.chunk(pages))
+        index = idx; doc = t; loadingDoc = false
+        return idx
+    }
+
+    suspend fun document(): String = com.smartdocs.editor.core.ai5.DocIndex.material(docIndex().spread(12_000))
+
+    suspend fun context(q: String): String {
+        val sources = com.smartdocs.editor.core.ai5.Retriever.retrieve(listOf(docIndex()), q)
+        return sources.joinToString("\n\n") { "[صفحة ${it.page + 1}]\n" + it.text }
     }
 
     fun act(a: QuickAction, label: String) {
@@ -70,7 +82,7 @@ fun AiSheet(docText: suspend () -> String, selectedText: String?, onDismiss: () 
             if (loadingDoc) LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp))
             chat.error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 20.dp), style = MaterialTheme.typography.bodySmall) }
             MessageList(chat.messages, listState, Modifier.weight(1f).fillMaxWidth())
-            ChatInput(enabled = hasKey, busy = chat.busy, onSend = { q -> scope.launch { chat.send(client, q, document()) } }, onStop = { chat.stop() })
+            ChatInput(enabled = hasKey, busy = chat.busy, onSend = { q -> scope.launch { chat.send(client, q, context(q)) } }, onStop = { chat.stop() })
         }
     }
 }

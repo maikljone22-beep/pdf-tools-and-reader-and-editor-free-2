@@ -90,9 +90,10 @@ fun PodcastScreen(nav: NavHostController, uri: String?) {
         job = scope.launch {
             try {
                 working = msgReading; progress = null
+                // MODULE_ai5: cover the whole book (condensed per segment, cached) instead of the first 12k characters
                 val docText = withContext(Dispatchers.IO) {
-                    val s = PdfSession.open(ctx, f)
-                    try { AiClient.trimDocument(s.allText()) } finally { s.closeAsync() }
+                    val idx = com.smartdocs.editor.core.ai5.DocIndexer.get(ctx, f)
+                    com.smartdocs.editor.core.ai5.WholeBook.material(ctx, client, idx)
                 }
                 if (docText.isBlank()) throw IllegalStateException(ctx.getString(R.string.ai2_err_no_text))
                 working = msgScript

@@ -71,6 +71,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
     var showStamps by remember { mutableStateOf(false) }
     var aiText by remember { mutableStateOf<String?>(null) }
     var showAi by remember { mutableStateOf(false) }
+    var textTools by remember { mutableStateOf<Pair<TextSelection, com.smartdocs.editor.core.ai5.TextAction?>?>(null) }
     var contentEdit by remember { mutableStateOf(false) }          // MODULE_edit: real text/image editing
     var prompt by remember { mutableStateOf<TextPrompt?>(null) }
     var menu by remember { mutableStateOf(false) }
@@ -233,7 +234,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                     state.selection?.let { sel ->
                         SelectionMenu(sel, state,
                             onCopy = { ReaderIntents.copy(ctx, it); state.selection = null; scope.launch { snack.showSnackbar(ctx.getString(R.string.copy_text)) } },
-                            onTranslate = { aiText = it; showAi = true }, onAskAi = { aiText = it; showAi = true },
+                            onTranslate = { textTools = sel to com.smartdocs.editor.core.ai5.TextAction.TRANSLATE }, onAskAi = { textTools = sel to com.smartdocs.editor.core.ai5.TextAction.EXPLAIN },
                             onReadFrom = { s -> startReadAloud(s.start, s.page); state.selection = null },
                             onWebSearch = { ReaderIntents.webSearch(ctx, it) }, onShare = { ReaderIntents.shareText(ctx, it) })
                     }
@@ -302,9 +303,16 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
             share = { files, mime -> ctx.startActivity(android.content.Intent.createChooser(app.documents.shareIntent(files, mime), null)) },
         )
     }
-    if (showAi) com.smartdocs.editor.ui.ai.DocAgentSheet(agentHost, onDismiss = { showAi = false },
-        initialPrompt = aiText?.let { "اشرح هذا النص:\n$it" },
-        onPodcast = { showAi = false; nav.navigate(Routes.tool("podcast", state.fileUri)) })
+    if (showAi) state.file?.let { f -> com.smartdocs.editor.ui.ai5.DocAssistantSheet(agentHost, f, state.password, state.pageCount, { state.pageText(it) },
+        onCitation = { c -> showAi = false; if (c.filePath == f.absolutePath) state.jumpTo(c.page) else nav.navigate(com.smartdocs.editor.ui.ai5.citationRoute(c)) },
+        onDismiss = { showAi = false },
+        initialQuestion = aiText?.let { "اشرح هذا النص:\n$it" },
+        onPodcast = { showAi = false; nav.navigate(Routes.tool("podcast", state.fileUri)) }) }
+    textTools?.let { (sel, act) -> com.smartdocs.editor.ui.ai5.TextToolsSheet(sel.text, act, docContext = null, onReplace = null,
+        onAddNote = { t -> sel.rects.firstOrNull()?.let { r -> val top = maxOf(r.top, r.bottom)
+            state.addAnnot(com.smartdocs.editor.core.pdf.Annot(kind = com.smartdocs.editor.core.pdf.AnnotKind.NOTE, page = sel.page,
+                rects = listOf(android.graphics.RectF(r.left, top, r.left + 20f, top - 20f)), text = t, author = state.authorName)) } },
+        onShare = { ReaderIntents.shareText(ctx, it) }, onDismiss = { textTools = null; state.selection = null }) }
     if (contentEdit && state.session != null) com.smartdocs.editor.ui.edit.EditModeHost(state) { contentEdit = false }
     if (state.saving) ProgressDialog(stringResource(R.string.processing))
     QuickActionHost(quick, snack)

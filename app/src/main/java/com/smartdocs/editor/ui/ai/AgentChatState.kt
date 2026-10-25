@@ -67,16 +67,24 @@ class AgentChatState(
     fun stop() { job?.cancel(); job = null; busy = false }
 
     /** Forget the cached document text (after an edit). */
-    fun invalidateDoc() { docText = null }
+    fun invalidateDoc() { docText = null; index = null }
 
-    private suspend fun document(): String {
-        docText?.let { return it }
-        loadingDoc = true
-        try {
-            val n = host.pageCount().coerceAtMost(MAX_PAGES)
-            val pages = (0 until n).map { runCatching { host.pageText(it) }.getOrDefault("") }
-            return AiClient.trimDocument(pages).also { docText = it }
-        } finally { loadingDoc = false }
+    /**
+     * Document context for one turn (MODULE_ai5): chunked retrieval over the WHOLE document instead of the old
+     * 12k-character truncation. Generic requests get passages spread over every part of the document.
+     */
+    private var index: com.smartdocs.editor.core.ai5.DocIndex? = null
+
+    private suspend fun document(query: String): String {
+        val f = host.file() ?: return ""
+        val idx = index ?: run {
+            loadingDoc = true
+            try {
+                com.smartdocs.editor.core.ai5.DocIndexer.get(ctx, f, host.password(), host.pageText, host.pageCount())
+            } finally { loadingDoc = false }
+        }.also { index = it }
+        val sources = com.smartdocs.editor.core.ai5.Retriever.retrieve(listOf(idx), query, maxChars = 9000)
+        return sources.joinToString("\n\n") { "[صفحة ${it.page + 1}]\n" + it.text }
     }
 
     /** History for the model: executed / cancelled commands become short assistant notes. */
@@ -100,7 +108,7 @@ class AgentChatState(
         busy = true
         job = scope.launch {
             try {
-                val doc = document()
+                val doc = document(text.trim())
                 val reply = agent.turn(history(), doc, host.pageCount(), host.currentPage(), !host.selectedText().isNullOrBlank(), host.file()?.name ?: "")
                 if (reply.text.isNotBlank()) items += AgentMsg(nextId(), AgentKind.ASSISTANT, reply.text)
                 reply.commands.forEach { c ->

@@ -67,6 +67,7 @@ private fun ToolScreensInner(nav: NavHostController, id: String, uri: String?) {
         "stamps" -> StampsScreen(nav)
         "ai" -> AiScreen(nav, uri)
         "ai_settings" -> AiSettingsScreen(nav)
+        "ai_spaces" -> com.smartdocs.editor.ui.ai5.SpacesScreen(nav)
 
         else -> ComingSoonScreen(nav, id)
     }

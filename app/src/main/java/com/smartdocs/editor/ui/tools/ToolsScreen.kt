@@ -71,6 +71,7 @@ val allTools = listOf(
     ToolDef("ai", R.string.tool_ai, Icons.Default.AutoAwesome, 3),
     ToolDef("read_aloud", R.string.tool_read_aloud, Icons.Default.RecordVoiceOver, 3),
     ToolDef("podcast", R.string.ai2_podcast_title, Icons.Default.Podcasts, 3),
+    ToolDef("ai_spaces", R.string.a5_spaces, Icons.Default.Workspaces, 3),
     ToolDef("print", R.string.tool_print, Icons.Default.Print, 3),
 )
 
