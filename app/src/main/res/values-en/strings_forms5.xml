@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MODULE forms5: in-page form filling, field bar, submit, XFA (prefix f5_) -->
+<resources>
+    <string name="f5_none">(none)</string>
+    <string name="f5_prev">Previous field</string>
+    <string name="f5_next">Next field</string>
+    <string name="f5_n_of">%1$d of %2$d</string>
+    <string name="f5_pick_date">Pick date</string>
+    <string name="f5_toggle">Check / uncheck</string>
+    <string name="f5_choose">Choose from list</string>
+    <string name="f5_clear">Clear field</string>
+    <string name="f5_undo">Undo</string>
+    <string name="f5_redo">Redo</string>
+    <string name="f5_done">Done</string>
+    <string name="f5_err_required">This field is required.</string>
+    <string name="f5_err_number">Enter a valid number.</string>
+    <string name="f5_err_date">Enter a date as %1$s.</string>
+    <string name="f5_err_range">The value must be between %1$s and %2$s.</string>
+    <string name="f5_err_min">The value must be at least %1$s.</string>
+    <string name="f5_err_max">The value must be at most %1$s.</string>
+    <string name="f5_err_too_long">At most %1$d characters.</string>
+    <string name="f5_err_format">The format is not valid for this field.</string>
+    <string name="f5_err_script">The value is not accepted for this field.</string>
+    <string name="f5_submit_q">Send the form data to %1$s?</string>
+    <string name="f5_submit_mail_q">Email the form data to %1$s?</string>
+    <string name="f5_reset_q">Clear the form field values?</string>
+    <string name="f5_open_uri_q">Open the link %1$s?</string>
+    <string name="f5_submit_mail_ready">The data is ready to send by email.</string>
+    <string name="f5_submit_ok">Form submitted (code %1$d).</string>
+    <string name="f5_submit_failed">Could not submit: %1$s</string>
+    <string name="f5_missing_required">%1$d required fields are empty.</string>
+    <string name="f5_print_hint">To print, use Print in the reader menu; the entered values are printed.</string>
+    <string name="f5_reset_done">%1$d fields cleared.</string>
+    <string name="f5_xfa_failed">Could not create the form</string>
+    <string name="f5_xfa_dynamic_title">Dynamic XFA form</string>
+    <string name="f5_xfa_dynamic_body">This form\'s layout cannot be shown as designed. A fillable form can be generated from its fields and filled on the page, then saved back into the original form, or converted to a normal PDF.</string>
+    <string name="f5_xfa_generated_title">Form generated from XFA</string>
+    <string name="f5_xfa_generated_body">This file was generated from an XFA form. After filling it, the values can be written into the original form\'s data.</string>
+    <string name="f5_xfa_open_form">Open fillable form</string>
+    <string name="f5_xfa_to_pdf">Convert to normal PDF</string>
+    <string name="f5_xfa_write_back">Save into the original XFA</string>
+    <string name="f5_xfa_written">%1$d values written into %2$s.</string>
+    <string name="f5_fb_date">Date</string>
+    <string name="f5_fb_image">Image</string>
+</resources>

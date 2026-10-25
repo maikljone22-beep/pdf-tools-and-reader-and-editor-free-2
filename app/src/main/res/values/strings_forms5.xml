@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MODULE forms5: in-page form filling, field bar, submit, XFA (prefix f5_) -->
+<resources>
+    <string name="f5_none">(بلا)</string>
+    <string name="f5_prev">الحقل السابق</string>
+    <string name="f5_next">الحقل التالي</string>
+    <string name="f5_n_of">%1$d من %2$d</string>
+    <string name="f5_pick_date">اختيار التاريخ</string>
+    <string name="f5_toggle">تحديد / إلغاء</string>
+    <string name="f5_choose">اختيار من القائمة</string>
+    <string name="f5_clear">مسح الحقل</string>
+    <string name="f5_undo">تراجع</string>
+    <string name="f5_redo">إعادة</string>
+    <string name="f5_done">تم</string>
+    <string name="f5_err_required">هذا الحقل مطلوب.</string>
+    <string name="f5_err_number">أدخل رقمًا صحيحًا.</string>
+    <string name="f5_err_date">أدخل تاريخًا بالصيغة %1$s.</string>
+    <string name="f5_err_range">يجب أن تكون القيمة بين %1$s و%2$s.</string>
+    <string name="f5_err_min">يجب ألا تقل القيمة عن %1$s.</string>
+    <string name="f5_err_max">يجب ألا تزيد القيمة عن %1$s.</string>
+    <string name="f5_err_too_long">الحد الأقصى %1$d حرفًا.</string>
+    <string name="f5_err_format">الصيغة غير صحيحة لهذا الحقل.</string>
+    <string name="f5_err_script">القيمة غير مقبولة في هذا الحقل.</string>
+    <string name="f5_submit_q">إرسال بيانات النموذج إلى %1$s؟</string>
+    <string name="f5_submit_mail_q">إرسال بيانات النموذج بالبريد إلى %1$s؟</string>
+    <string name="f5_reset_q">مسح قيم حقول النموذج؟</string>
+    <string name="f5_open_uri_q">فتح الرابط %1$s؟</string>
+    <string name="f5_submit_mail_ready">تم تجهيز البيانات للإرسال بالبريد.</string>
+    <string name="f5_submit_ok">تم إرسال النموذج (الرمز %1$d).</string>
+    <string name="f5_submit_failed">تعذّر الإرسال: %1$s</string>
+    <string name="f5_missing_required">يوجد %1$d من الحقول المطلوبة فارغة.</string>
+    <string name="f5_print_hint">للطباعة استخدم «طباعة» من قائمة القارئ؛ ستُطبع القيم المدخلة.</string>
+    <string name="f5_reset_done">تم مسح %1$d من الحقول.</string>
+    <string name="f5_xfa_failed">تعذّر إنشاء النموذج</string>
+    <string name="f5_xfa_dynamic_title">نموذج XFA ديناميكي</string>
+    <string name="f5_xfa_dynamic_body">لا يمكن عرض تخطيط هذا النموذج كما هو. يمكن إنشاء نموذج قابل للتعبئة من حقوله وتعبئته على الصفحة، ثم حفظ القيم في النموذج الأصلي، أو تحويله إلى ملف PDF عادي.</string>
+    <string name="f5_xfa_generated_title">نموذج مُنشأ من XFA</string>
+    <string name="f5_xfa_generated_body">هذا الملف أُنشئ من نموذج XFA. بعد التعبئة يمكن كتابة القيم في بيانات النموذج الأصلي.</string>
+    <string name="f5_xfa_open_form">فتح كنموذج قابل للتعبئة</string>
+    <string name="f5_xfa_to_pdf">تحويل إلى PDF عادي</string>
+    <string name="f5_xfa_write_back">حفظ في نموذج XFA الأصلي</string>
+    <string name="f5_xfa_written">تمت كتابة %1$d من القيم في %2$s.</string>
+    <string name="f5_fb_date">تاريخ</string>
+    <string name="f5_fb_image">صورة</string>
+</resources>

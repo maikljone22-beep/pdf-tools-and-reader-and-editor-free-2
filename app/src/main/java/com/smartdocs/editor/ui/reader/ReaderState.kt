@@ -122,6 +122,8 @@ class ReaderState(
     var dirty by mutableStateOf(false); private set
     var existing by mutableStateOf<List<AnnotationWriter.Existing>>(emptyList()); private set
     var saving by mutableStateOf(false); private set
+    /** In-page form filling (MODULE_forms5): pending field values, live calculations, field bar. */
+    val forms5 = com.smartdocs.editor.ui.forms5.FormFill.of(this).also { it.markDirty = { dirty = true } }
     /** Result of copying the saved file back into the document it was opened from (watched by the screen). */
     var writeBackResult by mutableStateOf<com.smartdocs.editor.core.files.DocumentRepository.WriteBack?>(null)
     /** lastModified/length of the file when the current session was opened; a tool replacing the file changes it. */
@@ -297,9 +299,12 @@ class ReaderState(
     suspend fun save(): Boolean {
         saveMutex.withLock {
             val f = file ?: return false
+            // MODULE_forms5: pending form values are written first (FormOps.fillFields -> swapFile)
+            val formsSaved = try { withContext(NonCancellable) { forms5.flushOnSave(f, password) { tmp -> swapFile(tmp) } } }
+                catch (e: Exception) { error = e.message ?: e.toString(); return false }
             if (annots.isEmpty()) {
                 // stored annotations may have been taken out for editing and then deleted: the file already reflects it
-                if (edit.hasBackup) { writeBackResult = runCatching { app.documents.writeBack(f) }.getOrNull().also { com.smartdocs.editor.core.cloud.SaveHooks.onSaved(app, f) }; edit.committed() }
+                if (edit.hasBackup || formsSaved) { writeBackResult = runCatching { app.documents.writeBack(f) }.getOrNull().also { com.smartdocs.editor.core.cloud.SaveHooks.onSaved(app, f) }; if (edit.hasBackup) edit.committed() }
                 dirty = false; return true
             }
             saving = true
@@ -324,9 +329,12 @@ class ReaderState(
 
     /** Write pending annotations plus the current file into [out] (used by "save as"). */
     suspend fun exportWithAnnots(out: File) {
-        val f = file ?: return
-        if (annots.isEmpty()) withContext(Dispatchers.IO) { f.copyTo(out, overwrite = true) }
-        else AnnotationWriter.commit(context, f, annots.toList(), out, password)
+        val f0 = file ?: return
+        val f = forms5.exportSource(f0, password)          // MODULE_forms5: temp copy with pending field values
+        try {
+            if (annots.isEmpty()) withContext(Dispatchers.IO) { f.copyTo(out, overwrite = true) }
+            else AnnotationWriter.commit(context, f, annots.toList(), out, password)
+        } finally { if (f != f0) f.delete() }
     }
 
     suspend fun deleteExisting(e: AnnotationWriter.Existing) {

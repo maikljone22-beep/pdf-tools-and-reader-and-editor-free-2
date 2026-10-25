@@ -62,6 +62,9 @@ fun FormBuilderScreen(nav: NavHostController, uri: String?) {
     val fields = remember { mutableStateListOf<NewField>() }
     var editing by remember { mutableStateOf<NewField?>(null) }
     var pendingRect by remember { mutableStateOf<RectF?>(null) }
+    // MODULE_forms5: date and image fields are text / button fields converted after FormBuilder.addFields
+    var extra by remember { mutableStateOf<com.smartdocs.editor.core.forms5.ExtraKind?>(null) }
+    val extraKinds = remember { mutableStateMapOf<String, com.smartdocs.editor.core.forms5.ExtraKind>() }
 
     LaunchedEffect(file) {
         session?.close(); session = null
@@ -74,7 +77,10 @@ fun FormBuilderScreen(nav: NavHostController, uri: String?) {
             val f = file ?: return@TextButton
             runner.run(ctx.getString(R.string.processing)) {
                 val out = app.documents.uniqueFile(app.documents.docsDir, f.nameWithoutExtension + "_form")
-                FormBuilder.addFields(f, fields.toList(), out); out
+                val list = fields.toList()
+                val names = FormBuilder.addFields(f, list, out)
+                com.smartdocs.editor.core.forms5.FormBuilderExtras.apply(out, names.zip(list).mapNotNull { (n, nf) -> extraKinds[extraKey(nf)]?.let { n to it } }.toMap())
+                out
             }
         }) { Text(stringResource(R.string.save)) }
     }) }) { pad ->
@@ -88,7 +94,11 @@ fun FormBuilderScreen(nav: NavHostController, uri: String?) {
             if (s == null) { Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }; return@Column }
 
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                fieldTypes.forEach { (t, label) -> FilterChip(selected = type == t, onClick = { type = t }, label = { Text(stringResource(label)) }) }
+                fieldTypes.forEach { (t, label) -> FilterChip(selected = type == t && extra == null, onClick = { type = t; extra = null }, label = { Text(stringResource(label)) }) }
+                FilterChip(selected = extra is com.smartdocs.editor.core.forms5.ExtraKind.Date, onClick = { type = FieldType.TEXT; extra = com.smartdocs.editor.core.forms5.ExtraKind.Date() },
+                    label = { Text(stringResource(R.string.f5_fb_date)) }, leadingIcon = { Icon(Icons.Default.CalendarMonth, null, Modifier.size(16.dp)) })
+                FilterChip(selected = extra == com.smartdocs.editor.core.forms5.ExtraKind.Image, onClick = { type = FieldType.BUTTON; extra = com.smartdocs.editor.core.forms5.ExtraKind.Image },
+                    label = { Text(stringResource(R.string.f5_fb_image)) }, leadingIcon = { Icon(Icons.Default.Image, null, Modifier.size(16.dp)) })
             }
             Text(stringResource(R.string.fb_draw_hint), Modifier.padding(horizontal = 16.dp, vertical = 4.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -110,17 +120,20 @@ fun FormBuilderScreen(nav: NavHostController, uri: String?) {
     }
 
     // property dialog for a new or existing field
-    val target = pendingRect?.let { r -> NewField(type, defaultName(type, fields.size + 1), page, r) } ?: editing
+    val target = pendingRect?.let { r -> NewField(type, when (extra) { is com.smartdocs.editor.core.forms5.ExtraKind.Date -> "date_${fields.size + 1}"; com.smartdocs.editor.core.forms5.ExtraKind.Image -> "image_${fields.size + 1}"; else -> defaultName(type, fields.size + 1) }, page, r) } ?: editing
     if (target != null) {
         FieldDialog(target, isNew = pendingRect != null,
             onDismiss = { pendingRect = null; editing = null },
-            onDelete = { fields.remove(target); pendingRect = null; editing = null },
-            onSave = { nf -> if (pendingRect != null) fields += nf else { val i = fields.indexOf(target); if (i >= 0) fields[i] = nf }; pendingRect = null; editing = null })
+            onDelete = { fields.remove(target); extraKinds.remove(extraKey(target)); pendingRect = null; editing = null },
+            onSave = { nf -> if (pendingRect != null) { fields += nf; extra?.let { extraKinds[extraKey(nf)] = it } } else { val i = fields.indexOf(target); if (i >= 0) fields[i] = nf }; pendingRect = null; editing = null })
     }
     if (runner.running) ProgressDialog(runner.message)
     runner.result?.let { f -> ResultSheet(f, nav, onDismiss = { runner.result = null }) }
     runner.error?.let { e -> AlertDialog(onDismissRequest = { runner.error = null }, text = { Text(e) }, confirmButton = { TextButton(onClick = { runner.error = null }) { Text(stringResource(R.string.ok)) } }) }
 }
+
+/** Identity of a drawn field that survives property edits (page + rect), for MODULE_forms5 extra kinds. */
+private fun extraKey(f: NewField) = "${f.page}|${f.rect.left},${f.rect.top},${f.rect.right},${f.rect.bottom}"
 
 private fun defaultName(t: FieldType, n: Int) = when (t) {
     FieldType.TEXT -> "text_$n"; FieldType.CHECKBOX -> "check_$n"; FieldType.RADIO -> "radio_$n"; FieldType.COMBO -> "combo_$n"

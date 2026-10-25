@@ -259,6 +259,8 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                             PageIndicator(state.currentPage, state.pageCount, { showGoTo = true }, Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp))
                             if (state.tool != null && state.placement == null) ToolHint(state.tool!!, Modifier.align(Alignment.TopCenter).padding(top = 8.dp))
                             else OcrSuggestionBanner(state, onOcr = { actions.quick(QuickAction.OCR) }, modifier = Modifier.align(Alignment.TopCenter))
+                            com.smartdocs.editor.ui.forms5.InPageXfaBanner(state, onOpen = { f -> nav.navigate(Routes.reader(android.net.Uri.fromFile(f).toString(), 0)) },
+                                modifier = Modifier.align(Alignment.TopCenter).padding(top = 48.dp))   // MODULE_forms5
                         }
                     }
                 }
@@ -273,11 +275,12 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
         if (!tablet && panel != null) ModalBottomSheet(onDismissRequest = { panel = null }) {
             PanelsContent(state, panel!!, onPanel = { panel = it }, onJump = { state.jumpTo(it); panel = null }, onAiOutline = { panel = null; nav.navigate(Routes.tool("ai", state.fileUri)) }, onClose = { panel = null })
         }
+        com.smartdocs.editor.ui.forms5.InPageFormBar(state, Modifier.align(Alignment.BottomCenter))   // MODULE_forms5
     }
 
     // ---- dialogs & sheets ----
     if (state.needPassword) PasswordDialog(state.wrongPassword, onOk = { state.open(it) }, onCancel = { leave() })
-    if (showDiscard) DiscardDialog(onSave = { showDiscard = false; saveThen { leave() } }, onDiscard = { showDiscard = false; state.edit.discardOnClose(); leave() }, onCancel = { showDiscard = false })
+    if (showDiscard) DiscardDialog(onSave = { showDiscard = false; saveThen { leave() } }, onDiscard = { showDiscard = false; state.edit.discardOnClose(); state.forms5.discard(); leave() }, onCancel = { showDiscard = false })
     if (showGoTo) GoToPageDialog(state.currentPage, state.pageCount, onGo = { state.jumpTo(it); showGoTo = false }, onDismiss = { showGoTo = false })
     if (showViewMode) ViewModeSheet(state, tablet = tablet) { showViewMode = false; scope.launch { app.settings.update { it.copy(continuousScroll = state.viewMode == ViewMode.CONTINUOUS, nightMode = state.nightMode) } } }
     if (showPageColor) PageColorSheet(state, onPersist = { c -> scope.launch { app.settings.update { it.copy(pageColor = c) } } }) { showPageColor = false }
