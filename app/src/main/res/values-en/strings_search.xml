@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="sr_ignore_diacritics">Ignore diacritics</string>
+    <string name="sr_unify_letters">Treat alef, ya and hamza forms alike</string>
+    <string name="sr_ta_marbuta">Ta marbuta = ha</string>
+    <string name="sr_unify_digits">Treat Arabic and Latin digits alike</string>
+</resources>

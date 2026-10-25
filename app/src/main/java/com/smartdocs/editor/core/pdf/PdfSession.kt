@@ -223,6 +223,33 @@ class PdfSession private constructor(
         }
 
     /**
+     * Search with a custom matcher over each page's text (e.g. Arabic-aware folding). [matcher] returns
+     * char ranges of the page text; rects come from PDFium so hits look exactly like [search] hits.
+     */
+    suspend fun searchWith(pages: IntRange = 0 until pageCount, matcher: (String) -> List<IntRange>): List<SearchHit> =
+        withContext(Dispatchers.IO) {
+            val hits = ArrayList<SearchHit>()
+            for (pi in pages) {
+                if (closed) break
+                mutex.withLock {
+                    page(pi).openTextPage().use { tp ->
+                        val total = tp.textPageCountChars()
+                        if (total <= 0) return@use
+                        val text = tp.textPageGetText(0, total) ?: return@use
+                        for (r in matcher(text)) {
+                            val idx = r.first; val len = (r.last + 1 - r.first).coerceAtMost(total - idx)
+                            if (idx < 0 || len <= 0) continue
+                            val rc = tp.textPageCountRects(idx, len)
+                            val rects = (0 until rc).mapNotNull { tp.textPageGetRect(it) }
+                            hits += SearchHit(pi, idx, len, rects, com.smartdocs.editor.core.search.TextMatcher.snippet(text, r))
+                        }
+                    }
+                }
+            }
+            hits
+        }
+
+    /**
      * Close without blocking the caller's thread: waits for an in-flight render/text call to release the
      * native lock before freeing the document. Prefer this from coroutines.
      */

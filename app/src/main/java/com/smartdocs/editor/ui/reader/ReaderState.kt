@@ -456,7 +456,10 @@ class ReaderState(
         searchJob = scope.launch {
             searching = true
             delay(250)
-            val hits = runCatching { s.search(query, matchCase, wholeWords) }.getOrDefault(emptyList())
+            val norm = com.smartdocs.editor.core.search.SearchPrefs.load(context, matchCase)
+            val hits = runCatching {
+                s.searchWith { com.smartdocs.editor.core.search.TextMatcher.find(it, query, norm, wholeWords) }
+            }.getOrElse { runCatching { s.search(query, matchCase, wholeWords) }.getOrDefault(emptyList()) }
             searchHits = hits
             searchIndex = if (hits.isEmpty()) -1 else {
                 val near = hits.indexOfFirst { it.page >= currentPage }.let { if (it < 0) 0 else it }

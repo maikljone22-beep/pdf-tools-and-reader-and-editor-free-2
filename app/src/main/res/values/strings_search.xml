@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="sr_ignore_diacritics">تجاهل التشكيل</string>
+    <string name="sr_unify_letters">توحيد الألف والياء والهمزة</string>
+    <string name="sr_ta_marbuta">التاء المربوطة = الهاء</string>
+    <string name="sr_unify_digits">توحيد الأرقام (١٢٣ = 123)</string>
+</resources>

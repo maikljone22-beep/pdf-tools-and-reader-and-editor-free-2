@@ -53,6 +53,7 @@ fun SearchBar(state: ReaderState, onClose: () -> Unit) {
                             onClick = { state.matchCase = !state.matchCase; state.runSearch(state.searchQuery) })
                         DropdownMenuItem(text = { Text(stringResource(R.string.whole_words)) }, leadingIcon = { Checkbox(state.wholeWords, null) },
                             onClick = { state.wholeWords = !state.wholeWords; state.runSearch(state.searchQuery) })
+                        com.smartdocs.editor.ui.search.ReaderSearchMenuItems { state.runSearch(state.searchQuery) }
                     }
                 }
             }

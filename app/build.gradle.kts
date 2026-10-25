@@ -76,6 +76,7 @@ kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarg
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
+    testImplementation("junit:junit:4.13.2")
 
     val composeBom = platform("androidx.compose:compose-bom:2025.03.01")
     implementation(composeBom)
