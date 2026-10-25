@@ -1,0 +1,25 @@
+name = "smartdocs-ai"
+main = "worker.js"
+compatibility_date = "2026-01-01"
+
+[vars]
+PROVIDER_URL = "https://api.groq.com/openai/v1"
+DEFAULT_MODEL = "llama-3.3-70b-versatile"
+# Speech (AI voices, audio summary, podcast). Any OpenAI-compatible /audio/speech works.
+# With OpenAI: TTS_URL = "https://api.openai.com/v1", TTS_MODEL = "gpt-4o-mini-tts", and `wrangler secret put TTS_KEY`.
+TTS_URL = "https://api.openai.com/v1"
+TTS_MODEL = "gpt-4o-mini-tts"
+TTS_VOICES = "alloy,ash,coral,echo,fable,nova,onyx,sage,shimmer"
+TTS_FORMAT = "mp3"
+TTS_MAX_CHARS = "1500"
+# Groq instead (Saudi Arabic voices, WAV only, 200 chars per request):
+# TTS_URL = "https://api.groq.com/openai/v1"
+# TTS_MODEL = "canopylabs/orpheus-arabic-saudi"
+# TTS_VOICES = "noura,abdullah,fahad,sultan,lulwa,aisha"
+# TTS_FORMAT = "wav"
+# TTS_MAX_CHARS = "190"
+
+# optional per-device daily limit: create a KV namespace and paste its id
+# [[kv_namespaces]]
+# binding = "RATE"
+# id = "<your-kv-id>"

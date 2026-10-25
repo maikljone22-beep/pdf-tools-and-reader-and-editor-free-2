@@ -1,0 +1,200 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Module psf: page templates, split, certificate security, digital-signature upgrades, form calculations, XFA (prefix ps_) -->
+<resources>
+    <!-- Templates -->
+    <string name="ps_templates_title">القوالب</string>
+    <string name="ps_templates_hint">قوالب جاهزة تعمل دون إنترنت. اختر قالباً، عدّل الاسم والشعار ثم أنشئ الملف.</string>
+    <string name="ps_templates_documents">مستندات</string>
+    <string name="ps_templates_papers">أوراق</string>
+    <string name="ps_templates_fillable">قابل للتعبئة</string>
+    <string name="ps_templates_create">إنشاء من القالب</string>
+    <string name="ps_templates_creating">جارٍ إنشاء المستند…</string>
+    <string name="ps_templates_preview">معاينة القالب</string>
+    <string name="ps_tpl_lined">ورقة مسطّرة</string>
+    <string name="ps_tpl_lined_desc">أسطر بهامش أيمن للكتابة العربية</string>
+    <string name="ps_tpl_grid">ورقة مربعات</string>
+    <string name="ps_tpl_grid_desc">شبكة مربعات 5 مم</string>
+    <string name="ps_tpl_graph">ورقة رسم بياني</string>
+    <string name="ps_tpl_graph_desc">ورق ملّيمتري بخطوط 1 و5 و10 مم</string>
+    <string name="ps_tpl_music">نوتة موسيقية</string>
+    <string name="ps_tpl_music_desc">مدرجات خماسية للتدوين الموسيقي</string>
+    <string name="ps_tpl_letter">خطاب رسمي</string>
+    <string name="ps_tpl_letter_desc">ترويسة بالشعار واسم الجهة مع رقم وتاريخ وموضوع وتذييل</string>
+    <string name="ps_tpl_invoice">فاتورة</string>
+    <string name="ps_tpl_invoice_desc">جدول أصناف بحقول تُحسب تلقائياً (الكمية × السعر والإجمالي)</string>
+    <string name="ps_tpl_certificate">شهادة تقدير</string>
+    <string name="ps_tpl_certificate_desc">إطار مزخرف مع اسم المكرَّم والتوقيع والختم</string>
+    <string name="ps_tpl_minutes">محضر اجتماع</string>
+    <string name="ps_tpl_minutes_desc">بيانات الاجتماع وجدول الأعمال والمناقشات والقرارات</string>
+    <string name="ps_tpl_todo">قائمة مهام</string>
+    <string name="ps_tpl_todo_desc">مهام بخانات اختيار وأولوية</string>
+    <string name="ps_tpl_timetable">جدول دراسي أسبوعي</string>
+    <string name="ps_tpl_timetable_desc">أيام الأسبوع × الحصص بخانات قابلة للكتابة</string>
+    <string name="ps_tpl_exam">ورقة امتحان</string>
+    <string name="ps_tpl_exam_desc">ترويسة المدرسة وبيانات الطالب والدرجة والتعليمات وأسطر الإجابة</string>
+    <string name="ps_tpl_in_title">العنوان</string>
+    <string name="ps_tpl_in_exam_name">اسم الاختبار</string>
+    <string name="ps_tpl_in_song">عنوان المقطوعة</string>
+    <string name="ps_tpl_in_org">اسم الجهة / المؤسسة</string>
+    <string name="ps_tpl_in_school">اسم المدرسة (يمكن كتابة أكثر من سطر)</string>
+    <string name="ps_tpl_in_address">العنوان / بيانات التواصل</string>
+    <string name="ps_tpl_in_recipient">اسم المكرَّم (اتركه فارغاً لحقل قابل للتعبئة)</string>
+    <string name="ps_tpl_in_subject">المادة / الصف</string>
+    <string name="ps_tpl_in_class">الصف والشعبة</string>
+    <string name="ps_tpl_in_composer">الملحّن / المؤلف</string>
+    <string name="ps_tpl_in_body">نص الشهادة</string>
+    <string name="ps_tpl_in_instructions">تعليمات الاختبار</string>
+    <string name="ps_tpl_in_date">التاريخ</string>
+    <string name="ps_tpl_in_footer">نص التذييل</string>
+    <string name="ps_tpl_in_currency">العملة</string>
+    <string name="ps_tpl_in_logo">الشعار</string>
+    <string name="ps_tpl_in_color">لون القالب</string>
+    <string name="ps_tpl_rows_items">عدد الأصناف</string>
+    <string name="ps_tpl_rows_decisions">عدد القرارات</string>
+    <string name="ps_tpl_rows_tasks">مهام في الصفحة</string>
+    <string name="ps_tpl_rows_periods">عدد الحصص</string>
+    <string name="ps_tpl_rows_questions">عدد الأسئلة</string>
+    <string name="ps_tpl_with_fields">حقول قابلة للتعبئة</string>
+    <string name="ps_tpl_with_fields_desc">إضافة حقول نموذج يمكن تعبئتها في أي قارئ PDF</string>
+
+    <!-- Split -->
+    <string name="ps_split_by_bookmarks">حسب المرجعيات</string>
+    <string name="ps_split_by_size">حسب الحجم</string>
+    <string name="ps_split_max_mb">الحجم الأقصى لكل ملف (ميغابايت)</string>
+    <string name="ps_split_size_hint">حجم الملف الحالي: %1$s</string>
+    <string name="ps_split_size_invalid">أدخل حجماً أقصى صالحاً (0.05 ميغابايت على الأقل)</string>
+    <string name="ps_split_no_bookmarks">لا يحتوي الملف على مرجعيات (فهرس) في المستوى الأعلى</string>
+    <string name="ps_split_bookmarks_found">سيُنشأ ملف لكل مرجعية: %1$d</string>
+
+    <!-- Certificate protection -->
+    <string name="ps_cert_protect_title">الحماية بالشهادة</string>
+    <string name="ps_cert_tab_encrypt">تشفير</string>
+    <string name="ps_cert_tab_open">فتح ملف محمي</string>
+    <string name="ps_cert_current_password">كلمة مرور الملف الحالية (إن وُجدت)</string>
+    <string name="ps_cert_recipients">المستلمون</string>
+    <string name="ps_cert_no_recipients">أضف شهادة مستلم واحد على الأقل</string>
+    <string name="ps_cert_add_cer">شهادة ‎.cer/.p7b</string>
+    <string name="ps_cert_add_p12">من ملف ‎.p12/.pfx</string>
+    <string name="ps_cert_add_own">إضافة شهادتي على الجهاز</string>
+    <string name="ps_cert_self_hint">أضف شهادتك أيضاً حتى تتمكن من فتح الملف لاحقاً. لكل مستلم أذوناته الخاصة.</string>
+    <string name="ps_cert_cipher">خوارزمية التشفير</string>
+    <string name="ps_cert_encrypt">تشفير بالشهادات</string>
+    <string name="ps_cert_permissions">الأذونات</string>
+    <string name="ps_cert_issuer_valid">المُصدِر: %1$s · صالحة حتى %2$s</string>
+    <string name="ps_cert_issue_expired">منتهية الصلاحية</string>
+    <string name="ps_cert_issue_not_yet">لم تبدأ صلاحيتها بعد</string>
+    <string name="ps_cert_issue_usage">غير مخصّصة للتشفير</string>
+    <string name="ps_cert_issue_rsa">نوع المفتاح غير مدعوم (RSA فقط)</string>
+    <string name="ps_cert_blocked">بعض الشهادات لا يمكن استخدامها للتشفير (منتهية أو مفتاح غير RSA)</string>
+    <string name="ps_cert_read_failed">تعذّرت قراءة الشهادة</string>
+    <string name="ps_cert_key_password">كلمة مرور ملف المفتاح</string>
+    <string name="ps_cert_open_hint">اختر ملف المفتاح الخاص (.p12/.pfx) المطابق لإحدى شهادات المستلمين، وسيُحفظ نسخة غير مشفّرة.</string>
+    <string name="ps_cert_use_own_key">استخدام مفتاحي على الجهاز</string>
+    <string name="ps_cert_pick_key">اختيار ملف المفتاح</string>
+    <string name="ps_cert_open_now">فتح وفك التشفير</string>
+    <string name="ps_cert_open_failed">تعذّر فتح الملف: المفتاح لا يطابق أي مستلم أو كلمة المرور خاطئة</string>
+    <string name="ps_cert_not_cert_file">يبدو أن هذا الملف غير محمي بشهادة</string>
+    <string name="ps_cert_unlock_hint">هذا الملف محمي بشهادة وليس بكلمة مرور. استخدم أداة «الحماية بالشهادة» ← «فتح ملف محمي».</string>
+    <string name="ps_perm_assemble">إدارة الصفحات</string>
+    <string name="ps_perm_accessibility">النسخ لإمكانية الوصول</string>
+    <string name="ps_perm_read_only">قراءة فقط</string>
+    <string name="ps_perm_dependency_hint">بعض الأذونات مترابطة: التعليق والتعديل يتطلبان التعبئة، والتعديل يتطلب إدارة الصفحات، والاستخراج يتطلب النسخ لإمكانية الوصول.</string>
+
+    <!-- Digital signature upgrades -->
+    <string name="ps_sign_advanced">خيارات متقدمة (ختم زمني، LTV، اعتماد، ختم الصفحات)</string>
+    <string name="ps_sign_type">نوع التوقيع</string>
+    <string name="ps_sign_approval">توقيع موافقة</string>
+    <string name="ps_certify_p1">اعتماد: بلا تغييرات</string>
+    <string name="ps_certify_p2">اعتماد: تعبئة وتوقيع</string>
+    <string name="ps_certify_p3">اعتماد: تعبئة وتوقيع وتعليقات</string>
+    <string name="ps_certify_not_first">الاعتماد ممكن فقط كأول توقيع في المستند، وهذا المستند موقَّع مسبقاً.</string>
+    <string name="ps_after_approval">توقيع موافقة: يبقى بالإمكان التعبئة والتعليق وإضافة تواقيع أخرى، وكل تعديل لاحق يظهر كتغيير بعد التوقيع.</string>
+    <string name="ps_after_p1">اعتماد دون تغييرات (P=1): أي تعديل لاحق، حتى التعبئة أو توقيع آخر، يُبطل الاعتماد.</string>
+    <string name="ps_after_p2">اعتماد (P=2): يُسمح بعده بتعبئة النماذج وإضافة التواقيع فقط.</string>
+    <string name="ps_after_p3">اعتماد (P=3): يُسمح بعده بالتعبئة والتواقيع وإضافة التعليقات.</string>
+    <string name="ps_sign_pades">توقيع PAdES (‏ETSI.CAdES.detached)</string>
+    <string name="ps_sign_pades_desc">معيار التوقيع الأوروبي مع خاصية شهادة التوقيع</string>
+    <string name="ps_sign_tsa">ختم زمني من خادم موثوق (RFC 3161)</string>
+    <string name="ps_sign_tsa_desc">يثبت وقت التوقيع حتى بعد انتهاء الشهادة (يتطلب إنترنت)</string>
+    <string name="ps_sign_tsa_url">عنوان خادم الختم الزمني</string>
+    <string name="ps_sign_ltv">تفعيل التحقق طويل الأمد (LTV)</string>
+    <string name="ps_sign_ltv_desc">تضمين الشهادات وردود OCSP/CRL في المستند (أفضل جهد، يتطلب إنترنت)</string>
+    <string name="ps_sign_doc_ts">ختم زمني للمستند (PAdES-LTA)</string>
+    <string name="ps_sign_doc_ts_desc">يُضاف بعد التوقيع ويحمي بيانات التحقق (يتطلب تفعيل الختم الزمني)</string>
+    <string name="ps_sign_paging_seal">ختم الصفحات المتعددة</string>
+    <string name="ps_sign_paging_seal_desc">تقسيم صورة الختم على الحافة اليمنى لكل الصفحات مع التوقيع في الصفحة الأخيرة</string>
+    <string name="ps_sign_seal_pick">صورة ختم</string>
+    <string name="ps_sign_seal_none">اختر صورة الختم أولاً</string>
+    <string name="ps_sign_seal_size">حجم الختم</string>
+    <string name="ps_sign_seal_position">الموضع العمودي</string>
+    <string name="ps_sign_result_ts">مختوم زمنياً من خادم موثوق</string>
+    <string name="ps_sign_result_ltv">بيانات LTV: %1$d شهادة، %2$d رد OCSP، %3$d قائمة CRL</string>
+    <string name="ps_sign_result_doc_ts">أُضيف ختم زمني للمستند</string>
+    <string name="ps_sign_result_warnings">ملاحظات:</string>
+    <string name="ps_verify_doc_ts">ختم زمني للمستند (RFC 3161)</string>
+    <string name="ps_verify_ts_ok">ختم زمني صالح: %1$s</string>
+    <string name="ps_verify_ts_bad">ختم زمني غير صالح: %1$s</string>
+    <string name="ps_verify_certified">توقيع اعتماد (P=%1$d)</string>
+    <string name="ps_verify_ltv">يحتوي المستند على بيانات تحقق طويل الأمد (DSS)</string>
+
+    <!-- Pre-sign warning -->
+    <string name="ps_presign_title">تحذير ما قبل التوقيع</string>
+    <string name="ps_presign_intro">العناصر أدناه قد تغيّر ما يظهر في المستند بعد التوقيع دون علمك. راجعها قبل المتابعة.</string>
+    <string name="ps_presign_intro_ocg">العناصر أدناه قد تغيّر ما يظهر في المستند بعد التوقيع، ويحتوي المستند على طبقات اختيارية قد تُخفي أو تُظهر محتوى. راجعها قبل المتابعة.</string>
+    <string name="ps_presign_locked">هذا المستند معتمد دون السماح بأي تغيير؛ إضافة توقيع ستُبطل الاعتماد.</string>
+    <string name="ps_presign_after">الصلاحيات بعد التوقيع</string>
+    <string name="ps_presign_dont_show">عدم الإظهار مجدداً</string>
+    <string name="ps_presign_continue">متابعة التوقيع</string>
+    <string name="ps_presign_page">صفحة %1$d</string>
+    <string name="ps_ps_kind_doc_script">سكربت على مستوى المستند</string>
+    <string name="ps_ps_kind_page_script">سكربت صفحة</string>
+    <string name="ps_ps_kind_field_script">سكربت حقل نموذج</string>
+    <string name="ps_ps_kind_link_script">رابط ينفّذ سكربت</string>
+    <string name="ps_ps_kind_template">قالب صفحة (يمكن إنشاء صفحات منه)</string>
+    <string name="ps_ps_kind_xfa">نموذج XFA</string>
+    <string name="ps_ps_kind_layers">طبقات محتوى اختيارية (OCG)</string>
+    <string name="ps_ps_kind_unsigned">حقل توقيع غير موقَّع</string>
+    <string name="ps_ps_kind_empty">حقول فارغة قابلة للتعبئة: %1$d</string>
+    <string name="ps_ps_kind_signed">تواقيع موجودة: %1$d</string>
+    <string name="ps_ps_kind_certified">المستند معتمد (P=%1$d)</string>
+    <string name="ps_ev_open">عند فتح المستند</string>
+    <string name="ps_ev_will_close">قبل إغلاق المستند</string>
+    <string name="ps_ev_will_save">قبل الحفظ</string>
+    <string name="ps_ev_did_save">بعد الحفظ</string>
+    <string name="ps_ev_will_print">قبل الطباعة</string>
+    <string name="ps_ev_did_print">بعد الطباعة</string>
+    <string name="ps_ev_page_open">عند فتح الصفحة</string>
+    <string name="ps_ev_page_close">عند إغلاق الصفحة</string>
+    <string name="ps_ev_calculate">حساب</string>
+    <string name="ps_ev_keystroke">عند الكتابة</string>
+    <string name="ps_ev_format">تنسيق</string>
+    <string name="ps_ev_validate">تحقق من القيمة</string>
+    <string name="ps_ev_mouse_hover">مرور المؤشر</string>
+    <string name="ps_ev_click">نقر</string>
+    <string name="ps_ev_focus">التركيز</string>
+    <string name="ps_ev_page_visibility">ظهور الصفحة أو اختفاؤها</string>
+    <string name="ps_ev_doc_level">مُحمّل مع المستند</string>
+    <string name="ps_ev_hidden_template">قالب مخفي</string>
+    <string name="ps_ev_named_page">صفحة مسمّاة</string>
+
+    <!-- Form calculations -->
+    <string name="ps_calc_auto">محسوب تلقائياً</string>
+    <string name="ps_calc_unsupported">حساب غير مدعوم</string>
+    <string name="ps_calc_note">يحتوي النموذج على %1$d حقل محسوب؛ تُحدَّث النتائج تلقائياً عند تغيير القيم.</string>
+    <string name="ps_shown_as">يظهر في المستند: %1$s</string>
+    <string name="ps_pick_date">اختيار تاريخ</string>
+
+    <!-- XFA -->
+    <string name="ps_xfa_static_title">نموذج XFA ثابت</string>
+    <string name="ps_xfa_static_body">يُعبّأ عبر حقول AcroForm البديلة. عند الحفظ تُزال بيانات XFA حتى تظهر القيم الجديدة في كل القرّاء.</string>
+    <string name="ps_xfa_dynamic_title">نموذج XFA ديناميكي</string>
+    <string name="ps_xfa_dynamic_body">لا يمكن عرض تخطيط هذا النموذج على الجهاز وقد تظهر صفحاته فارغة أو برسالة «يرجى الانتظار». يمكنك تعبئة حقوله من القائمة أدناه وحفظها، ثم فتحه في Adobe Acrobat/Reader.</string>
+    <string name="ps_xfa_flatten_q">تسطيح النموذج إلى PDF ثابت؟</string>
+    <string name="ps_xfa_flatten_body">تحويل نموذج XFA الديناميكي إلى PDF ثابت يتطلب محرّك XFA كاملاً لإعادة بناء التخطيط، وهو غير متاح على الجهاز. احفظ القيم هنا ثم افتح الملف في Adobe Acrobat واستخدم «طباعة إلى PDF» للحصول على نسخة ثابتة.</string>
+    <string name="ps_xfa_no_fields">لم يُعثر على حقول في قالب XFA</string>
+    <string name="ps_xfa_not_editable">هذا النوع من الحقول غير قابل للتعديل هنا</string>
+    <string name="ps_xfa_unbound">غير مرتبط ببيانات (لن يُحفظ)</string>
+    <string name="ps_xfa_type_number">رقم</string>
+    <string name="ps_xfa_type_date">تاريخ</string>
+    <string name="ps_xfa_type_image">صورة</string>
+</resources>

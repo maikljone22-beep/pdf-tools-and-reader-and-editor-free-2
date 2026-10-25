@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="fb_title">إنشاء حقول النماذج</string>
+    <string name="fb_hint">افتح ملف PDF ثم ارسم مستطيلاً على الصفحة مكان كل حقل</string>
+    <string name="fb_draw_hint">اختر نوع الحقل ثم اسحب على الصفحة لرسمه</string>
+    <string name="fb_type_text">حقل نص</string>
+    <string name="fb_type_checkbox">مربع اختيار</string>
+    <string name="fb_type_radio">زر اختيار</string>
+    <string name="fb_type_combo">قائمة منسدلة</string>
+    <string name="fb_type_list">قائمة</string>
+    <string name="fb_type_signature">حقل توقيع</string>
+    <string name="fb_type_button">زر</string>
+    <string name="fb_field_name">اسم الحقل</string>
+    <string name="fb_tooltip">تلميح</string>
+    <string name="fb_default">القيمة الافتراضية</string>
+    <string name="fb_caption">نص الزر</string>
+    <string name="fb_options">الخيارات (خيار في كل سطر)</string>
+    <string name="fb_multiline">متعدد الأسطر</string>
+    <string name="fb_max_len">الحد الأقصى للأحرف</string>
+    <string name="fb_required">إلزامي</string>
+    <string name="tool_form_builder">إنشاء نموذج</string>
+    <string name="at_add">إضافة مرفق</string>
+    <string name="at_none">لا توجد مرفقات في هذا المستند</string>
+    <string name="tool_attachments">المرفقات</string>
+    <string name="crash_title">توقّف التطبيق في المرة السابقة</string>
+    <string name="crash_text">حدث عطل أثناء الاستخدام السابق. أرسل التقرير للمطوّر ليتمكن من إصلاحه؛ يحتوي على تفاصيل تقنية فقط دون محتوى ملفاتك.</string>
+    <string name="crash_send">إرسال التقرير</string>
+    <string name="wb_saved_original">تم الحفظ في الملف الأصلي</string>
+    <string name="wb_title">لا يمكن تعديل الملف الأصلي</string>
+    <string name="wb_text">التطبيق الذي فتح منه الملف «%1$s» سمح بالقراءة فقط. اختر الملف نفسه مرة أخرى لمنح صلاحية الحفظ فيه، أو احفظ نسخة في مكان تختاره.</string>
+    <string name="wb_pick_original">اختيار الملف الأصلي</string>
+    <string name="wb_save_copy">حفظ نسخة</string>
+    <string name="wb_save_in_original">حفظ في الملف نفسه</string>
+    <string name="wb_open_as_new">فتح كملف جديد</string>
+</resources>

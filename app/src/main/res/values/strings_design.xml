@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- design module (home / files / tools / cloud / account / settings) -->
+    <string name="ds_good_morning">صباح الخير</string>
+    <string name="ds_good_evening">مساء الخير</string>
+    <string name="ds_home_search">ابحث في مستنداتك</string>
+    <string name="ds_search_all_files">البحث في كل الملفات</string>
+    <string name="ds_continue_reading">متابعة القراءة</string>
+    <string name="ds_resume">استئناف</string>
+    <string name="ds_home_empty_sub">افتح ملف PDF أو امسح مستنداً ضوئياً للبدء</string>
+    <string name="ds_no_results">لم يُعثر على نتائج</string>
+    <string name="ds_add_favorite">إضافة إلى المفضلة</string>
+    <string name="ds_remove_favorite">إزالة من المفضلة</string>
+    <string name="ds_remove_record">إزالة من الحديثة</string>
+
+    <string name="ds_tab_device">هذا الجهاز</string>
+    <string name="ds_tab_folders">المجلدات المختارة</string>
+    <string name="ds_selected_count">%1$d محدد</string>
+    <string name="ds_select">تحديد</string>
+    <string name="ds_zip">ضغط</string>
+    <string name="ds_zip_done">تم ضغط الملفات: %1$s</string>
+    <string name="ds_root">المستندات</string>
+    <string name="ds_items_count">%1$d عنصر</string>
+    <string name="ds_folder_empty_sub">المجلد فارغ. افتح ملفاً أو أنشئ مجلداً جديداً</string>
+    <string name="ds_no_folder_title">لم تختر مجلداً بعد</string>
+
+    <string name="ds_tools_search">ابحث عن أداة</string>
+    <string name="ds_most_used">الأكثر استخداماً</string>
+    <string name="ds_group_create">إنشاء وتحويل</string>
+    <string name="ds_group_organize">تنظيم وتحرير</string>
+    <string name="ds_group_sign">توقيع وحماية</string>
+    <string name="ds_group_read">قراءة وذكاء اصطناعي</string>
+
+    <string name="ds_cloud_title">ملفاتك في السحابة</string>
+    <string name="ds_cloud_open_section">فتح واستيراد</string>
+    <string name="ds_cloud_accounts_section">حسابات التخزين</string>
+
+    <string name="ds_local_profile">ملفي الشخصي</string>
+    <string name="ds_offline_note">يعمل التطبيق بالكامل دون حساب</string>
+    <string name="ds_stat_files">ملفات</string>
+    <string name="ds_stat_signatures">توقيعات</string>
+    <string name="ds_my_content">محتواي</string>
+    <string name="ds_app_section">التطبيق</string>
+    <string name="ds_support_section">الدعم</string>
+
+    <string name="ds_set_general">الإعدادات العامة</string>
+    <string name="ds_set_pdf_view">عرض PDF</string>
+    <string name="ds_set_annotations">التعليقات</string>
+    <string name="ds_set_notifications">الإشعارات</string>
+    <string name="ds_set_notifications_sub">فتح إعدادات الإشعارات في النظام</string>
+    <string name="ds_ai_more">إعدادات متقدمة</string>
+</resources>

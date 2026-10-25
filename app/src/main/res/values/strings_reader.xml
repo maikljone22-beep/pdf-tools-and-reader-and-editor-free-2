@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="rd_add_image">إضافة صورة</string>
+    <string name="rd_add_text">إضافة نص</string>
+    <string name="rd_auto_flip_every">تقليب كل (ثانية)</string>
+    <string name="rd_bookmark_hint">اضغط + لإضافة إشارة للصفحة الحالية</string>
+    <string name="rd_continue_creating">الاستمرار في الإنشاء</string>
+    <string name="rd_custom_color">لون مخصص (Hex)</string>
+    <string name="rd_discard">تجاهل</string>
+    <string name="rd_hint_draw">ارسم على الصفحة</string>
+    <string name="rd_hint_eraser">المس الرسم لمسحه</string>
+    <string name="rd_hint_link">ارسم مستطيلاً حول المنطقة لربطها</string>
+    <string name="rd_hint_markup">حدد النص بالضغط المطوّل ثم اختر الأداة</string>
+    <string name="rd_hint_measure">المس نقطتين لقياس المسافة</string>
+    <string name="rd_hint_tap">انقر على الصفحة لوضع العنصر</string>
+    <string name="rd_link_url">عنوان الرابط</string>
+    <string name="rd_no_signatures">لا توجد توقيعات محفوظة بعد</string>
+    <string name="rd_panels">اللوحات</string>
+    <string name="rd_pending_annots">تعليقات غير محفوظة</string>
+    <string name="rd_profile_empty">أضف بياناتك من الحساب ← بياناتي</string>
+    <string name="rd_saved_annots">التعليقات المحفوظة</string>
+    <string name="rd_start">بدء</string>
+    <string name="rd_unsaved_text">لديك تغييرات غير محفوظة. هل تريد حفظها؟</string>
+    <string name="rd_unsaved_title">تغييرات غير محفوظة</string>
+    <string name="rd_view_mode">وضع العرض</string>
+    <string name="rd_web_search">بحث في الويب</string>
+</resources>

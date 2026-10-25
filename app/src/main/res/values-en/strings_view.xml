@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="vw_view_settings">View settings</string>
+    <string name="vw_page_mode">Page mode</string>
+    <string name="vw_cover">Cover facing</string>
+    <string name="vw_separator">Separator between facing pages</string>
+    <string name="vw_colors">Colors</string>
+    <string name="vw_day">Day</string>
+    <string name="vw_night">Night</string>
+    <string name="vw_rotate_ccw">Rotate counter-clockwise</string>
+    <string name="vw_magnifier">Pan &amp; zoom</string>
+    <string name="vw_orientation_lock">Lock screen orientation</string>
+    <string name="vw_orientation_lock_desc">Keep the reader in the current orientation when the device turns</string>
+    <string name="vw_screen_timeout">Screen timeout</string>
+    <string name="vw_never">Never</string>
+    <string name="vw_seconds">%1$d seconds</string>
+    <string name="vw_minutes">%1$d minutes</string>
+    <string name="vw_hour">1 hour</string>
+    <string name="vw_seconds_short">%1$ds</string>
+    <string name="vw_flip_every">Flip every %1$d seconds</string>
+    <string name="vw_flip_faster">Increase the speed</string>
+    <string name="vw_flip_slower">Decrease the speed</string>
+    <string name="vw_stop">Stop</string>
+    <string name="vw_crop_auto">Automatically crop pages</string>
+    <string name="vw_crop_manual">Manually crop pages</string>
+    <string name="vw_crop_remove">Remove all page cropping</string>
+    <string name="vw_crop_symmetric">Crop pages symmetrically (mirror on even pages)</string>
+    <string name="vw_crop_left">Left margin</string>
+    <string name="vw_crop_right">Right margin</string>
+    <string name="vw_crop_top">Top margin</string>
+    <string name="vw_crop_bottom">Bottom margin</string>
+    <string name="vw_crop_reset">Reset clipping</string>
+    <string name="vw_tabs">Open documents</string>
+    <string name="vw_tabs_recent">Recently viewed files</string>
+    <string name="vw_open_another">Open another file</string>
+    <string name="vw_close_tab">Close</string>
+    <string name="vw_font_smaller">Decrease font size</string>
+    <string name="vw_font_larger">Increase font size</string>
+</resources>

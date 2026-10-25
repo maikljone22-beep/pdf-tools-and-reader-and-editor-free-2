@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="fb_title">Form field builder</string>
+    <string name="fb_hint">Open a PDF, then draw a rectangle on the page where each field goes</string>
+    <string name="fb_draw_hint">Pick a field type, then drag on the page to draw it</string>
+    <string name="fb_type_text">Text field</string>
+    <string name="fb_type_checkbox">Check box</string>
+    <string name="fb_type_radio">Radio button</string>
+    <string name="fb_type_combo">Dropdown</string>
+    <string name="fb_type_list">List box</string>
+    <string name="fb_type_signature">Signature field</string>
+    <string name="fb_type_button">Button</string>
+    <string name="fb_field_name">Field name</string>
+    <string name="fb_tooltip">Tooltip</string>
+    <string name="fb_default">Default value</string>
+    <string name="fb_caption">Button caption</string>
+    <string name="fb_options">Options (one per line)</string>
+    <string name="fb_multiline">Multiline</string>
+    <string name="fb_max_len">Max characters</string>
+    <string name="fb_required">Required</string>
+    <string name="tool_form_builder">Build a form</string>
+    <string name="at_add">Add attachment</string>
+    <string name="at_none">This document has no attachments</string>
+    <string name="tool_attachments">Attachments</string>
+    <string name="crash_title">The app stopped last time</string>
+    <string name="crash_text">Something went wrong during your last session. Send the report to the developer so it can be fixed; it contains technical details only, none of your files.</string>
+    <string name="crash_send">Send report</string>
+    <string name="wb_saved_original">Saved to the original file</string>
+    <string name="wb_title">The original file is read-only</string>
+    <string name="wb_text">The app that opened “%1$s” only allowed reading. Pick the same file again to allow saving into it, or save a copy wherever you choose.</string>
+    <string name="wb_pick_original">Pick the original file</string>
+    <string name="wb_save_copy">Save a copy</string>
+    <string name="wb_save_in_original">Save in the same file</string>
+    <string name="wb_open_as_new">Open as a new file</string>
+</resources>

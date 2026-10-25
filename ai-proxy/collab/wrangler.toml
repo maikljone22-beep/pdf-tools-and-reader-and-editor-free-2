@@ -1,0 +1,13 @@
+name = "smartdocs-collab"
+main = "worker.js"
+compatibility_date = "2026-01-01"
+
+# Required: KV namespace for review metadata + comments (create with `wrangler kv namespace create COLLAB`)
+[[kv_namespaces]]
+binding = "COLLAB"
+id = "<your-kv-namespace-id>"
+
+# Optional: R2 bucket for the PDFs (without it PDFs are stored in KV, max 20 MB each)
+# [[r2_buckets]]
+# binding = "FILES"
+# bucket_name = "smartdocs-reviews"

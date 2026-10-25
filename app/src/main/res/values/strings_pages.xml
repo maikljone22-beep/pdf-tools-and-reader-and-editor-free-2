@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Organize pages -->
+    <string name="pg_select_mode">تحديد</string>
+    <string name="pg_selected_count">%1$d محدد</string>
+    <string name="pg_filter_all">الكل</string>
+    <string name="pg_filter_annotated">معلّق عليها</string>
+    <string name="pg_filter_bookmarked">مرجعية</string>
+    <string name="pg_insert_before">قبل الصفحة</string>
+    <string name="pg_insert_after">بعد الصفحة</string>
+    <string name="pg_at_end">في النهاية</string>
+    <string name="pg_insert_position">موضع الإدراج</string>
+    <string name="pg_copy">نسخ الصفحات</string>
+    <string name="pg_paste">لصق الصفحات</string>
+    <string name="pg_paste_after">لصق بعد الصفحة المحددة</string>
+    <string name="pg_move_left">نقل للخلف</string>
+    <string name="pg_move_right">نقل للأمام</string>
+    <string name="pg_save_overwrite">حفظ (استبدال الأصل)</string>
+    <string name="pg_save_copy">حفظ كملف جديد</string>
+    <string name="pg_unsaved">هناك تغييرات غير محفوظة. هل تريد الخروج دون حفظ؟</string>
+    <string name="pg_discard">خروج دون حفظ</string>
+    <string name="pg_no_selection">حدّد صفحة واحدة على الأقل</string>
+    <string name="pg_cannot_delete_all">لا يمكن حذف كل الصفحات</string>
+    <string name="pg_no_pages_filter">لا توجد صفحات مطابقة لهذا المرشّح</string>
+    <string name="pg_changes_count">%1$d تعديل</string>
+    <string name="pg_page_n">صفحة %1$d</string>
+    <string name="pg_applying">جارٍ تطبيق التعديل…</string>
+    <string name="pg_select_pages_hint">اضغط مطولاً على صفحة للتحديد أو السحب لإعادة الترتيب</string>
+
+    <!-- Scanner -->
+    <string name="pg_scan_title">المسح الضوئي</string>
+    <string name="pg_scan_add_more">إضافة صفحات</string>
+    <string name="pg_scan_pages">%1$d صفحة</string>
+    <string name="pg_scan_paper">حجم الورق</string>
+    <string name="pg_paper_a4">A4</string>
+    <string name="pg_paper_letter">Letter</string>
+    <string name="pg_paper_fit">بحجم الصورة</string>
+    <string name="pg_color_mode">وضع الألوان</string>
+    <string name="pg_color_color">ملوّن</string>
+    <string name="pg_color_gray">رمادي</string>
+    <string name="pg_color_bw">أبيض وأسود</string>
+    <string name="pg_quality">الجودة</string>
+    <string name="pg_scan_save_pdf">حفظ كملف PDF</string>
+    <string name="pg_scan_ocr_now">التعرف على النص الآن</string>
+    <string name="pg_scan_unavailable">الماسح الضوئي غير متاح على هذا الجهاز (يحتاج خدمات Google Play). يمكنك اختيار صور من المعرض بدلاً منه.</string>
+    <string name="pg_scan_pick_gallery">اختيار صور من المعرض</string>
+    <string name="pg_scan_previous">المستندات الممسوحة سابقاً</string>
+    <string name="pg_scan_no_previous">لا توجد مستندات ممسوحة بعد</string>
+    <string name="pg_scan_saving">جارٍ إنشاء ملف PDF…</string>
+    <string name="pg_scan_name">اسم المستند</string>
+    <string name="pg_scan_cancelled">أُلغي المسح</string>
+    <string name="pg_scan_move_up">نقل لأعلى</string>
+    <string name="pg_scan_move_down">نقل لأسفل</string>
+    <string name="pg_remove">إزالة</string>
+
+    <!-- OCR -->
+    <string name="pg_ocr_title">التعرف على النص</string>
+    <string name="pg_ocr_both">العربية + الإنجليزية</string>
+    <string name="pg_ocr_start">بدء التعرف</string>
+    <string name="pg_ocr_page_header">— الصفحة %1$d —</string>
+    <string name="pg_ocr_save_txt">حفظ كنص</string>
+    <string name="pg_ocr_copied">تم نسخ النص</string>
+    <string name="pg_ocr_download_failed">تعذّر تنزيل حزمة اللغة. تحقق من الاتصال بالإنترنت.</string>
+    <string name="pg_ocr_init_failed">تعذّر تهيئة محرك التعرف على النص</string>
+    <string name="pg_ocr_cancelled">أُلغيت العملية</string>
+    <string name="pg_ocr_words">%1$d كلمة</string>
+    <string name="pg_ocr_result">نتيجة التعرف</string>
+    <string name="pg_ocr_page_range_hint">اتركه فارغاً لكل الصفحات</string>
+    <string name="pg_ocr_confidence">الدقة %1$d٪</string>
+
+    <!-- Forms -->
+    <string name="pg_form_title">تعبئة النموذج</string>
+    <string name="pg_form_type_text">نص</string>
+    <string name="pg_form_type_check">خانة اختيار</string>
+    <string name="pg_form_type_radio">اختيار واحد</string>
+    <string name="pg_form_type_combo">قائمة منسدلة</string>
+    <string name="pg_form_type_list">قائمة</string>
+    <string name="pg_form_type_signature">توقيع</string>
+    <string name="pg_form_type_button">زر</string>
+    <string name="pg_form_page_n">ص %1$d</string>
+    <string name="pg_form_read_only">للقراءة فقط</string>
+    <string name="pg_form_flatten">تسطيح النموذج</string>
+    <string name="pg_form_saving">جارٍ حفظ النموذج…</string>
+    <string name="pg_form_imported">تم استيراد %1$d قيمة</string>
+    <string name="pg_form_import_failed">تعذّر قراءة ملف البيانات</string>
+    <string name="pg_form_exported">تم تصدير البيانات</string>
+    <string name="pg_form_modified">%1$d حقل معدّل</string>
+    <string name="pg_form_signed">موقّع</string>
+    <string name="pg_form_unsigned">غير موقّع</string>
+    <string name="pg_form_none_option">— بدون —</string>
+
+    <!-- Redact -->
+    <string name="pg_redact_title">التنقيح</string>
+    <string name="pg_redact_manual">تحديد يدوي</string>
+    <string name="pg_redact_search_hint">اكتب النص المراد تنقيحه</string>
+    <string name="pg_redact_hits">%1$d نتيجة</string>
+    <string name="pg_redact_regions">%1$d منطقة</string>
+    <string name="pg_redact_draw_hint">اسحب فوق الصفحة لرسم مستطيل التنقيح</string>
+    <string name="pg_redact_no_regions">لم تُحدَّد أي مناطق للتنقيح</string>
+    <string name="pg_redact_applying">جارٍ تطبيق التنقيح…</string>
+    <string name="pg_redact_no_hits">لا توجد نتائج</string>
+    <string name="pg_redact_clear">مسح الكل</string>
+    <string name="pg_redact_region_n">منطقة %1$d · صفحة %2$d</string>
+    <string name="pg_redact_pan">تمرير</string>
+    <string name="pg_redact_draw">رسم</string>
+    <string name="pg_redact_pages_affected">%1$d صفحة ستُنقَّح</string>
+</resources>

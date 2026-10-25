@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="fl_pick_folder">Choose a folder</string>
+    <string name="fl_folder_hint">On Android 13+ only this app\'s own files are listed; choose a folder to see other PDFs</string>
+    <string name="fl_chosen_folder">Chosen folder: %1$s</string>
+    <string name="fl_forget_folder">Remove</string>
+</resources>

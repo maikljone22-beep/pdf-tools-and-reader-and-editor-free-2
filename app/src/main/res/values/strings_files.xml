@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- files tab (runtime review) -->
+    <string name="fl_pick_folder">اختر مجلداً</string>
+    <string name="fl_folder_hint">على أندرويد 13 وما بعده لا تظهر إلا ملفات التطبيق؛ اختر مجلداً لعرض ملفات PDF الأخرى</string>
+    <string name="fl_chosen_folder">المجلد المختار: %1$s</string>
+    <string name="fl_forget_folder">إزالة</string>
+</resources>

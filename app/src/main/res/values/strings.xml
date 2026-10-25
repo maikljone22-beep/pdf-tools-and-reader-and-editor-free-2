@@ -1,0 +1,394 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">محرر الملفات الذكي</string>
+
+    <!-- Navigation -->
+    <string name="nav_home">الرئيسية</string>
+    <string name="nav_files">الملفات</string>
+    <string name="nav_tools">الأدوات</string>
+    <string name="nav_cloud">السحابة</string>
+    <string name="nav_account">الحساب</string>
+
+    <!-- Common -->
+    <string name="ok">موافق</string>
+    <string name="cancel">إلغاء</string>
+    <string name="save">حفظ</string>
+    <string name="save_as">حفظ باسم</string>
+    <string name="delete">حذف</string>
+    <string name="rename">إعادة تسمية</string>
+    <string name="share">مشاركة</string>
+    <string name="open">فتح</string>
+    <string name="close">إغلاق</string>
+    <string name="done">تم</string>
+    <string name="apply">تطبيق</string>
+    <string name="back">رجوع</string>
+    <string name="next">التالي</string>
+    <string name="previous">السابق</string>
+    <string name="search">بحث</string>
+    <string name="select_all">تحديد الكل</string>
+    <string name="deselect_all">إلغاء التحديد</string>
+    <string name="more">المزيد</string>
+    <string name="undo">تراجع</string>
+    <string name="redo">إعادة</string>
+    <string name="loading">جارٍ التحميل…</string>
+    <string name="processing">جارٍ المعالجة…</string>
+    <string name="error_generic">حدث خطأ، حاول مرة أخرى</string>
+    <string name="success">تمت العملية بنجاح</string>
+    <string name="yes">نعم</string>
+    <string name="no">لا</string>
+    <string name="confirm_delete">هل تريد حذف العناصر المحددة؟</string>
+    <string name="file_name">اسم الملف</string>
+    <string name="page_range">نطاق الصفحات</string>
+    <string name="all_pages">كل الصفحات</string>
+    <string name="current_page">الصفحة الحالية</string>
+    <string name="pages_hint">مثال: 1-3, 5, 8</string>
+    <string name="permission_needed">يحتاج التطبيق إلى هذه الصلاحية للمتابعة</string>
+
+    <!-- Home -->
+    <string name="recent_files">الملفات الأخيرة</string>
+    <string name="favorites">المفضلة</string>
+    <string name="no_recent">لا توجد ملفات أخيرة بعد. افتح ملفاً أو أنشئ واحداً جديداً.</string>
+    <string name="create_new">إنشاء جديد</string>
+    <string name="create_blank">PDF فارغ</string>
+    <string name="create_from_file">من ملف</string>
+    <string name="create_from_scan">مسح ضوئي</string>
+    <string name="create_from_images">من صور</string>
+    <string name="create_from_template">من قالب</string>
+    <string name="discover">اكتشف الأدوات</string>
+    <string name="open_file">فتح ملف</string>
+    <string name="tags">الوسوم</string>
+    <string name="add_tag">إضافة وسم</string>
+
+    <!-- Files -->
+    <string name="on_this_device">على هذا الجهاز</string>
+    <string name="all_pdfs">كل ملفات PDF</string>
+    <string name="scanned_docs">المستندات الممسوحة</string>
+    <string name="sort_by">ترتيب حسب</string>
+    <string name="sort_name">الاسم</string>
+    <string name="sort_time">الوقت</string>
+    <string name="sort_size">الحجم</string>
+    <string name="view_list">قائمة</string>
+    <string name="view_grid">شبكة</string>
+    <string name="new_folder">مجلد جديد</string>
+    <string name="file_info">معلومات الملف</string>
+    <string name="file_path">المسار</string>
+    <string name="file_size">الحجم</string>
+    <string name="file_modified">آخر تعديل</string>
+    <string name="file_pages">عدد الصفحات</string>
+    <string name="no_files">لا توجد ملفات هنا</string>
+    <string name="copy_to">نسخ إلى</string>
+    <string name="move_to">نقل إلى</string>
+    <string name="scanning_device">جارٍ البحث في الجهاز…</string>
+
+    <!-- Tools -->
+    <string name="tool_scan">مسح ضوئي</string>
+    <string name="tool_ocr">التعرف على النص (OCR)</string>
+    <string name="tool_merge">دمج ملفات</string>
+    <string name="tool_split">تقسيم</string>
+    <string name="tool_compress">تقليل الحجم</string>
+    <string name="tool_organize">تنظيم الصفحات</string>
+    <string name="tool_protect">حماية بكلمة مرور</string>
+    <string name="tool_unlock">إزالة الحماية</string>
+    <string name="tool_watermark">علامة مائية</string>
+    <string name="tool_sign">توقيع</string>
+    <string name="tool_convert">تحويل</string>
+    <string name="tool_images_to_pdf">صور إلى PDF</string>
+    <string name="tool_pdf_to_images">PDF إلى صور</string>
+    <string name="tool_pdf_to_text">PDF إلى نص</string>
+    <string name="tool_compare">مقارنة ملفين</string>
+    <string name="tool_redact">تنقيح</string>
+    <string name="tool_flatten">تسطيح</string>
+    <string name="tool_page_numbers">ترقيم الصفحات</string>
+    <string name="tool_ai">المساعد الذكي</string>
+    <string name="tool_read_aloud">قراءة بصوت عالٍ</string>
+    <string name="tool_print">طباعة</string>
+    <string name="tool_forms">النماذج</string>
+    <string name="tool_blank">PDF فارغ</string>
+    <string name="tool_extract_pages">استخراج صفحات</string>
+    <string name="tool_rotate">تدوير</string>
+    <string name="tool_doc_info">خصائص المستند</string>
+
+    <!-- Reader tabs -->
+    <string name="tab_view">العرض</string>
+    <string name="tab_comment">التعليق</string>
+    <string name="tab_edit">التحرير</string>
+    <string name="tab_fill_sign">املأ ووقّع</string>
+    <string name="tab_sign">التوقيع</string>
+    <string name="tab_tools">الأدوات</string>
+    <string name="tab_pages">الصفحات</string>
+
+    <!-- View mode -->
+    <string name="view_single">صفحة واحدة</string>
+    <string name="view_continuous">تمرير متصل</string>
+    <string name="view_facing">صفحتان متقابلتان</string>
+    <string name="fit_page">ملاءمة الصفحة</string>
+    <string name="fit_width">ملاءمة العرض</string>
+    <string name="night_mode">الوضع الليلي</string>
+    <string name="page_color">لون الصفحة</string>
+    <string name="reflow">إعادة التدفق</string>
+    <string name="auto_flip">تقليب تلقائي</string>
+    <string name="rotate_view">تدوير العرض</string>
+    <string name="keep_screen_on">إبقاء الشاشة مضاءة</string>
+    <string name="go_to_page">الانتقال إلى صفحة</string>
+    <string name="page_of">صفحة %1$d من %2$d</string>
+    <string name="crop_mode">وضع القص</string>
+    <string name="pan_zoom">عدسة التكبير</string>
+
+    <!-- Panels -->
+    <string name="panel_outline">الفهرس</string>
+    <string name="panel_bookmarks">الإشارات المرجعية</string>
+    <string name="panel_annotations">التعليقات</string>
+    <string name="panel_attachments">المرفقات</string>
+    <string name="panel_signatures">التوقيعات</string>
+    <string name="panel_thumbnails">الصور المصغرة</string>
+    <string name="no_outline">لا يوجد فهرس في هذا المستند</string>
+    <string name="no_bookmarks">لا توجد إشارات مرجعية</string>
+    <string name="no_annotations">لا توجد تعليقات</string>
+    <string name="add_bookmark">إضافة إشارة مرجعية</string>
+    <string name="search_hint">ابحث في المستند</string>
+    <string name="search_results">%1$d نتيجة</string>
+    <string name="case_sensitive">مطابقة حالة الأحرف</string>
+    <string name="whole_words">كلمات كاملة فقط</string>
+
+    <!-- Annotations -->
+    <string name="annot_highlight">تظليل</string>
+    <string name="annot_underline">تسطير</string>
+    <string name="annot_strikeout">شطب</string>
+    <string name="annot_squiggly">خط متموج</string>
+    <string name="annot_note">ملاحظة</string>
+    <string name="annot_text">نص حر</string>
+    <string name="annot_callout">تعليق بسهم</string>
+    <string name="annot_ink">قلم</string>
+    <string name="annot_eraser">ممحاة</string>
+    <string name="annot_line">خط</string>
+    <string name="annot_arrow">سهم</string>
+    <string name="annot_rect">مستطيل</string>
+    <string name="annot_oval">دائرة</string>
+    <string name="annot_polygon">مضلع</string>
+    <string name="annot_cloud">سحابة</string>
+    <string name="annot_stamp">ختم</string>
+    <string name="annot_image">صورة</string>
+    <string name="annot_attachment">مرفق</string>
+    <string name="annot_audio">تسجيل صوتي</string>
+    <string name="annot_measure">قياس</string>
+    <string name="annot_link">رابط</string>
+    <string name="annot_redact">تنقيح</string>
+    <string name="annot_select">تحديد</string>
+    <string name="prop_color">اللون</string>
+    <string name="prop_opacity">الشفافية</string>
+    <string name="prop_thickness">السماكة</string>
+    <string name="prop_font_size">حجم الخط</string>
+    <string name="prop_line_style">نمط الخط</string>
+    <string name="annot_author">المؤلف</string>
+    <string name="annot_reply">رد</string>
+    <string name="annot_delete">حذف التعليق</string>
+    <string name="flatten_annots">تسطيح التعليقات</string>
+    <string name="export_annots">تصدير التعليقات</string>
+
+    <!-- Signatures -->
+    <string name="sig_draw">رسم</string>
+    <string name="sig_type">كتابة</string>
+    <string name="sig_image">صورة</string>
+    <string name="sig_camera">تصوير</string>
+    <string name="sig_saved">التوقيعات المحفوظة</string>
+    <string name="sig_create">إنشاء توقيع</string>
+    <string name="sig_initials">أحرف أولى</string>
+    <string name="sig_tap_to_place">انقر على الصفحة لوضع التوقيع</string>
+    <string name="sig_digital">توقيع رقمي بشهادة</string>
+    <string name="sig_verify">التحقق من التوقيعات</string>
+    <string name="sig_valid">التوقيع صالح</string>
+    <string name="sig_invalid">التوقيع غير صالح</string>
+    <string name="sig_remove_bg">إزالة الخلفية البيضاء</string>
+    <string name="fill_sign_profile">بياناتي</string>
+    <string name="fill_sign_check">علامة صح</string>
+    <string name="fill_sign_cross">علامة X</string>
+    <string name="fill_sign_dot">نقطة</string>
+    <string name="fill_sign_line">خط</string>
+    <string name="fill_sign_date">التاريخ</string>
+    <string name="fill_sign_text">نص</string>
+
+    <!-- Stamps -->
+    <string name="stamp_approved">معتمد</string>
+    <string name="stamp_confidential">سري</string>
+    <string name="stamp_draft">مسودة</string>
+    <string name="stamp_final">نهائي</string>
+    <string name="stamp_received">وارد</string>
+    <string name="stamp_sent">صادر</string>
+    <string name="stamp_reviewed">تمت المراجعة</string>
+    <string name="stamp_revised">معدّل</string>
+    <string name="stamp_void">ملغى</string>
+    <string name="stamp_completed">مكتمل</string>
+    <string name="stamp_urgent">عاجل</string>
+    <string name="stamp_sign_here">وقّع هنا</string>
+    <string name="stamp_custom">ختم مخصص</string>
+    <string name="stamp_text">نص الختم</string>
+
+    <!-- Pages -->
+    <string name="page_insert_blank">إدراج صفحة فارغة</string>
+    <string name="page_insert_file">إدراج من ملف</string>
+    <string name="page_insert_image">إدراج صورة</string>
+    <string name="page_delete">حذف الصفحات</string>
+    <string name="page_rotate_left">تدوير لليسار</string>
+    <string name="page_rotate_right">تدوير لليمين</string>
+    <string name="page_extract">استخراج إلى ملف</string>
+    <string name="page_share">مشاركة الصفحات</string>
+    <string name="page_reorder_hint">اضغط مطولاً واسحب لإعادة الترتيب</string>
+    <string name="page_size">حجم الصفحة</string>
+    <string name="page_style">نمط الصفحة</string>
+    <string name="style_blank">فارغة</string>
+    <string name="style_lined">مسطّرة</string>
+    <string name="style_grid">شبكة</string>
+    <string name="style_dots">نقاط</string>
+    <string name="orientation">الاتجاه</string>
+    <string name="portrait">عمودي</string>
+    <string name="landscape">أفقي</string>
+    <string name="page_count">عدد الصفحات</string>
+
+    <!-- Security -->
+    <string name="password">كلمة المرور</string>
+    <string name="password_open">كلمة مرور الفتح</string>
+    <string name="password_permissions">كلمة مرور الصلاحيات</string>
+    <string name="password_enter">هذا الملف محمي، أدخل كلمة المرور</string>
+    <string name="password_wrong">كلمة المرور غير صحيحة</string>
+    <string name="perm_print">السماح بالطباعة</string>
+    <string name="perm_copy">السماح بنسخ المحتوى</string>
+    <string name="perm_modify">السماح بالتعديل</string>
+    <string name="perm_annotate">السماح بالتعليق</string>
+    <string name="perm_fill_forms">السماح بتعبئة النماذج</string>
+    <string name="remove_security">إزالة الحماية</string>
+    <string name="redact_apply">تطبيق التنقيح نهائياً</string>
+    <string name="redact_warning">التنقيح يحذف المحتوى نهائياً ولا يمكن التراجع عنه</string>
+    <string name="redact_search">بحث وتنقيح</string>
+
+    <!-- Watermark -->
+    <string name="watermark_text">نص العلامة المائية</string>
+    <string name="watermark_rotation">الدوران</string>
+    <string name="watermark_position">الموضع</string>
+    <string name="watermark_size">الحجم</string>
+
+    <!-- Scanner / OCR -->
+    <string name="scan_start">ابدأ المسح</string>
+    <string name="scan_pages_hint">التقط صفحة أو أكثر، ثم احفظها كملف PDF</string>
+    <string name="ocr_language">لغة التعرف</string>
+    <string name="ocr_arabic">العربية</string>
+    <string name="ocr_english">الإنجليزية</string>
+    <string name="ocr_downloading">جارٍ تنزيل حزمة اللغة (%1$s)…</string>
+    <string name="ocr_mode">الوضع</string>
+    <string name="ocr_searchable">صورة قابلة للبحث</string>
+    <string name="ocr_text_only">استخراج النص فقط</string>
+    <string name="ocr_recognizing">جارٍ التعرف على النص في الصفحة %1$d…</string>
+    <string name="ocr_no_text">لم يُعثر على نص</string>
+    <string name="copy_text">نسخ النص</string>
+
+    <!-- Convert / Compress / Merge -->
+    <string name="add_files">إضافة ملفات</string>
+    <string name="merge_hint">أضف ملفين أو أكثر ورتّبها، ثم اضغط دمج</string>
+    <string name="merge">دمج</string>
+    <string name="compress_quality">جودة الصور</string>
+    <string name="compress_low">عالية الضغط</string>
+    <string name="compress_medium">متوسطة</string>
+    <string name="compress_high">جودة عالية</string>
+    <string name="size_before_after">الحجم: %1$s ← %2$s</string>
+    <string name="export_format">صيغة التصدير</string>
+    <string name="format_jpg">صور JPG</string>
+    <string name="format_png">صور PNG</string>
+    <string name="format_txt">نص TXT</string>
+    <string name="format_html">صفحة HTML</string>
+    <string name="format_docx">Word (DOCX)</string>
+    <string name="convert_cloud_note">التحويل إلى Word وExcel يحتاج اتصالاً بالإنترنت</string>
+
+    <!-- Compare -->
+    <string name="compare_old">الملف القديم</string>
+    <string name="compare_new">الملف الجديد</string>
+    <string name="compare_added">مضاف</string>
+    <string name="compare_removed">محذوف</string>
+    <string name="compare_changed">معدّل</string>
+    <string name="compare_identical">المستندان متطابقان نصياً</string>
+
+    <!-- TTS -->
+    <string name="tts_play">تشغيل</string>
+    <string name="tts_pause">إيقاف مؤقت</string>
+    <string name="tts_stop">إيقاف</string>
+    <string name="tts_speed">سرعة القراءة</string>
+    <string name="tts_from_here">القراءة من هنا</string>
+    <string name="tts_notification">القراءة بصوت عالٍ</string>
+    <string name="tts_no_arabic">صوت عربي غير مثبت على الجهاز. ثبّته من إعدادات النظام ← تحويل النص إلى كلام</string>
+
+    <!-- AI -->
+    <string name="ai_title">المساعد الذكي</string>
+    <string name="ai_summarize">تلخيص المستند</string>
+    <string name="ai_explain">اشرح لي</string>
+    <string name="ai_translate">ترجمة</string>
+    <string name="ai_questions">أسئلة للمراجعة</string>
+    <string name="ai_ask">اسأل عن المستند…</string>
+    <string name="ai_setup">إعداد الذكاء الاصطناعي</string>
+    <string name="ai_api_key">مفتاح API</string>
+    <string name="ai_endpoint">عنوان الخدمة</string>
+    <string name="ai_model">النموذج</string>
+    <string name="ai_no_key">أضف مفتاح API في الإعدادات لتفعيل المساعد</string>
+    <string name="ai_thinking">يفكر…</string>
+    <string name="ai_hello">مرحباً! اسألني أي شيء عن هذا المستند.</string>
+    <string name="ai_bookmarks">توليد الفهرس تلقائياً</string>
+
+    <!-- Settings -->
+    <string name="settings">الإعدادات</string>
+    <string name="settings_appearance">المظهر</string>
+    <string name="theme_light">فاتح</string>
+    <string name="theme_dark">داكن</string>
+    <string name="theme_system">حسب النظام</string>
+    <string name="settings_language">اللغة</string>
+    <string name="settings_author">اسم المؤلف الافتراضي</string>
+    <string name="settings_autosave">حفظ تلقائي</string>
+    <string name="settings_restore_session">استعادة آخر جلسة</string>
+    <string name="settings_volume_keys">أزرار الصوت لتقليب الصفحات</string>
+    <string name="settings_tap_edges">قلب الصفحة بلمس الحواف</string>
+    <string name="settings_keep_zoom">الحفاظ على نسبة التكبير</string>
+    <string name="settings_highlight_fields">تمييز حقول النماذج</string>
+    <string name="settings_highlight_links">تمييز الروابط</string>
+    <string name="settings_pressure">حساسية ضغط القلم</string>
+    <string name="settings_about">حول التطبيق</string>
+    <string name="settings_version">الإصدار %1$s</string>
+    <string name="settings_help">المساعدة</string>
+    <string name="settings_privacy">الخصوصية</string>
+    <string name="settings_ai">الذكاء الاصطناعي</string>
+    <string name="settings_tts">القراءة الصوتية</string>
+
+    <!-- Cloud -->
+    <string name="cloud_hint">اربط حساباً سحابياً لفتح ملفاتك وحفظها</string>
+    <string name="cloud_add">إضافة حساب</string>
+    <string name="cloud_soon">قريباً</string>
+    <string name="cloud_saf">فتح من مزود ملفات (Drive، OneDrive…)</string>
+    <string name="wifi_transfer">النقل عبر الشبكة</string>
+    <string name="wifi_transfer_hint">افتح هذا العنوان في متصفح الكمبيوتر على نفس شبكة Wi-Fi</string>
+    <string name="wifi_start">تشغيل</string>
+    <string name="wifi_stop">إيقاف</string>
+
+    <!-- Doc info -->
+    <string name="info_title">العنوان</string>
+    <string name="info_author">المؤلف</string>
+    <string name="info_subject">الموضوع</string>
+    <string name="info_keywords">الكلمات المفتاحية</string>
+    <string name="info_creator">المنشئ</string>
+    <string name="info_producer">المنتج</string>
+    <string name="info_created">تاريخ الإنشاء</string>
+    <string name="info_modified">تاريخ التعديل</string>
+    <string name="info_version">نسخة PDF</string>
+    <string name="info_encrypted">مشفّر</string>
+
+    <!-- Forms -->
+    <string name="form_fields">حقول النموذج</string>
+    <string name="form_reset">إعادة ضبط النموذج</string>
+    <string name="form_export">تصدير البيانات</string>
+    <string name="form_import">استيراد البيانات</string>
+    <string name="form_no_fields">لا توجد حقول نماذج في هذا المستند</string>
+    <string name="form_next">الحقل التالي</string>
+    <string name="form_prev">الحقل السابق</string>
+
+    <!-- Print / share -->
+    <string name="print">طباعة</string>
+    <string name="share_as_pdf">مشاركة كـ PDF</string>
+    <string name="share_as_image">مشاركة كصورة</string>
+    <string name="share_text">مشاركة النص</string>
+    <string name="open_with">فتح بواسطة</string>
+    <string name="saved_to">تم الحفظ في %1$s</string>
+</resources>

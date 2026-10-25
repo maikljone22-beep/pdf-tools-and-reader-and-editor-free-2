@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="vw_view_settings">إعدادات العرض</string>
+    <string name="vw_page_mode">وضع الصفحة</string>
+    <string name="vw_cover">صفحتان مع غلاف</string>
+    <string name="vw_separator">فاصل بين الصفحتين المتقابلتين</string>
+    <string name="vw_colors">الألوان</string>
+    <string name="vw_day">نهار</string>
+    <string name="vw_night">ليل</string>
+    <string name="vw_rotate_ccw">تدوير عكس عقارب الساعة</string>
+    <string name="vw_magnifier">عدسة التكبير</string>
+    <string name="vw_orientation_lock">قفل اتجاه الشاشة</string>
+    <string name="vw_orientation_lock_desc">يبقى القارئ على الاتجاه الحالي حتى عند تدوير الجهاز</string>
+    <string name="vw_screen_timeout">مهلة الشاشة</string>
+    <string name="vw_never">أبداً</string>
+    <string name="vw_seconds">%1$d ثانية</string>
+    <string name="vw_minutes">%1$d دقيقة</string>
+    <string name="vw_hour">ساعة واحدة</string>
+    <string name="vw_seconds_short">%1$d ث</string>
+    <string name="vw_flip_every">تقليب كل %1$d ثانية</string>
+    <string name="vw_flip_faster">زيادة السرعة</string>
+    <string name="vw_flip_slower">إنقاص السرعة</string>
+    <string name="vw_stop">إيقاف</string>
+    <string name="vw_crop_auto">قص الصفحات تلقائياً</string>
+    <string name="vw_crop_manual">قص الصفحات يدوياً</string>
+    <string name="vw_crop_remove">إزالة كل قص الصفحات</string>
+    <string name="vw_crop_symmetric">قص متناظر (عكس الهوامش في الصفحات الزوجية)</string>
+    <string name="vw_crop_left">الهامش الأيسر</string>
+    <string name="vw_crop_right">الهامش الأيمن</string>
+    <string name="vw_crop_top">الهامش العلوي</string>
+    <string name="vw_crop_bottom">الهامش السفلي</string>
+    <string name="vw_crop_reset">إعادة تعيين القص</string>
+    <string name="vw_tabs">الملفات المفتوحة</string>
+    <string name="vw_tabs_recent">الملفات المعروضة مؤخراً</string>
+    <string name="vw_open_another">فتح ملف آخر</string>
+    <string name="vw_close_tab">إغلاق</string>
+    <string name="vw_font_smaller">تصغير الخط</string>
+    <string name="vw_font_larger">تكبير الخط</string>
+</resources>

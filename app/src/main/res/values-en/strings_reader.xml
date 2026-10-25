@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="rd_add_image">Add image</string>
+    <string name="rd_add_text">Add text</string>
+    <string name="rd_auto_flip_every">Flip every (seconds)</string>
+    <string name="rd_bookmark_hint">Tap + to bookmark the current page</string>
+    <string name="rd_continue_creating">Keep creating</string>
+    <string name="rd_custom_color">Custom color (Hex)</string>
+    <string name="rd_discard">Discard</string>
+    <string name="rd_hint_draw">Draw on the page</string>
+    <string name="rd_hint_eraser">Touch a stroke to erase it</string>
+    <string name="rd_hint_link">Draw a rectangle around the area to link</string>
+    <string name="rd_hint_markup">Long-press to select text, then pick a tool</string>
+    <string name="rd_hint_measure">Touch two points to measure</string>
+    <string name="rd_hint_tap">Tap the page to place the item</string>
+    <string name="rd_link_url">Link URL</string>
+    <string name="rd_no_signatures">No saved signatures yet</string>
+    <string name="rd_panels">Panels</string>
+    <string name="rd_pending_annots">Unsaved comments</string>
+    <string name="rd_profile_empty">Add your details from Account → My details</string>
+    <string name="rd_saved_annots">Saved comments</string>
+    <string name="rd_start">Start</string>
+    <string name="rd_unsaved_text">You have unsaved changes. Save them?</string>
+    <string name="rd_unsaved_title">Unsaved changes</string>
+    <string name="rd_view_mode">View mode</string>
+    <string name="rd_web_search">Search the web</string>
+</resources>

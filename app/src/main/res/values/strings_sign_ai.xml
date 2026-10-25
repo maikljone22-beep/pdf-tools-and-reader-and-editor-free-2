@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Signatures -->
+    <string name="sa_signatures_title">التوقيعات</string>
+    <string name="sa_sign_document">توقيع مستند</string>
+    <string name="sa_filter_all">الكل</string>
+    <string name="sa_filter_signatures">توقيعات</string>
+    <string name="sa_no_signatures">لا توجد توقيعات محفوظة بعد</string>
+    <string name="sa_pen_color">لون القلم</string>
+    <string name="sa_thickness">السماكة</string>
+    <string name="sa_clear">مسح</string>
+    <string name="sa_draw_hint">ارسم توقيعك هنا</string>
+    <string name="sa_type_name">اكتب اسمك</string>
+    <string name="sa_pick_image">اختيار صورة</string>
+    <string name="sa_take_photo">التقاط صورة</string>
+    <string name="sa_threshold">حساسية الخلفية</string>
+    <string name="sa_save_as_initials">حفظ كأحرف أولى</string>
+    <string name="sa_signature_saved">تم حفظ التوقيع</string>
+    <string name="sa_nothing_to_save">لا يوجد ما يُحفظ</string>
+    <string name="sa_delete_signature">حذف التوقيع؟</string>
+
+    <!-- Digital signature -->
+    <string name="sa_digital_title">التوقيع الرقمي</string>
+    <string name="sa_tab_sign">توقيع</string>
+    <string name="sa_tab_verify">تحقق</string>
+    <string name="sa_tab_certificate">الشهادة</string>
+    <string name="sa_pick_cert">اختيار شهادة (.p12 / .pfx)</string>
+    <string name="sa_cert_password">كلمة مرور الشهادة</string>
+    <string name="sa_cert_selected">الشهادة المختارة</string>
+    <string name="sa_cert_none">لم تُختر شهادة بعد</string>
+    <string name="sa_generate_cert">إنشاء شهادة ذاتية التوقيع</string>
+    <string name="sa_cert_name">الاسم</string>
+    <string name="sa_cert_org">المؤسسة</string>
+    <string name="sa_cert_email">البريد الإلكتروني</string>
+    <string name="sa_cert_new_password">كلمة مرور جديدة للشهادة</string>
+    <string name="sa_cert_generated">تم إنشاء الشهادة وحفظها على الجهاز</string>
+    <string name="sa_cert_own">شهادتي على الجهاز</string>
+    <string name="sa_sign_name">اسم الموقّع</string>
+    <string name="sa_sign_location">الموقع</string>
+    <string name="sa_sign_reason">سبب التوقيع</string>
+    <string name="sa_visible_signature">إظهار توقيع مرئي على الصفحة</string>
+    <string name="sa_visible_page">رقم الصفحة</string>
+    <string name="sa_visible_text">نص التوقيع المرئي</string>
+    <string name="sa_visible_use_saved">استخدام توقيع محفوظ كصورة</string>
+    <string name="sa_signing">جارٍ التوقيع…</string>
+    <string name="sa_sign_now">وقّع المستند</string>
+    <string name="sa_verify_now">تحقق من التوقيعات</string>
+    <string name="sa_no_signatures_found">لا يحتوي الملف على توقيعات رقمية</string>
+    <string name="sa_covers_whole">يغطي المستند كاملاً</string>
+    <string name="sa_covers_partial">لا يغطي المستند كاملاً (تمت تعديلات لاحقة)</string>
+    <string name="sa_cert_subject">صاحب الشهادة</string>
+    <string name="sa_cert_issuer">جهة الإصدار</string>
+    <string name="sa_cert_validity">صلاحية الشهادة</string>
+    <string name="sa_sign_date">تاريخ التوقيع</string>
+    <string name="sa_password_required">أدخل كلمة مرور الشهادة</string>
+    <string name="sa_select_file_first">اختر ملف PDF أولاً</string>
+    <string name="sa_signed_info">تم التوقيع رقمياً — يمكن التحقق منه في أي قارئ PDF</string>
+
+    <!-- Fill profile -->
+    <string name="sa_profile_title">بياناتي للتعبئة</string>
+    <string name="sa_profile_hint">تُستخدم هذه البيانات لتعبئة النماذج بسرعة</string>
+    <string name="sa_profile_add">إضافة حقل</string>
+    <string name="sa_profile_label">اسم الحقل</string>
+    <string name="sa_profile_value">القيمة</string>
+    <string name="sa_profile_empty">لم تُضف أي بيانات بعد</string>
+    <string name="sa_profile_defaults">إضافة الحقول الافتراضية</string>
+    <string name="sa_move_up">تحريك لأعلى</string>
+    <string name="sa_move_down">تحريك لأسفل</string>
+    <string name="sa_key_full_name">الاسم الكامل</string>
+    <string name="sa_key_first_name">الاسم الأول</string>
+    <string name="sa_key_last_name">اسم العائلة</string>
+    <string name="sa_key_email">البريد الإلكتروني</string>
+    <string name="sa_key_phone">رقم الهاتف</string>
+    <string name="sa_key_address">العنوان</string>
+    <string name="sa_key_city">المدينة</string>
+    <string name="sa_key_country">الدولة</string>
+    <string name="sa_key_birth_date">تاريخ الميلاد</string>
+    <string name="sa_key_id_number">رقم الهوية</string>
+    <string name="sa_key_custom">حقل مخصص</string>
+
+    <!-- Stamps -->
+    <string name="sa_stamps_title">الأختام</string>
+    <string name="sa_stamps_empty">لا توجد أختام مخصصة بعد</string>
+    <string name="sa_stamp_new_text">ختم نصي جديد</string>
+    <string name="sa_stamp_new_image">ختم من صورة</string>
+    <string name="sa_stamp_color">لون الختم</string>
+    <string name="sa_stamp_border_rounded">إطار دائري الزوايا</string>
+    <string name="sa_stamp_border_plain">إطار عادي</string>
+    <string name="sa_stamp_border_none">بدون إطار</string>
+    <string name="sa_stamp_preview">معاينة</string>
+    <string name="sa_stamp_tab_ready">جاهزة</string>
+    <string name="sa_stamp_tab_dynamic">ديناميكية</string>
+    <string name="sa_stamp_tab_custom">مخصصة</string>
+    <string name="sa_stamp_pick_title">اختيار ختم</string>
+    <string name="sa_stamp_by">بواسطة</string>
+
+    <!-- AI -->
+    <string name="sa_ai_translate_ar">ترجمة إلى العربية</string>
+    <string name="sa_ai_translate_en">ترجمة إلى الإنجليزية</string>
+    <string name="sa_ai_define">عرّف المصطلح</string>
+    <string name="sa_ai_outline">توليد الفهرس</string>
+    <string name="sa_ai_export_pdf">تصدير الإجابة كـ PDF</string>
+    <string name="sa_ai_send">إرسال</string>
+    <string name="sa_ai_stop">إيقاف</string>
+    <string name="sa_ai_copied">تم النسخ</string>
+    <string name="sa_ai_selected_text">النص المحدد</string>
+    <string name="sa_ai_whole_doc">المستند كاملاً</string>
+    <string name="sa_ai_loading_doc">جارٍ قراءة المستند…</string>
+    <string name="sa_ai_no_doc">اختر ملف PDF لبدء المحادثة</string>
+    <string name="sa_ai_outline_applied">تم توليد الفهرس وإضافته إلى نسخة جديدة</string>
+    <string name="sa_ai_outline_failed">تعذّر فهم رد النموذج كفهرس</string>
+    <string name="sa_ai_outline_items">%1$d عنصر في الفهرس</string>
+    <string name="sa_ai_settings_title">إعدادات الذكاء الاصطناعي</string>
+    <string name="sa_ai_presets">خدمات جاهزة</string>
+    <string name="sa_ai_test">اختبار الاتصال</string>
+    <string name="sa_ai_test_ok">الاتصال يعمل بنجاح</string>
+    <string name="sa_ai_test_fail">فشل الاتصال: %1$s</string>
+    <string name="sa_ai_testing">جارٍ الاختبار…</string>
+    <string name="sa_ai_saved">تم حفظ الإعدادات</string>
+    <string name="sa_ai_key_hint">يُحفظ المفتاح على هذا الجهاز فقط</string>
+    <string name="sa_ai_you">أنت</string>
+    <string name="sa_ai_assistant">المساعد</string>
+    <string name="sa_ai_clear_chat">مسح المحادثة</string>
+    <string name="sa_ai_open_settings">فتح الإعدادات</string>
+</resources>

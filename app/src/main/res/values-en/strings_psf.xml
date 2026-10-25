@@ -1,0 +1,199 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Templates -->
+    <string name="ps_templates_title">Templates</string>
+    <string name="ps_templates_hint">Ready-made templates that work offline. Pick one, set the name and logo, then create the file.</string>
+    <string name="ps_templates_documents">Documents</string>
+    <string name="ps_templates_papers">Papers</string>
+    <string name="ps_templates_fillable">Fillable</string>
+    <string name="ps_templates_create">Create from template</string>
+    <string name="ps_templates_creating">Creating document…</string>
+    <string name="ps_templates_preview">Template preview</string>
+    <string name="ps_tpl_lined">Lined paper</string>
+    <string name="ps_tpl_lined_desc">Ruled lines with a right margin for Arabic writing</string>
+    <string name="ps_tpl_grid">Grid paper</string>
+    <string name="ps_tpl_grid_desc">5 mm square grid</string>
+    <string name="ps_tpl_graph">Graph paper</string>
+    <string name="ps_tpl_graph_desc">Millimetre paper with 1, 5 and 10 mm lines</string>
+    <string name="ps_tpl_music">Music sheet</string>
+    <string name="ps_tpl_music_desc">Five-line staves for notation</string>
+    <string name="ps_tpl_letter">Official letter</string>
+    <string name="ps_tpl_letter_desc">Letterhead with logo and organisation, reference, date, subject and footer</string>
+    <string name="ps_tpl_invoice">Invoice</string>
+    <string name="ps_tpl_invoice_desc">Item table with auto-calculated fields (qty × price and totals)</string>
+    <string name="ps_tpl_certificate">Certificate of appreciation</string>
+    <string name="ps_tpl_certificate_desc">Decorated frame with recipient, signature and seal</string>
+    <string name="ps_tpl_minutes">Meeting minutes</string>
+    <string name="ps_tpl_minutes_desc">Meeting details, agenda, discussion and decisions</string>
+    <string name="ps_tpl_todo">To-do list</string>
+    <string name="ps_tpl_todo_desc">Tasks with check boxes and priority</string>
+    <string name="ps_tpl_timetable">Weekly timetable</string>
+    <string name="ps_tpl_timetable_desc">Days × periods with writable cells</string>
+    <string name="ps_tpl_exam">Exam sheet</string>
+    <string name="ps_tpl_exam_desc">School header, student details, score, instructions and answer lines</string>
+    <string name="ps_tpl_in_title">Title</string>
+    <string name="ps_tpl_in_exam_name">Exam name</string>
+    <string name="ps_tpl_in_song">Piece title</string>
+    <string name="ps_tpl_in_org">Organisation</string>
+    <string name="ps_tpl_in_school">School name (several lines allowed)</string>
+    <string name="ps_tpl_in_address">Address / contact details</string>
+    <string name="ps_tpl_in_recipient">Recipient name (leave empty for a fillable field)</string>
+    <string name="ps_tpl_in_subject">Subject / grade</string>
+    <string name="ps_tpl_in_class">Class and section</string>
+    <string name="ps_tpl_in_composer">Composer / author</string>
+    <string name="ps_tpl_in_body">Certificate text</string>
+    <string name="ps_tpl_in_instructions">Exam instructions</string>
+    <string name="ps_tpl_in_date">Date</string>
+    <string name="ps_tpl_in_footer">Footer text</string>
+    <string name="ps_tpl_in_currency">Currency</string>
+    <string name="ps_tpl_in_logo">Logo</string>
+    <string name="ps_tpl_in_color">Template colour</string>
+    <string name="ps_tpl_rows_items">Items</string>
+    <string name="ps_tpl_rows_decisions">Decisions</string>
+    <string name="ps_tpl_rows_tasks">Tasks per page</string>
+    <string name="ps_tpl_rows_periods">Periods</string>
+    <string name="ps_tpl_rows_questions">Questions</string>
+    <string name="ps_tpl_with_fields">Fillable fields</string>
+    <string name="ps_tpl_with_fields_desc">Add form fields that can be filled in any PDF reader</string>
+
+    <!-- Split -->
+    <string name="ps_split_by_bookmarks">By bookmarks</string>
+    <string name="ps_split_by_size">By size</string>
+    <string name="ps_split_max_mb">Maximum size per file (MB)</string>
+    <string name="ps_split_size_hint">Current file size: %1$s</string>
+    <string name="ps_split_size_invalid">Enter a valid maximum size (at least 0.05 MB)</string>
+    <string name="ps_split_no_bookmarks">The file has no top-level bookmarks</string>
+    <string name="ps_split_bookmarks_found">One file per bookmark: %1$d</string>
+
+    <!-- Certificate protection -->
+    <string name="ps_cert_protect_title">Certificate protection</string>
+    <string name="ps_cert_tab_encrypt">Encrypt</string>
+    <string name="ps_cert_tab_open">Open protected file</string>
+    <string name="ps_cert_current_password">Current file password (if any)</string>
+    <string name="ps_cert_recipients">Recipients</string>
+    <string name="ps_cert_no_recipients">Add at least one recipient certificate</string>
+    <string name="ps_cert_add_cer">.cer/.p7b certificate</string>
+    <string name="ps_cert_add_p12">From .p12/.pfx</string>
+    <string name="ps_cert_add_own">Add my on-device certificate</string>
+    <string name="ps_cert_self_hint">Add your own certificate too so you can open the file later. Each recipient has its own permissions.</string>
+    <string name="ps_cert_cipher">Encryption algorithm</string>
+    <string name="ps_cert_encrypt">Encrypt with certificates</string>
+    <string name="ps_cert_permissions">Permissions</string>
+    <string name="ps_cert_issuer_valid">Issuer: %1$s · valid until %2$s</string>
+    <string name="ps_cert_issue_expired">Expired</string>
+    <string name="ps_cert_issue_not_yet">Not yet valid</string>
+    <string name="ps_cert_issue_usage">Not intended for encryption</string>
+    <string name="ps_cert_issue_rsa">Unsupported key type (RSA only)</string>
+    <string name="ps_cert_blocked">Some certificates cannot be used for encryption (expired or non-RSA key)</string>
+    <string name="ps_cert_read_failed">Could not read the certificate</string>
+    <string name="ps_cert_key_password">Key file password</string>
+    <string name="ps_cert_open_hint">Pick the private key file (.p12/.pfx) matching one of the recipient certificates; an unencrypted copy will be saved.</string>
+    <string name="ps_cert_use_own_key">Use my on-device key</string>
+    <string name="ps_cert_pick_key">Choose key file</string>
+    <string name="ps_cert_open_now">Open and decrypt</string>
+    <string name="ps_cert_open_failed">Could not open the file: the key matches no recipient or the password is wrong</string>
+    <string name="ps_cert_not_cert_file">This file does not seem to be certificate-protected</string>
+    <string name="ps_cert_unlock_hint">This file is protected with a certificate, not a password. Use Certificate protection → Open protected file.</string>
+    <string name="ps_perm_assemble">Manage pages</string>
+    <string name="ps_perm_accessibility">Copy for accessibility</string>
+    <string name="ps_perm_read_only">Read only</string>
+    <string name="ps_perm_dependency_hint">Some permissions depend on others: commenting and editing need form filling, editing needs page management, and extraction needs accessibility copying.</string>
+
+    <!-- Digital signature upgrades -->
+    <string name="ps_sign_advanced">Advanced (time-stamp, LTV, certification, paging seal)</string>
+    <string name="ps_sign_type">Signature type</string>
+    <string name="ps_sign_approval">Approval signature</string>
+    <string name="ps_certify_p1">Certify: no changes</string>
+    <string name="ps_certify_p2">Certify: fill and sign</string>
+    <string name="ps_certify_p3">Certify: fill, sign and comment</string>
+    <string name="ps_certify_not_first">Certification is only possible as the first signature, and this document is already signed.</string>
+    <string name="ps_after_approval">Approval signature: filling, commenting and further signatures stay possible; every later change is shown as a change after signing.</string>
+    <string name="ps_after_p1">Certify without changes (P=1): any later change, even filling or another signature, invalidates the certification.</string>
+    <string name="ps_after_p2">Certify (P=2): afterwards only form filling and signing are allowed.</string>
+    <string name="ps_after_p3">Certify (P=3): afterwards filling, signing and commenting are allowed.</string>
+    <string name="ps_sign_pades">PAdES signature (ETSI.CAdES.detached)</string>
+    <string name="ps_sign_pades_desc">European signature standard with the signing-certificate attribute</string>
+    <string name="ps_sign_tsa">Trusted time-stamp (RFC 3161)</string>
+    <string name="ps_sign_tsa_desc">Proves the signing time even after the certificate expires (needs internet)</string>
+    <string name="ps_sign_tsa_url">Time-stamp server URL</string>
+    <string name="ps_sign_ltv">Enable long-term validation (LTV)</string>
+    <string name="ps_sign_ltv_desc">Embed certificates and OCSP/CRL responses (best effort, needs internet)</string>
+    <string name="ps_sign_doc_ts">Document time-stamp (PAdES-LTA)</string>
+    <string name="ps_sign_doc_ts_desc">Added after signing to protect the validation data (needs the time-stamp option)</string>
+    <string name="ps_sign_paging_seal">Paging seal</string>
+    <string name="ps_sign_paging_seal_desc">Split the seal image across the right edge of all pages, with the signature on the last page</string>
+    <string name="ps_sign_seal_pick">Seal image</string>
+    <string name="ps_sign_seal_none">Choose the seal image first</string>
+    <string name="ps_sign_seal_size">Seal size</string>
+    <string name="ps_sign_seal_position">Vertical position</string>
+    <string name="ps_sign_result_ts">Time-stamped by a trusted server</string>
+    <string name="ps_sign_result_ltv">LTV data: %1$d certificates, %2$d OCSP responses, %3$d CRLs</string>
+    <string name="ps_sign_result_doc_ts">Document time-stamp added</string>
+    <string name="ps_sign_result_warnings">Notes:</string>
+    <string name="ps_verify_doc_ts">Document time-stamp (RFC 3161)</string>
+    <string name="ps_verify_ts_ok">Valid time-stamp: %1$s</string>
+    <string name="ps_verify_ts_bad">Invalid time-stamp: %1$s</string>
+    <string name="ps_verify_certified">Certification signature (P=%1$d)</string>
+    <string name="ps_verify_ltv">The document contains long-term validation data (DSS)</string>
+
+    <!-- Pre-sign warning -->
+    <string name="ps_presign_title">Before you sign</string>
+    <string name="ps_presign_intro">The items below can change what the document shows after signing without your knowledge. Review them before continuing.</string>
+    <string name="ps_presign_intro_ocg">The items below can change what the document shows after signing, and the document has optional layers that can hide or show content. Review them before continuing.</string>
+    <string name="ps_presign_locked">This document is certified with no changes allowed; adding a signature will invalidate the certification.</string>
+    <string name="ps_presign_after">Permissions after signing</string>
+    <string name="ps_presign_dont_show">Don\'t show again</string>
+    <string name="ps_presign_continue">Continue signing</string>
+    <string name="ps_presign_page">Page %1$d</string>
+    <string name="ps_ps_kind_doc_script">Document-level script</string>
+    <string name="ps_ps_kind_page_script">Page script</string>
+    <string name="ps_ps_kind_field_script">Form field script</string>
+    <string name="ps_ps_kind_link_script">Link running a script</string>
+    <string name="ps_ps_kind_template">Page template (can spawn pages)</string>
+    <string name="ps_ps_kind_xfa">XFA form</string>
+    <string name="ps_ps_kind_layers">Optional content layers (OCG)</string>
+    <string name="ps_ps_kind_unsigned">Unsigned signature field</string>
+    <string name="ps_ps_kind_empty">Empty fillable fields: %1$d</string>
+    <string name="ps_ps_kind_signed">Existing signatures: %1$d</string>
+    <string name="ps_ps_kind_certified">Document is certified (P=%1$d)</string>
+    <string name="ps_ev_open">When the document opens</string>
+    <string name="ps_ev_will_close">Before closing</string>
+    <string name="ps_ev_will_save">Before saving</string>
+    <string name="ps_ev_did_save">After saving</string>
+    <string name="ps_ev_will_print">Before printing</string>
+    <string name="ps_ev_did_print">After printing</string>
+    <string name="ps_ev_page_open">When the page opens</string>
+    <string name="ps_ev_page_close">When the page closes</string>
+    <string name="ps_ev_calculate">Calculate</string>
+    <string name="ps_ev_keystroke">On keystroke</string>
+    <string name="ps_ev_format">Format</string>
+    <string name="ps_ev_validate">Validate</string>
+    <string name="ps_ev_mouse_hover">Mouse enter/exit</string>
+    <string name="ps_ev_click">Click</string>
+    <string name="ps_ev_focus">Focus</string>
+    <string name="ps_ev_page_visibility">Page visible/hidden</string>
+    <string name="ps_ev_doc_level">Loaded with the document</string>
+    <string name="ps_ev_hidden_template">Hidden template</string>
+    <string name="ps_ev_named_page">Named page</string>
+
+    <!-- Form calculations -->
+    <string name="ps_calc_auto">Calculated</string>
+    <string name="ps_calc_unsupported">Unsupported calculation</string>
+    <string name="ps_calc_note">This form has %1$d calculated fields; results update automatically when values change.</string>
+    <string name="ps_shown_as">Shown in the document: %1$s</string>
+    <string name="ps_pick_date">Pick a date</string>
+
+    <!-- XFA -->
+    <string name="ps_xfa_static_title">Static XFA form</string>
+    <string name="ps_xfa_static_body">Filled through its AcroForm fallback fields. When saving, the XFA data is removed so the new values show in every reader.</string>
+    <string name="ps_xfa_dynamic_title">Dynamic XFA form</string>
+    <string name="ps_xfa_dynamic_body">This form\'s layout cannot be rendered on the device and its pages may look empty or show \"Please wait\". You can fill its fields from the list below and save, then open it in Adobe Acrobat/Reader.</string>
+    <string name="ps_xfa_flatten_q">Flatten to a static PDF?</string>
+    <string name="ps_xfa_flatten_body">Converting a dynamic XFA form into a static PDF needs a full XFA engine to rebuild the layout, which is not available on the device. Save the values here, open the file in Adobe Acrobat and use Print to PDF to get a static copy.</string>
+    <string name="ps_xfa_no_fields">No fields found in the XFA template</string>
+    <string name="ps_xfa_not_editable">This field type cannot be edited here</string>
+    <string name="ps_xfa_unbound">Not bound to data (will not be saved)</string>
+    <string name="ps_xfa_type_number">Number</string>
+    <string name="ps_xfa_type_date">Date</string>
+    <string name="ps_xfa_type_image">Image</string>
+</resources>

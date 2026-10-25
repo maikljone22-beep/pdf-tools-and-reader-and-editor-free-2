@@ -1,0 +1,520 @@
+package com.smartdocs.editor.core.pdf
+
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Matrix
+import com.tom_roush.pdfbox.multipdf.PDFMergerUtility
+import com.tom_roush.pdfbox.pdmodel.PDDocument
+import com.tom_roush.pdfbox.pdmodel.PDPage
+import com.tom_roush.pdfbox.pdmodel.PDPageContentStream
+import com.tom_roush.pdfbox.pdmodel.common.PDRectangle
+import com.tom_roush.pdfbox.pdmodel.encryption.AccessPermission
+import com.tom_roush.pdfbox.pdmodel.encryption.StandardProtectionPolicy
+import com.tom_roush.pdfbox.pdmodel.font.PDFont
+import com.tom_roush.pdfbox.pdmodel.font.PDType0Font
+import com.tom_roush.pdfbox.pdmodel.font.PDType1Font
+import com.tom_roush.pdfbox.pdmodel.graphics.image.JPEGFactory
+import com.tom_roush.pdfbox.pdmodel.graphics.image.LosslessFactory
+import com.tom_roush.pdfbox.pdmodel.graphics.image.PDImageXObject
+import com.tom_roush.pdfbox.pdmodel.graphics.state.PDExtendedGraphicsState
+import com.tom_roush.pdfbox.pdmodel.interactive.documentnavigation.outline.PDDocumentOutline
+import com.tom_roush.pdfbox.pdmodel.interactive.documentnavigation.outline.PDOutlineItem
+import com.tom_roush.pdfbox.util.Matrix as PdfMatrix
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.InputStream
+
+/** Page-level and document-level editing operations built on PdfBox. Every operation writes to [out] and never touches [src] in place. */
+object PdfOps {
+
+    /**
+     * Load for editing. PdfBox 2.0 refuses to save an encrypted document that was merely opened with a
+     * password ("PDF contains an encryption dictionary, please remove it … or set a protection policy"),
+     * so an encrypted document is re-protected with the same password up front. `setAllSecurityToBeRemoved`
+     * (used by [removeSecurity]) and a later [PDDocument.protect] (used by [protect]) both override this.
+     */
+    internal fun load(src: File, password: String? = null): PDDocument {
+        val doc = if (password.isNullOrEmpty()) PDDocument.load(src) else PDDocument.load(src, password)
+        if (doc.isEncrypted) {
+            val pw = password.orEmpty()
+            runCatching {
+                val ap = doc.currentAccessPermission ?: AccessPermission()
+                doc.protect(StandardProtectionPolicy(pw, pw, ap).apply { encryptionKeyLength = 128; setPreferAES(true) })
+            }
+        }
+        return doc
+    }
+
+    /** Write [doc] to [out] safely even when [out] is the file the document was loaded from. */
+    private fun saveTo(doc: PDDocument, out: File) {
+        val tmp = File(out.parentFile ?: out.absoluteFile.parentFile, ".${out.name}.${System.nanoTime()}.tmp")
+        try {
+            doc.save(tmp)
+            if (!tmp.renameTo(out)) { tmp.copyTo(out, overwrite = true); tmp.delete() }
+        } finally { if (tmp.exists()) tmp.delete() }
+    }
+
+    /** Parse "1-3, 5, 8" into zero-based page indexes within [count]. */
+    fun parseRange(spec: String, count: Int): List<Int> {
+        if (spec.isBlank()) return (0 until count).toList()
+        val out = LinkedHashSet<Int>()
+        spec.replace('،', ',').split(',').map { it.trim() }.filter { it.isNotEmpty() }.forEach { part ->
+            val m = Regex("""^(\d+)\s*[-–]\s*(\d+)$""").find(part)
+            if (m != null) {
+                val a = m.groupValues[1].toInt(); val b = m.groupValues[2].toInt()
+                for (i in minOf(a, b)..maxOf(a, b)) if (i in 1..count) out += i - 1
+            } else part.toIntOrNull()?.let { if (it in 1..count) out += it - 1 }
+        }
+        return out.toList()
+    }
+
+    suspend fun pageCount(src: File, password: String? = null): Int = withContext(Dispatchers.IO) {
+        load(src, password).use { it.numberOfPages }
+    }
+
+    suspend fun merge(sources: List<File>, out: File) = withContext(Dispatchers.IO) {
+        val m = PDFMergerUtility()
+        sources.forEach { m.addSource(it) }
+        // write to a sibling temp first so a source that equals [out] is never read and written at once
+        val tmp = File(out.parentFile ?: out.absoluteFile.parentFile, ".${out.name}.${System.nanoTime()}.tmp")
+        try {
+            m.destinationFileName = tmp.absolutePath
+            m.mergeDocuments(null)
+            if (!tmp.renameTo(out)) { tmp.copyTo(out, overwrite = true); tmp.delete() }
+        } finally { if (tmp.exists()) tmp.delete() }
+    }
+
+    /** Keep only [pages] (zero-based) in the given order. Used for extract / reorder / delete. */
+    suspend fun keepPages(src: File, pages: List<Int>, out: File, password: String? = null) = withContext(Dispatchers.IO) {
+        load(src, password).use { doc ->
+            PDDocument().use { nd ->
+                pages.forEach { nd.importPage(doc.getPage(it)) }
+                nd.documentInformation = doc.documentInformation
+                saveTo(nd, out)
+            }
+        }
+    }
+
+    suspend fun deletePages(src: File, pages: Set<Int>, out: File, password: String? = null) = withContext(Dispatchers.IO) {
+        load(src, password).use { doc ->
+            pages.sortedDescending().forEach { doc.removePage(it) }
+            saveTo(doc, out)
+        }
+    }
+
+    suspend fun rotatePages(src: File, pages: List<Int>, degrees: Int, out: File, password: String? = null) = withContext(Dispatchers.IO) {
+        load(src, password).use { doc ->
+            pages.forEach { i -> val p = doc.getPage(i); p.rotation = (p.rotation + degrees).mod(360) }
+            saveTo(doc, out)
+        }
+    }
+
+    suspend fun reorder(src: File, order: List<Int>, out: File, password: String? = null) = keepPages(src, order, out, password)
+
+    /** Split into one file per page or per range chunk. Returns the files created. */
+    suspend fun split(src: File, outDir: File, baseName: String, chunk: Int = 1): List<File> = withContext(Dispatchers.IO) {
+        outDir.mkdirs()
+        val files = ArrayList<File>()
+        load(src).use { doc ->
+            var start = 0; var n = 1
+            while (start < doc.numberOfPages) {
+                val end = minOf(start + chunk, doc.numberOfPages)
+                PDDocument().use { nd ->
+                    for (i in start until end) nd.importPage(doc.getPage(i))
+                    val f = File(outDir, "${baseName}_$n.pdf"); nd.save(f); files += f
+                }
+                start = end; n++
+            }
+        }
+        files
+    }
+
+    enum class PageStyle { BLANK, LINED, GRID, DOTS }
+
+    /** Create a new PDF with [count] pages of the given style. */
+    suspend fun createBlank(out: File, count: Int, size: PDRectangle = PDRectangle.A4, landscape: Boolean = false, style: PageStyle = PageStyle.BLANK, bgColor: Int = 0xFFFFFF) = withContext(Dispatchers.IO) {
+        PDDocument().use { doc ->
+            repeat(count) { doc.addPage(stylePage(doc, size, landscape, style, bgColor)) }
+            saveTo(doc, out)
+        }
+    }
+
+    private fun stylePage(doc: PDDocument, size: PDRectangle, landscape: Boolean, style: PageStyle, bg: Int): PDPage {
+        val rect = if (landscape) PDRectangle(size.height, size.width) else size
+        val page = PDPage(rect)
+        PDPageContentStream(doc, page).use { cs ->
+            if (bg != 0xFFFFFF) {
+                cs.setNonStrokingColor((bg shr 16) and 0xFF, (bg shr 8) and 0xFF, bg and 0xFF)
+                cs.addRect(0f, 0f, rect.width, rect.height); cs.fill()
+            }
+            cs.setStrokingColor(200, 200, 200); cs.setLineWidth(0.5f)
+            val step = 24f
+            when (style) {
+                PageStyle.LINED -> { var y = rect.height - 60f; while (y > 40f) { cs.moveTo(40f, y); cs.lineTo(rect.width - 40f, y); y -= step }; cs.stroke() }
+                PageStyle.GRID -> {
+                    var y = 0f; while (y < rect.height) { cs.moveTo(0f, y); cs.lineTo(rect.width, y); y += step }
+                    var x = 0f; while (x < rect.width) { cs.moveTo(x, 0f); cs.lineTo(x, rect.height); x += step }
+                    cs.stroke()
+                }
+                PageStyle.DOTS -> {
+                    cs.setNonStrokingColor(170, 170, 170)
+                    var y = step; while (y < rect.height) { var x = step; while (x < rect.width) { cs.addRect(x - 0.7f, y - 0.7f, 1.4f, 1.4f); x += step }; y += step }
+                    cs.fill()
+                }
+                PageStyle.BLANK -> Unit
+            }
+        }
+        return page
+    }
+
+    suspend fun insertBlankPage(src: File, atIndex: Int, out: File, style: PageStyle = PageStyle.BLANK, password: String? = null) = withContext(Dispatchers.IO) {
+        load(src, password).use { doc ->
+            val ref = if (doc.numberOfPages > 0) doc.getPage(atIndex.coerceIn(0, doc.numberOfPages - 1)).mediaBox else PDRectangle.A4
+            val p = stylePage(doc, PDRectangle(ref.width, ref.height), false, style, 0xFFFFFF)
+            if (atIndex >= doc.numberOfPages) doc.addPage(p) else doc.pages.insertBefore(p, doc.getPage(atIndex))
+            saveTo(doc, out)
+        }
+    }
+
+    /** Insert all pages of [other] into [src] at [atIndex]. */
+    suspend fun insertPagesFrom(src: File, other: File, atIndex: Int, out: File, password: String? = null) = withContext(Dispatchers.IO) {
+        load(src, password).use { doc ->
+            load(other).use { od ->
+                // importPage appends to the end; when inserting at the end that is already the right place
+                val imported = od.pages.map { doc.importPage(it) }
+                val originalCount = doc.numberOfPages - imported.size
+                val at = atIndex.coerceIn(0, originalCount)
+                if (at < originalCount) {
+                    // move: detach the appended copies, then re-insert before the page that is now at [at]
+                    imported.forEach { doc.removePage(it) }
+                    var idx = at
+                    imported.forEach { p -> if (idx >= doc.numberOfPages) doc.addPage(p) else doc.pages.insertBefore(p, doc.getPage(idx)); idx++ }
+                }
+                saveTo(doc, out)
+            }
+        }
+    }
+
+    /** Build a PDF from images; each image becomes a page sized to the image (A4-fitted when [fitA4]). */
+    suspend fun imagesToPdf(images: List<File>, out: File, fitA4: Boolean = true, jpegQuality: Int = 85) = withContext(Dispatchers.IO) {
+        PDDocument().use { doc ->
+            images.forEach { f ->
+                val bmp = decodeScaled(f, 2200) ?: return@forEach
+                val img = JPEGFactory.createFromImage(doc, bmp, jpegQuality / 100f)
+                val page = if (fitA4) {
+                    val portrait = bmp.height >= bmp.width
+                    PDPage(if (portrait) PDRectangle.A4 else PDRectangle(PDRectangle.A4.height, PDRectangle.A4.width))
+                } else PDPage(PDRectangle(bmp.width.toFloat(), bmp.height.toFloat()))
+                doc.addPage(page)
+                val box = page.mediaBox
+                val scale = minOf(box.width / bmp.width, box.height / bmp.height)
+                val w = bmp.width * scale; val h = bmp.height * scale
+                PDPageContentStream(doc, page).use { it.drawImage(img, (box.width - w) / 2, (box.height - h) / 2, w, h) }
+                bmp.recycle()
+            }
+            saveTo(doc, out)
+        }
+    }
+
+    fun decodeScaled(f: File, maxDim: Int): Bitmap? {
+        val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(f.absolutePath, o)
+        var sample = 1
+        while (o.outWidth / sample > maxDim || o.outHeight / sample > maxDim) sample *= 2
+        val bmp = BitmapFactory.decodeFile(f.absolutePath, BitmapFactory.Options().apply { inSampleSize = sample }) ?: return null
+        val exif = runCatching { androidx.exifinterface.media.ExifInterface(f.absolutePath).rotationDegrees }.getOrDefault(0)
+        if (exif == 0) return bmp
+        val m = Matrix().apply { postRotate(exif.toFloat()) }
+        return Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, m, true).also { if (it !== bmp) bmp.recycle() }
+    }
+
+    /** Draw an image (signature, stamp, photo) on a page. Coordinates in PDF points, origin bottom-left. */
+    suspend fun stampImage(src: File, pageIndex: Int, image: Bitmap, x: Float, y: Float, w: Float, h: Float, out: File, opacity: Float = 1f, rotation: Float = 0f, password: String? = null) = withContext(Dispatchers.IO) {
+        load(src, password).use { doc ->
+            val page = doc.getPage(pageIndex)
+            val img = LosslessFactory.createFromImage(doc, image)
+            PDPageContentStream(doc, page, PDPageContentStream.AppendMode.APPEND, true, true).use { cs ->
+                if (opacity < 1f) {
+                    val gs = PDExtendedGraphicsState(); gs.nonStrokingAlphaConstant = opacity; gs.strokingAlphaConstant = opacity
+                    cs.setGraphicsStateParameters(gs)
+                }
+                if (rotation != 0f) {
+                    cs.saveGraphicsState()
+                    cs.transform(PdfMatrix.getRotateInstance(Math.toRadians(rotation.toDouble()), x + w / 2, y + h / 2))
+                    cs.drawImage(img, -w / 2, -h / 2, w, h)
+                    cs.restoreGraphicsState()
+                } else cs.drawImage(img, x, y, w, h)
+            }
+            saveTo(doc, out)
+        }
+    }
+
+    /** Font that supports Arabic. Falls back to Helvetica for Latin-only text. */
+    fun arabicFont(context: Context, doc: PDDocument): PDFont =
+        runCatching { PDType0Font.load(doc, context.assets.open("fonts/NotoNaskhArabic-Regular.ttf")) }.getOrElse { PDType1Font.HELVETICA }
+
+    /** Draw text on a page. Arabic text is shaped+reordered via [ArabicShaper] before drawing. */
+    suspend fun stampText(context: Context, src: File, pageIndex: Int, text: String, x: Float, y: Float, fontSize: Float, color: Int, out: File, opacity: Float = 1f, rotation: Float = 0f, password: String? = null) = withContext(Dispatchers.IO) {
+        load(src, password).use { doc ->
+            val page = doc.getPage(pageIndex)
+            val font = arabicFont(context, doc)
+            PDPageContentStream(doc, page, PDPageContentStream.AppendMode.APPEND, true, true).use { cs ->
+                if (opacity < 1f) { val gs = PDExtendedGraphicsState(); gs.nonStrokingAlphaConstant = opacity; cs.setGraphicsStateParameters(gs) }
+                cs.beginText()
+                cs.setFont(font, fontSize)
+                cs.setNonStrokingColor((color shr 16) and 0xFF, (color shr 8) and 0xFF, color and 0xFF)
+                if (rotation != 0f) cs.setTextMatrix(PdfMatrix.getRotateInstance(Math.toRadians(rotation.toDouble()), x, y)) else cs.newLineAtOffset(x, y)
+                cs.showArabic(text, ArabicShaper.shape(text))
+                cs.endText()
+            }
+            saveTo(doc, out)
+        }
+    }
+
+    suspend fun watermark(context: Context, src: File, text: String, out: File, fontSize: Float = 48f, color: Int = 0x9E9E9E, opacity: Float = 0.3f, rotation: Float = 45f, pages: List<Int>? = null, password: String? = null) = withContext(Dispatchers.IO) {
+        load(src, password).use { doc ->
+            val font = arabicFont(context, doc)
+            val shaped = ArabicShaper.shape(text)
+            val targets = pages ?: (0 until doc.numberOfPages).toList()
+            targets.forEach { i ->
+                val page = doc.getPage(i); val box = page.mediaBox
+                PDPageContentStream(doc, page, PDPageContentStream.AppendMode.APPEND, true, true).use { cs ->
+                    val gs = PDExtendedGraphicsState(); gs.nonStrokingAlphaConstant = opacity; cs.setGraphicsStateParameters(gs)
+                    val tw = runCatching { font.getStringWidth(shaped) / 1000f * fontSize }.getOrDefault(fontSize * text.length * 0.5f)
+                    cs.beginText(); cs.setFont(font, fontSize)
+                    cs.setNonStrokingColor((color shr 16) and 0xFF, (color shr 8) and 0xFF, color and 0xFF)
+                    cs.setTextMatrix(PdfMatrix.getRotateInstance(Math.toRadians(rotation.toDouble()), box.width / 2 - tw / 2 * Math.cos(Math.toRadians(rotation.toDouble())).toFloat(), box.height / 2 - tw / 2 * Math.sin(Math.toRadians(rotation.toDouble())).toFloat()))
+                    cs.showArabic(text, shaped); cs.endText()
+                }
+            }
+            saveTo(doc, out)
+        }
+    }
+
+    enum class NumberPosition { BOTTOM_CENTER, BOTTOM_RIGHT, BOTTOM_LEFT, TOP_CENTER }
+
+    suspend fun addPageNumbers(context: Context, src: File, out: File, position: NumberPosition = NumberPosition.BOTTOM_CENTER, start: Int = 1, fontSize: Float = 11f, arabicDigits: Boolean = false, password: String? = null) = withContext(Dispatchers.IO) {
+        load(src, password).use { doc ->
+            val font = arabicFont(context, doc)
+            for (i in 0 until doc.numberOfPages) {
+                val page = doc.getPage(i); val box = page.mediaBox
+                var label = (start + i).toString()
+                if (arabicDigits) label = label.map { '٠' + (it - '0') }.joinToString("")
+                val tw = runCatching { font.getStringWidth(label) / 1000f * fontSize }.getOrDefault(fontSize * label.length * 0.6f)
+                val (x, y) = when (position) {
+                    NumberPosition.BOTTOM_CENTER -> (box.width - tw) / 2 to 24f
+                    NumberPosition.BOTTOM_RIGHT -> box.width - tw - 36f to 24f
+                    NumberPosition.BOTTOM_LEFT -> 36f to 24f
+                    NumberPosition.TOP_CENTER -> (box.width - tw) / 2 to box.height - 30f
+                }
+                PDPageContentStream(doc, page, PDPageContentStream.AppendMode.APPEND, true, true).use { cs ->
+                    cs.beginText(); cs.setFont(font, fontSize); cs.setNonStrokingColor(60, 60, 60); cs.newLineAtOffset(x, y); cs.showText(label); cs.endText()
+                }
+            }
+            saveTo(doc, out)
+        }
+    }
+
+    /** Encrypt with an open password and/or an owner (permissions) password. */
+    suspend fun protect(src: File, out: File, openPassword: String, ownerPassword: String, allowPrint: Boolean = true, allowCopy: Boolean = true, allowModify: Boolean = true, allowAnnotate: Boolean = true, allowFillForms: Boolean = true, currentPassword: String? = null) = withContext(Dispatchers.IO) {
+        load(src, currentPassword).use { doc ->
+            val ap = AccessPermission().apply {
+                setCanPrint(allowPrint); setCanExtractContent(allowCopy); setCanModify(allowModify)
+                setCanModifyAnnotations(allowAnnotate); setCanFillInForm(allowFillForms); setCanAssembleDocument(allowModify)
+            }
+            val policy = StandardProtectionPolicy(ownerPassword.ifEmpty { openPassword.ifEmpty { "owner" } }, openPassword, ap).apply {
+                encryptionKeyLength = 128; setPreferAES(true)
+            }
+            doc.protect(policy)
+            saveTo(doc, out)
+        }
+    }
+
+    suspend fun removeSecurity(src: File, password: String, out: File) = withContext(Dispatchers.IO) {
+        load(src, password).use { doc -> doc.isAllSecurityToBeRemoved = true; saveTo(doc, out) }
+    }
+
+    /** Re-encode every image at [quality] and scaled to at most [maxDim] pixels. */
+    suspend fun compress(src: File, out: File, quality: Int = 60, maxDim: Int = 1400, password: String? = null) = withContext(Dispatchers.IO) {
+        load(src, password).use { doc ->
+            doc.pages.forEach { page ->
+                val res = page.resources ?: return@forEach
+                res.xObjectNames.forEach { name ->
+                    val xo = runCatching { res.getXObject(name) }.getOrNull()
+                    if (xo is PDImageXObject) {
+                        val bmp = runCatching { xo.image }.getOrNull() ?: return@forEach
+                        val scale = minOf(1f, maxDim.toFloat() / maxOf(bmp.width, bmp.height))
+                        val scaled = if (scale < 1f) Bitmap.createScaledBitmap(bmp, (bmp.width * scale).toInt().coerceAtLeast(1), (bmp.height * scale).toInt().coerceAtLeast(1), true) else bmp
+                        val newImg = JPEGFactory.createFromImage(doc, scaled, quality / 100f)
+                        res.put(name, newImg)
+                    }
+                }
+            }
+            saveTo(doc, out)
+        }
+    }
+
+    /** Flatten: render each page to an image so annotations/forms become part of the page. */
+    suspend fun flatten(context: Context, src: File, out: File, dpi: Int = 150, password: String? = null) = withContext(Dispatchers.IO) {
+        // One page at a time: holding every rendered page bitmap in memory OOMs on long documents.
+        val session = PdfSession.open(context, src, password)
+        try {
+            PDDocument().use { doc ->
+                for (i in 0 until session.pageCount) {
+                    val (w, h) = session.pageSize(i)
+                    val bmp = session.render(i, (w * dpi / 72).toInt().coerceAtLeast(1), (h * dpi / 72).toInt().coerceAtLeast(1), annotations = true)
+                    val page = PDPage(PDRectangle(bmp.width * 72f / dpi, bmp.height * 72f / dpi)); doc.addPage(page)
+                    val img = JPEGFactory.createFromImage(doc, bmp, 0.9f)
+                    PDPageContentStream(doc, page).use { it.drawImage(img, 0f, 0f, page.mediaBox.width, page.mediaBox.height) }
+                    session.invalidateCache()
+                }
+                saveTo(doc, out)
+            }
+        } finally { session.closeAsync() }
+    }
+
+    /** Flatten AcroForm fields only (keeps vector content). */
+    suspend fun flattenForms(src: File, out: File, password: String? = null) = withContext(Dispatchers.IO) {
+        load(src, password).use { doc -> doc.documentCatalog.acroForm?.flatten(); saveTo(doc, out) }
+    }
+
+    /** Black out rectangles (page points) and remove the text beneath by rasterising those pages. */
+    suspend fun redact(context: Context, src: File, out: File, regions: Map<Int, List<android.graphics.RectF>>, password: String? = null) = withContext(Dispatchers.IO) {
+        // Rasterise affected pages so underlying text is truly removed, then paint black boxes.
+        val session = PdfSession.open(context, src, password)
+        val rendered = HashMap<Int, Bitmap>()
+        try {
+            regions.keys.forEach { i ->
+                if (i !in 0 until session.pageCount) return@forEach
+                val (w, h) = session.pageSize(i)   // PDFium size: already rotated by /Rotate
+                rendered[i] = session.render(i, (w * 2).toInt().coerceAtLeast(1), (h * 2).toInt().coerceAtLeast(1))
+                session.invalidateCache()           // the bitmap is ours now; keep the cache from holding more
+            }
+        } finally { session.closeAsync() }
+        load(src, password).use { doc ->
+            regions.forEach { (i, rects) ->
+                val bmp = rendered[i] ?: return@forEach
+                val page = doc.getPage(i); val box = page.mediaBox
+                val rot = ((page.rotation % 360) + 360) % 360
+                val canvas = android.graphics.Canvas(bmp)
+                val paint = android.graphics.Paint().apply { color = android.graphics.Color.BLACK; style = android.graphics.Paint.Style.FILL }
+                val bw = box.width; val bh = box.height; val W = bmp.width.toFloat(); val H = bmp.height.toFloat()
+                // PDF user space (origin bottom-left, unrotated) -> rendered bitmap pixels (origin top-left, /Rotate applied)
+                fun toPx(x0: Float, y0: Float): Pair<Float, Float> {
+                    val x = x0 - box.lowerLeftX; val y = y0 - box.lowerLeftY
+                    return when (rot) {
+                        90 -> (y / bh * W) to (x / bw * H)
+                        180 -> ((bw - x) / bw * W) to (y / bh * H)
+                        270 -> ((bh - y) / bh * W) to ((bw - x) / bw * H)
+                        else -> (x / bw * W) to ((bh - y) / bh * H)
+                    }
+                }
+                rects.forEach { r ->
+                    val (ax, ay) = toPx(r.left, r.top); val (bx, by) = toPx(r.right, r.bottom)
+                    // normalise: callers may pass top<bottom (android convention) or PDF top>bottom
+                    canvas.drawRect(minOf(ax, bx), minOf(ay, by), maxOf(ax, bx), maxOf(ay, by), paint)
+                }
+                // the replacement page is the rendered (already rotated) raster, so it needs no /Rotate
+                val newPage = PDPage(PDRectangle(W / 2f, H / 2f))
+                val img = JPEGFactory.createFromImage(doc, bmp, 0.9f)
+                PDPageContentStream(doc, newPage).use { it.drawImage(img, 0f, 0f, newPage.mediaBox.width, newPage.mediaBox.height) }
+                doc.pages.insertAfter(newPage, page); doc.removePage(page)
+                bmp.recycle()
+            }
+            saveTo(doc, out)
+        }
+    }
+
+    data class Info(var title: String = "", var author: String = "", var subject: String = "", var keywords: String = "", var creator: String = "", var producer: String = "")
+
+    suspend fun setInfo(src: File, info: Info, out: File, password: String? = null) = withContext(Dispatchers.IO) {
+        load(src, password).use { doc ->
+            doc.documentInformation.apply { title = info.title; author = info.author; subject = info.subject; keywords = info.keywords; creator = info.creator; producer = info.producer }
+            saveTo(doc, out)
+        }
+    }
+
+    /** Replace the outline (table of contents) with a flat/nested list of (title, pageIndex, level). */
+    suspend fun setOutline(src: File, items: List<Triple<String, Int, Int>>, out: File, password: String? = null) = withContext(Dispatchers.IO) {
+        load(src, password).use { doc ->
+            val outline = PDDocumentOutline(); doc.documentCatalog.documentOutline = outline
+            val stack = ArrayList<Pair<Int, PDOutlineItem>>()
+            items.forEach { (title, page, level) ->
+                val it = PDOutlineItem().apply { this.title = title; setDestination(doc.getPage(page.coerceIn(0, doc.numberOfPages - 1))) }
+                while (stack.isNotEmpty() && stack.last().first >= level) stack.removeAt(stack.size - 1)
+                if (stack.isEmpty()) outline.addLast(it) else stack.last().second.addLast(it)
+                stack += level to it
+            }
+            outline.openNode()
+            saveTo(doc, out)
+        }
+    }
+
+    suspend fun extractText(src: File, password: String? = null): String = withContext(Dispatchers.IO) {
+        load(src, password).use { doc -> com.tom_roush.pdfbox.text.PDFTextStripper().getText(doc) }
+    }
+
+    // ---------------- additive helpers for the one-step reader tools ----------------
+
+    /** True when the file carries an encryption dictionary (open password and/or permissions password). */
+    suspend fun isEncrypted(src: File, password: String? = null): Boolean = withContext(Dispatchers.IO) {
+        (if (password.isNullOrEmpty()) PDDocument.load(src) else PDDocument.load(src, password)).use { it.isEncrypted }
+    }
+
+    /**
+     * Flatten annotations and form fields into the page content while keeping vector text: form fields are
+     * flattened by the AcroForm, every other visible annotation's normal appearance is drawn into the page
+     * (mapped from its /BBox × /Matrix onto /Rect, as a viewer does) and the annotation removed.
+     * Links and popups are kept. Returns the number of annotations flattened.
+     */
+    suspend fun flattenAnnotations(src: File, out: File, password: String? = null): Int = withContext(Dispatchers.IO) {
+        var n = 0
+        load(src, password).use { doc ->
+            runCatching { doc.documentCatalog.acroForm?.let { af -> af.needAppearances = false; af.flatten(); n += 1 } }
+            doc.pages.forEach { page ->
+                val annots = runCatching { page.annotations }.getOrNull() ?: return@forEach
+                val keep = ArrayList<com.tom_roush.pdfbox.pdmodel.interactive.annotation.PDAnnotation>()
+                val flat = ArrayList<com.tom_roush.pdfbox.pdmodel.interactive.annotation.PDAnnotation>()
+                annots.forEach { a ->
+                    val sub = a.subtype
+                    val hidden = a.isHidden || a.isNoView
+                    if (sub == "Link" || sub == "Popup" || hidden || a.normalAppearanceStream == null || a.rectangle == null) keep += a else flat += a
+                }
+                if (flat.isEmpty()) return@forEach
+                PDPageContentStream(doc, page, PDPageContentStream.AppendMode.APPEND, true, true).use { cs ->
+                    flat.forEach { a ->
+                        runCatching {
+                            val ap = a.normalAppearanceStream
+                            val rect = a.rectangle
+                            val bbox = ap.bBox ?: return@runCatching
+                            val m = ap.matrix
+                            // transformed bbox corners
+                            val pts = listOf(bbox.lowerLeftX to bbox.lowerLeftY, bbox.upperRightX to bbox.lowerLeftY, bbox.lowerLeftX to bbox.upperRightY, bbox.upperRightX to bbox.upperRightY)
+                                .map { (x, y) -> m.transformPoint(x, y) }
+                            val minX = pts.minOf { it.x }; val maxX = pts.maxOf { it.x }
+                            val minY = pts.minOf { it.y }; val maxY = pts.maxOf { it.y }
+                            val tw = maxX - minX; val th = maxY - minY
+                            if (tw <= 0f || th <= 0f) return@runCatching
+                            val sx = rect.width / tw; val sy = rect.height / th
+                            cs.saveGraphicsState()
+                            cs.transform(PdfMatrix(sx, 0f, 0f, sy, rect.lowerLeftX - minX * sx, rect.lowerLeftY - minY * sy))
+                            cs.drawForm(ap)
+                            cs.restoreGraphicsState()
+                            n++
+                        }
+                    }
+                }
+                page.annotations = keep
+            }
+            saveTo(doc, out)
+        }
+        n
+    }
+
+    fun copyStream(input: InputStream, out: File) { out.outputStream().use { o -> input.copyTo(o) } }
+
+    fun bitmapBytes(b: Bitmap, q: Int = 90): ByteArray = ByteArrayOutputStream().also { b.compress(Bitmap.CompressFormat.JPEG, q, it) }.toByteArray()
+}

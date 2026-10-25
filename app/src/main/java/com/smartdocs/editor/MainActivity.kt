@@ -1,0 +1,91 @@
+package com.smartdocs.editor
+
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.os.Bundle
+import android.widget.Toast
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.runtime.*
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.navigation.compose.rememberNavController
+import com.smartdocs.editor.core.data.AppSettings
+import com.smartdocs.editor.core.theme.SmartDocsTheme
+import com.smartdocs.editor.ui.AppNavHost
+import com.smartdocs.editor.ui.Routes
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
+
+val LocalApp = staticCompositionLocalOf<SmartDocsApp> { error("no app") }
+val LocalSettings = compositionLocalOf { AppSettings() }
+
+class MainActivity : ComponentActivity() {
+    private val incoming = MutableStateFlow<Uri?>(null)
+    private var openedByIntent = false
+
+    // volume keys / keyboard page turning in the reader
+    override fun onKeyDown(keyCode: Int, event: android.view.KeyEvent): Boolean =
+        com.smartdocs.editor.ui.reader.view.ReaderKeyBus.handle(keyCode) || super.onKeyDown(keyCode, event)
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        installSplashScreen()
+        super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
+        handleIntent(intent)
+        com.smartdocs.editor.core.billing.BillingManager.get(this).refreshAsync() // re-verify the Pro entitlement
+        setContent {
+            val app = application as SmartDocsApp
+            val settings by app.settings.settings.collectAsStateWithLifecycle(initialValue = AppSettings())
+            CompositionLocalProvider(LocalApp provides app, LocalSettings provides settings) {
+                SmartDocsTheme(mode = settings.theme, rtl = settings.language == "ar") {
+                    // first run: onboarding + consent before anything else (acct module)
+                    var onboarded by remember { mutableStateOf(com.smartdocs.editor.core.review.AcctPrefs.onboardingDone(this@MainActivity)) }
+                    if (!onboarded) {
+                        com.smartdocs.editor.ui.onboarding.OnboardingScreen(onDone = { onboarded = true })
+                    } else {
+                        val nav = rememberNavController()
+                        val uri by incoming.collectAsStateWithLifecycle()
+                        LaunchedEffect(uri) {
+                            uri?.let { nav.navigate(Routes.reader(it.toString())); incoming.value = null }
+                        }
+                        AppNavHost(nav)
+                        // reopen the last document when the app is launched normally (setting "restore session")
+                        com.smartdocs.editor.ui.reader.view.RestoreLastSession(nav, enabled = !openedByIntent)
+                        com.smartdocs.editor.ui.cloud.DeepLinkHandler(nav)
+                        com.smartdocs.editor.core.review.ReviewPromptHost()
+                    }
+                }
+            }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); handleIntent(intent) }
+
+    private fun handleIntent(intent: Intent?) {
+        val uri: Uri? = when (intent?.action) {
+            Intent.ACTION_VIEW -> intent.data
+            Intent.ACTION_SEND -> if (Build.VERSION.SDK_INT >= 33) intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
+                else @Suppress("DEPRECATION") intent.getParcelableExtra(Intent.EXTRA_STREAM)
+            else -> null
+        }
+        if (uri == null) return
+        openedByIntent = true
+        // smartdocs://oauth/… (cloud sign-in) and smartdocs://review/… (shared review) → acct module
+        if (com.smartdocs.editor.ui.cloud.DeepLinks.isOurs(uri)) { com.smartdocs.editor.ui.cloud.DeepLinks.pending.value = uri; return }
+        // Most senders grant only a temporary (non-persistable) read permission tied to this activity instance,
+        // so a content:// document is copied into our own storage right away instead of at reader open time.
+        if (uri.scheme == "file") { incoming.value = uri; return }
+        runCatching { contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+        val app = application as SmartDocsApp
+        lifecycleScope.launch {
+            val local = runCatching { app.documents.localFile(uri) }.getOrNull()
+            if (local != null) incoming.value = Uri.fromFile(local)
+            else Toast.makeText(this@MainActivity, getString(R.string.error_generic), Toast.LENGTH_LONG).show()
+        }
+    }
+}

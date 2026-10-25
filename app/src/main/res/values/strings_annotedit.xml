@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ae_color">لون</string>
+    <string name="ae_opacity">شفافية</string>
+    <string name="ae_thickness">سماكة</string>
+    <string name="ae_edit_text">تعديل النص</string>
+    <string name="ae_copy">نسخ</string>
+    <string name="ae_delete">حذف</string>
+</resources>

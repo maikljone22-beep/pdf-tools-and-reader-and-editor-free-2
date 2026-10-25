@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- dark system theme: no white flash before Compose draws -->
+    <style name="Theme.SmartDocs" parent="android:Theme.Material.NoActionBar">
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowBackground">#101418</item>
+        <item name="android:colorAccent">#90CAF9</item>
+        <item name="android:fontFamily">@font/noto_sans_arabic_regular</item>
+    </style>
+    <style name="Theme.SmartDocs.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">#0D2A4A</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_splash</item>
+        <item name="postSplashScreenTheme">@style/Theme.SmartDocs</item>
+    </style>
+</resources>

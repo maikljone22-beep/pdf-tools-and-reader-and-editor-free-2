@@ -1,0 +1,13 @@
+build/
+app/build/
+.gradle/
+local.properties
+*.log
+.idea/
+*.iml
+.DS_Store
+release.jks
+keystore.properties
+ai.properties
+cloud.properties
+pro.properties

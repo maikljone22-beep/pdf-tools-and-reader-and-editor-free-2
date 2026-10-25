@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ds_good_morning">Good morning</string>
+    <string name="ds_good_evening">Good evening</string>
+    <string name="ds_home_search">Search your documents</string>
+    <string name="ds_search_all_files">Search all files</string>
+    <string name="ds_continue_reading">Continue reading</string>
+    <string name="ds_resume">Resume</string>
+    <string name="ds_home_empty_sub">Open a PDF or scan a document to get started</string>
+    <string name="ds_no_results">No results found</string>
+    <string name="ds_add_favorite">Add to favorites</string>
+    <string name="ds_remove_favorite">Remove from favorites</string>
+    <string name="ds_remove_record">Remove from recent</string>
+
+    <string name="ds_tab_device">This device</string>
+    <string name="ds_tab_folders">Chosen folders</string>
+    <string name="ds_selected_count">%1$d selected</string>
+    <string name="ds_select">Select</string>
+    <string name="ds_zip">Zip</string>
+    <string name="ds_zip_done">Files zipped: %1$s</string>
+    <string name="ds_root">Documents</string>
+    <string name="ds_items_count">%1$d items</string>
+    <string name="ds_folder_empty_sub">This folder is empty. Open a file or create a folder</string>
+    <string name="ds_no_folder_title">No folder chosen yet</string>
+
+    <string name="ds_tools_search">Search tools</string>
+    <string name="ds_most_used">Most used</string>
+    <string name="ds_group_create">Create &amp; convert</string>
+    <string name="ds_group_organize">Organize &amp; edit</string>
+    <string name="ds_group_sign">Sign &amp; protect</string>
+    <string name="ds_group_read">Read &amp; AI</string>
+
+    <string name="ds_cloud_title">Your files in the cloud</string>
+    <string name="ds_cloud_open_section">Open &amp; import</string>
+    <string name="ds_cloud_accounts_section">Storage accounts</string>
+
+    <string name="ds_local_profile">My profile</string>
+    <string name="ds_offline_note">The app works fully without an account</string>
+    <string name="ds_stat_files">Files</string>
+    <string name="ds_stat_signatures">Signatures</string>
+    <string name="ds_my_content">My content</string>
+    <string name="ds_app_section">App</string>
+    <string name="ds_support_section">Support</string>
+
+    <string name="ds_set_general">General</string>
+    <string name="ds_set_pdf_view">PDF view</string>
+    <string name="ds_set_annotations">Annotations</string>
+    <string name="ds_set_notifications">Notifications</string>
+    <string name="ds_set_notifications_sub">Open system notification settings</string>
+    <string name="ds_ai_more">Advanced settings</string>
+</resources>

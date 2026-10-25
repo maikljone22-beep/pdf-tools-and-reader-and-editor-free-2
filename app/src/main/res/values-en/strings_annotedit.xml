@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ae_color">Colour</string>
+    <string name="ae_opacity">Opacity</string>
+    <string name="ae_thickness">Thickness</string>
+    <string name="ae_edit_text">Edit text</string>
+    <string name="ae_copy">Duplicate</string>
+    <string name="ae_delete">Delete</string>
+</resources>

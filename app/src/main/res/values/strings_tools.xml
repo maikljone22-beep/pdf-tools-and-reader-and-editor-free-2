@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Tools module (prefix tl_) -->
+    <string name="tl_coming_soon">هذه الأداة قيد التطوير وستتوفر قريباً</string>
+    <string name="tl_input_file">الملف المصدر</string>
+    <string name="tl_default_name">مستند جديد</string>
+    <string name="tl_create">إنشاء</string>
+    <string name="tl_page_color">لون الصفحة</string>
+    <string name="tl_results_count">الملفات الناتجة (%1$d)</string>
+    <string name="tl_share_all">مشاركة الكل</string>
+
+    <!-- images to pdf -->
+    <string name="tl_add_images">إضافة صور</string>
+    <string name="tl_no_images">أضف صوراً من المعرض لتحويلها إلى ملف PDF واحد</string>
+    <string name="tl_fit_a4">ملاءمة الصور لحجم A4</string>
+    <string name="tl_image_quality">جودة الصور</string>
+    <string name="tl_move_up">تحريك لأعلى</string>
+    <string name="tl_move_down">تحريك لأسفل</string>
+    <string name="tl_remove">إزالة</string>
+
+    <!-- merge / split -->
+    <string name="tl_pages_n">%1$d صفحة</string>
+    <string name="tl_total_pages">إجمالي الصفحات بعد الدمج: %1$d</string>
+    <string name="tl_split_mode">طريقة التقسيم</string>
+    <string name="tl_split_every_page">كل صفحة في ملف</string>
+    <string name="tl_split_every_n">كل N صفحات</string>
+    <string name="tl_split_n">عدد الصفحات في كل ملف</string>
+    <string name="tl_split_by_range">نطاقات مخصصة</string>
+    <string name="tl_split_ranges_hint">افصل بين الملفات بفاصلة منقوطة، مثال: 1-3; 4-6; 7</string>
+    <string name="tl_split">تقسيم</string>
+
+    <!-- compress -->
+    <string name="tl_compress">ضغط</string>
+    <string name="tl_compress_note">يعيد ضغط الصور داخل الملف. الملفات النصية فقط قد لا يتغير حجمها كثيراً.</string>
+
+    <!-- page numbers -->
+    <string name="tl_position">الموضع</string>
+    <string name="tl_pos_bottom_center">أسفل - وسط</string>
+    <string name="tl_pos_bottom_right">أسفل - يمين</string>
+    <string name="tl_pos_bottom_left">أسفل - يسار</string>
+    <string name="tl_pos_top_center">أعلى - وسط</string>
+    <string name="tl_start_number">رقم البداية</string>
+    <string name="tl_arabic_digits">أرقام عربية (٠١٢٣)</string>
+    <string name="tl_add_numbers">إضافة الترقيم</string>
+
+    <!-- watermark -->
+    <string name="tl_preview">معاينة</string>
+    <string name="tl_preview_hint">اختر ملفاً لعرض المعاينة</string>
+    <string name="tl_preview_first_page">المعاينة على الصفحة الأولى فقط</string>
+    <string name="tl_add_watermark">إضافة العلامة المائية</string>
+
+    <!-- doc info -->
+    <string name="tl_doc_info_save">حفظ الخصائص في نسخة جديدة</string>
+
+    <!-- security -->
+    <string name="tl_protect">حماية الملف</string>
+    <string name="tl_password_required">أدخل كلمة مرور واحدة على الأقل</string>
+    <string name="tl_password_open_hint">تُطلب عند فتح الملف. اتركها فارغة للسماح بالفتح دون كلمة مرور.</string>
+    <string name="tl_password_perm_hint">تُطلب لتغيير الصلاحيات أدناه أو إزالة الحماية.</string>
+    <string name="tl_unlock_hint">يُنشئ نسخة جديدة من الملف بدون تشفير أو قيود.</string>
+    <string name="tl_flatten_forms">تسطيح النماذج فقط</string>
+    <string name="tl_flatten_forms_desc">يحوّل حقول النموذج إلى محتوى ثابت مع الحفاظ على جودة النص والبحث</string>
+    <string name="tl_flatten_all">تسطيح كل شيء (تحويل إلى صور)</string>
+    <string name="tl_flatten_all_desc">يحوّل كل صفحة إلى صورة؛ تصبح التعليقات والنماذج والروابط جزءاً من الصفحة ولا يمكن تحريرها</string>
+    <string name="tl_flatten">تسطيح</string>
+
+    <!-- export -->
+    <string name="tl_dpi">الدقة (DPI)</string>
+    <string name="tl_export">تصدير</string>
+    <string name="tl_no_text_found">لم يُعثر على نص في هذا الملف. جرّب أداة التعرف على النص (OCR) إن كان ممسوحاً ضوئياً.</string>
+    <string name="tl_copied">تم نسخ النص</string>
+    <string name="tl_save_txt">حفظ كملف نصي (TXT)</string>
+
+    <!-- convert -->
+    <string name="tl_to_pdf">إلى PDF</string>
+    <string name="tl_from_pdf">من PDF</string>
+    <string name="tl_source">المصدر</string>
+    <string name="tl_from_text_file">من ملف نصي (TXT)</string>
+    <string name="tl_from_web">من صفحة ويب</string>
+    <string name="tl_pick_txt">اختر ملفاً نصياً</string>
+    <string name="tl_url">رابط الصفحة</string>
+    <string name="tl_convert">تحويل</string>
+    <string name="tl_web_loading">جارٍ تحميل الصفحة وتحويلها…</string>
+    <string name="tl_web_note">يتم تحميل الصفحة وحفظها كملف PDF بصفحات A4. يحتاج اتصالاً بالإنترنت.</string>
+    <string name="tl_text_to_pdf_note">يدعم النص العربي والإنجليزي مع التفاف الأسطر تلقائياً.</string>
+    <string name="tl_docx_note">يُنشئ ملف Word يحتوي النص فقط (بدون الصور أو التنسيق المعقد).</string>
+    <string name="tl_format_excel">Excel (XLSX)</string>
+    <string name="tl_format_ppt">PowerPoint (PPTX)</string>
+
+    <!-- compare -->
+    <string name="tl_compare">مقارنة</string>
+
+    <!-- print / read aloud -->
+    <string name="tl_print_hint">اختر ملف PDF ثم اضغط طباعة لفتح نافذة الطباعة في النظام، حيث يمكنك اختيار الطابعة أو الحفظ كملف.</string>
+    <string name="tl_read_aloud_hint">اختر ملفاً وسيُفتح في القارئ مع شريط القراءة الصوتية في الأسفل. يمكنك التحكم بالسرعة والتوقف في أي وقت.</string>
+    <string name="tl_open_in_reader">فتح في القارئ</string>
+
+    <!-- wifi transfer -->
+    <string name="tl_wifi_running">الخادم يعمل على العنوان:</string>
+    <string name="tl_wifi_stopped">الخادم متوقف</string>
+    <string name="tl_wifi_no_network">غير متصل بشبكة Wi-Fi. اتصل بالشبكة ثم حاول مجدداً.</string>
+    <string name="tl_wifi_desc">شارك ملفاتك مع الكمبيوتر دون كابل: شغّل الخادم ثم افتح العنوان في متصفح الكمبيوتر الموجود على نفس الشبكة لتنزيل الملفات أو رفع ملفات جديدة إلى الهاتف.</string>
+    <string name="tl_wifi_uploaded">تم استلام %1$d ملف</string>
+    <string name="tl_wifi_security_note">ملاحظة: يمكن لأي جهاز على نفس الشبكة الوصول إلى الملفات أثناء تشغيل الخادم. أوقفه عند الانتهاء.</string>
+
+    <!-- help / about -->
+    <string name="tl_help_title">المساعدة وحول التطبيق</string>
+    <string name="tl_help_intro">محرر PDF عربي متكامل يعمل دون اتصال: اقرأ، علّق، حرّر الصفحات، وقّع، حوّل، واحمِ ملفاتك من مكان واحد.</string>
+    <string name="tl_help_features">المميزات</string>
+    <string name="tl_help_read_t">قراءة مريحة</string>
+    <string name="tl_help_read_b">تمرير متصل أو صفحة واحدة، وضع ليلي، بحث في النص، فهرس وإشارات مرجعية، وقراءة بصوت عالٍ.</string>
+    <string name="tl_help_annotate_t">تعليق وتحرير</string>
+    <string name="tl_help_annotate_b">تظليل، تسطير، ملاحظات، رسم بالقلم، أشكال، أختام، وإدراج نص وصور على الصفحات.</string>
+    <string name="tl_help_pages_t">تنظيم الصفحات</string>
+    <string name="tl_help_pages_b">دمج، تقسيم، تدوير، حذف، إعادة ترتيب، استخراج صفحات، ترقيم، علامة مائية، وتقليل الحجم.</string>
+    <string name="tl_help_convert_t">تحويل</string>
+    <string name="tl_help_convert_b">صور ونصوص وصفحات ويب إلى PDF، وPDF إلى صور وWord وHTML ونص.</string>
+    <string name="tl_help_scan_t">مسح ضوئي وOCR</string>
+    <string name="tl_help_scan_b">صوّر المستندات بالكاميرا مع قص تلقائي، وحوّل الصور الممسوحة إلى نص قابل للبحث بالعربية والإنجليزية.</string>
+    <string name="tl_help_secure_t">حماية وتوقيع</string>
+    <string name="tl_help_secure_b">كلمات مرور وصلاحيات، إزالة الحماية، تنقيح نهائي، تسطيح، وتوقيع يدوي أو رقمي بشهادة.</string>
+    <string name="tl_help_forms_t">النماذج</string>
+    <string name="tl_help_forms_b">تعبئة حقول النماذج، حفظ بياناتك لتعبئتها بسرعة، وتصدير البيانات.</string>
+    <string name="tl_help_ai_t">المساعد الذكي</string>
+    <string name="tl_help_ai_b">تلخيص، شرح، ترجمة، وأسئلة مراجعة عن المستند عبر مفتاح API الخاص بك.</string>
+    <string name="tl_help_wifi_t">النقل عبر الشبكة</string>
+    <string name="tl_help_wifi_b">انقل الملفات بين الهاتف والكمبيوتر عبر المتصفح على نفس شبكة Wi-Fi دون كابل.</string>
+    <string name="tl_help_privacy">تُعالج جميع الملفات على جهازك ولا تُرسل إلى أي خادم، باستثناء ميزات المساعد الذكي وتحويل صفحات الويب التي تحتاج إلى الإنترنت.</string>
+</resources>
