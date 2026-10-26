@@ -75,13 +75,16 @@ class EditableTextPdfWriter(private val context: Context, src: File, password: S
             // Tesseract's word box often leaves out the letter dots above/below Arabic letters; erase a taller box so
             // no stray dots stay between the rewritten words
             val padY = (w.box.height() * 0.28f).toInt().coerceAtLeast(2); val padX = (w.box.height() * 0.08f).toInt().coerceAtLeast(1)
-            val r = Rect(w.box.left - padX, w.box.top - padY, w.box.right + padX, w.box.bottom + padY).apply { intersect(0, 0, bmp.width, bmp.height) }
-            if (r.isEmpty) return@forEach
+            val r = Rect(w.box.left - padX, w.box.top - padY, w.box.right + padX, w.box.bottom + padY)
+            // Rect.intersect leaves the rect unchanged when it misses the bitmap: skip such a box (reading it would throw)
+            if (!r.intersect(0, 0, bmp.width, bmp.height) || r.isEmpty) return@forEach
             val bg = borderMedian(bmp, r)
-            ink[w] = inkColor(bmp, r, bg)
-            // rewrite a word visibly only when it is reliable, sits on plain paper and fits its box without stretching;
-            // otherwise its scanned glyphs stay and it only gets invisible searchable text
-            if (w.confidence >= minConfidence && plainBackground(bmp, r, bg) && fitsBox(w, s)) {
+            val wordInk = inkColor(bmp, r, bg)
+            ink[w] = wordInk ?: 0x000000
+            // rewrite a word visibly only when it is reliable, sits on plain paper, has visible ink (light text on a dark
+            // box included) and fits its box without stretching; otherwise its scanned glyphs stay and it only gets
+            // invisible searchable text
+            if (wordInk != null && w.confidence >= minConfidence && plainBackground(bmp, r, bg) && fitsBox(w, s)) {
                 strong += w
                 fill.color = bg
                 canvas.drawRect((r.left - 1).toFloat(), (r.top - 1).toFloat(), (r.right + 1).toFloat(), (r.bottom + 1).toFloat(), fill)
@@ -183,23 +186,43 @@ class EditableTextPdfWriter(private val context: Context, src: File, password: S
         return (0xFF shl 24) or (med(rs) shl 16) or (med(gs) shl 8) or med(bs)
     }
 
-    /** Average of the pixels inside [r] clearly darker than the background: the ink colour (RGB). */
-    private fun inkColor(b: Bitmap, r: Rect, bg: Int): Int {
+    /**
+     * Ink colour (RGB) of the word in [r]: the average of the pixels whose luminance differs clearly from the background
+     * [bg] — darker ink on paper, or lighter ink on a dark box. Null when there is no clear ink (the word could not be
+     * redrawn in a visible colour; it used to come out black on a black box, i.e. erased).
+     */
+    private fun inkColor(b: Bitmap, r: Rect, bg: Int): Int? {
         val w = r.width(); val h = r.height()
-        if (w <= 0 || h <= 0) return 0
+        if (w <= 0 || h <= 0) return null
         val px = IntArray(w * h)
         b.getPixels(px, 0, w, r.left, r.top, w, h)
-        fun lum(c: Int) = (((c shr 16) and 0xFF) * 299 + ((c shr 8) and 0xFF) * 587 + (c and 0xFF) * 114) / 1000
-        val limit = lum(bg) - 60
-        var n = 0; var sr = 0L; var sg = 0L; var sb = 0L
-        for (c in px) if (lum(c) < limit) { n++; sr += (c shr 16) and 0xFF; sg += (c shr 8) and 0xFF; sb += c and 0xFF }
-        if (n < 5) return 0x000000
-        // darken slightly: anti-aliased edges make the plain average look washed out
-        val k = 0.8
-        return (((sr / n) * k).toInt() shl 16) or (((sg / n) * k).toInt() shl 8) or ((sb / n) * k).toInt()
+        return inkOf(px, bg)
     }
 
     suspend fun save(out: File) = withContext(Dispatchers.IO) { doc.save(out) }
 
     override fun close() { runCatching { doc.close() } }
+
+    companion object {
+        /** See [inkColor]; [px] are ARGB pixels of the word box. Plain Kotlin (unit-tested). */
+        fun inkOf(px: IntArray, bg: Int): Int? {
+            fun lum(c: Int) = (((c shr 16) and 0xFF) * 299 + ((c shr 8) and 0xFF) * 587 + (c and 0xFF) * 114) / 1000
+            val ref = lum(bg)
+            var nD = 0; var nL = 0
+            for (c in px) { val l = lum(c); if (l < ref - 60) nD++ else if (l > ref + 60) nL++ }
+            val dark = nD >= nL
+            val n = if (dark) nD else nL
+            if (n < 5) return null
+            var sr = 0L; var sg = 0L; var sb = 0L
+            for (c in px) {
+                val l = lum(c)
+                if (if (dark) l < ref - 60 else l > ref + 60) { sr += (c shr 16) and 0xFF; sg += (c shr 8) and 0xFF; sb += c and 0xFF }
+            }
+            // push away from the background: anti-aliased edges make the plain average look washed out
+            val k = 0.8
+            fun ch(sum: Long) = (sum / n).toInt().let { v -> if (dark) (v * k).toInt() else (255 - (255 - v) * k).toInt() }.coerceIn(0, 255)
+            return (ch(sr) shl 16) or (ch(sg) shl 8) or ch(sb)
+        }
+    }
+
 }

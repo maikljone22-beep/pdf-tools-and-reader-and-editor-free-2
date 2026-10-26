@@ -57,7 +57,8 @@ object OcrRunner {
         val small = if (k < 1f) Bitmap.createScaledBitmap(bmp, (bmp.width * k).toInt().coerceAtLeast(1), (bmp.height * k).toInt().coerceAtLeast(1), true) else bmp
         val text = runCatching { engine.recognize(small, wantWords = false).text }.getOrDefault("")
         if (small !== bmp) small.recycle()
-        return LangDetect.detect(text).joinToString("+")
+        // forOcr keeps English next to Arabic even when English terms are only a few % of the text
+        return LangDetect.forOcr(text).joinToString("+")
     }
 
     private fun crop(bmp: Bitmap, r: Rect): Bitmap? = runCatching {

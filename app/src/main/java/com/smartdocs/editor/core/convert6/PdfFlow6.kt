@@ -81,7 +81,9 @@ object PdfFlow6 {
      * otherwise only when at least half of the pages are scanned ([AutoOcr]). Returns null when nothing was done.
      */
     suspend fun ocrCopy(ctx: Context, src: File, password: String?, langs: String?, tempDir: File, force: Boolean, onProgress: (Int, Int) -> Unit): File? {
-        if (!force) return runCatching { AutoOcr.ocrIfScanned(ctx, src, password, langs, tempDir, onProgress) }.getOrNull()
+        // OCR failure (offline, no language pack) → convert the original; a cancel must still stop the whole job
+        if (!force) return try { AutoOcr.ocrIfScanned(ctx, src, password, langs, tempDir, onProgress) }
+            catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { null }
         val out = File(tempDir, src.nameWithoutExtension + "_ocr_" + System.currentTimeMillis() + ".pdf")
         val engine = OcrEngine(ctx.applicationContext)
         return try { OcrRunner.ocrFile(ctx, engine, src, password, OcrPlan(langs = langs), out, onProgress) } finally { engine.close() }

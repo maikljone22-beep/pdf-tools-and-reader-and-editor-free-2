@@ -45,7 +45,9 @@ class SearchablePdfWriter private constructor(private val context: Context, priv
     suspend fun addLayer(pageIndex: Int, page: OcrPage) = withContext(Dispatchers.IO) {
         if (page.words.isEmpty()) return@withContext
         val pdPage = doc.getPage(pageIndex)
-        val box = pdPage.mediaBox
+        // the OCR image is the page as PDFium renders it: the CropBox (PdfBox clips it to the MediaBox, as PDFium does),
+        // so word boxes must be mapped from the CropBox — the MediaBox puts the layer off its words on cropped pages
+        val box = pdPage.cropBox ?: pdPage.mediaBox
         val rot = pdPage.rotation.mod(360)
         // displayed (rotated) size in points
         val dispW = if (rot == 90 || rot == 270) box.height else box.width

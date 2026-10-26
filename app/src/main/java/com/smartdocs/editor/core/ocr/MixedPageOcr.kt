@@ -25,13 +25,27 @@ object MixedPageOcr {
     /** [pages]: pages that need OCR. [geom]: rotation + visible box of every page of the range. */
     data class Plan(val pages: List<Int>, val geom: Map<Int, PageGeom>)
 
+    /** Axis-aligned box in PDF user space (y up). Plain Kotlin so the planning rules are unit-testable. */
+    data class Box(val left: Float, val bottom: Float, val right: Float, val top: Float) {
+        val area: Float get() = maxOf(0f, right - left) * maxOf(0f, top - bottom)
+        fun contains(x: Float, y: Float) = x in left..right && y in bottom..top
+    }
+
     /**
-     * Pages of [range] that need OCR: pages without a text layer, and pages that have text AND pictures
-     * (scanned content next to real text). Pure digital pages (text, no images) are skipped.
+     * Pages of [range] that need OCR:
+     *  - pages without a text layer (scans, pictures of text);
+     *  - pages whose text layer is unusable ([com.smartdocs.editor.core.search.ArabicTextFix.isUnusableText]: glyph
+     *    codes without Unicode, Arabic from fonts with a wrong ToUnicode map) — they get an invisible layer only;
+     *  - pages with real text that also show a scanned region: pictures of at least 64x64 px with no text on them
+     *    covering at least [SCAN_SHARE] of the page ([scanShare]).
+     * Digital pages whose pictures are decorations, highlight tiles, diagrams with labels, logos… are skipped
+     * (they used to be planned whenever the page had any image).
      */
     suspend fun plan(session: PdfSession, file: File, password: String?, range: List<Int>): Plan = withContext(Dispatchers.IO) {
         val geom = HashMap<Int, PageGeom>()
-        val withImages = HashSet<Int>()
+        val texts = HashMap<Int, String>()
+        range.forEach { pi -> texts[pi] = runCatching { session.text(pi) }.getOrDefault("") }
+        val scanned = HashSet<Int>()
         runCatching {
             PdfOps.load(file, password).use { doc ->
                 for (pi in range) {
@@ -39,16 +53,78 @@ object MixedPageOcr {
                     val p = doc.getPage(pi)
                     val b = p.cropBox ?: p.mediaBox
                     geom[pi] = PageGeom(p.rotation.mod(360), RectF(b.lowerLeftX, b.upperRightY, b.upperRightX, b.lowerLeftY))
-                    if (hasImages(p.resources, 0)) withImages += pi
+                    val t = texts[pi].orEmpty()
+                    // only digital pages with good text need the (slower) look at where their pictures are drawn
+                    if (t.isBlank() || com.smartdocs.editor.core.search.ArabicTextFix.isUnusableText(t) || !hasImages(p.resources, 0)) continue
+                    val images = runCatching { imageBoxes(p) }.getOrDefault(emptyList())
+                    if (images.isEmpty()) continue
+                    val chars = runCatching { session.charBoxes(pi) }.getOrDefault(emptyList())
+                        .map { Box(minOf(it.left, it.right), minOf(it.top, it.bottom), maxOf(it.left, it.right), maxOf(it.top, it.bottom)) }
+                    val page = Box(b.lowerLeftX, b.lowerLeftY, b.upperRightX, b.upperRightY)
+                    if (scanShare(images, chars, page) >= SCAN_SHARE) scanned += pi
                 }
             }
         }
         val pages = range.filter { pi ->
-            val text = runCatching { session.text(pi) }.getOrDefault("")
-            // garbage extraction (glyph codes without Unicode) counts as no text: OCR the page fully
-            text.isBlank() || pi in withImages || com.smartdocs.editor.core.search.ArabicTextFix.isGarbage(text)
+            val text = texts[pi].orEmpty()
+            text.isBlank() || com.smartdocs.editor.core.search.ArabicTextFix.isUnusableText(text) || pi in scanned
         }
         Plan(pages, geom)
+    }
+
+    /** Share of the page covered by a scanned region before a digital page is OCRed. */
+    const val SCAN_SHARE = 0.10f
+
+    /**
+     * Share (0..1) of [page] covered by pictures that carry no text of their own: pictures with fewer than 10 text
+     * characters (centres from [chars]) on them. Pictures are clipped to the page; overlaps are not merged
+     * (a slight over-estimate, fine for a threshold).
+     */
+    fun scanShare(images: List<Box>, chars: List<Box>, page: Box): Float {
+        if (page.area <= 0f) return 0f
+        var covered = 0f
+        for (im in images) {
+            val c = Box(maxOf(im.left, page.left), maxOf(im.bottom, page.bottom), minOf(im.right, page.right), minOf(im.top, page.top))
+            if (c.area <= 0f) continue
+            val inside = chars.count { ch -> c.contains((ch.left + ch.right) / 2f, (ch.bottom + ch.top) / 2f) }
+            if (inside < 10) covered += c.area
+        }
+        return (covered / page.area).coerceIn(0f, 1f)
+    }
+
+    /** Where the page draws its pictures (at least 64x64 px; tiny tiles and masks are decoration), in user space. */
+    internal fun imageBoxes(page: com.tom_roush.pdfbox.pdmodel.PDPage): List<Box> {
+        val out = ArrayList<Box>()
+        val engine = object : com.tom_roush.pdfbox.contentstream.PDFStreamEngine() {
+            init {
+                addOperator(com.tom_roush.pdfbox.contentstream.operator.state.Concatenate())
+                addOperator(com.tom_roush.pdfbox.contentstream.operator.state.Save())
+                addOperator(com.tom_roush.pdfbox.contentstream.operator.state.Restore())
+                addOperator(com.tom_roush.pdfbox.contentstream.operator.DrawObject())
+            }
+            fun add(w: Int, h: Int) {
+                if (w < 64 || h < 64 || out.size > 500) return
+                val m = graphicsState.currentTransformationMatrix
+                val a = m.getValue(0, 0); val bb = m.getValue(0, 1); val c = m.getValue(1, 0); val d = m.getValue(1, 1)
+                val e = m.getValue(2, 0); val f = m.getValue(2, 1)
+                val xs = floatArrayOf(e, a + e, c + e, a + c + e); val ys = floatArrayOf(f, bb + f, d + f, bb + d + f)
+                out += Box(xs.min(), ys.min(), xs.max(), ys.max())
+            }
+            override fun processOperator(operator: com.tom_roush.pdfbox.contentstream.operator.Operator, operands: MutableList<com.tom_roush.pdfbox.cos.COSBase>) {
+                if (operator.name == "Do") {
+                    val name = operands.firstOrNull() as? COSName
+                    val x = name?.let { n -> runCatching { resources?.getXObject(n) }.getOrNull() }
+                    if (x is PDImageXObject) { add(x.width, x.height); return }
+                } else if (operator.name == "BI") {
+                    val p = operator.imageParameters
+                    if (p != null) add(p.getInt(COSName.W, p.getInt(COSName.WIDTH, 0)), p.getInt(COSName.H, p.getInt(COSName.HEIGHT, 0)))
+                    return
+                }
+                super.processOperator(operator, operands)
+            }
+        }
+        engine.processPage(page)
+        return out
     }
 
     private fun hasImages(res: PDResources?, depth: Int): Boolean {
@@ -68,7 +144,8 @@ object MixedPageOcr {
     suspend fun dropExisting(session: PdfSession, pi: Int, page: OcrPage, plan: Plan?): OcrPage {
         if (page.words.isEmpty()) return page
         val text = runCatching { session.text(pi) }.getOrDefault("")
-        if (text.isBlank() || com.smartdocs.editor.core.search.ArabicTextFix.isGarbage(text)) return page
+        // an unusable text layer (glyph codes, wrongly mapped Arabic) is not "existing text": keep every OCR word
+        if (text.isBlank() || com.smartdocs.editor.core.search.ArabicTextFix.isUnusableText(text)) return page
         val boxes = runCatching { session.charBoxes(pi) }.getOrDefault(emptyList())
         if (boxes.isEmpty()) return page
         val g = plan?.geom?.get(pi) ?: run {

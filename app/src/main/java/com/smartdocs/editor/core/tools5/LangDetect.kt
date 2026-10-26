@@ -48,6 +48,20 @@ object LangDetect {
         return res.ifEmpty { listOf(scores.maxByOrNull { it.value }!!.key) }
     }
 
+    /**
+     * Languages for OCR from a first-pass [text]: [detect], plus English when the dominant script is Arabic and the
+     * text has any Latin words at all (at least [minLatin] letters). Arabic study material carries English terms and
+     * formulas (CO2, Thermochemistry) far below [detect]'s 10 % share; without "eng" Tesseract turns them into
+     * Arabic-looking garbage. Adding a second model costs little; missing one loses words.
+     */
+    fun forOcr(text: String, minLatin: Int = 8): List<String> {
+        val langs = detect(text)
+        val arabicScript = langs.firstOrNull() in setOf("ara", "fas", "urd")
+        if (!arabicScript || langs.any { it in stop.keys }) return langs
+        val latin = text.count { it.code in 0x0041..0x005A || it.code in 0x0061..0x007A }
+        return if (latin >= minLatin) langs + latinLang(text) else langs
+    }
+
     /** Latin language from stop-word hits; English when nothing matches. */
     fun latinLang(text: String): String {
         val words = text.lowercase().split(Regex("""[^\p{L}]+""")).filter { it.isNotEmpty() }

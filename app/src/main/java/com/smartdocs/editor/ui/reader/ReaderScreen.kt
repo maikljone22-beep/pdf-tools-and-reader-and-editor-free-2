@@ -275,6 +275,8 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                     Modifier.weight(1f).fillMaxHeight().focusRequester(focus).focusable().onPreviewKeyEvent { e ->
                         if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                         // volume (if enabled) / arrows / page keys: spread-aware screen flips (view module)
+                        // MODULE_pageflip6: Space / arrows in the document's direction while the page-turn view is shown
+                        com.smartdocs.editor.ui.pageflip.PageFlipKeys.onKey(state, e.nativeKeyEvent, rtl) ||
                         com.smartdocs.editor.ui.view5.V5Keys.onKey(state, e.nativeKeyEvent) || com.smartdocs.editor.ui.gaps6.G6Keys.handle(state, e.nativeKeyEvent.keyCode, settings, rtl)
                     },
                 ) {
@@ -282,8 +284,11 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                         state.session == null && state.error != null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text(stringResource(R.string.error_generic)) }
                         state.session == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { if (!state.needPassword) CircularProgressIndicator() }
                         else -> {
-                            PageView(state, onTapCenter = { if (state.tool == null) chrome = !chrome },
-                                onOpenLink = { l -> if (l.destPage == null && l.uri.isNullOrBlank()) scope.launch { runCatching { com.smartdocs.editor.ui.edit5.followFileLinkAt(state, state.currentPage, l.bounds.centerX(), l.bounds.centerY()) { f, p -> nav.navigate(Routes.reader(android.net.Uri.fromFile(f).toString(), p)) } } } else ReaderIntents.openLink(ctx, l) { p -> state.jumpTo(p) } }, onPrompt = { prompt = it })
+                            val openLink: (com.smartdocs.editor.core.pdf.PageLink) -> Unit = { l -> if (l.destPage == null && l.uri.isNullOrBlank()) scope.launch { runCatching { com.smartdocs.editor.ui.edit5.followFileLinkAt(state, state.currentPage, l.bounds.centerX(), l.bounds.centerY()) { f, p -> nav.navigate(Routes.reader(android.net.Uri.fromFile(f).toString(), p)) } } } else ReaderIntents.openLink(ctx, l) { p -> state.jumpTo(p) } }
+                            // MODULE_pageflip6: page-turn / horizontal-scroll view modes replace the page list when chosen
+                            if (com.smartdocs.editor.ui.pageflip.PageFlipController.of(state).hosts())
+                                com.smartdocs.editor.ui.pageflip.PageFlipHost(state, chrome, onTapCenter = { if (state.tool == null) chrome = !chrome }, onOpenLink = openLink, onPrompt = { prompt = it })
+                            else PageView(state, onTapCenter = { if (state.tool == null) chrome = !chrome }, onOpenLink = openLink, onPrompt = { prompt = it })
                             com.smartdocs.editor.ui.view5.View5PageOverlays(state)
                             if (state.reflow) com.smartdocs.editor.ui.view5.ReflowReader(state)
                             PageIndicator(state.currentPage, state.pageCount, { showGoTo = true }, Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp))
@@ -316,6 +321,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
     if (showDiscard) DiscardDialog(onSave = { showDiscard = false; saveThen { leave() } }, onDiscard = { showDiscard = false; state.edit.discardOnClose(); state.forms5.discard(); leave() }, onCancel = { showDiscard = false })
     if (showGoTo) GoToPageDialog(state.currentPage, state.pageCount, onGo = { state.jumpTo(it); showGoTo = false }, onDismiss = { showGoTo = false })
     if (showViewMode) ViewModeSheet(state, tablet = tablet) { showViewMode = false; scope.launch { app.settings.update { it.copy(continuousScroll = state.viewMode == ViewMode.CONTINUOUS, nightMode = state.nightMode) } } }
+    com.smartdocs.editor.ui.pageflip.PageFlipSheetHost(state)   // MODULE_pageflip6: page turning settings + remembered reading mode
     if (showPageColor) PageColorSheet(state, onPersist = { c -> scope.launch { app.settings.update { it.copy(pageColor = c) } } }) { showPageColor = false }
     if (showAutoFlip) AutoFlipDialog(state) { showAutoFlip = false }
     prompt?.let { p -> if (!com.smartdocs.editor.ui.edit5.ReaderLinkPrompt(state, p.tool == ReaderTool.LINK, p.page, p.x, p.y, p.rect) { prompt = null }) TextPromptDialog(state, p) { prompt = null } }

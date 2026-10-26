@@ -64,6 +64,67 @@ object ArabicTextFix {
         return bad * 10 >= chars.length * 3
     }
 
+    /**
+     * Text layer that is not usable for search / copy / OCR de-duplication: [isGarbage], or Arabic produced by a
+     * font with a wrong ToUnicode map (old Word fonts such as Simplified Arabic, PT Bold Heading, Yakout, Yaser:
+     * «ا\u064Cذسط» for «الدرس», «خڀمىفى\u064F\u0655» for «الموجود»). The glyphs on the page are fine; only the extracted text is wrong.
+     * Such a page still has real (vector) text, so it must never be rebuilt as a picture; it may only get an
+     * invisible OCR layer.
+     */
+    fun isUnusableText(text: String): Boolean = isGarbage(text) || isBrokenArabic(text)
+
+    /** At least 15 % of the Arabic words (and 4 words) are impossible in real Arabic, see [implausibleWord]. Needs 10 Arabic words. */
+    fun isBrokenArabic(text: String): Boolean {
+        val words = text.split(' ', '\n', '\r', '\t').map { w -> w.trim { !isArabicChar(it) && !it.isDigit() } }
+            .filter { w -> w.count { isArabicLetter(it) } >= 2 }
+        if (words.size < 10) return false
+        val bad = words.count { implausibleWord(it) }
+        return bad >= 4 && bad * 100 >= words.size * 15
+    }
+
+    /**
+     * A word real Arabic / Persian / Urdu text cannot contain: tanween or a short vowel followed by another letter
+     * (tanween only ends a word: «كتاب\u064Bا» is fine, «ا\u064Cذسط» is not), a short vowel starting the word, a letter used
+     * by no language written with this script in normal text (U+063B..U+063F, U+066E/U+066F, Sindhi/Pashto letters
+     * like ڀ ڄ ٴ, marks U+0656..U+065F), or an Arabic-Indic digit between two letters («١\u0658\u065Aذس\u065Aع\u0653١»).
+     */
+    fun implausibleWord(w: String): Boolean {
+        if (w.isEmpty()) return false
+        if (w[0].code in 0x064B..0x0652) return true
+        for (i in w.indices) {
+            val c = w[i]
+            if (isRareLetter(c)) return true
+            if (c.code in 0x064B..0x0652) {
+                var j = i + 1
+                while (j < w.length && w[j].code in 0x064B..0x0652) j++           // stacked marks (shadda + vowel)
+                if (j < w.length && isArabicLetter(w[j])) {
+                    val tanween = c.code in 0x064B..0x064D
+                    val n = w[j]
+                    // «\u064Bا» / «\u064Bى» before the final alef is the one legal tanween-then-letter sequence
+                    if (tanween && !((n == 'ا' || n == 'ى') && j == w.length - 1)) return true
+                }
+            }
+            if ((c.code in 0x0660..0x0669 || c.code in 0x06F0..0x06F9) && i > 0 && i < w.length - 1 &&
+                isArabicLetter(w[i - 1]) && isArabicLetter(w[i + 1])) return true
+        }
+        return false
+    }
+
+    private fun isArabicLetter(c: Char) = (c.code in 0x0621..0x064A || c.code in 0x0671..0x06D3) || isPresentation(c) && c.isLetter()
+
+    /** Letters that do not occur in normal Arabic, Persian or Urdu text (seen only through broken font encodings). */
+    private fun isRareLetter(c: Char): Boolean {
+        val k = c.code
+        // U+0656..U+065F: subscript alef, inverted damma, noon ghunna mark, small v… — not used in normal text
+        if (k in 0x063B..0x063F || k == 0x066E || k == 0x066F || k in 0x0656..0x065F) return true
+        if (k !in 0x0672..0x06D3) return false
+        return k !in COMMON_EXTENDED
+    }
+
+    // extended letters in normal use: ٹ پ چ ڈ ڑ ژ ڤ ک ڭ گ ں ھ ۀ ہ ۃ ۆ ی ێ ے ۓ
+    private val COMMON_EXTENDED = setOf(0x0679, 0x067E, 0x0686, 0x0688, 0x0691, 0x0698, 0x06A4, 0x06A9, 0x06AD, 0x06AF,
+        0x06BA, 0x06BE, 0x06C0, 0x06C1, 0x06C3, 0x06C6, 0x06CC, 0x06CE, 0x06D2, 0x06D3)
+
     private fun isArabicChar(c: Char) = c.code in 0x0600..0x06FF || c.code in 0x0750..0x077F || isPresentation(c)
     private fun isPresentation(c: Char) = c.code in 0xFB50..0xFDFF || c.code in 0xFE70..0xFEFF
 

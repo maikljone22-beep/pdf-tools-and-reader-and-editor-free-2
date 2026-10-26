@@ -157,11 +157,12 @@ internal fun ConvertFromPdfPanel(nav: NavHostController, uri: String?, snackbar:
                         sheetName = { n -> sheetFmt.format(n) }, singleSheetName = allPagesName,
                     )
                     // tools5 (auto OCR): a scanned PDF first gets a searchable copy, so the Office file receives real text
-                    val ocrCopy = if (target == TargetFormat.PPTX && !o.pptEditable) null else runCatching {
+                    // OCR failure → convert the original; cancellation is rethrown so Cancel stops the job
+                    val ocrCopy = if (target == TargetFormat.PPTX && !o.pptEditable) null else try {
                         com.smartdocs.editor.core.tools5.AutoOcr.ocrIfScanned(ctx, src, pw, com.smartdocs.editor.ui.ocr.OcrPrefs.languages(ctx).joinToString("+"), app.documents.tempDir) { d, t ->
                             run.label = autoOcrLabel; run.done = d; run.total = t
                         }
-                    }.getOrNull()
+                    } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { null }
                     run.label = convertingFmt.format(titles[fmt])
                     val stats: ConvertStats = try {
                         ConvertEngine.convert(ctx, ocrCopy ?: src, pw, opts, out, { d, t -> run.done = d; run.total = t }, { run.cancel.get() })

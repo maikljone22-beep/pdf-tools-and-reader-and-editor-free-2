@@ -74,10 +74,12 @@ suspend fun runOcrToFile(
                 val page = engine.recognize(bmp, wantWords = true)
                 coroutineContext.ensureActive()
                 searchable?.addLayer(pi, com.smartdocs.editor.core.ocr.MixedPageOcr.dropExisting(session, pi, page, plan))
-                // a page that already has real text is never rebuilt (its text would become a picture): add new words invisibly
+                // only a page with NO text objects (a scan / picture) is rebuilt. A page that has text — even a text layer
+                // that extracts as garbage or wrongly mapped Arabic — draws real glyphs: rebuilding it would replace them
+                // by a picture plus re-typed OCR words (lost style, duplicated / misplaced words). It gets invisible words.
                 if (editable != null) {
                     val txt = runCatching { session.text(pi) }.getOrDefault("")
-                    if (txt.isNotBlank() && !com.smartdocs.editor.core.search.ArabicTextFix.isGarbage(txt))
+                    if (txt.isNotBlank())
                         editable.addInvisible(pi, com.smartdocs.editor.core.ocr.MixedPageOcr.dropExisting(session, pi, page, plan))
                     else editable.replacePage(pi, bmp, page)
                 }

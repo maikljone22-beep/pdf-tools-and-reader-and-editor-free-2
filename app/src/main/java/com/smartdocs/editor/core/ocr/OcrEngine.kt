@@ -20,8 +20,8 @@ data class OcrWord(val text: String, val box: Rect, val confidence: Float)
 data class OcrPage(val text: String, val words: List<OcrWord>, val imageWidth: Int, val imageHeight: Int)
 
 /**
- * Tesseract wrapper. Language packs (`tessdata_best`) are downloaded on first use into
- * `filesDir/tessdata/<lang>.traineddata`.
+ * Tesseract wrapper. Language packs (`tessdata_best`, pinned commit, SHA-256 verified) are downloaded on first use into
+ * `filesDir/ocr_best/tessdata/<lang>.traineddata`.
  */
 class OcrEngine(private val context: Context) : AutoCloseable {
 
@@ -32,7 +32,10 @@ class OcrEngine(private val context: Context) : AutoCloseable {
     // high-accuracy LSTM models (tessdata_best): much better Arabic than tessdata_fast; kept apart from old fast packs
     val tessdataDir: File get() = File(context.filesDir, "ocr_best/tessdata").apply { mkdirs() }
 
-    fun isLanguageInstalled(lang: String): Boolean = File(tessdataDir, "$lang.traineddata").let { it.exists() && it.length() > 100_000 }
+    fun isLanguageInstalled(lang: String): Boolean = File(tessdataDir, "$lang.traineddata").let { f ->
+        // a pinned pack must have its exact size (a truncated or swapped file is downloaded again)
+        f.exists() && f.length() > 100_000 && (PINNED[lang]?.let { f.length() == it.size } ?: true)
+    }
 
     /** Make sure every language in [langs] ("ara+eng") is downloaded. [onProgress] gets (lang, fraction 0..1). */
     suspend fun ensureLanguages(langs: String, onProgress: (String, Float) -> Unit = { _, _ -> }) = withContext(Dispatchers.IO) {
@@ -44,7 +47,8 @@ class OcrEngine(private val context: Context) : AutoCloseable {
     private suspend fun download(lang: String, onProgress: (String, Float) -> Unit) {
         val target = File(tessdataDir, "$lang.traineddata")
         val tmp = File(tessdataDir, "$lang.traineddata.part")
-        val url = "https://github.com/tesseract-ocr/tessdata_best/raw/main/$lang.traineddata"
+        val pin = PINNED[lang] ?: throw IllegalStateException("no verified language pack for $lang")
+        val url = modelUrl(lang)
         val client = OkHttpClient.Builder().connectTimeout(30, TimeUnit.SECONDS).readTimeout(120, TimeUnit.SECONDS).followRedirects(true).build()
         val ctx = coroutineContext
         onProgress(lang, 0f)
@@ -66,6 +70,10 @@ class OcrEngine(private val context: Context) : AutoCloseable {
             }
         }
         if (tmp.length() < 100_000) { tmp.delete(); throw IllegalStateException("download incomplete for $lang") }
+        // integrity: the file must be byte-for-byte the pinned one (size + SHA-256)
+        if (tmp.length() != pin.size || !sha256(tmp).equals(pin.sha256, ignoreCase = true)) {
+            tmp.delete(); throw IllegalStateException("language pack $lang failed verification")
+        }
         if (!tmp.renameTo(target)) { tmp.copyTo(target, overwrite = true); tmp.delete() }
         onProgress(lang, 1f)
     }
@@ -128,6 +136,43 @@ class OcrEngine(private val context: Context) : AutoCloseable {
     }
 
     companion object {
+        /** Expected size + SHA-256 of a tessdata_best pack at [TESSDATA_COMMIT]. */
+        data class Pin(val size: Long, val sha256: String)
+
+        /**
+         * tessdata_best pinned to a commit (not the mutable `main` branch). Hashes computed from the files at this
+         * commit; their git blob ids matched the GitHub API listing (rootcause r5).
+         */
+        const val TESSDATA_COMMIT = "e12c65a915945e4c28e237a9b52bc4a8f39a0cec"
+
+        fun modelUrl(lang: String) = "https://github.com/tesseract-ocr/tessdata_best/raw/$TESSDATA_COMMIT/$lang.traineddata"
+
+        /** Every language the OCR sheet offers or [com.smartdocs.editor.core.tools5.LangDetect] can return. */
+        val PINNED: Map<String, Pin> = mapOf(
+            "ara" to Pin(12603724, "ab9d157d8e38ca00e7e39c7d5363a5239e053f5b0dbdb3167dde9d8124335896"),
+            "eng" to Pin(15400601, "8280aed0782fe27257a68ea10fe7ef324ca0f8d85bd2fd145d1c2b560bcb66ba"),
+            "fra" to Pin(3972885, "907743d98915c91a3906dfbf6e48b97598346698fe53aaa797e1a064ffcac913"),
+            "deu" to Pin(8628461, "8407331d6aa0229dc927685c01a7938fc5a641d1a9524f74838cdac599f0d06e"),
+            "spa" to Pin(13570187, "e2c1ffdad8b30f26c45d4017a9183d3a7f9aa69e59918be4f88b126fac99ab2c"),
+            "tur" to Pin(7456265, "e0c3338dc17503dc7d335a507c9ae01b2b46cfd07561171e1e1ac55d85e8e438"),
+            "fas" to Pin(3325955, "99e420969b5ddd2cb135b416316a7ed417c59c4faf9e0d28941348f6448114df"),
+            "urd" to Pin(7994323, "65af3f6e50a3c3df15d7b405aab5d467e53433207745c8f5be5b8ff1a58a67c8"),
+            "ita" to Pin(8863635, "8df9c89176fb93f56bf4b2d4ede04c01c1f31d4b7697fbd76cc336df700f3f38"),
+            "por" to Pin(8159939, "711de9dbb8052067bd42f16b9119967f30bada80d57e2ef24f65d09f531adb04"),
+            "rus" to Pin(15301764, "b617eb6830ffabaaa795dd87ea7fd251adfe9cf0efe05eb9a2e8128b7728d6b6"),
+            "ell" to Pin(8945021, "288b4ea00bab450cf39893d22f04a2835a8469b673b5b20dcb39b159d1bbc9b8"),
+            "heb" to Pin(3704077, "dbaa827aea6bc21215638447f17783a1004987c2d0bf5573d111fee397abdae5"),
+            "hin" to Pin(11895564, "bd2e65a2184af08a167b0be2439e91fa5edbc4394399ca2f692b843ae26e78d6"),
+            "chi_sim" to Pin(13077423, "4fef2d1306c8e87616d4d3e4c6c67faf5d44be3342290cf8f2f0f6e3aa7e735b"),
+        )
+
+        /** Lower-case hex SHA-256 of [f]. */
+        fun sha256(f: File): String {
+            val md = java.security.MessageDigest.getInstance("SHA-256")
+            f.inputStream().use { input -> val buf = ByteArray(64 * 1024); while (true) { val n = input.read(buf); if (n < 0) break; md.update(buf, 0, n) } }
+            return md.digest().joinToString("") { b -> String.format(java.util.Locale.ROOT, "%02x", b) }
+        }
+
         /** Human label for a language code. */
         fun label(lang: String): String = when (lang) {
             "ara" -> "العربية"; "eng" -> "English"; "fra" -> "Français"; "deu" -> "Deutsch"; "spa" -> "Español"

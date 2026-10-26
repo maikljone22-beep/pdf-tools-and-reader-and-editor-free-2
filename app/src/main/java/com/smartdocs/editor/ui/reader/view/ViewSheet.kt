@@ -13,6 +13,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -75,6 +76,14 @@ fun ViewSettingsSheet(state: ReaderState, onDismiss: () -> Unit) {
                 leadingContent = { Icon(Icons.Default.VerticalSplit, null) },
                 trailingContent = { Switch(vx.facingSeparator, { vx.updateFacingSeparator(it) }, enabled = paired) },
                 modifier = Modifier.clickable(enabled = paired) { vx.updateFacingSeparator(!vx.facingSeparator) },
+            )
+            // MODULE_pageflip6: page turning effects, reading direction, gestures (own sheet with live previews)
+            ListItem(
+                headlineContent = { Text(stringResource(R.string.pf_title)) },
+                supportingContent = { Text(stringResource(R.string.pf_entry_desc)) },
+                leadingContent = { Icon(Icons.Default.AutoStories, null) },
+                trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null) },
+                modifier = Modifier.clickable { com.smartdocs.editor.ui.pageflip.PageFlipController.of(state).sheetOpen = true; onDismiss() },
             )
             // ---- colours ----
             Label(R.string.vw_colors)
