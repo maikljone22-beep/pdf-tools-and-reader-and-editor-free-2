@@ -60,10 +60,17 @@ internal fun TextFormatBar(c: EditController) {
         Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
             // font substitution notice (the original font is embedded as a subset or cannot draw these characters)
             val b = c.block
-            if (b != null) {
+            // undecodable text: say so instead of showing private-use garbage, offer to replace the whole block
+            if (b != null && c.unreadable) UnreadableNotice(c)
+            if (b != null && c.recovered) {
+                Text(uiText(UiMsg.RECOVERED), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary,
+                    modifier = Modifier.padding(horizontal = 12.dp))
+            }
+            if (b != null && !c.unreadable) {
                 val substituted = !b.fontReusable || ArabicShaper.isArabic(c.text) || st.bold != b.bold || st.italic != b.italic || st.family != b.family
                 val note = when {
-                    b.lossy -> stringResource(R.string.ed_lossy)
+                    c.replaceWhole -> stringResource(R.string.ed_font_substituted, b.fontName.ifBlank { "?" })
+                    b.lossy && !c.recovered -> stringResource(R.string.ed_lossy)
                     substituted -> stringResource(R.string.ed_font_substituted, b.fontName.ifBlank { "?" })
                     else -> stringResource(R.string.ed_font_kept, b.fontName)
                 }
@@ -108,6 +115,42 @@ internal fun TextFormatBar(c: EditController) {
                 Spacer(Modifier.weight(1f))
                 TextButton(onClick = { c.clearSelection() }, enabled = !c.busy) { Text(stringResource(R.string.cancel)) }
                 Button(onClick = { c.commitText(rtlUi) }, enabled = !c.busy) { Text(stringResource(R.string.done), fontWeight = FontWeight.Bold) }
+            }
+        }
+    }
+}
+
+internal enum class UiMsg { UNREADABLE, REPLACE_WHOLE, RECOVERED }
+
+/**
+ * Texts of the Arabic-decoding notices. They are not in strings.xml yet (other modules own the resource files in this
+ * round): Arabic unless the UI language is not Arabic (detected from an existing localized string).
+ */
+@Composable
+internal fun uiText(m: UiMsg): String {
+    val arabicUi = ArabicShaper.isArabic(stringResource(R.string.ed_title))
+    return when (m) {
+        UiMsg.UNREADABLE -> if (arabicUi) "لا يمكن قراءة نص هذا الخط — استخدم التعرّف الضوئي OCR أو استبدل الكتلة بنص جديد"
+            else "The text of this font cannot be read — use OCR or replace the block with new text"
+        UiMsg.REPLACE_WHOLE -> if (arabicUi) "استبدال الكتلة بنص جديد" else "Replace block with new text"
+        UiMsg.RECOVERED -> if (arabicUi) "تم استرجاع النص من طبقة النص في الصفحة؛ راجعه قبل الحفظ"
+            else "Text recovered from the page text layer; check it before saving"
+    }
+}
+
+@Composable
+private fun UnreadableNotice(c: EditController) {
+    Surface(color = MaterialTheme.colorScheme.errorContainer, shape = MaterialTheme.shapes.medium,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)) {
+        Column(Modifier.padding(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.ErrorOutline, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onErrorContainer)
+                Spacer(Modifier.width(8.dp))
+                Text(uiText(UiMsg.UNREADABLE), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onErrorContainer)
+            }
+            Spacer(Modifier.height(6.dp))
+            Button(onClick = { c.startReplaceWhole() }, enabled = !c.busy) {
+                Icon(Icons.Default.FindReplace, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(uiText(UiMsg.REPLACE_WHOLE))
             }
         }
     }

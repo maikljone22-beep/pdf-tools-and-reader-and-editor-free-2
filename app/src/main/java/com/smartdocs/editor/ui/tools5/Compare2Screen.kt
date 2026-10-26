@@ -164,8 +164,8 @@ fun Compare2Screen(nav: NavHostController, uri: String?) {
                 }
             }
             when (mode) {
-                0 -> BoxWithConstraints(Modifier.fillMaxWidth()) {
-                    val a = old!!; val b = new!!
+                0 -> if (old != null && new != null) BoxWithConstraints(Modifier.fillMaxWidth()) {
+                    val a = old ?: return@BoxWithConstraints; val b = new ?: return@BoxWithConstraints
                     if (maxWidth > 600.dp) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         MarkedPage(a, page, r.oldMarks, stringResource(R.string.t5_cmp_old), Modifier.weight(1f))
                         MarkedPage(b, page, r.newMarks, stringResource(R.string.t5_cmp_new), Modifier.weight(1f))
@@ -174,7 +174,7 @@ fun Compare2Screen(nav: NavHostController, uri: String?) {
                         MarkedPage(b, page, r.newMarks, stringResource(R.string.t5_cmp_new), Modifier.fillMaxWidth())
                     }
                 }
-                1 -> OverlayPage(old!!, new!!, page)
+                1 -> { val a = old; val b = new; if (a != null && b != null) OverlayPage(a, b, page) }
                 else -> ChangeList(r) { p -> page = p; mode = 0 }
             }
         }

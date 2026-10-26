@@ -171,8 +171,14 @@ class OrganizeState(
         apply { src, out -> PdfOps.insertBlankPage(src, at, out, style, password) }
     }
 
-    fun insertFrom(other: File, at: Int) {
-        apply { src, out -> PdfOps.insertPagesFrom(src, other, at, out, password) }
+    fun insertFrom(other: File, at: Int) = insertFrom(other, at, null)
+
+    /** share6 (fid): [otherPassword] unlocks a password-protected [other] (a decrypted temp copy is inserted, then deleted). */
+    fun insertFrom(other: File, at: Int, otherPassword: String?) {
+        apply { src, out ->
+            val u = withContext(Dispatchers.IO) { com.smartdocs.editor.core.pdf.LockedPdf.unlockedForInsert(other, otherPassword, documents.tempDir) }
+            try { PdfOps.insertPagesFrom(src, u ?: other, at, out, password) } finally { u?.delete() }
+        }
     }
 
     fun insertImages(images: List<File>, at: Int) {

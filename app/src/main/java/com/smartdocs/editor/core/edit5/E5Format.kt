@@ -167,8 +167,8 @@ object PageSet {
         s.split(',', ';').map { it.trim() }.filter { it.isNotEmpty() }.forEach { part ->
             val m = Regex("""^(\d*)\s*[-–]\s*(\d*)$""").find(part)
             if (m != null) {
-                val a = m.groupValues[1].toIntOrNull() ?: 1
-                val b = m.groupValues[2].toIntOrNull() ?: count
+                val a = (m.groupValues[1].toIntOrNull() ?: 1).coerceIn(1, count.coerceAtLeast(1))   // clamp: huge ranges hang
+                val b = (m.groupValues[2].toIntOrNull() ?: count).coerceIn(1, count.coerceAtLeast(1))
                 for (i in minOf(a, b)..maxOf(a, b)) if (i in 1..count) out += i - 1
             } else part.toIntOrNull()?.let { if (it in 1..count) out += it - 1 }
         }

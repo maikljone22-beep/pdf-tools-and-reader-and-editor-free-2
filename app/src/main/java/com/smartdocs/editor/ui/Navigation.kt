@@ -38,6 +38,8 @@ import com.smartdocs.editor.ui.reader.ReaderScreen
 import com.smartdocs.editor.ui.settings.SettingsScreen
 import com.smartdocs.editor.ui.tools.ToolScreens
 import com.smartdocs.editor.ui.tools.ToolsScreen
+import com.smartdocs.editor.ui.share5.share5Routes
+import com.smartdocs.editor.ui.connected.connRoutes
 
 object Routes {
     const val HOME = "home"
@@ -82,6 +84,9 @@ fun AppNavHost(nav: NavHostController) {
         Scaffold(
             bottomBar = {
                 AnimatedVisibility(showBar && !rail, enter = slideInVertically { it } + fadeIn(), exit = slideOutVertically { it } + fadeOut()) {
+                  Column {
+                    // share6 (monet): banner only on the Home and Tools tabs (never in reader/editors/signing/scanner); renders nothing when ads are off or Pro
+                    if (route == Routes.HOME || route == Routes.TOOLS) com.smartdocs.editor.core.ads.AdBanner()
                     NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainer, tonalElevation = 0.dp) {
                         tabs.forEach { t ->
                             val selected = route == t.route
@@ -98,6 +103,7 @@ fun AppNavHost(nav: NavHostController) {
                             )
                         }
                     }
+                  }
                 }
             }
         ) { pad ->
@@ -144,7 +150,11 @@ fun AppNavHost(nav: NavHostController) {
                         Routes.READER,
                         arguments = listOf(navArgument("uri") { type = NavType.StringType }, navArgument("page") { type = NavType.IntType; defaultValue = -1 }),
                     ) { e ->
-                        ReaderScreen(nav, uri = Uri.decode(e.arguments?.getString("uri") ?: ""), startPage = e.arguments?.getInt("page") ?: -1)
+                        // office5: one central dispatch — Office files opened through Routes.reader(...) go to the Office editor
+                        val u = Uri.decode(e.arguments?.getString("uri") ?: "")
+                        val office = androidx.compose.runtime.remember(u) { com.smartdocs.editor.ui.office.OfficeRoutes.isOffice(u) }
+                        if (office) com.smartdocs.editor.ui.office.OfficeScreen(nav, u)
+                        else ReaderScreen(nav, uri = u, startPage = e.arguments?.getInt("page") ?: -1)
                     }
                     composable(
                         Routes.TOOL,
@@ -152,8 +162,15 @@ fun AppNavHost(nav: NavHostController) {
                     ) { e ->
                         ToolScreens(nav, id = e.arguments?.getString("id") ?: "", uri = Uri.decode(e.arguments?.getString("uri") ?: "").ifBlank { null })
                     }
+                    // office5: Word / Excel / PowerPoint editors
+                    composable(
+                        com.smartdocs.editor.ui.office.OfficeRoutes.ROUTE,          // "office5/{uri}"
+                        arguments = listOf(navArgument("uri") { type = NavType.StringType }),
+                    ) { e -> com.smartdocs.editor.ui.office.OfficeScreen(nav, Uri.decode(e.arguments?.getString("uri") ?: "")) }
                     // account / cloud / help / review screens (acct module, see MODULE_acct.md)
                     acctRoutes(nav)
+                    share5Routes(nav)   // share6: share & review, storage (+ "storage" alias), app data
+                    connRoutes(nav)     // share6: signature requests, connected / protected documents
                     view5Routes(nav)
                 }
             }

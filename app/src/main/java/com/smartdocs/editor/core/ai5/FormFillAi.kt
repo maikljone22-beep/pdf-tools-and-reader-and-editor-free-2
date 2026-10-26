@@ -47,7 +47,8 @@ object FormFillAi {
     }
 
     suspend fun suggest(ctx: Context, client: AiClient, file: File, password: String?, profile: List<FillProfileField>, index: DocIndex?, useAi: Boolean = true): List<FillSuggestion> {
-        val fields = fillable(FormOps.listFields(file, password))
+        // one suggestion per field name: the sheet keys its LazyColumn by name (duplicate / unnamed fields crashed it)
+        val fields = fillable(FormOps.listFields(file, password)).filter { it.name.isNotBlank() }.distinctBy { it.name }
         val out = ArrayList<FillSuggestion>()
         val rest = ArrayList<FormField>()
         fields.forEach { f ->

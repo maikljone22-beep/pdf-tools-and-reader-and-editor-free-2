@@ -63,7 +63,7 @@ object BatchJobs {
 
     fun all(ctx: Context): List<BatchJob> = (dir(ctx).listFiles() ?: emptyArray())
         .filter { it.name.endsWith(".json") && !it.name.endsWith("_log.json") }
-        .mapNotNull { fromJson(it.readText()) }.sortedByDescending { it.created }
+        .mapNotNull { f -> runCatching { fromJson(f.readText()) }.getOrNull() }.sortedByDescending { it.created }
 
     fun delete(ctx: Context, id: String) {
         load(ctx, id)?.workId?.takeIf { it.isNotEmpty() }?.let { runCatching { WorkManager.getInstance(ctx).cancelWorkById(UUID.fromString(it)) } }
@@ -75,8 +75,8 @@ object BatchJobs {
         val id = "b" + System.currentTimeMillis().toString(36)
         val req = OneTimeWorkRequestBuilder<BatchWorker>().setInputData(workDataOf(BatchWorker.KEY_ID to id)).addTag(TAG).build()
         val job = BatchJob(id, title, System.currentTimeMillis(), files.map { it.first.absolutePath to it.second }, recipe, toPdfOnly, outDir.absolutePath, req.id.toString())
-        specFile(ctx, id).writeText(toJson(job))
-        WorkManager.getInstance(ctx).enqueue(req)
+        // called from click handlers on the main thread: a storage / WorkManager failure must not crash the app
+        runCatching { specFile(ctx, id).writeText(toJson(job)); WorkManager.getInstance(ctx).enqueue(req) }
         return job
     }
 

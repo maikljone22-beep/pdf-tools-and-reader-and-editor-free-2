@@ -57,6 +57,7 @@ class T5Job(private val scope: CoroutineScope) {
             catch (e: kotlinx.coroutines.CancellationException) { }
             catch (e: OutOfMemoryError) { error = "OutOfMemory" }
             catch (e: Exception) { error = e.message ?: e.javaClass.simpleName }
+            catch (e: Throwable) { error = e.message ?: e.javaClass.simpleName }   // NoClassDefFoundError, StackOverflowError… must not kill the app
             finally { running = false }
         }
     }

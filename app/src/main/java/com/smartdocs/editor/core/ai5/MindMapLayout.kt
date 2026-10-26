@@ -103,9 +103,12 @@ object MindMapLayout {
     fun toPng(root: MindNode, rtl: Boolean, out: File, scale: Float = 2f): File {
         val nodes = layout(root, measureWith(), rtl)
         val b = bounds(nodes); val m = 32f
-        val w = ((b.width() + m * 2) * scale).toInt().coerceIn(200, 8000); val h = ((b.height() + m * 2) * scale).toInt().coerceIn(200, 8000)
+        // cap the bitmap at ~16 MP (64 MB): an 8000×8000 ARGB bitmap (256 MB) throws OutOfMemoryError on tablets
+        val bw = (b.width() + m * 2).coerceAtLeast(1f); val bh = (b.height() + m * 2).coerceAtLeast(1f)
+        val s = minOf(scale, kotlin.math.sqrt(16_000_000f / (bw * bh)), 8000f / bw, 8000f / bh).coerceAtLeast(0.05f)
+        val w = (bw * s).toInt().coerceIn(200, 8000); val h = (bh * s).toInt().coerceIn(200, 8000)
         val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-        val c = Canvas(bmp); c.drawColor(Color.WHITE); c.scale(scale, scale)
+        val c = Canvas(bmp); c.drawColor(Color.WHITE); c.scale(s, s)
         draw(c, nodes, rtl, m - b.left, m - b.top)
         out.outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
         bmp.recycle()

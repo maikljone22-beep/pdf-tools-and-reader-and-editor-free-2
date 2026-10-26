@@ -59,7 +59,9 @@ class DocumentRepository(private val context: Context, private val db: AppDataba
         val srcSize = querySize(uri)
         if (known != null && known.exists() && (srcSize < 0 || srcSize == known.length())) return@withContext known
         val name = displayName(uri) ?: "document.pdf"
-        val target = known?.takeIf { it.parentFile?.exists() == true } ?: uniqueFile(docsDir, name.removeSuffix(".pdf").removeSuffix(".PDF"))
+        // office5: keep the real extension (Office/text imports were all saved as *.pdf)
+        val ext = name.substringAfterLast('.', "pdf").lowercase().takeIf { it.length in 2..5 } ?: "pdf"
+        val target = known?.takeIf { it.parentFile?.exists() == true } ?: uniqueFile(docsDir, name.substringBeforeLast('.'), ext)
         val tmp = File(target.parentFile, ".${target.name}.import")
         context.contentResolver.openInputStream(uri)?.use { i -> tmp.outputStream().use { o -> i.copyTo(o) } }
             ?: throw IllegalStateException("cannot open $uri")
@@ -162,7 +164,7 @@ class DocumentRepository(private val context: Context, private val db: AppDataba
         out
     }
 
-    fun listFolder(dir: File): List<File> = (dir.listFiles() ?: emptyArray()).filter { it.isDirectory || it.extension.lowercase() in setOf("pdf", "jpg", "jpeg", "png", "txt") }.sortedWith(compareBy({ !it.isDirectory }, { it.name.lowercase() }))
+    fun listFolder(dir: File): List<File> = (dir.listFiles() ?: emptyArray()).filter { it.isDirectory || it.extension.lowercase() in setOf("pdf", "jpg", "jpeg", "png", "txt", "docx", "xlsx", "pptx", "csv", "odt", "rtf", "doc", "xls", "ppt", "md") }.sortedWith(compareBy({ !it.isDirectory }, { it.name.lowercase() }))
 
     fun shareUri(file: File): Uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
 

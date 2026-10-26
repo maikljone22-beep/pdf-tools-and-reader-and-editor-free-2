@@ -64,8 +64,10 @@ object PdfOps {
         spec.replace('،', ',').split(',').map { it.trim() }.filter { it.isNotEmpty() }.forEach { part ->
             val m = Regex("""^(\d+)\s*[-–]\s*(\d+)$""").find(part)
             if (m != null) {
-                val a = m.groupValues[1].toInt(); val b = m.groupValues[2].toInt()
-                for (i in minOf(a, b)..maxOf(a, b)) if (i in 1..count) out += i - 1
+                // toIntOrNull + clamp: "99999999999" overflowed toInt(), "1-2000000000" looped 2e9 times
+                val a = m.groupValues[1].toIntOrNull() ?: Int.MAX_VALUE; val b = m.groupValues[2].toIntOrNull() ?: Int.MAX_VALUE
+                val lo = minOf(a, b).coerceAtLeast(1); val hi = maxOf(a, b).coerceAtMost(count)
+                for (i in lo..hi) out += i - 1
             } else part.toIntOrNull()?.let { if (it in 1..count) out += it - 1 }
         }
         return out.toList()

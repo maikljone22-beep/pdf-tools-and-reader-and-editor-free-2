@@ -99,7 +99,7 @@ fun ReflowReader(s: ReaderState) {
         val all = HashMap<Int, List<RBlock>>()
         order.chunked(12).forEach { chunk ->
             val imgs = runCatching { PageGraphics.images(f, s.password, chunk.min()..chunk.max()) }.getOrDefault(emptyMap())
-            chunk.forEach { p ->
+            chunk.forEach { p -> runCatching {          // one odd page must not crash the reader
                 val (pw, ph) = s.pageSize(p)
                 val lines = withContext(Dispatchers.Default) { pageLines(s.pageText(p), s.charBoxes(p)) }
                 val area = pw * ph
@@ -107,7 +107,7 @@ fun ReflowReader(s: ReaderState) {
                 val b = if (lines.isEmpty()) listOf(RBlock.PageMark(p), RBlock.Image(p, RImage(ph, 0f, 0f, pw)))
                 else ReflowBlocks.build(p, lines, im, ph)
                 all[p] = b
-            }
+            }.onFailure { if (it is kotlinx.coroutines.CancellationException) throw it; all[p] = listOf(RBlock.PageMark(p)) } }
             // keep document order in the list
             val ordered = (0 until s.pageCount).mapNotNull { all[it] }.flatten()
             blocks.clear(); blocks.addAll(ordered); built = all.size
@@ -205,7 +205,7 @@ private fun highlight(text: String, folded: String, on: Boolean) = buildAnnotate
     var from = 0; var pos = 0
     while (true) {
         val k = f.indexOf(folded, pos); if (k < 0) break
-        val a = map[k]; val b = map[(k + folded.length - 1).coerceAtMost(map.size - 1)] + 1
+        val a = map[k].coerceAtLeast(from); val b = (map[(k + folded.length - 1).coerceAtMost(map.size - 1)] + 1).coerceIn(a, text.length)
         append(text.substring(from, a)); withStyle(SpanStyle(background = Color(0x88FFEB3B))) { append(text.substring(a, b)) }
         from = b; pos = k + folded.length
     }
@@ -219,8 +219,8 @@ private fun ReflowImage(s: ReaderState, b: RBlock.Image) {
         val (pw, ph) = s.pageSize(b.page)
         val i = b.img
         val clip = RectF((i.left / pw).coerceIn(0f, 1f), ((ph - i.top) / ph).coerceIn(0f, 1f), (i.right / pw).coerceIn(0f, 1f), ((ph - i.bottom) / ph).coerceIn(0f, 1f))
-        if (clip.width() <= 0f || clip.height() <= 0f) return@produceState
-        val fullW = (1200 / clip.width()).toInt().coerceAtMost(4000); val fullH = (fullW * ph / pw).toInt()
+        if (clip.width() <= 0f || clip.height() <= 0f || pw <= 0f || ph <= 0f) return@produceState
+        val fullW = (1200 / clip.width()).toInt().coerceIn(1, 4000); val fullH = (fullW * ph / pw).toInt().coerceIn(1, 8000)
         value = runCatching { sess.renderRegion(b.page, fullW, fullH, clip, s.nightMode) }.getOrNull()
     }
     val bm = bmp

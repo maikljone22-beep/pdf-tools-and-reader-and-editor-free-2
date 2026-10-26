@@ -115,8 +115,9 @@ fun PdfToTextScreen(nav: NavHostController, uri: String?) {
     ToolScaffold(stringResource(R.string.tool_pdf_to_text), nav, runner, snackbar = snackbar, scrollable = false, actions = {
         val t = text
         if (!t.isNullOrBlank()) {
-            IconButton(onClick = { clipboard.setText(AnnotatedString(t)); scope.launch { snackbar.showSnackbar(copied) } }) { Icon(Icons.Default.ContentCopy, stringResource(R.string.copy_text)) }
-            IconButton(onClick = { ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, t) }, null)) }) { Icon(Icons.Default.Share, stringResource(R.string.share_text)) }
+            IconButton(onClick = { runCatching { clipboard.setText(AnnotatedString(t.take(200_000))) }; scope.launch { snackbar.showSnackbar(copied) } }) { Icon(Icons.Default.ContentCopy, stringResource(R.string.copy_text)) }
+            // EXTRA_TEXT travels through a binder transaction (~1 MB limit): long documents threw TransactionTooLargeException
+            IconButton(onClick = { runCatching { ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, t.take(100_000)) }, null)) } }) { Icon(Icons.Default.Share, stringResource(R.string.share_text)) }
         }
     }) {
         FilePickRow(file, stringResource(R.string.tl_input_file), pick)
@@ -128,7 +129,8 @@ fun PdfToTextScreen(nav: NavHostController, uri: String?) {
             else -> Card(Modifier.fillMaxWidth().weight(1f)) {
                 val scroll = rememberScrollState()
                 SelectionContainer {
-                    Text(t, Modifier.fillMaxSize().verticalScroll(scroll).padding(12.dp), style = MaterialTheme.typography.bodyMedium)
+                    // one Text over a multi-MB string freezes / runs out of memory in layout: show the start, "save as TXT" keeps everything
+                    Text(if (t.length > 300_000) t.take(300_000) + "\n…" else t, Modifier.fillMaxSize().verticalScroll(scroll).padding(12.dp), style = MaterialTheme.typography.bodyMedium)
                 }
             }
         }

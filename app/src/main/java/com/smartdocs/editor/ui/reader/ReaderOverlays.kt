@@ -91,8 +91,8 @@ fun SelectionMenu(
             ToolChip(Icons.Default.Highlight, stringResource(R.string.annot_highlight), tint = annotColor(0xFFC107)) { state.markupFromSelection(AnnotKind.HIGHLIGHT) }
             ToolChip(Icons.Default.FormatUnderlined, stringResource(R.string.annot_underline)) { state.markupFromSelection(AnnotKind.UNDERLINE) }
             ToolChip(Icons.Default.FormatStrikethrough, stringResource(R.string.annot_strikeout)) { state.markupFromSelection(AnnotKind.STRIKEOUT) }
-            ToolChip(Icons.Default.Translate, stringResource(R.string.ai_translate)) { onTranslate(sel.text) }
-            ToolChip(Icons.Default.AutoAwesome, stringResource(R.string.ai_explain)) { onAskAi(sel.text) }
+            if (com.smartdocs.editor.LocalSettings.current.aiEnabled) ToolChip(Icons.Default.Translate, stringResource(R.string.ai_translate)) { onTranslate(sel.text) }
+            if (com.smartdocs.editor.LocalSettings.current.aiEnabled) ToolChip(Icons.Default.AutoAwesome, stringResource(R.string.ai_explain)) { onAskAi(sel.text) }
             ToolChip(Icons.AutoMirrored.Filled.VolumeUp, stringResource(R.string.tts_from_here)) { onReadFrom(sel) }
             ToolChip(Icons.Default.TravelExplore, stringResource(R.string.rd_web_search)) { onWebSearch(sel.text) }
             ToolChip(Icons.Default.Share, stringResource(R.string.share_text)) { onShare(sel.text) }

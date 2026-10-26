@@ -139,7 +139,7 @@ fun RedactScreen(nav: NavHostController, uri: String?) {
                     }
                     Row(Modifier.fillMaxSize()) {
                         Box(Modifier.weight(1f).fillMaxHeight()) {
-                            TabContent(tab, st, s, page, { page = it.coerceIn(0, s.pageCount - 1) }, ::search, ::markChecked, { batchPick() },
+                            TabContent(tab, st, s, page, { page = it.coerceIn(0, (s.pageCount - 1).coerceAtLeast(0)) }, ::search, ::markChecked, { batchPick() },
                                 onJump = { page = it; tab = RedactTab.MANUAL }, onEdit = { editMark = it }, onRepeat = { repeatMark = it }, onPii = { showPii = true })
                         }
                         if (tablet) {

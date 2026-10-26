@@ -48,7 +48,7 @@ object WebPdfWriter {
                 if (finished) return
                 finished = true
                 // let late layout / images settle before printing
-                view.postDelayed({ write(view, out, finish) }, 1200)
+                view.postDelayed({ try { write(view, out, finish) } catch (e: Throwable) { finish(e) } }, 1200)   // runs on the main looper: an exception here would kill the app
             }
 
             override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
@@ -76,7 +76,7 @@ object WebPdfWriter {
                     override fun onWriteFailed(error: CharSequence?) { runCatching { pfd.close() }; onDone(IOException(error?.toString() ?: "write failed")) }
                     override fun onWriteCancelled() { runCatching { pfd.close() }; onDone(IOException("cancelled")) }
                 }
-                adapter.onWrite(arrayOf(PageRange.ALL_PAGES), pfd, CancellationSignal(), writeCb)
+                try { adapter.onWrite(arrayOf(PageRange.ALL_PAGES), pfd, CancellationSignal(), writeCb) } catch (e: Throwable) { runCatching { pfd.close() }; onDone(e) }
             }
 
             override fun onLayoutFailed(error: CharSequence?) { onDone(IOException(error?.toString() ?: "layout failed")) }

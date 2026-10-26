@@ -67,7 +67,7 @@ fun HomeScreen(nav: NavHostController) {
     var query by rememberSaveable { mutableStateOf("") }
     val prefs = remember { ctx.applicationContext.getSharedPreferences(PREFS_HOME, 0) }
     var grid by remember { mutableStateOf(prefs.getBoolean("recent_grid", false)) }
-    val pick = rememberPdfPicker { files -> files.firstOrNull()?.let { nav.navigate(Routes.reader(Uri.fromFile(it).toString())) } }
+    val pick = rememberPdfPicker(mimes = arrayOf("application/pdf", *com.smartdocs.editor.ui.office.OfficeRoutes.MIMES)) { files -> files.firstOrNull()?.let { nav.navigate(Routes.reader(Uri.fromFile(it).toString())) } }   // office5: PDF + Office
     fun goTab(route: String) = nav.navigate(route) {
         popUpTo(nav.graph.findStartDestination().id) { saveState = true }
         launchSingleTop = true; restoreState = true

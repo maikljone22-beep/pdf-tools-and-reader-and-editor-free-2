@@ -103,6 +103,12 @@ fun PaywallScreen(nav: NavHostController) {
                     Column { Text(stringResource(b.title), style = MaterialTheme.typography.titleSmall); Text(stringResource(b.text), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 }
             }
+            // share6 (monet): "no ads" benefit only when ads are configured
+            if (com.smartdocs.editor.core.ads.AdsManager.configured) Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                IconTile(Icons.Default.Block, tiles.blue, size = 40.dp, iconSize = 22.dp)
+                Spacer(Modifier.width(14.dp))
+                Text(stringResource(R.string.mn_no_ads_benefit), style = MaterialTheme.typography.titleSmall)
+            }
             Spacer(Modifier.height(16.dp))
             when {
                 loading -> Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
@@ -199,18 +205,32 @@ private fun ActivationForm(ent: Pro.Entitlement, active: Boolean, code: String, 
                 singleLine = true, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth(),
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters, autoCorrectEnabled = false),
             )
+            // share6 (monet): online/offline note under the field
+            Text(stringResource(if (ActivationCodes.online) R.string.mn_redeem_online_note else R.string.mn_redeem_offline_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            val scope = rememberCoroutineScope()
+            var busy by remember { mutableStateOf(false) }
+            // share6 (monet): redeem through the licence server when configured (offline `activate` is refused in server mode)
             Button(onClick = {
-                val r = ActivationCodes.activate(ctx, code)
-                if (r is ActivationCodes.Result.Valid) com.smartdocs.editor.core.gaps6.ActivatedDevices.recordActivation(ctx, code, r.plan.name.lowercase())   // gaps6
-                onResult(r)
-            }, enabled = code.isNotBlank(), modifier = Modifier.fillMaxWidth().height(52.dp), shape = PillShape) {
-                Text(stringResource(R.string.ac_activate))
+                scope.launch {
+                    busy = true
+                    try {
+                        val r = ActivationCodes.redeem(ctx, code)
+                        if (r is ActivationCodes.Result.Valid) com.smartdocs.editor.core.gaps6.ActivatedDevices.recordActivation(ctx, code, r.plan.name.lowercase())   // gaps6
+                        onResult(r)
+                    } finally { busy = false }
+                }
+            }, enabled = code.isNotBlank() && !busy, modifier = Modifier.fillMaxWidth().height(52.dp), shape = PillShape) {
+                if (busy) { CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp); Spacer(Modifier.width(10.dp)); Text(stringResource(R.string.mn_redeeming)) }
+                else Text(stringResource(R.string.ac_activate))
             }
             result?.let { r ->
                 val (msg, ok) = when (r) {
                     is ActivationCodes.Result.Valid -> stringResource(R.string.ac_activation_ok) to true
                     ActivationCodes.Result.Expired -> stringResource(R.string.ac_code_expired) to false
                     ActivationCodes.Result.Disabled -> stringResource(R.string.ac_activation_disabled) to false
+                    ActivationCodes.Result.Revoked -> stringResource(R.string.mn_redeem_revoked) to false
+                    ActivationCodes.Result.DeviceLimit -> stringResource(R.string.mn_redeem_device_limit) to false
+                    ActivationCodes.Result.Network -> stringResource(R.string.mn_redeem_network) to false
                     else -> stringResource(R.string.ac_code_invalid) to false
                 }
                 Text(msg, color = if (ok) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)

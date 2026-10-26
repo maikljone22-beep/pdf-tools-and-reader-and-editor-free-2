@@ -24,7 +24,9 @@ data class ReplaceMatch(val page: Int, val blockId: Int, val text: String, val r
 /**
  * Find & replace in the real page content, with the content-edit engine (MODULE_edit): [find] matches inside
  * [PageTextModel] blocks; [apply] rewrites each selected block with [ContentEdit.replaceText] and looks the block up
- * again after every rewrite, because operator indexes move. The replacement is literal text.
+ * again after every rewrite, because operator indexes move. The replacement is literal text; Arabic replacements are
+ * shaped and reordered by the edit engine's text writer ([com.smartdocs.editor.core.edit.Bidi.shapeVisual]) and drawn
+ * with the app's Arabic font (the block's subset font lacks new glyphs), tagged with /ActualText.
  */
 object FindReplace {
 
@@ -35,11 +37,25 @@ object FindReplace {
             onPage(p)
             val model = runCatching { PageTextModel.load(file, password, p) }.getOrNull() ?: continue
             for (b in model.blocks) {
-                val r = TextMatcher.find(b.text, query, options)
+                if (b.unreadable) continue          // undecodable glyphs: nothing reliable to match or rewrite
+                val r = matches(b.text, query, options)
                 if (r.isNotEmpty()) out += ReplaceMatch(p, b.id, b.text, RectF(b.rect), r, !b.fontReusable, b.lossy)
             }
         }
         out
+    }
+
+    /**
+     * Matches of [query] in a block's text. Block text from [PageTextModel] is already in logical order (presentation
+     * forms folded, visual lines reversed), so the reversed-query matches [TextMatcher] adds for raw PDFium text would
+     * be false hits here: they are dropped (only for phrase search, the only mode that adds them).
+     */
+    fun matches(text: String, query: String, options: SearchOptions): List<IntRange> {
+        val r = TextMatcher.find(text, query, options)
+        if (r.isEmpty() || options.mode != SearchMode.PHRASE || options.stem || !ArabicNormalizer.hasArabic(query)) return r
+        val q = ArabicNormalizer.foldQuery(query, options.norm)
+        if (q.isEmpty()) return r
+        return r.filter { range -> range.last < text.length && ArabicNormalizer.fold(text.substring(range.first, range.last + 1), options.norm).text.contains(q) }
     }
 
     /** [text] with every range replaced by [replacement] (ranges sorted, non-overlapping). */
@@ -75,7 +91,8 @@ object FindReplace {
             selected.sortedWith(compareBy<ReplaceMatch> { it.page }.thenBy { it.blockId }).forEachIndexed { i, m ->
                 val model = runCatching { PageTextModel.load(cur, password, m.page) }.getOrNull() ?: return@forEachIndexed
                 val block = locate(model.blocks, m) ?: return@forEachIndexed
-                val ranges = TextMatcher.find(block.text, query, options)
+                if (block.unreadable) return@forEachIndexed
+                val ranges = matches(block.text, query, options)
                 if (ranges.isEmpty()) return@forEachIndexed
                 val next = File(workDir, "fr_${System.nanoTime()}.pdf").also { temps += it }
                 val style = EditTextStyle(size = block.size, color = block.color, bold = block.bold, italic = block.italic, align = block.align, family = block.family)
@@ -113,7 +130,7 @@ object FindReplace {
         val model = PageTextModel.load(src, password, page)
         val frame = com.smartdocs.editor.core.pdf.PdfOps.load(src, password).use { com.smartdocs.editor.core.edit.PageFrame.of(it.getPage(page)) }
         fun display(r: RectF) = com.smartdocs.editor.core.edit.Affine.apply(frame.toDisplay, (r.left + r.right) / 2f, (r.top + r.bottom) / 2f)
-        val candidates = model.blocks.mapNotNull { b -> TextMatcher.find(b.text, query, options).takeIf { it.isNotEmpty() }?.let { b to it } }
+        val candidates = model.blocks.filter { !it.unreadable }.mapNotNull { b -> matches(b.text, query, options).takeIf { it.isNotEmpty() }?.let { b to it } }
         val (x, y) = display(hit)
         val chosen = pickBlock(candidates.map { it.first.rect }, x, y) ?: return@withContext ReplaceOutcome(0, false, false)
         val (block, ranges) = candidates[chosen]

@@ -57,7 +57,9 @@ internal fun ScriptedTextField(value: String, onChange: (String) -> Unit, script
         }) else null,
     )
     if (pickDate) {
-        val initial = remember(value) { AfFormat.parseDate(value, (scripts?.format as? com.smartdocs.editor.core.forms.FormatSpec.DateTime)?.pattern)?.time }
+        // DatePickerState throws when the initial year is outside its range (1900..2100), e.g. "1/1/24" parsed as year 24
+        val initial = remember(value) { runCatching { AfFormat.parseDate(value, (scripts?.format as? com.smartdocs.editor.core.forms.FormatSpec.DateTime)?.pattern)?.time }.getOrNull()
+            ?.takeIf { ms -> java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC")).apply { timeInMillis = ms }.get(java.util.Calendar.YEAR) in androidx.compose.material3.DatePickerDefaults.YearRange } }
         val state = rememberDatePickerState(initialSelectedDateMillis = initial)
         DatePickerDialog(
             onDismissRequest = { pickDate = false },

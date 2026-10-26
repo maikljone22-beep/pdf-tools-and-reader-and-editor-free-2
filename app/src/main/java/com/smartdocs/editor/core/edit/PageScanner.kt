@@ -43,6 +43,8 @@ internal class PageScanner(page: PDPage, private val frame: PageFrame) : PDFGrap
     val glyphs = ArrayList<RawGlyph>()
     val images = ArrayList<RawImage>()
     val textOps = HashMap<Int, TextOpInfo>()
+    /** Recovers Unicode for glyphs PdfBox cannot map (fonts without /ToUnicode, private-use codes). */
+    private val decoder = GlyphDecoder()
     var opCount = 0; private set
     private var currentOp = -1
     private var depth = 0
@@ -91,7 +93,8 @@ internal class PageScanner(page: PDPage, private val frame: PageFrame) : PDFGrap
         if (trm[0] <= 0f || abs(trm[1]) > 0.08f * sx || trm[3] <= 0f) return
         val color = runCatching { graphicsState.nonStrokingColor.toRGB() }.getOrDefault(0) and 0xFFFFFF
         val w = displacement.x * sx
-        glyphs += RawGlyph(currentOp, unicode ?: "", trm[4], trm[5], if (w > 0f) w else sy * 0.5f, sy, font, color, trm[2] / sy)
+        val text = decoder.text(font, code, unicode)
+        glyphs += RawGlyph(currentOp, text, trm[4], trm[5], if (w > 0f) w else sy * 0.5f, sy, font, color, trm[2] / sy)
     }
 
     override fun drawImage(pdImage: PDImage) {

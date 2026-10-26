@@ -50,7 +50,7 @@ fun HeaderFooterScreen(nav: NavHostController, uri: String?) {
     val processing = stringResource(R.string.processing)
     LaunchedEffect(doc.work) {
         val w = doc.work ?: return@LaunchedEffect
-        HeaderFooterOps.stored(w, doc.password)?.let { spec = it.copy(user = settings.authorName) }
+        runCatching { HeaderFooterOps.stored(w, doc.password) }.getOrNull()?.let { spec = it.copy(user = settings.authorName) }
         existing = runCatching { HeaderFooterOps.detect(w, doc.password) }.getOrDefault(emptySet())
     }
     ToolScaffold(stringResource(R.string.e5_hf_title), nav, runner) {

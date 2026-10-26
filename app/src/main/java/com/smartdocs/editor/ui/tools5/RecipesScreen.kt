@@ -91,7 +91,7 @@ fun RecipesScreen(nav: NavHostController, uri: String?) {
                             IconButton(onClick = { editing = if (r.builtIn) r.copy(id = RecipeJson.newId(), name = "", builtIn = false) else r }) { Icon(if (r.builtIn) Icons.Default.ContentCopy else Icons.Default.Edit, stringResource(if (r.builtIn) R.string.t5_rc_duplicate else R.string.t5_rc_edit)) }
                             if (!r.builtIn) IconButton(onClick = {
                                 scope.launch {
-                                    val f = withContext(Dispatchers.IO) { app.documents.uniqueFile(app.documents.docsDir, TextNorm.safeFileName(r.name).ifBlank { "recipe" }, "sdrecipe").also { it.writeText(RecipeJson.toJson(r)) } }
+                                    val f = runCatching { withContext(Dispatchers.IO) { app.documents.uniqueFile(app.documents.docsDir, TextNorm.safeFileName(r.name).ifBlank { "recipe" }, "sdrecipe").also { it.writeText(RecipeJson.toJson(r)) } } }.getOrNull() ?: return@launch
                                     shareFiles(ctx, app.documents, listOf(f), "application/json")
                                 }
                             }) { Icon(Icons.Default.Share, stringResource(R.string.t5_rc_export)) }

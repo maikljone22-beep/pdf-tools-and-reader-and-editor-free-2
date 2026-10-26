@@ -217,7 +217,7 @@ object PageOps5 {
                 onProgress((i + 1f) / s.pageCount)
                 if (s.text(i).any { !it.isWhitespace() }) return@filter false
                 val (w, h) = s.pageSize(i)
-                val bw = 160; val bh = (160 * h / w).toInt().coerceAtLeast(1)
+                val bw = 160; val bh = (if (w > 0f) 160 * h / w else 226f).toInt().coerceIn(1, 2000)
                 val bmp = s.render(i, bw, bh, annotations = true)
                 val px = IntArray(bw * bh); bmp.getPixels(px, 0, bw, 0, 0, bw, bh)
                 s.invalidateCache()

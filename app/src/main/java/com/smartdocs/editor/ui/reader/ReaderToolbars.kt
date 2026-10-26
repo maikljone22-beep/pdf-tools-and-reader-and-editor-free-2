@@ -27,6 +27,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.smartdocs.editor.R
+import com.smartdocs.editor.ui.onboarding.CoachIds
+import com.smartdocs.editor.ui.onboarding.coachTarget
 import com.smartdocs.editor.ui.quick.QuickAction
 
 /** Everything the toolbars can trigger that lives outside [ReaderState] (sheets, navigation, pickers). */
@@ -61,7 +63,7 @@ fun ReaderTabRow(state: ReaderState, onTab: (ReaderTab) -> Unit) {
         ReaderTab.FILL_SIGN to R.string.tab_fill_sign, ReaderTab.SIGN to R.string.tab_sign, ReaderTab.TOOLS to R.string.tab_tools, ReaderTab.PAGES to R.string.tab_pages,
     )
     val idx = tabs.indexOfFirst { it.first == state.tab }.coerceAtLeast(0)
-    ScrollableTabRow(selectedTabIndex = idx, edgePadding = 8.dp, divider = {}, containerColor = MaterialTheme.colorScheme.surface) {
+    ScrollableTabRow(selectedTabIndex = idx, modifier = Modifier.coachTarget(CoachIds.READER_TABS), edgePadding = 8.dp, divider = {}, containerColor = MaterialTheme.colorScheme.surface) {
         tabs.forEach { (t, label) ->
             Tab(selected = state.tab == t, onClick = { onTab(t) }, text = { Text(stringResource(label), maxLines = 1, overflow = TextOverflow.Ellipsis) })
         }
@@ -90,7 +92,7 @@ private fun ToolRow(content: @Composable RowScope.() -> Unit) {
 
 @Composable
 fun BottomToolbar(state: ReaderState, actions: ReaderActions) {
-    Surface(tonalElevation = 3.dp, shadowElevation = 8.dp) {
+    Surface(Modifier.coachTarget(CoachIds.READER_TOOLBAR), tonalElevation = 3.dp, shadowElevation = 8.dp) {
         Column(Modifier.fillMaxWidth().navigationBarsPadding()) {
             when (state.tab) {
                 ReaderTab.VIEW -> ViewToolbar(state, actions)

@@ -433,7 +433,8 @@ class FormFillState internal constructor(val reader: ReaderState) {
                 reader.swapFile(tmp)
                 runCatching { reader.app.documents.writeBack(src) }
                 message = FormMessage.RowAdded
-            } catch (e: Exception) {
+            } catch (e: Throwable) {   // XFA layout can overflow the stack / run out of memory on huge forms
+                if (e is kotlinx.coroutines.CancellationException) throw e
                 message = FormMessage.Failed(e.message ?: e.toString())
             } finally { busy = false }
         }

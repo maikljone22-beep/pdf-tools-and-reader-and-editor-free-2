@@ -28,6 +28,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.DatePickerDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -119,7 +120,13 @@ fun InPageFormBar(reader: ReaderState, modifier: Modifier = Modifier) {
     val dateFor = fs.datePickerFor
     if (dateFor != null) {
         val pattern = FieldDates.patternOf(fs.model.calc.scripts[dateFor])
-        val initial = remember(dateFor) { FieldDates.parseUtc(fs.value(dateFor), pattern) }
+        // DatePickerState requires the initial year inside its year range (1900..2100): "1/1/24" parsed as year 24 crashed it
+        val initial = remember(dateFor) {
+            FieldDates.parseUtc(fs.value(dateFor), pattern)?.takeIf { ms ->
+                val y = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC")).apply { timeInMillis = ms }.get(java.util.Calendar.YEAR)
+                y in DatePickerDefaults.YearRange
+            }
+        }
         val st = rememberDatePickerState(initialSelectedDateMillis = initial)
         DatePickerDialog(
             onDismissRequest = { fs.datePickerFor = null },

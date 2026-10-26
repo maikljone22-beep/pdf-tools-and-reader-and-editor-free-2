@@ -101,6 +101,7 @@ object AfFormat {
 
     fun formatNumber(v: Double, decimals: Int, sepStyle: Int): String {
         val d = decimals.coerceIn(0, 10)
+        if (v.isNaN() || v.isInfinite()) return ""
         val fixed = java.math.BigDecimal(abs(v)).setScale(d, java.math.RoundingMode.HALF_UP).toPlainString()
         val intPart = fixed.substringBefore('.')
         val frac = if (d > 0) fixed.substringAfter('.', "") else ""
@@ -190,6 +191,8 @@ object AfFormat {
     /** Value to store after the user picked a date in a date picker: formatted with the field's own pattern. */
     fun formatPickedDate(millis: Long, spec: FormatSpec?): String {
         val p = (spec as? FormatSpec.DateTime)?.pattern ?: "yyyy-mm-dd"
-        return SimpleDateFormat(toJavaPattern(p), Locale.US).format(Date(millis))
+        // the pattern comes from the PDF: an invalid one must not crash the date picker
+        return runCatching { SimpleDateFormat(toJavaPattern(p), Locale.US).format(Date(millis)) }
+            .getOrElse { SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(millis)) }
     }
 }

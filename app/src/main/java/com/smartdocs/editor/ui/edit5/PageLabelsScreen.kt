@@ -45,7 +45,7 @@ fun PageLabelsScreen(nav: NavHostController, uri: String?) {
             ranges.sortedBy { it.startPage }.forEachIndexed { i, r ->
                 E5Section(stringResource(R.string.e5_labels_range, i + 1)) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FloatField((r.startPage + 1).toFloat(), stringResource(R.string.e5_labels_from_page), Modifier.weight(1f)) { v -> ranges = ranges.map { if (it === r) it.copy(startPage = (v.toInt() - 1).coerceIn(0, n - 1)) else it } }
+                        FloatField((r.startPage + 1).toFloat(), stringResource(R.string.e5_labels_from_page), Modifier.weight(1f)) { v -> ranges = ranges.map { if (it === r) it.copy(startPage = (v.toInt() - 1).coerceIn(0, (n - 1).coerceAtLeast(0))) else it } }
                         FloatField(r.start.toFloat(), stringResource(R.string.e5_start_number), Modifier.weight(1f)) { v -> ranges = ranges.map { if (it === r) it.copy(start = v.toInt().coerceAtLeast(1)) else it } }
                         IconButton(onClick = { ranges = ranges.filter { it !== r } }) { Icon(Icons.Default.Delete, stringResource(R.string.delete)) }
                     }
@@ -53,7 +53,7 @@ fun PageLabelsScreen(nav: NavHostController, uri: String?) {
                     ChoiceChips(LabelStyle.values().toList(), r.style, { stringResource(styleLabel(it)) }) { s -> ranges = ranges.map { if (it === r) it.copy(style = s) else it } }
                 }
             }
-            OutlinedButton(onClick = { val last = ranges.maxOfOrNull { it.startPage } ?: -1; ranges = ranges + LabelRange((last + 1).coerceIn(0, n - 1)) }) {
+            OutlinedButton(onClick = { val last = ranges.maxOfOrNull { it.startPage } ?: -1; ranges = ranges + LabelRange((last + 1).coerceIn(0, (n - 1).coerceAtLeast(0))) }) {
                 Icon(Icons.Default.Add, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.e5_labels_add))
             }
             val labels = remember(ranges, n) { PageLabelFormat.labels(ranges, n) }

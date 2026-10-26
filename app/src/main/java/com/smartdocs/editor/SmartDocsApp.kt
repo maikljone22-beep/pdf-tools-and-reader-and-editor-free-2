@@ -5,6 +5,7 @@ import com.smartdocs.editor.core.data.AppDatabase
 import com.smartdocs.editor.core.data.SettingsStore
 import com.smartdocs.editor.core.files.DocumentRepository
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
+import kotlinx.coroutines.launch
 
 class SmartDocsApp : Application() {
     lateinit var db: AppDatabase; private set
@@ -20,6 +21,10 @@ class SmartDocsApp : Application() {
         settings = SettingsStore(this)
         documents = DocumentRepository(this, db)
         com.smartdocs.editor.core.search.IndexWorker.schedule(this)
+        // share6
+        runCatching { com.smartdocs.editor.core.sync.SyncLive.install(this) }                 // near-real-time sync, 15-min jobs, review notifications
+        runCatching { com.smartdocs.editor.core.billing.LicenseCheckWorker.schedule(this) }   // licence re-check (no-op without LICENSE_URL)
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch { runCatching { com.smartdocs.editor.core.share5.AppDataSync.autoSyncQuietly(this@SmartDocsApp) } }
     }
 
     companion object {

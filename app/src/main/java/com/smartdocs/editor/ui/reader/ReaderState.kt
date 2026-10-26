@@ -73,6 +73,10 @@ class ReaderState(
     var needPassword by mutableStateOf(false)
     var wrongPassword by mutableStateOf(false)
     var error by mutableStateOf<String?>(null)
+    // share6: connected / enterprise-protected documents
+    var connected by mutableStateOf<com.smartdocs.editor.core.connected.ConnectedStatus?>(null)
+    var connectedLocked by mutableStateOf(false)
+    var enterpriseInfo by mutableStateOf<com.smartdocs.editor.core.connected.EnterpriseProtection.Info?>(null)
     var pageCount by mutableIntStateOf(0); private set
     val pageSizes = mutableStateMapOf<Int, Pair<Float, Float>>()
     var initialPage by mutableIntStateOf(0); private set
@@ -151,9 +155,21 @@ class ReaderState(
             try {
                 if (session != null) return@launch
                 val f = file ?: app.documents.localFile(Uri.parse(uriString)).also { file = it }
-                val s = PdfSession.open(context, f, pw)
+                // share6: rights-managed files -> explanation screen; connected documents -> status / protected key
+                withContext(Dispatchers.IO) { com.smartdocs.editor.core.connected.EnterpriseProtection.detect(f) }?.takeIf { it.blocking }?.let { enterpriseInfo = it; return@launch }
+                var openPw = pw
+                val mark = withContext(Dispatchers.IO) { com.smartdocs.editor.core.connected.ConnectedDocs.markOf(f) }
+                if (mark != null) {
+                    if (mark.protected && pw == null) {
+                        val st = com.smartdocs.editor.core.connected.ConnectedDocs.checkOnOpen(context, f)
+                        connected = st
+                        if (st == null || st.locked) { connectedLocked = true; return@launch }
+                        openPw = st.password
+                    } else scope.launch { connected = com.smartdocs.editor.core.connected.ConnectedDocs.checkOnOpen(context, f) }
+                }
+                val s = PdfSession.open(context, f, openPw)
                 if (disposed) { runCatching { s.closeAsync() }; return@launch }
-                password = pw
+                password = openPw
                 pageCount = s.pageCount
                 val recent = app.db.docs().get(Uri.fromFile(f).toString())
                 initialPage = (if (startPage >= 0) startPage else recent?.lastPage ?: 0).coerceIn(0, (s.pageCount - 1).coerceAtLeast(0))
@@ -313,6 +329,7 @@ class ReaderState(
                 withContext(NonCancellable) {
                     val tmp = File(f.parentFile, ".${f.nameWithoutExtension}.saving.pdf")
                     AnnotationWriter.commit(context, f, pending, tmp, password)
+                    com.smartdocs.editor.core.collab.CollabLive.beforeSave(context, f, tmp, password)   // share6: merge other reviewers' comments
                     swapFile(tmp)
                     // the edit belongs in the user's document, not only in our working copy
                     writeBackResult = runCatching { app.documents.writeBack(f) }.getOrNull().also { com.smartdocs.editor.core.cloud.SaveHooks.onSaved(app, f) }

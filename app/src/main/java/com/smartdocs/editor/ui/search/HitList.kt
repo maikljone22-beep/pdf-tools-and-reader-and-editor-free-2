@@ -4,6 +4,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.*
@@ -31,7 +32,8 @@ fun HitList(
             TextButton(onClick = { onSetAll(false) }, enabled = checked.isNotEmpty()) { Text(stringResource(R.string.s5_select_none)) }
         }
         LazyColumn(Modifier.fillMaxSize()) {
-            items(rows, key = { it.id }) { r ->
+            // position in the key: a repeated id would crash the list ("Key was already used")
+            itemsIndexed(rows, key = { i, r -> "$i:${r.id}" }) { _, r ->
                 val on = r.id in checked
                 ListItem(
                     modifier = Modifier.clickable { onToggle(r.id) },

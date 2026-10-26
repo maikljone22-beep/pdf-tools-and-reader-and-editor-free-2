@@ -51,7 +51,8 @@ fun RedactManualView(
 ) {
     var drawMode by remember { mutableStateOf(true) }
     var size by remember(page) { mutableStateOf(595f to 842f) }
-    LaunchedEffect(page) { size = session.pageSize(page) }
+    // a bad page index / closed session must not crash; zero sizes would make aspectRatio() throw
+    LaunchedEffect(page) { runCatching { session.pageSize(page) }.getOrNull()?.takeIf { it.first > 0f && it.second > 0f }?.let { size = it } }
 
     Column(modifier) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {

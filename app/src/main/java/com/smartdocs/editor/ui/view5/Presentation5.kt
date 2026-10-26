@@ -131,8 +131,9 @@ fun PresentationDialog(v: V5State) {
                 val bmp by produceState<Bitmap?>(null, p, vw, vh) {
                     val sess = s.session ?: return@produceState
                     val (pw, ph) = s.pageSize(p)
+                    if (pw <= 0f || ph <= 0f || p !in 0 until s.pageCount) return@produceState
                     val k = minOf(vw / pw, vh / ph)
-                    value = runCatching { sess.render(p, (pw * k).toInt().coerceAtLeast(1), (ph * k).toInt().coerceAtLeast(1), false, true) }.getOrNull()
+                    value = runCatching { sess.render(p, (pw * k).toInt().coerceIn(1, 4096), (ph * k).toInt().coerceIn(1, 4096), false, true) }.getOrNull()
                 }
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     bmp?.let { Image(it.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Fit) }

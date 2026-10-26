@@ -111,7 +111,7 @@ private fun ReadingRuler(v: V5State, hPx: Float) {
     // drag handle on the band's right edge only, so the page keeps its own gestures
     Box(Modifier.fillMaxSize()) {
         Surface(Modifier.align(Alignment.TopEnd).offset { androidx.compose.ui.unit.IntOffset(0, top.roundToInt()) }.size(36.dp, with(density) { bandPx.toDp() })
-            .pointerInput(hPx) { detectVerticalDragGestures { ch, dy -> ch.consume(); v.rulerY = ((v.rulerY * hPx + dy) / hPx).coerceIn(0f, 1f) } },
+            .pointerInput(hPx) { detectVerticalDragGestures { ch, dy -> ch.consume(); if (hPx > 0f) v.rulerY = ((v.rulerY * hPx + dy) / hPx).coerceIn(0f, 1f) /* hPx 0 → NaN → roundToInt crash */ } },
             color = tint.copy(alpha = 0.85f), shape = RoundedCornerShape(topStart = 10.dp, bottomStart = 10.dp)) {
             Icon(Icons.Default.DragHandle, stringResource(R.string.v5_reading_ruler), Modifier.padding(6.dp))
         }

@@ -31,7 +31,7 @@ object Trash5 {
     /** Move [f] to the trash; false when that failed (the caller may then delete it for good). */
     fun moveToTrash(ctx: Context, f: File): Boolean = runCatching { of(ctx).moveToTrash(f) != null }.getOrDefault(false)
 
-    fun purge(ctx: Context): Int = of(ctx).purgeExpired()
+    fun purge(ctx: Context): Int = runCatching { of(ctx).purgeExpired() }.getOrDefault(0)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -41,7 +41,7 @@ fun TrashScreen(nav: NavHostController) {
     val scope = rememberCoroutineScope()
     val trash = remember { Trash5.of(ctx) }
     var version by remember { mutableIntStateOf(0) }
-    val entries by produceState(emptyList<Trash.Entry>(), version) { value = withContext(Dispatchers.IO) { trash.purgeExpired(); trash.list() } }
+    val entries by produceState(emptyList<Trash.Entry>(), version) { value = withContext(Dispatchers.IO) { runCatching { trash.purgeExpired(); trash.list() }.getOrDefault(emptyList()) } }
     var confirmEmpty by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf<Trash.Entry?>(null) }
     val snack = remember { SnackbarHostState() }
@@ -72,7 +72,7 @@ fun TrashScreen(nav: NavHostController) {
                             Row {
                                 IconButton(onClick = {
                                     scope.launch {
-                                        val r = withContext(Dispatchers.IO) { trash.restore(e, docsDir) }
+                                        val r = withContext(Dispatchers.IO) { runCatching { trash.restore(e, docsDir) }.getOrNull() }
                                         version++
                                         snack.showSnackbar(if (r != null) ctx.getString(R.string.v5_restored, r.name) else ctx.getString(R.string.error_generic))
                                     }
@@ -87,11 +87,11 @@ fun TrashScreen(nav: NavHostController) {
     }
     if (confirmEmpty) AlertDialog(onDismissRequest = { confirmEmpty = false }, title = { Text(stringResource(R.string.v5_empty_trash)) },
         text = { Text(stringResource(R.string.v5_empty_trash_confirm)) },
-        confirmButton = { TextButton(onClick = { confirmEmpty = false; scope.launch { withContext(Dispatchers.IO) { trash.empty() }; version++ } }) { Text(stringResource(R.string.delete)) } },
+        confirmButton = { TextButton(onClick = { confirmEmpty = false; scope.launch { withContext(Dispatchers.IO) { runCatching { trash.empty() } }; version++ } }) { Text(stringResource(R.string.delete)) } },
         dismissButton = { TextButton(onClick = { confirmEmpty = false }) { Text(stringResource(R.string.cancel)) } })
     confirmDelete?.let { e ->
         AlertDialog(onDismissRequest = { confirmDelete = null }, title = { Text(stringResource(R.string.v5_delete_forever)) }, text = { Text(e.name) },
-            confirmButton = { TextButton(onClick = { confirmDelete = null; scope.launch { withContext(Dispatchers.IO) { trash.deleteForever(e) }; version++ } }) { Text(stringResource(R.string.delete)) } },
+            confirmButton = { TextButton(onClick = { confirmDelete = null; scope.launch { withContext(Dispatchers.IO) { runCatching { trash.deleteForever(e) } }; version++ } }) { Text(stringResource(R.string.delete)) } },
             dismissButton = { TextButton(onClick = { confirmDelete = null }) { Text(stringResource(R.string.cancel)) } })
     }
 }

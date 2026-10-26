@@ -123,7 +123,7 @@ fun AccessibilityScreen(nav: NavHostController, uri: String?) {
                     }
                 }
             }
-            if (figures.isNotEmpty()) FiguresPanel(file!!, figures, onSaved = { out -> file = out })
+            val ff = file; if (figures.isNotEmpty() && ff != null) FiguresPanel(ff, figures, onSaved = { out -> file = out })
         }
         Text(stringResource(R.string.t5_acc_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
@@ -239,5 +239,5 @@ private fun FiguresPanel(file: File, figures: List<Pair<Int, String>>, onSaved: 
 
 /** launch that swallows failures (the user sees the unchanged state) and always runs [onEnd]. */
 private fun CoroutineScope.launchSafe(onEnd: () -> Unit, block: suspend () -> Unit) {
-    launch { try { block() } catch (_: Exception) { } finally { onEnd() } }
+    launch { try { block() } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Throwable) { } finally { onEnd() } }
 }

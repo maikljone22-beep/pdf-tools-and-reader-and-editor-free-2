@@ -70,9 +70,10 @@ object CitationFormat {
         val out = ArrayList<Int>()
         Regex("(\\d+)\\s*[–—-]\\s*(\\d+)|(\\d+)").findAll(s).forEach { m ->
             if (m.groupValues[1].isNotEmpty()) {
-                val a = m.groupValues[1].toInt(); val b = m.groupValues[2].toInt()
+                // model output: an over-long number must not throw NumberFormatException
+                val a = m.groupValues[1].toIntOrNull() ?: return@forEach; val b = m.groupValues[2].toIntOrNull() ?: return@forEach
                 if (b >= a && b - a <= 10) for (x in a..b) out += x else { out += a; out += b }
-            } else out += m.groupValues[3].toInt()
+            } else m.groupValues[3].toIntOrNull()?.let { out += it }
         }
         return out.distinct()
     }

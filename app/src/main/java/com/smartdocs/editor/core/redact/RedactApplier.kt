@@ -145,28 +145,29 @@ object RedactApplier {
     /** Replaces [pages] of [src] by images rendered with PDFium (boxes already drawn), then saves to [out]. */
     private suspend fun rasterize(context: Context, src: File, out: File, password: String?, pages: List<Int>, dpi: Int) {
         val scale = dpi / 72f
-        val images = HashMap<Int, Pair<android.graphics.Bitmap, Pair<Float, Float>>>()
+        // one page at a time: render → JPEG-encode → recycle. Keeping every page bitmap in memory (up to 6000² px each)
+        // ran out of memory on multi-page documents (OutOfMemoryError is not caught by the tool runner → app crash).
         val session = PdfSession.open(context, src, password)
         try {
-            for (i in pages) {
-                if (i !in 0 until session.pageCount) continue
-                val (w, h) = session.pageSize(i)
-                val bmp = session.render(i, (w * scale).toInt().coerceIn(1, 6000), (h * scale).toInt().coerceIn(1, 6000), annotations = true)
-                session.invalidateCache()
-                images[i] = bmp to (w to h)
+            PdfOps.load(src, password).use { doc ->
+                for (i in pages) {
+                    if (i !in 0 until session.pageCount || i >= doc.numberOfPages) continue
+                    val (w, h) = session.pageSize(i)
+                    if (w <= 0f || h <= 0f) continue
+                    // cap at ~24 MP so a large page at high dpi still fits in memory
+                    val s = minOf(scale, kotlin.math.sqrt(24_000_000f / (w * h)))
+                    val bmp = session.render(i, (w * s).toInt().coerceIn(1, 6000), (h * s).toInt().coerceIn(1, 6000), annotations = true)
+                    session.invalidateCache()
+                    try {
+                        val old = doc.getPage(i)
+                        val np = PDPage(PDRectangle(w, h))
+                        val img = JPEGFactory.createFromImage(doc, bmp, 0.9f)
+                        PDPageContentStream(doc, np).use { it.drawImage(img, 0f, 0f, w, h) }
+                        doc.pages.insertAfter(np, old); doc.removePage(old)
+                    } finally { bmp.recycle() }
+                }
+                doc.save(out)
             }
         } finally { session.closeAsync() }
-        PdfOps.load(src, password).use { doc ->
-            for ((i, pair) in images) {
-                val (bmp, size) = pair
-                val old = doc.getPage(i)
-                val np = PDPage(PDRectangle(size.first, size.second))
-                val img = JPEGFactory.createFromImage(doc, bmp, 0.9f)
-                PDPageContentStream(doc, np).use { it.drawImage(img, 0f, 0f, size.first, size.second) }
-                doc.pages.insertAfter(np, old); doc.removePage(old)
-                bmp.recycle()
-            }
-            doc.save(out)
-        }
     }
 }

@@ -90,6 +90,9 @@ val allTools = listOf(
     ToolDef("ai_spaces", R.string.a5_spaces, Icons.Default.Workspaces, 3),
     ToolDef("print", R.string.tool_print, Icons.Default.Print, 3),
     ToolDef("e5_hub", R.string.e5_hub_title, Icons.Default.EditNote, 1),
+    ToolDef("esign", R.string.cn_tool_esign, Icons.Default.HistoryEdu, 2),           // share6
+    ToolDef("connected", R.string.cn_tool_connected, Icons.Default.Link, 2),         // share6
+    ToolDef("office", R.string.o5_tool_open, Icons.Default.Description, 0),          // office5: Word / Excel / PowerPoint
 )
 
 private val groupTitles = listOf(R.string.ds_group_create, R.string.ds_group_organize, R.string.ds_group_sign, R.string.ds_group_read)

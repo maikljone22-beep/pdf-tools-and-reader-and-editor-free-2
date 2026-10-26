@@ -32,6 +32,12 @@ private fun ToolScreensInner(nav: NavHostController, id: String, uri: String?) {
         "blank" -> BlankPdfScreen(nav)
         "images_to_pdf" -> ImagesToPdfScreen(nav)
         "merge" -> MergeScreen(nav, uri)
+        // share6: signature requests, connected documents
+        "esign" -> com.smartdocs.editor.ui.esign.EsignDashboardScreen(nav)
+        "esign_create" -> com.smartdocs.editor.ui.esign.EsignCreateScreen(nav, uri)
+        "connected" -> com.smartdocs.editor.ui.connected.ConnectedHomeScreen(nav, uri)
+        // office5: Office start screen (open / new Word / new Excel)
+        "office" -> com.smartdocs.editor.ui.office.OfficeStartScreen(nav)
         "split" -> SplitScreen(nav, uri)
         "compress" -> CompressScreen(nav, uri)
         "page_numbers" -> PageNumbersScreen(nav, uri)

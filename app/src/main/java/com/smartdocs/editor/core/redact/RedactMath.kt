@@ -65,9 +65,10 @@ object RedactMath {
             val dash = p.indexOf('-')
             if (dash < 0) listOfNotNull(p.toIntOrNull()?.minus(1))
             else {
-                val a = p.substring(0, dash).trim().toIntOrNull() ?: 1
-                val b = p.substring(dash + 1).trim().toIntOrNull() ?: count
-                (minOf(a, b) - 1..maxOf(a, b) - 1).toList()
+                // clamped: "1-2000000000" would otherwise build a 2-billion-element list (OOM in composition)
+                val a = (p.substring(0, dash).trim().toIntOrNull() ?: 1).coerceIn(1, count.coerceAtLeast(1))
+                val b = (p.substring(dash + 1).trim().toIntOrNull() ?: count).coerceIn(1, count.coerceAtLeast(1))
+                if (count <= 0) emptyList() else (minOf(a, b) - 1..maxOf(a, b) - 1).toList()
             }
         }.filter { it in 0 until count }.distinct().sorted()
         return all.filter { when (parity) { PageParity.ALL -> true; PageParity.ODD -> it % 2 == 0; PageParity.EVEN -> it % 2 == 1 } }

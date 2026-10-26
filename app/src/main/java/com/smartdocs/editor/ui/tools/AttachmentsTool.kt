@@ -43,10 +43,11 @@ fun AttachmentsTool(nav: NavHostController, uri: String?) {
         val f = file.value ?: return@rememberLauncherForActivityResult
         if (u != null) {
             val name = app.documents.displayName(u) ?: "attachment"
-            val tmp = File(app.documents.tempDir, name)
-            runCatching { ctx.contentResolver.openInputStream(u)?.use { i -> tmp.outputStream().use { i.copyTo(it) } } }
-            val mime = ctx.contentResolver.getType(u) ?: "application/octet-stream"
+            val tmp = File(app.documents.tempDir, name.replace(Regex("""[\/:*?"<>|]"""), "_"))
+            val mime = runCatching { ctx.contentResolver.getType(u) }.getOrNull() ?: "application/octet-stream"
             runner.run(ctx.getString(R.string.processing)) {
+                // copy on IO (inside the runner), not on the main thread: big attachments froze the UI (ANR)
+                ctx.contentResolver.openInputStream(u)?.use { i -> tmp.outputStream().use { i.copyTo(it) } } ?: error("cannot open")
                 val out = app.documents.uniqueFile(app.documents.docsDir, f.nameWithoutExtension + "_att")
                 AttachmentOps.add(f, tmp, out, mime = mime); out
             }

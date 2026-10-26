@@ -151,9 +151,10 @@ internal fun EditPageView(c: EditController, modifier: Modifier = Modifier) {
 @Composable
 private fun InlineEditor(c: EditController, scale: Float, pageH: Float, rtlUi: Boolean) {
     val density = LocalDensity.current
+    if (c.unreadable) return              // nothing readable to edit: the format bar shows the notice instead
     val rect: RectF = c.block?.rect ?: c.newBox(rtlUi) ?: return
     val st = c.style
-    val rtl = c.block?.rtl ?: EditController.isRtl(c.text, rtlUi)
+    val rtl = c.block?.takeIf { !c.replaceWhole }?.rtl ?: EditController.isRtl(c.text, c.block?.rtl ?: rtlUi)
     val x = rect.left * scale; val y = (pageH - rect.top) * scale
     val w = ((rect.right - rect.left) * scale).coerceAtLeast(with(density) { 120.dp.toPx() })
     val fontPx = st.size * scale

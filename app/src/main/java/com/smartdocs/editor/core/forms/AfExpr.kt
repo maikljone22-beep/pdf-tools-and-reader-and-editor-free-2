@@ -185,11 +185,14 @@ object AfNumbers {
             s = if (parts.size == 2 && parts[1].length != 3) parts[0] + "." + parts[1] else s.replace(",", "")
         }
         val v = s.toDoubleOrNull() ?: Regex("-?\\d+(\\.\\d+)?").find(s)?.value?.toDoubleOrNull() ?: return null
+        // "1e999" / 400 digits parse to Infinity: BigDecimal(Infinity) in the formatters then throws (crash while drawing the field)
+        if (v.isNaN() || v.isInfinite()) return null
         return if (negativeParens) -abs(v) else v
     }
 
     /** Raw value string Acrobat would store for a computed number. */
     fun raw(v: Double): String {
+        if (v.isNaN() || v.isInfinite()) return ""
         if (v == floor(v) && abs(v) < 1e15) return v.toLong().toString()
         return java.math.BigDecimal(v).round(java.math.MathContext(12)).stripTrailingZeros().toPlainString()
     }

@@ -168,7 +168,8 @@ class ToolRunner(private val scope: CoroutineScope) {
         if (running) return
         running = true; message = msg; error = null
         scope.launch {
-            try { result = withContext(Dispatchers.IO) { block() } } catch (e: Exception) { error = e.message ?: e.toString() } finally { running = false }
+            // Throwable: OutOfMemoryError / NoClassDefFoundError from PdfBox on big or odd files must show an error, not kill the app
+            try { result = withContext(Dispatchers.IO) { block() } } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Throwable) { error = e.message ?: e.toString() } finally { running = false }
         }
     }
 
@@ -176,7 +177,7 @@ class ToolRunner(private val scope: CoroutineScope) {
         if (running) return
         running = true; message = msg; error = null
         scope.launch {
-            try { results = withContext(Dispatchers.IO) { block() } } catch (e: Exception) { error = e.message ?: e.toString() } finally { running = false }
+            try { results = withContext(Dispatchers.IO) { block() } } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Throwable) { error = e.message ?: e.toString() } finally { running = false }
         }
     }
 }
@@ -200,7 +201,8 @@ fun ResultSheet(file: File, nav: NavHostController, onDismiss: () -> Unit, extra
     val saver = rememberLauncherForActivityResult(contract) { uri ->
         if (uri != null) CoroutineScope(Dispatchers.IO).launch { runCatching { app.documents.exportTo(file, uri) } }
     }
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = MaterialTheme.colorScheme.surfaceContainerLow) {
+    val naturalBreak = com.smartdocs.editor.core.ads.rememberNaturalBreak()   // share6: interstitial at a natural break (not on Open/Share)
+    ModalBottomSheet(onDismissRequest = { onDismiss(); naturalBreak() }, containerColor = MaterialTheme.colorScheme.surfaceContainerLow) {
         Column(Modifier.padding(horizontal = 24.dp).padding(bottom = 32.dp)) {
             Box(Modifier.size(72.dp).clip(CircleShape).background(MaterialTheme.colorScheme.secondaryContainer).align(Alignment.CenterHorizontally), contentAlignment = Alignment.Center) {
                 Icon(Icons.Default.CheckCircle, null, Modifier.size(40.dp), tint = MaterialTheme.colorScheme.secondary)
@@ -259,7 +261,7 @@ fun mimeFor(ext: String): String = when (ext.lowercase()) {
 
 /** A row that opens the system document picker and returns a local file. */
 @Composable
-fun rememberPdfPicker(multiple: Boolean = false, onPicked: (List<File>) -> Unit): () -> Unit {
+fun rememberPdfPicker(multiple: Boolean = false, mimes: Array<String> = arrayOf("application/pdf"), onPicked: (List<File>) -> Unit): () -> Unit {
     val app = LocalApp.current
     val scope = rememberCoroutineScope()
     val ctx = LocalContext.current
@@ -272,7 +274,7 @@ fun rememberPdfPicker(multiple: Boolean = false, onPicked: (List<File>) -> Unit)
     val multi = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         if (uris.isNotEmpty()) { uris.forEach { persist(it) }; scope.launch { onPicked(uris.mapNotNull { runCatching { app.documents.localFile(it) }.getOrNull() }) } }
     }
-    return { if (multiple) multi.launch(arrayOf("application/pdf")) else single.launch(arrayOf("application/pdf")) }
+    return { if (multiple) multi.launch(mimes) else single.launch(mimes) }   // office5: general "open" buttons pass the Office types too
 }
 
 @Composable

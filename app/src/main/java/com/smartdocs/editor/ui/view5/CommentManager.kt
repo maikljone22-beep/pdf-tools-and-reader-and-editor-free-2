@@ -7,6 +7,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -108,7 +109,7 @@ fun CommentManagerSheet(v: V5State, onMessage: (String) -> Unit) {
                     DropdownMenu(exportOpen, { exportOpen = false }) {
                         DropdownMenuItem(text = { Text(stringResource(R.string.v5_export_csv)) }, leadingIcon = { Icon(Icons.Default.TableChart, null) }, onClick = {
                             exportOpen = false
-                            scope.launch { val out = withContext(Dispatchers.IO) { app.documents.newTemp(base + "_comments", "csv").also { it.writeText(CommentFilter.csv(shown, header())) } }; share(out, "text/csv") }
+                            scope.launch { runCatching { withContext(Dispatchers.IO) { app.documents.newTemp(base + "_comments", "csv").also { it.writeText(CommentFilter.csv(shown, header())) } } }.onSuccess { share(it, "text/csv") }.onFailure { onMessage(it.message ?: ctx.getString(R.string.error_generic)) } }
                         })
                         DropdownMenuItem(text = { Text(stringResource(R.string.v5_export_word)) }, leadingIcon = { Icon(Icons.Default.Description, null) }, onClick = {
                             exportOpen = false
@@ -116,17 +117,16 @@ fun CommentManagerSheet(v: V5State, onMessage: (String) -> Unit) {
                                 val df = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US)
                                 val table = shown.map { r -> listOf((r.page + 1).toString(), CommentRows.typeLabel(ctx, r.type), r.author, if (r.date > 0) df.format(Date(r.date)) else "", r.status,
                                     if (r.checked) "✓" else "", r.contents, r.markedText, r.replies.joinToString("\n")) }
-                                val out = app.documents.newTemp(base + "_comments", "docx")
-                                runCatching { CommentOps5.writeDocx(table, header(), ctx.getString(R.string.v5_comments_of, s.file?.name ?: ""), out) }
-                                    .onSuccess { share(out, "application/vnd.openxmlformats-officedocument.wordprocessingml.document") }.onFailure { onMessage(it.message ?: "") }
+                                runCatching { withContext(Dispatchers.IO) { app.documents.newTemp(base + "_comments", "docx").also { out -> CommentOps5.writeDocx(table, header(), ctx.getString(R.string.v5_comments_of, s.file?.name ?: ""), out) } } }
+                                    .onSuccess { out -> share(out, "application/vnd.openxmlformats-officedocument.wordprocessingml.document") }.onFailure { onMessage(it.message ?: "") }
                             }
                         })
                         DropdownMenuItem(text = { Text(stringResource(R.string.v5_export_summary)) }, leadingIcon = { Icon(Icons.Default.Summarize, null) }, onClick = {
                             exportOpen = false
                             scope.launch {
                                 val txt = CommentFilter.summary(shown, ctx.getString(R.string.v5_comments_of, s.file?.name ?: ""), ::pageLabel) { CommentRows.typeLabel(ctx, it) }
-                                val out = withContext(Dispatchers.IO) { app.documents.newTemp(base + "_summary", "txt").also { it.writeText(txt) } }
-                                share(out, "text/plain")
+                                runCatching { withContext(Dispatchers.IO) { app.documents.newTemp(base + "_summary", "txt").also { it.writeText(txt) } } }
+                                    .onSuccess { share(it, "text/plain") }.onFailure { onMessage(it.message ?: ctx.getString(R.string.error_generic)) }
                             }
                         })
                         DropdownMenuItem(text = { Text(stringResource(R.string.v5_export_summary_pdf)) }, leadingIcon = { Icon(Icons.Default.PictureAsPdf, null) }, onClick = {
@@ -138,8 +138,8 @@ fun CommentManagerSheet(v: V5State, onMessage: (String) -> Unit) {
                             scope.launch {
                                 val txt = CommentFilter.highlightedText(shown, ::pageLabel)
                                 if (txt.isBlank()) { onMessage(ctx.getString(R.string.v5_no_highlights)); return@launch }
-                                val out = withContext(Dispatchers.IO) { app.documents.newTemp(base + "_highlights", "txt").also { it.writeText(txt) } }
-                                share(out, "text/plain")
+                                runCatching { withContext(Dispatchers.IO) { app.documents.newTemp(base + "_highlights", "txt").also { it.writeText(txt) } } }
+                                    .onSuccess { share(it, "text/plain") }.onFailure { onMessage(it.message ?: ctx.getString(R.string.error_generic)) }
                             }
                         })
                         DropdownMenuItem(text = { Text(stringResource(R.string.v5_copy_highlights)) }, leadingIcon = { Icon(Icons.Default.ContentCopy, null) }, onClick = {
@@ -167,7 +167,8 @@ fun CommentManagerSheet(v: V5State, onMessage: (String) -> Unit) {
             if (rows == null) Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
             else if (shown.isEmpty()) Text(stringResource(R.string.v5_no_comments), Modifier.padding(24.dp))
             else LazyColumn(Modifier.fillMaxWidth().weight(1f)) {
-                items(shown, key = { "${it.page}:${it.index}:${it.date}:${it.pending}:${it.type}" }) { r ->
+                // list position in the key: pending annotations all have index -1 and may share page/date/type (duplicate keys crash)
+                itemsIndexed(shown, key = { i, it -> "$i:${it.page}:${it.index}:${it.date}:${it.pending}:${it.type}" }) { _, r ->
                     val check: (() -> Unit)? = if (r.pending || r.index < 0) null else ({
                         scope.launch {
                             runCatching { s.applyInPlace { src, out, pw -> CommentOps5.setChecked(src, out, pw, r.page, r.index, !r.checked, s.authorName) } }

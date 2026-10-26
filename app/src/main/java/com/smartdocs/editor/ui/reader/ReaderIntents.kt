@@ -42,11 +42,12 @@ object ReaderIntents {
 
     fun copy(context: Context, text: String, label: String = "text") {
         val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        cm.setPrimaryClip(ClipData.newPlainText(label, text))
+        // a huge clip (whole-document highlights / text) throws TransactionTooLargeException
+        runCatching { cm.setPrimaryClip(ClipData.newPlainText(label, text.take(200_000))) }
     }
 
     fun shareText(context: Context, text: String) {
-        val i = Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, text) }
+        val i = Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, text.take(100_000)) }   // binder limit
         runCatching { context.startActivity(Intent.createChooser(i, null).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
     }
 

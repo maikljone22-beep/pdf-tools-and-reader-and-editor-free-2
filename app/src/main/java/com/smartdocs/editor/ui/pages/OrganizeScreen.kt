@@ -40,6 +40,7 @@ fun OrganizeScreen(nav: NavHostController, uri: String?) {
 
     var pendingPassword by remember { mutableStateOf("") }
     var insertDialog by remember { mutableStateOf<InsertKind?>(null) }
+    var lockedInsert by remember { mutableStateOf<Pair<java.io.File, Int>?>(null) }   // share6 (fid)
     var exitDialog by remember { mutableStateOf(false) }
     var result by remember { mutableStateOf<File?>(null) }
     var saving by remember { mutableStateOf(false) }
@@ -55,6 +56,8 @@ fun OrganizeScreen(nav: NavHostController, uri: String?) {
     val pick = rememberPdfPicker { it.firstOrNull()?.let(::openFile) }
     val pickInsert = rememberPdfPicker { files -> files.firstOrNull()?.let { f -> insertDialog = InsertKind.File(f) } }
     val pickImages = rememberImagePicker { files -> if (files.isNotEmpty()) insertDialog = InsertKind.Images(files) }
+    // gaps6: capture pages with the document scanner, then choose where to insert them
+    val scanPages = com.smartdocs.editor.ui.gaps6.rememberCameraPages { files -> if (files.isNotEmpty()) insertDialog = InsertKind.Images(files, fromCamera = true) }
 
     val noSel = stringResource(R.string.pg_no_selection)
     val cannotDeleteAll = stringResource(R.string.pg_cannot_delete_all)
@@ -103,6 +106,7 @@ fun OrganizeScreen(nav: NavHostController, uri: String?) {
                 onInsertBlank = { insertDialog = InsertKind.Blank },
                 onInsertFile = pickInsert,
                 onInsertImage = pickImages,
+                onInsertCamera = scanPages,
                 onDelete = { requireSelection { if (state.selected.size >= state.pageCount) snack = cannotDeleteAll else state.deleteSelected() } },
                 onExtract = {
                     requireSelection { saving = true; scope.launch { try { result = state.extractSelected() } catch (e: Exception) { snack = e.message } finally { saving = false } } }
@@ -168,7 +172,11 @@ fun OrganizeScreen(nav: NavHostController, uri: String?) {
     if (saving) ProgressDialog(stringResource(R.string.processing))
     result?.let { ResultSheet(it, nav, onDismiss = { result = null }) }
 
-    insertDialog?.let { kind -> InsertDialog(state, kind, onDismiss = { insertDialog = null }) }
+    insertDialog?.let { kind -> InsertDialog(state, kind, onDismiss = { insertDialog = null }, onLockedFile = { f, at -> lockedInsert = f to at }) }
+    // share6 (fid): inserting pages from a password-protected PDF
+    lockedInsert?.let { (other, at) ->
+        com.smartdocs.editor.ui.tools.FilePasswordDialog(other, onUnlocked = { pw -> lockedInsert = null; state.insertFrom(other, at, pw) }, onRemove = { lockedInsert = null })
+    }
 
     if (exitDialog) AlertDialog(
         onDismissRequest = { exitDialog = false },
@@ -193,17 +201,21 @@ private fun PasswordPrompt(value: String, onChange: (String) -> Unit, onSubmit: 
 sealed class InsertKind {
     data object Blank : InsertKind()
     data class File(val file: java.io.File) : InsertKind()
-    data class Images(val files: List<java.io.File>) : InsertKind()
+    data class Images(val files: List<java.io.File>, val fromCamera: Boolean = false) : InsertKind()
 }
 
 @Composable
-private fun InsertDialog(state: OrganizeState, kind: InsertKind, onDismiss: () -> Unit) {
+private fun InsertDialog(state: OrganizeState, kind: InsertKind, onDismiss: () -> Unit, onLockedFile: (java.io.File, Int) -> Unit = { _, _ -> }) {
     val ref = state.selected.minOrNull()
+    // share6 (fid): a locked source file asks for its password before inserting
+    val needsPw by produceState(false, kind) {
+        value = (kind as? InsertKind.File)?.let { k -> kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.smartdocs.editor.core.pdf.LockedPdf.needsPassword(k.file) } } ?: false
+    }
     var position by remember { mutableIntStateOf(if (ref == null) 2 else 1) } // 0 before, 1 after, 2 end
     var style by remember { mutableStateOf(PdfOps.PageStyle.BLANK) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(when (kind) { InsertKind.Blank -> R.string.page_insert_blank; is InsertKind.File -> R.string.page_insert_file; is InsertKind.Images -> R.string.page_insert_image })) },
+        title = { Text(stringResource(when (kind) { InsertKind.Blank -> R.string.page_insert_blank; is InsertKind.File -> R.string.page_insert_file; is InsertKind.Images -> if (kind.fromCamera) R.string.g6_insert_camera else R.string.page_insert_image })) },
         text = {
             Column {
                 Text(stringResource(R.string.pg_insert_position), style = MaterialTheme.typography.labelLarge)
@@ -231,7 +243,7 @@ private fun InsertDialog(state: OrganizeState, kind: InsertKind, onDismiss: () -
                 val at = when (position) { 0 -> ref ?: state.pageCount; 1 -> (ref ?: -1) + 1; else -> state.pageCount }
                 when (kind) {
                     InsertKind.Blank -> state.insertBlank(at, style)
-                    is InsertKind.File -> state.insertFrom(kind.file, at)
+                    is InsertKind.File -> if (needsPw) onLockedFile(kind.file, at) else state.insertFrom(kind.file, at)
                     is InsertKind.Images -> state.insertImages(kind.files, at)
                 }
                 onDismiss()
@@ -245,7 +257,7 @@ private fun InsertDialog(state: OrganizeState, kind: InsertKind, onDismiss: () -
 @Composable
 private fun OrganizeToolbar(
     state: OrganizeState,
-    onInsertBlank: () -> Unit, onInsertFile: () -> Unit, onInsertImage: () -> Unit,
+    onInsertBlank: () -> Unit, onInsertFile: () -> Unit, onInsertImage: () -> Unit, onInsertCamera: () -> Unit,
     onDelete: () -> Unit, onExtract: () -> Unit, onShare: () -> Unit, onMessage: (String) -> Unit,
 ) {
     val noSel = stringResource(R.string.pg_no_selection)
@@ -255,6 +267,7 @@ private fun OrganizeToolbar(
             ToolbarButton(Icons.Default.NoteAdd, stringResource(R.string.page_insert_blank), onClick = onInsertBlank)
             ToolbarButton(Icons.Default.FileOpen, stringResource(R.string.page_insert_file), onClick = onInsertFile)
             ToolbarButton(Icons.Default.Image, stringResource(R.string.page_insert_image), onClick = onInsertImage)
+            ToolbarButton(Icons.Default.PhotoCamera, stringResource(R.string.g6_insert_camera), onClick = onInsertCamera)
             VerticalDivider(Modifier.height(36.dp).padding(horizontal = 2.dp))
             ToolbarButton(Icons.Default.RotateLeft, stringResource(R.string.page_rotate_left)) { if (state.selected.isEmpty()) onMessage(noSel) else state.rotateSelected(-90) }
             ToolbarButton(Icons.Default.RotateRight, stringResource(R.string.page_rotate_right)) { if (state.selected.isEmpty()) onMessage(noSel) else state.rotateSelected(90) }

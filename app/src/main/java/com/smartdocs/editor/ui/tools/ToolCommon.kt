@@ -149,7 +149,7 @@ fun ResultsList(files: List<File>, nav: NavHostController, mime: String) {
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(bottom = 8.dp)) {
             SectionTitle(stringResource(R.string.tl_results_count, files.size)) {
-                TextButton(onClick = { ctx.startActivity(Intent.createChooser(app.documents.shareIntent(files, mime), null)) }) {
+                TextButton(onClick = { runCatching { ctx.startActivity(Intent.createChooser(app.documents.shareIntent(files, mime), null)) } }) {
                     Icon(Icons.Default.Share, null, Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text(stringResource(R.string.tl_share_all))
                 }
             }
@@ -161,7 +161,7 @@ fun ResultsList(files: List<File>, nav: NavHostController, mime: String) {
                         Text(f.name, style = MaterialTheme.typography.bodyMedium, maxLines = 1)
                         Text(DocumentRepository.formatSize(f.length()), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    IconButton(onClick = { ctx.startActivity(Intent.createChooser(app.documents.shareIntent(listOf(f), mime), null)) }) { Icon(Icons.Default.Share, stringResource(R.string.share)) }
+                    IconButton(onClick = { runCatching { ctx.startActivity(Intent.createChooser(app.documents.shareIntent(listOf(f), mime), null)) } }) { Icon(Icons.Default.Share, stringResource(R.string.share)) }
                 }
             }
         }

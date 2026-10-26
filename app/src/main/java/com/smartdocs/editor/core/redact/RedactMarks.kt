@@ -76,6 +76,7 @@ object RedactMarks {
     /** Every /Redact annotation of the document as marks (page order). */
     fun read(doc: PDDocument): List<RedactMark> {
         val out = ArrayList<RedactMark>()
+        val seen = HashSet<String>()   // /NM can repeat (copied annotations): ids are LazyColumn keys and must be unique
         doc.pages.forEachIndexed { pi, page ->
             runCatching { page.annotations }.getOrNull()?.forEachIndexed { ai, an ->
                 if (!isRedact(an)) return@forEachIndexed
@@ -108,7 +109,7 @@ object RedactMarks {
                     repeat = d.getBoolean(K_REPEAT, false),
                     align = d.getInt(K_Q, 1).coerceIn(0, 2),
                 )
-                out += RedactMark(d.getString(K_NM) ?: "r:$pi:$ai:${System.nanoTime()}", pi, rects, style, an.contents ?: "", d.getBoolean(K_WHOLE, false))
+                out += RedactMark((d.getString(K_NM) ?: "r:$pi:$ai").let { if (seen.add(it)) it else "$it#$pi:$ai:${System.nanoTime()}".also { k -> seen.add(k) } }, pi, rects, style, an.contents ?: "", d.getBoolean(K_WHOLE, false))
             }
         }
         return out

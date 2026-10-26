@@ -142,5 +142,7 @@ fun AiToolsPanel(nav: NavHostController, file: File?, modifier: Modifier = Modif
 fun parsePages(s: String): List<Int> = s.split(',', '،').flatMap { part ->
     val p = com.smartdocs.editor.core.ai5.AiNorm.digits(part).trim()
     val m = Regex("(\\d+)\\s*-\\s*(\\d+)").find(p)
-    if (m != null) (m.groupValues[1].toInt()..m.groupValues[2].toInt()).map { it - 1 } else listOfNotNull(p.toIntOrNull()?.minus(1))
+    // toIntOrNull + a cap: "1-99999999" (or an overflowing number) must not throw / allocate a huge list
+    val a = m?.groupValues?.get(1)?.toIntOrNull(); val b = m?.groupValues?.get(2)?.toIntOrNull()
+    if (a != null && b != null) (a..minOf(b, a + 10_000)).map { it - 1 } else listOfNotNull(p.toIntOrNull()?.minus(1))
 }.filter { it >= 0 }.distinct().sorted()

@@ -44,6 +44,8 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="smartdocs" android:host="oauth" />
                 <data android:scheme="smartdocs" android:host="review" />
+                <data android:scheme="smartdocs" android:host="esign" />
+                <data android:scheme="smartdocs" android:host="doc" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -56,6 +58,29 @@
                 <data android:scheme="content" />
                 <data android:scheme="file" />
                 <data android:mimeType="application/pdf" />
+                <!-- office5: receive Office files from other apps -->
+                <data android:mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
+                <data android:mimeType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
+                <data android:mimeType="application/vnd.openxmlformats-officedocument.presentationml.presentation" />
+                <data android:mimeType="application/vnd.ms-word.document.macroEnabled.12" />
+                <data android:mimeType="application/vnd.ms-excel.sheet.macroEnabled.12" />
+                <data android:mimeType="application/vnd.ms-powerpoint.presentation.macroEnabled.12" />
+                <data android:mimeType="application/vnd.oasis.opendocument.text" />
+                <data android:mimeType="application/rtf" />
+                <data android:mimeType="text/csv" />
+                <data android:mimeType="text/comma-separated-values" />
+                <data android:mimeType="application/msword" />
+                <data android:mimeType="application/vnd.ms-excel" />
+                <data android:mimeType="application/vnd.ms-powerpoint" />
+            </intent-filter>
+            <!-- share6: returned e-mail-review comment files -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" android:mimeType="application/vnd.adobe.xfdf" />
+                <data android:scheme="content" android:mimeType="application/vnd.fdf" />
+                <data android:scheme="file" android:mimeType="application/vnd.adobe.xfdf" />
+                <data android:scheme="file" android:mimeType="application/vnd.fdf" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
@@ -109,5 +134,10 @@
         <meta-data
             android:name="com.google.mlkit.vision.DEPENDENCIES"
             android:value="document_scanner" />
+
+        <!-- share6 (monet): required by play-services-ads (crash at start without it); value from ads.properties appId, Google's sample id by default -->
+        <meta-data
+            android:name="com.google.android.gms.ads.APPLICATION_ID"
+            android:value="${admobAppId}" />
     </application>
 </manifest>

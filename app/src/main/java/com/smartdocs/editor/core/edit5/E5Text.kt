@@ -77,7 +77,8 @@ class E5Line(fonts: E5Fonts, val logical: String, val style: E5TextStyle) {
         val lat = fonts.latin(style.font, style.bold)
         val encodable = HashMap<Pair<PDFont, Char>, Boolean>()
         fun can(f: PDFont, c: Char) = encodable.getOrPut(f to c) { try { f.encode(c.toString()); true } catch (e: Exception) { false } }
-        val visual = if (ArabicShaper.isArabic(logical)) ArabicShaper.shape(logical) else logical
+        // shaped + reordered without reversing Arabic-Indic digits ("صفحة ١٢") or Latin phrases (see core/edit/Bidi)
+        val visual = if (ArabicShaper.isArabic(logical)) com.smartdocs.editor.core.edit.Bidi.shapeVisual(logical, com.smartdocs.editor.core.edit.Bidi.firstStrongRtl(logical) ?: true) else logical
         val list = ArrayList<Run>()
         var cur: PDFont? = null
         val sb = StringBuilder()

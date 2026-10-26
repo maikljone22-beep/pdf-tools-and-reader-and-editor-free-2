@@ -31,7 +31,7 @@ object XfaJs {
                 "n" to JsonPrimitive(n.name), "v" to JsonPrimitive(n.value), "p" to JsonPrimitive(n.presence),
                 "k" to JsonPrimitive(kind(n)), "par" to JsonPrimitive(n.parent?.let { ids[it] } ?: -1),
                 "c" to JsonArray(n.children.map { JsonPrimitive(ids[it]!!) }),
-                "i" to JsonPrimitive(Regex("""\[(\d+)]$""").find(n.som)?.groupValues?.get(1)?.toInt() ?: 0),
+                "i" to JsonPrimitive(Regex("""\[(\d+)]$""").find(n.som)?.groupValues?.get(1)?.toIntOrNull() ?: 0),
             ))
         }).toString()
         val sandbox = JsSandbox()

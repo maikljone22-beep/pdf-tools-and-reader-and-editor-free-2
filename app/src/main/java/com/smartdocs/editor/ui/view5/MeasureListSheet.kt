@@ -54,7 +54,7 @@ fun MeasureListSheet(v: V5State) {
                             ctx.getString(R.string.v5_col_unit), ctx.getString(R.string.v5_col_label), ctx.getString(R.string.v5_col_author), ctx.getString(R.string.v5_col_scale)),
                             ctx.getString(R.string.v5_total))
                         val app = ctx.applicationContext as com.smartdocs.editor.SmartDocsApp
-                        val out = withContext(Dispatchers.IO) { app.documents.newTemp((s.file?.nameWithoutExtension ?: "doc") + "_measure", "csv").also { it.writeText(csv, Charsets.UTF_8) } }
+                        val out = runCatching { withContext(Dispatchers.IO) { app.documents.newTemp((s.file?.nameWithoutExtension ?: "doc") + "_measure", "csv").also { it.writeText(csv, Charsets.UTF_8) } } }.getOrNull() ?: return@launch
                         runCatching { ctx.startActivity(Intent.createChooser(app.documents.shareIntent(listOf(out), "text/csv"), null)) }
                     }
                 }) { Icon(Icons.Default.TableChart, null); Spacer(Modifier.width(4.dp)); Text(stringResource(R.string.v5_export_csv)) }

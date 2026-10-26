@@ -96,8 +96,9 @@ fun GlobalSearchScreen(nav: NavHostController) {
             }
             val bg = MaterialTheme.colorScheme.tertiaryContainer
             LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
-                results.forEach { fr ->
-                    item(key = "h:" + fr.path) {
+                // file position in the keys: two index rows for one path (re-indexed copy) must not produce duplicate keys
+                results.forEachIndexed { fi, fr ->
+                    item(key = "h:$fi:" + fr.path) {
                         Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
                             Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Default.PictureAsPdf, null, tint = MaterialTheme.colorScheme.primary)
@@ -107,7 +108,7 @@ fun GlobalSearchScreen(nav: NavHostController) {
                             }
                         }
                     }
-                    items(fr.hits.mapIndexed { i, h -> i to h }, key = { "r:" + fr.path + ":" + it.first }) { (_, h) ->
+                    items(fr.hits.mapIndexed { i, h -> i to h }, key = { "r:$fi:" + fr.path + ":" + it.first }) { (_, h) ->
                         ListItem(
                             modifier = Modifier.clickable {
                                 nav.navigate(Routes.reader(Uri.fromFile(File(fr.path)).toString(), h.page.coerceAtLeast(0)))

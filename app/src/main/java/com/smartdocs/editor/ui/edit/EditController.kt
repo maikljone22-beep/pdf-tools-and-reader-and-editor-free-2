@@ -14,6 +14,7 @@ import com.smartdocs.editor.core.edit.PageTextModel
 import com.smartdocs.editor.core.edit.StalePageException
 import com.smartdocs.editor.core.edit.TextAlign
 import com.smartdocs.editor.core.edit.TextBlock
+import com.smartdocs.editor.core.search.ArabicTextFix
 import com.smartdocs.editor.ui.reader.ReaderState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -53,6 +54,15 @@ class EditController(val state: ReaderState, private val scope: CoroutineScope, 
     var style by mutableStateOf(EditTextStyle())
     var alignTouched by mutableStateOf(false)
     val editingText: Boolean get() = block != null || newAt != null
+    /** The selected block's text cannot be decoded (no Unicode mapping): the editor shows a notice instead of garbage. */
+    var unreadable by mutableStateOf(false); private set
+    /** The user chose to replace the whole unreadable block with new text. */
+    var replaceWhole by mutableStateOf(false); private set
+    /** [text] was recovered from PDFium's text layer (the PdfBox decoding was incomplete). */
+    var recovered by mutableStateOf(false); private set
+    /** Text shown when the block was selected (commit is a no-op when it is unchanged). */
+    private var shownText = ""
+    private var recoverJob: Job? = null
 
     // ---- images ----
     var image by mutableStateOf<ImageItem?>(null); private set
@@ -95,7 +105,10 @@ class EditController(val state: ReaderState, private val scope: CoroutineScope, 
         clearSelection(); page = np; model = null; reload()
     }
 
-    fun clearSelection() { block = null; newAt = null; image = null; affine = identity(); text = ""; insertAt = null }
+    fun clearSelection() {
+        block = null; newAt = null; image = null; affine = identity(); text = ""; insertAt = null
+        unreadable = false; replaceWhole = false; recovered = false; shownText = ""; recoverJob?.cancel(); recoverJob = null
+    }
 
     // ================= taps =================
 
@@ -121,9 +134,64 @@ class EditController(val state: ReaderState, private val scope: CoroutineScope, 
 
     private fun selectBlock(b: TextBlock) {
         block = b; newAt = null; image = null
-        text = b.text
+        replaceWhole = false; recovered = false
+        unreadable = b.unreadable
+        text = if (b.unreadable) "" else b.text
+        shownText = text
         alignTouched = true
         style = EditTextStyle(size = b.size, color = b.color, bold = b.bold, italic = b.italic, align = b.align, family = b.family)
+        // last resort for undecodable / incomplete text: PDFium's text layer at the block's position
+        if (b.unreadable || b.lossy) {
+            val m = model ?: return
+            val p = page
+            recoverJob?.cancel()
+            recoverJob = scope.launch {
+                val t = runCatching { pdfiumText(p, m, b) }.getOrNull() ?: return@launch
+                if (block !== b || replaceWhole || page != p) return@launch
+                val better = b.unreadable || t.count { it.isLetterOrDigit() } > b.text.count { it.isLetterOrDigit() }
+                if (!better || (!b.unreadable && text != b.text)) return@launch     // the user already started typing
+                text = t; shownText = t; unreadable = false; recovered = true
+            }
+        }
+    }
+
+    /** Replace the whole (unreadable) block: start from an empty field; the old glyphs are removed on commit. */
+    fun startReplaceWhole() {
+        if (block == null) return
+        recoverJob?.cancel()
+        replaceWhole = true; unreadable = false; recovered = false
+        text = ""; shownText = ""
+        alignTouched = false
+    }
+
+    /**
+     * The text PDFium extracted for the characters whose boxes lie inside [b], in logical order
+     * ([ArabicTextFix.fix]: presentation forms, visual order, cp1256 mojibake). Null when it is no better.
+     */
+    private suspend fun pdfiumText(p: Int, m: PageModel, b: TextBlock): String? {
+        val all = state.pageText(p)
+        val boxes = state.charBoxes(p)
+        if (all.isEmpty() || boxes.isEmpty()) return null
+        val toDisplay = Affine.fromValues(m.toDisplay)
+        val r = inflate(b.rect, maxOf(1.5f, b.size * 0.15f))
+        val sb = StringBuilder()
+        var lastY = Float.NaN
+        var lastIn = -2
+        for (i in 0 until minOf(all.length, boxes.size)) {
+            val c = all[i]
+            val bx = boxes[i]
+            if (c == '\r' || c == '\n') continue
+            if (bx.left == bx.right && bx.top == bx.bottom) {            // generated space
+                if (lastIn == i - 1 && c == ' ') { sb.append(' '); lastIn = i }
+                continue
+            }
+            val (x, y) = Affine.apply(toDisplay, (bx.left + bx.right) / 2f, (bx.top + bx.bottom) / 2f)
+            if (x < r.left || x > r.right || y < r.bottom || y > r.top) continue
+            if (!lastY.isNaN() && kotlin.math.abs(y - lastY) > b.size * 0.6f) sb.append('\n')
+            sb.append(c); lastY = y; lastIn = i
+        }
+        val fixed = ArabicTextFix.fix(sb.toString()).split('\n').map { it.trim() }.filter { it.isNotEmpty() }.joinToString(" ")
+        return fixed.takeIf { t -> t.any { it.isLetterOrDigit() } && !ArabicTextFix.isGarbage(t) }
     }
 
     private fun startNew(x: Float, y: Float) {
@@ -168,8 +236,10 @@ class EditController(val state: ReaderState, private val scope: CoroutineScope, 
         val t = text.trimEnd()
         val b = block
         if (b != null) {
-            if (t == b.text && style == EditTextStyle(b.size, b.color, b.bold, b.italic, b.align, b.family)) { clearSelection(); return }
-            val st = style
+            if (unreadable) { clearSelection(); return }       // nothing was shown, nothing to save
+            if (!replaceWhole && t == shownText.trimEnd() && style == EditTextStyle(b.size, b.color, b.bold, b.italic, b.align, b.family)) { clearSelection(); return }
+            if (replaceWhole && t.isBlank()) { clearSelection(); return }
+            val st = if (replaceWhole && !alignTouched) style.copy(align = if (isRtl(t, rtlDefault)) TextAlign.RIGHT else TextAlign.LEFT) else style
             run(if (t.isBlank()) R.string.ed_deleted else R.string.ed_saved) { src, out -> ContentEdit.replaceText(ctx, src, out, state.password, p, b.ops, t, st) }
             return
         }

@@ -58,7 +58,7 @@ fun DecorScreen(nav: NavHostController, uri: String?, type: DecorType) {
     val processing = stringResource(R.string.processing)
     LaunchedEffect(doc.work) {
         val w = doc.work ?: return@LaunchedEffect
-        WatermarkOps.stored(w, doc.password, type)?.let { spec = it.copy(user = spec.user); existing = true }
+        runCatching { WatermarkOps.stored(w, doc.password, type) }.getOrNull()?.let { spec = it.copy(user = spec.user); existing = true }
     }
     val title = stringResource(when (type) { DecorType.WATERMARK -> R.string.e5_wm_title; DecorType.BACKGROUND -> R.string.e5_bg_title; DecorType.SECURITY -> R.string.e5_sec_title })
     val live = spec.isLive

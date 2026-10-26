@@ -240,7 +240,7 @@ object XfaSupport {
 
     private fun parsePath(p: String): List<Seg> = p.split('.').map { s ->
         val m = Regex("""^(.+)\[(\d+)]$""").find(s)
-        if (m != null) Seg(m.groupValues[1], m.groupValues[2].toInt()) else Seg(s, 0)
+        if (m != null) Seg(m.groupValues[1], m.groupValues[2].toIntOrNull() ?: 0) else Seg(s, 0)
     }
 
     private fun serialize(node: Node, omitDecl: Boolean): ByteArray {

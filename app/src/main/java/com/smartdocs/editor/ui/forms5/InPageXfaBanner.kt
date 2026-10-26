@@ -72,7 +72,7 @@ fun InPageXfaBanner(reader: ReaderState, onOpen: (File) -> Unit, modifier: Modif
                     try { XfaGenerated.generate(reader.context, src, reader.password, tmp); PdfOps.flattenForms(tmp, out) } finally { tmp.delete() }
                 } else XfaGenerated.generate(reader.context, src, reader.password, out)
                 onOpen(out)
-            } catch (e: Exception) { result = failed + ": " + (e.message ?: e.toString()) } finally { working = false }
+            } catch (e: Throwable) { if (e is kotlinx.coroutines.CancellationException) throw e; result = failed + ": " + (e.message ?: e.toString()) } finally { working = false }
         }
     }
 
@@ -104,7 +104,7 @@ fun InPageXfaBanner(reader: ReaderState, onOpen: (File) -> Unit, modifier: Modif
                                 val (target, n) = XfaGenerated.writeBack(f, null)
                                 result = okMsg.format(n, target.name)
                                 runCatching { app.documents.writeBack(target) }
-                            } catch (e: Exception) { result = failed + ": " + (e.message ?: e.toString()) } finally { working = false }
+                            } catch (e: Throwable) { if (e is kotlinx.coroutines.CancellationException) throw e; result = failed + ": " + (e.message ?: e.toString()) } finally { working = false }
                         }
                     }) { Text(stringResource(R.string.f5_xfa_write_back)) }
                 }

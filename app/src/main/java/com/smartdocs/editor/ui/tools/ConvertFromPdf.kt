@@ -181,7 +181,7 @@ internal fun ConvertFromPdfPanel(nav: NavHostController, uri: String?, snackbar:
                 throw e
             } catch (e: OutOfMemoryError) {
                 snackbar.showSnackbar(oomMsg)
-            } catch (e: Exception) {
+            } catch (e: Throwable) {   // Exception and Errors (NoClassDefFoundError, StackOverflowError…)
                 snackbar.showSnackbar(failedFmt.format(e.message ?: e.javaClass.simpleName))
             } finally {
                 run.running = false

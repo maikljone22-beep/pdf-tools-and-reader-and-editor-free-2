@@ -86,7 +86,12 @@ fun G6SyncCard(s: AppSettings, nav: NavHostController, upd: ((AppSettings) -> Ap
         G6Choice(listOf(TransferPolicy.WIFI to stringResource(R.string.g6_net_wifi), TransferPolicy.ANY to stringResource(R.string.g6_net_any)), s.transferNetwork) { v -> upd { it.copy(transferNetwork = v) } }
         GroupDivider()
         GroupRow(stringResource(R.string.g6_storage), stringResource(R.string.g6_storage_sub), icon = Icons.Default.Storage, tile = tiles.amber, onClick = {
-            runCatching { nav.navigate("storage") }   // route registered by the sharing/cloud module
+            runCatching { nav.navigate(com.smartdocs.editor.ui.share5.Share5Routes.STORAGE) }   // share6 storage screen (single storage row)
+        })
+        GroupDivider()
+        // share6: app-data sync (signatures, stamps, fill profile, tags, favourites)
+        GroupRow(stringResource(R.string.sh5_appdata), stringResource(R.string.sh5_appdata_sub), icon = Icons.Default.CloudSync, tile = tiles.green, onClick = {
+            runCatching { nav.navigate(com.smartdocs.editor.ui.share5.Share5Routes.APPDATA) }
         })
     }
 }

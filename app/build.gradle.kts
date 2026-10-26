@@ -25,10 +25,24 @@ android {
         val cloudProps = Properties().apply { rootProject.file("cloud.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) } }
         for ((k, prop) in listOf("CLOUD_ONEDRIVE_CLIENT_ID" to "onedriveClientId", "CLOUD_DROPBOX_APP_KEY" to "dropboxAppKey",
                 "CLOUD_ONEDRIVE_REDIRECT" to "onedriveRedirect", "CLOUD_DROPBOX_REDIRECT" to "dropboxRedirect",
-                "COLLAB_URL" to "collabUrl", "COLLAB_TOKEN" to "collabToken", "SUPPORT_EMAIL" to "supportEmail"))
+                "COLLAB_URL" to "collabUrl", "COLLAB_TOKEN" to "collabToken", "SUPPORT_EMAIL" to "supportEmail",
+                // share6: Box, share, esign, connected workers
+                "CLOUD_BOX_CLIENT_ID" to "boxClientId", "CLOUD_BOX_REDIRECT" to "boxRedirect", "CLOUD_BOX_CLIENT_SECRET" to "boxClientSecret", "CLOUD_BOX_TOKEN_URL" to "boxTokenUrl",
+                "SHARE_URL" to "shareUrl", "SHARE_TOKEN" to "shareToken",
+                "ESIGN_URL" to "esignUrl", "ESIGN_TOKEN" to "esignToken", "CONNECTED_URL" to "connectedUrl", "CONNECTED_TOKEN" to "connectedToken"))
             buildConfigField("String", k, "\"${cloudProps.getProperty(prop, "")}\"")
         val proProps = Properties().apply { rootProject.file("pro.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) } }
         buildConfigField("String", "PRO_CODE_SECRET", "\"${proProps.getProperty("codeSecret", "")}\"")
+        // share6 (monet): AdMob — OFF unless ads.properties sets enabled=true; the manifest always needs an app id (Google's sample id by default)
+        val adsProps = Properties().apply { rootProject.file("ads.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) } }
+        buildConfigField("String", "ADS_ENABLED", "\"${adsProps.getProperty("enabled", "false")}\"")
+        buildConfigField("String", "ADS_BANNER_ID", "\"${adsProps.getProperty("bannerId", "")}\"")
+        buildConfigField("String", "ADS_INTERSTITIAL_ID", "\"${adsProps.getProperty("interstitialId", "")}\"")
+        manifestPlaceholders["admobAppId"] = adsProps.getProperty("appId", "ca-app-pub-3940256099942544~3347511713")
+        // share6 (monet): licence server
+        val licProps = Properties().apply { rootProject.file("license.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) } }
+        buildConfigField("String", "LICENSE_URL", "\"${licProps.getProperty("licenseUrl", "")}\"")
+        buildConfigField("String", "LICENSE_PUBLIC_KEY", "\"${licProps.getProperty("licensePublicKey", "")}\"")
     }
     // release signing: keystore.properties + release.jks in the project root (kept out of git; back them up!)
     val keyProps = Properties().apply {
@@ -124,6 +138,10 @@ dependencies {
     implementation("com.android.billingclient:billing-ktx:9.1.0")
     implementation("com.google.android.play:review-ktx:2.0.2")
     implementation("com.google.android.gms:play-services-auth:22.0.0")
+
+    // Ads (share6/monet; used only by core/ads; OFF unless ads.properties enabled=true) — needs the APPLICATION_ID meta-data in the manifest
+    implementation("com.google.android.gms:play-services-ads:24.4.0")
+    implementation("com.google.android.ump:user-messaging-platform:3.2.0")
 
     // Images + network
     implementation("io.coil-kt:coil-compose:2.7.0")

@@ -36,10 +36,25 @@ fun MergeScreen(nav: NavHostController, uri: String?) {
     var name by remember { mutableStateOf("") }
     val pick = rememberPdfPicker(multiple = true) { files = files + it }
     val processing = stringResource(R.string.processing)
+    // share6 (fid): password-protected inputs
+    val passwords = remember { mutableStateMapOf<String, String>() }
+    val locked = remember { mutableStateMapOf<String, Boolean>() }
+    var asking by remember { mutableStateOf<File?>(null) }
+    var protectOut by remember { mutableStateOf(false) }
+    var protectPw by remember { mutableStateOf("") }
 
-    LaunchedEffect(files) {
-        files.forEach { f -> if (!counts.containsKey(f.absolutePath)) counts[f.absolutePath] = runCatching { PdfOps.pageCount(f) }.getOrDefault(0) }
+    LaunchedEffect(files, passwords.size) {
+        files.forEach { f ->
+            if (!locked.containsKey(f.absolutePath)) locked[f.absolutePath] = withContext(Dispatchers.IO) { com.smartdocs.editor.core.pdf.LockedPdf.needsPassword(f) }
+            if (!counts.containsKey(f.absolutePath)) {
+                val pw = passwords[f.absolutePath]
+                if (locked[f.absolutePath] != true || pw != null) counts[f.absolutePath] = withContext(Dispatchers.IO) { com.smartdocs.editor.core.pdf.LockedPdf.pageCount(f, pw) } ?: 0
+            }
+        }
     }
+    LaunchedEffect(files, passwords.size, locked.size) { asking = files.firstOrNull { locked[it.absolutePath] == true && passwords[it.absolutePath] == null } }
+    asking?.let { f -> FilePasswordDialog(f, onUnlocked = { pw -> passwords[f.absolutePath] = pw; counts.remove(f.absolutePath); asking = null }, onRemove = { files = files - f; asking = null }) }
+    val lockedLeft = files.any { locked[it.absolutePath] == true && passwords[it.absolutePath] == null }
 
     ToolScaffold(stringResource(R.string.tool_merge), nav, runner, actions = {
         IconButton(onClick = pick) { Icon(Icons.Default.Add, stringResource(R.string.add_files)) }
@@ -68,12 +83,27 @@ fun MergeScreen(nav: NavHostController, uri: String?) {
         val total = files.sumOf { counts[it.absolutePath] ?: 0 }
         if (files.isNotEmpty()) Text(stringResource(R.string.tl_total_pages, total), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.file_name)) }, singleLine = true)
-        PrimaryButton(stringResource(R.string.merge), enabled = files.size >= 2, icon = Icons.Default.CallMerge) {
+        // share6 (fid): optional password for the merged file
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(stringResource(R.string.fd_merge_protect), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+            Switch(protectOut, { protectOut = it })
+        }
+        if (protectOut) OutlinedTextField(protectPw, { protectPw = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.fd_merge_protect_pw)) }, singleLine = true,
+            visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation())
+        else if (passwords.isNotEmpty()) Text(stringResource(R.string.fd_merge_unencrypted), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (lockedLeft) Text(stringResource(R.string.fd_merge_locked_left), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+        PrimaryButton(stringResource(R.string.merge), enabled = files.size >= 2 && !lockedLeft && (!protectOut || protectPw.isNotEmpty()), icon = Icons.Default.CallMerge) {
             val list = files.toList()
             val base = name.ifBlank { outName(list.first(), "merged") }
+            val pwMap = list.mapNotNull { f -> passwords[f.absolutePath]?.let { f to it } }.toMap()
+            val outPw = protectPw.takeIf { protectOut && it.isNotEmpty() }
             runner.run(processing) {
                 val out = app.documents.uniqueFile(app.documents.docsDir, base)
-                PdfOps.merge(list, out)
+                if (outPw == null) com.smartdocs.editor.core.pdf.LockedPdf.mergeLocked(list, pwMap, out, app.documents.tempDir)
+                else {
+                    val tmp = app.documents.newTemp("merge")
+                    try { com.smartdocs.editor.core.pdf.LockedPdf.mergeLocked(list, pwMap, tmp, app.documents.tempDir); PdfOps.protect(tmp, out, outPw, outPw) } finally { tmp.delete() }
+                }
                 out
             }
         }

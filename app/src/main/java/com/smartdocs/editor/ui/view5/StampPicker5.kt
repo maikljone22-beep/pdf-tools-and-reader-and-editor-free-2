@@ -64,7 +64,7 @@ object StampIdentity {
     }
     fun templates(ctx: Context): List<String> {
         val saved = ctx.getSharedPreferences(V5State.PREFS, Context.MODE_PRIVATE).getString("stamp_tpl", null)
-        return saved?.split("\u001E")?.filter { it.isNotBlank() } ?: DEFAULT_TEMPLATES
+        return (saved?.split("\u001E")?.filter { it.isNotBlank() } ?: DEFAULT_TEMPLATES).distinct()   // templates are grid keys: duplicates crash
     }
     fun saveTemplates(ctx: Context, list: List<String>) { ctx.getSharedPreferences(V5State.PREFS, Context.MODE_PRIVATE).edit().putString("stamp_tpl", list.joinToString("\u001E")).apply() }
     fun hijriAdjust(ctx: Context) = ctx.getSharedPreferences(V5State.PREFS, Context.MODE_PRIVATE).getInt("hijri_adj", 0)
@@ -177,7 +177,7 @@ fun V5StampPicker(onPicked: (Bitmap) -> Unit, onDismiss: () -> Unit) {
                 }
                 Text(StampTokens.fill(txt, identity, now, hijriAdjust = adj), style = MaterialTheme.typography.bodyMedium)
             } },
-            confirmButton = { TextButton(enabled = txt.isNotBlank(), onClick = { templates = templates + txt; StampIdentity.saveTemplates(ctx, templates); newTpl = null }) { Text(stringResource(R.string.ok)) } },
+            confirmButton = { TextButton(enabled = txt.isNotBlank(), onClick = { templates = (templates + txt).distinct(); StampIdentity.saveTemplates(ctx, templates); newTpl = null }) { Text(stringResource(R.string.ok)) } },
             dismissButton = { TextButton(onClick = { newTpl = null }) { Text(stringResource(R.string.cancel)) } })
     }
 }

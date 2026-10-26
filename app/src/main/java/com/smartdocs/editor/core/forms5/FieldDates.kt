@@ -38,7 +38,8 @@ object FieldDates {
 
     /** UTC-midnight [millis] (DatePicker selection) formatted with the Acrobat [acroPattern]. */
     fun formatUtc(millis: Long, acroPattern: String = DEFAULT_PATTERN): String =
-        SimpleDateFormat(AfFormat.toJavaPattern(acroPattern), Locale.US).apply { timeZone = UTC }.format(Date(millis))
+        runCatching { SimpleDateFormat(AfFormat.toJavaPattern(acroPattern), Locale.US).apply { timeZone = UTC }.format(Date(millis)) }
+            .getOrElse { SimpleDateFormat("yyyy-MM-dd", Locale.US).apply { timeZone = UTC }.format(Date(millis)) }   // invalid pattern from the PDF
 
     private val fallback = listOf("yyyy-MM-dd", "dd/MM/yyyy", "d/M/yyyy", "dd-MM-yyyy", "yyyy/MM/dd", "dd.MM.yyyy", "MM/dd/yyyy", "d MMM yyyy", "MMM d, yyyy", "MMMM d, yyyy", "yyyyMMdd")
 

@@ -6,6 +6,7 @@ package com.smartdocs.editor.core.pdf
  * and reorders the string into visual (left-to-right) order so a plain showText() renders correctly.
  */
 object ArabicShaper {
+    private const val NL = 10.toChar()
 
     // base char -> [isolated, final, initial, medial]; 0 means the form does not exist
     private val forms: Map<Char, IntArray> = mapOf(
@@ -33,7 +34,19 @@ object ArabicShaper {
     fun isArabic(text: String) = text.any { it in '؀'..'ۿ' }
 
     /** Shape + reorder for visual rendering. Non-Arabic text is returned unchanged. */
-    fun shape(text: String): String {
+    /**
+     * Shapes [text] for drawing with PdfBox: Arabic letters get their joining forms and each line is put in visual
+     * order with a proper bidi pass, so Arabic-Indic digits and embedded Latin words keep their reading order.
+     */
+    fun shape(text: String): String =
+        if (!isArabic(text)) text
+        else text.split(NL).joinToString(NL.toString()) { line ->
+            if (!isArabic(line)) line
+            else com.smartdocs.editor.core.edit.Bidi.shapeVisual(line, com.smartdocs.editor.core.edit.Bidi.firstStrongRtl(line) ?: true)
+        }
+
+    /** Joining forms + naive whole-line reversal (reverses digits and Latin too). Used per Arabic word by [com.smartdocs.editor.core.edit.Bidi]. */
+    fun shapeRaw(text: String): String {
         if (!isArabic(text)) return text
         val chars = text.toCharArray()
         val out = StringBuilder()

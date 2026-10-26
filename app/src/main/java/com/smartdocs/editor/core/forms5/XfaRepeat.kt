@@ -29,7 +29,8 @@ data class XfaRepeat(val key: String, val dataParent: String, val name: String, 
 
         fun parse(json: String?): List<XfaRepeat> {
             if (json.isNullOrBlank()) return emptyList()
-            return Json.parseToJsonElement(json).jsonArray.mapNotNull { el ->
+            val arr = runCatching { Json.parseToJsonElement(json).jsonArray }.getOrNull() ?: return emptyList()
+            return arr.mapNotNull { el ->
                 runCatching {
                     val o = el.jsonObject
                     val r = o["r"]!!.jsonArray.map { it.jsonPrimitive.float }

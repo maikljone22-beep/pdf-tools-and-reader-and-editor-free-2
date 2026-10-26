@@ -119,7 +119,8 @@ private fun WatermarkPreview(bitmap: Bitmap?, error: String?, pageSize: Pair<Flo
         Box(Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) { Text(stringResource(R.string.tl_preview_hint), color = MaterialTheme.colorScheme.onSurfaceVariant) }
         return
     }
-    val ratio = pageSize.first / pageSize.second
+    // aspectRatio() throws for 0 / NaN (broken MediaBox): fall back to A4 portrait
+    val ratio = (pageSize.first / pageSize.second).takeIf { it.isFinite() && it > 0f } ?: 0.707f
     Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) {
         Canvas(Modifier.fillMaxWidth().aspectRatio(ratio).clip(RoundedCornerShape(12.dp))) {
             val scale = size.width / pageSize.first

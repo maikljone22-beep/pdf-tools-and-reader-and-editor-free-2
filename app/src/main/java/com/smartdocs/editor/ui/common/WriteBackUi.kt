@@ -55,7 +55,7 @@ fun rememberWriteBack(): (File) -> Unit {
             handle(f, app.documents.writeBack(f)) { permission.launch(it) }
         }
     }
-    val saveCopy = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
+    val onCopyCreated: (android.net.Uri?) -> Unit = { uri ->
         val f = failed; failed = null
         if (f != null && uri != null) scope.launch {
             app.documents.exportTo(f, uri)
@@ -64,14 +64,17 @@ fun rememberWriteBack(): (File) -> Unit {
             Toast.makeText(ctx, ctx.getString(R.string.wb_saved_original), Toast.LENGTH_SHORT).show()
         }
     }
+    val saveCopy = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf"), onCopyCreated)
+    val saveCopyAny = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("*/*"), onCopyCreated)   // office5: non-PDF files
 
     failed?.let { f ->
+        val isPdf = f.extension.equals("pdf", true)
         AlertDialog(
             onDismissRequest = { failed = null },
             title = { Text(stringResource(R.string.wb_title)) },
             text = { Text(stringResource(R.string.wb_text, f.name)) },
-            confirmButton = { TextButton(onClick = { regrant.launch(arrayOf("application/pdf")) }) { Text(stringResource(R.string.wb_pick_original)) } },
-            dismissButton = { TextButton(onClick = { saveCopy.launch(f.name) }) { Text(stringResource(R.string.wb_save_copy)) } },
+            confirmButton = { TextButton(onClick = { regrant.launch(if (isPdf) arrayOf("application/pdf") else arrayOf("*/*")) }) { Text(stringResource(R.string.wb_pick_original)) } },
+            dismissButton = { TextButton(onClick = { if (isPdf) saveCopy.launch(f.name) else saveCopyAny.launch(f.name) }) { Text(stringResource(R.string.wb_save_copy)) } },
         )
     }
 

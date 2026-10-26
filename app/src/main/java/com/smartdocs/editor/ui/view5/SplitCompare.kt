@@ -38,16 +38,18 @@ import java.io.File
 fun PagePane(session: PdfSession?, pageCount: Int, sizes: Map<Int, Pair<Float, Float>>, list: LazyListState, night: Boolean, zoom: Float, modifier: Modifier = Modifier, label: String = "") {
     BoxWithConstraints(modifier.background(Color(0xFF808080))) {
         val density = LocalDensity.current
-        val wPx = with(density) { maxWidth.toPx() } * zoom - with(density) { 8.dp.toPx() }
+        // never negative / zero: requiredWidth / height with a negative or infinite size throws
+        val wPx = (with(density) { maxWidth.toPx() } * zoom - with(density) { 8.dp.toPx() }).coerceAtLeast(1f)
         val contentW = maxWidth * zoom
         Box(Modifier.fillMaxSize().horizontalScroll(rememberScrollState())) {
         LazyColumn(Modifier.width(contentW).fillMaxHeight(), state = list, contentPadding = PaddingValues(4.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             items(pageCount) { p ->
-                val (pw, ph) = sizes[p] ?: sizes[0] ?: (595f to 842f)
-                val hPx = wPx * ph / pw
+                val (pw0, ph0) = sizes[p] ?: sizes[0] ?: (595f to 842f)
+                val pw = if (pw0 > 0f) pw0 else 595f; val ph = if (ph0 > 0f) ph0 else 842f
+                val hPx = (wPx * ph / pw).coerceIn(1f, 100_000f)
                 val bmp by produceState<Bitmap?>(null, session, p, wPx.toInt(), night) {
                     val s = session ?: return@produceState
-                    val w = wPx.toInt().coerceIn(200, 2400); val h = (w * ph / pw).toInt().coerceAtLeast(1)
+                    val w = wPx.toInt().coerceIn(200, 2400); val h = (w * ph / pw).toInt().coerceIn(1, 8000)
                     value = runCatching { s.render(p, w, h, night, true) }.getOrNull()
                 }
                 Box(Modifier.requiredWidth(with(density) { wPx.toDp() }).height(with(density) { hPx.toDp() }).background(Color.White)) {

@@ -37,6 +37,12 @@ class SpeechInput(private val ctx: Context) {
 
     fun start(language: String = "ar-SA") {
         stop()
+        // no recognizer service / missing permission / service binding failure: report an error instead of crashing
+        if (!available(ctx)) { onError(SpeechRecognizer.ERROR_CLIENT); onEnd(); return }
+        runCatching { startInternal(language) }.onFailure { stop(); onError(SpeechRecognizer.ERROR_CLIENT); onEnd() }
+    }
+
+    private fun startInternal(language: String) {
         val r = SpeechRecognizer.createSpeechRecognizer(ctx)
         rec = r
         r.setRecognitionListener(object : RecognitionListener {

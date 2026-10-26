@@ -98,7 +98,7 @@ class E5Doc(initial: File?) {
     suspend fun undo() {
         val prev = undo.removeLastOrNull() ?: return
         work?.delete(); work = prev
-        infos = PageBoxOps.pageInfos(prev, password)
+        infos = runCatching { PageBoxOps.pageInfos(prev, password) }.getOrDefault(infos)
         changed = undo.isNotEmpty(); version++
     }
 
@@ -155,11 +155,11 @@ fun E5PageView(
         val f = file ?: return@LaunchedEffect
         bmp = runCatching {
             val s = PdfSession.open(ctx, f, password)
-            try { val (w, h) = s.pageSize(page); s.render(page, 900, (900 * h / w).toInt().coerceAtLeast(1)) } finally { s.closeAsync() }
+            try { val (w, h) = s.pageSize(page); s.render(page, 900, (if (w > 0f) 900 * h / w else 1273f).toInt().coerceIn(1, 4500)) } finally { s.closeAsync() }
         }.getOrNull()
     }
     val dw = info?.displayW ?: 595f; val dh = info?.displayH ?: 842f
-    val ratio = (dw / dh).coerceIn(0.2f, 5f)
+    val ratio = (dw / dh).let { if (it.isNaN() || dh <= 0f) 0.707f else it }.coerceIn(0.2f, 5f)   // NaN → aspectRatio() throws
     var drag by remember { mutableStateOf<Rect?>(null) }
     fun scale() = if (size.width > 0) size.width / dw else 1f
     fun toDisplay(o: Offset) = (o.x / scale()) to (dh - o.y / scale())

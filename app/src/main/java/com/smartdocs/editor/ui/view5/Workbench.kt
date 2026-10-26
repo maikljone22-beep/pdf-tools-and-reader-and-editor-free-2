@@ -61,11 +61,11 @@ fun WorkbenchSheet(v: V5State, measureFirst: Boolean, onMessage: (String) -> Uni
     var saving by remember { mutableStateOf(false) }
     var confirmClose by remember { mutableStateOf(false) }
     val size = s.pageSizes[m.page] ?: (595f to 842f)
-    val view = remember(m.page, size) { WbView(size.first, size.second) }
+    val view = remember(m.page, size) { WbView(size.first.coerceAtLeast(1f), size.second.coerceAtLeast(1f)) }   // 0 → NaN → roundToInt crash
     // page bitmap (about two screens wide for sharp zoom)
     val bitmap by produceState<Bitmap?>(null, m.page, s.session, s.renderVersion) {
         val sess = s.session ?: return@produceState
-        val w = 2000; val h = (w * size.second / size.first).toInt().coerceAtLeast(1)
+        val w = 2000; val h = if (size.first > 0f && size.second > 0f) (w * size.second / size.first).toInt().coerceIn(1, 6000) else 2828   // 0-size page boxes → no Infinity
         value = runCatching { sess.render(m.page, w, h, false, true) }.getOrNull()
     }
     // snapping targets: vector path segments + text glyph corners

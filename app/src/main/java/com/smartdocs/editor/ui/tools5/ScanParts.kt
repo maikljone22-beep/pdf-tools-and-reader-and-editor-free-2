@@ -118,7 +118,7 @@ fun ContactSheet(c0: Contact, onDismiss: () -> Unit) {
             OutlinedButton(onClick = {
                 scope.launch {
                     val c = current()
-                    val f = withContext(Dispatchers.IO) { app.documents.uniqueFile(app.documents.docsDir, TextNorm.safeFileName(c.name.ifBlank { "contact" }), "vcf").also { it.writeText(VCard.write(c)) } }
+                    val f = runCatching { withContext(Dispatchers.IO) { app.documents.uniqueFile(app.documents.docsDir, TextNorm.safeFileName(c.name.ifBlank { "contact" }), "vcf").also { it.writeText(VCard.write(c)) } } }.getOrNull() ?: return@launch
                     shareFiles(ctx, app.documents, listOf(f), "text/x-vcard")
                 }
             }, Modifier.fillMaxWidth()) { Icon(Icons.Default.Share, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.t5_share_vcf)) }
@@ -150,14 +150,14 @@ fun ReceiptSheet(r0: Receipt, pdf: File, onDismiss: () -> Unit) {
             }
             Button(onClick = {
                 scope.launch {
-                    saved = withContext(Dispatchers.IO) {
+                    saved = runCatching { withContext(Dispatchers.IO) {
                         val f = File(app.documents.docsDir, "receipts.csv")
                         val fresh = !f.exists()
                         // UTF-8 BOM so spreadsheet apps read Arabic correctly
                         if (fresh) f.writeText("\uFEFF" + Csv.row(header) + "\r\n")
                         f.appendText(Csv.row(listOf(date, merchant, ReceiptParser.normalizeAmount(total) ?: total, currency, pdf.name)) + "\r\n")
                         f
-                    }
+                    } }.getOrNull()
                 }
             }, Modifier.fillMaxWidth(), enabled = saved == null) { Icon(Icons.Default.TableChart, null); Spacer(Modifier.width(8.dp)); Text(stringResource(if (saved == null) R.string.t5_receipt_add else R.string.t5_receipt_added)) }
             OutlinedButton(onClick = { val f = File(app.documents.docsDir, "receipts.csv"); if (f.exists()) shareFiles(ctx, app.documents, listOf(f), "text/csv") }, Modifier.fillMaxWidth()) {

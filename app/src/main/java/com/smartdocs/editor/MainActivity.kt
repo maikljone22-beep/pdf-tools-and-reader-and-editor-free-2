@@ -52,7 +52,9 @@ class MainActivity : ComponentActivity() {
                         val nav = rememberNavController()
                         val uri by incoming.collectAsStateWithLifecycle()
                         LaunchedEffect(uri) {
-                            uri?.let { nav.navigate(Routes.reader(it.toString())); incoming.value = null }
+                            // share6: returned e-mail-review comment files (.xfdf / .fdf) → merge offer; everything else → reader (Office files are dispatched there)
+                            uri?.let { val ext = (it.lastPathSegment ?: "").substringAfterLast('.', "").lowercase()
+                                nav.navigate(if (ext == "xfdf" || ext == "fdf") com.smartdocs.editor.ui.share5.Share5Routes.returned(it.toString()) else Routes.reader(it.toString())); incoming.value = null }
                         }
                         val route by incomingRoute.collectAsStateWithLifecycle()
                         LaunchedEffect(route) { route?.let { nav.navigate(it); incomingRoute.value = null } }
@@ -62,6 +64,7 @@ class MainActivity : ComponentActivity() {
                         com.smartdocs.editor.ui.reader.view.RestoreLastSession(nav, enabled = !openedByIntent)
                         com.smartdocs.editor.ui.cloud.DeepLinkHandler(nav)
                         com.smartdocs.editor.core.review.ReviewPromptHost()
+                        com.smartdocs.editor.core.ads.AdsConsentHost()   // share6: UMP consent; no ads ever show without it (no-op when ads are off)
                     }
                 }
             }

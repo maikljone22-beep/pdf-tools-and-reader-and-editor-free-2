@@ -34,6 +34,8 @@ import com.smartdocs.editor.ui.reader.ReaderState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import com.smartdocs.editor.ui.onboarding.CoachIds
+import com.smartdocs.editor.ui.onboarding.coachTarget
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -171,7 +173,7 @@ fun ReaderTabStrip(state: ReaderState, switchTo: (DocTab?) -> Unit, alwaysShow: 
     if (tabs.size < 2 && !alwaysShow) return
     val pick = rememberPdfPicker { files -> files.firstOrNull()?.let { switchTo(DocTab(Uri.fromFile(it).toString(), it.name, page = -1)) } }
     val current = state.fileUri
-    Surface(tonalElevation = 1.dp) {
+    Surface(Modifier.coachTarget(CoachIds.READER_DOC_TABS), tonalElevation = 1.dp) {
         LazyRow(
             Modifier.fillMaxWidth().height(40.dp),
             contentPadding = PaddingValues(horizontal = 8.dp),
@@ -219,7 +221,7 @@ fun ReaderTabsAction(state: ReaderState, switchTo: (DocTab?) -> Unit) {
     val pick = rememberPdfPicker { files -> files.firstOrNull()?.let { switchTo(DocTab(Uri.fromFile(it).toString(), it.name, page = -1)) } }
     val tabs = ReaderTabs.tabs
     val current = state.fileUri
-    Box {
+    Box(Modifier.coachTarget(CoachIds.READER_DOC_TABS)) {
         IconButton(onClick = { open = true }) {
             BadgedBox(badge = { if (tabs.size > 1) Badge { Text(tabs.size.toString()) } }) { Icon(Icons.Default.Tab, stringResource(R.string.vw_tabs)) }
         }

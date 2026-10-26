@@ -175,7 +175,7 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
         groups.forEachIndexed { gi, g ->
             T5Card(if (groups.size > 1) stringResource(R.string.t5_scan_doc_n, gi + 1, g.size) else stringResource(R.string.t5_scan_pages_n, g.size), Icons.Default.Collections) {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    itemsIndexed(g, key = { _, p -> p.file.absolutePath }) { pi, p -> PageThumb(p, pi) { editing = gi to pi } }
+                    itemsIndexed(g, key = { i, p -> "$i:" + p.file.absolutePath }) { pi, p -> PageThumb(p, pi) { editing = gi to pi } }
                 }
             }
         }
@@ -222,8 +222,8 @@ private fun kindHint(k: ScanKind): Int = when (k) {
 
 /** Language auto-detection on the first page of a group. */
 private suspend fun detectLangs(engine: OcrEngine, first: ScanPage): String = withContext(Dispatchers.IO) {
-    val b = ScanImage.load(first.file, 1600) ?: return@withContext "ara+eng"
-    val e = ScanImage.apply(b, first.edit)
+    val b = runCatching { ScanImage.load(first.file, 1600) }.getOrNull() ?: return@withContext "ara+eng"
+    val e = runCatching { ScanImage.apply(b, first.edit) }.getOrNull() ?: return@withContext "ara+eng"
     try { OcrRunner.detectLanguages(engine, e) } catch (x: Exception) { "ara+eng" } finally { e.recycle() }
 }
 

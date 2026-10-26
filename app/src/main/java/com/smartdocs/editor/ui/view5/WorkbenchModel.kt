@@ -110,6 +110,7 @@ class WorkbenchModel(val v: V5State) {
     fun finish() {
         val p = pts.toList()
         if (calibrating) { if (p.size >= 2) calibrationPts = p; pts.clear(); calibrating = false; return }
+        if (p.isEmpty()) return   // p[0] below
         when (tool) {
             WTool.DISTANCE, WTool.PERIMETER, WTool.AREA, WTool.CIRCLE, WTool.ANGLE, WTool.COUNT -> {
                 val min = when (tool) { WTool.AREA, WTool.ANGLE -> 3; WTool.COUNT -> 1; else -> 2 }

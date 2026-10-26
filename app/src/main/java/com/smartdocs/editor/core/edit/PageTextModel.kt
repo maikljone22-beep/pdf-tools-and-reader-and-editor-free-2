@@ -38,6 +38,11 @@ data class TextBlock(
     val lineCount: Int,
     /** Glyphs without a Unicode mapping were found: the extracted text may be incomplete. */
     val lossy: Boolean,
+    /**
+     * The text cannot be read back at all (most glyphs have no Unicode mapping, or only private-use codes): the
+     * editor must not show [text] as editable; offer OCR or replacing the whole block instead.
+     */
+    val unreadable: Boolean = false,
 ) {
     override fun equals(other: Any?) = other is TextBlock && other.id == id && other.ops.contentEquals(ops) && other.text == text
     override fun hashCode() = id * 31 + ops.contentHashCode()
@@ -58,7 +63,11 @@ data class ImageItem(
     override fun hashCode() = id * 31 + op
 }
 
-data class PageModel(val page: Int, val width: Float, val height: Float, val rotation: Int, val blocks: List<TextBlock>, val images: List<ImageItem>)
+data class PageModel(
+    val page: Int, val width: Float, val height: Float, val rotation: Int, val blocks: List<TextBlock>, val images: List<ImageItem>,
+    /** PDF user space → display space (6 affine values, see [Affine.values]), e.g. to place PDFium character boxes. */
+    val toDisplay: FloatArray = floatArrayOf(1f, 0f, 0f, 1f, 0f, 0f),
+)
 
 /** Result of analysing a page inside an open document: the model plus live PdfBox objects needed to edit it. */
 internal class PageAnalysis(val model: PageModel, val fonts: Map<Int, PDFont?>, val scanner: PageScanner, val frame: PageFrame)
@@ -81,12 +90,15 @@ object PageTextModel {
         val images = scanner.images.mapIndexed { i, im ->
             ImageItem(i, im.op, im.name, im.inline, im.boxDisplay, Affine.values(im.ctm), im.pixelW, im.pixelH)
         }
-        return PageAnalysis(PageModel(pageIndex, frame.width, frame.height, frame.rotation, blocks, images), fonts, scanner, frame)
+        return PageAnalysis(PageModel(pageIndex, frame.width, frame.height, frame.rotation, blocks, images, Affine.values(frame.toDisplay)), fonts, scanner, frame)
     }
 
     // ---------------- grouping ----------------
 
     private class Line(val glyphs: MutableList<RawGlyph>, var baseline: Float, var size: Float)
+
+    /** A glyph with the combining marks drawn over it (tashkeel), in visual order. */
+    private class GlyphUnit(val base: RawGlyph, val text: String, val marks: StringBuilder = StringBuilder())
 
     private class Segment(val glyphs: List<RawGlyph>) {
         val baseline = glyphs.map { it.y }.average().toFloat()
@@ -96,21 +108,57 @@ object PageTextModel {
         val text: String
         val rtl: Boolean
         val lossy = glyphs.any { it.text.isEmpty() }
+        /** Glyphs whose text could not be decoded at all. */
+        val undecoded = glyphs.count { it.text.isEmpty() }
         init {
+            val sorted = glyphs.sortedBy { it.x }
+            // presentation forms → letters; cp1256 read as cp1252 ("ÇáÓáÇã") → Arabic (same length, char by char)
+            val texts = demojibake(sorted.map { normalize(it.text) })
+            val ar = texts.sumOf { t -> t.count { isArabicChar(it) } }
+            val lat = texts.sumOf { t -> t.count { it.isLetter() && !isArabicChar(it) } }
+            rtl = ar > 0 && ar >= lat
+            // attach marks to the glyph they sit on, so they stay after their letter in logical order
+            fun isMark(t: String) = t.isNotEmpty() && t.all { Bidi.isArabicMark(it) }
+            val units = ArrayList<GlyphUnit>()
+            for ((i, g) in sorted.withIndex()) if (!isMark(texts[i])) units += GlyphUnit(g, texts[i])
+            for ((i, g) in sorted.withIndex()) {
+                val t = texts[i]
+                if (!isMark(t)) continue
+                if (units.isEmpty()) { units += GlyphUnit(g, t); continue }
+                // the letter under the mark: marks have no advance (the scanner gives them a nominal width), so their
+                // origin is what counts: on the letter's box, or at the letter's start for unpositioned marks
+                val cx = g.x + 0.01f
+                val eps = 0.1f * g.size
+                val host = units.filter { u -> cx >= u.base.x - eps && cx <= u.base.x + u.base.w + eps }
+                    .minByOrNull { u -> if (cx >= u.base.x) cx - u.base.x else (u.base.x - cx) * 4f }
+                    ?: units.minBy { u -> kotlin.math.abs(u.base.x + u.base.w / 2f - cx) }
+                host.marks.append(t)
+            }
+            units.sortBy { it.base.x }
             val sb = StringBuilder()
             var prevEnd = Float.NaN
-            for (g in glyphs) {
-                val t = normalize(g.text)
+            for (u in units) {
+                val g = u.base
+                // one glyph for several Arabic letters (lam-alef, ﷲ): its text is logical, the line is visual → reverse it
+                val arabicGlyph = u.text.any { isArabicChar(it) } && u.text.none { it.isLetterOrDigit() && !isArabicChar(it) }
+                val t = if (arabicGlyph) u.marks.toString() + u.text.reversed() else u.text + u.marks
                 if (!prevEnd.isNaN() && g.x - prevEnd > 0.22f * g.size && sb.isNotEmpty() && sb.last() != ' ' && !t.startsWith(" ")) sb.append(' ')
                 sb.append(t)
                 prevEnd = max(if (prevEnd.isNaN()) g.x + g.w else prevEnd, g.x + g.w)
             }
             val visual = sb.toString().replace(Regex(" {2,}"), " ").trim()
-            val ar = visual.count { isArabicChar(it) }
-            val lat = visual.count { it.isLetter() && !isArabicChar(it) }
-            rtl = ar > 0 && ar >= lat
-            text = if (rtl) Bidi.visualToLogical(visual) else visual
+            text = if (ar > 0) Bidi.visualToLogical(visual, rtl) else visual
         }
+    }
+
+    /** [ArabicTextFix.demojibake] decides on the whole line; apply its per-character decoding to each glyph. */
+    private fun demojibake(texts: List<String>): List<String> {
+        val sep = '\u0001'
+        val joined = texts.joinToString(sep.toString())
+        val fixed = com.smartdocs.editor.core.search.ArabicTextFix.demojibake(joined)
+        if (fixed === joined || fixed == joined) return texts
+        val parts = fixed.split(sep)
+        return if (parts.size == texts.size) parts else texts
     }
 
     private fun buildBlocks(all: List<RawGlyph>, fontsOut: MutableMap<Int, PDFont?>): List<TextBlock> {
@@ -154,8 +202,11 @@ object PageTextModel {
         val owner = HashMap<Int, Int>()
         paragraphs.forEachIndexed { i, para -> para.flatMap { it.glyphs }.forEach { g -> owner[g.op]?.let { o -> parent[find(o)] = find(i) } ?: run { owner[g.op] = i } } }
         val groups = paragraphs.indices.groupBy { find(it) }.values
+        val pageRtl = segments.count { it.rtl } * 2 > segments.size
+        val order = if (pageRtl) compareByDescending<List<Segment>> { it.first().baseline }.thenByDescending { s -> s.maxOf { it.right } }
+            else compareByDescending<List<Segment>> { it.first().baseline }.thenBy { s -> s.minOf { it.left } }
         return groups.map { idx -> idx.flatMap { paragraphs[it] }.sortedByDescending { it.baseline } }
-            .sortedWith(compareByDescending<List<Segment>> { it.first().baseline }.thenBy { it.first().left })
+            .sortedWith(order)
             .mapIndexed { id, segs -> toBlock(id, segs, fontsOut) }
     }
 
@@ -185,47 +236,51 @@ object PageTextModel {
         val lineHeight = if (segs.size > 1) (segs.first().baseline - segs.last().baseline) / (segs.size - 1) else size * 1.2f
         val ops = gl.map { it.op }.distinct().sorted().toIntArray()
         val text = segs.joinToString(" ") { it.text }.trim()
-        val align = when {
-            segs.size > 1 && segs.all { abs((it.left + it.right) / 2 - (left + right) / 2) < size * 0.6f } &&
-                segs.any { abs(it.left - left) > size } -> TextAlign.CENTER
+        val align = detectAlign(segs, left, right, size, rtl)
+        val undecoded = segs.sumOf { it.undecoded }
+        val unreadable = (gl.size >= 2 && undecoded * 10 >= gl.size * 3) || com.smartdocs.editor.core.search.ArabicTextFix.isGarbage(text) ||
+            (text.isBlank() && gl.isNotEmpty())
+        return TextBlock(id, text, RectF(left, top, right, bottom), ops, name.substringAfter('+'), reusable, family, bold, italic,
+            (size * 2).let { kotlin.math.round(it) / 2f }, dominantColor(gl), rtl, align, segs.first().baseline, lineHeight, segs.size, segs.any { it.lossy }, unreadable)
+    }
+
+    /**
+     * Alignment of a paragraph from its line edges: centred when the line centres agree, right-aligned when the right
+     * edges agree (or for Arabic when both edges agree: justified Arabic), left-aligned when the left edges agree.
+     * One-line blocks follow the text direction.
+     */
+    private fun detectAlign(segs: List<Segment>, left: Float, right: Float, size: Float, rtl: Boolean): TextAlign {
+        if (segs.size < 2) return if (rtl) TextAlign.RIGHT else TextAlign.LEFT
+        val tol = size * 0.6f
+        // the last line of a justified paragraph is shorter: judge the edges on all lines, the raggedness without the last
+        val leftsAgree = segs.all { abs(it.left - left) < tol }
+        val rightsAgree = segs.all { abs(it.right - right) < tol }
+        val centred = segs.all { abs((it.left + it.right) / 2 - (left + right) / 2) < tol }
+        return when {
+            leftsAgree && rightsAgree -> if (rtl) TextAlign.RIGHT else TextAlign.LEFT
+            rightsAgree -> TextAlign.RIGHT
+            leftsAgree -> TextAlign.LEFT
+            centred -> TextAlign.CENTER
             rtl -> TextAlign.RIGHT
             else -> TextAlign.LEFT
         }
-        return TextBlock(id, text, RectF(left, top, right, bottom), ops, name.substringAfter('+'), reusable, family, bold, italic,
-            (size * 2).let { kotlin.math.round(it) / 2f }, dominantColor(gl), rtl, align, segs.first().baseline, lineHeight, segs.size, segs.any { it.lossy })
     }
 
     private fun dominantColor(gl: List<RawGlyph>): Int = gl.groupingBy { it.color }.eachCount().maxByOrNull { it.value }?.key ?: 0
 
-    internal fun isArabicChar(c: Char) = c in '؀'..'ۿ' || c in 'ݐ'..'ݿ' || c in 'ﭐ'..'﷿' || c in 'ﹰ'..'﻿'
+    internal fun isArabicChar(c: Char) = c in '\u0600'..'\u06FF' || c in '\u0750'..'\u077F' || c in '\uFB50'..'\uFDFF' || c in '\uFE70'..'\uFEFF'
 
     /** Presentation forms (often what Arabic PDFs map glyphs to) back to base letters. */
     private fun normalize(t: String): String {
-        if (t.none { it in 'ﭐ'..'﷿' || it in 'ﹰ'..'﻿' }) return t
+        if (t.none { it in '\uFB50'..'\uFDFF' || it in '\uFE70'..'\uFEFF' }) return t
         val sb = StringBuilder()
         for (c in t) {
-            if (c in 'ﭐ'..'﷿' || c in 'ﹰ'..'﻿') sb.append(java.text.Normalizer.normalize(c.toString(), java.text.Normalizer.Form.NFKC))
-            else sb.append(c)
+            if (c.code == 0xFEFF) continue
+            if (c in '\uFB50'..'\uFDFF' || c in '\uFE70'..'\uFEFF') {
+                val n = java.text.Normalizer.normalize(c.toString(), java.text.Normalizer.Form.NFKC)
+                sb.append(if (c.code in 0xFE70..0xFE7F) n.trim() else n)
+            } else sb.append(c)
         }
         return sb.toString()
-    }
-}
-
-/** Minimal visual ⇄ logical reordering for one line of right-to-left text with embedded left-to-right runs. */
-object Bidi {
-    private val mirrored = mapOf('(' to ')', ')' to '(', '[' to ']', ']' to '[', '{' to '}', '}' to '{', '<' to '>', '>' to '<', '«' to '»', '»' to '«')
-
-    private fun isLtr(c: Char) = (c.isLetterOrDigit() && !PageTextModel.isArabicChar(c)) || c in '٠'..'٩'
-
-    /** Reverse the run order and the characters of right-to-left runs; left-to-right runs keep their order. */
-    fun visualToLogical(s: String): String {
-        val runs = ArrayList<Pair<Boolean, StringBuilder>>()
-        for (c in s) {
-            val ltr = isLtr(c) || (c == '.' || c == ',' || c == ':' || c == '/' || c == '-') && runs.lastOrNull()?.first == true
-            if (runs.isEmpty() || runs.last().first != ltr) runs += ltr to StringBuilder()
-            runs.last().second.append(c)
-        }
-        // trailing punctuation inside an LTR run that is followed by RTL text belongs to the RTL side
-        return runs.asReversed().joinToString("") { (ltr, sb) -> if (ltr) sb.toString() else sb.reversed().map { mirrored[it] ?: it }.joinToString("") }
     }
 }

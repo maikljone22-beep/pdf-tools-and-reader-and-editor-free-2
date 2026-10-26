@@ -75,18 +75,9 @@ internal class TextLayout(private val fonts: FontSet, private val style: EditTex
     private fun width(f: PDFont, s: String): Float = try { f.getStringWidth(s) / 1000f * style.size } catch (e: Exception) { 0f }
 
     /** Visual-order string for one line of logical text. */
-    private fun visual(line: String, rtl: Boolean): String {
-        if (!ArabicShaper.isArabic(line)) return line
-        if (rtl) return ArabicShaper.shape(line)
-        // left-to-right line with embedded Arabic words: shape each Arabic stretch on its own
-        val sb = StringBuilder(); val run = StringBuilder()
-        fun flush() { if (run.isNotEmpty()) { sb.append(ArabicShaper.shape(run.toString())); run.clear() } }
-        for (c in line) {
-            if (PageTextModel.isArabicChar(c) || (c == ' ' && run.isNotEmpty())) run.append(c) else { flush(); sb.append(c) }
-        }
-        flush()
-        return sb.toString()
-    }
+    // Shaping (contextual forms) + bidi reordering in one place: Arabic reversed, digits and Latin phrases kept
+    // left-to-right ([ArabicShaper.shape] alone would reverse Arabic-Indic digits and Latin word order).
+    private fun visual(line: String, rtl: Boolean): String = Bidi.shapeVisual(line, rtl)
 
     private fun runsOf(visual: String): List<Run> {
         val runs = ArrayList<Run>()

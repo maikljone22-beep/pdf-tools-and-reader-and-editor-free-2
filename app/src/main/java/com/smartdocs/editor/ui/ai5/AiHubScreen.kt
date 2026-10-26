@@ -46,9 +46,16 @@ fun shareText(ctx: Context, text: String) {
 
 /** Write [text] to a PDF in the documents folder and open the share sheet. */
 suspend fun exportPdfAndShare(ctx: Context, docs: DocumentRepository, title: String, text: String) {
-    val out = withContext(Dispatchers.IO) {
-        val f = docs.uniqueFile(docs.docsDir, title.substringBeforeLast('.').ifBlank { "ai" }.take(40) + "_ai")
-        AnswerPdf.write(ctx, title, text, f); f
+    // called from scope.launch in the UI: a failing write (font, storage) must not crash the app
+    val out = runCatching {
+        withContext(Dispatchers.IO) {
+            val f = docs.uniqueFile(docs.docsDir, title.substringBeforeLast('.').ifBlank { "ai" }.take(40) + "_ai")
+            AnswerPdf.write(ctx, title, text, f); f
+        }
+    }.getOrElse { e ->
+        if (e is kotlinx.coroutines.CancellationException) throw e
+        android.widget.Toast.makeText(ctx, ctx.getString(com.smartdocs.editor.R.string.error_generic), android.widget.Toast.LENGTH_LONG).show()
+        return
     }
     runCatching { ctx.startActivity(Intent.createChooser(docs.shareIntent(listOf(out), "application/pdf"), null)) }
 }

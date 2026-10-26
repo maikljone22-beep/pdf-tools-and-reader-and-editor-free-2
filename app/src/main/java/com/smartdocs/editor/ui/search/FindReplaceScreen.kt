@@ -4,6 +4,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -62,7 +63,7 @@ fun FindReplaceScreen(nav: NavHostController, uri: String?) {
         if (find.isBlank() || badRegex) return
         scope.launch {
             searching = true
-            val pages = PdfOps.parseRange(range, s.pageCount).ifEmpty { (0 until s.pageCount).toList() }
+            val pages = runCatching { PdfOps.parseRange(range, s.pageCount) }.getOrDefault(emptyList()).ifEmpty { (0 until s.pageCount).toList() }
             matches = runCatching { FindReplace.find(f, doc.password, find, options, pages) { searchedPage = it } }.getOrDefault(emptyList())
             checked = matches.map(::matchId).toSet()
             searching = false; searched = true
@@ -127,7 +128,7 @@ fun FindReplaceScreen(nav: NavHostController, uri: String?) {
                         TextButton(onClick = { checked = emptySet() }) { Text(stringResource(R.string.s5_select_none)) }
                     }
                     LazyColumn(Modifier.fillMaxSize()) {
-                        items(matches, key = { matchId(it) }) { mt ->
+                        itemsIndexed(matches, key = { i, m -> "$i:" + matchId(m) }) { _, mt ->
                             val id = matchId(mt)
                             ListItem(
                                 modifier = Modifier.clickable { checked = if (id in checked) checked - id else checked + id },

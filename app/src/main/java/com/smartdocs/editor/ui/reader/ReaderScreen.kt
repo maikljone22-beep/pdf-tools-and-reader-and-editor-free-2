@@ -83,6 +83,8 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
     // view module: keep-screen-on timeout (restarts on touch), orientation lock, hardware keys, tabs bookkeeping
     val rtl = androidx.compose.ui.platform.LocalLayoutDirection.current == androidx.compose.ui.unit.LayoutDirection.Rtl
     com.smartdocs.editor.ui.reader.view.ReaderViewEffects(state, settings, rtl)
+    val fold = com.smartdocs.editor.ui.gaps6.rememberFoldState()
+    com.smartdocs.editor.ui.gaps6.G6ReaderEffects(state, settings, fold)   // MODULE_gaps6
     @Suppress("DEPRECATION") val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner, settings.autoSave) {
         val obs = LifecycleEventObserver { _, e ->
@@ -99,6 +101,12 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
         if (r !is com.smartdocs.editor.core.files.DocumentRepository.WriteBack.Done && r !is com.smartdocs.editor.core.files.DocumentRepository.WriteBack.NotNeeded) state.file?.let { writeBack(it) }
     }
     LaunchedEffect(state.error) { state.error?.let { snack.showSnackbar(it); state.error = null } }
+    com.smartdocs.editor.ui.cloud.CollabLiveHost(state.file, snack) { op -> state.applyInPlace(state.password, op) }   // share6: live review comments
+    state.file?.let { com.smartdocs.editor.ui.share5.ReturnedCommentsHost(it, nav) }                               // share6: returned e-mail-review comments
+    val connUri = state.file?.let { android.net.Uri.fromFile(it).toString() }
+    LaunchedEffect(state.enterpriseInfo) { if (state.enterpriseInfo != null && connUri != null) { nav.popBackStack(); nav.navigate(com.smartdocs.editor.ui.connected.ConnRoutes.enterprise(connUri)) } }
+    LaunchedEffect(state.connectedLocked) { if (state.connectedLocked) { val id = state.connected?.docId ?: state.file?.let { com.smartdocs.editor.core.connected.ConnectedDocs.markOf(it)?.docId }; if (id != null) { nav.popBackStack(); nav.navigate(com.smartdocs.editor.ui.connected.ConnRoutes.connectedOpen(id, connUri)) } } }
+    var showShare5 by remember { mutableStateOf(false) }   // share6: share sheet
     LaunchedEffect(tts.page, tts.state) { if (tts.state != ReadAloudController.State.IDLE && tts.page != state.currentPage && state.pageCount > 0) state.jumpTo(tts.page) }
 
     fun leave() { nav.popBackStack() }
@@ -161,7 +169,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
             viewModeSheet = { showViewMode = true }, pageColor = { showPageColor = true }, autoFlip = { showAutoFlip = true }, goToPage = { showGoTo = true },
             panels = { panel = it }, docInfo = { panel = ReaderPanel.INFO }, search = { state.searchOpen = !state.searchOpen; if (!state.searchOpen) state.closeSearch() },
             readAloud = { if (ReadAloudController.isActive) ReadAloudController.stop() else startReadAloud() },
-            share = { scope.launch { outputFile()?.let { ReaderIntents.shareFile(ctx, app, it) } } },
+            share = { showShare5 = true },   // share6: Share5Sheet
             print = { com.smartdocs.editor.ui.view5.V5State.of(state).open(com.smartdocs.editor.ui.view5.V5Surface.PRINT) },
             save = { scope.launch { if (state.save()) snack.showSnackbar(ctx.getString(R.string.saved_to, state.file?.name ?: "")) } },
             saveAs = { saveAs.launch(state.file?.name ?: "document.pdf") },
@@ -181,7 +189,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
             ai = { aiText = null; showAi = true },
             quick = { qa ->
                 quick.open(qa,
-                    onShare = { scope.launch { outputFile()?.let { ReaderIntents.shareFile(ctx, app, it) } } },
+                    onShare = { showShare5 = true },   // share6: Share5Sheet
                     onPrint = { com.smartdocs.editor.ui.view5.V5State.of(state).open(com.smartdocs.editor.ui.view5.V5Surface.PRINT) })
             },
         )
@@ -221,6 +229,9 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                                     DropdownMenuItem(text = { Text(stringResource(R.string.keep_screen_on)) }, leadingIcon = { Icon(if (settings.keepScreenOn) Icons.Default.CheckBox else Icons.Default.CheckBoxOutlineBlank, null) },
                                         onClick = { menu = false; scope.launch { app.settings.update { it.copy(keepScreenOn = !it.keepScreenOn) } } })
                                     DropdownMenuItem(text = { Text(stringResource(R.string.settings)) }, leadingIcon = { Icon(Icons.Default.Settings, null) }, onClick = { menu = false; nav.navigate(Routes.SETTINGS) })
+                                    // share6: signature requests / connected documents
+                                    DropdownMenuItem(text = { Text(stringResource(R.string.cn_tool_esign)) }, leadingIcon = { Icon(Icons.Default.HistoryEdu, null) }, onClick = { menu = false; nav.navigate(com.smartdocs.editor.ui.connected.ConnRoutes.esignCreate(state.fileUri)) })
+                                    DropdownMenuItem(text = { Text(stringResource(R.string.cn_register)) }, leadingIcon = { Icon(Icons.Default.Link, null) }, onClick = { menu = false; nav.navigate(com.smartdocs.editor.ui.connected.ConnRoutes.connected(state.fileUri)) })
                                     com.smartdocs.editor.ui.view5.V5MoreMenuItems(state, nav) { menu = false }
                                 }
                             }
@@ -232,6 +243,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                         if (t == ReaderTab.PAGES) actions.navigateTool("organize")
                         else { state.tab = t; state.selectTool(null); state.selection = null }
                     }
+                    state.connected?.let { com.smartdocs.editor.ui.connected.ConnectedBanner(it, nav, connUri) }   // share6: above the pages
                 }
             },
             bottomBar = {
@@ -254,7 +266,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                     Modifier.weight(1f).fillMaxHeight().focusRequester(focus).focusable().onPreviewKeyEvent { e ->
                         if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                         // volume (if enabled) / arrows / page keys: spread-aware screen flips (view module)
-                        com.smartdocs.editor.ui.view5.V5Keys.onKey(state, e.nativeKeyEvent) || state.vx.handleKeyCode(e.nativeKeyEvent.keyCode, settings.volumeKeysFlip, rtl)
+                        com.smartdocs.editor.ui.view5.V5Keys.onKey(state, e.nativeKeyEvent) || com.smartdocs.editor.ui.gaps6.G6Keys.handle(state, e.nativeKeyEvent.keyCode, settings, rtl)
                     },
                 ) {
                     when {
@@ -262,7 +274,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                         state.session == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { if (!state.needPassword) CircularProgressIndicator() }
                         else -> {
                             PageView(state, onTapCenter = { if (state.tool == null) chrome = !chrome },
-                                onOpenLink = { l -> if (l.destPage == null && l.uri.isNullOrBlank()) scope.launch { com.smartdocs.editor.ui.edit5.followFileLinkAt(state, state.currentPage, l.bounds.centerX(), l.bounds.centerY()) { f, p -> nav.navigate(Routes.reader(android.net.Uri.fromFile(f).toString(), p)) } } else ReaderIntents.openLink(ctx, l) { p -> state.jumpTo(p) } }, onPrompt = { prompt = it })
+                                onOpenLink = { l -> if (l.destPage == null && l.uri.isNullOrBlank()) scope.launch { runCatching { com.smartdocs.editor.ui.edit5.followFileLinkAt(state, state.currentPage, l.bounds.centerX(), l.bounds.centerY()) { f, p -> nav.navigate(Routes.reader(android.net.Uri.fromFile(f).toString(), p)) } } } else ReaderIntents.openLink(ctx, l) { p -> state.jumpTo(p) } }, onPrompt = { prompt = it })
                             com.smartdocs.editor.ui.view5.View5PageOverlays(state)
                             if (state.reflow) com.smartdocs.editor.ui.view5.ReflowReader(state)
                             PageIndicator(state.currentPage, state.pageCount, { showGoTo = true }, Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp))
@@ -283,9 +295,10 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                 }
             }
         }
-        if (!tablet && panel != null) ModalBottomSheet(onDismissRequest = { panel = null }) {
-            PanelsContent(state, panel!!, onPanel = { panel = it }, onJump = { state.jumpTo(it); panel = null }, onAiOutline = { panel = null; nav.navigate(Routes.tool("ai", state.fileUri)) }, onClose = { panel = null })
-        }
+        // captured value: the sheet's own composition can recompose after panel became null (NPE with panel!!)
+        if (!tablet) panel?.let { shownPanel -> ModalBottomSheet(onDismissRequest = { panel = null }) {
+            PanelsContent(state, shownPanel, onPanel = { panel = it }, onJump = { state.jumpTo(it); panel = null }, onAiOutline = { panel = null; nav.navigate(Routes.tool("ai", state.fileUri)) }, onClose = { panel = null })
+        } }
         com.smartdocs.editor.ui.forms5.InPageFormBar(state, Modifier.align(Alignment.BottomCenter))   // MODULE_forms5
     }
 
@@ -310,7 +323,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
             setPageColor = { state.pageColor = it },
             selectedText = { state.selection?.text },
             openFile = { f -> nav.navigate(Routes.reader(android.net.Uri.fromFile(f).toString())) },
-            share = { files, mime -> ctx.startActivity(android.content.Intent.createChooser(app.documents.shareIntent(files, mime), null)) },
+            share = { files, mime -> runCatching { ctx.startActivity(android.content.Intent.createChooser(app.documents.shareIntent(files, mime), null)) } },
         )
     }
     if (showAi) state.file?.let { f -> com.smartdocs.editor.ui.ai5.DocAssistantSheet(agentHost, f, state.password, state.pageCount, { state.pageText(it) },
@@ -327,6 +340,10 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
     if (state.saving) ProgressDialog(stringResource(R.string.processing))
     QuickActionHost(quick, snack)
     com.smartdocs.editor.ui.reader.annot.Annot2Dialogs(state, nav, snack)      // MODULE_annot2 pickers & dialogs
+    if (state.session != null && !state.needPassword) com.smartdocs.editor.ui.onboarding.ReaderCoachMarks()   // share6
+    // share6: share sheet (whole/page/range, compressed, without comments, flattened, images, XFDF, e-mail)
+    if (showShare5) { var f by remember { mutableStateOf<java.io.File?>(null) }; LaunchedEffect(Unit) { f = outputFile() }
+        f?.let { com.smartdocs.editor.ui.share5.Share5Sheet(it, if (it == state.file) state.password else null, state.currentPage, nav) { showShare5 = false } } }
     com.smartdocs.editor.ui.view5.View5ReaderHost(state, nav, snack, actions) { outputFile() }
 }
 

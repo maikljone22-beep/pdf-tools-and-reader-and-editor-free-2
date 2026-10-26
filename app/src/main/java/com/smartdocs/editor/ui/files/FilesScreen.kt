@@ -62,7 +62,7 @@ private suspend fun scanTree(ctx: android.content.Context, tree: Uri, maxFiles: 
         for (c in children) {
             if (out.size >= maxFiles) return
             if (c.isDirectory) walk(c, depth + 1)
-            else if (c.type == "application/pdf" || c.name.orEmpty().endsWith(".pdf", true)) {
+            else if (c.type == "application/pdf" || c.name.orEmpty().endsWith(".pdf", true) || com.smartdocs.editor.ui.office.OfficeRoutes.kindOfName(c.name.orEmpty()) != com.smartdocs.editor.ui.office.OfficeDocKind.NONE) {   // office5
                 out += DeviceFile(c.uri, c.name ?: "document.pdf", c.length(), c.lastModified(), c.uri.toString())
             }
         }
@@ -100,7 +100,7 @@ fun FilesScreen(nav: NavHostController) {
     var detailFile by remember { mutableStateOf<File?>(null) }
     val fold = com.smartdocs.editor.ui.gaps6.rememberFoldState()
     val snackbar = remember { SnackbarHostState() }
-    val pick = rememberPdfPicker { f -> f.firstOrNull()?.let { nav.navigate(Routes.reader(Uri.fromFile(it).toString())) } }
+    val pick = rememberPdfPicker(mimes = arrayOf("application/pdf", *com.smartdocs.editor.ui.office.OfficeRoutes.MIMES)) { f -> f.firstOrNull()?.let { nav.navigate(Routes.reader(Uri.fromFile(it).toString())) } }   // office5: PDF + Office
 
     fun refreshFolder() { folderFiles = app.documents.listFolder(folder); selected = selected.filter { p -> folderFiles.any { it.absolutePath == p } }.toSet() }
     LaunchedEffect(folder) { refreshFolder() }
@@ -263,7 +263,8 @@ fun FilesScreen(nav: NavHostController) {
                                 f, f.absolutePath in selected, selecting, Modifier.animateItem(),
                                 onOpen = { if (selecting) toggle(f) else openFile(f) }, onLongPress = { toggle(f) },
                                 onInfo = { infoTarget = f }, onRename = { renameTarget = f }, onDelete = { deleteTargets = listOf(f) },
-                                onShare = { share(listOf(f)) }, onZip = { zip(listOf(f)) }, onMove = { moveTargets = listOf(f) }, onSelect = { toggle(f) },
+                                onShare = { if (f.extension.equals("pdf", true)) nav.navigate(com.smartdocs.editor.ui.share5.Share5Routes.share(Uri.fromFile(f).toString())) else share(listOf(f)) },   // share6: single-PDF share sheet
+                                onZip = { zip(listOf(f)) }, onMove = { moveTargets = listOf(f) }, onSelect = { toggle(f) },
                                 onCopy = { copyTargets = listOf(f) }, onUnzip = { unzip(f) },
                             )
                         }
