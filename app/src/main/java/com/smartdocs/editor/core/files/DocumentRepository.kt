@@ -90,10 +90,27 @@ class DocumentRepository(private val context: Context, private val db: AppDataba
     suspend fun writeBack(local: File): WriteBack = withContext(Dispatchers.IO) {
         val origin = originOf(local) ?: return@withContext WriteBack.NotNeeded
         val cr = context.contentResolver
+        // The origin is truncated and rewritten in place (content URIs have no atomic rename), so keep a backup of
+        // its current bytes first and put them back if the write fails or the written size is wrong.
+        if (!local.exists() || local.length() == 0L) return@withContext WriteBack.Failed("empty working copy")
+        val backup = File(tempDir, "writeback_${System.nanoTime()}.bak")
         try {
-            val out = runCatching { cr.openOutputStream(origin, "wt") }.getOrNull() ?: cr.openOutputStream(origin, "w")
-                ?: return@withContext WriteBack.Failed("no output stream")
-            out.use { o -> local.inputStream().use { it.copyTo(o) } }
+            val backedUp = runCatching { cr.openInputStream(origin)?.use { i -> backup.outputStream().use { i.copyTo(it) } } != null }.getOrDefault(false)
+            fun restore() {
+                if (!backedUp) return
+                runCatching { (runCatching { cr.openOutputStream(origin, "wt") }.getOrNull() ?: cr.openOutputStream(origin, "w"))?.use { o -> backup.inputStream().use { it.copyTo(o) } } }
+            }
+            try {
+                val out = runCatching { cr.openOutputStream(origin, "wt") }.getOrNull() ?: cr.openOutputStream(origin, "w")
+                    ?: return@withContext WriteBack.Failed("no output stream")
+                out.use { o -> local.inputStream().use { it.copyTo(o) }; o.flush() }
+            } catch (e: SecurityException) { throw e } catch (e: Exception) { restore(); throw e }
+            // verify: the origin now has exactly the working copy's size (when the provider reports a size)
+            val written = runCatching { cr.openFileDescriptor(origin, "r")?.use { it.statSize } }.getOrNull() ?: -1L
+            if (written >= 0 && written != local.length()) {
+                restore()
+                return@withContext WriteBack.Failed("write-back size mismatch ($written != ${local.length()})")
+            }
             WriteBack.Done
         } catch (e: SecurityException) {
             if (android.os.Build.VERSION.SDK_INT >= 29 && e is android.app.RecoverableSecurityException)
@@ -103,7 +120,7 @@ class DocumentRepository(private val context: Context, private val db: AppDataba
             else WriteBack.Failed(e.message ?: "denied")
         } catch (e: Exception) {
             WriteBack.Failed(e.message ?: e.toString())
-        }
+        } finally { backup.delete() }
     }
 
     /** Replace [target] with [result] (atomically) and write it back to its source. Used by tools' "save to original". */
