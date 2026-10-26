@@ -21,6 +21,7 @@ import com.smartdocs.editor.R
 import com.smartdocs.editor.core.edit5.DecorSource
 import com.smartdocs.editor.core.edit5.DecorSpec
 import com.smartdocs.editor.core.edit5.DecorType
+import com.smartdocs.editor.core.edit5.LiveWmScript
 import com.smartdocs.editor.core.edit5.TokenContext
 import com.smartdocs.editor.core.edit5.Tokens
 import com.smartdocs.editor.core.edit5.WatermarkOps
@@ -60,6 +61,7 @@ fun DecorScreen(nav: NavHostController, uri: String?, type: DecorType) {
         WatermarkOps.stored(w, doc.password, type)?.let { spec = it.copy(user = spec.user); existing = true }
     }
     val title = stringResource(when (type) { DecorType.WATERMARK -> R.string.e5_wm_title; DecorType.BACKGROUND -> R.string.e5_bg_title; DecorType.SECURITY -> R.string.e5_sec_title })
+    val live = spec.isLive
     ToolScaffold(title, nav, runner) {
         E5FileRow(doc)
         if (type == DecorType.SECURITY) Text(stringResource(R.string.e5_sec_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -69,6 +71,12 @@ fun DecorScreen(nav: NavHostController, uri: String?, type: DecorType) {
                 ChoiceChips(sources, spec.source, { stringResource(when (it) { DecorSource.TEXT -> R.string.e5_src_text; DecorSource.IMAGE -> R.string.e5_src_image; DecorSource.COLOR -> R.string.e5_src_color }) }) { spec = spec.copy(source = it) }
                 when (spec.source) {
                     DecorSource.TEXT -> {
+                        if (type == DecorType.WATERMARK) {
+                            // fixed: tokens filled once now; live: a document script refreshes them on open and print
+                            ChoiceChips(listOf(false, true), spec.live, { stringResource(if (it) R.string.e5_wm_live else R.string.e5_wm_fixed) }) { spec = spec.copy(live = it) }
+                            Text(stringResource(if (spec.live) R.string.e5_wm_live_help else R.string.e5_wm_fixed_help), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            if (spec.live && !LiveWmScript.hasLiveTokens(spec.text)) Text(stringResource(R.string.e5_wm_live_no_tokens), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                        }
                         OutlinedTextField(spec.text, { spec = spec.copy(text = it) }, Modifier.fillMaxWidth(), minLines = 1, maxLines = 4, label = { Text(stringResource(R.string.e5_text)) })
                         TokenHelp()
                         OutlinedTextField(spec.user, { spec = spec.copy(user = it) }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.e5_user_name)) })
@@ -89,7 +97,17 @@ fun DecorScreen(nav: NavHostController, uri: String?, type: DecorType) {
             E5Section(stringResource(R.string.e5_appearance)) {
                 Text(stringResource(R.string.e5_opacity, (spec.opacity * 100).toInt()))
                 Slider(spec.opacity, { spec = spec.copy(opacity = it) }, valueRange = 0.03f..1f)
-                if (spec.source != DecorSource.COLOR) {
+                if (live) {
+                    // form fields turn in 90° steps only and draw one placement per page
+                    Text(stringResource(R.string.e5_rotation, LiveWmScript.snapRotation(spec.rotation)))
+                    ChoiceChips(listOf(0, 90, 180, 270), LiveWmScript.snapRotation(spec.rotation), { "$it°" }) { spec = spec.copy(rotation = it.toFloat()) }
+                    Text(stringResource(R.string.e5_position))
+                    AlignGrid(spec.hAlign, spec.vAlign) { h, v -> spec = spec.copy(hAlign = h, vAlign = v) }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FloatField(spec.offsetX, stringResource(R.string.e5_offset_x), Modifier.weight(1f)) { spec = spec.copy(offsetX = it) }
+                        FloatField(spec.offsetY, stringResource(R.string.e5_offset_y), Modifier.weight(1f)) { spec = spec.copy(offsetY = it) }
+                    }
+                } else if (spec.source != DecorSource.COLOR) {
                     Text(stringResource(R.string.e5_rotation, spec.rotation.toInt()))
                     Slider(spec.rotation, { spec = spec.copy(rotation = it) }, valueRange = -90f..90f)
                     Text(if (spec.scale <= 0f) stringResource(R.string.e5_scale_auto) else stringResource(R.string.e5_scale, (spec.scale * 100).toInt()))
@@ -105,7 +123,7 @@ fun DecorScreen(nav: NavHostController, uri: String?, type: DecorType) {
                         }
                     }
                 }
-                if (type != DecorType.BACKGROUND) SwitchRow(stringResource(R.string.e5_behind), spec.behind) { spec = spec.copy(behind = it) }
+                if (type != DecorType.BACKGROUND && !live) SwitchRow(stringResource(R.string.e5_behind), spec.behind) { spec = spec.copy(behind = it) }
                 SwitchRow(stringResource(R.string.e5_on_screen), spec.onScreen) { spec = spec.copy(onScreen = it) }
                 SwitchRow(stringResource(R.string.e5_on_print), spec.onPrint) { spec = spec.copy(onPrint = it) }
                 if (type == DecorType.SECURITY) SwitchRow(stringResource(R.string.e5_microtext), spec.microtext) { spec = spec.copy(microtext = it) }
@@ -127,9 +145,11 @@ fun DecorScreen(nav: NavHostController, uri: String?, type: DecorType) {
                             DecorSource.COLOR -> drawRect(0f, 0f, size.width, size.height, android.graphics.Paint().apply { color = 0xFF000000.toInt() or spec.fill; alpha = (spec.opacity * 255).toInt() })
                             else -> {
                                 val label = if (spec.source == DecorSource.IMAGE) "▣" else sample.lineSequence().firstOrNull().orEmpty()
-                                if (spec.scale > 0f && label.isNotEmpty()) { val tw = paint.measureText(label).coerceAtLeast(1f); paint.textSize *= size.width * spec.scale / tw }
-                                fun at(x: Float, y: Float) { save(); rotate(-spec.rotation, x, y); drawText(label, x, y + paint.textSize / 3f, paint); restore() }
-                                if (spec.tile) {
+                                if (spec.scale > 0f && !live && label.isNotEmpty()) { val tw = paint.measureText(label).coerceAtLeast(1f); paint.textSize *= size.width * spec.scale / tw }
+                                val rot = if (live) LiveWmScript.snapRotation(spec.rotation).toFloat() else spec.rotation
+                                if (live) paint.color = 0xFF000000.toInt() or LiveWmScript.fadedColor(spec.style.color, spec.opacity)
+                                fun at(x: Float, y: Float) { save(); rotate(-rot, x, y); drawText(label, x, y + paint.textSize / 3f, paint); restore() }
+                                if (spec.tile && !live) {
                                     val step = paint.measureText(label) + spec.tileGap * k; val rowStep = paint.textSize + spec.tileGap * k
                                     var y = 0f; var r = 0
                                     while (y < size.height + rowStep) { var x = if (r % 2 == 1) step / 2 else 0f; while (x < size.width + step) { at(x, y); x += step.coerceAtLeast(20f) }; y += rowStep.coerceAtLeast(10f); r++ }
@@ -156,7 +176,8 @@ fun DecorScreen(nav: NavHostController, uri: String?, type: DecorType) {
         PrimaryButton(stringResource(if (existing) R.string.e5_update else R.string.apply), enabled = ready, icon = Icons.Default.BrandingWatermark) {
             val sp = spec
             runner.run(processing) {
-                doc.apply(app.documents.tempDir) { s, o, p -> WatermarkOps.apply(ctx, s, o, p, sp, replace = true) }
+                val name = doc.source?.name ?: "document.pdf"
+                doc.apply(app.documents.tempDir) { s, o, p -> WatermarkOps.apply(ctx, s, o, p, sp, replace = true, fileName = name) }
                 doc.export(app.documents.docsDir, { d, b -> app.documents.uniqueFile(d, b) }, sp.kind)
             }
         }

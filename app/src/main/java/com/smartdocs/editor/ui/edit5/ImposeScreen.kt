@@ -17,6 +17,8 @@ import com.smartdocs.editor.LocalApp
 import com.smartdocs.editor.R
 import com.smartdocs.editor.core.edit5.ImposeOps
 import com.smartdocs.editor.core.edit5.ImposeOrder
+import com.smartdocs.editor.core.edit5.OutProtection
+import kotlinx.coroutines.launch
 import com.smartdocs.editor.core.edit5.PageBoxOps
 import com.smartdocs.editor.core.edit5.PageSet
 import com.smartdocs.editor.ui.common.rememberToolRunner
@@ -35,6 +37,15 @@ fun ImposeScreen(nav: NavHostController, uri: String?) {
     val app = LocalApp.current
     val runner = rememberToolRunner()
     var file by rememberInputFile(uri)
+    val unlocker = rememberE5Unlocker()
+    val scope = rememberCoroutineScope()
+    var protection by remember { mutableStateOf(OutProtection.KEEP) }
+    // a locked source asks for its password once when picked; cancelling clears the choice
+    LaunchedEffect(file) {
+        val f = file ?: return@LaunchedEffect
+        val ok = runCatching { unlocker.unlock(f) }.getOrElse { runner.error = it.message ?: it.toString(); true }
+        if (!ok) file = null
+    }
     val pick = rememberPdfPicker { file = it.firstOrNull() }
     var mode by remember { mutableStateOf(ImposeMode.NUP) }
     var n by remember { mutableIntStateOf(2) }
@@ -55,6 +66,8 @@ fun ImposeScreen(nav: NavHostController, uri: String?) {
     fun paper(): Pair<Float, Float>? = PageBoxOps.PAPERS.firstOrNull { it.first == paperName }?.second
     ToolScaffold(stringResource(R.string.e5_impose_title), nav, runner) {
         FilePickRow(file, stringResource(R.string.e5_document), pick)
+        E5UnlockDialog(unlocker)
+        file?.takeIf { unlocker.isLocked(it) }?.let { ProtectionChoice(protection) { protection = it } }
         ChoiceChips(ImposeMode.values().toList(), mode, { stringResource(when (it) { ImposeMode.NUP -> R.string.e5_imp_nup; ImposeMode.BOOKLET -> R.string.e5_imp_booklet; ImposeMode.POSTER -> R.string.e5_imp_poster }) }) { mode = it }
         E5Section(stringResource(R.string.e5_paper)) {
             val names = (if (mode == ImposeMode.POSTER) emptyList() else listOf(auto)) + PageBoxOps.PAPERS.map { it.first }
@@ -90,17 +103,21 @@ fun ImposeScreen(nav: NavHostController, uri: String?) {
         PrimaryButton(stringResource(R.string.e5_impose_run), enabled = file != null, icon = Icons.Default.ViewModule) {
             val src = file ?: return@PrimaryButton
             val p = paper(); val m = mode; val nn = n; val ls = landscape; val r = rtl; val cf = colFirst; val b = borders; val mg = margin; val g = gap; val cr = creep; val rg = range
-            val sc = scale; val ov = overlap; val mk = marks
-            runner.run(processing) {
-                val out = app.documents.uniqueFile(app.documents.docsDir, src.nameWithoutExtension + "_" + m.name.lowercase())
-                val count = com.smartdocs.editor.core.pdf.PdfOps.pageCount(src)
-                val pages = if (rg.isBlank()) null else PageSet.parse(rg, count)
-                when (m) {
-                    ImposeMode.NUP -> { val (c, rr) = ImposeOrder.gridFor(nn, ls); ImposeOps.nUp(src, out, null, c, rr, p, ls, r, cf, mg, g, b, pages) }
-                    ImposeMode.BOOKLET -> ImposeOps.booklet(src, out, null, r, p, mg, cr)
-                    ImposeMode.POSTER -> ImposeOps.poster(src, out, null, pages ?: listOf(0), sc, p ?: (595.28f to 841.89f), ls, ov, mk, mg)
+            val sc = scale; val ov = overlap; val mk = marks; val pr = protection
+            scope.launch {
+                if (!runCatching { unlocker.unlock(src) }.getOrElse { runner.error = it.message ?: it.toString(); return@launch }) return@launch
+                val pw = unlocker.password(src)
+                runner.run(processing) {
+                    val out = app.documents.uniqueFile(app.documents.docsDir, src.nameWithoutExtension + "_" + m.name.lowercase())
+                    val count = com.smartdocs.editor.core.pdf.PdfOps.pageCount(src, pw)
+                    val pages = if (rg.isBlank()) null else PageSet.parse(rg, count)
+                    when (m) {
+                        ImposeMode.NUP -> { val (c, rr) = ImposeOrder.gridFor(nn, ls); ImposeOps.nUp(src, out, pw, c, rr, p, ls, r, cf, mg, g, b, pages, pr) }
+                        ImposeMode.BOOKLET -> ImposeOps.booklet(src, out, pw, r, p, mg, cr, pr)
+                        ImposeMode.POSTER -> ImposeOps.poster(src, out, pw, pages ?: listOf(0), sc, p ?: (595.28f to 841.89f), ls, ov, mk, mg, pr)
+                    }
+                    out
                 }
-                out
             }
         }
     }

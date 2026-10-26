@@ -347,4 +347,17 @@
     <string name="e5_pm_full">ملء الشاشة</string>
     <string name="e5_pm_layers">الطبقات</string>
     <string name="e5_pm_attachments">المرفقات</string>
+    <string name="e5_wm_fixed">ثابتة</string>
+    <string name="e5_wm_live">حيّة (تتحدّث تلقائياً)</string>
+    <string name="e5_wm_fixed_help">تُملأ الرموز ({user} {date} {page} …) مرة واحدة الآن. «تحديث» يعيد ملأها.</string>
+    <string name="e5_wm_live_help">حقل نموذج للقراءة فقط في كل صفحة، يحدّثه سكربت المستند عند الفتح وقبل الطباعة (المستخدم والتاريخ والوقت ورقم الصفحة واسم الملف) في Acrobat وغيره من القارئات التي تدعم جافاسكربت. القارئات الأخرى تعرض آخر قيم مطبّقة. الدوران بخطوات 90° وتظهر فوق المحتوى.</string>
+    <string name="e5_wm_live_no_tokens">لا يحتوي النص على رموز متغيّرة، فلن يتغيّر شيء عند الفتح.</string>
+    <string name="e5_lock_file">الملف «%1$s» محمي بكلمة مرور.</string>
+    <string name="e5_lock_wrong">كلمة المرور غير صحيحة، حاول مرة أخرى.</string>
+    <string name="e5_lock_locked">محمي</string>
+    <string name="e5_lock_section">الحماية</string>
+    <string name="e5_lock_remove_out">إزالة الحماية من الناتج</string>
+    <string name="e5_lock_out_keep">الناتج محمي بكلمة مرور المصدر نفسها.</string>
+    <string name="e5_lock_out_plain">الناتج بلا كلمة مرور.</string>
+    <string name="e5_lock_second_ok">تم فتح الملف الثاني بكلمة المرور.</string>
 </resources>

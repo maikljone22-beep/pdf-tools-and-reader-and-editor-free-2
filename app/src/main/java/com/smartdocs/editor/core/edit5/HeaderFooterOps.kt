@@ -158,13 +158,19 @@ object HeaderFooterOps {
      * Bates numbering across [files] (in order): numbers continue from file to file. Each result is written to
      * [outFor] (file → output). Returns the outputs with the range each got.
      */
-    suspend fun bates(context: Context, files: List<File>, outFor: (File) -> File, bates: BatesSpec, slot: Slot, style: E5TextStyle, margin: Float = 24f): List<Pair<File, LongRange>> = withContext(Dispatchers.IO) {
-        val counts = files.map { f -> E5Io.load(f).use { it.numberOfPages } }
+    /**
+     * Bates over [files] in order. [passwords] gives the password of each locked file (asked once per file by the
+     * screen); outputs are protected like their source unless [protection] is REMOVE.
+     */
+    suspend fun bates(context: Context, files: List<File>, outFor: (File) -> File, bates: BatesSpec, slot: Slot, style: E5TextStyle, margin: Float = 24f,
+                      passwords: (File) -> String? = { null }, protection: OutProtection = OutProtection.KEEP): List<Pair<File, LongRange>> = withContext(Dispatchers.IO) {
+        val counts = files.map { f -> E5Io.load(f, passwords(f)).use { it.numberOfPages } }
         val ranges = Bates.ranges(bates, counts)
         files.mapIndexed { k, f ->
             val out = outFor(f)
             val first = ranges[k].first
-            E5Io.edit(f, out, null) { doc ->
+            E5Io.edit(f, out, passwords(f)) { doc ->
+                E5Locks.applyTo(doc, protection, passwords(f))
                 doc.pages.forEach { p -> Marked.strip(doc, p) { it == KIND_BATES } }
                 val cell = "{bates}"
                 val spec = HFSpec(

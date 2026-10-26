@@ -59,6 +59,13 @@ fun PageOpsScreen(nav: NavHostController, uri: String?, initial: PageOp = PageOp
     var marker by remember { mutableStateOf("") }
     var drop by remember { mutableStateOf(true) }
     var page by remember { mutableIntStateOf(0) }
+    val unlocker = rememberE5Unlocker()
+    // the second file asks for its password once when picked; cancelling clears it
+    LaunchedEffect(other) {
+        val f = other ?: return@LaunchedEffect
+        val ok = runCatching { unlocker.unlock(f) }.getOrElse { runner.error = it.message ?: it.toString(); true }
+        if (!ok) other = null
+    }
     val pickOther = rememberPdfPicker { other = it.firstOrNull() }
     val processing = stringResource(R.string.processing)
     val n = doc.pageCount
@@ -76,6 +83,8 @@ fun PageOpsScreen(nav: NavHostController, uri: String?, initial: PageOp = PageOp
             }
             PageOp.REPLACE, PageOp.COPY_PAGES, PageOp.INTERLEAVE -> E5Section(stringResource(opLabel(op))) {
                 FilePickRow(other, stringResource(if (op == PageOp.INTERLEAVE) R.string.e5_second_file else R.string.e5_from_file), pickOther)
+                other?.takeIf { unlocker.isLocked(it) }?.let { Text(stringResource(R.string.e5_lock_second_ok), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                E5UnlockDialog(unlocker)
                 if (op != PageOp.INTERLEAVE) OutlinedTextField(otherRange, { otherRange = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.e5_pages_from_other)) }, placeholder = { Text(stringResource(R.string.e5_all_pages)) })
                 when (op) {
                     PageOp.REPLACE -> OutlinedTextField(range, { range = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.e5_pages_to_replace)) })
@@ -108,10 +117,12 @@ fun PageOpsScreen(nav: NavHostController, uri: String?, initial: PageOp = PageOp
             }
         }
         val w = doc.work
-        val ready = w != null && when (op) { PageOp.REPLACE -> other != null && range.isNotBlank(); PageOp.COPY_PAGES, PageOp.INTERLEAVE -> other != null; PageOp.SMART_SPLIT -> splitBy == SplitBy.BLANK || marker.isNotBlank(); PageOp.DUPLICATE -> range.isNotBlank(); else -> true }
+        val otherReady = other?.let { unlocker.has(it) } == true
+        val ready = w != null && when (op) { PageOp.REPLACE -> otherReady && range.isNotBlank(); PageOp.COPY_PAGES, PageOp.INTERLEAVE -> otherReady; PageOp.SMART_SPLIT -> splitBy == SplitBy.BLANK || marker.isNotBlank(); PageOp.DUPLICATE -> range.isNotBlank(); else -> true }
         PrimaryButton(stringResource(R.string.e5_run), enabled = ready, icon = Icons.Default.PlayArrow) {
             val o = op; val rg = range; val tm = times.toInt(); val ae = atEnd; val of = other; val orr = otherRange; val a = at.toInt() - 1
             val c = cols; val r = rows; val rt = rtl; val ct = cut; val rb = reverseB; val sb = splitBy; val mk = marker; val dr = drop
+            val opw = of?.let { unlocker.password(it) }
             val sel = PageSet.parse(rg, n)
             if (o == PageOp.SMART_SPLIT) runner.runMany(processing) {
                 val src = doc.work!!
@@ -122,9 +133,9 @@ fun PageOpsScreen(nav: NavHostController, uri: String?, initial: PageOp = PageOp
                     when (o) {
                         PageOp.REVERSE -> PageOps5.reverse(s, out, p, if (rg.isBlank()) null else sel)
                         PageOp.DUPLICATE -> PageOps5.duplicate(s, out, p, sel, tm, ae)
-                        PageOp.REPLACE -> { val oc = PdfOps.pageCount(of!!); PageOps5.replace(s, out, p, sel, of, null, PageSet.parse(orr, oc)) }
-                        PageOp.COPY_PAGES -> { val oc = PdfOps.pageCount(of!!); PageOps5.copyPages(s, out, p, of, null, PageSet.parse(orr, oc), a) }
-                        PageOp.INTERLEAVE -> PageOps5.interleave(s, of!!, out, p, null, rb)
+                        PageOp.REPLACE -> { val oc = PdfOps.pageCount(of!!, opw); PageOps5.replace(s, out, p, sel, of, opw, PageSet.parse(orr, oc)) }
+                        PageOp.COPY_PAGES -> { val oc = PdfOps.pageCount(of!!, opw); PageOps5.copyPages(s, out, p, of, opw, PageSet.parse(orr, oc), a) }
+                        PageOp.INTERLEAVE -> PageOps5.interleave(s, of!!, out, p, opw, rb)
                         PageOp.SPLIT_PAGE -> {
                             val xc = if (c == 2 && r == 1) listOf(ct) else null
                             val yc = if (c == 1 && r == 2) listOf(1f - ct) else null

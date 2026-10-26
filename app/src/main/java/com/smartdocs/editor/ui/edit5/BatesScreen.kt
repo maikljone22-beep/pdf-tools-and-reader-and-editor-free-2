@@ -8,6 +8,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.launch
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -18,6 +19,7 @@ import com.smartdocs.editor.core.edit5.Bates
 import com.smartdocs.editor.core.edit5.BatesSpec
 import com.smartdocs.editor.core.edit5.E5TextStyle
 import com.smartdocs.editor.core.edit5.HeaderFooterOps
+import com.smartdocs.editor.core.edit5.OutProtection
 import com.smartdocs.editor.ui.common.rememberPdfPicker
 import com.smartdocs.editor.ui.common.rememberToolRunner
 import com.smartdocs.editor.ui.tools.ChoiceChips
@@ -38,15 +40,25 @@ fun BatesScreen(nav: NavHostController, uri: String?) {
     var slot by remember { mutableStateOf(HeaderFooterOps.Slot.BOTTOM_RIGHT) }
     var style by remember { mutableStateOf(E5TextStyle(size = 9f, color = 0x212121)) }
     var margin by remember { mutableFloatStateOf(20f) }
-    val pick = rememberPdfPicker(multiple = true) { picked -> files = (files + picked).distinctBy { it.absolutePath } }
+    var protection by remember { mutableStateOf(OutProtection.KEEP) }
+    val unlocker = rememberE5Unlocker()
+    val scope = rememberCoroutineScope()
+    // ask for the password of each locked file once, as soon as it is added; a cancelled file leaves the list
+    fun unlockNew() = scope.launch {
+        val skipped = runCatching { unlocker.unlockAll(files) }.getOrElse { runner.error = it.message ?: it.toString(); emptyList() }
+        if (skipped.isNotEmpty()) files = files.filter { f -> skipped.none { it.absolutePath == f.absolutePath } }
+    }
+    LaunchedEffect(first) { if (files.isNotEmpty()) unlockNew() }
+    val pick = rememberPdfPicker(multiple = true) { picked -> files = (files + picked).distinctBy { it.absolutePath }; unlockNew() }
     val processing = stringResource(R.string.processing)
     ToolScaffold(stringResource(R.string.e5_bates_title), nav, runner) {
         E5Section(stringResource(R.string.e5_bates_files, files.size)) {
             files.forEachIndexed { i, f ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (unlocker.isLocked(f)) Icon(Icons.Default.Lock, stringResource(R.string.e5_lock_locked), Modifier.size(18.dp))
                     Text("${i + 1}. ${f.name}", Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                     IconButton(onClick = { if (i > 0) files = files.toMutableList().apply { add(i - 1, removeAt(i)) } }, enabled = i > 0) { Icon(Icons.Default.ArrowUpward, null) }
-                    IconButton(onClick = { files = files.toMutableList().apply { removeAt(i) } }) { Icon(Icons.Default.Close, null) }
+                    IconButton(onClick = { files = files.toMutableList().apply { removeAt(i) }; unlocker.forget(f) }) { Icon(Icons.Default.Close, null) }
                 }
             }
             OutlinedButton(onClick = pick) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.e5_add_files)) }
@@ -70,10 +82,18 @@ fun BatesScreen(nav: NavHostController, uri: String?) {
             Slider(style.size, { style = style.copy(size = it) }, valueRange = 6f..18f)
             SwitchRow(stringResource(R.string.e5_bold), style.bold) { style = style.copy(bold = it) }
         }
+        if (files.any { unlocker.isLocked(it) }) E5Section(stringResource(R.string.e5_lock_section)) { ProtectionChoice(protection) { protection = it } }
+        E5UnlockDialog(unlocker)
         PrimaryButton(stringResource(R.string.e5_bates_apply), enabled = files.isNotEmpty(), icon = Icons.Default.Numbers) {
-            val list = files; val sp = spec; val sl = slot; val st = style; val m = margin
-            runner.runMany(processing) {
-                HeaderFooterOps.bates(ctx, list, { f -> app.documents.uniqueFile(app.documents.docsDir, f.nameWithoutExtension + "_bates") }, sp, sl, st, m).map { it.first }
+            val list = files; val sp = spec; val sl = slot; val st = style; val m = margin; val pr = protection
+            scope.launch {
+                // files added before a cancel, or reopened: make sure every locked one has its password
+                val skipped = runCatching { unlocker.unlockAll(list) }.getOrElse { runner.error = it.message ?: it.toString(); return@launch }
+                if (skipped.isNotEmpty()) { files = list - skipped.toSet(); return@launch }
+                val pw = unlocker.book.lookup()
+                runner.runMany(processing) {
+                    HeaderFooterOps.bates(ctx, list, { f -> app.documents.uniqueFile(app.documents.docsDir, f.nameWithoutExtension + "_bates") }, sp, sl, st, m, pw, pr).map { it.first }
+                }
             }
         }
         ResultsList(runner.results, nav, "application/pdf")

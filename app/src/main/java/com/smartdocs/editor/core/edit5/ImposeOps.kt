@@ -57,7 +57,7 @@ object ImposeOps {
     }
 
     suspend fun nUp(src: File, out: File, password: String?, cols: Int, rows: Int, paper: Pair<Float, Float>?, landscape: Boolean?, rtl: Boolean, columnFirst: Boolean,
-                    margin: Float = 18f, gap: Float = 8f, borders: Boolean = false, pages: List<Int>? = null) = withContext(Dispatchers.IO) {
+                    margin: Float = 18f, gap: Float = 8f, borders: Boolean = false, pages: List<Int>? = null, protection: OutProtection = OutProtection.KEEP) = withContext(Dispatchers.IO) {
         E5Io.load(src, password).use { doc ->
             PDDocument().use { nd ->
                 val imp = Importer(nd, doc)
@@ -77,6 +77,7 @@ object ImposeOps {
                     }
                 }
                 nd.documentInformation.title = doc.documentInformation.title
+                E5Locks.protectLike(nd, doc, password, protection)
                 E5Io.save(nd, out)
             }
         }
@@ -86,7 +87,7 @@ object ImposeOps {
      * Saddle-stitch booklet: two pages per sheet side in fold order; print double-sided (flip on short edge),
      * stack, fold and staple. [rtl] = right binding (Arabic books).
      */
-    suspend fun booklet(src: File, out: File, password: String?, rtl: Boolean, paper: Pair<Float, Float>?, margin: Float = 12f, creep: Float = 0f) = withContext(Dispatchers.IO) {
+    suspend fun booklet(src: File, out: File, password: String?, rtl: Boolean, paper: Pair<Float, Float>?, margin: Float = 12f, creep: Float = 0f, protection: OutProtection = OutProtection.KEEP) = withContext(Dispatchers.IO) {
         E5Io.load(src, password).use { doc ->
             PDDocument().use { nd ->
                 val imp = Importer(nd, doc)
@@ -105,6 +106,7 @@ object ImposeOps {
                         if (side.right >= 0) place(cs, imp.get(side.right), half + margin / 2f + shift, margin, half - 1.5f * margin, sh - 2 * margin, false)
                     }
                 }
+                E5Locks.protectLike(nd, doc, password, protection)
                 E5Io.save(nd, out)
             }
         }
@@ -114,7 +116,7 @@ object ImposeOps {
      * Poster: each page in [pages] enlarged by [scale] and cut into tiles of [paper] with [overlap] points shared,
      * optional cut marks and a small "row-col" label on every tile.
      */
-    suspend fun poster(src: File, out: File, password: String?, pages: List<Int>, scale: Float, paper: Pair<Float, Float>, landscape: Boolean, overlap: Float = 18f, marks: Boolean = true, margin: Float = 18f) = withContext(Dispatchers.IO) {
+    suspend fun poster(src: File, out: File, password: String?, pages: List<Int>, scale: Float, paper: Pair<Float, Float>, landscape: Boolean, overlap: Float = 18f, marks: Boolean = true, margin: Float = 18f, protection: OutProtection = OutProtection.KEEP) = withContext(Dispatchers.IO) {
         E5Io.load(src, password).use { doc ->
             PDDocument().use { nd ->
                 val imp = Importer(nd, doc)
@@ -152,6 +154,7 @@ object ImposeOps {
                         }
                     }
                 }
+                E5Locks.protectLike(nd, doc, password, protection)
                 E5Io.save(nd, out)
             }
         }

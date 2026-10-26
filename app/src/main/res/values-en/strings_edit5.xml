@@ -347,4 +347,17 @@
     <string name="e5_pm_full">Full screen</string>
     <string name="e5_pm_layers">Layers</string>
     <string name="e5_pm_attachments">Attachments</string>
+    <string name="e5_wm_fixed">Fixed</string>
+    <string name="e5_wm_live">Live (updates itself)</string>
+    <string name="e5_wm_fixed_help">Tokens ({user} {date} {page} …) are filled once now. Update fills them again.</string>
+    <string name="e5_wm_live_help">A read-only form field on each page, refreshed by a document script on open and before printing (user, date, time, page number, file name) in Acrobat and other readers with JavaScript. Other readers show the last applied values. Rotation in 90° steps, drawn over the content.</string>
+    <string name="e5_wm_live_no_tokens">The text has no changing tokens, so nothing will change on open.</string>
+    <string name="e5_lock_file">The file “%1$s” is password protected.</string>
+    <string name="e5_lock_wrong">Wrong password, try again.</string>
+    <string name="e5_lock_locked">Protected</string>
+    <string name="e5_lock_section">Protection</string>
+    <string name="e5_lock_remove_out">Remove protection from the output</string>
+    <string name="e5_lock_out_keep">The output is protected with the same password as the source.</string>
+    <string name="e5_lock_out_plain">The output has no password.</string>
+    <string name="e5_lock_second_ok">The second file was opened with its password.</string>
 </resources>

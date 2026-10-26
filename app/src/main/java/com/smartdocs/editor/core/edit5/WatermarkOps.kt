@@ -5,11 +5,16 @@ import android.graphics.BitmapFactory
 import com.smartdocs.editor.core.edit.Affine
 import com.smartdocs.editor.core.edit.PageFrame
 import com.smartdocs.editor.core.pdf.PdfOps
+import com.smartdocs.editor.core.pdf.ArabicShaper
 import com.tom_roush.pdfbox.cos.COSArray
+import com.tom_roush.pdfbox.cos.COSBase
 import com.tom_roush.pdfbox.cos.COSDictionary
 import com.tom_roush.pdfbox.cos.COSName
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDPageContentStream
+import com.tom_roush.pdfbox.pdmodel.PDResources
+import com.tom_roush.pdfbox.pdmodel.font.PDType0Font
+import com.tom_roush.pdfbox.pdmodel.font.PDType1Font
 import com.tom_roush.pdfbox.pdmodel.graphics.image.JPEGFactory
 import com.tom_roush.pdfbox.pdmodel.graphics.image.LosslessFactory
 import com.tom_roush.pdfbox.pdmodel.graphics.image.PDImageXObject
@@ -53,14 +58,22 @@ data class DecorSpec(
     val user: String = "",
     /** Security watermark only: a microtext line along every edge. */
     val microtext: Boolean = true,
+    /**
+     * Live watermark (text watermark only): drawn by read-only form fields whose value a document script refreshes on
+     * open and before printing ([LiveWatermark]); the static appearance keeps the values of the last apply.
+     */
+    val live: Boolean = false,
 ) {
+    /** True when this spec is written as a live (JavaScript-updated) watermark. */
+    val isLive: Boolean get() = live && type == DecorType.WATERMARK && source == DecorSource.TEXT
+
     val kind: String get() = when (type) { DecorType.WATERMARK -> "wm"; DecorType.BACKGROUND -> "bg"; DecorType.SECURITY -> "sec" }
 
     fun toJson(): String = JSONObject().apply {
         put("type", type.name); put("source", source.name); put("text", text); put("font", style.font.name); put("size", style.size.toDouble()); put("color", style.color); put("bold", style.bold)
         put("image", imagePath); put("fill", fill); put("opacity", opacity.toDouble()); put("rotation", rotation.toDouble()); put("scale", scale.toDouble())
         put("h", hAlign); put("v", vAlign); put("ox", offsetX.toDouble()); put("oy", offsetY.toDouble()); put("tile", tile); put("gap", tileGap.toDouble())
-        put("behind", behind); put("screen", onScreen); put("print", onPrint); put("range", range); put("subset", subset.name); put("arDigits", arabicDigits); put("micro", microtext)
+        put("behind", behind); put("screen", onScreen); put("print", onPrint); put("range", range); put("subset", subset.name); put("arDigits", arabicDigits); put("micro", microtext); put("live", live)
     }.toString()
 
     companion object {
@@ -72,7 +85,7 @@ data class DecorSpec(
                     o.optString("image"), o.optInt("fill", 0xFFF8E1), o.optDouble("opacity", 0.3).toFloat(), o.optDouble("rotation", 45.0).toFloat(), o.optDouble("scale", 0.0).toFloat(),
                     o.optInt("h"), o.optInt("v"), o.optDouble("ox", 0.0).toFloat(), o.optDouble("oy", 0.0).toFloat(), o.optBoolean("tile"), o.optDouble("gap", 60.0).toFloat(),
                     o.optBoolean("behind"), o.optBoolean("screen", true), o.optBoolean("print", true), o.optString("range"),
-                    runCatching { PageSubset.valueOf(o.optString("subset")) }.getOrDefault(PageSubset.ALL), o.optBoolean("arDigits"), microtext = o.optBoolean("micro", true))
+                    runCatching { PageSubset.valueOf(o.optString("subset")) }.getOrDefault(PageSubset.ALL), o.optBoolean("arDigits"), microtext = o.optBoolean("micro", true), live = o.optBoolean("live"))
             }.getOrNull()
         }
 
@@ -85,17 +98,23 @@ data class DecorSpec(
 }
 
 object WatermarkOps {
-    private fun settingKey(t: DecorType) = "DECOR_" + t.name
+    fun settingKey(t: DecorType) = "DECOR_" + t.name
 
     suspend fun stored(src: File, password: String?, type: DecorType): DecorSpec? = withContext(Dispatchers.IO) {
         E5Io.load(src, password).use { DecorSpec.fromJson(Marked.getSetting(it, settingKey(type))) }
     }
 
-    /** Add (or update when [replace]) a watermark / background / security watermark. */
-    suspend fun apply(context: Context, src: File, out: File, password: String?, spec: DecorSpec, replace: Boolean = true) = withContext(Dispatchers.IO) {
+    /**
+     * Add (or update when [replace]) a watermark / background / security watermark. [fileName] is the name shown by
+     * the `{file}` token (the screens work on a temp copy, so they pass the original name).
+     */
+    suspend fun apply(context: Context, src: File, out: File, password: String?, spec: DecorSpec, replace: Boolean = true, fileName: String = src.name) = withContext(Dispatchers.IO) {
         E5Io.edit(src, out, password) { doc ->
-            if (replace) doc.pages.forEach { p -> Marked.strip(doc, p) { it == spec.kind } }
-            draw(context, doc, spec, src.name)
+            if (replace) {
+                doc.pages.forEach { p -> Marked.strip(doc, p) { it == spec.kind } }
+                if (spec.type == DecorType.WATERMARK) LiveWatermark.remove(doc)
+            }
+            if (spec.isLive) LiveWatermark.install(doc, spec, fileName, liveFace(context, doc, spec)) else draw(context, doc, spec, fileName)
             Marked.putSetting(doc, settingKey(spec.type), spec.toJson())
             if (spec.type == DecorType.SECURITY) doc.documentInformation.setCustomMetadataValue("SmartDocsTrace", spec.text.substringAfterLast('•').trim())
         }
@@ -108,9 +127,31 @@ object WatermarkOps {
         var n = 0
         E5Io.edit(src, out, password) { doc ->
             doc.pages.forEach { p -> if (Marked.strip(doc, p) { it == kind || (others && it == foreign) }) n++ }
+            if (type == DecorType.WATERMARK) n += LiveWatermark.remove(doc)
             Marked.putSetting(doc, settingKey(type), null)
         }
         n
+    }
+
+    /** Face of a live watermark: shaped Arabic/Latin static text, Arabic font fully embedded for viewers that redraw. */
+    fun liveFace(context: Context, doc: PDDocument, spec: DecorSpec): (E5TextStyle) -> LiveFace {
+        val fonts = E5Fonts(context, doc)
+        val arabic = ArabicShaper.isArabic(spec.text + spec.user)
+        return { style -> AppLiveFace(context, doc, fonts, style, arabic) }
+    }
+
+    private class AppLiveFace(private val context: Context, private val doc: PDDocument, private val fonts: E5Fonts, private val style: E5TextStyle, private val arabic: Boolean) : LiveFace {
+        private val lines = HashMap<String, E5Line>()
+        private fun line(s: String) = lines.getOrPut(s) { E5Line(fonts, s, style) }
+        override val size: Float get() = style.size
+        override fun width(line: String): Float = line(line).width
+        override fun draw(cs: PDPageContentStream, res: PDResources, line: String, x: Float, y: Float) = line(line).draw(cs, x, y)
+        override fun daFont(): COSBase {
+            val latin = if (style.bold) PDType1Font.HELVETICA_BOLD else PDType1Font.HELVETICA
+            if (!arabic) return latin.cosObject
+            // full font (not a subset): a viewer redrawing the field needs glyphs for any user name or date
+            return runCatching { context.assets.open("fonts/NotoNaskhArabic-Regular.ttf").use { PDType0Font.load(doc, it, false).cosObject } }.getOrElse { latin.cosObject }
+        }
     }
 
     private fun draw(context: Context, doc: PDDocument, spec: DecorSpec, fileName: String) {
