@@ -94,6 +94,7 @@ fun FilesScreen(nav: NavHostController) {
     var renameTarget by remember { mutableStateOf<File?>(null) }
     var infoTarget by remember { mutableStateOf<File?>(null) }
     var deleteTargets by remember { mutableStateOf<List<File>?>(null) }
+    var permanentTargets by remember { mutableStateOf<List<File>?>(null) }
     var moveTargets by remember { mutableStateOf<List<File>?>(null) }
     // gaps6: copy to folder, unzip, list-detail on large / unfolded screens
     var copyTargets by remember { mutableStateOf<List<File>?>(null) }
@@ -311,10 +312,27 @@ fun FilesScreen(nav: NavHostController) {
             dismissButton = { TextButton(onClick = { newFolder = false }) { Text(stringResource(R.string.cancel)) } })
     }
     renameTarget?.let { f ->
-        var name by remember { mutableStateOf(f.nameWithoutExtension) }
+        var name by remember { mutableStateOf(if (f.isDirectory) f.name else f.nameWithoutExtension) }
+        var renameError by remember { mutableStateOf<String?>(null) }
+        val existsFmt = stringResource(R.string.fx_rename_exists)
+        val invalidMsg = stringResource(R.string.fx_rename_invalid)
+        val failedMsg = stringResource(R.string.fx_rename_failed)
         AlertDialog(onDismissRequest = { renameTarget = null }, title = { Text(stringResource(R.string.rename)) }, icon = { Icon(Icons.Default.DriveFileRenameOutline, null) },
-            text = { OutlinedTextField(name, { name = it }, singleLine = true, shape = MaterialTheme.shapes.medium) },
-            confirmButton = { TextButton(onClick = { if (name.isNotBlank()) f.renameTo(File(f.parentFile, if (f.isDirectory) name.trim() else "${name.trim()}.${f.extension}")); refreshFolder(); renameTarget = null }) { Text(stringResource(R.string.ok)) } },
+            text = {
+                OutlinedTextField(name, { name = it; renameError = null }, singleLine = true, shape = MaterialTheme.shapes.medium,
+                    isError = renameError != null, supportingText = renameError?.let { msg -> { Text(msg) } })
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    // audit DI-04: never replace another file; tell the user why a rename did not happen
+                    when (val r = app.documents.rename(f, name)) {
+                        is com.smartdocs.editor.core.files.SafeRename.Result.Ok -> { refreshFolder(); renameTarget = null }
+                        is com.smartdocs.editor.core.files.SafeRename.Result.Exists -> renameError = existsFmt.format(r.other.name)
+                        com.smartdocs.editor.core.files.SafeRename.Result.Blank, com.smartdocs.editor.core.files.SafeRename.Result.InvalidName -> renameError = invalidMsg
+                        com.smartdocs.editor.core.files.SafeRename.Result.Failed -> renameError = failedMsg
+                    }
+                }) { Text(stringResource(R.string.ok)) }
+            },
             dismissButton = { TextButton(onClick = { renameTarget = null }) { Text(stringResource(R.string.cancel)) } })
     }
     infoTarget?.let { f -> FileInfoDialog(f) { infoTarget = null } }
@@ -323,10 +341,25 @@ fun FilesScreen(nav: NavHostController) {
             title = { Text(stringResource(R.string.delete)) },
             text = { Text(stringResource(R.string.confirm_delete) + "\n" + list.joinToString("، ") { it.name }.take(300)) },
             confirmButton = {
-                TextButton(onClick = { list.forEach { if (!com.smartdocs.editor.ui.view5.Trash5.moveToTrash(ctx, it)) it.deleteRecursively() }; selected = emptySet(); refreshFolder(); deleteTargets = null },
+                TextButton(onClick = {
+                    // audit DI-06: a file that cannot go to the trash is never deleted silently — ask first
+                    val failed = list.filter { f -> if (com.smartdocs.editor.ui.view5.Trash5.moveToTrash(ctx, f)) { app.documents.forgetOrigin(f); false } else true }
+                    selected = emptySet(); refreshFolder(); deleteTargets = null
+                    if (failed.isNotEmpty()) permanentTargets = failed
+                },
                     colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text(stringResource(R.string.delete)) }
             },
             dismissButton = { TextButton(onClick = { deleteTargets = null }) { Text(stringResource(R.string.cancel)) } })
+    }
+    permanentTargets?.let { list ->
+        AlertDialog(onDismissRequest = { permanentTargets = null }, icon = { Icon(Icons.Default.DeleteForever, null) },
+            title = { Text(stringResource(R.string.fx_trash_failed_title)) },
+            text = { Text(stringResource(R.string.fx_trash_failed_text) + "\n" + list.joinToString("، ") { it.name }.take(300)) },
+            confirmButton = {
+                TextButton(onClick = { list.forEach { f -> if (f.deleteRecursively()) app.documents.forgetOrigin(f) }; refreshFolder(); permanentTargets = null },
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text(stringResource(R.string.fx_delete_permanently)) }
+            },
+            dismissButton = { TextButton(onClick = { permanentTargets = null }) { Text(stringResource(R.string.cancel)) } })
     }
     moveTargets?.let { list ->
         MoveDialog(app.documents.docsDir, list, onDismiss = { moveTargets = null }) { dest ->
