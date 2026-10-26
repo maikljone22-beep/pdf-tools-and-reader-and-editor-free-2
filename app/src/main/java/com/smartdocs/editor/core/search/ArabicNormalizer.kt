@@ -20,7 +20,11 @@ class Folded(val text: String, val map: IntArray)
  */
 object ArabicNormalizer {
 
-    fun fold(src: String, o: NormOptions = NormOptions()): Folded {
+    /**
+     * [reverseExpansions]: expand ligatures (ﻻ → "ال" instead of "لا") in reverse, for text stored in visual
+     * (reversed) order, so a reversed query matches it.
+     */
+    fun fold(src: String, o: NormOptions = NormOptions(), reverseExpansions: Boolean = false): Folded {
         val sb = StringBuilder(src.length)
         var map = IntArray(src.length + 16)
         var lastSpace = true
@@ -47,7 +51,8 @@ object ArabicNormalizer {
             // presentation forms and ligatures (ﻻ, ﷲ, ﺃ…) → base letters
             if (c.code in 0xFB50..0xFDFF || c.code in 0xFE70..0xFEFF) {
                 val n = Normalizer.normalize(c.toString(), Normalizer.Form.NFKC)
-                for (ch in n) if (!(o.ignoreDiacritics && isArabicMark(ch))) put(mapLetter(ch, o), i)
+                val seq = if (reverseExpansions && n.length > 1) n.reversed() else n
+                for (ch in seq) if (!(o.ignoreDiacritics && isArabicMark(ch))) put(mapLetter(ch, o), i)
                 continue
             }
             if (o.ignoreDiacritics && c.code in 0x00C0..0x024F) {

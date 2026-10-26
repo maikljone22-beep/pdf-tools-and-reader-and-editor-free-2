@@ -45,7 +45,8 @@ object MixedPageOcr {
         }
         val pages = range.filter { pi ->
             val text = runCatching { session.text(pi) }.getOrDefault("")
-            text.isBlank() || pi in withImages
+            // garbage extraction (glyph codes without Unicode) counts as no text: OCR the page fully
+            text.isBlank() || pi in withImages || com.smartdocs.editor.core.search.ArabicTextFix.isGarbage(text)
         }
         Plan(pages, geom)
     }
@@ -67,7 +68,7 @@ object MixedPageOcr {
     suspend fun dropExisting(session: PdfSession, pi: Int, page: OcrPage, plan: Plan?): OcrPage {
         if (page.words.isEmpty()) return page
         val text = runCatching { session.text(pi) }.getOrDefault("")
-        if (text.isBlank()) return page
+        if (text.isBlank() || com.smartdocs.editor.core.search.ArabicTextFix.isGarbage(text)) return page
         val boxes = runCatching { session.charBoxes(pi) }.getOrDefault(emptyList())
         if (boxes.isEmpty()) return page
         val g = plan?.geom?.get(pi) ?: run {

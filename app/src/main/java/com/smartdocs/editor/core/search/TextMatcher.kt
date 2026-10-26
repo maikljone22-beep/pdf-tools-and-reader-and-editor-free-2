@@ -21,7 +21,9 @@ data class SearchOptions(
  */
 object TextMatcher {
 
-    fun find(text: String, query: String, norm: NormOptions, wholeWord: Boolean): List<IntRange> {
+    fun find(text0: String, query: String, norm: NormOptions, wholeWord: Boolean): List<IntRange> {
+        // cp1256-as-cp1252 Arabic ("ÇáÓáÇã") is re-decoded char by char: same length, so ranges still map to PDFium indexes
+        val text = ArabicTextFix.demojibake(text0)
         val q = ArabicNormalizer.foldQuery(query, norm)
         if (q.isEmpty() || text.isEmpty()) return emptyList()
         val f = ArabicNormalizer.fold(text, norm)
@@ -29,7 +31,9 @@ object TextMatcher {
         collect(text, f, q, wholeWord, out)
         if (ArabicNormalizer.hasArabic(q) && q.length > 1) {
             val rev = q.reversed()
-            if (rev != q) collect(text, f, rev, wholeWord, out)
+            // visual-order PDFs: the line is stored reversed, so ligatures must expand reversed too (ﻻ → "ال")
+            val fv = if (text.any { it.code in 0xFB50..0xFDFF || it.code in 0xFE70..0xFEFF }) ArabicNormalizer.fold(text, norm, reverseExpansions = true) else f
+            if (rev != q) collect(text, fv, rev, wholeWord, out)
         }
         return out.sortedBy { it.first }.fold(ArrayList<IntRange>()) { acc, r ->
             if (acc.isNotEmpty() && r.first <= acc.last().last) acc else acc.apply { add(r) }

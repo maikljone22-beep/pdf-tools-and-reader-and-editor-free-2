@@ -68,7 +68,8 @@ object TextSelectionLogic {
     fun text(pageText: String, start: Int, end: Int): String {
         if (pageText.isEmpty()) return ""
         val s = min(start, end).coerceIn(0, pageText.length - 1); val e = max(start, end).coerceIn(0, pageText.length - 1)
-        return pageText.substring(s, e + 1).replace("\r\n", "\n").replace('\r', '\n')
+        // readable Arabic for copy/share/translate: presentation forms -> letters, visual order -> logical order
+        return com.smartdocs.editor.core.search.ArabicTextFix.fix(pageText.substring(s, e + 1).replace("\r\n", "\n").replace('\r', '\n'))
     }
 
     /** Characters whose boxes intersect a PDF rect — used by the "select by rectangle" markup gesture. */

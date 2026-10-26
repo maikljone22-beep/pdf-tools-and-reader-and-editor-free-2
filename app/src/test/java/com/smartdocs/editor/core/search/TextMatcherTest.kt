@@ -64,4 +64,11 @@ class TextMatcherTest {
         assertEquals(1, hits("Café", "cafe").size)
         assertTrue(hits("Hello", "hello", def.copy(matchCase = true)).isEmpty())
     }
+
+    @Test fun visualOrderWithLamAlefLigature() {
+        // "السلام" stored in visual order with presentation forms: meem final, lam-alef final, seen medial, lam initial, alef
+        assertEquals(1, hits("ﻢﻼﺴﻟﺍ", "السلام").size)
+        // and in logical order
+        assertEquals(1, hits("ﺍﻟﺴﻼﻢ", "السلام").size)
+    }
 }
