@@ -42,7 +42,8 @@ val allTools = listOf(
     ToolDef("blank", R.string.tool_blank, Icons.Default.NoteAdd, 0),
     ToolDef("templates", R.string.ps_templates_title, Icons.Default.Dashboard, 0),
     ToolDef("ocr", R.string.tool_ocr, Icons.Default.TextFields, 0),
-    ToolDef("convert", R.string.tool_convert, Icons.Default.SwapHoriz, 0),
+    ToolDef("convert_hub", R.string.tool_convert, Icons.Default.SwapHoriz, 0),    // convert6: Convert hub
+    ToolDef("extract_images", R.string.cv6_t_extract_images, Icons.Default.Collections, 3),   // convert6
 
     ToolDef("organize", R.string.tool_organize, Icons.Default.AutoAwesomeMotion, 1),
     ToolDef("merge", R.string.tool_merge, Icons.Default.CallMerge, 1),
@@ -120,7 +121,7 @@ object ToolUsage {
 }
 
 /** Default "most used" before the user has any history. */
-private val defaultTop = listOf("scan", "merge", "compress", "sign", "ocr", "convert")
+private val defaultTop = listOf("scan", "merge", "compress", "sign", "ocr", "convert_hub")
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -173,6 +174,10 @@ fun ToolsScreen(nav: NavHostController) {
             horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             if (query.isBlank()) {
+                // convert6: the Convert hub card leads the Tools tab
+                item(span = { GridItemSpan(maxLineSpan) }, key = "cv6_hub") {
+                    com.smartdocs.editor.ui.convert6.ConvertHubBanner { g6Tools.firstOrNull { it.id == "convert_hub" }?.let { open(it) } ?: nav.navigate(Routes.tool("convert_hub")) }
+                }
                 item(span = { GridItemSpan(maxLineSpan) }, key = "top_title") { SectionTitleCompact(stringResource(R.string.ds_most_used), Icons.Default.Bolt, Brand.tiles.amber) }
                 item(span = { GridItemSpan(maxLineSpan) }, key = "top_row") {
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {

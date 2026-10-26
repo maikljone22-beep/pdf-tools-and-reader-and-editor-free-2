@@ -1,0 +1,285 @@
+package com.smartdocs.editor.core.convert6
+
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import com.smartdocs.editor.core.convert.P2
+import com.smartdocs.editor.core.convert.Winding
+import com.smartdocs.editor.core.convert.newPoint
+import com.tom_roush.pdfbox.contentstream.PDFGraphicsStreamEngine
+import com.tom_roush.pdfbox.contentstream.operator.Operator
+import com.tom_roush.pdfbox.cos.COSBase
+import com.tom_roush.pdfbox.cos.COSName
+import com.tom_roush.pdfbox.pdmodel.PDDocument
+import com.tom_roush.pdfbox.pdmodel.PDPage
+import com.tom_roush.pdfbox.pdmodel.PDResources
+import com.tom_roush.pdfbox.pdmodel.graphics.image.PDImage
+import com.tom_roush.pdfbox.pdmodel.graphics.image.PDImageXObject
+import com.tom_roush.pdfbox.pdmodel.graphics.pattern.PDTilingPattern
+import com.tom_roush.pdfbox.text.PDFTextStripper
+import com.tom_roush.pdfbox.text.TextPosition
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withContext
+import java.io.ByteArrayOutputStream
+import java.io.File
+import java.security.MessageDigest
+import java.util.IdentityHashMap
+import java.util.zip.ZipFile
+import kotlin.coroutines.coroutineContext
+
+/** One extracted picture (bytes already written to [file] in the work folder). */
+class Extracted(
+    val file: File, val page: Int, val indexOnPage: Int, val resource: String?, val caption: String?,
+    val width: Int, val height: Int, val ext: String,
+) { val size: Long get() = file.length() }
+
+/**
+ * «Extract all images»: embedded pictures of a PDF at their ORIGINAL resolution (DCT kept byte-for-byte as .jpg,
+ * JPX as .jp2, everything else lossless PNG with the soft mask applied), de-duplicated by object and SHA-1, with
+ * their XObject name and nearby caption; and the media of DOCX / PPTX / XLSX / ODT / ODP / EPUB packages.
+ */
+object ImageExtract6 {
+
+    private class Seen { val objs = IdentityHashMap<Any, Boolean>(); val hashes = HashSet<String>() }
+
+    private fun sha1(b: ByteArray) = MessageDigest.getInstance("SHA-1").digest(b).joinToString("") { "%02x".format(it) }
+
+    /** Encoded bytes + extension of a PDF image, keeping the original encoding when possible. */
+    private fun encode(img: PDImage): Pair<ByteArray, String>? {
+        if (img is PDImageXObject) {
+            val filters = runCatching { img.stream.filters.map { it.name } }.getOrDefault(emptyList())
+            val hasMask = img.cosObject.containsKey(COSName.SMASK) || img.cosObject.containsKey(COSName.MASK)
+            val comps = runCatching { img.colorSpace.numberOfComponents }.getOrDefault(3)
+            if (!hasMask && filters.lastOrNull() == "DCTDecode" && comps != 4) {
+                runCatching { img.stream.createInputStream(listOf("DCTDecode")).use { it.readBytes() } }.getOrNull()
+                    ?.takeIf { it.size > 4 && it[0] == 0xFF.toByte() && it[1] == 0xD8.toByte() }?.let { return it to "jpg" }
+            }
+            if (!hasMask && filters.lastOrNull() == "JPXDecode") {
+                runCatching { img.stream.createInputStream(listOf("JPXDecode")).use { it.readBytes() } }.getOrNull()?.takeIf { it.size > 12 }?.let { return it to "jp2" }
+            }
+        }
+        val bmp: Bitmap = runCatching { img.image }.getOrNull() ?: return null
+        val bos = ByteArrayOutputStream()
+        bmp.compress(Bitmap.CompressFormat.PNG, 100, bos)
+        bmp.recycle()
+        return bos.toByteArray() to "png"
+    }
+
+    private class Placed(val img: PDImage, val name: String?, val x0: Float, val top: Float, val x1: Float, val bottom: Float)
+
+    /** Records every drawn image (incl. inside forms and inline images) with its box (top-left page space). */
+    private class Placer(page: PDPage) : PDFGraphicsStreamEngine(page) {
+        val placed = ArrayList<Placed>()
+        private var lastName: String? = null
+        private val llx = page.cropBox.lowerLeftX
+        private val ury = page.cropBox.upperRightY
+
+        override fun processOperator(operator: Operator, operands: MutableList<COSBase>) {
+            if (operator.name == "Do") lastName = (operands.firstOrNull() as? COSName)?.name else if (operator.name == "BI") lastName = null
+            super.processOperator(operator, operands)
+        }
+
+        override fun drawImage(pdImage: PDImage) {
+            if (placed.size > 3000) return
+            val m = graphicsState.currentTransformationMatrix
+            val xs = floatArrayOf(m.translateX, m.translateX + m.scaleX, m.translateX + m.shearX, m.translateX + m.scaleX + m.shearX)
+            val ys = floatArrayOf(m.translateY, m.translateY + m.shearY, m.translateY + m.scaleY, m.translateY + m.shearY + m.scaleY)
+            placed += Placed(pdImage, lastName, xs.min() - llx, ury - ys.max(), xs.max() - llx, ury - ys.min())
+            lastName = null
+        }
+
+        override fun appendRectangle(p0: P2, p1: P2, p2: P2, p3: P2) = Unit
+        override fun clip(windingRule: Winding) = Unit
+        override fun moveTo(x: Float, y: Float) = Unit
+        override fun lineTo(x: Float, y: Float) = Unit
+        override fun curveTo(x1: Float, y1: Float, x2: Float, y2: Float, x3: Float, y3: Float) = Unit
+        override fun getCurrentPoint(): P2 = newPoint(0f, 0f)
+        override fun closePath() = Unit
+        override fun endPath() = Unit
+        override fun shadingFill(shadingName: COSName) = Unit
+        override fun strokePath() = Unit
+        override fun fillPath(windingRule: Winding) = Unit
+        override fun fillAndStrokePath(windingRule: Winding) = Unit
+    }
+
+    /** Words of one page grouped into lines (top-left page space). */
+    private class LineStripper : PDFTextStripper() {
+        val words = ArrayList<TextLine>()
+        override fun writeString(text: String?, textPositions: MutableList<TextPosition>?) {
+            val tp = textPositions ?: return
+            if (text.isNullOrBlank() || tp.isEmpty()) return
+            words += TextLine(text, tp.minOf { it.xDirAdj }, tp.minOf { it.yDirAdj - it.heightDir }, tp.maxOf { it.xDirAdj + it.widthDirAdj }, tp.maxOf { it.yDirAdj })
+        }
+
+        fun lines(doc: PDDocument, page: Int): List<TextLine> {
+            sortByPosition = true; startPage = page + 1; endPage = page + 1
+            words.clear(); getText(doc)
+            val out = ArrayList<MutableList<TextLine>>()
+            words.sortedBy { it.top }.forEach { w ->
+                val l = out.lastOrNull()
+                if (l != null && kotlin.math.abs(l.first().top - w.top) < 3f) l += w else out += mutableListOf(w)
+            }
+            return out.map { ws ->
+                val rtl = Text6.rtlDominant(ws.joinToString(" ") { it.text })
+                val ordered = if (rtl) ws.sortedByDescending { it.x0 } else ws.sortedBy { it.x0 }
+                TextLine(ordered.joinToString(" ") { it.text }, ws.minOf { it.x0 }, ws.minOf { it.top }, ws.maxOf { it.x1 }, ws.maxOf { it.bottom })
+            }
+        }
+    }
+
+    suspend fun fromPdf(src: File, password: String?, pages: List<Int>, minSide: Int, workDir: File, onProgress: (Int, Int) -> Unit): List<Extracted> = withContext(Dispatchers.IO) {
+        workDir.mkdirs()
+        val out = ArrayList<Extracted>()
+        val seen = Seen()
+        PdfFlow6.load(src, password).use { doc ->
+            val list = pages.filter { it in 0 until doc.numberOfPages }.ifEmpty { (0 until doc.numberOfPages).toList() }
+            val stripper = LineStripper()
+            list.forEachIndexed { k, pi ->
+                coroutineContext.ensureActive()
+                onProgress(k, list.size)
+                val page = doc.getPage(pi)
+                val placer = Placer(page)
+                runCatching { placer.processPage(page) }
+                var n = 0
+                var lines: List<TextLine>? = null
+                fun take(img: PDImage, name: String?, box: Placed?) {
+                    if (img.isStencil) return
+                    val key: Any = (img as? PDImageXObject)?.cosObject ?: img
+                    if (seen.objs.put(key, true) != null) return
+                    if (minOf(img.width, img.height) < minSide) return
+                    val enc = runCatching { encode(img) }.getOrNull() ?: return
+                    if (!seen.hashes.add(sha1(enc.first))) return
+                    n++
+                    val caption = if (box != null && page.rotation % 360 == 0) {
+                        if (lines == null) lines = runCatching { stripper.lines(doc, pi) }.getOrDefault(emptyList())
+                        ImageNaming.caption(lines!!, box.x0, box.top, box.x1, box.bottom)
+                    } else null
+                    val f = File(workDir, "x_${out.size + 1}_${System.nanoTime()}.${enc.second}")
+                    f.writeBytes(enc.first)
+                    out += Extracted(f, pi + 1, n, name, caption, img.width, img.height, enc.second)
+                }
+                placer.placed.forEach { take(it.img, it.name, it) }
+                // pictures that are not drawn by the page itself: unused resources, tiling patterns, annotation appearances
+                fun walk(res: PDResources?, depth: Int) {
+                    if (res == null || depth > 10) return
+                    res.xObjectNames.forEach { nm ->
+                        when (val x = runCatching { res.getXObject(nm) }.getOrNull()) {
+                            is PDImageXObject -> take(x, nm.name, null)
+                            is com.tom_roush.pdfbox.pdmodel.graphics.form.PDFormXObject -> walk(x.resources, depth + 1)
+                            else -> {}
+                        }
+                    }
+                    res.patternNames.forEach { nm -> (runCatching { res.getPattern(nm) }.getOrNull() as? PDTilingPattern)?.let { walk(it.resources, depth + 1) } }
+                }
+                walk(page.resources, 0)
+                runCatching { page.annotations }.getOrDefault(emptyList()).forEach { a ->
+                    runCatching { a.normalAppearanceStream?.resources }.getOrNull()?.let { walk(it, 1) }
+                }
+            }
+            onProgress(list.size, list.size)
+        }
+        out
+    }
+
+    private fun resolve(base: String, href: String): String {
+        val h = java.net.URLDecoder.decode(href.substringBefore('#'), "UTF-8")
+        if (h.startsWith("/")) return h.trimStart('/')
+        val parts = (base.substringBeforeLast('/', "").split('/').filter { it.isNotEmpty() } + h.split('/')).toMutableList()
+        val out = ArrayList<String>()
+        parts.forEach { p ->
+            when (p) {
+                ".", "" -> {}
+                ".." -> { if (out.isNotEmpty()) out.removeAt(out.size - 1) }
+                else -> out += p
+            }
+        }
+        return out.joinToString("/")
+    }
+
+    private fun attr(tag: String, name: String): String? = Regex("""(?i)\b$name\s*=\s*["']([^"']*)["']""").find(tag)?.groupValues?.get(1)
+
+    /** Media of an Office / ODF / EPUB package, named by alt text / slide number when known. */
+    suspend fun fromPackage(src: File, kind: Kind6, minSide: Int, workDir: File): List<Extracted> = withContext(Dispatchers.IO) {
+        workDir.mkdirs()
+        val out = ArrayList<Extracted>()
+        ZipFile(src).use { z ->
+            fun text(name: String): String? = z.getEntry(name)?.let { e -> z.getInputStream(e).use { String(it.readBytes(), Charsets.UTF_8) } }
+            val alt = HashMap<String, String>(); val slide = HashMap<String, Int>()
+            val names = z.entries().asSequence().map { it.name }.toList()
+            val media: List<String> = when (kind) {
+                Kind6.DOCX, Kind6.PPTX, Kind6.XLSX -> {
+                    val prefix = when (kind) { Kind6.DOCX -> "word/"; Kind6.PPTX -> "ppt/"; else -> "xl/" }
+                    names.filter { it.endsWith(".xml") && it.startsWith(prefix) && !it.contains("/_rels/") }.forEach { part ->
+                        val rels = text(part.substringBeforeLast('/') + "/_rels/" + part.substringAfterLast('/') + ".rels") ?: return@forEach
+                        val idTarget = Regex("""<Relationship\b[^>]*>""").findAll(rels).mapNotNull { m -> val id = attr(m.value, "Id"); val t = attr(m.value, "Target"); if (id != null && t != null && attr(m.value, "TargetMode") != "External") id to resolve(part, t) else null }.toMap()
+                        val xml = text(part) ?: return@forEach
+                        val slideNo = Regex("""slide(\d+)\.xml$""").find(part)?.groupValues?.get(1)?.toIntOrNull()
+                        var lastDescr: String? = null
+                        Regex("""\b(?:descr|title)\s*=\s*"([^"]*)"|r:(?:embed|link)\s*=\s*"([^"]+)"""").findAll(xml).forEach { m ->
+                            if (m.groupValues[1].isNotEmpty()) lastDescr = HtmlFlow.decode(m.groupValues[1])
+                            else if (m.groupValues[2].isNotEmpty()) {
+                                val target = idTarget[m.groupValues[2]]
+                                if (target != null) {
+                                    lastDescr?.takeIf { it.isNotBlank() }?.let { alt.putIfAbsent(target, it) }
+                                    if (slideNo != null) slide.putIfAbsent(target, slideNo)
+                                }
+                                lastDescr = null
+                            }
+                        }
+                    }
+                    names.filter { it.startsWith(prefix + "media/") }
+                }
+                Kind6.ODT, Kind6.ODP, Kind6.ODS -> {
+                    text("content.xml")?.let { xml ->
+                        var pageNo = 0
+                        Regex("""<draw:page\b|<draw:frame\b[^>]*>(.*?)</draw:frame>""", RegexOption.DOT_MATCHES_ALL).findAll(xml).forEach { m ->
+                            if (m.value.startsWith("<draw:page")) { pageNo++; return@forEach }
+                            val href = Regex("""xlink:href="([^"]+)"""").find(m.value)?.groupValues?.get(1) ?: return@forEach
+                            val title = Regex("""<svg:(?:title|desc)>(.*?)</svg:""", RegexOption.DOT_MATCHES_ALL).find(m.value)?.groupValues?.get(1)
+                                ?: attr(m.value.substringBefore('>'), "draw:name")
+                            title?.let { alt.putIfAbsent(href.removePrefix("./"), HtmlFlow.decode(it)) }
+                            if (pageNo > 0) slide.putIfAbsent(href.removePrefix("./"), pageNo)
+                        }
+                    }
+                    names.filter { it.startsWith("Pictures/") }
+                }
+                Kind6.EPUB -> {
+                    names.filter { it.endsWith(".xhtml", true) || it.endsWith(".html", true) || it.endsWith(".htm", true) }.forEachIndexed { ci, part ->
+                        val x = text(part) ?: return@forEachIndexed
+                        Regex("""(?is)<(img|image)\b[^>]*>""").findAll(x).forEach { m ->
+                            val s = attr(m.value, "src") ?: attr(m.value, "xlink:href") ?: attr(m.value, "href") ?: return@forEach
+                            val p = resolve(part, s)
+                            attr(m.value, "alt")?.takeIf { it.isNotBlank() }?.let { alt.putIfAbsent(p, HtmlFlow.decode(it)) }
+                            slide.putIfAbsent(p, ci + 1)
+                        }
+                    }
+                    names.filter { n -> n.substringAfterLast('.').lowercase() in setOf("jpg", "jpeg", "png", "gif", "webp", "svg", "bmp") }
+                }
+                else -> emptyList()
+            }
+            val seen = HashSet<String>()
+            media.sortedWith(compareBy({ slide[it] ?: Int.MAX_VALUE }, { it })).forEachIndexed { i, path ->
+                coroutineContext.ensureActive()
+                val e = z.getEntry(path) ?: return@forEachIndexed
+                if (e.size > 200L * 1024 * 1024) return@forEachIndexed
+                val bytes = z.getInputStream(e).use { it.readBytes() }
+                if (!seen.add(sha1(bytes))) return@forEachIndexed
+                val ext = (Images6.sniffExt(bytes) ?: path.substringAfterLast('.', "bin")).lowercase()
+                val dims = ImageDims.of(bytes) ?: BitmapFactory.Options().apply { inJustDecodeBounds = true }.let { o -> BitmapFactory.decodeByteArray(bytes, 0, bytes.size, o); if (o.outWidth > 0) o.outWidth to o.outHeight else null }
+                if (dims != null && minOf(dims.first, dims.second) < minSide) return@forEachIndexed
+                val f = File(workDir, "x_${i + 1}_${System.nanoTime()}.$ext")
+                f.writeBytes(bytes)
+                val pg = slide[path] ?: 1
+                out += Extracted(f, pg, out.count { it.page == pg } + 1, path.substringAfterLast('/').substringBeforeLast('.'), alt[path], dims?.first ?: 0, dims?.second ?: 0, ext)
+            }
+        }
+        out
+    }
+
+    /** Final file names for [items] in [mode], de-duplicated. */
+    fun names(items: List<Extracted>, mode: NameMode, docName: String, overrides: Map<Int, String> = emptyMap()): List<String> =
+        ImageNaming.dedupe(items.mapIndexed { i, it ->
+            val base = overrides[i]?.let { o -> ImageNaming.sanitize(o) }?.ifEmpty { null } ?: ImageNaming.baseName(mode, docName, it.page, it.indexOnPage, it.resource, it.caption)
+            base + "." + it.ext
+        })
+}

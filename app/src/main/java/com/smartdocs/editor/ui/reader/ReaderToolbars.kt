@@ -280,6 +280,8 @@ private val readerTools: List<ReaderToolItem> = listOf(
     ReaderToolItem.Screen("compare", R.string.tool_compare, Icons.Default.Compare),
     ReaderToolItem.Screen("pdf_to_images", R.string.tool_pdf_to_images, Icons.Default.Collections),
     ReaderToolItem.Screen("pdf_to_text", R.string.tool_pdf_to_text, Icons.Default.Subject),
+    ReaderToolItem.Screen("convert_hub", R.string.cv6_title, Icons.Default.SwapHoriz),
+    ReaderToolItem.Screen("extract_images", R.string.cv6_t_extract_images, Icons.Default.Collections),
 )
 
 @Composable

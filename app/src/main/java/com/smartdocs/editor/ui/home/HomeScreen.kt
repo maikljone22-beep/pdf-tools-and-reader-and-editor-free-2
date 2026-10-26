@@ -86,6 +86,7 @@ fun HomeScreen(nav: NavHostController) {
         Quick(Icons.Default.Image, R.string.create_from_images, "images_to_pdf") { Brand.tiles.purple },
         Quick(Icons.Default.NoteAdd, R.string.create_blank, "blank") { Brand.tiles.blue },
         Quick(Icons.Default.Dashboard, R.string.g6_from_template, "templates") { Brand.tiles.amber },
+        Quick(Icons.Default.SwapHoriz, R.string.cv6_title, "convert_hub") { Brand.tiles.green },   // convert6: Convert hub
     )
     val listState = rememberLazyListState()
     val fabExpanded by remember { derivedStateOf { listState.firstVisibleItemIndex == 0 } }
