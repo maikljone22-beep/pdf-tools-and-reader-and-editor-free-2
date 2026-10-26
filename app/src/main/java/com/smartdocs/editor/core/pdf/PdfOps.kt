@@ -340,23 +340,31 @@ object PdfOps {
     }
 
     /** Re-encode every image at [quality] and scaled to at most [maxDim] pixels. */
-    suspend fun compress(src: File, out: File, quality: Int = 60, maxDim: Int = 1400, password: String? = null) = withContext(Dispatchers.IO) {
-        load(src, password).use { doc ->
-            doc.pages.forEach { page ->
-                val res = page.resources ?: return@forEach
-                res.xObjectNames.forEach { name ->
-                    val xo = runCatching { res.getXObject(name) }.getOrNull()
-                    if (xo is PDImageXObject) {
-                        val bmp = runCatching { xo.image }.getOrNull() ?: return@forEach
-                        val scale = minOf(1f, maxDim.toFloat() / maxOf(bmp.width, bmp.height))
-                        val scaled = if (scale < 1f) Bitmap.createScaledBitmap(bmp, (bmp.width * scale).toInt().coerceAtLeast(1), (bmp.height * scale).toInt().coerceAtLeast(1), true) else bmp
-                        val newImg = JPEGFactory.createFromImage(doc, scaled, quality / 100f)
-                        res.put(name, newImg)
-                    }
-                }
-            }
-            saveTo(doc, out)
-        }
+    /**
+     * Reduce the file size. Uses the shared optimizer, which (unlike the old per-page JPEG re-encode that could make
+     * files BIGGER) keeps one copy of images shared by many pages, leaves 1-bit scans and images with transparency
+     * as they are, only replaces an image when the new one is smaller, compresses uncompressed streams, and drops
+     * thumbnails/private data. Protected files stay protected with the same password. When the result is not smaller
+     * than the original, the original is kept (copied to [out]). Returns true when the file got smaller.
+     */
+    suspend fun compress(src: File, out: File, quality: Int = 60, maxDim: Int = 1400, password: String? = null): Boolean = withContext(Dispatchers.IO) {
+        // old callers pass a pixel limit for an A4-ish page; the optimizer works in dpi of each page
+        val dpi = (maxDim / 11.7f).toInt().coerceIn(72, 300)
+        val opts = com.smartdocs.editor.core.tools5.OptimizeOptions(imageDpi = dpi, jpegQuality = quality.coerceIn(20, 95),
+            stripMetadata = false, stripJavaScript = false, onlyIfSmaller = false)
+        val tmp = File(out.absoluteFile.parentFile, ".${out.nameWithoutExtension}.${System.nanoTime()}.opt.pdf")
+        try {
+            com.smartdocs.editor.core.tools5.Optimizer.optimize(src, password, tmp, opts)
+            val result = if (!password.isNullOrEmpty()) {
+                // the optimizer saves without encryption: protect again with the same password
+                val prot = File(tmp.parentFile, tmp.name + ".p.pdf")
+                protect(tmp, prot, password, password); tmp.delete(); prot
+            } else tmp
+            val smaller = result.length() in 1 until src.length()
+            if (smaller) { if (!result.renameTo(out)) { result.copyTo(out, overwrite = true); result.delete() } }
+            else { result.delete(); src.copyTo(out, overwrite = true) }
+            smaller
+        } finally { tmp.delete() }
     }
 
     /** Flatten: render each page to an image so annotations/forms become part of the page. */
