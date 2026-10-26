@@ -99,6 +99,7 @@
     <string name="qk_ocr_title">Recognize text</string>
     <string name="qk_ocr_offline_note">Runs on the device without uploading; the open document is updated.</string>
     <string name="qk_ocr_range">Page range</string>
+    <string name="qk_ocr_current">Current page (%1$d)</string>
     <string name="qk_ocr_all">All pages</string>
     <string name="qk_ocr_from_to">From – to</string>
     <string name="qk_ocr_from">From</string>

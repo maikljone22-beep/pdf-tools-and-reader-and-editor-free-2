@@ -95,6 +95,7 @@ fun OcrScreen(nav: NavHostController, uri: String?) {
                 val collected = ArrayList<Pair<Int, OcrPage>>()
                 try {
                     val pages = PdfOps.parseRange(range, session.pageCount)
+                    val plan = if (writer != null) com.smartdocs.editor.core.ocr.MixedPageOcr.plan(session, src, password, pages) else null
                     pages.forEachIndexed { n, pi ->
                         progressMsg = ctx.getString(R.string.ocr_recognizing, pi + 1); progress = n.toFloat() / pages.size
                         val (w, h) = session.pageSize(pi)
@@ -103,7 +104,8 @@ fun OcrScreen(nav: NavHostController, uri: String?) {
                         val bmp = session.render(pi, (w * scale).toInt(), (h * scale).toInt(), annotations = false)
                         val page = withContext(Dispatchers.Default) { engine.recognize(bmp, wantWords = writer != null) }
                         session.invalidateCache()
-                        if (writer != null) writer.addLayer(pi, page)
+                        // a page that already has some selectable text only gets the words that are new
+                        if (writer != null) writer.addLayer(pi, com.smartdocs.editor.core.ocr.MixedPageOcr.dropExisting(session, pi, page, plan))
                         collected += pi to page
                         if (mode == OcrMode.TEXT) textPages = collected.toList()
                     }

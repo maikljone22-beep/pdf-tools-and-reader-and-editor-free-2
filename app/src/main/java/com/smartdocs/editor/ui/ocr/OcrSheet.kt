@@ -42,7 +42,9 @@ fun OcrSheet(
     onDismiss: () -> Unit,
 ) {
     val ctx = LocalContext.current
-    var allPages by remember { mutableStateOf(true) }
+    // 0 = current page (default), 1 = all pages, 2 = from–to
+    var scope by remember { mutableStateOf(0) }
+    val allPages = scope == 1
     var from by remember { mutableStateOf((currentPage + 1).toString()) }
     var to by remember { mutableStateOf(pageCount.toString()) }
     val langs = remember { mutableStateListOf<String>().apply { addAll(OcrPrefs.languages(ctx)) } }
@@ -65,16 +67,19 @@ fun OcrSheet(
             if (lockedPage != null) {
                 Text(stringResource(R.string.qk_ocr_page_locked, lockedPage + 1), style = MaterialTheme.typography.bodyLarge)
             } else {
-                Row(Modifier.fillMaxWidth().selectable(allPages, role = Role.RadioButton) { allPages = true }, verticalAlignment = Alignment.CenterVertically) {
-                    RadioButton(allPages, { allPages = true }); Text(stringResource(R.string.qk_ocr_all))
+                Row(Modifier.fillMaxWidth().selectable(scope == 0, role = Role.RadioButton) { scope = 0 }, verticalAlignment = Alignment.CenterVertically) {
+                    RadioButton(scope == 0, { scope = 0 }); Text(stringResource(R.string.qk_ocr_current, currentPage + 1))
                 }
-                Row(Modifier.fillMaxWidth().selectable(!allPages, role = Role.RadioButton) { allPages = false }, verticalAlignment = Alignment.CenterVertically) {
-                    RadioButton(!allPages, { allPages = false }); Text(stringResource(R.string.qk_ocr_from_to), Modifier.padding(end = 12.dp))
-                    OutlinedTextField(from, { v -> from = v.filter { it.isDigit() }.take(6); clamp(from)?.let { f -> if (f > toN) to = f.toString() }; allPages = false },
+                Row(Modifier.fillMaxWidth().selectable(scope == 1, role = Role.RadioButton) { scope = 1 }, verticalAlignment = Alignment.CenterVertically) {
+                    RadioButton(scope == 1, { scope = 1 }); Text(stringResource(R.string.qk_ocr_all))
+                }
+                Row(Modifier.fillMaxWidth().selectable(scope == 2, role = Role.RadioButton) { scope = 2 }, verticalAlignment = Alignment.CenterVertically) {
+                    RadioButton(scope == 2, { scope = 2 }); Text(stringResource(R.string.qk_ocr_from_to), Modifier.padding(end = 12.dp))
+                    OutlinedTextField(from, { v -> from = v.filter { it.isDigit() }.take(6); clamp(from)?.let { f -> if (f > toN) to = f.toString() }; scope = 2 },
                         label = { Text(stringResource(R.string.qk_ocr_from)) }, singleLine = true, modifier = Modifier.weight(1f),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
                     Spacer(Modifier.width(8.dp))
-                    OutlinedTextField(to, { v -> to = v.filter { it.isDigit() }.take(6); clamp(to)?.let { t -> if (t < fromN) from = t.toString() }; allPages = false },
+                    OutlinedTextField(to, { v -> to = v.filter { it.isDigit() }.take(6); clamp(to)?.let { t -> if (t < fromN) from = t.toString() }; scope = 2 },
                         label = { Text(stringResource(R.string.qk_ocr_to)) }, singleLine = true, modifier = Modifier.weight(1f),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
                 }
@@ -105,6 +110,7 @@ fun OcrSheet(
                     OcrPrefs.save(ctx, ordered, editable)
                     val pages = when {
                         lockedPage != null -> listOf(lockedPage)
+                        scope == 0 -> listOf(currentPage.coerceIn(0, (pageCount - 1).coerceAtLeast(0)))
                         allPages -> null
                         else -> (minOf(fromN, toN) - 1..maxOf(fromN, toN) - 1).toList()
                     }

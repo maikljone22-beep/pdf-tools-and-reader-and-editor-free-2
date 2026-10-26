@@ -70,14 +70,18 @@ object OcrRunner {
     }.getOrNull()
 
     /** Page pictures of an input: PDF pages without text (rendered at the plan dpi) or the image itself. */
-    private suspend fun forEachPage(ctx: Context, src: File, password: String?, plan: OcrPlan, block: suspend (Int, Int, Bitmap) -> Unit) {
+    private suspend fun forEachPage(ctx: Context, src: File, password: String?, plan: OcrPlan,
+                                    block: suspend (Int, Int, Bitmap, suspend (Int, OcrPage) -> OcrPage) -> Unit) {
         if (isImage(src)) {
             val b = ScanImage.load(src, 3500) ?: throw IllegalArgumentException("image")
-            block(0, 1, b); b.recycle(); return
+            block(0, 1, b) { _, p -> p }; b.recycle(); return
         }
         val s = PdfSession.open(ctx, src, password)
         try {
-            val todo = (0 until s.pageCount).filter { runCatching { s.text(it) }.getOrDefault("").isBlank() }
+            // pages without text + pages mixing text with scanned pictures; on mixed pages only new words are kept
+            val mixed = com.smartdocs.editor.core.ocr.MixedPageOcr.plan(s, src, password, (0 until s.pageCount).toList())
+            val todo = mixed.pages
+            val dedupe: suspend (Int, OcrPage) -> OcrPage = { pi, p -> com.smartdocs.editor.core.ocr.MixedPageOcr.dropExisting(s, pi, p, mixed) }
             todo.forEachIndexed { n, pi ->
                 coroutineContext.ensureActive()
                 val (w, h) = s.pageSize(pi)
@@ -85,25 +89,25 @@ object OcrRunner {
                 if (maxOf(w, h) * scale > 3500f) scale = 3500f / maxOf(w, h)
                 val bmp = s.render(pi, (w * scale).toInt().coerceAtLeast(1), (h * scale).toInt().coerceAtLeast(1), annotations = false)
                 s.invalidateCache()
-                block(pi, todo.size, bmp)
+                block(pi, todo.size, bmp, dedupe)
                 bmp.recycle()
             }
         } finally { s.closeAsync() }
     }
 
-    /** Recognise [src] (PDF or image). [onProgress] gets (done pages, total). Pages that already have text are skipped. */
+    /** Recognise [src] (PDF or image). [onProgress] gets (done pages, total). Pure digital pages are skipped; mixed pages keep only new words. */
     suspend fun recognize(ctx: Context, engine: OcrEngine, src: File, password: String?, plan: OcrPlan, onProgress: (Int, Int) -> Unit = { _, _ -> }): OcrDoc {
         var langs = plan.langs
         val pages = LinkedHashMap<Int, OcrPage>()
         val suspects = ArrayList<Suspect>()
         var done = 0
-        forEachPage(ctx, src, password, plan) { pi, total, raw ->
+        forEachPage(ctx, src, password, plan) { pi, total, raw, dedupe ->
             val bmp = if (plan.preClean) preClean(raw) else raw
             if (langs == null) langs = detectLanguages(engine, bmp)
             val l = langs!!
             engine.ensureLanguages(l)
             if (!engine.init(l)) throw IllegalStateException("ocr init")
-            val page = engine.recognize(bmp, wantWords = true)
+            val page = dedupe(pi, engine.recognize(bmp, wantWords = true))
             pages[pi] = page
             page.words.forEachIndexed { wi, w ->
                 if (w.confidence < plan.minConfidence && w.text.any { it.isLetterOrDigit() } && suspects.size < 300)

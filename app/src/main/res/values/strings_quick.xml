@@ -99,6 +99,7 @@
     <string name="qk_ocr_title">التعرّف على النص</string>
     <string name="qk_ocr_offline_note">يعمل على الجهاز دون رفع الملف، ويُحدَّث المستند المفتوح نفسه.</string>
     <string name="qk_ocr_range">نطاق الصفحات</string>
+    <string name="qk_ocr_current">الصفحة الحالية (%1$d)</string>
     <string name="qk_ocr_all">كل الصفحات</string>
     <string name="qk_ocr_from_to">من – إلى</string>
     <string name="qk_ocr_from">من</string>
