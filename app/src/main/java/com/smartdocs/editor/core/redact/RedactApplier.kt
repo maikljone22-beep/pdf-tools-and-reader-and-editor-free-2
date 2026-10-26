@@ -61,6 +61,7 @@ object RedactApplier {
                         val r = TrueRedactor.redactPage(doc, pi, boxes, fill)
                         glyphs += r.glyphsRemoved; objects += r.objectsRemoved; images += r.imagesBlanked; annots += r.annotsRemoved
                         if (r.needsRaster) raster += pi
+                        RedactCleanup.stripStructure(doc, page, r.touchedMcids)
                     }
                     if (options.maxSecurity) raster += pi
                 }
@@ -71,6 +72,8 @@ object RedactApplier {
                     list.forEach { m -> runCatching { drawMark(doc, page, frame, m, fontFor) } }
                 }
                 if (options.sanitize) sanitized = Sanitizer.clean(doc, options.sanitizeItems)
+                // audit AN-07: removed / blanked images and forms must not stay in /Resources (and so in the file)
+                RedactCleanup.pruneUnusedXObjects(doc)
                 doc.save(tmp)
             }
             if (raster.isNotEmpty()) rasterize(context, tmp, out, password, raster.toList(), options.rasterDpi)
@@ -166,6 +169,7 @@ object RedactApplier {
                         doc.pages.insertAfter(np, old); doc.removePage(old)
                     } finally { bmp.recycle() }
                 }
+                RedactCleanup.pruneUnusedXObjects(doc)   // audit AN-07: inherited resources of the replaced pages
                 doc.save(out)
             }
         } finally { session.closeAsync() }

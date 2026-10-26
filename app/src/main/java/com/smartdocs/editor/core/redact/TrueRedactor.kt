@@ -45,6 +45,8 @@ internal object TrueRedactor {
     class Result(
         val glyphsRemoved: Int, val objectsRemoved: Int, val imagesBlanked: Int, val annotsRemoved: Int,
         val needsRaster: Boolean,
+        /** MCIDs of marked content that lost glyphs/objects: their structure elements must lose /ActualText too. */
+        val touchedMcids: Set<Int> = emptySet(),
     )
 
     fun redactPage(doc: PDDocument, pageIndex: Int, marks: List<Box>, fillRgb: Int, oc: PDOptionalContentProperties? = doc.documentCatalog.ocProperties): Result {
@@ -78,13 +80,17 @@ internal object TrueRedactor {
             if (g.vertical || g.badSize) { raster = true; continue }
             plan.removeGlyph(g); glyphs++
         }
-        if (!plan.isEmpty && !apply(doc, page, insp, plan)) raster = true
+        val mcids = HashSet<Int>()
+        if (!plan.isEmpty && !apply(doc, page, insp, plan, mcids)) raster = true
         val annots = removeAnnotations(doc, page, marks)
-        return Result(glyphs, objects, blanked, annots, raster)
+        return Result(glyphs, objects, blanked, annots, raster, mcids)
     }
 
-    /** Rewrites the page's content with [plan]. False when the operator numbering does not match (nothing is changed). */
-    fun apply(doc: PDDocument, page: PDPage, insp: PageInspector, plan: RewritePlan): Boolean {
+    /**
+     * Rewrites the page's content with [plan]. False when the operator numbering does not match (nothing is changed).
+     * /ActualText /Alt /E around rewritten operators are dropped (audit AN-09); their MCIDs go into [touchedMcids].
+     */
+    fun apply(doc: PDDocument, page: PDPage, insp: PageInspector, plan: RewritePlan, touchedMcids: MutableSet<Int>? = null): Boolean {
         val rw = runCatching { ContentRewriter(doc, page) }.getOrNull() ?: return false
         if (rw.operatorCount != insp.opCount) return false
         val adv = HashMap<Int, HashMap<Long, Float>>()
@@ -96,6 +102,9 @@ internal object TrueRedactor {
         plan.removeOps.forEach { rw.remove(it) }
         plan.noPaint.forEach { rw.replace(it, listOf(Operator.getOperator("n"))) }
         plan.swapImage.forEach { (op, name) -> rw.replace(op, listOf(name, Operator.getOperator("Do"))) }
+        val touched = plan.glyphs.keys + plan.removeOps + plan.noPaint + plan.swapImage.keys
+        val mcids = RedactCleanup.stripActualText(rw, page, touched)
+        touchedMcids?.addAll(mcids)
         rw.commit()
         return true
     }

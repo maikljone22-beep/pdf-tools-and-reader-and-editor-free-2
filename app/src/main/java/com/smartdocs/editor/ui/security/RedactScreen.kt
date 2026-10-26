@@ -51,13 +51,15 @@ fun RedactScreen(nav: NavHostController, uri: String?) {
     var confirm by remember { mutableStateOf(false) }
     var confirmClear by remember { mutableStateOf(false) }
     var showPii by remember { mutableStateOf(false) }      // smart PII detection (ui/ai5)
-    var sanitize by remember { mutableStateOf(false) }
+    // audit AN-10: metadata, bookmarks, attachments etc. also hold the redacted words, so sanitising is on by default
+    var sanitize by remember { mutableStateOf(true) }
+    var batchSkipped by remember { mutableStateOf<List<String>>(emptyList()) }
     var maxSecurity by remember { mutableStateOf(false) }
     var result by remember { mutableStateOf<File?>(null) }
     var report by remember { mutableStateOf<String?>(null) }
     val snack = remember { SnackbarHostState() }
     val pick = rememberPdfPicker { it.firstOrNull()?.let { f -> doc.file = f } }
-    val batchPick = rememberPdfPicker(multiple = true) { files -> if (files.isNotEmpty()) runBatch(files, st, runner, app, ctx, sanitize, maxSecurity) }
+    val batchPick = rememberPdfPicker(multiple = true) { files -> if (files.isNotEmpty()) runBatch(files, st, runner, app, ctx, sanitize, maxSecurity) { batchSkipped = it } }
 
     LaunchedEffect(doc.generation) {
         val f = doc.file ?: return@LaunchedEffect
@@ -154,7 +156,7 @@ fun RedactScreen(nav: NavHostController, uri: String?) {
 
     if (runner.running) ProgressDialog(runner.message)
     result?.let { ResultSheet(it, nav, onDismiss = { result = null }, extraInfo = report) }
-    if (runner.results.isNotEmpty()) BatchResults(runner.results, nav) { runner.results = emptyList() }
+    if (runner.results.isNotEmpty() || batchSkipped.isNotEmpty()) BatchResults(runner.results, batchSkipped, nav) { runner.results = emptyList(); batchSkipped = emptyList() }
     if (styleAll) RedactStyleDialog(st.style, stringResource(R.string.s5_style_all), onDismiss = { styleAll = false }) { st.applyStyleToAll(it); styleAll = false }
     editMark?.let { m -> RedactStyleDialog(m.style, stringResource(R.string.s5_properties), onDismiss = { editMark = null }) { st.update(m.copy(style = it)); editMark = null } }
     repeatMark?.let { m -> PagePickDialog(stringResource(R.string.s5_repeat_pages), s5PageCount(doc.session), onDismiss = { repeatMark = null }) { st.repeatOnPages(m, it); repeatMark = null } }
@@ -211,15 +213,18 @@ private fun TabContent(
 }
 
 /** Redacts several files with the current search inputs and style. */
-private fun runBatch(files: List<File>, st: RedactState, runner: ToolRunner, app: com.smartdocs.editor.SmartDocsApp, ctx: android.content.Context, sanitize: Boolean, maxSecurity: Boolean) {
+private fun runBatch(files: List<File>, st: RedactState, runner: ToolRunner, app: com.smartdocs.editor.SmartDocsApp, ctx: android.content.Context, sanitize: Boolean, maxSecurity: Boolean, onSkipped: (List<String>) -> Unit) {
     val req = st.request()
     if (req.isEmpty) return
     val style = st.style
     runner.runMany(ctx.getString(R.string.pg_redact_applying)) {
         val outs = ArrayList<File>()
+        // audit AN-10: protected / unreadable / failed files are reported, never silently left unredacted
+        val skipped = ArrayList<String>()
         for ((i, f) in files.withIndex()) {
             runner.message = ctx.getString(R.string.pg_redact_applying) + " ${i + 1}/${files.size}"
-            val session = runCatching { PdfSession.open(ctx, f, null) }.getOrNull() ?: continue
+            val session = runCatching { PdfSession.open(ctx, f, null) }.getOrNull()
+            if (session == null) { skipped += f.name; continue }
             val found = try { TextSearch.search(session, req) } finally { session.closeAsync() }
             if (found.isEmpty()) continue
             val marks = found.filter { it.hit.rects.isNotEmpty() }.mapIndexed { k, h -> RedactMark("b$k-${System.nanoTime()}", h.hit.page, h.hit.rects.map { RectF(it) }, style, h.hit.snippet.trim()) }
@@ -228,17 +233,22 @@ private fun runBatch(files: List<File>, st: RedactState, runner: ToolRunner, app
                 RedactApplier.apply(ctx, f, out, null, marks, RedactApplier.Options(sanitize = sanitize, sanitizeItems = SanitizeItem.DEFAULTS, maxSecurity = maxSecurity))
                 runCatching { app.documents.touchRecent(out) }
                 outs += out
-            }
+            }.onFailure { skipped += f.name }
         }
+        onSkipped(skipped)
         outs
     }
 }
 
 @Composable
-private fun BatchResults(files: List<File>, nav: NavHostController, onDismiss: () -> Unit) {
+private fun BatchResults(files: List<File>, skipped: List<String>, nav: NavHostController, onDismiss: () -> Unit) {
     AlertDialog(onDismissRequest = onDismiss, title = { Text(stringResource(R.string.s5_batch_done, files.size)) },
         text = {
             LazyColumn(Modifier.heightIn(max = 320.dp)) {
+                if (skipped.isNotEmpty()) item {
+                    Text(stringResource(R.string.fx_redact_skipped, skipped.size) + "\n" + skipped.joinToString("\n"),
+                        color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(bottom = 8.dp))
+                }
                 items(files, key = { it.absolutePath }) { f ->
                     ListItem(headlineContent = { Text(f.name) }, trailingContent = {
                         IconButton(onClick = { onDismiss(); nav.navigate(com.smartdocs.editor.ui.Routes.reader(android.net.Uri.fromFile(f).toString())) }) { Icon(Icons.Default.OpenInNew, stringResource(R.string.open)) }
