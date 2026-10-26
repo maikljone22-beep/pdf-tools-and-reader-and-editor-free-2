@@ -152,7 +152,8 @@ interface StampDao {
 @Database(
     entities = [RecentDoc::class, Tag::class, DocTag::class, SavedSignature::class, ReadingBookmark::class, FillProfileField::class, CustomStamp::class],
     version = 1,
-    exportSchema = false,
+    // audit DI-08: schemas are exported to app/schemas (committed) so every future version gets a real Migration
+    exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun docs(): DocDao
@@ -165,7 +166,10 @@ abstract class AppDatabase : RoomDatabase() {
     companion object {
         fun build(context: Context): AppDatabase =
             Room.databaseBuilder(context, AppDatabase::class.java, "smartdocs.db")
-                .fallbackToDestructiveMigration()
+                // audit DI-08: an upgrade without a Migration must fail loudly in testing, never wipe recents, tags,
+                // bookmarks, the fill profile and signatures. Only a downgrade (debug installs) may start empty.
+                // When bumping `version`: add a Migration here and a MigrationTestHelper test against app/schemas.
+                .fallbackToDestructiveMigrationOnDowngrade(dropAllTables = true)
                 .build()
     }
 }
