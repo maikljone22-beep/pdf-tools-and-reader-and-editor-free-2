@@ -1,8 +1,6 @@
 package com.smartdocs.editor.ui.security
 
 import android.graphics.RectF
-import android.net.Uri
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -14,96 +12,111 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import com.smartdocs.editor.LocalApp
 import com.smartdocs.editor.R
-import com.smartdocs.editor.core.pdf.PdfOps
 import com.smartdocs.editor.core.pdf.PdfSession
-import com.smartdocs.editor.core.pdf.SearchHit
+import com.smartdocs.editor.core.redact.RedactApplier
+import com.smartdocs.editor.core.redact.RedactMark
+import com.smartdocs.editor.core.redact.RedactMarks
+import com.smartdocs.editor.core.redact.SanitizeItem
+import com.smartdocs.editor.core.search.TextSearch
 import com.smartdocs.editor.ui.common.*
+import com.smartdocs.editor.ui.search.rememberDocHolder
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.io.File
 
-private enum class RedactMode { SEARCH, MANUAL }
+private enum class RedactTab { SEARCH, MANUAL, PAGES, REVIEW }
 
-/** Redaction tool: search & redact, or draw regions by hand; black boxes are burned in by [PdfOps.redact]. */
-@OptIn(ExperimentalMaterial3Api::class)
+/**
+ * Redaction tool (mark → review → apply). Marks are `/Redact` annotations: they can be saved for review
+ * («حفظ العلامات للمراجعة») and are loaded again when the file is opened here. «تطبيق الكل» removes the content
+ * for real ([RedactApplier]), optionally with hidden information and/or as images (maximum security).
+ */
 @Composable
 fun RedactScreen(nav: NavHostController, uri: String?) {
     val app = LocalApp.current
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val runner = rememberToolRunner()
-
-    var file by remember { mutableStateOf(uri?.let { runCatching { File(Uri.parse(it).path!!) }.getOrNull() }) }
-    var session by remember { mutableStateOf<PdfSession?>(null) }
-    var password by remember { mutableStateOf<String?>(null) }
-    var askPassword by remember { mutableStateOf(false) }
-    var mode by remember { mutableStateOf(RedactMode.SEARCH) }
-    var query by remember { mutableStateOf("") }
-    var matchCase by remember { mutableStateOf(false) }
-    var hits by remember { mutableStateOf<List<SearchHit>>(emptyList()) }
-    var searching by remember { mutableStateOf(false) }
-    var regions by remember { mutableStateOf<List<RedactRegion>>(emptyList()) }
+    val doc = rememberDocHolder(uri)
+    val st = remember { RedactState(ctx.applicationContext) }
+    var tab by remember { mutableStateOf(RedactTab.SEARCH) }
     var page by remember { mutableIntStateOf(0) }
-    var result by remember { mutableStateOf<File?>(null) }
+    var styleAll by remember { mutableStateOf(false) }
+    var editMark by remember { mutableStateOf<RedactMark?>(null) }
+    var repeatMark by remember { mutableStateOf<RedactMark?>(null) }
     var confirm by remember { mutableStateOf(false) }
+    var confirmClear by remember { mutableStateOf(false) }
+    var sanitize by remember { mutableStateOf(false) }
+    var maxSecurity by remember { mutableStateOf(false) }
+    var result by remember { mutableStateOf<File?>(null) }
+    var report by remember { mutableStateOf<String?>(null) }
     val snack = remember { SnackbarHostState() }
+    val pick = rememberPdfPicker { it.firstOrNull()?.let { f -> doc.file = f } }
+    val batchPick = rememberPdfPicker(multiple = true) { files -> if (files.isNotEmpty()) runBatch(files, st, runner, app, ctx, sanitize, maxSecurity) }
 
-    DisposableEffect(Unit) { onDispose { session?.close() } }
-    LaunchedEffect(file, password) {
-        session?.closeAsync(); session = null; hits = emptyList(); regions = emptyList(); page = 0
-        val f = file ?: return@LaunchedEffect
-        try { session = PdfSession.open(ctx, f, password) }
-        catch (e: PdfSession.Companion.PasswordRequiredException) { askPassword = true }
-        catch (e: Exception) { snack.showSnackbar(e.message ?: e.toString()) }
+    LaunchedEffect(doc.generation) {
+        val f = doc.file ?: return@LaunchedEffect
+        if (doc.session != null) { st.load(f, doc.password); page = 0 }
     }
-    val pick = rememberPdfPicker { it.firstOrNull()?.let { f -> file = f } }
+    LaunchedEffect(runner.result) { runner.result?.let { result = it; runner.result = null } }
+    LaunchedEffect(runner.error) { runner.error?.let { snack.showSnackbar(it); runner.error = null } }
+    LaunchedEffect(doc.error) { doc.error?.let { snack.showSnackbar(it) } }
 
-    fun hitId(h: SearchHit) = "s:${h.page}:${h.charIndex}:${h.length}"
-    fun normalized(r: RectF) = RectF(minOf(r.left, r.right), maxOf(r.top, r.bottom), maxOf(r.left, r.right), minOf(r.top, r.bottom))
-    fun toggleHit(h: SearchHit) {
-        val id = hitId(h)
-        regions = if (regions.any { it.id == id }) regions.filterNot { it.id == id || it.id.startsWith("$id:") }
-        else regions + h.rects.mapIndexed { i, r -> RedactRegion(if (i == 0) id else "$id:$i", h.page, normalized(r), h.snippet) }
-    }
-    fun isSelected(h: SearchHit) = regions.any { it.id == hitId(h) }
+    val markedMsg = stringResource(R.string.s5_marked_n)
+    fun search() { val s = doc.session ?: return; scope.launch { runCatching { st.search(s) }.onFailure { snack.showSnackbar(it.message ?: it.toString()) } } }
+    fun markChecked() { val n = st.markChecked(); scope.launch { snack.showSnackbar(markedMsg.format(n)) } }
 
-    fun search() {
-        val s = session ?: return
-        scope.launch { searching = true; hits = runCatching { s.search(query, matchCase) }.getOrDefault(emptyList()); searching = false }
-    }
-    val applyingMsg = stringResource(R.string.pg_redact_applying)
-    val noRegions = stringResource(R.string.pg_redact_no_regions)
-    fun apply() {
-        val src = file ?: return
-        if (regions.isEmpty()) { scope.launch { snack.showSnackbar(noRegions) }; return }
-        val map = regions.groupBy { it.page }.mapValues { (_, l) -> l.map { it.rect } }
-        runner.run(applyingMsg) {
+    val applying = stringResource(R.string.pg_redact_applying)
+    val reportFmt = stringResource(R.string.s5_report)
+    val rasterFmt = stringResource(R.string.s5_report_raster)
+    fun applyAll() {
+        val src = doc.file ?: return
+        val marks = st.marks.toList()
+        runner.run(applying) {
             val out = app.documents.uniqueFile(app.documents.docsDir, src.nameWithoutExtension + "_redacted")
-            PdfOps.redact(ctx, src, out, map, password)
+            val r = RedactApplier.apply(ctx, src, out, doc.password, marks, RedactApplier.Options(sanitize = sanitize, maxSecurity = maxSecurity))
+            report = reportFmt.format(r.marks, r.pages, r.glyphs, r.objects + r.images, r.annots) +
+                (if (r.rasterPages.isNotEmpty()) "\n" + rasterFmt.format(r.rasterPages.joinToString(", ") { (it + 1).toString() }) else "")
             runCatching { app.documents.touchRecent(out) }
             out
         }
     }
-    LaunchedEffect(runner.result) { runner.result?.let { result = it; runner.result = null } }
-    LaunchedEffect(runner.error) { runner.error?.let { snack.showSnackbar(it); runner.error = null } }
+    val savingMsg = stringResource(R.string.s5_saving_marks)
+    fun saveMarks() {
+        val src = doc.file ?: return
+        val marks = st.marks.toList()
+        runner.run(savingMsg) {
+            val out = app.documents.uniqueFile(app.documents.docsDir, src.nameWithoutExtension + "_marked")
+            val author = runCatching { app.settings.settings.first().authorName }.getOrDefault("")
+            RedactMarks.save(src, out, doc.password, marks, author)
+            report = null
+            runCatching { app.documents.touchRecent(out) }
+            out
+        }
+    }
 
     Scaffold(
         snackbarHost = { SnackbarHost(snack) },
-        topBar = { AppTopBar(stringResource(R.string.pg_redact_title), onBack = { nav.popBackStack() }) {
-            if (regions.isNotEmpty()) IconButton(onClick = { regions = emptyList() }) { Icon(Icons.Default.DeleteSweep, stringResource(R.string.pg_redact_clear)) }
-        } },
+        topBar = {
+            AppTopBar(stringResource(R.string.pg_redact_title), onBack = { nav.popBackStack() }) {
+                if (doc.session != null) {
+                    IconButton(onClick = { styleAll = true }) { Icon(Icons.Default.Palette, stringResource(R.string.s5_style_all)) }
+                    IconButton(onClick = ::saveMarks, enabled = st.marks.isNotEmpty() && !runner.running) { Icon(Icons.Default.BookmarkAdd, stringResource(R.string.s5_save_marks)) }
+                    IconButton(onClick = { confirmClear = true }, enabled = st.marks.isNotEmpty()) { Icon(Icons.Default.DeleteSweep, stringResource(R.string.pg_redact_clear)) }
+                }
+            }
+        },
         bottomBar = {
-            if (session != null) Surface(tonalElevation = 3.dp) {
-                Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)) {
-                    Text(stringResource(R.string.redact_warning), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-                    Spacer(Modifier.height(6.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(stringResource(R.string.pg_redact_regions, regions.size) + " · " + stringResource(R.string.pg_redact_pages_affected, regions.map { it.page }.distinct().size), Modifier.weight(1f), style = MaterialTheme.typography.labelLarge)
-                        Button(onClick = { confirm = true }, enabled = regions.isNotEmpty() && !runner.running) { Icon(Icons.Default.Block, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.redact_apply)) }
+            if (doc.session != null) Surface(tonalElevation = 3.dp) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(stringResource(R.string.s5_marks_n, st.marks.size) + " · " + stringResource(R.string.pg_redact_pages_affected, st.marks.map { it.page }.distinct().size),
+                        Modifier.weight(1f), style = MaterialTheme.typography.labelLarge)
+                    Button(onClick = { confirm = true }, enabled = st.marks.isNotEmpty() && !runner.running) {
+                        Icon(Icons.Default.Block, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.s5_apply_all, st.marks.size))
                     }
                 }
             }
@@ -111,98 +124,118 @@ fun RedactScreen(nav: NavHostController, uri: String?) {
     ) { pad ->
         Column(Modifier.padding(pad).fillMaxSize()) {
             Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                FilePickRow(file, stringResource(R.string.open_file), pick)
-                if (session != null) {
-                    Spacer(Modifier.height(8.dp))
-                    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                        SegmentedButton(mode == RedactMode.SEARCH, { mode = RedactMode.SEARCH }, SegmentedButtonDefaults.itemShape(0, 2)) { Text(stringResource(R.string.redact_search)) }
-                        SegmentedButton(mode == RedactMode.MANUAL, { mode = RedactMode.MANUAL }, SegmentedButtonDefaults.itemShape(1, 2)) { Text(stringResource(R.string.pg_redact_manual)) }
-                    }
-                }
+                FilePickRow(doc.file, stringResource(R.string.open_file), pick)
             }
-            val s = session
+            val s = doc.session
             if (s != null) BoxWithConstraints(Modifier.fillMaxSize()) {
                 val tablet = maxWidth > 700.dp
-                if (tablet) Row(Modifier.fillMaxSize()) {
-                    Box(Modifier.weight(1f).fillMaxHeight()) {
-                        if (mode == RedactMode.SEARCH) SearchPane(query, { query = it }, matchCase, { matchCase = it }, searching, hits, ::isSelected, ::toggleHit, ::search, onJump = { page = it })
-                        else RedactManualView(s, page, { page = it.coerceIn(0, s.pageCount - 1) }, regions, onAdd = { r -> regions = regions + RedactRegion("m:${System.nanoTime()}", page, r, "") }, Modifier.fillMaxSize())
+                val tabs = if (tablet) listOf(RedactTab.SEARCH, RedactTab.MANUAL, RedactTab.PAGES) else RedactTab.values().toList()
+                if (tablet && tab == RedactTab.REVIEW) tab = RedactTab.SEARCH
+                Column(Modifier.fillMaxSize()) {
+                    TabRow(tabs.indexOf(tab).coerceAtLeast(0)) {
+                        tabs.forEach { t -> Tab(tab == t, { tab = t }, text = { Text(tabLabel(t), maxLines = 1) }) }
                     }
-                    RegionList(regions, onRemove = { id -> regions = regions.filterNot { it.id == id } }, onJump = { page = it; mode = RedactMode.MANUAL }, Modifier.width(300.dp).fillMaxHeight())
-                } else Column(Modifier.fillMaxSize()) {
-                    Box(Modifier.weight(1f)) {
-                        if (mode == RedactMode.SEARCH) SearchPane(query, { query = it }, matchCase, { matchCase = it }, searching, hits, ::isSelected, ::toggleHit, ::search, onJump = { page = it })
-                        else RedactManualView(s, page, { page = it.coerceIn(0, s.pageCount - 1) }, regions, onAdd = { r -> regions = regions + RedactRegion("m:${System.nanoTime()}", page, r, "") }, Modifier.fillMaxSize())
+                    Row(Modifier.fillMaxSize()) {
+                        Box(Modifier.weight(1f).fillMaxHeight()) {
+                            TabContent(tab, st, s, page, { page = it.coerceIn(0, s.pageCount - 1) }, ::search, ::markChecked, { batchPick() },
+                                onJump = { page = it; tab = RedactTab.MANUAL }, onEdit = { editMark = it }, onRepeat = { repeatMark = it })
+                        }
+                        if (tablet) {
+                            VerticalDivider()
+                            RedactReviewList(st, onJump = { page = it; tab = RedactTab.MANUAL }, onEdit = { editMark = it }, onRepeat = { repeatMark = it }, modifier = Modifier.width(320.dp).fillMaxHeight())
+                        }
                     }
-                    if (regions.isNotEmpty() && mode == RedactMode.MANUAL) RegionList(regions, onRemove = { id -> regions = regions.filterNot { it.id == id } }, onJump = { page = it }, Modifier.heightIn(max = 160.dp))
                 }
             }
         }
     }
 
     if (runner.running) ProgressDialog(runner.message)
-    result?.let { ResultSheet(it, nav, onDismiss = { result = null }) }
-    if (confirm) AlertDialog(onDismissRequest = { confirm = false }, title = { Text(stringResource(R.string.redact_apply)) }, text = { Text(stringResource(R.string.redact_warning)) },
-        confirmButton = { TextButton(onClick = { confirm = false; apply() }) { Text(stringResource(R.string.apply)) } },
+    result?.let { ResultSheet(it, nav, onDismiss = { result = null }, extraInfo = report) }
+    if (runner.results.isNotEmpty()) BatchResults(runner.results, nav) { runner.results = emptyList() }
+    if (styleAll) RedactStyleDialog(st.style, stringResource(R.string.s5_style_all), onDismiss = { styleAll = false }) { st.applyStyleToAll(it); styleAll = false }
+    editMark?.let { m -> RedactStyleDialog(m.style, stringResource(R.string.s5_properties), onDismiss = { editMark = null }) { st.update(m.copy(style = it)); editMark = null } }
+    repeatMark?.let { m -> PagePickDialog(stringResource(R.string.s5_repeat_pages), s5PageCount(doc.session), onDismiss = { repeatMark = null }) { st.repeatOnPages(m, it); repeatMark = null } }
+    if (confirmClear) AlertDialog(onDismissRequest = { confirmClear = false }, title = { Text(stringResource(R.string.pg_redact_clear)) },
+        confirmButton = { TextButton(onClick = { st.clear(); confirmClear = false }) { Text(stringResource(R.string.ok)) } },
+        dismissButton = { TextButton(onClick = { confirmClear = false }) { Text(stringResource(R.string.cancel)) } })
+    if (confirm) AlertDialog(onDismissRequest = { confirm = false }, title = { Text(stringResource(R.string.s5_apply_all, st.marks.size)) },
+        text = {
+            Column {
+                Text(stringResource(R.string.redact_warning))
+                Spacer(Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(sanitize, { sanitize = it }); Text(stringResource(R.string.s5_also_sanitize), style = MaterialTheme.typography.bodyMedium) }
+                Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(maxSecurity, { maxSecurity = it }); Text(stringResource(R.string.s5_max_security), style = MaterialTheme.typography.bodyMedium) }
+            }
+        },
+        confirmButton = { TextButton(onClick = { confirm = false; applyAll() }) { Text(stringResource(R.string.apply)) } },
         dismissButton = { TextButton(onClick = { confirm = false }) { Text(stringResource(R.string.cancel)) } })
-    if (askPassword) {
-        var pw by remember { mutableStateOf("") }
-        AlertDialog(onDismissRequest = { askPassword = false }, title = { Text(stringResource(R.string.password_enter)) },
-            text = { OutlinedTextField(pw, { pw = it }, singleLine = true, label = { Text(stringResource(R.string.password)) }, visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation()) },
-            confirmButton = { TextButton(onClick = { password = pw; askPassword = false }) { Text(stringResource(R.string.ok)) } },
-            dismissButton = { TextButton(onClick = { askPassword = false }) { Text(stringResource(R.string.cancel)) } })
-    }
 }
 
+private fun s5PageCount(s: PdfSession?) = s?.pageCount ?: 1
+
 @Composable
-private fun SearchPane(
-    query: String, onQuery: (String) -> Unit, matchCase: Boolean, onMatchCase: (Boolean) -> Unit, searching: Boolean,
-    hits: List<SearchHit>, isSelected: (SearchHit) -> Boolean, onToggle: (SearchHit) -> Unit, onSearch: () -> Unit, onJump: (Int) -> Unit,
+private fun tabLabel(t: RedactTab) = stringResource(when (t) {
+    RedactTab.SEARCH -> R.string.redact_search
+    RedactTab.MANUAL -> R.string.pg_redact_manual
+    RedactTab.PAGES -> R.string.s5_tab_pages
+    RedactTab.REVIEW -> R.string.s5_tab_review
+})
+
+@Composable
+private fun TabContent(
+    tab: RedactTab, st: RedactState, s: PdfSession, page: Int, onPage: (Int) -> Unit, onSearch: () -> Unit, onMark: () -> Unit, onBatch: () -> Unit,
+    onJump: (Int) -> Unit, onEdit: (RedactMark) -> Unit, onRepeat: (RedactMark) -> Unit,
 ) {
-    Column(Modifier.fillMaxSize()) {
-        Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-            OutlinedTextField(query, onQuery, Modifier.weight(1f), placeholder = { Text(stringResource(R.string.pg_redact_search_hint)) }, singleLine = true,
-                trailingIcon = { IconButton(onClick = onSearch) { Icon(Icons.Default.Search, stringResource(R.string.search)) } })
+    when (tab) {
+        RedactTab.SEARCH -> RedactSearchPane(st, true, onSearch, onMark, onBatch, Modifier.fillMaxSize())
+        RedactTab.MANUAL -> {
+            val boxes = st.marks.filter { it.page == page }.flatMap { m ->
+                if (m.wholePage) listOf(ManualBox(m.id, RectF(), m.style.fill, m.style.outline, wholePage = true))
+                else m.rects.mapNotNull { r -> st.displayBox(page, r)?.let { b -> ManualBox(m.id, RectF(b.l, b.t, b.r, b.b), m.style.fill, m.style.outline) } }
+            }
+            RedactManualView(s, page, onPage, boxes, onAdd = { r -> st.addManual(page, r) }, Modifier.fillMaxSize())
         }
-        Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Checkbox(matchCase, onMatchCase); Text(stringResource(R.string.case_sensitive), style = MaterialTheme.typography.bodySmall)
-            Spacer(Modifier.weight(1f))
-            if (searching) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-            else if (hits.isNotEmpty()) {
-                Text(stringResource(R.string.pg_redact_hits, hits.size), style = MaterialTheme.typography.labelMedium)
-                TextButton(onClick = { hits.forEach { if (!isSelected(it)) onToggle(it) } }) { Text(stringResource(R.string.select_all)) }
+        RedactTab.PAGES -> RedactPagesPane(st, s.pageCount, Modifier.fillMaxSize())
+        RedactTab.REVIEW -> RedactReviewList(st, onJump, onEdit, onRepeat, Modifier.fillMaxSize())
+    }
+}
+
+/** Redacts several files with the current search inputs and style. */
+private fun runBatch(files: List<File>, st: RedactState, runner: ToolRunner, app: com.smartdocs.editor.SmartDocsApp, ctx: android.content.Context, sanitize: Boolean, maxSecurity: Boolean) {
+    val req = st.request()
+    if (req.isEmpty) return
+    val style = st.style
+    runner.runMany(ctx.getString(R.string.pg_redact_applying)) {
+        val outs = ArrayList<File>()
+        for ((i, f) in files.withIndex()) {
+            runner.message = ctx.getString(R.string.pg_redact_applying) + " ${i + 1}/${files.size}"
+            val session = runCatching { PdfSession.open(ctx, f, null) }.getOrNull() ?: continue
+            val found = try { TextSearch.search(session, req) } finally { session.closeAsync() }
+            if (found.isEmpty()) continue
+            val marks = found.filter { it.hit.rects.isNotEmpty() }.mapIndexed { k, h -> RedactMark("b$k-${System.nanoTime()}", h.hit.page, h.hit.rects.map { RectF(it) }, style, h.hit.snippet.trim()) }
+            val out = app.documents.uniqueFile(app.documents.docsDir, f.nameWithoutExtension + "_redacted")
+            runCatching {
+                RedactApplier.apply(ctx, f, out, null, marks, RedactApplier.Options(sanitize = sanitize, sanitizeItems = SanitizeItem.DEFAULTS, maxSecurity = maxSecurity))
+                runCatching { app.documents.touchRecent(out) }
+                outs += out
             }
         }
-        if (hits.isEmpty() && query.isNotBlank() && !searching) Text(stringResource(R.string.pg_redact_no_hits), Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
-        LazyColumn(Modifier.fillMaxSize()) {
-            items(hits, key = { "${it.page}:${it.charIndex}:${it.length}" }) { h ->
-                val sel = isSelected(h)
-                ListItem(
-                    modifier = Modifier.clickable { onToggle(h) },
-                    leadingContent = { Checkbox(sel, { onToggle(h) }) },
-                    headlineContent = { Text(h.snippet, maxLines = 2) },
-                    supportingContent = { Text(stringResource(R.string.pg_page_n, h.page + 1), style = MaterialTheme.typography.labelSmall) },
-                    trailingContent = { IconButton(onClick = { onJump(h.page) }) { Icon(Icons.Default.Visibility, null) } },
-                )
-            }
-        }
+        outs
     }
 }
 
 @Composable
-private fun RegionList(regions: List<RedactRegion>, onRemove: (String) -> Unit, onJump: (Int) -> Unit, modifier: Modifier) {
-    Column(modifier) {
-        Text(stringResource(R.string.pg_redact_regions, regions.size), Modifier.padding(horizontal = 16.dp, vertical = 6.dp), fontWeight = FontWeight.Bold)
-        if (regions.isEmpty()) Text(stringResource(R.string.pg_redact_no_regions), Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        LazyColumn(Modifier.fillMaxWidth()) {
-            items(regions, key = { it.id }) { r ->
-                ListItem(
-                    modifier = Modifier.clickable { onJump(r.page) },
-                    headlineContent = { Text(r.label.ifBlank { stringResource(R.string.pg_redact_region_n, regions.indexOf(r) + 1, r.page + 1) }, maxLines = 1) },
-                    supportingContent = { Text(stringResource(R.string.pg_page_n, r.page + 1) + " · %.0f×%.0f pt".format(r.rect.width(), r.rect.top - r.rect.bottom), style = MaterialTheme.typography.labelSmall) },
-                    trailingContent = { IconButton(onClick = { onRemove(r.id) }) { Icon(Icons.Default.Close, stringResource(R.string.delete)) } },
-                )
+private fun BatchResults(files: List<File>, nav: NavHostController, onDismiss: () -> Unit) {
+    AlertDialog(onDismissRequest = onDismiss, title = { Text(stringResource(R.string.s5_batch_done, files.size)) },
+        text = {
+            LazyColumn(Modifier.heightIn(max = 320.dp)) {
+                items(files, key = { it.absolutePath }) { f ->
+                    ListItem(headlineContent = { Text(f.name) }, trailingContent = {
+                        IconButton(onClick = { onDismiss(); nav.navigate(com.smartdocs.editor.ui.Routes.reader(android.net.Uri.fromFile(f).toString())) }) { Icon(Icons.Default.OpenInNew, stringResource(R.string.open)) }
+                    })
+                }
             }
-        }
-    }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.ok)) } })
 }

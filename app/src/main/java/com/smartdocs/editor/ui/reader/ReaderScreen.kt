@@ -255,7 +255,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                         state.session == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { if (!state.needPassword) CircularProgressIndicator() }
                         else -> {
                             PageView(state, onTapCenter = { if (state.tool == null) chrome = !chrome },
-                                onOpenLink = { l -> ReaderIntents.openLink(ctx, l) { p -> state.jumpTo(p) } }, onPrompt = { prompt = it })
+                                onOpenLink = { l -> if (l.destPage == null && l.uri.isNullOrBlank()) scope.launch { com.smartdocs.editor.ui.edit5.followFileLinkAt(state, state.currentPage, l.bounds.centerX(), l.bounds.centerY()) { f, p -> nav.navigate(Routes.reader(android.net.Uri.fromFile(f).toString(), p)) } } else ReaderIntents.openLink(ctx, l) { p -> state.jumpTo(p) } }, onPrompt = { prompt = it })
                             if (state.reflow) ReflowView(state)
                             PageIndicator(state.currentPage, state.pageCount, { showGoTo = true }, Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp))
                             if (state.tool != null && state.placement == null) ToolHint(state.tool!!, Modifier.align(Alignment.TopCenter).padding(top = 8.dp))
@@ -286,7 +286,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
     if (showViewMode) ViewModeSheet(state, tablet = tablet) { showViewMode = false; scope.launch { app.settings.update { it.copy(continuousScroll = state.viewMode == ViewMode.CONTINUOUS, nightMode = state.nightMode) } } }
     if (showPageColor) PageColorSheet(state, onPersist = { c -> scope.launch { app.settings.update { it.copy(pageColor = c) } } }) { showPageColor = false }
     if (showAutoFlip) AutoFlipDialog(state) { showAutoFlip = false }
-    prompt?.let { p -> TextPromptDialog(state, p) { prompt = null } }
+    prompt?.let { p -> if (!com.smartdocs.editor.ui.edit5.ReaderLinkPrompt(state, p.tool == ReaderTool.LINK, p.page, p.x, p.y, p.rect) { prompt = null }) TextPromptDialog(state, p) { prompt = null } }
     if (showStamps) StampPickerSheet(onPicked = { bmp -> state.pendingImage = bmp; state.tool = ReaderTool.STAMP; state.selection = null; showStamps = false }, onDismiss = { showStamps = false; if (state.pendingImage == null) state.selectTool(null) })
     // MODULE_ai2: the assistant can act on the open document (confirm-then-apply, with undo)
     val agentHost = remember(state) {

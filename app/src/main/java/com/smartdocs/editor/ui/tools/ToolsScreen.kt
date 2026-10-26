@@ -63,16 +63,22 @@ val allTools = listOf(
     ToolDef("cert_protect", R.string.ps_cert_protect_title, Icons.Default.Key, 2),
     ToolDef("unlock", R.string.tool_unlock, Icons.Default.LockOpen, 2),
     ToolDef("redact", R.string.tool_redact, Icons.Default.Block, 2),
+    ToolDef("sanitize", R.string.s5_sanitize_title, Icons.Default.CleaningServices, 2),
+    ToolDef("protect_advanced", R.string.s5_protect_title, Icons.Default.EnhancedEncryption, 2),
     ToolDef("flatten", R.string.tool_flatten, Icons.Default.Layers, 2),
 
     ToolDef("pdf_to_images", R.string.tool_pdf_to_images, Icons.Default.Collections, 3),
     ToolDef("pdf_to_text", R.string.tool_pdf_to_text, Icons.Default.Subject, 3),
+    ToolDef("search_all", R.string.s5_global_title, Icons.Default.Search, 3),
+    ToolDef("search_highlight", R.string.s5_mark_title, Icons.Default.BorderColor, 3),
+    ToolDef("find_replace", R.string.s5_replace_title, Icons.Default.FindReplace, 3),
     ToolDef("compare", R.string.tool_compare, Icons.Default.Compare, 3),
     ToolDef("ai", R.string.tool_ai, Icons.Default.AutoAwesome, 3),
     ToolDef("read_aloud", R.string.tool_read_aloud, Icons.Default.RecordVoiceOver, 3),
     ToolDef("podcast", R.string.ai2_podcast_title, Icons.Default.Podcasts, 3),
     ToolDef("ai_spaces", R.string.a5_spaces, Icons.Default.Workspaces, 3),
     ToolDef("print", R.string.tool_print, Icons.Default.Print, 3),
+    ToolDef("e5_hub", R.string.e5_hub_title, Icons.Default.EditNote, 1),
 )
 
 private val groupTitles = listOf(R.string.ds_group_create, R.string.ds_group_organize, R.string.ds_group_sign, R.string.ds_group_read)

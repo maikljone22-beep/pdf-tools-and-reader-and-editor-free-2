@@ -1,0 +1,195 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- search5 module (search, find & replace, redaction, sanitize, advanced protection). Prefix s5_. -->
+<resources>
+    <!-- tool titles -->
+    <string name="s5_global_title">البحث في كل الملفات</string>
+    <string name="s5_mark_title">بحث وتمييز</string>
+    <string name="s5_replace_title">بحث واستبدال</string>
+    <string name="s5_sanitize_title">تنظيف قبل المشاركة</string>
+    <string name="s5_protect_title">حماية متقدمة</string>
+
+    <!-- search options -->
+    <string name="s5_options">خيارات البحث</string>
+    <string name="s5_mode_phrase">عبارة</string>
+    <string name="s5_mode_any">أي كلمة</string>
+    <string name="s5_mode_all">كل الكلمات</string>
+    <string name="s5_mode_regex">تعبير نمطي</string>
+    <string name="s5_proximity">تقارب الكلمات</string>
+    <string name="s5_proximity_any">في أي موضع</string>
+    <string name="s5_proximity_n">خلال %1$d كلمة</string>
+    <string name="s5_stem">جذر الكلمة (الكتاب = كتاب)</string>
+    <string name="s5_bad_regex">تعبير نمطي غير صالح</string>
+    <string name="s5_query_hint">اكتب نصاً للبحث عنه</string>
+    <string name="s5_select_none">إلغاء التحديد</string>
+    <string name="s5_hits_checked">%1$d من %2$d محدد</string>
+    <string name="s5_show_page">عرض الصفحة</string>
+    <string name="s5_n_hits">%1$d نتيجة</string>
+
+    <!-- patterns -->
+    <string name="s5_patterns">أنماط البيانات الحساسة</string>
+    <string name="s5_pat_phone_ye">هاتف يمني</string>
+    <string name="s5_pat_phone_sa">جوال سعودي</string>
+    <string name="s5_pat_phone_gulf">هاتف خليجي</string>
+    <string name="s5_pat_phone_eg">موبايل مصري</string>
+    <string name="s5_pat_phone_intl">هاتف دولي</string>
+    <string name="s5_pat_email">بريد إلكتروني</string>
+    <string name="s5_pat_url">رابط</string>
+    <string name="s5_pat_card">بطاقة مصرفية</string>
+    <string name="s5_pat_iban">آيبان</string>
+    <string name="s5_pat_id">رقم هوية</string>
+    <string name="s5_pat_passport">جواز سفر</string>
+    <string name="s5_pat_date">تاريخ ميلادي</string>
+    <string name="s5_pat_hijri">تاريخ هجري</string>
+    <string name="s5_pat_month">تاريخ بأسماء الأشهر</string>
+    <string name="s5_pat_amount">مبلغ مالي</string>
+
+    <!-- global search -->
+    <string name="s5_global_hint">ابحث داخل الملفات</string>
+    <string name="s5_reindex">إعادة الفهرسة</string>
+    <string name="s5_indexing">جارٍ الفهرسة %1$d/%2$d</string>
+    <string name="s5_index_stats">%1$d ملف مفهرس · %2$d محمي بكلمة مرور</string>
+    <string name="s5_scope_text">نص الصفحات</string>
+    <string name="s5_scope_comments">التعليقات</string>
+    <string name="s5_scope_bookmarks">الإشارات المرجعية</string>
+    <string name="s5_scope_fields">حقول النماذج</string>
+    <string name="s5_scope_attachments">المرفقات</string>
+
+    <!-- search & highlight -->
+    <string name="s5_highlight">تظليل</string>
+    <string name="s5_underline">تسطير</string>
+    <string name="s5_strikeout">شطب</string>
+    <string name="s5_squiggly">تموج</string>
+    <string name="s5_mark_apply">تمييز %1$d نتيجة</string>
+    <string name="s5_marking">جارٍ إضافة التمييز…</string>
+
+    <!-- find & replace -->
+    <string name="s5_find">بحث</string>
+    <string name="s5_replace_with">استبدال بـ</string>
+    <string name="s5_replace_all">استبدال المحدد</string>
+    <string name="s5_n_occurrences">%1$d تطابق</string>
+    <string name="s5_blocks">%1$d كتلة نصية</string>
+    <string name="s5_replacing">جارٍ الاستبدال…</string>
+    <string name="s5_replaced_n">استُبدل %1$d تطابقاً</string>
+    <string name="s5_replace_confirm">سيُستبدل %1$d تطابقاً لـ «%2$s» بـ «%3$s» في محتوى الصفحات. يُحفظ الناتج في ملف جديد ويبقى الأصل كما هو.</string>
+    <string name="s5_replace_note">يُعاد كتابة كل كتلة نصية تحتوي على التطابق بخطها وحجمها ولونها. النص داخل الصور أو الكائنات المضمّنة لا يُستبدل.</string>
+    <string name="s5_font_warning">خط هذه الكتلة غير قابل لإعادة الاستخدام، سيُستخدم خط بديل.</string>
+    <string name="s5_lossy_warning">بعض حروف هذه الكتلة بلا ترميز نصي، قد يتغير شكلها.</string>
+
+    <!-- redaction -->
+    <string name="s5_tab_pages">صفحات</string>
+    <string name="s5_tab_review">المراجعة</string>
+    <string name="s5_style_all">مظهر كل العلامات</string>
+    <string name="s5_save_marks">حفظ العلامات للمراجعة</string>
+    <string name="s5_saving_marks">جارٍ حفظ العلامات…</string>
+    <string name="s5_apply_all">تطبيق الكل (%1$d)</string>
+    <string name="s5_marks_n">%1$d علامة</string>
+    <string name="s5_no_marks">لا توجد علامات بعد. ابحث أو ارسم مستطيلاً أو علّم صفحات كاملة.</string>
+    <string name="s5_marked_n">أُضيفت %1$d علامة</string>
+    <string name="s5_mark_checked">تعليم المحدد (%1$d)</string>
+    <string name="s5_more_inputs">قائمة كلمات وأنماط وخيارات أخرى</string>
+    <string name="s5_word_list">قائمة كلمات وعبارات</string>
+    <string name="s5_one_per_line">عنصر واحد في كل سطر</string>
+    <string name="s5_names_list">قائمة الأسماء المحفوظة</string>
+    <string name="s5_names">الأسماء</string>
+    <string name="s5_custom_regex">تعبير نمطي مخصص</string>
+    <string name="s5_keep_last">أبقِ آخر N أحرف ظاهرة</string>
+    <string name="s5_batch">تنقيح عدة ملفات</string>
+    <string name="s5_batch_done">نُقِّح %1$d ملف</string>
+    <string name="s5_auto_detect">كشف تلقائي (أنماط)</string>
+    <string name="s5_from_list">من القائمة</string>
+    <string name="s5_profiles">الملفات الشخصية</string>
+    <string name="s5_profile_save">حفظ الإعداد الحالي</string>
+    <string name="s5_profile_name">اسم الإعداد</string>
+    <string name="s5_pages_note">تعليم صفحات كاملة: عند التطبيق يُحذف كل محتوى الصفحة ويُرسم مربع التنقيح مكانها.</string>
+    <string name="s5_pages_all">الكل</string>
+    <string name="s5_pages_odd">الفردية</string>
+    <string name="s5_pages_even">الزوجية</string>
+    <string name="s5_mark_pages">تعليم %1$d صفحة كاملة</string>
+    <string name="s5_whole_page">صفحة كاملة</string>
+    <string name="s5_area">منطقة مرسومة</string>
+    <string name="s5_properties">خصائص العلامة</string>
+    <string name="s5_repeat_pages">تكرار على صفحات</string>
+    <string name="s5_also_sanitize">إزالة المعلومات المخفية أيضاً</string>
+    <string name="s5_max_security">تحويل إلى صور (أقصى أمان)</string>
+    <string name="s5_report">%1$d علامة على %2$d صفحة · حُذف %3$d حرفاً و%4$d كائناً و%5$d تعليقاً أو حقلاً</string>
+    <string name="s5_report_raster">صفحات حُوِّلت إلى صور: %1$s</string>
+
+    <!-- mark style -->
+    <string name="s5_fill">لون التعبئة</string>
+    <string name="s5_whiteout_note">الأبيض = طمس أبيض (Whiteout)</string>
+    <string name="s5_outline">إطار العلامة قبل التطبيق</string>
+    <string name="s5_overlay">نص فوق المربع</string>
+    <string name="s5_overlay_hint">مثال: محجوب</string>
+    <string name="s5_codes">رموز التنقيح</string>
+    <string name="s5_edit_codes">تحرير رموز التنقيح</string>
+    <string name="s5_reset">استعادة الافتراضي</string>
+    <string name="s5_text_color">لون النص</string>
+    <string name="s5_font_size">حجم الخط</string>
+    <string name="s5_auto">تلقائي</string>
+    <string name="s5_repeat">تكرار النص</string>
+    <string name="s5_align_left">يسار</string>
+    <string name="s5_align_center">وسط</string>
+    <string name="s5_align_right">يمين</string>
+
+    <!-- sanitize -->
+    <string name="s5_sanitize_note">يفحص الملف بحثاً عن المعلومات المخفية ويحذف ما تختاره في نسخة جديدة.</string>
+    <string name="s5_scanning">جارٍ الفحص…</string>
+    <string name="s5_rescan">إعادة الفحص</string>
+    <string name="s5_nothing_found">لم يُعثر على معلومات مخفية</string>
+    <string name="s5_found_n">وُجد %1$d</string>
+    <string name="s5_clean_n">تنظيف (%1$d)</string>
+    <string name="s5_cleaning">جارٍ التنظيف…</string>
+    <string name="s5_ocr_warning">يبدو أنه طبقة نص OCR لمستند ممسوح، حذفها يُلغي إمكانية البحث والنسخ.</string>
+    <string name="s5_forms_note">تُدمج قيم الحقول في الصفحة ثم تُحذف النماذج.</string>
+    <string name="s5_san_metadata">البيانات الوصفية (المؤلف، XMP…)</string>
+    <string name="s5_san_attachments">الملفات المرفقة</string>
+    <string name="s5_san_comments">التعليقات والتعليقات التوضيحية</string>
+    <string name="s5_san_forms">حقول النماذج</string>
+    <string name="s5_san_js">جافاسكربت</string>
+    <string name="s5_san_links">الروابط والإجراءات</string>
+    <string name="s5_san_bookmarks">الإشارات المرجعية</string>
+    <string name="s5_san_private">بيانات التطبيقات الخاصة</string>
+    <string name="s5_san_thumbs">الصور المصغرة</string>
+    <string name="s5_san_layers">الطبقات المخفية</string>
+    <string name="s5_san_invisible">النص غير المرئي</string>
+    <string name="s5_san_hidden_text">النص المخفي أو المغطّى</string>
+    <string name="s5_san_cropped">المحتوى خارج حدود القص</string>
+    <string name="s5_san_revisions">النسخ السابقة المحفوظة في الملف</string>
+
+    <!-- advanced protection -->
+    <string name="s5_algorithm">خوارزمية التشفير</string>
+    <string name="s5_aes256">AES 256</string>
+    <string name="s5_aes128">AES 128</string>
+    <string name="s5_rc4">RC4 128</string>
+    <string name="s5_rc4_note">RC4 قديم وضعيف، استخدمه فقط للتوافق مع برامج قديمة.</string>
+    <string name="s5_open_password">كلمة مرور فتح المستند</string>
+    <string name="s5_confirm_password">تأكيد كلمة المرور</string>
+    <string name="s5_password_mismatch">كلمتا المرور غير متطابقتين</string>
+    <string name="s5_restrict">تقييد الطباعة والتعديل</string>
+    <string name="s5_owner_password">كلمة مرور الأذونات</string>
+    <string name="s5_owner_hint">اتركها فارغة لتوليد كلمة عشوائية</string>
+    <string name="s5_owner_generated">كلمة مرور الأذونات المولّدة: %1$s — احفظها إن أردت رفع القيود لاحقاً</string>
+    <string name="s5_printing">الطباعة</string>
+    <string name="s5_print_none">ممنوعة</string>
+    <string name="s5_print_low">دقة منخفضة</string>
+    <string name="s5_print_high">دقة عالية</string>
+    <string name="s5_changes">التغييرات المسموحة</string>
+    <string name="s5_change_none">لا شيء</string>
+    <string name="s5_change_assembly">إدراج الصفحات وحذفها وتدويرها</string>
+    <string name="s5_change_forms">تعبئة النماذج والتوقيع</string>
+    <string name="s5_change_annotate">التعليق وتعبئة النماذج والتوقيع</string>
+    <string name="s5_change_all">أي تغيير عدا استخراج الصفحات</string>
+    <string name="s5_permissions">الأذونات التفصيلية</string>
+    <string name="s5_perm_print">الطباعة</string>
+    <string name="s5_perm_print_high">الطباعة بدقة عالية</string>
+    <string name="s5_perm_modify">تعديل المحتوى</string>
+    <string name="s5_perm_assemble">تجميع المستند (صفحات)</string>
+    <string name="s5_perm_copy">نسخ النص والصور</string>
+    <string name="s5_perm_access">الوصول لقارئات الشاشة</string>
+    <string name="s5_perm_annotate">إضافة التعليقات</string>
+    <string name="s5_perm_forms">تعبئة النماذج</string>
+    <string name="s5_protect_apply">تطبيق الحماية</string>
+    <string name="s5_protecting">جارٍ التشفير…</string>
+    <string name="s5_already_encrypted">الملف محمي حالياً، ستُستبدل حمايته بالإعدادات الجديدة.</string>
+    <string name="s5_protect_note">تحترم برامج PDF الأذونات، لكن من يملك كلمة مرور الفتح يستطيع قراءة المحتوى دائماً.</string>
+</resources>

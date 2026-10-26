@@ -211,10 +211,11 @@ class PdfDocActions(private val ctx: Context, private val host: DocHost, private
 
     override suspend fun redactText(query: String): ActionResult {
         val f = host.file() ?: throw ActionError(s(com.smartdocs.editor.R.string.ai2_err_no_doc))
-        val hits = withSession(f) { it.search(query) }
+        val hits = withSession(f) { com.smartdocs.editor.core.search.TextSearch.search(it, query, com.smartdocs.editor.core.search.SearchOptions()) }
         if (hits.isEmpty()) throw ActionError(s(com.smartdocs.editor.R.string.ai2_err_not_found, query))
-        val regions = hits.groupBy { it.page }.mapValues { (_, hs) -> hs.flatMap { it.rects } }
-        return edit(s(com.smartdocs.editor.R.string.ai2_done_redact, hits.size, query)) { src, out, pw -> PdfOps.redact(ctx, src, out, regions, pw) }
+        // true redaction (search5): glyphs under the marks are removed instead of rasterising the page
+        val marks = hits.mapIndexed { i, h -> com.smartdocs.editor.core.redact.RedactMark("ai$i", h.page, h.rects) }
+        return edit(s(com.smartdocs.editor.R.string.ai2_done_redact, hits.size, query)) { src, out, pw -> com.smartdocs.editor.core.redact.RedactApplier.apply(ctx, src, out, pw, marks) }
     }
 
     override suspend fun setProperties(title: String?, author: String?, subject: String?, keywords: String?): ActionResult {

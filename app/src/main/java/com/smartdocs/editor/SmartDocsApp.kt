@@ -19,6 +19,7 @@ class SmartDocsApp : Application() {
         db = AppDatabase.build(this)
         settings = SettingsStore(this)
         documents = DocumentRepository(this, db)
+        com.smartdocs.editor.core.search.IndexWorker.schedule(this)
     }
 
     companion object {

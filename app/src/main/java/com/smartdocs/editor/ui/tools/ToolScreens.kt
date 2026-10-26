@@ -54,6 +54,11 @@ private fun ToolScreensInner(nav: NavHostController, id: String, uri: String?) {
         "scan" -> ScannerScreen(nav)
         "ocr" -> OcrScreen(nav, uri)
         "redact" -> RedactScreen(nav, uri)
+        "search_all" -> com.smartdocs.editor.ui.search.GlobalSearchScreen(nav)
+        "search_highlight" -> com.smartdocs.editor.ui.search.SearchMarkScreen(nav, uri)
+        "find_replace" -> com.smartdocs.editor.ui.search.FindReplaceScreen(nav, uri)
+        "sanitize" -> com.smartdocs.editor.ui.security.SanitizeScreen(nav, uri)
+        "protect_advanced" -> com.smartdocs.editor.ui.security.ProtectAdvancedScreen(nav, uri)
         "forms" -> FormsScreen(nav, uri)
         "attachments" -> AttachmentsTool(nav, uri)
         "templates" -> com.smartdocs.editor.ui.templates.TemplatesScreen(nav)
@@ -69,6 +74,6 @@ private fun ToolScreensInner(nav: NavHostController, id: String, uri: String?) {
         "ai_settings" -> AiSettingsScreen(nav)
         "ai_spaces" -> com.smartdocs.editor.ui.ai5.SpacesScreen(nav)
 
-        else -> ComingSoonScreen(nav, id)
+        else -> if (id in com.smartdocs.editor.ui.edit5.EDIT5_TOOL_IDS) com.smartdocs.editor.ui.edit5.Edit5Screens(nav, id, uri) else ComingSoonScreen(nav, id)
     }
 }

@@ -33,8 +33,8 @@ import com.smartdocs.editor.core.pdf.PdfSession
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-/** A redaction region in PDF points (origin bottom-left; top > bottom). */
-data class RedactRegion(val id: String, val page: Int, val rect: RectF, val label: String)
+/** A mark as drawn on the page view: display space (origin bottom-left, top > bottom) with its fill colour. */
+data class ManualBox(val id: String, val rect: RectF, val fill: Int, val outline: Int?, val wholePage: Boolean = false)
 
 /**
  * Single-page viewer where the user drags rectangles. Existing regions of the page are drawn as black
@@ -45,7 +45,7 @@ fun RedactManualView(
     session: PdfSession,
     page: Int,
     onPage: (Int) -> Unit,
-    regions: List<RedactRegion>,
+    boxes: List<ManualBox>,
     onAdd: (RectF) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -97,9 +97,12 @@ fun RedactManualView(
                     ?: CircularProgressIndicator(Modifier.align(Alignment.Center))
                 Canvas(Modifier.fillMaxSize()) {
                     val s = this.size.width / pw
-                    regions.filter { it.page == page }.forEach { reg ->
-                        val r = reg.rect
-                        drawRect(Color.Black, Offset(r.left * s, (ph - r.top) * s), Size((r.right - r.left) * s, (r.top - r.bottom) * s))
+                    boxes.forEach { reg ->
+                        val r = if (reg.wholePage) RectF(0f, ph, pw, 0f) else reg.rect
+                        val tl = Offset(r.left * s, (ph - r.top) * s); val sz = Size((r.right - r.left) * s, (r.top - r.bottom) * s)
+                        // preview: the fill at 55% so the marked text stays readable, plus the outline
+                        drawRect(Color(0xFF000000 or reg.fill.toLong()).copy(alpha = 0.55f), tl, sz)
+                        drawRect(Color(0xFF000000 or (reg.outline ?: 0xE53935).toLong()), tl, sz, style = Stroke(width = 2f))
                     }
                     val a = dragStart; val b = dragNow
                     if (a != null && b != null) {

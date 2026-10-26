@@ -1,0 +1,161 @@
+package com.smartdocs.editor.ui.security
+
+import android.content.Context
+import android.graphics.RectF
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import com.smartdocs.editor.core.edit.Affine
+import com.smartdocs.editor.core.edit.PageFrame
+import com.smartdocs.editor.core.pdf.PdfOps
+import com.smartdocs.editor.core.pdf.PdfSession
+import com.smartdocs.editor.core.redact.Box
+import com.smartdocs.editor.core.redact.RedactMark
+import com.smartdocs.editor.core.redact.RedactMarks
+import com.smartdocs.editor.core.redact.RedactMath
+import com.smartdocs.editor.core.redact.RedactPrefs
+import com.smartdocs.editor.core.redact.RedactProfile
+import com.smartdocs.editor.core.redact.RedactStyle
+import com.smartdocs.editor.core.search.Found
+import com.smartdocs.editor.core.search.PatternKind
+import com.smartdocs.editor.core.search.SearchOptions
+import com.smartdocs.editor.core.search.SearchPrefs
+import com.smartdocs.editor.core.search.SearchRequest
+import com.smartdocs.editor.core.search.TextSearch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.io.File
+
+/** Display ⇄ user space of one page (see [PageFrame]); display space is what the page view shows. */
+class PageGeo(val width: Float, val height: Float, val toDisplay: FloatArray, val toUser: FloatArray)
+
+fun foundKey(f: Found) = "${f.hit.page}:${f.hit.charIndex}:${f.hit.length}"
+
+/**
+ * State of the redaction tool: marks (PDF user space), their default style, the search inputs (query, word list,
+ * patterns, custom regex, names list, keep-last-N, page range) and the checkable hit list.
+ */
+class RedactState(private val context: Context) {
+    val marks = mutableStateListOf<RedactMark>()
+    var style by mutableStateOf(RedactPrefs.lastStyle(context))
+    var geo by mutableStateOf<Map<Int, PageGeo>>(emptyMap())
+
+    var query by mutableStateOf("")
+    var options by mutableStateOf(SearchOptions(norm = SearchPrefs.load(context)))
+    var wordsText by mutableStateOf("")
+    var patterns by mutableStateOf<Set<PatternKind>>(emptySet())
+    var regexText by mutableStateOf("")
+    var names by mutableStateOf(RedactPrefs.names(context))
+    var useNames by mutableStateOf(false)
+    var keepLast by mutableIntStateOf(0)
+    var pageRange by mutableStateOf("")
+    var found by mutableStateOf<List<Found>>(emptyList())
+    var checked by mutableStateOf<Set<String>>(emptySet())
+    var searching by mutableStateOf(false)
+    var searched by mutableStateOf(false)
+
+    private var seq = 0
+    private fun newId() = "sd-${System.currentTimeMillis()}-${seq++}"
+
+    /** Page geometry and the /Redact marks already in the file. */
+    suspend fun load(file: File, password: String?) = withContext(Dispatchers.IO) {
+        val g = HashMap<Int, PageGeo>()
+        val existing = runCatching {
+            PdfOps.load(file, password).use { doc ->
+                doc.pages.forEachIndexed { i, p ->
+                    val f = PageFrame.of(p)
+                    g[i] = PageGeo(f.width, f.height, Affine.values(f.toDisplay), Affine.values(f.toUser))
+                }
+                RedactMarks.read(doc)
+            }
+        }.getOrDefault(emptyList())
+        withContext(Dispatchers.Main) {
+            geo = g
+            marks.clear(); marks.addAll(existing)
+            found = emptyList(); checked = emptySet(); searched = false
+        }
+    }
+
+    fun request(): SearchRequest {
+        val words = (wordsText.lines() + if (useNames) names.lines() else emptyList()).map { it.trim() }.filter { it.isNotEmpty() }
+        return SearchRequest(query = query, options = options, words = words, patterns = patterns,
+            regexes = regexText.lines().map { it.trim() }.filter { it.isNotEmpty() }, keepLast = keepLast)
+    }
+
+    suspend fun search(session: PdfSession) {
+        searching = true
+        try {
+            val pages = PdfOps.parseRange(pageRange, session.pageCount)
+            val req = request()
+            val all = ArrayList<Found>()
+            if (pages.size == session.pageCount) all += TextSearch.search(session, req)
+            else pages.forEach { p -> all += TextSearch.search(session, req, p..p) }
+            found = all
+            checked = all.map(::foundKey).toSet()
+            searched = true
+        } finally { searching = false }
+    }
+
+    /** Turns the checked hits into marks (one mark per hit, one rect per line). */
+    fun markChecked(): Int {
+        val sel = found.filter { foundKey(it) in checked && it.hit.rects.isNotEmpty() }
+        val existing = marks.map { "${it.page}:${it.label}:${it.rects.firstOrNull()?.left}" }.toHashSet()
+        var n = 0
+        for (f in sel) {
+            val label = f.hit.snippet.trim()
+            val key = "${f.hit.page}:$label:${f.hit.rects.first().left}"
+            if (key in existing) continue
+            marks += RedactMark(newId(), f.hit.page, f.hit.rects.map { RectF(it) }, style, label)
+            n++
+        }
+        checked = emptySet()
+        return n
+    }
+
+    fun displayBox(page: Int, user: RectF): Box? {
+        val g = geo[page] ?: return null
+        return RedactMath.map(g.toDisplay, Box.of(user.left, user.bottom, user.right, user.top))
+    }
+
+    /** A rectangle drawn on the page view (display space, top > bottom). */
+    fun addManual(page: Int, display: RectF) {
+        val g = geo[page]
+        val u = if (g == null) Box.of(display.left, display.bottom, display.right, display.top)
+                else RedactMath.map(g.toUser, Box.of(display.left, display.bottom, display.right, display.top))
+        marks += RedactMark(newId(), page, listOf(RectF(u.l, u.t, u.r, u.b)), style, "")
+    }
+
+    fun addPageMarks(pages: List<Int>) {
+        val have = marks.filter { it.wholePage }.map { it.page }.toSet()
+        pages.filter { it !in have }.forEach { p -> marks += RedactMark(newId(), p, emptyList(), style, "", wholePage = true) }
+    }
+
+    /** Copies [m] (same position) to [pages]. */
+    fun repeatOnPages(m: RedactMark, pages: List<Int>) {
+        pages.filter { it != m.page }.forEach { p -> marks += m.copy(id = newId(), page = p) }
+    }
+
+    fun remove(id: String) { marks.removeAll { it.id == id } }
+
+    fun update(m: RedactMark) { val i = marks.indexOfFirst { it.id == m.id }; if (i >= 0) marks[i] = m }
+
+    fun applyStyleToAll(st: RedactStyle) {
+        style = st
+        RedactPrefs.saveStyle(context, st)
+        for (i in marks.indices) marks[i] = marks[i].copy(style = st)
+    }
+
+    fun clear() { marks.clear() }
+
+    fun saveNames() = RedactPrefs.saveNames(context, names)
+
+    fun profile(name: String) = RedactProfile(name, wordsText.lines().filter { it.isNotBlank() }, patterns,
+        regexText.lines().filter { it.isNotBlank() }, style, options.wholeWord, keepLast)
+
+    fun loadProfile(p: RedactProfile) {
+        wordsText = p.words.joinToString("\n"); patterns = p.patterns; regexText = p.regexes.joinToString("\n")
+        style = p.style; options = options.copy(wholeWord = p.wholeWord); keepLast = p.keepLast
+    }
+}

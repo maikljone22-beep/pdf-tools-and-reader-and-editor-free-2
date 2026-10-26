@@ -88,4 +88,68 @@ object ArabicNormalizer {
     }
 
     fun hasArabic(s: String) = s.any { it.code in 0x0600..0x06FF || it.code in 0xFB50..0xFEFF }
+
+    // ---------------- additions (search5): words, light stemming, regex patterns, digits ----------------
+
+    private val WORD = Regex("[\\p{L}\\p{Nd}\\p{M}]+")
+
+    /** Word ranges of [s] (letters, digits and combining marks). */
+    fun wordRanges(s: String): List<IntRange> = WORD.findAll(s).map { it.range }.toList()
+
+    /** Words of [s]. */
+    fun words(s: String): List<String> = WORD.findAll(s).map { it.value }.toList()
+
+    /** Arabic-Indic / Persian digits → Latin, one char for one char (indexes stay valid). */
+    fun latinDigits(s: String): String {
+        if (s.none { it.code in 0x0660..0x0669 || it.code in 0x06F0..0x06F9 }) return s
+        val sb = StringBuilder(s.length)
+        for (c in s) sb.append(when (c.code) { in 0x0660..0x0669 -> '0' + (c.code - 0x0660); in 0x06F0..0x06F9 -> '0' + (c.code - 0x06F0); else -> c })
+        return sb.toString()
+    }
+
+    /**
+     * Folds the Arabic letters of a regular expression like [fold] does for text, but keeps everything else
+     * (escapes such as `\W`, character classes, case) untouched. Case-insensitivity is a regex flag instead.
+     */
+    fun foldPattern(p: String, o: NormOptions): String {
+        val sb = StringBuilder(p.length)
+        var i = 0
+        while (i < p.length) {
+            val c = p[i]
+            if (c == '\\' && i + 1 < p.length) { sb.append(c).append(p[i + 1]); i += 2; continue }
+            if (isInvisible(c) || c.code == 0x0640) { i++; continue }
+            if (o.ignoreDiacritics && isArabicMark(c)) { i++; continue }
+            if (c.code in 0x0600..0x06FF) sb.append(mapLetter(c, o)) else sb.append(c)
+            i++
+        }
+        return sb.toString()
+    }
+
+    private val AR_PREFIXES = listOf("وال", "بال", "كال", "فال", "لل", "ال")
+    private val AR_SUFFIXES = listOf("ها", "ان", "ات", "ون", "ين", "يه", "ية", "ه", "ة", "ي")
+
+    /**
+     * Light stemmer (Larkey's light10 style) for folded Arabic words: strips a leading و, the article forms
+     * (ال، وال، بال، كال، فال، لل) and common suffixes (ها ان ات ون ين يه ية ه ة ي), keeping at least two letters.
+     * Latin words lose a plural / -ing / -ed ending. Other words are returned unchanged.
+     */
+    fun lightStem(word: String): String {
+        if (word.isEmpty()) return word
+        if (!hasArabic(word)) {
+            val w = word.lowercase()
+            return when {
+                w.length > 5 && w.endsWith("ing") -> w.dropLast(3)
+                w.length > 4 && w.endsWith("ies") -> w.dropLast(3) + "y"
+                w.length > 4 && w.endsWith("ed") -> w.dropLast(2)
+                w.length > 4 && w.endsWith("es") -> w.dropLast(2)
+                w.length > 3 && w.endsWith("s") && !w.endsWith("ss") -> w.dropLast(1)
+                else -> w
+            }
+        }
+        var w = word
+        if (w.length > 3 && w[0] == 'و') w = w.substring(1)
+        for (p in AR_PREFIXES) if (w.startsWith(p) && w.length - p.length >= 2) { w = w.substring(p.length); break }
+        for (s in AR_SUFFIXES) if (w.length - s.length >= 2 && w.endsWith(s)) w = w.dropLast(s.length)
+        return w
+    }
 }

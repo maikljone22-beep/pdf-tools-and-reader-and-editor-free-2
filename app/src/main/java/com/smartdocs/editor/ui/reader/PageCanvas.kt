@@ -393,6 +393,7 @@ private fun handleTap(
             val w = (g.pageW * 0.35f).coerceAtLeast(40f); val h = w * img.height / img.width.coerceAtLeast(1)
             state.placement = Placement(page, RectF(x - w / 2, y + h / 2, x + w / 2, y - h / 2), img)
         }
+        ReaderTool.LINK -> onPrompt(TextPrompt(t, page, x, y))
         ReaderTool.MEASURE -> {
             val m = state.measure
             state.measure = if (m == null || m.b != null || m.page != page) Measure(page, x to y, null) else m.copy(b = x to y)
