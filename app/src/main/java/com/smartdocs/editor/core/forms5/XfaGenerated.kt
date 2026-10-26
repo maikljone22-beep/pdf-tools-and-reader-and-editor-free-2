@@ -2,7 +2,11 @@ package com.smartdocs.editor.core.forms5
 
 import android.content.Context
 import android.graphics.RectF
+import com.smartdocs.editor.core.forms.XfaJs
+import com.smartdocs.editor.core.forms.XfaLayout
+import com.smartdocs.editor.core.forms.XfaMerge
 import com.smartdocs.editor.core.forms.XfaSupport
+import com.smartdocs.editor.core.forms.XfaTemplateParser
 import com.smartdocs.editor.core.pdf.ArabicShaper
 import com.smartdocs.editor.core.pdf.FieldType
 import com.smartdocs.editor.core.pdf.FormBuilder
@@ -39,6 +43,8 @@ object XfaGenerated {
 
     const val KEY_SOURCE = "SmartDocsXfaSource"
     const val KEY_MAP = "SmartDocsXfaMap"
+    const val KEY_REPEAT = "SmartDocsXfaRepeat"
+    const val KEY_LAYOUT = "SmartDocsXfaLayout"
 
     private const val PW = 595f; private const val PH = 842f; private const val M = 40f
     private const val CAPTION_W = 190f; private const val GAP = 10f
@@ -74,8 +80,71 @@ object XfaGenerated {
         endText()
     }
 
-    /** Generate the fillable PDF for the dynamic XFA document [src] into [out]. Returns the number of fields. */
+    /**
+     * Generate the fillable PDF for the dynamic XFA document [src] into [out]: the form in its own XFA layout
+     * ([XfaLayout], scripts on the Rhino runtime), or the one-column list when the layout cannot be built.
+     * Returns the number of fields.
+     */
     suspend fun generate(context: Context, src: File, password: String?, out: File): Int = withContext(Dispatchers.IO) {
+        runCatching { generateLayout(context, src, password, out) }.getOrNull() ?: generateList(context, src, password, out)
+    }
+
+    /** The XFA form in its original layout; null when it has no template or nothing to lay out. */
+    private suspend fun generateLayout(context: Context, src: File, password: String?, out: File): Int? {
+        val bytes = PdfOps.load(src, password).use { it.documentCatalog.acroForm?.xfa?.bytes } ?: return null
+        val (xml, data) = XfaSupport.dataRoot(bytes)
+        val template = XfaTemplateParser.parse(xml) ?: return null
+        val merged = XfaMerge.merge(template, data)
+        runCatching { XfaJs.run(merged) }
+        val tmp = File(out.parentFile, ".${out.name}.xfa.pdf")
+        val made: List<XfaRender.Made>
+        try {
+            PDDocument().use { doc ->
+                val r = XfaRender(context, doc)
+                val layout = XfaLayout(template, r.metrics).layout(merged)
+                if (layout.pages.isEmpty()) return null
+                val (m, repeats) = r.render(layout)
+                made = m
+                val map = buildJsonObject {
+                    m.forEach { f ->
+                        put(f.name, buildJsonObject {
+                            put("p", JsonPrimitive(f.path)); put("t", JsonPrimitive(f.type.name))
+                            put("o", buildJsonArray { f.options.forEach { add(JsonPrimitive(it)) } })
+                            put("e", buildJsonArray { f.exports.forEach { add(JsonPrimitive(it)) } })
+                        })
+                    }
+                }
+                val info = doc.documentInformation ?: PDDocumentInformation().also { doc.documentInformation = it }
+                info.setCustomMetadataValue(KEY_SOURCE, src.absolutePath)
+                info.setCustomMetadataValue(KEY_MAP, map.toString())
+                info.setCustomMetadataValue(KEY_REPEAT, XfaRepeat.toJson(repeats))
+                info.setCustomMetadataValue(KEY_LAYOUT, "1")
+                info.title = src.nameWithoutExtension
+                doc.save(tmp)
+            }
+            // text and choice values get their appearances (Arabic font, shaping) through FormOps
+            val initial = made.filter { it.type != XfaSupport.XType.CHECK && it.type != XfaSupport.XType.RADIO && it.initial.isNotEmpty() }.associate { it.name to it.initial }
+            if (initial.isNotEmpty()) FormOps.fillFields(tmp, initial, out, null, context) else tmp.copyTo(out, overwrite = true)
+        } finally { tmp.delete() }
+        return made.size
+    }
+
+    /**
+     * Add one instance of the repeating subform [r] to the XFA source of the generated form [generated]:
+     * the current values are written back first, then the data group gets the new instance, then the form is
+     * generated again into [out] (pass a temp file and swap it in).
+     */
+    suspend fun addRow(context: Context, generated: File, r: XfaRepeat, out: File): File = withContext(Dispatchers.IO) {
+        val (src, _) = writeBack(generated, null)
+        val tmp = File(src.parentFile, ".${src.name}.row.pdf")
+        XfaSupport.addInstances(src, r.dataParent, r.name, r.count + 1, tmp)
+        if (!tmp.renameTo(src)) { tmp.copyTo(src, overwrite = true); tmp.delete() }
+        generate(context, src, null, out)
+        src
+    }
+
+    /** The one-column fallback: one row per data-bound field. */
+    private suspend fun generateList(context: Context, src: File, password: String?, out: File): Int = withContext(Dispatchers.IO) {
         val fields = XfaSupport.readFields(src, password).filter { it.bound }
         val rows = fields.mapIndexedNotNull { i, f -> rowOf(f, i) }
         val rtl = fields.count { ArabicShaper.isArabic(it.caption) } * 2 >= fields.size.coerceAtLeast(1) && fields.any { ArabicShaper.isArabic(it.caption) }
@@ -194,6 +263,7 @@ object XfaGenerated {
             val exps = o["e"]?.jsonArray?.map { it.jsonPrimitive.content }.orEmpty()
             val v = acro[name] ?: return@forEach
             values[path] = when (type) {
+                "RADIO" -> if (v == "Off") "" else v
                 "CHECK" -> XfaSupport.checkValue(XfaSupport.XField(path, name, "", XfaSupport.XType.CHECK, opts, exps), v.equals("true", true))
                 "CHOICE" -> opts.indexOf(v).takeIf { it >= 0 }?.let { exps.getOrNull(it) } ?: v
                 else -> v

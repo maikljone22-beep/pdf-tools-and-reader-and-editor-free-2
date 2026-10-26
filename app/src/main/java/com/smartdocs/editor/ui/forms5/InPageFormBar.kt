@@ -132,6 +132,18 @@ fun InPageFormBar(reader: ReaderState, modifier: Modifier = Modifier) {
             dismissButton = { TextButton(onClick = { fs.datePickerFor = null }) { Text(stringResource(R.string.cancel)) } },
         ) { DatePicker(st) }
     }
+
+    // app.alert of a field script, or the reason a value was rejected (the previous value is back in the field)
+    val al = fs.alert
+    if (al != null) {
+        val issue = fs.alertField?.let { fs.errors[it] }
+        AlertDialog(
+            onDismissRequest = { fs.alert = null },
+            title = { Text(stringResource(R.string.f5_alert_title)) },
+            text = { Text(al.ifBlank { issue?.let { issueText(it) } ?: stringResource(R.string.f5_err_script) }) },
+            confirmButton = { TextButton(onClick = { fs.alert = null }) { Text(stringResource(R.string.ok)) } },
+        )
+    }
 }
 
 @Composable
@@ -195,4 +207,5 @@ private fun messageText(m: FormMessage): String = when (m) {
     is FormMessage.MissingRequired -> stringResource(R.string.f5_missing_required, m.count)
     FormMessage.PrintHint -> stringResource(R.string.f5_print_hint)
     is FormMessage.Reset -> stringResource(R.string.f5_reset_done, m.count)
+    FormMessage.RowAdded -> stringResource(R.string.f5_row_added)
 }

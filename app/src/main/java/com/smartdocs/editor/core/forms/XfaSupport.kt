@@ -262,7 +262,41 @@ object XfaSupport {
      * Write [values] (path → value) into the datasets packet of [src] and save to [out]. Only the datasets packet
      * is replaced; usage-rights signatures (/Perms /UR3), which any change invalidates, are removed.
      */
-    suspend fun saveValues(src: File, values: Map<String, String>, out: File, password: String? = null) = withContext(Dispatchers.IO) {
+    suspend fun saveValues(src: File, values: Map<String, String>, out: File, password: String? = null) = rewriteData(src, out, password) { data ->
+        values.forEach { (path, v) ->
+            val el = locate(data, parsePath(path), true) ?: return@forEach
+            while (el.firstChild != null) el.removeChild(el.firstChild)
+            el.textContent = v
+        }
+    }
+
+    /**
+     * Make the data group [parentPath] hold [count] instances of the repeating subform [name] (new instances are
+     * copies of the last one with their values cleared, or empty elements). Written like [saveValues].
+     */
+    suspend fun addInstances(src: File, parentPath: String, name: String, count: Int, out: File, password: String? = null) = rewriteData(src, out, password) { data ->
+        val parent = (if (parentPath.isBlank()) data else locate(data, parsePath(parentPath), true)) ?: return@rewriteData
+        var have = parent.children().filter { it.local() == name }
+        while (have.size < count) {
+            val last = have.lastOrNull()
+            val el = if (last != null) (last.cloneNode(true) as Element).also { clearText(it) } else parent.ownerDocument.createElement(name)
+            val after = last?.nextSibling
+            if (after != null) parent.insertBefore(el, after) else parent.appendChild(el)
+            have = parent.children().filter { it.local() == name }
+        }
+    }
+
+    private fun clearText(e: Element) {
+        if (e.children().isEmpty()) { while (e.firstChild != null) e.removeChild(e.firstChild); return }
+        var n = e.firstChild
+        while (n != null) { val next = n.nextSibling; if (n.nodeType == Node.TEXT_NODE && n.nodeValue.isNotBlank()) e.removeChild(n); n = next }
+        e.children().forEach { clearText(it) }
+    }
+
+    /** XFA data root of [doc] (`xfa:datasets/xfa:data`), null without datasets. */
+    fun dataRoot(bytes: ByteArray): Pair<Document, Element?> { val xml = parse(bytes); return xml to dataRoot(xml) }
+
+    private suspend fun rewriteData(src: File, out: File, password: String?, edit: (Element) -> Unit) = withContext(Dispatchers.IO) {
         PdfOps.load(src, password).use { doc ->
             val acro = doc.documentCatalog.acroForm ?: throw IllegalStateException("no form")
             val bytes = acro.xfa?.bytes ?: throw IllegalStateException("no XFA")
@@ -278,11 +312,7 @@ object XfaSupport {
                 data = xml.createElementNS("http://www.xfa.org/schema/xfa-data/1.0/", "xfa:data")
                 datasets.appendChild(data)
             }
-            values.forEach { (path, v) ->
-                val el = locate(data!!, parsePath(path), true) ?: return@forEach
-                while (el.firstChild != null) el.removeChild(el.firstChild)
-                el.textContent = v
-            }
+            edit(data!!)
             val xfaBase = acro.cosObject.getDictionaryObject(COSName.XFA)
             if (xfaBase is COSArray) {
                 var replaced = false

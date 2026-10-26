@@ -59,6 +59,8 @@ data class FWidget(
     val action: ButtonAction? = null,
     val validate: ValidateSpec? = null,
     val hidden: Boolean = false,
+    val mkRotation: Int = 0,        // /MK /R of the widget (counter-clockwise, 0/90/180/270)
+    val pageRotation: Int = 0,      // /Rotate of its page (clockwise)
 )
 
 data class FormModel(
@@ -68,6 +70,8 @@ data class FormModel(
     val xfa: XfaSupport.Kind,
     val tabs: Map<Int, String>,             // page -> /Tabs (R, C, S)
     val generatedFromXfa: Boolean = false,
+    val js: FormJs = FormJs.EMPTY,                 // raw field / document JavaScript for the Rhino runtime
+    val xfaRepeats: List<XfaRepeat> = emptyList(),   // generated XFA forms: subforms that can take another row
 ) {
     val byName: Map<String, List<FWidget>> by lazy { widgets.groupBy { it.name } }
     fun onPage(page: Int) = widgets.filter { it.page == page && !it.hidden }
@@ -82,6 +86,29 @@ object FormModelLoader {
     private val TABS = COSName.getPDFName("Tabs")
     private val MK = COSName.getPDFName("MK")
     private val BG = COSName.getPDFName("BG")
+    private val R = COSName.getPDFName("R")
+    private val JAVASCRIPT = COSName.getPDFName("JavaScript")
+
+    /** Document-level scripts (/Names /JavaScript name tree), in tree order. */
+    internal fun docScripts(doc: PDDocument): List<String> {
+        val names = doc.documentCatalog.cosObject.getDictionaryObject(COSName.NAMES) as? COSDictionary ?: return emptyList()
+        val out = ArrayList<String>()
+        fun walk(node: COSDictionary?, depth: Int) {
+            if (node == null || depth > 12 || out.size > 200) return
+            (node.getDictionaryObject(COSName.NAMES) as? COSArray)?.let { arr ->
+                var i = 1
+                while (i < arr.size()) { js(arr.getObject(i))?.takeIf { it.isNotBlank() }?.let { out += it }; i += 2 }
+            }
+            (node.getDictionaryObject(COSName.KIDS) as? COSArray)?.let { kids -> for (k in 0 until kids.size()) walk(kids.getObject(k) as? COSDictionary, depth + 1) }
+        }
+        walk(names.getDictionaryObject(JAVASCRIPT) as? COSDictionary, 0)
+        return out
+    }
+
+    private fun jsType(f: PDField) = when (f) {
+        is PDTextField -> "text"; is PDCheckBox -> "checkbox"; is PDRadioButton -> "radiobutton"; is PDComboBox -> "combobox"
+        is PDListBox -> "listbox"; is PDSignatureField -> "signature"; else -> "button"
+    }
 
     internal fun js(action: COSBase?): String? {
         val d = action as? COSDictionary ?: return null
@@ -200,13 +227,19 @@ object FormModelLoader {
         }
         val calc = runCatching { FormCalc.load(doc) }.getOrDefault(FormCalcModel.EMPTY)
         val widgets = ArrayList<FWidget>(); val values = LinkedHashMap<String, String>()
+        val jsFields = ArrayList<JsField>(); val jsScripts = LinkedHashMap<String, FieldJs>()
+        val dictName = HashMap<COSDictionary, String>()
         for (f in acro.fieldTree) {
             if (f !is PDTerminalField) continue
             val name = f.fullyQualifiedName ?: continue
             val ws = runCatching { f.widgets }.getOrDefault(emptyList())
             val label = (f.cosObject.getString(TU) ?: f.partialName ?: name).ifBlank { name }
-            val aaV = (f.cosObject.getDictionaryObject(COSName.AA) as? COSDictionary)?.getDictionaryObject(COSName.V)
+            val aa = f.cosObject.getDictionaryObject(COSName.AA) as? COSDictionary
+            val aaV = aa?.getDictionaryObject(COSName.V)
             val validate = FieldValidation.parseValidate(js(aaV))
+            dictName[f.cosObject] = name
+            FieldJs(js(aa?.getDictionaryObject(COSName.K)), js(aa?.getDictionaryObject(COSName.F)), js(aaV), js(aa?.getDictionaryObject(COSName.C)))
+                .takeIf { !it.isEmpty }?.let { jsScripts[name] = it }
             val (options, exports) = when (f) {
                 is PDChoice -> runCatching { f.optionsDisplayValues to f.optionsExportValues }.getOrDefault(emptyList<String>() to emptyList())
                 is PDButton -> runCatching { emptyList<String>() to f.exportValues }.getOrDefault(emptyList<String>() to emptyList())
@@ -216,6 +249,23 @@ object FormModelLoader {
             values[name] = fieldValue(f, if (f is PDButton) exports else emptyList(), states)
             val da = (f as? PDTextField)?.defaultAppearance ?: (f as? PDChoice)?.defaultAppearance
             val (fs, tc) = parseDa(runCatching { da }.getOrNull())
+            val w0 = ws.firstOrNull()
+            val r0 = runCatching { w0?.rectangle }.getOrNull()
+            val mk0 = w0?.cosObject?.getDictionaryObject(MK) as? COSDictionary
+            jsFields += JsField(
+                name = name, type = jsType(f), value = values[name].orEmpty(),
+                onValue = if (f is PDCheckBox) states.firstOrNull { it.isNotEmpty() } ?: "Yes" else null,
+                exports = exports, items = if (f is PDChoice) options.indices.map { options[it] to (exports.getOrNull(it) ?: options[it]) } else emptyList(),
+                readOnly = f.isReadOnly, required = f.isRequired,
+                hidden = runCatching { w0 != null && (w0.isHidden || w0.isNoView) }.getOrDefault(false),
+                multiline = (f as? PDTextField)?.isMultiline ?: false, password = (f as? PDTextField)?.isPassword ?: false,
+                maxLen = (f as? PDTextField)?.maxLen?.coerceAtLeast(0) ?: 0, textColor = (0xFF shl 24) or tc,
+                fillColor = color(mk0?.getDictionaryObject(BG))?.let { (0xFF shl 24) or it },
+                page = w0?.let { where[it.cosObject]?.first } ?: 0,
+                rect = r0?.let { listOf(it.lowerLeftX, it.lowerLeftY, it.upperRightX, it.upperRightY) }.orEmpty(),
+                tooltip = f.cosObject.getString(TU).orEmpty(),
+                defaultValue = (f.cosObject.getDictionaryObject(COSName.DV) as? COSString)?.string.orEmpty(),
+            )
             ws.forEachIndexed { wi, w ->
                 val (page, ai) = where[w.cosObject] ?: (runCatching { w.page?.let { p -> doc.pages.indexOf(p) } }.getOrNull()?.takeIf { it >= 0 }?.let { it to 999 } ?: return@forEachIndexed)
                 val r = runCatching { w.rectangle }.getOrNull() ?: return@forEachIndexed
@@ -253,11 +303,22 @@ object FormModelLoader {
                     fontSize = fs, textColor = tc, background = color(mk?.getDictionaryObject(BG)),
                     action = action, validate = validate,
                     hidden = runCatching { w.isHidden || w.isNoView }.getOrDefault(false),
+                    mkRotation = runCatching { AppearanceRotation.rotationOf(w.cosObject) }.getOrDefault(0), pageRotation = FieldRotation.norm(g[4].toInt()),
                 )
             }
         }
         val generated = doc.documentInformation?.getCustomMetadataValue(XfaGenerated.KEY_SOURCE) != null
-        return FormModel(widgets, values, calc, xfa, tabs, generated)
+        // calculation order: /CO first, then the other fields with a calculate script
+        val co = ArrayList<String>()
+        (acro.cosObject.getDictionaryObject(COSName.CO) as? COSArray)?.let { arr ->
+            for (i in 0 until arr.size()) (arr.getObject(i) as? COSDictionary)?.let { d -> dictName[d]?.let { n -> if (n !in co && jsScripts[n]?.calculate != null) co += n } }
+        }
+        jsScripts.forEach { (n, s) -> if (s.calculate != null && n !in co) co += n }
+        val coIndex = co.withIndex().associate { it.value to it.index }
+        val formJs = if (jsScripts.isEmpty()) FormJs.EMPTY else FormJs(jsFields.map { it.copy(calcIndex = coIndex[it.name] ?: -1) }, jsScripts, co,
+            runCatching { docScripts(doc) }.getOrDefault(emptyList()), doc.numberOfPages)
+        val repeats = if (generated) runCatching { XfaRepeat.parse(doc.documentInformation?.getCustomMetadataValue(XfaGenerated.KEY_REPEAT)) }.getOrDefault(emptyList()) else emptyList()
+        return FormModel(widgets, values, calc, xfa, tabs, generated, formJs, repeats)
     }
 
     suspend fun load(file: File, password: String?): FormModel = withContext(Dispatchers.IO) {

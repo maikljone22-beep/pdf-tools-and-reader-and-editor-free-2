@@ -7,6 +7,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -15,10 +17,12 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -44,6 +48,8 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
@@ -68,6 +74,7 @@ import com.smartdocs.editor.LocalSettings
 import com.smartdocs.editor.R
 import com.smartdocs.editor.core.forms.KeystrokeKind
 import com.smartdocs.editor.core.forms5.FWidget
+import com.smartdocs.editor.core.forms5.FieldRotation
 import com.smartdocs.editor.core.forms5.WKind
 import com.smartdocs.editor.ui.common.rememberImagePicker
 import com.smartdocs.editor.ui.reader.PageGeometry
@@ -90,8 +97,9 @@ fun InPageFormLayer(reader: ReaderState, pageIndex: Int, g: PageGeometry) {
     val fs = remember(reader) { FormFill.of(reader) }
     LaunchedEffect(reader.file, reader.session, reader.renderVersion) { fs.ensureLoaded() }
     val model = fs.model
-    val widgets = remember(model, pageIndex) { model.onPage(pageIndex) }
-    if (widgets.isEmpty()) return
+    val widgets = remember(model, pageIndex) { model.onPage(pageIndex) }.filter { !fs.isHidden(it) }
+    val repeats = remember(model, pageIndex) { model.xfaRepeats.filter { it.page == pageIndex && it.canAdd } }
+    if (widgets.isEmpty() && repeats.isEmpty()) return
     val density = LocalDensity.current
     val accent = MaterialTheme.colorScheme.primary
     val highlight = LocalSettings.current.highlightFields
@@ -127,18 +135,28 @@ fun InPageFormLayer(reader: ReaderState, pageIndex: Int, g: PageGeometry) {
             val fg = if (night) Color(0xFFE6E6E6) else Color.Black
             widgets.forEach { w ->
                 val r = rects[w.id] ?: return@forEach
-                val interactive = !w.readOnly && w.kind != WKind.BUTTON && !fs.isCalculated(w.name)
+                val interactive = !fs.isReadOnly(w) && w.kind != WKind.BUTTON && !fs.isCalculated(w.name)
                 if (highlight && interactive && w.id != editing?.id) drawRect(HIGHLIGHT, r.topLeft, r.size)
                 if (highlight && w.required && interactive) drawRect(REQUIRED, r.topLeft, r.size, style = Stroke(1.5f))
                 if (w.id == editing?.id) return@forEach
-                if (fs.isPendingValue(w.name)) drawPending(fs, w, r, if (w.background != null && !night) Color(0xFF000000 or w.background.toLong()) else bg,
-                    if (night) fg else Color(0xFF000000 or w.textColor.toLong()), g.scale, tm, thumbs[w.name + "|" + fs.images[w.name]?.path])
+                if (fs.isPendingValue(w.name)) {
+                    val p = fs.props(w.name)
+                    val fill = p?.fillColor?.takeIf { it ushr 24 != 0 }?.let { Color(it) } ?: w.background?.let { Color(0xFF000000 or it.toLong()) }
+                    val ink = p?.textColor?.takeIf { it ushr 24 != 0 }?.let { Color(it) } ?: Color(0xFF000000 or w.textColor.toLong())
+                    val angle = FieldRotation.textAngle(w.pageRotation, w.mkRotation, g.rotation)
+                    val f = FieldRotation.frame(r.left, r.top, r.right, r.bottom, angle)
+                    val frame = Rect(f[0], f[1], f[2], f[3])
+                    // drawn upright in the frame, then turned like the saved appearance (/Rotate, /MK /R, view rotation)
+                    rotate(angle.toFloat(), pivot = r.center) {
+                        drawPending(fs, w, frame, if (fill != null && !night) fill else bg, if (night) fg else ink, g.scale, tm, thumbs[w.name + "|" + fs.images[w.name]?.path])
+                    }
+                }
                 if (w.name in fs.errors) drawRect(REQUIRED, r.topLeft, r.size, style = Stroke(3f))
                 if (w.id == active?.id || active?.let { a -> a.kind == WKind.RADIO && w.name == a.name } == true) drawRect(accent, r.topLeft, r.size, style = Stroke(2.5f))
             }
         }
         if (enabled) widgets.forEach { w ->
-            if (w.readOnly && w.kind != WKind.BUTTON) return@forEach
+            if (fs.isReadOnly(w) && w.kind != WKind.BUTTON) return@forEach
             if (w.kind == WKind.SIGNATURE || (w.kind == WKind.BUTTON && w.action == null) || fs.isCalculated(w.name) || w.id == editing?.id) return@forEach
             val r = rects[w.id] ?: return@forEach
             val minPx = if (w.kind == WKind.CHECK || w.kind == WKind.RADIO) with(density) { 36.dp.toPx() } else 0f
@@ -150,7 +168,21 @@ fun InPageFormLayer(reader: ReaderState, pageIndex: Int, g: PageGeometry) {
                     .pointerInput(w) { detectTapGestures(onTap = { fs.tap(w) }) },
             )
         }
-        if (editing != null) rects[editing.id]?.let { ActiveTextEditor(fs, editing, it, g.scale, accent) }
+        if (editing != null) rects[editing.id]?.let { ActiveTextEditor(fs, editing, it, g.scale, accent, FieldRotation.textAngle(editing.pageRotation, editing.mkRotation, g.rotation)) }
+        // generated XFA forms: "add row" under the last instance of each repeating subform
+        if (enabled) repeats.forEach { rp ->
+            val r = g.pdfRectToLayout(RectF(rp.box.left, rp.box.top, rp.box.right, rp.box.bottom))
+            Box(
+                Modifier.offset { IntOffset(r.left.roundToInt(), (r.bottom - with(density) { 14.dp.toPx() }).roundToInt()) }
+                    .size(with(density) { r.width.toDp() }, 28.dp),
+                contentAlignment = Alignment.CenterEnd,
+            ) {
+                FilledTonalButton(onClick = { fs.addRow(rp) }, enabled = !fs.busy, contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
+                    modifier = Modifier.height(28.dp)) {
+                    Icon(Icons.Default.Add, null, Modifier.size(16.dp)); Text(stringResource(R.string.f5_add_row), style = MaterialTheme.typography.labelMedium)
+                }
+            }
+        }
         val menu = fs.menuFor?.let { id -> widgets.firstOrNull { it.id == id } }
         if (menu != null && enabled) rects[menu.id]?.let { ChoiceMenu(fs, menu, it) }
     }
@@ -222,7 +254,11 @@ private fun DrawScope.drawPending(fs: FormFillState, w: FWidget, r: Rect, bg: Co
 private fun rtlText(s: String) = s.any { it.code in 0x0590..0x08FF }
 
 @Composable
-private fun ActiveTextEditor(fs: FormFillState, w: FWidget, r: Rect, scale: Float, accent: Color) {
+private fun ActiveTextEditor(fs: FormFillState, w: FWidget, screen: Rect, scale: Float, accent: Color, angle: Int) {
+    // the editor is laid out upright in the widget's frame and turned with graphicsLayer, so the typed text
+    // runs in the same direction as the saved appearance (taps are mapped back by Compose)
+    val fr = FieldRotation.frame(screen.left, screen.top, screen.right, screen.bottom, angle)
+    val r = Rect(fr[0], fr[1], fr[2], fr[3])
     val density = LocalDensity.current
     val focus = remember(w.id) { FocusRequester() }
     val external = fs.value(w.name)
@@ -245,12 +281,16 @@ private fun ActiveTextEditor(fs: FormFillState, w: FWidget, r: Rect, scale: Floa
         value = tfv,
         onValueChange = onChange@{ nv ->
             if (w.maxLen > 0 && nv.text.length > w.maxLen) return@onChange
-            tfv = nv
-            if (nv.text != fs.value(w.name)) fs.setValue(w.name, nv.text, typing = true)
+            if (nv.text == tfv.text) { tfv = nv; return@onChange }        // selection / composition only
+            // keystroke script (K): may reject the change or rewrite it
+            val accepted = fs.keystroke(w, tfv.text, nv.text) ?: return@onChange
+            tfv = if (accepted == nv.text) nv else TextFieldValue(accepted, TextRange(accepted.length))
+            if (accepted != fs.value(w.name)) fs.setValue(w.name, accepted, typing = true)
         },
         modifier = Modifier
-            .offset { IntOffset(r.left.roundToInt(), r.top.roundToInt()) }
+            .offset { IntOffset(r.left.roundToInt(), (r.top - (h - r.height) / 2f * (if (angle == 0) 0f else 1f)).roundToInt()) }
             .size(with(density) { r.width.toDp() }, with(density) { h.toDp() })
+            .graphicsLayer { rotationZ = angle.toFloat() }
             .background(Color.White)
             .border(2.dp, accent)
             .padding(horizontal = 2.dp)

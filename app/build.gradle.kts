@@ -107,6 +107,7 @@ dependencies {
     // PDF engine: PDFium (rendering, text) + PdfBox (editing, forms, security)
     implementation("io.legere:pdfiumandroid:2.0.1")
     implementation("com.tom-roush:pdfbox-android:2.0.27.0")
+    implementation("org.mozilla:rhino:1.7.15.1")   // form JavaScript (forms5b)
 
     // Scanner + OCR
     implementation("com.google.android.gms:play-services-mlkit-document-scanner:16.0.0")

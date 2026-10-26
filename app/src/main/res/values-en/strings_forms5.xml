@@ -33,7 +33,7 @@
     <string name="f5_reset_done">%1$d fields cleared.</string>
     <string name="f5_xfa_failed">Could not create the form</string>
     <string name="f5_xfa_dynamic_title">Dynamic XFA form</string>
-    <string name="f5_xfa_dynamic_body">This form\'s layout cannot be shown as designed. A fillable form can be generated from its fields and filled on the page, then saved back into the original form, or converted to a normal PDF.</string>
+    <string name="f5_xfa_dynamic_body">This is a dynamic XFA form. It can be opened in its original layout as a form you fill on the page, then saved back into the original form, or converted to a normal PDF.</string>
     <string name="f5_xfa_generated_title">Form generated from XFA</string>
     <string name="f5_xfa_generated_body">This file was generated from an XFA form. After filling it, the values can be written into the original form\'s data.</string>
     <string name="f5_xfa_open_form">Open fillable form</string>
@@ -42,4 +42,7 @@
     <string name="f5_xfa_written">%1$d values written into %2$s.</string>
     <string name="f5_fb_date">Date</string>
     <string name="f5_fb_image">Image</string>
+    <string name="f5_alert_title">Message from the form</string>
+    <string name="f5_add_row">Add row</string>
+    <string name="f5_row_added">A new row was added.</string>
 </resources>

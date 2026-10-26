@@ -33,7 +33,7 @@
     <string name="f5_reset_done">تم مسح %1$d من الحقول.</string>
     <string name="f5_xfa_failed">تعذّر إنشاء النموذج</string>
     <string name="f5_xfa_dynamic_title">نموذج XFA ديناميكي</string>
-    <string name="f5_xfa_dynamic_body">لا يمكن عرض تخطيط هذا النموذج كما هو. يمكن إنشاء نموذج قابل للتعبئة من حقوله وتعبئته على الصفحة، ثم حفظ القيم في النموذج الأصلي، أو تحويله إلى ملف PDF عادي.</string>
+    <string name="f5_xfa_dynamic_body">هذا نموذج XFA ديناميكي. يمكن فتحه بتخطيطه الأصلي كنموذج قابل للتعبئة على الصفحة، ثم حفظ القيم في النموذج الأصلي، أو تحويله إلى ملف PDF عادي.</string>
     <string name="f5_xfa_generated_title">نموذج مُنشأ من XFA</string>
     <string name="f5_xfa_generated_body">هذا الملف أُنشئ من نموذج XFA. بعد التعبئة يمكن كتابة القيم في بيانات النموذج الأصلي.</string>
     <string name="f5_xfa_open_form">فتح كنموذج قابل للتعبئة</string>
@@ -42,4 +42,7 @@
     <string name="f5_xfa_written">تمت كتابة %1$d من القيم في %2$s.</string>
     <string name="f5_fb_date">تاريخ</string>
     <string name="f5_fb_image">صورة</string>
+    <string name="f5_alert_title">رسالة من النموذج</string>
+    <string name="f5_add_row">إضافة صف</string>
+    <string name="f5_row_added">تمت إضافة صف جديد.</string>
 </resources>

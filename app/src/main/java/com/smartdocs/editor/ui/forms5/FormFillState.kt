@@ -17,10 +17,14 @@ import com.smartdocs.editor.core.forms5.FieldRules
 import com.smartdocs.editor.core.forms5.FieldValidation
 import com.smartdocs.editor.core.forms5.FormModel
 import com.smartdocs.editor.core.forms5.FormModelLoader
+import com.smartdocs.editor.core.forms5.FormScripts
+import com.smartdocs.editor.core.forms5.JsProps
 import com.smartdocs.editor.core.forms5.FormValueWriter
 import com.smartdocs.editor.core.forms5.Issue
 import com.smartdocs.editor.core.forms5.NavItem
 import com.smartdocs.editor.core.forms5.WKind
+import com.smartdocs.editor.core.forms5.XfaGenerated
+import com.smartdocs.editor.core.forms5.XfaRepeat
 import com.smartdocs.editor.ui.reader.ReaderState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -47,6 +51,16 @@ class FormFillState internal constructor(val reader: ReaderState) {
     var markDirty: () -> Unit = {}
 
     var model by mutableStateOf(FormModel.EMPTY); private set
+    /** Field JavaScript on the Rhino runtime (null: no scripts, or the engine could not start -> pattern-based logic). */
+    var scripts by mutableStateOf<FormScripts?>(null); private set
+    /** Bumped whenever a keystroke / commit script changed field properties (hidden, readonly, colours). */
+    private var propsVersion by mutableStateOf(0)
+    /** Last accepted value per field: a value rejected by a script is replaced by it (as Acrobat does). */
+    private val committed = HashMap<String, String>()
+    /** `app.alert` text or a rejection to show in a dialog ("" = the generic message for [errors]). */
+    var alert by mutableStateOf<String?>(null)
+    /** Field whose rejected value the [alert] is about. */
+    var alertField by mutableStateOf<String?>(null)
     private var loadedKey: String? = null
     private val loadMutex = Mutex()
 
@@ -78,12 +92,37 @@ class FormFillState internal constructor(val reader: ReaderState) {
 
     // ------------------------------------------------------------------ derived
 
-    /** Raw values of calculated fields that differ from what the file stores. */
-    val computed: Map<String, String> by derivedStateOf {
-        val m = model
-        if (!m.calc.hasCalculations) emptyMap()
-        else m.calc.recalculate(m.values.keys.associateWith { k -> edits[k] ?: m.values[k].orEmpty() })
+    private class Live(val values: Map<String, String>, val props: Map<String, JsProps>)
+
+    /**
+     * Calculation pass: calculate scripts on the JS runtime in /CO order; fields whose script failed (and every
+     * field when there is no engine) use the pattern-based FormCalcModel.
+     */
+    private val live: Live by derivedStateOf {
+        val m = model; val sc = scripts
+        @Suppress("UNUSED_VARIABLE") val v = propsVersion
+        val base = m.values.keys.associateWith { k -> edits[k] ?: m.values[k].orEmpty() }
+        val js = if (sc != null && sc.hasCalculations) runCatching { sc.calculate(base) }.getOrNull() else null
+        when {
+            sc != null && js != null -> {
+                val out = LinkedHashMap(js.changed)
+                if (js.failed.isNotEmpty() && m.calc.hasCalculations)
+                    m.calc.recalculate(base + out).forEach { (k, v2) -> if (k in js.failed || !sc.hasCalculate(k)) out[k] = v2 }
+                Live(out, synchronized(sc) { sc.props.toMap() })
+            }
+            m.calc.hasCalculations -> Live(m.calc.recalculate(base), sc?.let { synchronized(it) { it.props.toMap() } }.orEmpty())
+            else -> Live(emptyMap(), sc?.let { synchronized(it) { it.props.toMap() } }.orEmpty())
+        }
     }
+
+    /** Raw values of calculated fields that differ from what the file stores. */
+    val computed: Map<String, String> get() = live.values
+
+    /** Field properties changed by scripts (display, readonly, required, colours). */
+    fun props(name: String): JsProps? = live.props[name]
+
+    fun isHidden(w: FWidget) = w.hidden || props(w.name)?.hidden == true
+    fun isReadOnly(w: FWidget) = w.readOnly || props(w.name)?.readOnly == true
 
     /** Next/Previous order of widget ids. */
     val order: List<String> by derivedStateOf {
@@ -101,9 +140,9 @@ class FormFillState internal constructor(val reader: ReaderState) {
 
     val hasPending: Boolean get() = edits.isNotEmpty() || images.isNotEmpty()
 
-    fun isCalculated(name: String) = model.calc.isCalculated(name)
+    fun isCalculated(name: String) = model.calc.isCalculated(name) || scripts?.hasCalculate(name) == true
 
-    fun isTabStop(w: FWidget) = !w.readOnly && !w.hidden && !isCalculated(w.name) &&
+    fun isTabStop(w: FWidget) = !isReadOnly(w) && !isHidden(w) && !isCalculated(w.name) &&
         w.kind != WKind.SIGNATURE && w.kind != WKind.BUTTON
 
     fun value(name: String): String = edits[name] ?: computed[name] ?: model.values[name].orEmpty()
@@ -117,8 +156,34 @@ class FormFillState internal constructor(val reader: ReaderState) {
             val parts = raw.split('\n').filter { it.isNotEmpty() }.map { v -> w.exports.indexOf(v).takeIf { it >= 0 }?.let { w.options.getOrNull(it) } ?: v }
             return Display(parts.joinToString(", "))
         }
+        scripts?.takeIf { it.hasFormat(w.name) }?.let { sc -> runCatching { sc.format(w.name, raw) }.getOrNull()?.let { return Display(it.first, it.second) } }
         val spec = model.calc.scripts[w.name]?.format ?: return Display(raw)
         return AfFormat.format(spec, raw)
+    }
+
+    /**
+     * Keystroke event while typing in [w]: the edit from [old] to [new] as Acrobat's change / selection.
+     * Returns the text to keep (the script may rewrite the change) or null when the script rejected it.
+     */
+    fun keystroke(w: FWidget, old: String, new: String): String? {
+        val sc = scripts ?: return new
+        if (!sc.hasKeystroke(w.name)) return new
+        var p = 0
+        while (p < old.length && p < new.length && old[p] == new[p]) p++
+        var s = 0
+        while (s < old.length - p && s < new.length - p && old[old.length - 1 - s] == new[new.length - 1 - s]) s++
+        val out = runCatching { sc.keystroke(w.name, old, new.substring(p, new.length - s), p, old.length - s, allValues()) }.getOrNull() ?: return new
+        applyScriptSide(out.setValues - w.name, out.props.isNotEmpty())
+        out.alerts.firstOrNull { it.kind == null && it.text.isNotBlank() }?.let { alert = it.text; alertField = null }
+        return out.value
+    }
+
+    private fun allValues(): Map<String, String> { val m = model; return m.values.keys.associateWith { value(it) } }
+
+    /** Values other fields got from `getField(x).value = ...` in a keystroke / validate script. */
+    private fun applyScriptSide(set: Map<String, String>, propsChanged: Boolean) {
+        set.forEach { (k, v) -> if (k in model.values && value(k) != v) { if (v == model.values[k].orEmpty()) edits.remove(k) else edits[k] = v } }
+        if (propsChanged) propsVersion++
     }
 
     fun isOn(w: FWidget): Boolean = when (w.kind) {
@@ -138,8 +203,10 @@ class FormFillState internal constructor(val reader: ReaderState) {
             if (key == loadedKey) return
             val m = FormModelLoader.load(f, reader.password)
             withContext(Dispatchers.IO) { runCatching { acFile.store() } }
+            // the Rhino runtime starts here (document-level scripts run once), off the main thread
+            val sc = if (m.js.hasScripts) withContext(Dispatchers.Default) { FormScripts(m.js).takeIf { runCatching { it.available() }.getOrDefault(false) } } else null
             Snapshot.withMutableSnapshot {
-                model = m; loadedKey = key
+                model = m; scripts = sc; loadedKey = key; committed.clear()
                 if (activeId != null && m.widgets.none { it.id == activeId }) activeId = null
                 // pending edits of fields that no longer exist are dropped
                 edits.keys.filter { it !in m.values }.forEach { edits.remove(it) }
@@ -183,7 +250,7 @@ class FormFillState internal constructor(val reader: ReaderState) {
     fun setImage(name: String, file: File) { snapshot(); typingField = null; images[name] = file; markDirty() }
 
     fun toggle(w: FWidget) {
-        if (w.readOnly) return
+        if (isReadOnly(w)) return
         when (w.kind) {
             WKind.CHECK -> setValue(w.name, (!isOn(w)).toString())
             WKind.RADIO -> w.onValue?.let { if (value(w.name) != it) setValue(w.name, it) }
@@ -213,20 +280,22 @@ class FormFillState internal constructor(val reader: ReaderState) {
 
     /** Tap on a widget. */
     fun tap(w: FWidget) {
-        if (!enabled || w.hidden) return
+        if (!enabled || isHidden(w)) return
+        if (w.id != activeId && !commitActive()) return
         when (w.kind) {
-            WKind.CHECK, WKind.RADIO -> { commitActive(); toggle(w); activeId = w.id; typingField = null }
-            WKind.COMBO, WKind.LIST -> { if (w.readOnly) return; commitActive(); activeId = w.id; menuFor = if (w.kind == WKind.COMBO && w.editable) null else w.id }
-            WKind.TEXT -> { if (w.readOnly || isCalculated(w.name)) return; if (activeId != w.id) commitActive(); activeId = w.id }
-            WKind.IMAGE -> if (!w.readOnly) { commitActive(); imageTarget = w.name }
-            WKind.BUTTON -> w.action?.let { commitActive(); pendingAction = w to it }
+            WKind.CHECK, WKind.RADIO -> { toggle(w); activeId = w.id; typingField = null }
+            WKind.COMBO, WKind.LIST -> { if (isReadOnly(w)) return; activeId = w.id; menuFor = if (w.kind == WKind.COMBO && w.editable) null else w.id }
+            WKind.TEXT -> { if (isReadOnly(w) || isCalculated(w.name)) return; activeId = w.id }
+            WKind.IMAGE -> if (!isReadOnly(w)) imageTarget = w.name
+            WKind.BUTTON -> w.action?.let { pendingAction = w to it }
             WKind.SIGNATURE -> {}
         }
     }
 
     fun focus(id: String?) {
         if (id == activeId) return
-        commitActive(); activeId = id; menuFor = null
+        if (!commitActive()) return            // a rejected value keeps the focus in its field (Acrobat)
+        activeId = id; menuFor = null
         val w = active ?: return
         if (w.page != reader.currentPage) reader.jumpTo(w.page)
     }
@@ -239,19 +308,50 @@ class FormFillState internal constructor(val reader: ReaderState) {
         return if (w.kind == WKind.RADIO) model.widgets.first { it.name == w.name }.id else id
     }
 
-    fun done() { commitActive(); activeId = null; menuFor = null }
+    fun done() { if (!commitActive()) return; activeId = null; menuFor = null }
 
-    /** Validate the field being left and remember its value for autocomplete. */
-    fun commitActive() {
-        val w = active ?: return
+    /**
+     * Leaving the active field: keystroke (willCommit) and validate scripts on the JS runtime; a rejected value
+     * is replaced by the previous one and the script's alert is shown. Without a script (or when the engine
+     * fails) the pattern-based checks run. Returns false when the value was rejected.
+     */
+    fun commitActive(): Boolean {
+        val w = active ?: return true
         typingField = null
-        validate(w, requiredToo = false)
+        val v = value(w.name)
+        val previous = committed[w.name] ?: model.values[w.name].orEmpty()
+        val sc = scripts
+        val textual = w.kind == WKind.TEXT || (w.kind == WKind.COMBO && w.editable)
+        if (textual && sc != null && v != previous) {
+            val out = runCatching { sc.commit(w.name, v, allValues()) }.getOrNull()
+            if (out != null && out.ran) {
+                applyScriptSide(out.setValues - w.name, out.props.isNotEmpty())
+                if (!out.accepted) {
+                    setValue(w.name, previous)
+                    out.issue?.let { errors[w.name] = it }
+                    alert = out.alertText ?: ""; alertField = w.name
+                    return false
+                }
+                if (out.value != v) setValue(w.name, out.value, typing = true)
+                errors.remove(w.name); committed[w.name] = out.value
+                out.alertText?.let { alert = it; alertField = null }
+                remember(w)
+                return true
+            }
+        }
+        val issue = validate(w, requiredToo = false)
+        if (issue == null) committed[w.name] = v
+        remember(w)
+        return true
+    }
+
+    private fun remember(w: FWidget) {
         if (w.kind == WKind.TEXT && !w.password && w.name in edits) runCatching { acFile.store().record(w.name, value(w.name)); acFile.save() }
     }
 
     fun validate(w: FWidget, requiredToo: Boolean): Issue? {
         val sc = model.calc.scripts[w.name]
-        val rules = FieldRules(required = requiredToo && w.required, maxLen = w.maxLen, keystroke = sc?.keystroke ?: com.smartdocs.editor.core.forms.KeystrokeKind.NONE,
+        val rules = FieldRules(required = requiredToo && (w.required || props(w.name)?.required == true), maxLen = w.maxLen, keystroke = sc?.keystroke ?: com.smartdocs.editor.core.forms.KeystrokeKind.NONE,
             format = sc?.format, validate = w.validate)
         val issue = if (w.kind == WKind.TEXT || (requiredToo && w.required)) FieldValidation.check(value(w.name), rules) else null
         if (issue == null) errors.remove(w.name) else errors[w.name] = issue
@@ -275,6 +375,8 @@ class FormFillState internal constructor(val reader: ReaderState) {
         computed.forEach { (k, v) -> values[k] = v }
         val all = m.values.keys.associateWith { values[it] ?: m.values[it].orEmpty() }
         val display = HashMap(m.calc.displayMap(all).filterKeys { it in values })
+        // format (F) scripts on the JS runtime give the appearance text; the pattern formatter is the fallback
+        scripts?.let { sc -> values.keys.forEach { k -> if (sc.hasFormat(k)) runCatching { sc.format(k, all[k].orEmpty()) }.getOrNull()?.let { display[k] = it.first } } }
         computed.keys.forEach { k -> if (k !in display) display[k] = all[k].orEmpty() }
         return values to display
     }
@@ -298,7 +400,7 @@ class FormFillState internal constructor(val reader: ReaderState) {
         withContext(Dispatchers.Main.immediate) {
             Snapshot.withMutableSnapshot {
                 edits.clear(); images.clear(); errors.clear(); activeId = null; menuFor = null
-                undoStack.clear(); redoStack.clear(); canUndo = false; canRedo = false
+                undoStack.clear(); redoStack.clear(); canUndo = false; canRedo = false; committed.clear()
             }
         }
         swap(tmp)
@@ -313,9 +415,33 @@ class FormFillState internal constructor(val reader: ReaderState) {
         return out
     }
 
+    /**
+     * Generated XFA form: add an instance of the repeating subform [r]. The reader saves first, the values go
+     * into the original's datasets with the new (empty) instance, and the form is generated again in place.
+     */
+    fun addRow(r: XfaRepeat) {
+        val f = reader.file ?: return
+        if (busy || !r.canAdd) return
+        reader.scope.launch {
+            busy = true
+            try {
+                if (!commitActive()) return@launch
+                activeId = null
+                if (reader.dirty && !reader.save()) throw IllegalStateException(reader.error ?: "save")
+                val tmp = File(f.parentFile, ".${f.nameWithoutExtension}.rows.pdf")
+                val src = try { XfaGenerated.addRow(reader.context, f, r, tmp) } catch (e: Throwable) { tmp.delete(); throw e }
+                reader.swapFile(tmp)
+                runCatching { reader.app.documents.writeBack(src) }
+                message = FormMessage.RowAdded
+            } catch (e: Exception) {
+                message = FormMessage.Failed(e.message ?: e.toString())
+            } finally { busy = false }
+        }
+    }
+
     /** Leaving without saving. */
     fun discard() {
-        edits.clear(); images.clear(); errors.clear(); activeId = null; menuFor = null
+        edits.clear(); images.clear(); errors.clear(); activeId = null; menuFor = null; committed.clear(); alert = null
         undoStack.clear(); redoStack.clear(); canUndo = false; canRedo = false
     }
 }
@@ -327,4 +453,5 @@ sealed class FormMessage {
     data class MissingRequired(val count: Int) : FormMessage()
     data object PrintHint : FormMessage()
     data class Reset(val count: Int) : FormMessage()
+    data object RowAdded : FormMessage()
 }

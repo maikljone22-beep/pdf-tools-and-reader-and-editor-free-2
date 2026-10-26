@@ -20,3 +20,14 @@
 -dontwarn javax.annotation.**
 
 -keep class com.smartdocs.editor.BuildConfig { *; }
+
+# Rhino (form JavaScript, forms5b)
+-keep class org.mozilla.javascript.** { *; }
+-keep class org.mozilla.classfile.** { *; }
+-dontwarn org.mozilla.javascript.**
+-dontwarn org.mozilla.classfile.**
+-dontwarn javax.script.**
+-dontwarn java.awt.**
+-dontwarn javax.swing.**
+-dontwarn java.beans.**
+-dontwarn jdk.dynalink.**
