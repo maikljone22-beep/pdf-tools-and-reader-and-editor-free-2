@@ -1,6 +1,7 @@
 package com.smartdocs.editor.core.sync
 
 import android.content.Context
+import com.smartdocs.editor.core.cloud.ProviderId
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import org.json.JSONArray
@@ -10,7 +11,7 @@ import java.util.UUID
 
 enum class SyncStatus { IDLE, PENDING, RUNNING, SYNCED, FAILED }
 
-/** A local SAF tree folder kept in two-way sync with a Google Drive folder. */
+/** A local SAF tree folder kept in two-way sync with a folder of one cloud provider (Drive, OneDrive, Dropbox or Box). */
 data class SyncPair(
     val id: String = UUID.randomUUID().toString(),
     val treeUri: String,
@@ -25,10 +26,14 @@ data class SyncPair(
     val uploaded: Int = 0,
     val downloaded: Int = 0,
     val conflicts: Int = 0,
+    /** Cloud of the remote folder (pairs saved before share6 have no key and are Google Drive). */
+    val provider: ProviderId = ProviderId.DRIVE,
+    /** Files left failed after the last run (they are retried with back-off). */
+    val failed: Int = 0,
 ) {
     fun toJson(): JSONObject = JSONObject().put("id", id).put("tree", treeUri).put("ln", localName).put("rid", remoteFolderId).put("rn", remoteName)
         .put("wifi", wifiOnly).put("auto", auto).put("st", status.name).put("last", lastSync).put("msg", message ?: "")
-        .put("up", uploaded).put("down", downloaded).put("conf", conflicts)
+        .put("up", uploaded).put("down", downloaded).put("conf", conflicts).put("pv", provider.key).put("fail", failed)
 
     companion object {
         fun from(o: JSONObject) = SyncPair(
@@ -36,6 +41,7 @@ data class SyncPair(
             remoteName = o.optString("rn"), wifiOnly = o.optBoolean("wifi", true), auto = o.optBoolean("auto", true),
             status = runCatching { SyncStatus.valueOf(o.optString("st")) }.getOrDefault(SyncStatus.IDLE), lastSync = o.optLong("last"),
             message = o.optString("msg").ifEmpty { null }, uploaded = o.optInt("up"), downloaded = o.optInt("down"), conflicts = o.optInt("conf"),
+            provider = ProviderId.of(o.optString("pv").ifEmpty { null }) ?: ProviderId.DRIVE, failed = o.optInt("fail"),
         )
     }
 }
@@ -68,6 +74,8 @@ object SyncStore {
     fun remove(context: Context, id: String) = synchronized(this) {
         save(context, load(context).filterNot { it.id == id })
         snapshotFile(context, id).delete()
+        queueFile(context, id).delete()
+        _queues.value = _queues.value - id
     }
     fun update(context: Context, id: String, block: (SyncPair) -> SyncPair) = synchronized(this) {
         save(context, load(context).map { if (it.id == id) block(it) else it })
@@ -90,6 +98,46 @@ object SyncStore {
             }
         }
         return map
+    }
+
+    // ---- per-file queue (share6) ----
+    private val _queues = MutableStateFlow<Map<String, List<SyncQueue.QItem>>>(emptyMap())
+    /** Live per-pair file queues for the UI. */
+    val queues: StateFlow<Map<String, List<SyncQueue.QItem>>> = _queues
+
+    private fun queueFile(context: Context, id: String) = File(context.filesDir, "sync/$id.queue.json").apply { parentFile?.mkdirs() }
+
+    fun queue(context: Context, id: String): SyncQueue = synchronized(this) {
+        val f = queueFile(context, id)
+        val q = if (f.exists()) runCatching { SyncQueue.fromJson(JSONArray(f.readText())) }.getOrDefault(SyncQueue()) else SyncQueue()
+        _queues.value = _queues.value + (id to q.all)
+        q
+    }
+
+    fun saveQueue(context: Context, id: String, q: SyncQueue) = synchronized(this) {
+        writeAtomically(queueFile(context, id), q.toJson().toString())
+        _queues.value = _queues.value + (id to q.all)
+    }
+
+    /** Publishes an in-progress queue to the UI without writing it (called often during a run). */
+    fun publishQueue(id: String, q: SyncQueue) { _queues.value = _queues.value + (id to q.all) }
+
+    /** Manual "retry" of one failed file (or all when [path] is null); the caller then requests a run. */
+    fun retry(context: Context, id: String, path: String?) {
+        val q = queue(context, id)
+        val now = System.currentTimeMillis()
+        if (path == null) q.retryAll(now) else q.retry(path, now)
+        saveQueue(context, id, q)
+    }
+
+    // ---- change-feed cursor per provider (remote watcher) ----
+    fun cursor(context: Context, provider: ProviderId): String? = prefs(context).getString("cursor_${provider.key}", null)
+    fun setCursor(context: Context, provider: ProviderId, cursor: String?) = prefs(context).edit().putString("cursor_${provider.key}", cursor).apply()
+
+    private fun writeAtomically(f: File, text: String) {
+        val tmp = File(f.parentFile, f.name + ".tmp")
+        tmp.writeText(text)
+        if (!tmp.renameTo(f)) { tmp.copyTo(f, overwrite = true); tmp.delete() }
     }
 
     fun saveSnapshot(context: Context, id: String, map: Map<String, Entry>) {

@@ -184,6 +184,49 @@ class GoogleDrive private constructor(private val context: Context) : CloudProvi
         CloudHttp.string(req); Unit
     }
 
+    override suspend fun delete(item: CloudItem) = trash(item.id)
+
+    override suspend fun metadataOf(item: CloudItem): CloudItem? =
+        try { metadata(item.id) } catch (e: HttpException) { if (e.code == 404) null else throw e }
+
+    override val supportsLinks: Boolean get() = true
+
+    /** "Anyone with the link" reader permission (works for files this app may write), then the web link. */
+    override suspend fun shareLink(item: CloudItem, anyone: Boolean): String = authed { t ->
+        if (anyone) runCatching {
+            val body = JSONObject().put("role", "reader").put("type", "anyone").toString()
+            CloudHttp.string(Request.Builder().url("$API/files/${item.id}/permissions?fields=id").header("Authorization", "Bearer $t")
+                .post(body.toRequestBody(CloudHttp.JSON)).build())
+        }
+        JSONObject(CloudHttp.string(get("$API/files/${item.id}?fields=webViewLink", t))).optString("webViewLink").takeIf { it.isNotEmpty() }
+            ?: "https://drive.google.com/file/d/${item.id}/view"
+    }
+
+    override suspend fun changeCursor(): String? = authed { t ->
+        JSONObject(CloudHttp.string(get("$API/changes/startPageToken", t))).optString("startPageToken").ifEmpty { null }
+    }
+
+    override suspend fun changesSince(cursor: String): Pair<Boolean, String> = authed { t ->
+        var token = cursor
+        var changed = false
+        try {
+            for (round in 0 until 10) {
+                val o = JSONObject(CloudHttp.string(get("$API/changes?pageToken=$token&pageSize=200&fields=newStartPageToken,nextPageToken,changes(fileId)", t)))
+                if ((o.optJSONArray("changes")?.length() ?: 0) > 0) changed = true
+                val fresh = o.optString("newStartPageToken")
+                if (fresh.isNotEmpty()) { token = fresh; break }
+                val next = o.optString("nextPageToken")
+                if (next.isEmpty()) break
+                token = next
+            }
+            changed to token
+        } catch (e: HttpException) {
+            if (e.code == 404 || e.code == 410 || e.code == 400)
+                true to JSONObject(CloudHttp.string(get("$API/changes/startPageToken", t))).optString("startPageToken").ifEmpty { cursor }
+            else throw e
+        }
+    }
+
     override suspend fun disconnect() {
         withContext(Dispatchers.IO) {
             prefs.getString("token", null)?.let { tok ->

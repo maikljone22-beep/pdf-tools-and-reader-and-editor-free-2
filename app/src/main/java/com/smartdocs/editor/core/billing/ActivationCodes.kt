@@ -18,12 +18,15 @@ import javax.crypto.spec.SecretKeySpec
  *   [7..14]  first 8 bytes of HMAC-SHA256(secret, bytes[0..6])
  * The secret comes from `pro.properties` → BuildConfig.PRO_CODE_SECRET (see MODULE_acct.md); empty secret = activation disabled.
  *
- * Honest limits: codes are device-agnostic (one code can be shared), cannot be revoked offline, and the secret
+ * Server mode (licence server configured, see [LicenseClient]): [redeem] sends the code to `/activate`, which checks the
+ * same HMAC with the secret kept on the server, enforces a device limit and a revocation list, and returns a signed
+ * licence. The embedded PRO_CODE_SECRET is then ignored (leave `codeSecret` empty in pro.properties).
+ *
+ * Honest limits (client mode): codes are device-agnostic (one code can be shared), cannot be revoked offline, and the secret
  * can be extracted from the APK by a determined attacker. Good enough for small-scale offline sales; use signed
  * server-side licences for stronger protection.
  */
 object ActivationCodes {
-    private const val ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
     private const val DAY = 24L * 3600 * 1000
 
     enum class Plan(val code: Int, val days: Int) { MONTH(1, 31), YEAR(2, 366), LIFETIME(3, 0) }
@@ -34,40 +37,30 @@ object ActivationCodes {
         data object BadSignature : Result
         data object Expired : Result
         data object Disabled : Result
+        /** Server mode: the seller revoked this code. */
+        data object Revoked : Result
+        /** Server mode: the code is already active on the maximum number of devices. */
+        data object DeviceLimit : Result
+        /** Server mode: the licence server could not be reached. */
+        data object Network : Result
     }
 
     private val secret: ByteArray get() = BuildCfg.string("PRO_CODE_SECRET").toByteArray(Charsets.UTF_8)
-    val enabled: Boolean get() = secret.isNotEmpty()
+    /** Codes can be entered: a licence server is configured, or an offline secret is embedded. */
+    val enabled: Boolean get() = LicenseClient.configured || secret.isNotEmpty()
+
+    /** True when codes are checked by the licence server (the UI shows the "needs internet" note). */
+    val online: Boolean get() = LicenseClient.configured
 
     private fun mac(data: ByteArray, key: ByteArray): ByteArray =
         Mac.getInstance("HmacSHA256").apply { init(SecretKeySpec(key, "HmacSHA256")) }.doFinal(data).copyOf(8)
 
-    fun normalize(input: String): String = input.uppercase().filter { !it.isWhitespace() && it != '-' }
-        .map { when (it) { 'O' -> '0'; 'I', 'L' -> '1'; 'U' -> 'V'; else -> it } }.joinToString("")
-
-    fun encode(bytes: ByteArray): String {
-        val sb = StringBuilder(); var buffer = 0; var bits = 0
-        for (b in bytes) {
-            buffer = (buffer shl 8) or (b.toInt() and 0xFF); bits += 8
-            while (bits >= 5) { sb.append(ALPHABET[(buffer shr (bits - 5)) and 31]); bits -= 5 }
-        }
-        if (bits > 0) sb.append(ALPHABET[(buffer shl (5 - bits)) and 31])
-        return sb.chunked(4).joinToString("-")
-    }
-
-    fun decode(code: String): ByteArray? {
-        val s = normalize(code)
-        if (s.length != 24) return null
-        val out = ArrayList<Byte>(15); var buffer = 0; var bits = 0
-        for (c in s) {
-            val v = ALPHABET.indexOf(c); if (v < 0) return null
-            buffer = (buffer shl 5) or v; bits += 5
-            if (bits >= 8) { out += ((buffer shr (bits - 8)) and 0xFF).toByte(); bits -= 8 }
-        }
-        return out.toByteArray().takeIf { it.size == 15 }
-    }
+    fun normalize(input: String): String = CodeFormat.normalize(input)
+    fun encode(bytes: ByteArray): String = CodeFormat.encode(bytes)
+    fun decode(code: String): ByteArray? = CodeFormat.decode(code)
 
     fun verify(code: String, now: Long = System.currentTimeMillis()): Result {
+        if (LicenseClient.configured) return Result.Disabled // the secret is not trusted in server mode: use redeem()
         val key = secret
         if (key.isEmpty()) return Result.Disabled
         val b = decode(code) ?: return Result.Malformed
@@ -80,14 +73,42 @@ object ActivationCodes {
         return Result.Valid(plan, expires)
     }
 
-    /** Verifies and stores the entitlement. */
+    /** Offline verification + store (client mode only; server mode returns [Result.Disabled] — call [redeem]). */
     fun activate(context: Context, code: String): Result {
         val r = verify(code)
         if (r is Result.Valid) {
             Pro.set(context, Pro.Entitlement(Pro.Source.CODE, "code:${r.plan.name.lowercase()}", r.expires, System.currentTimeMillis()))
-            context.applicationContext.getSharedPreferences("pro_entitlement", Context.MODE_PRIVATE).edit().putString("code", normalize(code)).apply()
+            Pro.storeCode(context, normalize(code))
         }
         return r
+    }
+
+    /**
+     * Redeems a code: through the licence server when it is configured (needs a connection), otherwise offline as
+     * [activate]. Safe to call from the main thread (switches to IO).
+     */
+    suspend fun redeem(context: Context, code: String): Result {
+        if (!LicenseClient.configured) return activate(context, code)
+        if (decode(code) == null) return Result.Malformed
+        return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val reply = try { LicenseClient.activate(context, code) } catch (e: LicenseClient.NetworkException) { return@withContext Result.Network }
+            val token = reply.body.optString("token")
+            when {
+                reply.ok && token.isNotEmpty() -> {
+                    if (!LicenseClient.store(context, token)) return@withContext Result.BadSignature
+                    Pro.storeCode(context, normalize(code))
+                    val c = Pro.load(context).claims
+                    val plan = Plan.entries.firstOrNull { it.name.equals(c?.plan, true) } ?: Plan.MONTH
+                    Result.Valid(plan, c?.until ?: 0L)
+                }
+                reply.status == 403 && reply.error == "revoked" -> Result.Revoked
+                reply.status == 409 -> Result.DeviceLimit
+                reply.status == 410 -> Result.Expired
+                reply.status == 400 && reply.error == "malformed" -> Result.Malformed
+                reply.status in 400..499 -> Result.BadSignature
+                else -> Result.Network
+            }
+        }
     }
 
     /**

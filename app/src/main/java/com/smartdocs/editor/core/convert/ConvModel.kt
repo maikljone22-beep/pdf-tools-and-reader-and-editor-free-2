@@ -20,6 +20,10 @@ data class Glyph(
     val fontSize: Float,
     val bold: Boolean = false,
     val italic: Boolean = false,
+    /** Fill colour 0xRRGGBB (0 = black). */
+    val color: Int = 0,
+    /** Common font family name ([FontMap]), null = unknown. */
+    val font: String? = null,
 ) {
     val right get() = x + w
     val cx get() = x + w / 2f
@@ -35,6 +39,9 @@ data class Segment(val x1: Float, val y1: Float, val x2: Float, val y2: Float) {
 /** An image drawn on the page with its placement and encoded bytes (`ext` = "png" or "jpeg"). */
 class PageImage(val x: Float, val top: Float, val w: Float, val h: Float, val bytes: ByteArray, val ext: String)
 
+/** A filled (shaded) rectangle painted on the page, colour 0xRRGGBB. */
+class Fill(val rect: Rect, val color: Int)
+
 /** Raw extracted content of a page. */
 class PageContent(
     val index: Int,
@@ -43,6 +50,7 @@ class PageContent(
     val glyphs: List<Glyph>,
     val segments: List<Segment> = emptyList(),
     val images: List<PageImage> = emptyList(),
+    val fills: List<Fill> = emptyList(),
 )
 
 data class Rect(val x0: Float, val y0: Float, val x1: Float, val y1: Float) {
@@ -61,6 +69,13 @@ class Word(val glyphs: List<Glyph>, val text: String, val rtl: Boolean) {
     val fontSize = glyphs.map { it.fontSize }.sorted()[glyphs.size / 2]
     val bold = glyphs.count { it.bold } * 2 > glyphs.size
     val italic = glyphs.count { it.italic } * 2 > glyphs.size
+    /** Majority glyph colour / font family. */
+    val color: Int = glyphs.groupingBy { it.color }.eachCount().maxByOrNull { it.value }!!.key
+    val font: String? = glyphs.mapNotNull { it.font }.groupingBy { it }.eachCount().maxByOrNull { it.value }?.key
+    /** Set by [Decorations]: a rule drawn under / through the word, and a highlight box behind it. */
+    var underline = false
+    var strike = false
+    var bg: Int? = null
 }
 
 /** A text line. [words] are in LOGICAL (reading) order; [visual] keeps them left → right. */
@@ -89,6 +104,8 @@ sealed class Block {
 class ParagraphBlock(val lines: List<Line>, val rtl: Boolean, val headingLevel: Int, val align: Align) : Block() {
     override val rect: Rect = lines.map { it.rect }.reduce { a, b -> a.union(b) }
     val fontSize get() = lines.map { it.fontSize }.sorted()[lines.size / 2]
+    /** Paragraph shading from a box painted behind it (0xRRGGBB), set by [Decorations]. */
+    var shade: Int? = null
 }
 
 /** A table cell. [row]/[col] are grid indexes in VISUAL order (col 0 = leftmost). */
@@ -96,6 +113,8 @@ class TableCell(val row: Int, val col: Int, val rowSpan: Int, val colSpan: Int, 
     val text: String get() = lines.joinToString("\n") { it.text }
     val rtl: Boolean get() = lines.count { it.rtl } * 2 > lines.size
     val bold: Boolean get() = lines.isNotEmpty() && lines.all { it.bold }
+    /** Cell background colour from the PDF (0xRRGGBB), set by [Decorations]. */
+    var fill: Int? = null
 }
 
 /** A detected table. [colX] has cols+1 boundaries, [rowY] rows+1 boundaries. */
@@ -116,7 +135,14 @@ class ImageBlock(val image: PageImage) : Block() {
 }
 
 /** Analysed page: blocks in reading order (top → bottom). */
-class PageLayout(val index: Int, val width: Float, val height: Float, val blocks: List<Block>, val bodyFontSize: Float) {
+class PageLayout(
+    val index: Int, val width: Float, val height: Float, val blocks: List<Block>, val bodyFontSize: Float,
+    /** Running header / footer lines taken out of [blocks] ([PageFurniture]). */
+    val header: List<Line> = emptyList(),
+    val footer: List<Line> = emptyList(),
+    /** The PDF painted its own fills (cell / paragraph backgrounds): writers skip synthetic header shading. */
+    val hasFills: Boolean = false,
+) {
     /** Strong RTL / LTR letter counts of the page text. */
     fun strongCounts(): IntArray {
         val rl = IntArray(2)

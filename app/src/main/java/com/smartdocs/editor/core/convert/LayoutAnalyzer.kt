@@ -13,9 +13,13 @@ object LayoutAnalyzer {
     /** Column ("chunk") break inside a line when the gap exceeds this fraction of the font size. */
     const val CHUNK_GAP = 1.2f
 
-    fun analyze(page: PageContent, detectTables: Boolean = true): PageLayout {
-        val lines = buildLines(page.glyphs)
-        val body = bodyFontSize(lines)
+    fun analyze(page: PageContent, detectTables: Boolean = true, furniture: PageFurniture = PageFurniture.NONE): PageLayout {
+        val all = buildLines(page.glyphs)
+        val body = bodyFontSize(all)
+        val header = if (furniture.isEmpty) emptyList() else all.filter { furniture.isHeader(it, page.height, body) }
+        val footer = if (furniture.isEmpty) emptyList() else all.filter { furniture.isFooter(it, page.height, body) }
+        val lines = if (header.isEmpty() && footer.isEmpty()) all else all.filter { it !in header && it !in footer }
+        Decorations.decorateWords(all, page.segments, page.fills, page.width)
         val blocks = ArrayList<Block>()
         var rest = lines
         if (detectTables) {
@@ -27,11 +31,24 @@ object LayoutAnalyzer {
             rest = rest.filter { it !in stream.usedLines }
         }
         blocks += paragraphs(rest, body, page.width)
+        val fills = page.fills.filter { !Decorations.isBackground(it.color) }
+        if (fills.isNotEmpty()) for (b in blocks) when (b) {
+            is TableBlock -> {
+                Decorations.fillCells(b, fills)
+                // a cell fill is not a highlight of the words in it
+                b.cells.forEach { c -> c.fill?.let { f -> c.lines.forEach { l -> l.visual.forEach { w -> if (w.bg == f) w.bg = null } } } }
+            }
+            is ParagraphBlock -> {
+                Decorations.shadeParagraph(b, fills)
+                b.shade?.let { f -> b.lines.forEach { l -> l.visual.forEach { w -> if (w.bg == f) w.bg = null } } }
+            }
+            else -> Unit
+        }
         page.images.forEach { blocks += ImageBlock(it) }
-        // reading order: top → bottom; blocks starting on the same line go right → left on RTL pages
+        // reading order: recursive XY-cut (columns left → right, right → left on Arabic pages)
         val rtlPage = lines.sumOf { if (it.rtl) it.text.length else 0 } * 2 > lines.sumOf { it.text.length }
-        blocks.sortWith(compareBy<Block>({ Math.round(it.rect.y0 / 4f) }, { if (rtlPage) -it.rect.x1 else it.rect.x0 }))
-        return PageLayout(page.index, page.width, page.height, blocks, body)
+        val ordered = ReadingOrder.order(blocks, rtlPage)
+        return PageLayout(page.index, page.width, page.height, ordered, body, header, footer, hasFills = fills.isNotEmpty())
     }
 
     // ---------------------------------------------------------------- lines & words
@@ -172,12 +189,17 @@ object LayoutAnalyzer {
     /** Gutter between text columns: a gap of this many font sizes splits a line into separate lines. */
     private const val GUTTER = 2.5f
 
-    /** Splits lines at column gutters so two-column layouts become two flows. */
-    fun splitColumns(lines: List<Line>): List<Line> = lines.flatMap { l ->
+    /**
+     * Splits lines at column gutters so two-column layouts become two flows: gaps wider than [GUTTER] font sizes, and
+     * narrower gaps that line up with a [ReadingOrder.rivers] gutter over several lines.
+     */
+    fun splitColumns(lines: List<Line>, rivers: List<Pair<Float, Float>> = ReadingOrder.rivers(lines)): List<Line> = lines.flatMap { l ->
         val parts = ArrayList<MutableList<Word>>()
         for (w in l.visual) {
             val p = parts.lastOrNull()?.last()
-            if (p == null || w.x0 - p.x1 > GUTTER * minOf(p.fontSize, w.fontSize)) parts += mutableListOf(w) else parts.last() += w
+            val gap = if (p == null) 0f else w.x0 - p.x1
+            val river = p != null && gap > 0.5f * minOf(p.fontSize, w.fontSize) && rivers.any { r -> p.x1 <= r.second + 0.5f && w.x0 >= r.first - 0.5f && minOf(w.x0, r.second) - maxOf(p.x1, r.first) > 0f }
+            if (p == null || gap > GUTTER * minOf(p.fontSize, w.fontSize) || river) parts += mutableListOf(w) else parts.last() += w
         }
         if (parts.size == 1) listOf(l) else parts.map { lineOf(it) }
     }

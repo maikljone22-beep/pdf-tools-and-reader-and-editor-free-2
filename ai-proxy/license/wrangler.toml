@@ -1,0 +1,22 @@
+name = "smartdocs-license"
+main = "worker.js"
+compatibility_date = "2026-01-01"
+
+# KV for codes, activated devices, purchases, revocations (create with `wrangler kv namespace create LICENSES`)
+[[kv_namespaces]]
+binding = "LICENSES"
+id = "<your-kv-namespace-id>"
+
+[vars]
+PACKAGE_NAME = "com.smartdocs.editor"
+MAX_DEVICES = "2"
+TOKEN_DAYS = "10"
+# public half of the signing key (node keygen.mjs → PUBLIC_KEY); not secret
+PUBLIC_KEY = ""
+
+# Secrets (never in this file):
+#   wrangler secret put SIGNING_KEY            (keygen.mjs → SIGNING_KEY)
+#   wrangler secret put CODE_SECRET            (same value as the old pro.properties codeSecret, so existing codes keep working)
+#   wrangler secret put ADMIN_KEY              (long random string for /admin/*)
+#   wrangler secret put PLAY_SERVICE_ACCOUNT   (paste the whole service-account JSON)
+#   wrangler secret put RTDN_SECRET            (random string, part of the Pub/Sub push URL)

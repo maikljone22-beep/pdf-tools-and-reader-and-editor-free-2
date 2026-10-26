@@ -26,6 +26,24 @@ object CloudConfig {
      *  If a provider refuses custom schemes, register `https://<collab-worker>/oauth/<provider>` (the worker bounces to the app). */
     val oneDriveRedirect: String get() = BuildCfg.string("CLOUD_ONEDRIVE_REDIRECT", "smartdocs://oauth/onedrive")
     val dropboxRedirect: String get() = BuildCfg.string("CLOUD_DROPBOX_REDIRECT", "smartdocs://oauth/dropbox")
+
+    /** Box (share6): client id of a Box "OAuth 2.0 user authentication" app. */
+    val boxClientId: String get() = BuildCfg.string("CLOUD_BOX_CLIENT_ID")
+
+    /** Box only accepts https redirects: default = the collab worker's bounce page `/oauth/box` (forwards to the app). */
+    val boxRedirect: String get() = BuildCfg.string("CLOUD_BOX_REDIRECT").ifEmpty {
+        BuildCfg.string("COLLAB_URL").trimEnd('/').takeIf { it.isNotEmpty() }?.let { "$it/oauth/box" } ?: "smartdocs://oauth/box"
+    }
+
+    /**
+     * Box needs the client secret to exchange codes. Preferred: the collab worker keeps it (`wrangler secret put BOX_CLIENT_SECRET`)
+     * and exposes `/oauth-token/box`. Fallback (less safe, the secret ships in the APK): `boxClientSecret=` in cloud.properties.
+     */
+    val boxClientSecret: String get() = BuildCfg.string("CLOUD_BOX_CLIENT_SECRET")
+    val boxTokenUrl: String get() = BuildCfg.string("CLOUD_BOX_TOKEN_URL").ifEmpty {
+        if (boxClientSecret.isNotEmpty()) "https://api.box.com/oauth2/token"
+        else BuildCfg.string("COLLAB_URL").trimEnd('/').takeIf { it.isNotEmpty() }?.let { "$it/oauth-token/box" } ?: ""
+    }
 }
 
 /** Tokens of one OAuth provider, persisted in private SharedPreferences. */
@@ -41,7 +59,8 @@ class OAuthTokens(context: Context, provider: String) {
 
 /** Authorization-code flow with PKCE in a Custom Tab; the redirect comes back to MainActivity as `smartdocs://oauth/<provider>`. */
 object OAuthPkce {
-    data class Endpoint(val provider: ProviderId, val authUrl: String, val tokenUrl: String, val clientId: String, val redirect: String, val scope: String?, val extra: Map<String, String>)
+    data class Endpoint(val provider: ProviderId, val authUrl: String, val tokenUrl: String, val clientId: String, val redirect: String, val scope: String?, val extra: Map<String, String>,
+                        val clientSecret: String? = null)
 
     fun endpoint(id: ProviderId): Endpoint? = when (id) {
         ProviderId.ONEDRIVE -> CloudConfig.oneDriveClientId.takeIf { it.isNotEmpty() }?.let {
@@ -51,6 +70,10 @@ object OAuthPkce {
         ProviderId.DROPBOX -> CloudConfig.dropboxAppKey.takeIf { it.isNotEmpty() }?.let {
             Endpoint(id, "https://www.dropbox.com/oauth2/authorize", "https://api.dropboxapi.com/oauth2/token",
                 it, CloudConfig.dropboxRedirect, null, mapOf("token_access_type" to "offline"))
+        }
+        ProviderId.BOX -> CloudConfig.boxClientId.takeIf { it.isNotEmpty() && CloudConfig.boxTokenUrl.isNotEmpty() }?.let {
+            Endpoint(id, "https://account.box.com/api/oauth2/authorize", CloudConfig.boxTokenUrl, it, CloudConfig.boxRedirect, null, emptyMap(),
+                clientSecret = CloudConfig.boxClientSecret.ifEmpty { null })
         }
         ProviderId.DRIVE -> null
     }
@@ -91,7 +114,7 @@ object OAuthPkce {
         val form = FormBody.Builder()
             .add("client_id", ep.clientId).add("grant_type", "authorization_code").add("code", code)
             .add("redirect_uri", ep.redirect).add("code_verifier", p.getString("verifier", "") ?: "")
-            .apply { ep.scope?.let { add("scope", it) } }
+            .apply { ep.scope?.let { add("scope", it) }; ep.clientSecret?.let { add("client_secret", it) } }
             .build()
         val json = JSONObject(CloudHttp.string(Request.Builder().url(ep.tokenUrl).post(form).build()))
         save(OAuthTokens(context, id.key), json)
@@ -106,17 +129,17 @@ object OAuthPkce {
     }
 
     /** Valid access token for [id], refreshed when it expires within a minute. */
-    fun accessToken(context: Context, id: ProviderId, force: Boolean = false): String {
+    fun accessToken(context: Context, id: ProviderId, force: Boolean = false): String = synchronized(this) { // Box refresh tokens are single-use
         val t = OAuthTokens(context, id.key)
         val access = t.access
-        if (!force && access != null && System.currentTimeMillis() < t.expiresAt - 60_000) return access
+        if (!force && access != null && System.currentTimeMillis() < t.expiresAt - 60_000) return@synchronized access
         val refresh = t.refresh ?: throw AuthRequiredException()
         val ep = endpoint(id) ?: throw AuthRequiredException("not configured")
         val form = FormBody.Builder().add("client_id", ep.clientId).add("grant_type", "refresh_token").add("refresh_token", refresh)
-            .apply { ep.scope?.let { add("scope", it) } }.build()
+            .apply { ep.scope?.let { add("scope", it) }; ep.clientSecret?.let { add("client_secret", it) } }.build()
         val json = try { JSONObject(CloudHttp.string(Request.Builder().url(ep.tokenUrl).post(form).build())) }
             catch (e: HttpException) { if (e.code == 400) { t.clear(); throw AuthRequiredException("refresh rejected") } else throw e }
         save(t, json)
-        return t.access!!
+        t.access!!
     }
 }

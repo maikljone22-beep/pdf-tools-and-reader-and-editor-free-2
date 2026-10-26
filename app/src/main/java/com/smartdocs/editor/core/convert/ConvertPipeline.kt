@@ -20,6 +20,11 @@ data class ConvertOptions(
     val sheetName: (Int) -> String = { "Page $it" },
     /** XLSX single-sheet mode: the worksheet name. */
     val singleSheetName: String = "Sheet1",
+    /**
+     * Running headers / footers: DOCX writes them as a real Word header and footer (page number → PAGE field),
+     * HTML / TXT / XLSX drop them, PPTX keeps them on each slide.
+     */
+    val detectHeaders: Boolean = true,
 )
 
 /** Where page content comes from (PdfBox on Android, desktop PdfBox in the test harness). */
@@ -50,8 +55,9 @@ object ConvertPipeline {
         val pages = opts.pages.filter { it in 0 until src.pageCount }.ifEmpty { (0 until src.pageCount).toList() }
         val total = pages.size
         var textPages = 0; var tables = 0; var images = 0
+        val furniture = if (opts.detectHeaders && opts.format != TargetFormat.PPTX && pages.size >= 2) detectFurniture(src, pages) else PageFurniture.NONE
         fun layout(i: Int, withImages: Boolean): PageLayout {
-            val l = LayoutAnalyzer.analyze(src.content(i, withImages), opts.detectTables)
+            val l = LayoutAnalyzer.analyze(src.content(i, withImages), opts.detectTables, furniture)
             if (l.hasText) textPages++
             tables += l.blocks.count { it is TableBlock }
             images += l.blocks.count { it is ImageBlock }
@@ -60,7 +66,7 @@ object ConvertPipeline {
         fun step(k: Int) { if (cancelled()) throw ConvertCancelled(); progress(k, total) }
         progress(0, total)
         when (opts.format) {
-            TargetFormat.DOCX -> DocxBuilder(out, title).use { b ->
+            TargetFormat.DOCX -> DocxBuilder(out, title, furniture).use { b ->
                 pages.forEachIndexed { k, i -> b.addPage(layout(i, opts.includeImages)); step(k + 1) }
                 b.finish()
             }
@@ -109,5 +115,19 @@ object ConvertPipeline {
             }
         }
         return ConvertStats(total, textPages, tables, images)
+    }
+
+    /** Samples up to 8 of [pages] (spread over the document) to find running headers and footers. */
+    fun detectFurniture(src: PageSource, pages: List<Int>): PageFurniture {
+        val n = minOf(8, pages.size)
+        val picks = (0 until n).map { k -> pages[(k.toLong() * (pages.size - 1) / maxOf(1, n - 1)).toInt()] }.distinct()
+        val samples = picks.mapNotNull { i ->
+            runCatching {
+                val c = src.content(i, false)
+                val lines = LayoutAnalyzer.buildLines(c.glyphs)
+                PageFurniture.Companion.Sample(lines, c.height, LayoutAnalyzer.bodyFontSize(lines))
+            }.getOrNull()
+        }
+        return PageFurniture.detect(samples)
     }
 }

@@ -44,11 +44,14 @@ fun DeepLinkHandler(nav: NavHostController) {
                 when (id) {
                     ProviderId.ONEDRIVE -> runCatching { OneDrive.get(ctx).loadAccount() }
                     ProviderId.DROPBOX -> runCatching { Dropbox.get(ctx).loadAccount() }
+                    ProviderId.BOX -> runCatching { com.smartdocs.editor.core.cloud.Box.get(ctx).loadAccount() }
                     ProviderId.DRIVE -> Unit
                 }
                 CloudAuthEvents.version.value++
                 nav.navigate(AcctRoutes.cloudBrowser(id.key))
             }.onFailure { Toast.makeText(ctx, ctx.getString(R.string.ac_auth_failed) + ": " + (it.message ?: ""), Toast.LENGTH_LONG).show() }
+            // share6 (conn): signature requests and connected documents
+            "esign", "doc" -> com.smartdocs.editor.ui.connected.ConnDeepLinks.handle(nav, u)
             "review" -> {
                 val id = u.pathSegments.firstOrNull()
                 if (id != null) nav.navigate(AcctRoutes.review(id, u.getQueryParameter("c")))

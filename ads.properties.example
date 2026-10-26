@@ -1,0 +1,8 @@
+# AdMob configuration (copy to ads.properties; ads.properties is git-ignored).
+# Without ads.properties, or with enabled=false, ads are OFF and Google's sample app id is used in the manifest.
+# Debug builds always request Google's test units but still need enabled=true.
+# A malformed appId crashes the Ads SDK at startup: copy it exactly from AdMob > Apps > App settings.
+enabled=false
+appId=ca-app-pub-XXXXXXXXXXXXXXXX~YYYYYYYYYY
+bannerId=ca-app-pub-XXXXXXXXXXXXXXXX/1111111111
+interstitialId=ca-app-pub-XXXXXXXXXXXXXXXX/2222222222

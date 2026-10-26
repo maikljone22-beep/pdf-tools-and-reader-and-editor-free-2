@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- share6 / monet: licence server + ads (prefix mn_) -->
+    <string name="mn_privacy_options">Ad privacy options</string>
+    <string name="mn_privacy_options_sub">Change your consent to personalised ads at any time</string>
+    <string name="mn_no_ads_benefit">No ads</string>
+    <string name="mn_redeeming">Checking the code…</string>
+    <string name="mn_redeem_revoked">This code was revoked by the seller.</string>
+    <string name="mn_redeem_device_limit">This code is already active on the maximum number of devices.</string>
+    <string name="mn_redeem_network">Could not reach the licence server. Check your connection and try again.</string>
+    <string name="mn_redeem_online_note">The code is checked online and bound to this device.</string>
+    <string name="mn_redeem_offline_note">The code is checked on your device, no internet needed.</string>
+    <string name="mn_provisional">Your subscription is being confirmed. It is checked automatically when you are online.</string>
+    <string name="mn_license_inactive">The licence ended or was revoked. Restore purchases or enter a new code.</string>
+    <string name="mn_policy_ads">"10. Advertising\nThe free version shows Google AdMob ads on the Home and Tools screens and after some tools finish; never inside the reader or the editors. Where the law requires it (e.g. EU and UK) we ask for your consent first through Google\'s consent form; you can change it under “Ad privacy options”. AdMob may use the advertising ID, device information and approximate location to serve and measure ads under Google\'s privacy policy. Your documents are never sent to any ad network. Pro subscribers see no ads."</string>
+    <string name="mn_policy_license">"11. Purchase and licence verification\nWhen the licence server is enabled, the Google Play purchase token or the activation code is sent with an anonymous device fingerprint (derived, not the device identifier itself) to our server for verification; the server returns a signed licence stored on your device. We keep a record of codes and activated devices only to prevent abuse. The licence is re-checked every few days when you are online."</string>
+</resources>

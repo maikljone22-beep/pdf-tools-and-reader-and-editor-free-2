@@ -109,7 +109,8 @@ object CollabStore {
                 val changed = mine.filter { published[it.nm] != it.hash }
                 val deleted = published.keys - mine.map { it.nm }.toSet()
                 if (changed.isEmpty() && deleted.isEmpty()) return@withLock 0
-                CollabClient.publish(ref.id, ref.code, participantId(c), authorName(c), changed, deleted)
+                val consent = com.smartdocs.editor.core.share5.ReviewConsent   // share6: anonymous reviewers publish under a pseudonym
+                CollabClient.publish(ref.id, ref.code, participantId(c), consent.author(c, ref.id, authorName(c)), changed.map { consent.outgoing(c, ref.id, it) }, deleted)
                 putMap(c, "pub_${ref.id}", mine.associate { it.nm to it.hash })
                 upsert(c, ref.copy(lastSync = System.currentTimeMillis()))
                 changed.size + deleted.size
@@ -117,29 +118,66 @@ object CollabStore {
         }
     }
 
-    /** Merges other participants' comments into the local file. Returns the number of changes applied. */
+    /** Merges other participants' comments into the local file. Returns the number of changes applied.
+     *  While the file is open in the reader (attached to [CollabLive]) nothing is written: the comments are handed to
+     *  CollabLive, which shows them and merges them into the reader's next save. */
     suspend fun fetch(c: Context, ref: ReviewRef): Int = withContext(Dispatchers.IO) {
+        val remote = CollabClient.comments(ref.id, ref.code)
+        if (CollabLive.isAttached(File(ref.localPath))) { CollabLive.offer(c, ref, remote); upsert(c, (get(c, ref.id) ?: ref).copy(lastSync = System.currentTimeMillis())); return@withContext 0 }
         ioLock.withLock {
-            val me = participantId(c)
-            val remote = CollabClient.comments(ref.id, ref.code).filter { it.participant != me }
-            val applied = map(c, "applied_${ref.id}")
-            val fresh = remote.filter { (applied[it.nm]?.toLongOrNull() ?: -1L) < it.modified }
-            if (fresh.isEmpty()) { upsert(c, (get(c, ref.id) ?: ref).copy(lastSync = System.currentTimeMillis())); return@withLock 0 }
             val file = File(ref.localPath)
             val n = PDDocument.load(file).use { doc ->
-                val upserts = fresh.filter { !it.deleted && it.data != null }.map { it.page to it.data!! }
-                val deletes = fresh.filter { it.deleted }.map { it.nm }.toSet()
-                val count = CollabAnnots.apply(doc, upserts, deletes)
+                val plan = planFor(c, ref, remote, presentNames(doc))
+                if (plan.isEmpty) { markApplied(c, ref, remote, plan); return@use 0 }
+                val count = applyPlan(doc, remote, plan)
                 if (count > 0) saveAtomically(doc, file)
+                markApplied(c, ref, remote, plan)
                 count
             }
-            val foreign = map(c, "foreign_${ref.id}")
-            fresh.forEach { applied[it.nm] = it.modified.toString(); if (!it.deleted) foreign[it.nm] = it.modified.toString() else foreign.remove(it.nm) }
-            putMap(c, "applied_${ref.id}", applied); putMap(c, "foreign_${ref.id}", foreign)
             upsert(c, (get(c, ref.id) ?: ref).copy(lastSync = System.currentTimeMillis()))
             n
         }
     }
+
+    /** /NM of every annotation in [doc]. */
+    fun presentNames(doc: PDDocument): Set<String> = HashSet<String>().apply { doc.pages.forEach { p -> p.annotations.forEach { a -> a.annotationName?.let(::add) } } }
+
+    /** What merging [remote] would change (see [CommentMerge]). */
+    fun planFor(c: Context, ref: ReviewRef, remote: List<RemoteComment>, present: Set<String>): CommentMerge.Plan {
+        val applied = map(c, "applied_${ref.id}").mapValues { it.value.toLongOrNull() ?: -1L }
+        val mine = map(c, "pub_${ref.id}").keys
+        return CommentMerge.plan(remote.map { CommentMerge.Incoming(it.nm, it.participant, it.modified, it.deleted) }, participantId(c), applied, mine, present)
+    }
+
+    /** Writes the plan into [doc] (not saved). Returns the number of annotation changes. */
+    fun applyPlan(doc: PDDocument, remote: List<RemoteComment>, plan: CommentMerge.Plan): Int {
+        val wanted = plan.upserts.toSet()
+        val newest = remote.filter { it.nm in wanted && !it.deleted && it.data != null }.groupBy { it.nm }.mapValues { (_, v) -> v.maxByOrNull { it.modified }!! }
+        return CollabAnnots.apply(doc, newest.values.map { it.page to it.data!! }, plan.deletes)
+    }
+
+    /** Records the plan as applied: those comments are others' (never republished as mine) and are not merged again. */
+    fun markApplied(c: Context, ref: ReviewRef, remote: List<RemoteComment>, plan: CommentMerge.Plan) {
+        val applied = map(c, "applied_${ref.id}")
+        val foreign = map(c, "foreign_${ref.id}")
+        plan.applied.forEach { (nm, mod) -> applied[nm] = mod.toString() }
+        plan.upserts.forEach { nm -> foreign[nm] = (plan.applied[nm] ?: 0L).toString() }
+        plan.deletes.forEach { foreign.remove(it) }
+        putMap(c, "applied_${ref.id}", applied); putMap(c, "foreign_${ref.id}", foreign)
+    }
+
+    /** Merges [remote] into the PDF [src] and writes the result to [dest] ([src] may equal [dest]). Returns the plan used. */
+    suspend fun mergeInto(c: Context, ref: ReviewRef, src: File, dest: File, password: String?, remote: List<RemoteComment>): CommentMerge.Plan =
+        withContext(Dispatchers.IO) {
+            ioLock.withLock {
+                PDDocument.load(src, password ?: "").use { doc ->
+                    val plan = planFor(c, ref, remote, presentNames(doc))
+                    if (!plan.isEmpty) { applyPlan(doc, remote, plan); saveAtomically(doc, dest) }
+                    else if (src.absolutePath != dest.absolutePath) src.copyTo(dest, overwrite = true)
+                    plan
+                }
+            }
+        }
 
     fun authorName(c: Context): String = prefs(c).getString("author", null).orEmpty()
     fun setAuthorName(c: Context, name: String) = prefs(c).edit().putString("author", name).apply()

@@ -1,0 +1,5 @@
+# Licence server (ai-proxy/license, see its README). Copy to license.properties (git-ignored).
+# Empty licenseUrl = client-only mode (offline codes + Play Billing, as before).
+licenseUrl=
+# raw 32-byte Ed25519 public key, base64 (node ai-proxy/license/keygen.mjs -> PUBLIC_KEY)
+licensePublicKey=

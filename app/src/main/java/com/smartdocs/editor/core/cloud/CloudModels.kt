@@ -19,7 +19,8 @@ data class CloudItem(
 enum class ProviderId(val key: String, val label: String) {
     DRIVE("drive", "Google Drive"),
     ONEDRIVE("onedrive", "OneDrive"),
-    DROPBOX("dropbox", "Dropbox");
+    DROPBOX("dropbox", "Dropbox"),
+    BOX("box", "Box");
 
     companion object { fun of(key: String?): ProviderId? = entries.firstOrNull { it.key == key } }
 }
@@ -46,6 +47,27 @@ interface CloudProvider {
     suspend fun update(item: CloudItem, local: File): CloudItem
     suspend fun createFolder(parentId: String?, name: String): CloudItem
     suspend fun disconnect()
+
+    /** Deletes [item] (providers move it to their trash / recycle bin where they have one). Used by sync. */
+    suspend fun delete(item: CloudItem) { throw UnsupportedOperationException("delete not supported") }
+
+    /** Current metadata of a file (null when it no longer exists). Default: not available. */
+    suspend fun metadataOf(item: CloudItem): CloudItem? = null
+
+    /** True when [shareLink] can create a link for files of this provider. */
+    val supportsLinks: Boolean get() = false
+
+    /**
+     * A shareable link to [item]. [anyone] = true asks for a link that works without signing in (where the account
+     * policy allows it); false returns the provider's normal web link (people who already have access).
+     */
+    suspend fun shareLink(item: CloudItem, anyone: Boolean = true): String { throw UnsupportedOperationException("links not supported") }
+
+    /** Opaque change cursor of the whole drive (null = this provider has no change feed). */
+    suspend fun changeCursor(): String? = null
+
+    /** Returns (something changed?, next cursor) since [cursor]. A reset cursor counts as a change. */
+    suspend fun changesSince(cursor: String): Pair<Boolean, String> = true to cursor
 }
 
 object Clouds {
@@ -53,6 +75,7 @@ object Clouds {
         ProviderId.DRIVE -> GoogleDrive.get(context)
         ProviderId.ONEDRIVE -> OneDrive.get(context)
         ProviderId.DROPBOX -> Dropbox.get(context)
+        ProviderId.BOX -> Box.get(context)
     }
 
     fun all(context: Context): List<CloudProvider> = ProviderId.entries.map { provider(context, it) }
@@ -61,6 +84,15 @@ object Clouds {
     fun cacheDir(context: Context, id: ProviderId): File {
         val docs = File(context.getExternalFilesDir(null) ?: context.filesDir, "Documents")
         return File(docs, "Cloud/${id.key}").apply { mkdirs() }
+    }
+
+    /** Signed-in account label of [p] (email / user name), when known. */
+    fun accountOf(p: CloudProvider): String? = when (p) {
+        is GoogleDrive -> p.accountEmail
+        is OneDrive -> p.account
+        is Dropbox -> p.account
+        is Box -> p.account
+        else -> null
     }
 
     fun isPdf(item: CloudItem) = !item.isFolder && (item.mime == "application/pdf" || item.name.endsWith(".pdf", true))

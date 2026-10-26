@@ -15,6 +15,8 @@
 //   DELETE /reviews/:id                 X-Owner-Key
 //   GET    /r/:id?c=CODE                share page with an "open in the app" button (smartdocs://review/:id?c=CODE)
 //   GET    /oauth/:provider?…           bounce for OAuth providers that refuse custom schemes → smartdocs://oauth/:provider?…
+//   POST   /oauth-token/box             Box token exchange/refresh: adds the client secret kept here (secrets BOX_CLIENT_ID,
+//                                        BOX_CLIENT_SECRET), so the app ships no secret (share6)
 //
 // Each participant writes only its own KV key (comments:<id>:<participant>), so concurrent reviewers never overwrite
 // each other. KV is eventually consistent (a new comment can take up to ~60 s to appear in other regions).
@@ -45,6 +47,8 @@ async function route(req, env) {
     const target = `smartdocs://oauth/${encodeURIComponent(parts[1])}${url.search}`;
     return new Response(null, { status: 302, headers: { Location: target } });
   }
+
+  if (req.method === "POST" && parts[0] === "oauth-token" && parts[1] === "box") return boxToken(req, env);
 
   if (env.APP_TOKEN && req.headers.get("X-App-Token") !== env.APP_TOKEN) return json({ error: "unauthorized" }, 401);
   if (parts[0] !== "reviews") return json({ error: "not found" }, 404);
@@ -198,6 +202,21 @@ code{font-size:22px;letter-spacing:4px;direction:ltr;display:inline-block}</styl
 <p>أو أدخل في التطبيق رمز المراجعة:</p><p><code>${safeId}</code></p><p>ورمز الدخول:</p><p><code>${safeCode}</code></p>
 </div></body></html>`;
   return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8" } });
+}
+
+// Box needs client_secret for code exchange and refresh; only these two grants for our own client id are forwarded.
+async function boxToken(req, env) {
+  if (!env.BOX_CLIENT_ID || !env.BOX_CLIENT_SECRET) return json({ error: "box not configured" }, 501);
+  const form = new URLSearchParams(await req.text());
+  const grant = form.get("grant_type");
+  if (grant !== "authorization_code" && grant !== "refresh_token") return json({ error: "unsupported_grant_type" }, 400);
+  if (form.get("client_id") !== env.BOX_CLIENT_ID) return json({ error: "invalid_client" }, 400);
+  const out = new URLSearchParams();
+  for (const k of ["grant_type", "code", "refresh_token", "redirect_uri", "code_verifier"]) if (form.get(k)) out.set(k, form.get(k));
+  out.set("client_id", env.BOX_CLIENT_ID);
+  out.set("client_secret", env.BOX_CLIENT_SECRET);
+  const r = await fetch("https://api.box.com/oauth2/token", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: out.toString() });
+  return new Response(await r.text(), { status: r.status, headers: { "Content-Type": "application/json", ...cors() } });
 }
 
 function randomId(n) {

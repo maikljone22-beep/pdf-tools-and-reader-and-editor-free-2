@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="fd_locked_title">Password-protected file</string>
+    <string name="fd_locked_msg">Enter the password of “%1$s” to add it.</string>
+    <string name="fd_wrong_password">Wrong password</string>
+    <string name="fd_unlock">Unlock</string>
+    <string name="fd_remove_file">Remove file</string>
+    <string name="fd_show_password">Show password</string>
+    <string name="fd_locked_badge">Locked</string>
+    <string name="fd_unlocked_badge">Unlocked</string>
+    <string name="fd_merge_locked_left">Enter the passwords of the locked files first</string>
+    <string name="fd_merge_protect">Protect the result with a password</string>
+    <string name="fd_merge_protect_pw">Password of the result</string>
+    <string name="fd_merge_unencrypted">The result is not encrypted unless you choose to protect it.</string>
+    <string name="fd_detect_headers">Detect headers and footers</string>
+    <string name="fd_detect_headers_sub">Repeated headers and footers become a real Word header and footer with the page number, and are dropped from HTML, text and Excel.</string>
+    <string name="fd_rotated_note">Rotated and sideways-printed pages are handled automatically.</string>
+</resources>

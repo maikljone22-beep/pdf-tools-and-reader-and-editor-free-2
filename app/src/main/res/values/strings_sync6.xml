@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- share6: multi-cloud sync, live review comments, cloud links, Wi-Fi transfer network option, reader tips -->
+<resources>
+    <string name="s6_channel_sync">المزامنة</string>
+    <string name="s6_channel_review">تعليقات المراجعة المشتركة</string>
+    <string name="s6_notif_syncing">جارٍ مزامنة المجلدات…</string>
+    <plurals name="s6_new_comments">
+        <item quantity="zero">لا تعليقات جديدة</item>
+        <item quantity="one">تعليق جديد واحد</item>
+        <item quantity="two">تعليقان جديدان</item>
+        <item quantity="few">%d تعليقات جديدة</item>
+        <item quantity="many">%d تعليقاً جديداً</item>
+        <item quantity="other">%d تعليق جديد</item>
+    </plurals>
+    <plurals name="s6_files_failed">
+        <item quantity="zero">لم يفشل أي ملف</item>
+        <item quantity="one">تعذّرت مزامنة ملف واحد، وستُعاد المحاولة تلقائياً</item>
+        <item quantity="two">تعذّرت مزامنة ملفين، وستُعاد المحاولة تلقائياً</item>
+        <item quantity="few">تعذّرت مزامنة %d ملفات، وستُعاد المحاولة تلقائياً</item>
+        <item quantity="many">تعذّرت مزامنة %d ملفاً، وستُعاد المحاولة تلقائياً</item>
+        <item quantity="other">تعذّرت مزامنة %d ملف، وستُعاد المحاولة تلقائياً</item>
+    </plurals>
+    <string name="s6_show">عرض</string>
+    <string name="s6_coach_doc_tabs_t">المستندات المفتوحة</string>
+    <string name="s6_coach_doc_tabs_b">افتح عدة ملفات وتنقّل بينها من هنا دون إغلاق أي منها.</string>
+
+    <string name="s6_sync_sub">مجلد على الهاتف ↔ مجلد في Google Drive أو OneDrive أو Dropbox أو Box</string>
+    <string name="s6_sync_all">مزامنة الكل الآن</string>
+    <string name="s6_options">خيارات المزامنة</string>
+    <string name="s6_sync_need_cloud">اربط حساباً سحابياً (Google Drive أو OneDrive أو Dropbox أو Box) لمزامنة المجلدات</string>
+    <string name="s6_connect_cloud">ربط حساب سحابي</string>
+    <string name="s6_sync_empty">لا توجد مجلدات متزامنة. أضف مجلداً من هاتفك واختر مجلداً مقابلاً في السحابة.</string>
+    <string name="s6_sync_explain">تتم المزامنة في الاتجاهين: فوراً تقريباً أثناء فتح التطبيق، وعند حفظ ملف، وكل 15 دقيقة في الخلفية. إن تغيّر الملف في المكانين يُحفظ إصدار السحابة باسم «(نسخة متعارضة)» بجانب ملفك فلا يضيع شيء. الحذف في جهة يُطبَّق على الأخرى ما لم يُعدَّل الملف فيها.</string>
+    <string name="s6_pick_cloud">المزامنة مع</string>
+    <string name="s6_pick_cloud_folder">اختر مجلداً في %1$s</string>
+    <string name="s6_sync_current">%1$s (%2$d تمت)</string>
+    <string name="s6_sync_listing">جارٍ مقارنة المجلدين…</string>
+    <string name="s6_wait_wifi">بانتظار شبكة Wi‑Fi</string>
+    <string name="s6_wait_network">بانتظار الاتصال بالإنترنت</string>
+    <string name="s6_wait_battery">بانتظار شحن البطارية</string>
+    <string name="s6_files_count">الملفات (%1$d)</string>
+    <string name="s6_failed_count">%1$d فشل</string>
+    <string name="s6_queue_empty">لا توجد عمليات نقل بعد.</string>
+    <string name="s6_retry_all">إعادة محاولة الكل</string>
+    <string name="s6_op_upload">رفع</string>
+    <string name="s6_op_download">تنزيل</string>
+    <string name="s6_op_conflict">تعارض: حُفظت نسختان</string>
+    <string name="s6_op_delete_local">حذف من الهاتف</string>
+    <string name="s6_op_delete_remote">حذف من السحابة</string>
+
+    <string name="s6_settings_title">المزامنة والنقل</string>
+    <string name="s6_pref_auto">المزامنة التلقائية</string>
+    <string name="s6_pref_auto_sub">كل 15 دقيقة وعند حدوث تغيير. زر «مزامنة الآن» يعمل دائماً.</string>
+    <string name="s6_pref_live">مزامنة شبه فورية</string>
+    <string name="s6_pref_live_sub">مراقبة المجلدات والسحابة أثناء فتح التطبيق</string>
+    <string name="s6_pref_on_save">المزامنة بعد الحفظ</string>
+    <string name="s6_pref_on_save_sub">رفع الملف فور حفظه إن كان داخل مجلد متزامن</string>
+    <string name="s6_pref_wifi">النقل عبر Wi‑Fi فقط</string>
+    <string name="s6_pref_wifi_on">المجلدات الجديدة ومزامنة بيانات التطبيق تستخدم Wi‑Fi فقط</string>
+    <string name="s6_pref_wifi_off">يُسمح باستخدام بيانات الجوال أيضاً</string>
+
+    <string name="s6_link_menu">خيارات الرابط</string>
+    <string name="s6_copy_link">نسخ رابط للمشاركة</string>
+    <string name="s6_share_link">مشاركة الرابط</string>
+    <string name="s6_copy_private_link">نسخ رابط لمن لديه صلاحية فقط</string>
+    <string name="s6_link_copied">نُسخ الرابط</string>
+    <string name="s6_link_failed">تعذّر إنشاء الرابط</string>
+
+    <string name="s6_wifi_only_transfer">عبر Wi‑Fi فقط</string>
+    <string name="s6_wifi_only_on">الصفحة متاحة على شبكة Wi‑Fi أو نقطة الاتصال فقط</string>
+    <string name="s6_wifi_only_off">متاحة على كل الشبكات المتصلة (ومنها مشاركة الإنترنت عبر USB أو بيانات الجوال)</string>
+    <string name="s6_wifi_need_wifi">اتصل بشبكة Wi‑Fi أو شغّل نقطة الاتصال، أو أوقف خيار «عبر Wi‑Fi فقط».</string>
+    <string name="s6_policy_wifi_only">الإعدادات تسمح بالنقل عبر Wi‑Fi فقط، والجهاز متصل الآن ببيانات الجوال.</string>
+</resources>

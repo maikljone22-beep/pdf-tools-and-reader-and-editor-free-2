@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="fd_locked_title">الملف محمي بكلمة مرور</string>
+    <string name="fd_locked_msg">أدخل كلمة مرور الملف «%1$s» لإضافته.</string>
+    <string name="fd_wrong_password">كلمة المرور غير صحيحة</string>
+    <string name="fd_unlock">فتح القفل</string>
+    <string name="fd_remove_file">إزالة الملف</string>
+    <string name="fd_show_password">إظهار كلمة المرور</string>
+    <string name="fd_locked_badge">مقفل</string>
+    <string name="fd_unlocked_badge">تم فتح القفل</string>
+    <string name="fd_merge_locked_left">أدخل كلمات مرور الملفات المقفلة أولاً</string>
+    <string name="fd_merge_protect">حماية الملف الناتج بكلمة مرور</string>
+    <string name="fd_merge_protect_pw">كلمة مرور الملف الناتج</string>
+    <string name="fd_merge_unencrypted">الملف الناتج غير مشفّر ما لم تختر حمايته.</string>
+    <string name="fd_detect_headers">اكتشاف الترويسة والتذييل</string>
+    <string name="fd_detect_headers_sub">تتحول الترويسة والتذييل المتكرران إلى ترويسة وتذييل حقيقيين في Word مع رقم الصفحة، وتُحذف من HTML والنص وExcel.</string>
+    <string name="fd_rotated_note">تُعالَج الصفحات المدوّرة والمطبوعة بالعرض تلقائياً.</string>
+</resources>

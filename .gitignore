@@ -11,3 +11,7 @@ keystore.properties
 ai.properties
 cloud.properties
 pro.properties
+ads.properties
+license.properties
+.dev.vars
+ai-proxy/**/.wrangler/

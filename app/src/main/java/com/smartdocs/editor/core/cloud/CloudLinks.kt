@@ -64,8 +64,18 @@ object CloudLinks {
     suspend fun writeBack(context: Context, local: File): Result<CloudItem>? {
         val link = get(context, local) ?: return null
         val provider = Clouds.provider(context, link.provider)
-        return runCatching { provider.update(link.item, local) }.onSuccess { set(context, local, link.provider, it.copy(parentId = it.parentId ?: link.item.parentId)) }
+        return runCatching {
+            // share6: someone changed the cloud file while it was open here → keep theirs, upload ours as a conflict copy
+            val current = runCatching { provider.metadataOf(link.item) }.getOrNull()
+            if (current != null && current.modified > link.item.modified + 2_000 && current.size != link.item.size) {
+                val name = com.smartdocs.editor.core.sync.SyncRules.conflictName(link.item.name) { false }
+                provider.upload(local, link.item.parentId, name).also { lastConflict = it }
+            } else provider.update(link.item, local)
+        }.onSuccess { set(context, local, link.provider, it.copy(parentId = it.parentId ?: link.item.parentId)) } // later saves go to our copy
     }
+
+    /** Last conflict copy created by [writeBack] (the UI may mention it). */
+    @Volatile var lastConflict: CloudItem? = null
 }
 
 /**
@@ -99,7 +109,10 @@ object SaveHooks {
                     onFailure = { _events.tryEmit(Event.UploadFailed(file, link.provider, it)) },
                 )
             }
+            // share6: comments merged into this save are now really in the file → mark them applied before publishing mine
+            runCatching { com.smartdocs.editor.core.collab.CollabLive.confirm(app, file) }
             runCatching { CollabStore.onDocumentSaved(app, file) }
+            runCatching { com.smartdocs.editor.core.sync.SyncLive.onFileSaved(app, file) }   // sync-after-save
             listeners.forEach { l -> runCatching { l(file) } }
         }
     }

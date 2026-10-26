@@ -85,8 +85,12 @@ fun CloudBrowserScreen(nav: NavHostController, providerKey: String) {
         }
     }
 
+    val appSettings = com.smartdocs.editor.LocalSettings.current
+    val policyMsg = stringResource(R.string.s6_policy_wifi_only)
     val upload = rememberPdfPicker { files ->
         val f = files.firstOrNull() ?: return@rememberPdfPicker
+        // Settings → transfer network = Wi‑Fi only
+        if (!com.smartdocs.editor.core.gaps6.TransferPolicy.allowed(ctx, appSettings)) { Toast.makeText(ctx, policyMsg, Toast.LENGTH_LONG).show(); return@rememberPdfPicker }
         scope.launch {
             progress = busyUpload to null
             guard { provider.upload(f, current) }?.let { Toast.makeText(ctx, uploadedMsg, Toast.LENGTH_SHORT).show(); reload++ }
@@ -165,7 +169,10 @@ fun CloudBrowserScreen(nav: NavHostController, providerKey: String) {
                                     item.modified.takeIf { it > 0 }?.let { DocumentRepository.formatDate(it) },
                                 ).joinToString(" · "), style = MaterialTheme.typography.bodySmall)
                             },
-                            trailingContent = { if (item.isFolder) Icon(Icons.Default.ChevronLeft, null) },
+                            trailingContent = {
+                                if (item.isFolder) Icon(Icons.Default.ChevronLeft, null)
+                                else if (provider.supportsLinks) LinkMenu(provider, item) { msg -> Toast.makeText(ctx, msg, Toast.LENGTH_SHORT).show() }
+                            },
                             colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
                             tonalElevation = 0.dp,
                         )
@@ -191,5 +198,41 @@ fun CloudBrowserScreen(nav: NavHostController, providerKey: String) {
             },
             dismissButton = { TextButton(onClick = { newFolder = false }) { Text(stringResource(R.string.cancel)) } },
         )
+    }
+}
+
+/** share6: "copy link" / "share link" for providers that can make shareable links. */
+@Composable
+private fun LinkMenu(provider: com.smartdocs.editor.core.cloud.CloudProvider, item: CloudItem, toast: (String) -> Unit) {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var open by remember { mutableStateOf(false) }
+    var busy by remember { mutableStateOf(false) }
+    val copied = stringResource(R.string.s6_link_copied)
+    val failed = stringResource(R.string.s6_link_failed)
+    fun make(share: Boolean, anyone: Boolean) {
+        open = false; busy = true
+        scope.launch {
+            runCatching { withContext(Dispatchers.IO) { provider.shareLink(item, anyone) } }
+                .onSuccess { link ->
+                    if (share) ctx.startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND)
+                        .setType("text/plain").putExtra(android.content.Intent.EXTRA_TEXT, link).putExtra(android.content.Intent.EXTRA_SUBJECT, item.name), null))
+                    else {
+                        val cm = ctx.getSystemService(android.content.ClipboardManager::class.java)
+                        cm?.setPrimaryClip(android.content.ClipData.newPlainText(item.name, link)); toast(copied)
+                    }
+                }
+                .onFailure { toast(failed + ": " + (it.message ?: "")) }
+            busy = false
+        }
+    }
+    Box {
+        if (busy) CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
+        else IconButton(onClick = { open = true }) { Icon(Icons.Default.MoreVert, stringResource(R.string.s6_link_menu)) }
+        DropdownMenu(open, { open = false }) {
+            DropdownMenuItem(text = { Text(stringResource(R.string.s6_copy_link)) }, leadingIcon = { Icon(Icons.Default.Link, null) }, onClick = { make(share = false, anyone = true) })
+            DropdownMenuItem(text = { Text(stringResource(R.string.s6_share_link)) }, leadingIcon = { Icon(Icons.Default.Share, null) }, onClick = { make(share = true, anyone = true) })
+            DropdownMenuItem(text = { Text(stringResource(R.string.s6_copy_private_link)) }, leadingIcon = { Icon(Icons.Default.Lock, null) }, onClick = { make(share = false, anyone = false) })
+        }
     }
 }

@@ -60,7 +60,10 @@ class PptxBuilder(out: OutputStream, private val title: String, firstPageW: Floa
     }
 
     /** Editable slide built from the analysed page. */
+    private var pageHasFills = false
+
     fun addEditableSlide(page: PageLayout) {
+        pageHasFills = page.hasFills
         val f = frame(page.width, page.height)
         val sb = StringBuilder()
         val imgs = ArrayList<String>()
@@ -92,7 +95,13 @@ class PptxBuilder(out: OutputStream, private val title: String, firstPageW: Floa
             sb.append("<a:r><a:rPr lang=\"").append(if (rtl) "ar-SA" else "en-US").append("\" sz=\"").append(sz(r.size, f)).append('"')
             if (r.bold) sb.append(" b=\"1\"")
             if (r.italic) sb.append(" i=\"1\"")
-            sb.append(" dirty=\"0\"><a:solidFill><a:srgbClr val=\"000000\"/></a:solidFill><a:latin typeface=\"Arial\"/><a:cs typeface=\"Arial\"/></a:rPr><a:t>")
+            if (r.underline) sb.append(" u=\"sng\"")
+            if (r.strike) sb.append(" strike=\"sngStrike\"")
+            val latin = BidiText.xml(r.font ?: FontMap.ARIAL)
+            val cs = BidiText.xml(FontMap.complexScript(r.font))
+            sb.append(" dirty=\"0\"><a:solidFill><a:srgbClr val=\"").append(Decorations.hex(r.color)).append("\"/></a:solidFill>")
+            r.bg?.let { sb.append("<a:highlight><a:srgbClr val=\"").append(Decorations.hex(it)).append("\"/></a:highlight>") }
+            sb.append("<a:latin typeface=\"").append(latin).append("\"/><a:cs typeface=\"").append(cs).append("\"/></a:rPr><a:t>")
                 .append(BidiText.xml(r.text)).append("</a:t></a:r>")
         }
     }
@@ -109,7 +118,8 @@ class PptxBuilder(out: OutputStream, private val title: String, firstPageW: Floa
         val pitch = if (b.lines.size > 1) (b.lines.last().baseline - b.lines.first().baseline) / (b.lines.size - 1) else 0f
         sb.append("<p:sp><p:nvSpPr><p:cNvPr id=\"").append(id).append("\" name=\"TextBox ").append(id).append("\"/><p:cNvSpPr txBox=\"1\"/><p:nvPr/></p:nvSpPr>")
             .append("<p:spPr><a:xfrm><a:off x=\"").append(f.x(r.x0 - pad)).append("\" y=\"").append(f.y(r.y0 - pad)).append("\"/><a:ext cx=\"").append(f.d(r.w + 2 * pad))
-            .append("\" cy=\"").append(f.d(r.h + 2 * pad)).append("\"/></a:xfrm><a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom><a:noFill/></p:spPr>")
+            .append("\" cy=\"").append(f.d(r.h + 2 * pad)).append("\"/></a:xfrm><a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom>")
+            .append(b.shade?.let { "<a:solidFill><a:srgbClr val=\"" + Decorations.hex(it) + "\"/></a:solidFill>" } ?: "<a:noFill/>").append("</p:spPr>")
             .append("<p:txBody><a:bodyPr wrap=\"none\" lIns=\"0\" tIns=\"0\" rIns=\"0\" bIns=\"0\" rtlCol=\"0\" anchor=\"t\"><a:noAutofit/></a:bodyPr><a:lstStyle/>")
         for (line in b.lines) {
             sb.append("<a:p><a:pPr algn=\"").append(algn(b.align, b.rtl)).append('"')
@@ -178,7 +188,8 @@ class PptxBuilder(out: OutputStream, private val title: String, firstPageW: Floa
                     if (t.ruled) sb.append("<a:").append(side).append(" w=\"9525\"><a:solidFill><a:srgbClr val=\"7F7F7F\"/></a:solidFill></a:").append(side).append('>')
                     else sb.append("<a:").append(side).append(" w=\"0\"><a:noFill/></a:").append(side).append('>')
                 }
-                if (header && r == 0) sb.append("<a:solidFill><a:srgbClr val=\"DCE6F1\"/></a:solidFill>") else sb.append("<a:noFill/>")
+                val fill = cell?.fill?.let { Decorations.hex(it) } ?: if (header && r == 0 && !pageHasFills) "DCE6F1" else null
+                if (fill != null) sb.append("<a:solidFill><a:srgbClr val=\"").append(fill).append("\"/></a:solidFill>") else sb.append("<a:noFill/>")
                 sb.append("</a:tcPr></a:tc>")
             }
             sb.append("</a:tr>")

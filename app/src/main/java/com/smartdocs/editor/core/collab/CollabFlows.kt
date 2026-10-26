@@ -28,6 +28,7 @@ object CollabFlows {
         val ref = ReviewRef(created.id, created.code, title, local.name, local.absolutePath, created.ownerKey, deadline, System.currentTimeMillis())
         CollabStore.upsert(c, ref)
         CollabStore.markAllPublished(c, ref)
+        ReviewCheckWorker.schedule(c)
         ref to created
     }
 
@@ -43,6 +44,7 @@ object CollabFlows {
         val ref = ReviewRef(id, code, meta.title.ifBlank { meta.fileName }, local.name, local.absolutePath, null, meta.deadline, 0L, meta.closed)
         CollabStore.upsert(c, ref)
         CollabStore.markAllForeign(c, ref)
+        ReviewCheckWorker.schedule(c)
         runCatching { CollabStore.fetch(c, ref) }
         CollabStore.get(c, id) ?: ref
     }

@@ -44,6 +44,9 @@ fun WifiScreen(nav: NavHostController) {
     var autoStopped by remember { mutableStateOf(false) }
     var remaining by remember { mutableLongStateOf(0L) }
     val noNetwork = stringResource(R.string.tl_wifi_no_network)
+    val noWifi = stringResource(R.string.s6_wifi_need_wifi)
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    var wifiOnly by remember { mutableStateOf(com.smartdocs.editor.core.sync.SyncPrefs.wifiServerOnly(ctx)) }
 
     DisposableEffect(Unit) { onDispose { server?.stop(); view.keepScreenOn = false } }
     LaunchedEffect(running) {
@@ -56,10 +59,16 @@ fun WifiScreen(nav: NavHostController) {
         }
     }
 
+    val appSettings = com.smartdocs.editor.LocalSettings.current
+    val policyMsg = stringResource(R.string.s6_policy_wifi_only)
     fun start() {
         error = null; autoStopped = false
-        val ip = WifiTransferServer.deviceIp() ?: run { error = noNetwork; return }
+        // Settings → transfer network = Wi‑Fi only: refuse on mobile data
+        if (!com.smartdocs.editor.core.gaps6.TransferPolicy.allowed(ctx, appSettings)) { error = policyMsg; return }
+        // share6: "Wi‑Fi only" listens on the Wi‑Fi/hotspot address only; otherwise every network (USB/Ethernet tethering, other LANs)
+        val ip = (if (wifiOnly) WifiTransferServer.wifiIp() else WifiTransferServer.deviceIp()) ?: run { error = if (wifiOnly) noWifi else noNetwork; return }
         val s = WifiTransferServer(app.documents.docsDir)
+        if (wifiOnly) s.bindAddress = runCatching { java.net.InetAddress.getByName(ip) }.getOrNull()
         s.onFilesChanged = { uploads++ }
         s.onAutoStop = { autoStopped = true; running = false }
         runCatching { s.start() }
@@ -103,6 +112,13 @@ fun WifiScreen(nav: NavHostController) {
                 Icon(Icons.Default.Wifi, null, Modifier.size(72.dp), tint = MaterialTheme.colorScheme.outline)
                 Text(stringResource(if (autoStopped) R.string.ac_wifi_auto_stopped else R.string.tl_wifi_stopped), style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
                 Text(stringResource(R.string.ac_wifi_desc), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(stringResource(R.string.s6_wifi_only_transfer), style = MaterialTheme.typography.bodyLarge)
+                        Text(stringResource(if (wifiOnly) R.string.s6_wifi_only_on else R.string.s6_wifi_only_off), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Switch(wifiOnly, { wifiOnly = it; com.smartdocs.editor.core.sync.SyncPrefs.setWifiServerOnly(ctx, it) })
+                }
                 Button(onClick = { start() }, Modifier.fillMaxWidth().height(52.dp), shape = PillShape) {
                     Icon(Icons.Default.PlayArrow, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.wifi_start))
                 }

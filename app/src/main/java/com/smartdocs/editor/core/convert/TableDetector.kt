@@ -152,6 +152,10 @@ object TableDetector {
             val avg = block.flatMap { it.second }.map { c -> c.sumOf { it.text.length } + c.size - 1 }.average()
             if (avg > 30) return null
         }
+        // text columns: every column holds about four or more words per row → running text, not a table
+        val wordsPerCol = DoubleArray(nc)
+        block.forEach { (_, cs) -> cs.forEach { c -> val cx = (c.first().x0 + c.last().x1) / 2f; val k = cols.indexOfFirst { cx >= it[0] && cx <= it[1] }; if (k >= 0) wordsPerCol[k] += c.size.toDouble() } }
+        if (wordsPerCol.all { it / rows >= 3.5 }) return null
         val colX = ArrayList<Float>()
         colX += cols.first()[0] - 2f
         for (k in 1 until nc) colX += (cols[k - 1][1] + cols[k][0]) / 2f

@@ -23,13 +23,9 @@ object HtmlTxtBuilder {
             is ParagraphBlock -> {
                 val tag = if (b.headingLevel in 1..3) "h${b.headingLevel}" else "p"
                 val cls = when (b.align) { Align.CENTER -> " class=\"c\""; Align.END -> " class=\"e\""; else -> "" }
-                w.write("<$tag dir=\"${if (b.rtl) "rtl" else "ltr"}\"$cls>")
-                TextRuns.ofParagraph(b.lines).forEach { r ->
-                    var t = esc(r.text)
-                    if (r.italic) t = "<i>$t</i>"
-                    if (r.bold && b.headingLevel == 0) t = "<b>$t</b>"
-                    w.write(t)
-                }
+                val shade = b.shade?.let { " style=\"background:#${Decorations.hex(it)};padding:6px 10px\"" } ?: ""
+                w.write("<$tag dir=\"${if (b.rtl) "rtl" else "ltr"}\"$cls$shade>")
+                TextRuns.ofParagraph(b.lines).forEach { r -> w.write(run(r, b.headingLevel == 0)) }
                 w.write("</$tag>\n")
             }
             is TableBlock -> {
@@ -43,8 +39,9 @@ object HtmlTxtBuilder {
                         val tag = if (header && r == 0) "th" else "td"
                         val span = (if (c.colSpan > 1) " colspan=\"${c.colSpan}\"" else "") + (if (c.rowSpan > 1) " rowspan=\"${c.rowSpan}\"" else "")
                         val num = tag == "td" && BidiText.parseNumber(c.text) != null
-                        w.write("<$tag$span${if (num) " class=\"n\"" else ""}>")
-                        w.write(c.lines.joinToString("<br>") { esc(it.text) })
+                        val bg = c.fill?.let { "#" + Decorations.hex(it) } ?: if (tag == "th" && page.hasFills) "transparent" else null
+                        w.write("<$tag$span${if (num) " class=\"n\"" else ""}${if (bg != null) " style=\"background:$bg\"" else ""}>")
+                        w.write(c.lines.joinToString("<br>") { l -> TextRuns.of(l).joinToString("") { run(it, true) } })
                         w.write("</$tag>")
                     }
                     w.write("</tr>\n")
@@ -61,6 +58,20 @@ object HtmlTxtBuilder {
     }
 
     fun htmlTail(w: Writer) = w.write("</body>\n</html>\n")
+
+    /** One formatted run: bold / italic tags, colour, family, decorations and highlight as inline style. */
+    fun run(r: TextRun, allowBold: Boolean): String {
+        var t = esc(r.text)
+        if (r.italic) t = "<i>$t</i>"
+        if (r.bold && allowBold) t = "<b>$t</b>"
+        val st = StringBuilder()
+        if (r.color != 0) st.append("color:#").append(Decorations.hex(r.color)).append(';')
+        r.font?.let { if (it != FontMap.ARIAL) st.append("font-family:'").append(esc(it)).append("',sans-serif;") }
+        val deco = listOfNotNull("underline".takeIf { r.underline }, "line-through".takeIf { r.strike })
+        if (deco.isNotEmpty()) st.append("text-decoration:").append(deco.joinToString(" ")).append(';')
+        r.bg?.let { st.append("background:#").append(Decorations.hex(it)).append(';') }
+        return if (st.isEmpty()) t else "<span style=\"$st\">$t</span>"
+    }
 
     /** Plain text of a page: paragraphs separated by blank lines, table rows as tab-separated cells. */
     fun text(page: PageLayout): String {

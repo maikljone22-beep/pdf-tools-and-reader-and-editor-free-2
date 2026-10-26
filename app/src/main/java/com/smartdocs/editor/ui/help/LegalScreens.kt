@@ -48,6 +48,8 @@ fun PrivacyPolicyContent(modifier: Modifier = Modifier) {
                     Text(stringResource(R.string.ac_policy_updated), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.outline)
                     Spacer(Modifier.height(12.dp))
                     Text(stringResource(if (english) R.string.ac_policy_en else R.string.ac_policy_ar), style = MaterialTheme.typography.bodyMedium)
+                    // monet (share6): advertising + licence verification sections (Arabic/English via the en/ar resource sets)
+                    PolicyAppendix(english)
                 }
             }
         }
@@ -101,4 +103,19 @@ fun LicensesScreen(nav: NavHostController) {
             }
         }
     }
+}
+
+/** Sections 10–11 (ads, licence server). The tab language picks the text; values-en holds the English version. */
+@Composable
+private fun PolicyAppendix(english: Boolean) {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val res = remember(english) {
+        val cfg = android.content.res.Configuration(ctx.resources.configuration)
+        cfg.setLocale(java.util.Locale(if (english) "en" else "ar"))
+        ctx.createConfigurationContext(cfg).resources
+    }
+    Spacer(Modifier.height(12.dp))
+    Text(res.getString(R.string.mn_policy_ads), style = MaterialTheme.typography.bodyMedium)
+    Spacer(Modifier.height(12.dp))
+    Text(res.getString(R.string.mn_policy_license), style = MaterialTheme.typography.bodyMedium)
 }

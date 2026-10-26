@@ -11,9 +11,11 @@ import java.io.OutputStream
  * Streaming DOCX writer for analysed pages: reflowed paragraphs with bold/italic/size runs, headings
  * (Heading1-3 styles, so they show in Word's navigation pane), RTL paragraphs (`w:bidi` + `w:rtl`) for
  * Arabic, real Word tables (merged cells, header row, RTL tables via `w:bidiVisual`) and inline images.
- * A page break separates source pages.
+ * A page break separates source pages. Runs keep colour, font family, underline, strike-through and highlight; PDF
+ * fills become paragraph / cell shading; running headers and footers ([PageFurniture]) become a real Word header and
+ * footer with the page number as a PAGE field.
  */
-class DocxBuilder(out: OutputStream, private val title: String) : Closeable {
+class DocxBuilder(out: OutputStream, private val title: String, private val furniture: PageFurniture = PageFurniture.NONE) : Closeable {
 
     private val zip = OoxmlZip(out)
     private val body = StringBuilder()
@@ -24,9 +26,15 @@ class DocxBuilder(out: OutputStream, private val title: String) : Closeable {
     private var bodySize = 11f
     private var rtlVotes = 0
     private var picId = 0
+    private var pageHasFills = false
+    private var headerXml: String? = null
+    private var footerXml: String? = null
 
     fun addPage(page: PageLayout) {
         if (pages == 0) setupFirstPage(page)
+        pageHasFills = page.hasFills
+        if (headerXml == null && page.header.isNotEmpty()) headerXml = furniturePart("hdr", page.header, page)
+        if (footerXml == null && page.footer.isNotEmpty()) footerXml = furniturePart("ftr", page.footer, page)
         else body.append("<w:p><w:r><w:br w:type=\"page\"/></w:r></w:p>")
         pages++
         if (page.rtl) rtlVotes++ else rtlVotes--
@@ -55,9 +63,17 @@ class DocxBuilder(out: OutputStream, private val title: String) : Closeable {
     private fun runs(sb: StringBuilder, runs: List<TextRun>, rtl: Boolean, forceBold: Boolean = false) {
         for (r in runs) {
             val rp = StringBuilder()
+            r.font?.let { f ->
+                val cs = FontMap.complexScript(f)
+                rp.append("<w:rFonts w:ascii=\"").append(BidiText.xml(f)).append("\" w:hAnsi=\"").append(BidiText.xml(f)).append("\" w:cs=\"").append(BidiText.xml(cs)).append("\"/>")
+            }
             if (r.bold || forceBold) rp.append("<w:b/><w:bCs/>")
             if (r.italic) rp.append("<w:i/><w:iCs/>")
+            if (r.strike) rp.append("<w:strike/>")
+            if (r.color != 0) rp.append("<w:color w:val=\"").append(Decorations.hex(r.color)).append("\"/>")
             if (kotlin.math.abs(r.size - bodySize) >= 0.5f) { val hp = halfPts(r.size); rp.append("<w:sz w:val=\"").append(hp).append("\"/><w:szCs w:val=\"").append(hp).append("\"/>") }
+            if (r.underline) rp.append("<w:u w:val=\"single\"/>")
+            r.bg?.let { rp.append("<w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"").append(Decorations.hex(it)).append("\"/>") }
             if (rtl) rp.append("<w:rtl/>")
             sb.append("<w:r>")
             if (rp.isNotEmpty()) sb.append("<w:rPr>").append(rp).append("</w:rPr>")
@@ -75,6 +91,7 @@ class DocxBuilder(out: OutputStream, private val title: String) : Closeable {
     private fun paragraph(b: ParagraphBlock) {
         body.append("<w:p><w:pPr>")
         if (b.headingLevel in 1..3) body.append("<w:pStyle w:val=\"Heading").append(b.headingLevel).append("\"/>")
+        b.shade?.let { body.append("<w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"").append(Decorations.hex(it)).append("\"/>") }
         if (b.rtl) body.append("<w:bidi/>")
         jc(b.align)?.let { body.append("<w:jc w:val=\"").append(it).append("\"/>") }
         body.append("</w:pPr>")
@@ -134,7 +151,8 @@ class DocxBuilder(out: OutputStream, private val title: String) : Closeable {
         body.append("<w:tc><w:tcPr><w:tcW w:w=\"").append(width).append("\" w:type=\"dxa\"/>")
         if (span > 1) body.append("<w:gridSpan w:val=\"").append(span).append("\"/>")
         when (vMerge) { "restart" -> body.append("<w:vMerge w:val=\"restart\"/>"); "continue" -> body.append("<w:vMerge/>") }
-        if (headerCell) body.append("<w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"DCE6F1\"/>")
+        val fill = cell?.fill?.let { Decorations.hex(it) } ?: if (headerCell && !pageHasFills) "DCE6F1" else null
+        if (fill != null) body.append("<w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"").append(fill).append("\"/>")
         body.append("</w:tcPr>")
         val lines = cell?.lines.orEmpty()
         if (lines.isEmpty()) body.append("<w:p><w:pPr><w:spacing w:after=\"0\"/></w:pPr></w:p>")
@@ -186,7 +204,10 @@ class DocxBuilder(out: OutputStream, private val title: String) : Closeable {
             .append("\" xmlns:pic=\"http://schemas.openxmlformats.org/drawingml/2006/picture\"><w:body>")
             .append(body)
         if (pages == 0) doc.append("<w:p/>")
-        doc.append("<w:sectPr><w:pgSz w:w=\"").append(twips(pageW)).append("\" w:h=\"").append(twips(pageH)).append('"')
+        doc.append("<w:sectPr>")
+        if (headerXml != null) doc.append("<w:headerReference w:type=\"default\" r:id=\"rIdHdr1\"/>")
+        if (footerXml != null) doc.append("<w:footerReference w:type=\"default\" r:id=\"rIdFtr1\"/>")
+        doc.append("<w:pgSz w:w=\"").append(twips(pageW)).append("\" w:h=\"").append(twips(pageH)).append('"')
         if (pageW > pageH) doc.append(" w:orient=\"landscape\"")
         doc.append("/><w:pgMar w:top=\"").append(twips(marginT)).append("\" w:right=\"").append(twips(marginR)).append("\" w:bottom=\"").append(twips(marginB))
             .append("\" w:left=\"").append(twips(marginL)).append("\" w:header=\"360\" w:footer=\"360\" w:gutter=\"0\"/>")
@@ -197,6 +218,8 @@ class DocxBuilder(out: OutputStream, private val title: String) : Closeable {
         val rels = ArrayList<Triple<String, String, String>>()
         rels += Triple("rId1", "$REL_DOC/styles", "styles.xml")
         imageRels.forEach { (id, name) -> rels += Triple(id, "$REL_DOC/image", "media/$name") }
+        headerXml?.let { zip.text("word/header1.xml", it); rels += Triple("rIdHdr1", "$REL_DOC/header", "header1.xml") }
+        footerXml?.let { zip.text("word/footer1.xml", it); rels += Triple("rIdFtr1", "$REL_DOC/footer", "footer1.xml") }
         zip.text("word/_rels/document.xml.rels", OoxmlZip.rels(*rels.toTypedArray()))
         zip.text("_rels/.rels", OoxmlZip.rels(
             Triple("rId1", "$REL_DOC/officeDocument", "word/document.xml"),
@@ -209,8 +232,43 @@ class DocxBuilder(out: OutputStream, private val title: String) : Closeable {
             "<Default Extension=\"png\" ContentType=\"image/png\"/><Default Extension=\"jpeg\" ContentType=\"image/jpeg\"/>" +
             "<Override PartName=\"/word/document.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml\"/>" +
             "<Override PartName=\"/word/styles.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml\"/>" +
+            (if (headerXml != null) "<Override PartName=\"/word/header1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml\"/>" else "") +
+            (if (footerXml != null) "<Override PartName=\"/word/footer1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml\"/>" else "") +
             "<Override PartName=\"/docProps/core.xml\" ContentType=\"" + OoxmlZip.CT_CORE + "\"/></Types>")
         zip.close()
+    }
+
+    /** A header (`hdr`) or footer (`ftr`) part: one paragraph per line, parts on centre / end tab stops. */
+    private fun furniturePart(tag: String, lines: List<Line>, page: PageLayout): String {
+        val sb = StringBuilder(XML_HEAD).append("<w:").append(tag).append(" xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\" xmlns:r=\"").append(REL_DOC).append("\">")
+        val cw = twips(contentW)
+        for (line in lines.sortedBy { it.top }) {
+            val parts = furniture.parts(line, page.width, page.height, page.bodyFontSize)
+            val rtl = line.rtl
+            sb.append("<w:p><w:pPr><w:tabs><w:tab w:val=\"center\" w:pos=\"").append(cw / 2).append("\"/><w:tab w:val=\"")
+                .append(if (rtl) "left" else "right").append("\" w:pos=\"").append(cw).append("\"/></w:tabs>")
+            if (rtl) sb.append("<w:bidi/>")
+            sb.append("<w:spacing w:after=\"0\"/></w:pPr>")
+            val hp = halfPts(line.fontSize)
+            val font = line.words.firstOrNull()?.font
+            val fonts = if (font == null) "" else "<w:rFonts w:ascii=\"" + BidiText.xml(font) + "\" w:hAnsi=\"" + BidiText.xml(font) + "\" w:cs=\"" + BidiText.xml(FontMap.complexScript(font)) + "\"/>"
+            val rpr = "<w:rPr>" + fonts + "<w:sz w:val=\"" + hp + "\"/><w:szCs w:val=\"" + hp + "\"/>" + (if (rtl) "<w:rtl/>" else "") + "</w:rPr>"
+            var slot = 0 // 0 start, 1 centre, 2 end
+            var first = true
+            for (p in parts.sortedBy { it.pos.ordinal }) {
+                while (slot < p.pos.ordinal) { sb.append("<w:r><w:tab/></w:r>"); slot++ }
+                if (!first && slot == p.pos.ordinal) sb.append("<w:r>").append(rpr).append("<w:t xml:space=\"preserve\"> </w:t></w:r>")
+                first = false
+                for (piece in p.pieces) when (piece) {
+                    is PageFurniture.Piece.Text -> sb.append("<w:r>").append(rpr).append("<w:t xml:space=\"preserve\">").append(BidiText.xml(piece.text)).append("</w:t></w:r>")
+                    is PageFurniture.Piece.PageNumber -> sb.append("<w:r>").append(rpr).append("<w:fldChar w:fldCharType=\"begin\"/></w:r><w:r>").append(rpr)
+                        .append("<w:instrText xml:space=\"preserve\"> PAGE </w:instrText></w:r><w:r>").append(rpr).append("<w:fldChar w:fldCharType=\"separate\"/></w:r><w:r>").append(rpr)
+                        .append("<w:t>").append(BidiText.xml(piece.sample)).append("</w:t></w:r><w:r>").append(rpr).append("<w:fldChar w:fldCharType=\"end\"/></w:r>")
+                }
+            }
+            sb.append("</w:p>")
+        }
+        return sb.append("</w:").append(tag).append(">").toString()
     }
 
     private fun styles(rtl: Boolean): String {

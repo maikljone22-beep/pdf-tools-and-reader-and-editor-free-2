@@ -2,9 +2,9 @@ package com.smartdocs.editor.ui.cloud
 
 import android.content.Intent
 import android.net.Uri
+import android.text.format.DateUtils
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -23,11 +23,14 @@ import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import com.smartdocs.editor.R
-import com.smartdocs.editor.core.cloud.AuthRequiredException
-import com.smartdocs.editor.core.cloud.CloudItem
-import com.smartdocs.editor.core.cloud.GoogleDrive
-import com.smartdocs.editor.core.files.DocumentRepository
+import com.smartdocs.editor.core.cloud.CloudProvider
+import com.smartdocs.editor.core.cloud.Clouds
+import com.smartdocs.editor.core.sync.SyncLive
 import com.smartdocs.editor.core.sync.SyncPair
+import com.smartdocs.editor.core.sync.SyncPrefs
+import com.smartdocs.editor.core.sync.SyncProgress
+import com.smartdocs.editor.core.sync.SyncQueue
+import com.smartdocs.editor.core.sync.SyncRuntime
 import com.smartdocs.editor.core.sync.SyncStatus
 import com.smartdocs.editor.core.sync.SyncStore
 import com.smartdocs.editor.core.sync.SyncWorker
@@ -37,51 +40,88 @@ import com.smartdocs.editor.ui.Routes
 import com.smartdocs.editor.ui.common.AppTopBar
 import com.smartdocs.editor.ui.common.EmptyState
 import com.smartdocs.editor.ui.common.IconTile
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 
-/** Route "sync": local folder ↔ Google Drive folder pairs with status, "sync now" and options. */
+/**
+ * Route "sync": local folder ↔ cloud folder pairs (Google Drive, OneDrive, Dropbox, Box) with live status, per-file
+ * queue (pending / synced / failed + retry), "sync now", Wi‑Fi-only and auto switches, and the global sync options.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SyncScreen(nav: NavHostController) {
     val ctx = LocalContext.current
     val pairs by SyncStore.pairs.collectAsStateWithLifecycle()
-    val drive = remember { GoogleDrive.get(ctx) }
+    val queues by SyncStore.queues.collectAsStateWithLifecycle()
+    val progress by SyncRuntime.progress.collectAsStateWithLifecycle()
+    val authVersion by CloudAuthEvents.version.collectAsStateWithLifecycle()
+    val connected = rememberConnectedProviders(authVersion)
+    var chooseProvider by remember { mutableStateOf(false) }
+    var provider by remember { mutableStateOf<CloudProvider?>(null) }
     var pickedTree by remember { mutableStateOf<Uri?>(null) }
     var confirmDelete by remember { mutableStateOf<SyncPair?>(null) }
-    LaunchedEffect(Unit) { SyncStore.load(ctx) }
+    var showOptions by remember { mutableStateOf(false) }
+    // ticks the relative "last sync" times
+    var tick by remember { mutableIntStateOf(0) }
+    LaunchedEffect(Unit) {
+        SyncStore.load(ctx)
+        SyncLive.install(ctx, inForeground = true)
+        SyncStore.load(ctx).forEach { SyncStore.queue(ctx, it.id) }
+        while (true) { delay(30_000); tick++ }
+    }
 
     val pickTree = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri != null) {
             runCatching { ctx.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION) }
             pickedTree = uri
+        } else provider = null
+    }
+    fun startAdd() {
+        when (connected.size) {
+            0 -> nav.navigate(Routes.CLOUD)
+            1 -> { provider = connected.first(); pickTree.launch(null) }
+            else -> chooseProvider = true
         }
     }
 
     Scaffold(
-        topBar = { AppTopBar(stringResource(R.string.ac_sync_title), onBack = { nav.popBackStack() }) },
+        topBar = {
+            AppTopBar(stringResource(R.string.ac_sync_title), onBack = { nav.popBackStack() }) {
+                if (pairs.isNotEmpty()) IconButton(onClick = { SyncWorker.syncAllNow(ctx) }) { Icon(Icons.Default.Sync, stringResource(R.string.s6_sync_all)) }
+                IconButton(onClick = { showOptions = true }) { Icon(Icons.Default.Tune, stringResource(R.string.s6_options)) }
+            }
+        },
         floatingActionButton = {
-            if (drive.isConnected()) ExtendedFloatingActionButton(onClick = { pickTree.launch(null) }, icon = { Icon(Icons.Default.CreateNewFolder, null) }, text = { Text(stringResource(R.string.ac_sync_add)) })
+            if (connected.isNotEmpty()) ExtendedFloatingActionButton(onClick = { startAdd() }, icon = { Icon(Icons.Default.CreateNewFolder, null) }, text = { Text(stringResource(R.string.ac_sync_add)) })
         },
     ) { pad ->
         when {
-            !drive.isConnected() -> EmptyState(Icons.Default.AddToDrive, stringResource(R.string.ac_sync_need_drive), Modifier.padding(pad)) {
-                Button(onClick = { nav.navigate(Routes.CLOUD) }, shape = PillShape) { Text(stringResource(R.string.ac_connect_drive)) }
+            connected.isEmpty() && pairs.isEmpty() -> EmptyState(Icons.Default.CloudSync, stringResource(R.string.s6_sync_need_cloud), Modifier.padding(pad)) {
+                Button(onClick = { nav.navigate(Routes.CLOUD) }, shape = PillShape) { Text(stringResource(R.string.s6_connect_cloud)) }
             }
-            pairs.isEmpty() -> EmptyState(Icons.Default.Sync, stringResource(R.string.ac_sync_empty), Modifier.padding(pad))
+            pairs.isEmpty() -> EmptyState(Icons.Default.Sync, stringResource(R.string.s6_sync_empty), Modifier.padding(pad))
             else -> LazyColumn(Modifier.padding(pad).fillMaxSize(), contentPadding = PaddingValues(16.dp, 8.dp, 16.dp, 96.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                item { Text(stringResource(R.string.ac_sync_explain), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                items(pairs, key = { it.id }) { p -> PairCard(p, onDelete = { confirmDelete = p }) }
+                item { Text(stringResource(R.string.s6_sync_explain), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                items(pairs, key = { it.id }) { p ->
+                    key(tick) { PairCard(p, queues[p.id].orEmpty(), progress[p.id], onDelete = { confirmDelete = p }) }
+                }
             }
         }
     }
 
-    pickedTree?.let { tree ->
-        DriveFolderPicker(drive, onDismiss = { pickedTree = null }) { folder ->
+    if (chooseProvider) SyncProviderChooser(connected, onDismiss = { chooseProvider = false }) { p ->
+        chooseProvider = false; provider = p; pickTree.launch(null)
+    }
+    val prov = provider
+    val tree = pickedTree
+    if (prov != null && tree != null) {
+        CloudFolderPicker(prov, onDismiss = { pickedTree = null; provider = null }) { folder ->
             val name = DocumentFile.fromTreeUri(ctx, tree)?.name ?: tree.lastPathSegment ?: "?"
-            val pair = SyncPair(treeUri = tree.toString(), localName = name, remoteFolderId = folder.id, remoteName = folder.name)
+            val pair = SyncPair(treeUri = tree.toString(), localName = name, remoteFolderId = folder.id, remoteName = folder.name,
+                provider = prov.id, wifiOnly = SyncPrefs.wifiOnly(ctx))
             SyncStore.add(ctx, pair)
             SyncWorker.schedule(ctx)
             SyncWorker.syncNow(ctx, pair)
-            pickedTree = null
+            pickedTree = null; provider = null
         }
     }
 
@@ -94,12 +134,19 @@ fun SyncScreen(nav: NavHostController) {
             dismissButton = { TextButton(onClick = { confirmDelete = null }) { Text(stringResource(R.string.cancel)) } },
         )
     }
+
+    if (showOptions) ModalBottomSheet(onDismissRequest = { showOptions = false }) {
+        Column(Modifier.padding(bottom = 24.dp)) { SyncSettingsSection() }
+    }
 }
 
 @Composable
-private fun PairCard(p: SyncPair, onDelete: () -> Unit) {
+private fun PairCard(p: SyncPair, queue: List<SyncQueue.QItem>, live: SyncProgress?, onDelete: () -> Unit) {
     val ctx = LocalContext.current
     val tiles = Brand.tiles
+    val provider = remember(p.provider) { Clouds.provider(ctx, p.provider) }
+    var showFiles by remember { mutableStateOf(false) }
+    val running = live != null || p.status == SyncStatus.RUNNING
     Surface(shape = RoundedCornerShape(22.dp), color = MaterialTheme.colorScheme.surfaceContainerLow, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -107,46 +154,111 @@ private fun PairCard(p: SyncPair, onDelete: () -> Unit) {
                 Text(p.localName, Modifier.weight(1f).padding(horizontal = 8.dp), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall)
                 Icon(Icons.Default.SyncAlt, null, tint = MaterialTheme.colorScheme.primary)
                 Text(p.remoteName, Modifier.weight(1f).padding(horizontal = 8.dp), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall)
-                IconTile(Icons.Default.AddToDrive, tiles.green, size = 36.dp, iconSize = 20.dp)
+                ProviderBadge(provider)
             }
             Spacer(Modifier.height(10.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                StatusChip(p.status)
+                StatusChip(if (live != null) SyncStatus.RUNNING else p.status)
                 Spacer(Modifier.width(8.dp))
                 Text(
-                    if (p.lastSync > 0) stringResource(R.string.ac_sync_last, DocumentRepository.formatDate(p.lastSync)) else stringResource(R.string.ac_sync_never),
+                    if (p.lastSync > 0) stringResource(R.string.ac_sync_last, DateUtils.getRelativeTimeSpanString(p.lastSync, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS).toString())
+                    else stringResource(R.string.ac_sync_never),
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            if (p.status == SyncStatus.SYNCED && (p.uploaded + p.downloaded + p.conflicts) > 0)
+            if (live != null) {
+                LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 8.dp))
+                Text(live.currentFile?.let { stringResource(R.string.s6_sync_current, it, live.done) } ?: stringResource(R.string.s6_sync_listing),
+                    style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
+            } else if (p.status == SyncStatus.PENDING) {
+                val note = when {
+                    !SyncRuntime.networkOk(ctx, p.wifiOnly) -> stringResource(if (p.wifiOnly) R.string.s6_wait_wifi else R.string.s6_wait_network)
+                    !SyncRuntime.batteryOk(ctx) -> stringResource(R.string.s6_wait_battery)
+                    else -> null
+                }
+                note?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.tertiary, modifier = Modifier.padding(top = 4.dp)) }
+            }
+            if (!running && (p.uploaded + p.downloaded + p.conflicts) > 0)
                 Text(stringResource(R.string.ac_sync_counts, p.uploaded, p.downloaded, p.conflicts), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
-            p.message?.let { m ->
-                val text = when (m) { SyncWorker.MSG_AUTH -> stringResource(R.string.ac_reconnect_needed); SyncWorker.MSG_PERMISSION -> stringResource(R.string.ac_sync_perm_lost); else -> m }
+            p.message?.takeIf { !running }?.let { m ->
+                val text = when (m) {
+                    SyncWorker.MSG_AUTH -> stringResource(R.string.ac_reconnect_needed)
+                    SyncWorker.MSG_PERMISSION -> stringResource(R.string.ac_sync_perm_lost)
+                    SyncWorker.MSG_FILES_FAILED -> pluralStringResourceCompat(R.plurals.s6_files_failed, p.failed)
+                    else -> m
+                }
                 Text(text, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
             }
             Spacer(Modifier.height(6.dp))
-            Row(Modifier.fillMaxWidth().clickable {
-                SyncStore.update(ctx, p.id) { it.copy(wifiOnly = !it.wifiOnly) }; SyncWorker.schedule(ctx)
-            }, verticalAlignment = Alignment.CenterVertically) {
-                Text(stringResource(R.string.ac_sync_wifi_only), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-                Switch(p.wifiOnly, { v -> SyncStore.update(ctx, p.id) { it.copy(wifiOnly = v) }; SyncWorker.schedule(ctx) })
-            }
-            Row(Modifier.fillMaxWidth().clickable {
-                SyncStore.update(ctx, p.id) { it.copy(auto = !it.auto) }; SyncWorker.schedule(ctx)
-            }, verticalAlignment = Alignment.CenterVertically) {
-                Text(stringResource(R.string.ac_sync_auto), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-                Switch(p.auto, { v -> SyncStore.update(ctx, p.id) { it.copy(auto = v) }; SyncWorker.schedule(ctx) })
-            }
-            Row {
-                FilledTonalButton(onClick = { SyncWorker.syncNow(ctx, p) }, enabled = p.status != SyncStatus.RUNNING && p.status != SyncStatus.PENDING) {
+            SwitchLine(stringResource(R.string.ac_sync_wifi_only), p.wifiOnly) { v -> SyncStore.update(ctx, p.id) { it.copy(wifiOnly = v) }; SyncWorker.schedule(ctx) }
+            SwitchLine(stringResource(R.string.ac_sync_auto), p.auto) { v -> SyncStore.update(ctx, p.id) { it.copy(auto = v) }; SyncWorker.schedule(ctx) }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                FilledTonalButton(onClick = { SyncWorker.syncNow(ctx, p) }, enabled = !running && p.status != SyncStatus.PENDING) {
                     Icon(Icons.Default.Sync, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.ac_sync_now))
                 }
+                Spacer(Modifier.width(6.dp))
+                val failed = queue.count { it.state == SyncQueue.State.FAILED }
+                TextButton(onClick = { showFiles = !showFiles }) {
+                    Text(stringResource(R.string.s6_files_count, queue.size) + if (failed > 0) " · " + stringResource(R.string.s6_failed_count, failed) else "")
+                }
                 Spacer(Modifier.weight(1f))
-                TextButton(onClick = onDelete) { Text(stringResource(R.string.ac_sync_remove), color = MaterialTheme.colorScheme.error) }
+                IconButton(onClick = onDelete) { Icon(Icons.Default.LinkOff, stringResource(R.string.ac_sync_remove), tint = MaterialTheme.colorScheme.error) }
+            }
+            if (showFiles) QueueList(p, queue)
+        }
+    }
+}
+
+@Composable
+private fun QueueList(p: SyncPair, queue: List<SyncQueue.QItem>) {
+    val ctx = LocalContext.current
+    if (queue.isEmpty()) { Text(stringResource(R.string.s6_queue_empty), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant); return }
+    val failed = queue.count { it.state == SyncQueue.State.FAILED }
+    if (failed > 1) TextButton(onClick = { SyncStore.retry(ctx, p.id, null); SyncWorker.request(ctx, p.id) }) {
+        Icon(Icons.Default.Replay, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.s6_retry_all))
+    }
+    val order = listOf(SyncQueue.State.RUNNING, SyncQueue.State.FAILED, SyncQueue.State.PENDING, SyncQueue.State.SYNCED)
+    Column {
+        queue.sortedWith(compareBy({ order.indexOf(it.state) }, { -it.updated })).take(200).forEach { q ->
+            Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                val (icon, tint) = when (q.state) {
+                    SyncQueue.State.PENDING -> Icons.Default.Schedule to MaterialTheme.colorScheme.tertiary
+                    SyncQueue.State.RUNNING -> Icons.Default.Sync to MaterialTheme.colorScheme.primary
+                    SyncQueue.State.SYNCED -> Icons.Default.CheckCircle to MaterialTheme.colorScheme.primary
+                    SyncQueue.State.FAILED -> Icons.Default.ErrorOutline to MaterialTheme.colorScheme.error
+                }
+                Icon(icon, null, tint = tint, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(q.path, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(opLabel(q.op) + (q.error?.let { " · $it" } ?: ""), style = MaterialTheme.typography.labelSmall,
+                        color = if (q.state == SyncQueue.State.FAILED) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
+                if (q.state == SyncQueue.State.FAILED) TextButton(onClick = { SyncStore.retry(ctx, p.id, q.path); SyncWorker.syncNow(ctx, p) }) { Text(stringResource(R.string.ac_retry)) }
             }
         }
     }
 }
+
+@Composable
+private fun opLabel(op: SyncQueue.Op): String = stringResource(when (op) {
+    SyncQueue.Op.UPLOAD -> R.string.s6_op_upload
+    SyncQueue.Op.DOWNLOAD -> R.string.s6_op_download
+    SyncQueue.Op.CONFLICT -> R.string.s6_op_conflict
+    SyncQueue.Op.DELETE_LOCAL -> R.string.s6_op_delete_local
+    SyncQueue.Op.DELETE_REMOTE -> R.string.s6_op_delete_remote
+})
+
+@Composable
+private fun SwitchLine(label: String, value: Boolean, onChange: (Boolean) -> Unit) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(label, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+        Switch(value, onChange)
+    }
+}
+
+@Composable
+internal fun pluralStringResourceCompat(id: Int, count: Int): String = androidx.compose.ui.res.pluralStringResource(id, count, count)
 
 @Composable
 private fun StatusChip(s: SyncStatus) {
@@ -163,54 +275,4 @@ private fun StatusChip(s: SyncStatus) {
             Text(label, color = color, style = MaterialTheme.typography.labelMedium)
         }
     }
-}
-
-/** Dialog to navigate Google Drive folders and choose one (or create one). */
-@Composable
-fun DriveFolderPicker(drive: GoogleDrive, onDismiss: () -> Unit, onPick: (CloudItem) -> Unit) {
-    val scope = rememberCoroutineScope()
-    val rootName = stringResource(R.string.ac_my_drive)
-    val stack = remember { mutableStateListOf(CloudItem(drive.rootId, rootName, true)) }
-    var folders by remember { mutableStateOf<List<CloudItem>>(emptyList()) }
-    var loading by remember { mutableStateOf(true) }
-    var error by remember { mutableStateOf<String?>(null) }
-    var creating by remember { mutableStateOf(false) }
-    var newName by remember { mutableStateOf("") }
-    val authMsg = stringResource(R.string.ac_reconnect_needed)
-    val cur = stack.last()
-    LaunchedEffect(cur.id) {
-        loading = true; error = null
-        folders = try { drive.list(cur.id).filter { it.isFolder } } catch (e: AuthRequiredException) { error = authMsg; emptyList() } catch (e: Exception) { error = e.message; emptyList() }
-        loading = false
-    }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.ac_pick_drive_folder)) },
-        text = {
-            Column(Modifier.heightIn(max = 420.dp)) {
-                Text(stack.joinToString(" › ") { it.name }, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, maxLines = 2)
-                Spacer(Modifier.height(8.dp))
-                if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
-                error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
-                LazyColumn(Modifier.weight(1f, fill = false)) {
-                    if (stack.size > 1) item {
-                        ListItem(headlineContent = { Text("..") }, leadingContent = { Icon(Icons.Default.ArrowUpward, null) }, modifier = Modifier.clickable { stack.removeAt(stack.lastIndex) })
-                    }
-                    items(folders, key = { it.id }) { f ->
-                        ListItem(headlineContent = { Text(f.name, maxLines = 1, overflow = TextOverflow.Ellipsis) }, leadingContent = { Icon(Icons.Default.Folder, null) }, modifier = Modifier.clickable { stack += f })
-                    }
-                }
-                if (creating) Row(verticalAlignment = Alignment.CenterVertically) {
-                    OutlinedTextField(newName, { newName = it }, singleLine = true, modifier = Modifier.weight(1f), label = { Text(stringResource(R.string.new_folder)) })
-                    IconButton(enabled = newName.isNotBlank(), onClick = {
-                        scope.launch {
-                            runCatching { drive.createFolder(cur.id, newName.trim()) }.onSuccess { stack += it; creating = false; newName = "" }.onFailure { error = it.message }
-                        }
-                    }) { Icon(Icons.Default.Check, null) }
-                } else TextButton(onClick = { creating = true }) { Icon(Icons.Default.CreateNewFolder, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.new_folder)) }
-            }
-        },
-        confirmButton = { TextButton(onClick = { onPick(cur) }, enabled = !loading && error == null) { Text(stringResource(R.string.ac_choose_folder)) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
-    )
 }

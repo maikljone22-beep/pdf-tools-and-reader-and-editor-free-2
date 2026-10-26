@@ -33,3 +33,16 @@
 - KV متسق نهائياً: قد يتأخر ظهور تعليق جديد حتى ~60 ثانية في مناطق أخرى.
 - لا إشعارات فورية (استطلاع كل 30 ثانية).
 - حد الملف 20MB.
+
+## Box (share6)
+Box لا يقبل تبادل الرموز دون «السر» (client secret)، ولا يقبل إلا عناوين إعادة توجيه https. لذلك يمر تسجيل الدخول عبر هذا العامل:
+1. من [لوحة مطوري Box](https://app.box.com/developers/console) أنشئ تطبيقاً من نوع **Custom App** ← **User Authentication (OAuth 2.0)**.
+2. في إعدادات التطبيق: أضف عنوان إعادة التوجيه `https://smartdocs-collab.<name>.workers.dev/oauth/box`، وفعّل الصلاحيات «Read all files and folders» و«Write all files and folders».
+3. من هذا المجلد:
+   ```
+   wrangler secret put BOX_CLIENT_ID
+   wrangler secret put BOX_CLIENT_SECRET
+   wrangler deploy
+   ```
+4. في `cloud.properties` أضف `boxClientId=<Client ID>` (السر لا يوضع في التطبيق). العنوانان `boxRedirect` و`boxTokenUrl` يُحسبان تلقائياً من `collabUrl`.
+   (بديل أقل أماناً بلا عامل: `boxClientSecret=` في `cloud.properties`، لكن السر يصبح داخل ملف APK.)

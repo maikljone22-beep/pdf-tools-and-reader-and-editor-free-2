@@ -175,10 +175,12 @@ private fun ReviewDetail(nav: NavHostController, ref: ReviewRef, onBack: () -> U
     }
     // poll every 30 s while visible
     LaunchedEffect(ref.id) { while (true) { refresh(false); kotlinx.coroutines.delay(30_000) } }
+    com.smartdocs.editor.ui.share5.ReviewConsentGate(ref)   // share6: privacy consent / anonymous choice
 
     Scaffold(topBar = {
         AppTopBar(ref.title, onBack = onBack, actions = {
             IconButton(onClick = { share = true }) { Icon(Icons.Default.Share, stringResource(R.string.share)) }
+            IconButton(onClick = { nav.navigate(com.smartdocs.editor.ui.share5.Share5Routes.review(ref.id)) }) { Icon(Icons.Default.ManageAccounts, null) }
         })
     }) { pad ->
         LazyColumn(Modifier.padding(pad).fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {

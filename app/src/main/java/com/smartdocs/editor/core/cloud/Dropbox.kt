@@ -122,6 +122,53 @@ class Dropbox private constructor(private val context: Context) : CloudProvider 
         parse(meta)
     }
 
+    override suspend fun delete(item: CloudItem) = authed { t -> rpc("/files/delete_v2", JSONObject().put("path", item.path ?: item.id), t); Unit }
+
+    override suspend fun metadataOf(item: CloudItem): CloudItem? = authed { t ->
+        try { parse(rpc("/files/get_metadata", JSONObject().put("path", item.id), t)) }
+        catch (e: HttpException) { if (e.code == 409) null else throw e }
+    }
+
+    override val supportsLinks: Boolean get() = true
+
+    /** Public shared link (needs the `sharing.write` + `sharing.read` scopes in the Dropbox App Console). */
+    override suspend fun shareLink(item: CloudItem, anyone: Boolean): String = authed { t ->
+        val path = item.path ?: item.id
+        // owner-only web address (people who already have access)
+        if (!anyone && item.path != null) return@authed "https://www.dropbox.com/preview" + item.path.split('/').joinToString("/") { android.net.Uri.encode(it) }
+        val url = try {
+            val settings = JSONObject().put("requested_visibility", "public")
+            rpc("/sharing/create_shared_link_with_settings", JSONObject().put("path", path).put("settings", settings), t).optString("url")
+        } catch (e: HttpException) {
+            if (e.code != 409) throw e
+            val links = rpc("/sharing/list_shared_links", JSONObject().put("path", path).put("direct_only", true), t).optJSONArray("links")
+            links?.optJSONObject(0)?.optString("url") ?: throw e
+        }
+        url.ifEmpty { throw IllegalStateException("no link") }
+    }
+
+    override suspend fun changeCursor(): String? = authed { t ->
+        rpc("/files/list_folder/get_latest_cursor", JSONObject().put("path", "").put("recursive", true), t).optString("cursor").ifEmpty { null }
+    }
+
+    override suspend fun changesSince(cursor: String): Pair<Boolean, String> = authed { t ->
+        var c = cursor
+        var changed = false
+        try {
+            for (round in 0 until 20) {
+                val o = rpc("/files/list_folder/continue", JSONObject().put("cursor", c), t)
+                if ((o.optJSONArray("entries")?.length() ?: 0) > 0) changed = true
+                c = o.optString("cursor").ifEmpty { c }
+                if (!o.optBoolean("has_more")) break
+            }
+            changed to c
+        } catch (e: HttpException) {
+            if (e.code == 409)
+                true to rpc("/files/list_folder/get_latest_cursor", JSONObject().put("path", "").put("recursive", true), t).optString("cursor").ifEmpty { cursor }
+            else throw e
+        }
+    }
+
     override suspend fun disconnect() {
         withContext(Dispatchers.IO) { runCatching { authed { t -> rpc("/auth/token/revoke", null, t) } } }
         tokens.clear()

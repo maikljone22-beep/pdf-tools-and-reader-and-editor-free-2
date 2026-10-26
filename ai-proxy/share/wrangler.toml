@@ -1,0 +1,35 @@
+name = "smartdocs-share"
+main = "worker.js"
+compatibility_date = "2026-01-01"
+
+# Required: the SAME KV namespace as ai-proxy/collab (copy its id from ai-proxy/collab/wrangler.toml)
+[[kv_namespaces]]
+binding = "COLLAB"
+id = "<collab-kv-namespace-id>"
+
+# Required: this worker's own KV (create with `wrangler kv namespace create SHARE`)
+[[kv_namespaces]]
+binding = "SHARE"
+id = "<share-kv-namespace-id>"
+
+# Optional: R2 bucket for PDFs. If ai-proxy/collab uses R2, bind the SAME bucket here (review PDFs are read from it).
+# [[r2_buckets]]
+# binding = "FILES"
+# bucket_name = "smartdocs-reviews"
+
+[vars]
+# public origin of this worker (links inside cron e-mails)
+PUBLIC_URL = "https://smartdocs-share.<name>.workers.dev"
+# public origin of ai-proxy/collab (the "open in the app" page /r/<id>)
+COLLAB_URL = "https://smartdocs-collab.<name>.workers.dev"
+# mail sender (Resend-compatible API; MAIL_API_KEY is a secret)
+MAIL_FROM = ""
+# MAIL_API_URL = "https://api.resend.com/emails"
+
+# reminders 24 h before deadlines, @mention mails and the owner digest
+[triggers]
+crons = ["*/30 * * * *"]
+
+# Secrets (never in this file):
+#   wrangler secret put APP_TOKEN      # same value as the collab worker's APP_TOKEN (or a separate one → shareToken)
+#   wrangler secret put MAIL_API_KEY   # optional, enables invitation / reminder e-mails

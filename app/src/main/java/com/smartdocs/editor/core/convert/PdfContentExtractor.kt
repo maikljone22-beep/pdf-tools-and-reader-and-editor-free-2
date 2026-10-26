@@ -1,20 +1,39 @@
 package com.smartdocs.editor.core.convert
 
 import com.tom_roush.pdfbox.contentstream.PDFGraphicsStreamEngine
+import com.tom_roush.pdfbox.contentstream.operator.color.SetNonStrokingColor
+import com.tom_roush.pdfbox.contentstream.operator.color.SetNonStrokingColorN
+import com.tom_roush.pdfbox.contentstream.operator.color.SetNonStrokingColorSpace
+import com.tom_roush.pdfbox.contentstream.operator.color.SetNonStrokingDeviceCMYKColor
+import com.tom_roush.pdfbox.contentstream.operator.color.SetNonStrokingDeviceGrayColor
+import com.tom_roush.pdfbox.contentstream.operator.color.SetNonStrokingDeviceRGBColor
+import com.tom_roush.pdfbox.contentstream.operator.color.SetStrokingColor
+import com.tom_roush.pdfbox.contentstream.operator.color.SetStrokingColorN
+import com.tom_roush.pdfbox.contentstream.operator.color.SetStrokingColorSpace
+import com.tom_roush.pdfbox.contentstream.operator.color.SetStrokingDeviceCMYKColor
+import com.tom_roush.pdfbox.contentstream.operator.color.SetStrokingDeviceGrayColor
+import com.tom_roush.pdfbox.contentstream.operator.color.SetStrokingDeviceRGBColor
 import com.tom_roush.pdfbox.cos.COSName
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDPage
 import com.tom_roush.pdfbox.pdmodel.font.PDFont
+import com.tom_roush.pdfbox.pdmodel.graphics.color.PDColor
 import com.tom_roush.pdfbox.pdmodel.graphics.image.PDImage
+import com.tom_roush.pdfbox.pdmodel.graphics.state.RenderingMode
 import com.tom_roush.pdfbox.text.PDFTextStripper
 import com.tom_roush.pdfbox.text.TextPosition
 
 /**
- * Extracts positioned glyphs, ruling-line segments and placed images of a page with PdfBox.
+ * Extracts positioned glyphs (with colour and font family), ruling-line segments, filled boxes and placed images of a
+ * page with PdfBox.
  *
- * This file is shared verbatim with the desktop test harness: only the `com.tom_roush.pdfbox` →
- * `org.apache.pdfbox` package prefix differs. Platform types (P2 point, Winding fill rule, image
- * encoding) come from PdfPlatform.kt.
+ * Everything goes through one affine mapping ([PageFrame]): PDF user space → displayed page (crop box, /Rotate) →
+ * turned so the dominant text direction reads left → right. This covers /Rotate 90/180/270, landscape content
+ * printed sideways on a portrait page and crop boxes with a non-zero origin. Text outside the crop box is dropped;
+ * text running in a minority direction (rotated labels) is kept as one horizontal run at its place.
+ *
+ * This file is shared verbatim with the desktop test harness: only the `com.tom_roush.pdfbox` → `org.apache.pdfbox`
+ * package prefix differs. Platform types (P2 point, Winding fill rule, image encoding) come from PdfPlatform.kt.
  */
 class PdfContentExtractor(private val doc: PDDocument) {
 
@@ -31,21 +50,33 @@ class PdfContentExtractor(private val doc: PDDocument) {
 
     fun extract(index: Int, withImages: Boolean): PageContent {
         val page = doc.getPage(index)
-        val (w, h) = pageSize(index)
-        val glyphs = GlyphCollector().collect(doc, index)
-        // segment / image coordinates are in unrotated user space; only usable when the page is upright
-        val upright = page.rotation % 360 == 0
-        val gfx = if (upright) runCatching { GraphicsCollector(page, withImages).also { it.processPage(page) } }.getOrNull() else null
-        return PageContent(index, w, h, glyphs, gfx?.segments.orEmpty(), gfx?.images.orEmpty())
+        val cb = page.cropBox
+        val raw = RawCollector().collect(doc, index)
+        // PDFTextStripper reports glyphs relative to the crop-box origin already
+        val frame = PageFrame.of(cb.width.takeIf { it > 1f } ?: 595f, cb.height.takeIf { it > 1f } ?: 842f,
+            page.rotation, raw)
+        val glyphs = frame.glyphs(raw)
+        val gfx = runCatching { GraphicsCollector(page, frame, withImages).also { it.processPage(page) } }.getOrNull()
+        return PageContent(index, frame.width, frame.height, glyphs, gfx?.segments.orEmpty(), gfx?.images.orEmpty(), gfx?.fills.orEmpty())
     }
 
-    private class FontInfo(val bold: Boolean, val italic: Boolean)
+    private class FontInfo(val bold: Boolean, val italic: Boolean, val family: String)
 
-    private class GlyphCollector : PDFTextStripper() {
-        val out = ArrayList<Glyph>()
+    /** Glyphs in PDF user space (crop-box origin, before rotation). */
+    private class RawCollector : PDFTextStripper() {
+        val out = ArrayList<RawGlyph>()
         private val fonts = HashMap<PDFont, FontInfo>()
 
-        fun collect(doc: PDDocument, index: Int): List<Glyph> {
+        init {
+            addOperator(SetStrokingColorSpace()); addOperator(SetNonStrokingColorSpace())
+            addOperator(SetStrokingColor()); addOperator(SetNonStrokingColor())
+            addOperator(SetStrokingColorN()); addOperator(SetNonStrokingColorN())
+            addOperator(SetStrokingDeviceGrayColor()); addOperator(SetNonStrokingDeviceGrayColor())
+            addOperator(SetStrokingDeviceRGBColor()); addOperator(SetNonStrokingDeviceRGBColor())
+            addOperator(SetStrokingDeviceCMYKColor()); addOperator(SetNonStrokingDeviceCMYKColor())
+        }
+
+        fun collect(doc: PDDocument, index: Int): List<RawGlyph> {
             setSortByPosition(false)
             setStartPage(index + 1)
             setEndPage(index + 1)
@@ -54,46 +85,52 @@ class PdfContentExtractor(private val doc: PDDocument) {
         }
 
         private fun info(f: PDFont?): FontInfo {
-            if (f == null) return FontInfo(false, false)
+            if (f == null) return FontInfo(false, false, FontMap.ARIAL)
             return fonts.getOrPut(f) {
-                val name = (runCatching { f.name }.getOrNull() ?: "").lowercase()
+                val raw = runCatching { f.name }.getOrNull() ?: ""
+                val name = raw.lowercase()
                 val d = runCatching { f.fontDescriptor }.getOrNull()
                 val bold = listOf("bold", "black", "heavy", "semibold", "demi", ",b").any { it in name } ||
                     (d != null && (d.isForceBold || d.fontWeight >= 600f))
                 val italic = "italic" in name || "oblique" in name || (d != null && d.isItalic)
-                FontInfo(bold, italic)
+                val family = FontMap.family(raw, serif = d?.isSerif == true, monospace = d?.isFixedPitch == true)
+                FontInfo(bold, italic, family)
             }
         }
+
+        private fun rgb(c: PDColor?): Int = if (c == null) 0 else runCatching { c.toRGB() and 0xFFFFFF }.getOrDefault(0)
 
         override fun processTextPosition(text: TextPosition) {
             val u = text.unicode ?: return
             if (u.isEmpty()) return
-            val x = text.xDirAdj
-            val base = text.yDirAdj
-            val w = text.widthDirAdj
+            val m = text.textMatrix
             var fs = text.fontSizeInPt
             val hh = text.heightDir.takeIf { it.isFinite() && it > 0f } ?: (fs * 0.7f)
             if (!fs.isFinite() || fs <= 0.5f) fs = hh / 0.7f
-            if (!x.isFinite() || !base.isFinite() || fs > 1000f) return
+            if (!m.translateX.isFinite() || !m.translateY.isFinite() || fs > 1000f) return
+            val gs = graphicsState
+            val mode = runCatching { gs.textState.renderingMode }.getOrNull()
+            val color = if (mode != null && !mode.isFill() && mode.isStroke()) rgb(gs.strokingColor) else if (mode == RenderingMode.NEITHER) 0 else rgb(gs.nonStrokingColor)
             val fi = info(text.font)
-            out += Glyph(x, base - hh, w.coerceAtLeast(0f), hh, base, u, fs, fi.bold, fi.italic)
+            out += RawGlyph(m.translateX, m.translateY, m.scaleX, m.shearY, text.widthDirAdj.coerceAtLeast(0f), hh, u, fs, fi.bold, fi.italic, color, fi.family)
         }
     }
 
-    /** Collects stroked lines / thin filled rectangles (table rules) and image placements. */
-    private class GraphicsCollector(page: PDPage, private val withImages: Boolean) : PDFGraphicsStreamEngine(page) {
+    /** Collects stroked lines / thin filled rectangles (table rules), filled boxes and image placements. */
+    private class GraphicsCollector(page: PDPage, private val frame: PageFrame, private val withImages: Boolean) : PDFGraphicsStreamEngine(page) {
         val segments = ArrayList<Segment>()
         val images = ArrayList<PageImage>()
+        val fills = ArrayList<Fill>()
         private val llx = page.cropBox.lowerLeftX
-        private val ury = page.cropBox.upperRightY
+        private val lly = page.cropBox.lowerLeftY
         private val pending = ArrayList<FloatArray>()        // straight path pieces x1,y1,x2,y2 (PDF space)
         private val rects = ArrayList<FloatArray>()          // x0,y0,x1,y1 (PDF space)
         private var cx = 0f; private var cy = 0f
         private var sx = 0f; private var sy = 0f
         private var imageBytes = 0L
 
-        private fun tx(x: Float) = x - llx
-        private fun ty(y: Float) = ury - y
+        /** PDF user space → final page frame. */
+        private fun map(x: Float, y: Float): FloatArray = frame.map(x - llx, y - lly)
 
         override fun appendRectangle(p0: P2, p1: P2, p2: P2, p3: P2) {
             val xs = floatArrayOf(p0.x.toFloat(), p1.x.toFloat(), p2.x.toFloat(), p3.x.toFloat())
@@ -106,12 +143,19 @@ class PdfContentExtractor(private val doc: PDDocument) {
             if (!withImages || images.size >= 60 || imageBytes > 40L * 1024 * 1024) return
             if (pdImage.isStencil) return
             val m = graphicsState.currentTransformationMatrix
-            val w = m.scalingFactorX; val h = m.scalingFactorY
-            if (w < 8f || h < 8f) return
-            val x0 = m.translateX; val y0 = m.translateY
-            val enc = runCatching { encodePdfImage(pdImage) }.getOrNull() ?: return
+            fun pt(u: Float, v: Float) = map(m.scaleX * u + m.shearX * v + m.translateX, m.shearY * u + m.scaleY * v + m.translateY)
+            val o = pt(0f, 0f); val ex = pt(1f, 0f); val ey = pt(0f, 1f); val exy = pt(1f, 1f)
+            val x0 = minOf(o[0], ex[0], ey[0], exy[0]); val x1 = maxOf(o[0], ex[0], ey[0], exy[0])
+            val y0 = minOf(o[1], ex[1], ey[1], exy[1]); val y1 = maxOf(o[1], ex[1], ey[1], exy[1])
+            if (x1 - x0 < 8f || y1 - y0 < 8f) return
+            if (x1 < 0f || y1 < 0f || x0 > frame.width || y0 > frame.height) return
+            // image rows run from the top (unit-square y = 1) down: its "up" vector decides the turn
+            val ux = ey[0] - o[0]; val uy = ey[1] - o[1]
+            val vx = ex[0] - o[0]; val vy = ex[1] - o[1]
+            val orient = PageFrame.imageOrientation(vx, vy, ux, uy)
+            val enc = runCatching { encodePdfImage(pdImage, orient.first, orient.second) }.getOrNull() ?: return
             imageBytes += enc.first.size
-            images += PageImage(tx(x0), ty(y0 + h), w, h, enc.first, enc.second)
+            images += PageImage(x0, y0, x1 - x0, y1 - y0, enc.first, enc.second)
         }
 
         override fun clip(windingRule: Winding) = Unit
@@ -130,7 +174,7 @@ class PdfContentExtractor(private val doc: PDDocument) {
         }
 
         override fun fillPath(windingRule: Winding) {
-            // thin filled rectangles are how many generators draw table rules
+            // thin filled rectangles are how many generators draw table rules; bigger ones are shading
             val boxes = ArrayList(rects)
             if (pending.isNotEmpty() && pending.size <= 5) {
                 val xs = pending.flatMap { listOf(it[0], it[2]) }; val ys = pending.flatMap { listOf(it[1], it[3]) }
@@ -140,15 +184,27 @@ class PdfContentExtractor(private val doc: PDDocument) {
                 val bw = r[2] - r[0]; val bh = r[3] - r[1]
                 if (bh <= 3f && bw > 3f) { val y = (r[1] + r[3]) / 2f; add(r[0], y, r[2], y) }
                 else if (bw <= 3f && bh > 3f) { val x = (r[0] + r[2]) / 2f; add(x, r[1], x, r[3]) }
+                else if (bw > 3f && bh > 3f && fills.size < 3000) {
+                    val color = runCatching { graphicsState.nonStrokingColor.toRGB() and 0xFFFFFF }.getOrNull() ?: continue
+                    val a = map(r[0], r[1]); val b = map(r[2], r[3])
+                    val rect = Rect(minOf(a[0], b[0]), minOf(a[1], b[1]), maxOf(a[0], b[0]), maxOf(a[1], b[1]))
+                    if (rect.w < 0.95f * frame.width || rect.h < 0.95f * frame.height) fills += Fill(rect, color)
+                }
             }
             reset()
         }
 
-        override fun fillAndStrokePath(windingRule: Winding) = strokePath()
+        override fun fillAndStrokePath(windingRule: Winding) {
+            val keep = ArrayList(pending); val keepR = ArrayList(rects)
+            fillPath(windingRule)
+            pending += keep; rects += keepR
+            strokePath()
+        }
 
         private fun add(x1: Float, y1: Float, x2: Float, y2: Float) {
             if (segments.size > 20000) return
-            val s = Segment(tx(x1), ty(y1), tx(x2), ty(y2))
+            val a = map(x1, y1); val b = map(x2, y2)
+            val s = Segment(a[0], a[1], b[0], b[1])
             if (s.horizontal || s.vertical) segments += s
         }
 

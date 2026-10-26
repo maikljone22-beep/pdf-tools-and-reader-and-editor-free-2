@@ -1,0 +1,15 @@
+name = "smartdocs-connected"
+main = "worker.js"
+compatibility_date = "2026-01-01"
+
+# Required: KV for documents, versions and readers (wrangler kv namespace create DOCS)
+[[kv_namespaces]]
+binding = "DOCS"
+id = "<your-docs-kv-namespace-id>"
+
+# Optional: R2 bucket for version PDFs (else KV, max 20 MB each)
+# [[r2_buckets]]
+# binding = "FILES"
+# bucket_name = "smartdocs-connected"
+
+# Secret (never in this file): wrangler secret put APP_TOKEN

@@ -1,0 +1,25 @@
+name = "smartdocs-esign"
+main = "worker.js"
+compatibility_date = "2026-01-01"
+
+# Required: KV for requests, signer values and the hash index (wrangler kv namespace create ESIGN)
+[[kv_namespaces]]
+binding = "ESIGN"
+id = "<your-esign-kv-namespace-id>"
+
+# Optional: R2 bucket for the PDFs (without it PDFs are kept in KV, max 20 MB each)
+# [[r2_buckets]]
+# binding = "FILES"
+# bucket_name = "smartdocs-esign"
+
+# Reminder mails every 6 hours (only when the MAIL_* settings exist)
+[triggers]
+crons = ["0 */6 * * *"]
+
+[vars]
+# Public address of this worker (used in mailed links and by the cron job)
+PUBLIC_URL = ""
+# Generic JSON mail API: POST {from, to[], subject, html} with "Authorization: Bearer <MAIL_API_KEY>"
+MAIL_API_URL = ""
+MAIL_FROM = ""
+# Secrets (never in this file): wrangler secret put APP_TOKEN / wrangler secret put MAIL_API_KEY

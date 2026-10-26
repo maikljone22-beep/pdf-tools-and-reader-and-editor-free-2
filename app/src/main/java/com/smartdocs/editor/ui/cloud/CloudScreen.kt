@@ -42,7 +42,7 @@ import com.smartdocs.editor.ui.settings.GroupRow
 import kotlinx.coroutines.launch
 
 /**
- * Cloud tab: direct Google Drive / OneDrive / Dropbox accounts, the system picker (any installed provider),
+ * Cloud tab: direct Google Drive / OneDrive / Dropbox / Box accounts, the system picker (any installed provider),
  * sync folders, shared review and Wi‑Fi transfer.
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -107,7 +107,7 @@ fun CloudScreen(nav: NavHostController) {
                 providers.forEachIndexed { i, p ->
                     if (i > 0) GroupDivider()
                     val (icon, tile) = providerLook(p.id, tiles)
-                    val account = when (p) { is GoogleDrive -> p.accountEmail; is OneDrive -> p.account; is Dropbox -> p.account; else -> null }
+                    val account = Clouds.accountOf(p)
                     when {
                         !p.isConfigured() -> GroupRow(p.id.label, stringResource(R.string.ac_not_configured), icon = icon, tile = tile)
                         p.isConnected() -> GroupRow(p.id.label, account ?: stringResource(R.string.ac_connected), icon = icon, tile = tile,
@@ -121,10 +121,13 @@ fun CloudScreen(nav: NavHostController) {
             GroupCard(stringResource(R.string.ds_cloud_open_section)) {
                 GroupRow(stringResource(R.string.cloud_saf), stringResource(R.string.ac_saf_sub), icon = Icons.Default.FolderOpen, tile = tiles.blue, onClick = pick)
                 GroupDivider()
-                GroupRow(stringResource(R.string.ac_sync_title), stringResource(R.string.ac_sync_sub), icon = Icons.Default.Sync, tile = tiles.green, onClick = { nav.navigate(AcctRoutes.SYNC) })
+                GroupRow(stringResource(R.string.ac_sync_title), stringResource(R.string.s6_sync_sub), icon = Icons.Default.Sync, tile = tiles.green, onClick = { nav.navigate(AcctRoutes.SYNC) })
                 GroupDivider()
                 GroupRow(stringResource(R.string.ac_review_title), if (CollabConfig.enabled) stringResource(R.string.ac_review_sub) else stringResource(R.string.ac_not_configured),
                     icon = Icons.Default.RateReview, tile = tiles.purple, onClick = if (CollabConfig.enabled) ({ nav.navigate(AcctRoutes.review()) }) else null)
+                GroupDivider()
+                GroupRow(stringResource(R.string.sh5_hub), stringResource(R.string.sh5_tracker_sub), icon = Icons.Default.Share, tile = tiles.amber,
+                    onClick = { nav.navigate(com.smartdocs.editor.ui.share5.Share5Routes.HUB) })
                 GroupDivider()
                 GroupRow(stringResource(R.string.wifi_transfer), stringResource(R.string.ac_wifi_sub), icon = Icons.Default.Wifi, tile = tiles.teal, onClick = { nav.navigate(AcctRoutes.WIFI) })
             }
@@ -148,4 +151,5 @@ internal fun providerLook(id: ProviderId, tiles: com.smartdocs.editor.core.theme
     ProviderId.DRIVE -> Icons.Default.AddToDrive to tiles.green
     ProviderId.ONEDRIVE -> Icons.Default.Cloud to tiles.blue
     ProviderId.DROPBOX -> Icons.Default.Inventory2 to tiles.purple
+    ProviderId.BOX -> Icons.Default.Inbox to tiles.teal
 }

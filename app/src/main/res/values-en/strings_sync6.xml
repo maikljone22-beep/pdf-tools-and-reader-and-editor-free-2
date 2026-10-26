@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- share6: multi-cloud sync, live review comments, cloud links, Wi-Fi transfer network option, reader tips -->
+<resources>
+    <string name="s6_channel_sync">Sync</string>
+    <string name="s6_channel_review">Shared review comments</string>
+    <string name="s6_notif_syncing">Syncing folders…</string>
+    <plurals name="s6_new_comments">
+        <item quantity="one">%d new comment</item>
+        <item quantity="other">%d new comments</item>
+    </plurals>
+    <plurals name="s6_files_failed">
+        <item quantity="one">%d file could not be synced; it will be retried automatically</item>
+        <item quantity="other">%d files could not be synced; they will be retried automatically</item>
+    </plurals>
+    <string name="s6_show">Show</string>
+    <string name="s6_coach_doc_tabs_t">Open documents</string>
+    <string name="s6_coach_doc_tabs_b">Open several files and switch between them here without closing any.</string>
+
+    <string name="s6_sync_sub">Phone folder ↔ Google Drive, OneDrive, Dropbox or Box folder</string>
+    <string name="s6_sync_all">Sync all now</string>
+    <string name="s6_options">Sync options</string>
+    <string name="s6_sync_need_cloud">Connect a cloud account (Google Drive, OneDrive, Dropbox or Box) to sync folders</string>
+    <string name="s6_connect_cloud">Connect a cloud account</string>
+    <string name="s6_sync_empty">No synced folders. Add a folder from your phone and choose a matching cloud folder.</string>
+    <string name="s6_sync_explain">Sync runs both ways: almost instantly while the app is open, when you save a file, and every 15 minutes in the background. If a file changed in both places, the cloud version is kept as \"(conflicting copy)\" next to yours, so nothing is lost. A deletion on one side is applied to the other unless the file was edited there.</string>
+    <string name="s6_pick_cloud">Sync with</string>
+    <string name="s6_pick_cloud_folder">Choose a folder in %1$s</string>
+    <string name="s6_sync_current">%1$s (%2$d done)</string>
+    <string name="s6_sync_listing">Comparing both folders…</string>
+    <string name="s6_wait_wifi">Waiting for Wi‑Fi</string>
+    <string name="s6_wait_network">Waiting for an internet connection</string>
+    <string name="s6_wait_battery">Waiting for the battery to charge</string>
+    <string name="s6_files_count">Files (%1$d)</string>
+    <string name="s6_failed_count">%1$d failed</string>
+    <string name="s6_queue_empty">No transfers yet.</string>
+    <string name="s6_retry_all">Retry all</string>
+    <string name="s6_op_upload">Upload</string>
+    <string name="s6_op_download">Download</string>
+    <string name="s6_op_conflict">Conflict: both versions kept</string>
+    <string name="s6_op_delete_local">Delete from phone</string>
+    <string name="s6_op_delete_remote">Delete from cloud</string>
+
+    <string name="s6_settings_title">Sync and transfers</string>
+    <string name="s6_pref_auto">Automatic sync</string>
+    <string name="s6_pref_auto_sub">Every 15 minutes and when something changes. \"Sync now\" always works.</string>
+    <string name="s6_pref_live">Near real-time sync</string>
+    <string name="s6_pref_live_sub">Watch folders and the cloud while the app is open</string>
+    <string name="s6_pref_on_save">Sync after saving</string>
+    <string name="s6_pref_on_save_sub">Upload a file as soon as it is saved when it is inside a synced folder</string>
+    <string name="s6_pref_wifi">Transfer over Wi‑Fi only</string>
+    <string name="s6_pref_wifi_on">New sync folders and app-data sync use Wi‑Fi only</string>
+    <string name="s6_pref_wifi_off">Mobile data may be used too</string>
+
+    <string name="s6_link_menu">Link options</string>
+    <string name="s6_copy_link">Copy share link</string>
+    <string name="s6_share_link">Share link</string>
+    <string name="s6_copy_private_link">Copy link for people with access</string>
+    <string name="s6_link_copied">Link copied</string>
+    <string name="s6_link_failed">Could not create the link</string>
+
+    <string name="s6_wifi_only_transfer">Wi‑Fi only</string>
+    <string name="s6_wifi_only_on">The page is available on the Wi‑Fi network or hotspot only</string>
+    <string name="s6_wifi_only_off">Available on every connected network (including USB tethering or mobile data)</string>
+    <string name="s6_wifi_need_wifi">Connect to Wi‑Fi or turn on the hotspot, or turn off \"Wi‑Fi only\".</string>
+    <string name="s6_policy_wifi_only">Settings allow transfers over Wi‑Fi only, and the device is on mobile data now.</string>
+</resources>

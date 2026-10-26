@@ -19,7 +19,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.layout.positionOnScreen
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
@@ -50,11 +50,13 @@ object CoachIds {
     const val HOME_SCAN = "home_scan"
     const val READER_TABS = "reader_tabs"
     const val READER_TOOLBAR = "reader_toolbar"
+    /** Open-documents tab strip / switcher (share6, optional third reader step). */
+    const val READER_DOC_TABS = "reader_doc_tabs"
 }
 
 data class CoachStep(val target: String, val title: Int, val text: Int)
 
-/** Tiny registry of target bounds (window coordinates), filled by [coachTarget]. */
+/** Tiny registry of target bounds (screen coordinates, so popups/insets/cutouts cannot shift them), filled by [coachTarget]. */
 object CoachMarkRegistry {
     val bounds = mutableStateMapOf<String, Rect>()
     /** Set false to suppress all coach marks (e.g. UI tests). */
@@ -64,7 +66,9 @@ object CoachMarkRegistry {
 fun Modifier.coachTarget(id: String): Modifier = composed {
     DisposableEffect(id) { onDispose { CoachMarkRegistry.bounds.remove(id) } }
     onGloballyPositioned { c ->
-        val p = c.positionInWindow()
+        // zero-size or detached targets are not registered (a hidden tool bar must not get a spotlight)
+        if (!c.isAttached || c.size.width == 0 || c.size.height == 0) { CoachMarkRegistry.bounds.remove(id); return@onGloballyPositioned }
+        val p = c.positionOnScreen()
         CoachMarkRegistry.bounds[id] = Rect(p, Size(c.size.width.toFloat(), c.size.height.toFloat()))
     }
 }
@@ -79,31 +83,40 @@ fun HomeCoachMarks() = CoachMark("home", listOf(
 fun ReaderCoachMarks() = CoachMark("reader", listOf(
     CoachStep(CoachIds.READER_TABS, R.string.ac_coach_reader_tabs_t, R.string.ac_coach_reader_tabs_b),
     CoachStep(CoachIds.READER_TOOLBAR, R.string.ac_coach_reader_tools_t, R.string.ac_coach_reader_tools_b),
+    CoachStep(CoachIds.READER_DOC_TABS, R.string.s6_coach_doc_tabs_t, R.string.s6_coach_doc_tabs_b),
 ))
 
-/** Shows [steps] once (per [key]) after the targets have been laid out. */
+/**
+ * Shows [steps] once (per [key]) after the targets have been laid out. The tour is fixed when it starts; steps whose
+ * target disappeared meanwhile are skipped; "seen" is stored only after at least one step was really shown.
+ */
 @Composable
 fun CoachMark(key: String, steps: List<CoachStep>, startDelayMs: Long = 700, onFinished: () -> Unit = {}) {
     val ctx = LocalContext.current
     var seen by remember(key) { mutableStateOf(AcctPrefs.coachSeen(ctx, key)) }
     if (seen || !CoachMarkRegistry.enabled || !AcctPrefs.onboardingDone(ctx)) return
-    var ready by remember { mutableStateOf(false) }
-    LaunchedEffect(key) { delay(startDelayMs); ready = true }
-    if (!ready) return
-    val visible = steps.filter { CoachMarkRegistry.bounds[it.target] != null }
-    if (visible.isEmpty()) return
+    var tour by remember(key) { mutableStateOf<List<CoachStep>?>(null) }
+    LaunchedEffect(key) { delay(startDelayMs); tour = steps.filter { CoachMarkRegistry.bounds[it.target] != null } }
+    val list = tour ?: return
+    if (list.isEmpty()) return
     var index by remember(key) { mutableIntStateOf(0) }
-    val step = visible.getOrNull(index)
-    fun finish() { AcctPrefs.setCoachSeen(ctx, key); seen = true; onFinished() }
+    var shownAny by remember(key) { mutableStateOf(false) }
+    fun finish() { if (shownAny) AcctPrefs.setCoachSeen(ctx, key); seen = true; onFinished() }
+    // skip steps whose target is gone (e.g. the tool bar was hidden)
+    var i = index
+    while (i < list.size && CoachMarkRegistry.bounds[list[i].target] == null) i++
+    val step = list.getOrNull(i)
     if (step == null) { LaunchedEffect(Unit) { finish() }; return }
     val target = CoachMarkRegistry.bounds[step.target] ?: return
+    LaunchedEffect(step.target) { shownAny = true }
+    val current = i
 
-    Popup(popupPositionProvider = WindowOrigin, onDismissRequest = { finish() }, properties = PopupProperties(focusable = true)) {
-        SpotlightOverlay(target, step, index, visible.size, onNext = { if (index + 1 >= visible.size) finish() else index++ }, onSkip = { finish() })
+    Popup(popupPositionProvider = WindowOrigin, onDismissRequest = { finish() }, properties = PopupProperties(focusable = true, clippingEnabled = false)) {
+        SpotlightOverlay(target, step, current, list.size, onNext = { if (current + 1 >= list.size) finish() else index = current + 1 }, onSkip = { finish() })
     }
 }
 
-/** Places the popup at the window origin so window coordinates can be used directly. */
+/** Places the popup at the window origin; the overlay then measures its own screen origin. */
 private object WindowOrigin : PopupPositionProvider {
     override fun calculatePosition(anchorBounds: IntRect, windowSize: IntSize, layoutDirection: LayoutDirection, popupContentSize: IntSize) = IntOffset.Zero
 }
@@ -113,9 +126,11 @@ private fun SpotlightOverlay(target: Rect, step: CoachStep, index: Int, count: I
     val density = LocalDensity.current
     val pad = with(density) { 8.dp.toPx() }
     val alpha by animateFloatAsState(1f, label = "coach")
-    val hole = Rect(target.left - pad, target.top - pad, target.right + pad, target.bottom + pad)
+    // the target is in screen coordinates: subtract this overlay's own screen origin (system bars, cutouts, popup offset)
+    var origin by remember { mutableStateOf(Offset.Zero) }
+    val hole = Rect(target.left - pad - origin.x, target.top - pad - origin.y, target.right + pad - origin.x, target.bottom + pad - origin.y)
     BoxWithConstraints(
-        Modifier.fillMaxSize()
+        Modifier.fillMaxSize().onGloballyPositioned { origin = it.positionOnScreen() }
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onNext)
     ) {
         Canvas(Modifier.fillMaxSize().graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen; this.alpha = alpha }) {

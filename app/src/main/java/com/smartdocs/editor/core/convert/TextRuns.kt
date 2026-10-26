@@ -1,7 +1,14 @@
 package com.smartdocs.editor.core.convert
 
 /** A formatting run in logical order. */
-data class TextRun(val text: String, val bold: Boolean, val italic: Boolean, val size: Float)
+data class TextRun(
+    val text: String, val bold: Boolean, val italic: Boolean, val size: Float,
+    val color: Int = 0, val font: String? = null, val underline: Boolean = false, val strike: Boolean = false, val bg: Int? = null,
+) {
+    /** Same formatting (everything but the text). */
+    fun sameStyle(o: TextRun) = bold == o.bold && italic == o.italic && size == o.size && color == o.color && font == o.font &&
+        underline == o.underline && strike == o.strike && bg == o.bg
+}
 
 object TextRuns {
 
@@ -11,11 +18,14 @@ object TextRuns {
     fun of(line: Line): List<TextRun> {
         val out = ArrayList<TextRun>()
         line.words.forEachIndexed { i, w ->
-            val t = if (i == 0) w.text else " " + w.text
+            val run = TextRun(w.text, w.bold, w.italic, round(w.fontSize), w.color, w.font, w.underline, w.strike, w.bg)
             val last = out.lastOrNull()
-            val size = round(w.fontSize)
-            if (last != null && last.bold == w.bold && last.italic == w.italic && last.size == size) out[out.size - 1] = last.copy(text = last.text + t)
-            else out += TextRun(t, w.bold, w.italic, size)
+            if (last != null && last.sameStyle(run)) out[out.size - 1] = last.copy(text = last.text + " " + w.text)
+            else if (last != null && i > 0) {
+                // the space between two differently formatted words keeps the earlier word's look unless it is decorated
+                if (last.underline || last.strike || last.bg != null) out += run.copy(text = " " + w.text)
+                else { out[out.size - 1] = last.copy(text = last.text + " "); out += run }
+            } else out += run
         }
         return out
     }
@@ -37,7 +47,7 @@ object TextRuns {
             }
             for (r in runs) {
                 val last = out.lastOrNull()
-                if (last != null && last.bold == r.bold && last.italic == r.italic && last.size == r.size) out[out.size - 1] = last.copy(text = last.text + r.text)
+                if (last != null && last.sameStyle(r)) out[out.size - 1] = last.copy(text = last.text + r.text)
                 else out += r
             }
         }

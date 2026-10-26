@@ -116,5 +116,52 @@ class OneDrive private constructor(private val context: Context) : CloudProvider
         parse(JSONObject(CloudHttp.string(req("${item(parentId)}/children", t).post(body.toRequestBody(CloudHttp.JSON)).build())))
     }
 
+    /** Moves the item to the OneDrive recycle bin. */
+    override suspend fun delete(item: CloudItem) = authed { t -> CloudHttp.string(req("$API/items/${item.id}", t).delete().build()); Unit }
+
+    override suspend fun metadataOf(item: CloudItem): CloudItem? = authed { t ->
+        try { parse(JSONObject(CloudHttp.string(req("$API/items/${item.id}?\$select=$SELECT", t).build()))) }
+        catch (e: HttpException) { if (e.code == 404) null else throw e }
+    }
+
+    override val supportsLinks: Boolean get() = true
+
+    /** Anonymous view link (`createLink`); where the tenant forbids it, or [anyone] is false, the item's web URL. */
+    override suspend fun shareLink(item: CloudItem, anyone: Boolean): String = authed { t ->
+        val anon = if (!anyone) null else runCatching {
+            val body = JSONObject().put("type", "view").put("scope", "anonymous").toString()
+            JSONObject(CloudHttp.string(req("$API/items/${item.id}/createLink", t).post(body.toRequestBody(CloudHttp.JSON)).build()))
+                .optJSONObject("link")?.optString("webUrl")?.takeIf { it.isNotEmpty() }
+        }.getOrNull()
+        anon ?: JSONObject(CloudHttp.string(req("$API/items/${item.id}?\$select=webUrl", t).build())).optString("webUrl").ifEmpty { throw IllegalStateException("no link") }
+    }
+
+    override suspend fun changeCursor(): String? = authed { t ->
+        JSONObject(CloudHttp.string(req("$API/root/delta?token=latest", t).build())).optString("@odata.deltaLink").ifEmpty { null }
+    }
+
+    override suspend fun changesSince(cursor: String): Pair<Boolean, String> = authed { t ->
+        var url = cursor
+        var changed = false
+        try {
+            for (round in 0 until 20) {
+                val o = JSONObject(CloudHttp.string(req(url, t).build()))
+                val arr = o.optJSONArray("value")
+                // the root itself is always reported; anything else is a real change
+                if (arr != null) for (i in 0 until arr.length()) if (!arr.getJSONObject(i).has("root")) changed = true
+                val delta = o.optString("@odata.deltaLink")
+                if (delta.isNotEmpty()) { url = delta; break }
+                val next = o.optString("@odata.nextLink")
+                if (next.isEmpty()) break
+                url = next
+            }
+            changed to url
+        } catch (e: HttpException) {
+            if (e.code == 410 || e.code == 404)
+                true to JSONObject(CloudHttp.string(req("$API/root/delta?token=latest", t).build())).optString("@odata.deltaLink").ifEmpty { cursor }
+            else throw e
+        }
+    }
+
     override suspend fun disconnect() { tokens.clear() }
 }

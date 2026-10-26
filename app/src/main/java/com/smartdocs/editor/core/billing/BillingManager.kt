@@ -28,8 +28,9 @@ data class ProPlan(val productId: String, val title: String, val price: String, 
 
 /**
  * Google Play Billing (v9) wrapper: product query, purchase flow, restore, acknowledgement, entitlement caching.
- * Client-side verification only (honest limit: a modified APK can bypass it; real protection needs a server
- * checking purchase tokens with the Play Developer API / RTDN).
+ * Client mode: client-side verification only. Server mode ([LicenseClient.configured]): every purchase / restore is
+ * sent to `/verify-purchase` (Play Developer API on the server) and the signed licence is stored; a refund or revoke
+ * reported by the server removes Pro; while the server is unreachable a new purchase counts provisionally for 3 days.
  */
 class BillingManager private constructor(private val context: Context) {
     companion object {
@@ -129,6 +130,7 @@ class BillingManager private constructor(private val context: Context) {
         ours.filter { it.purchaseState == Purchase.PurchaseState.PURCHASED && !it.isAcknowledged }.forEach { acknowledge(it) }
         val current = Pro.load(context)
         when {
+            active != null && LicenseClient.configured -> verifyOnServer(active, current)
             active != null -> Pro.set(context, Pro.Entitlement(Pro.Source.PLAY, active.products.firstOrNull(), 0L, System.currentTimeMillis(), active.isAutoRenewing))
             current.source == Pro.Source.PLAY -> Pro.set(context, Pro.Entitlement()) // subscription ended
         }
@@ -140,11 +142,36 @@ class BillingManager private constructor(private val context: Context) {
         return Pro.load(context).activeAt(System.currentTimeMillis())
     }
 
+    /** Server mode: exchanges the purchase token for a signed licence. */
+    private suspend fun verifyOnServer(p: Purchase, current: Pro.Entitlement) {
+        val product = p.products.firstOrNull() ?: return
+        val reply = kotlinx.coroutines.withContext(Dispatchers.IO) {
+            try { LicenseClient.verifyPurchase(context, product, p.purchaseToken) } catch (e: LicenseClient.NetworkException) { null }
+        }
+        val token = reply?.body?.optString("token").orEmpty()
+        when {
+            reply == null -> {
+                // server unreachable: keep a still-valid signed licence, else count the purchase provisionally (3 days)
+                if (current.source == Pro.Source.PLAY && current.license != null && current.activeAt(System.currentTimeMillis())) return
+                if (current.source == Pro.Source.PLAY && current.provisional && current.verifiedAt > 0) return
+                Pro.set(context, Pro.Entitlement(Pro.Source.PLAY, product, 0L, System.currentTimeMillis(), p.isAutoRenewing, provisional = true))
+            }
+            reply.ok && reply.body.optBoolean("active") && token.isNotEmpty() -> LicenseClient.store(context, token, p.purchaseToken)
+            reply.ok || reply.status in 400..499 -> if (current.source == Pro.Source.PLAY) Pro.set(context, Pro.Entitlement()) // refunded / revoked / invalid
+        }
+    }
+
     private suspend fun acknowledge(p: Purchase) {
         val params = AcknowledgePurchaseParams.newBuilder().setPurchaseToken(p.purchaseToken).build()
         suspendCancellableCoroutine { cont -> client.acknowledgePurchase(params) { if (cont.isActive) cont.resume(Unit) } }
     }
 
-    /** Fire-and-forget refresh used at app start. Never throws. */
-    fun refreshAsync() { scope.launch { runCatching { restore() } } }
+    /** Fire-and-forget refresh used at app start: Play restore, licence re-check when due, worker schedule. Never throws. */
+    fun refreshAsync() {
+        scope.launch {
+            runCatching { restore() }
+            if (LicenseClient.checkDue(context)) runCatching { LicenseClient.refresh(context) }
+            runCatching { LicenseCheckWorker.schedule(context) }
+        }
+    }
 }
