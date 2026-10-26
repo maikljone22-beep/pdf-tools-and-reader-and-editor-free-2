@@ -27,7 +27,8 @@ enum class QuickAction {
 class QuickInfo(message: String) : Exception(message)
 
 /**
- * Result bar after a one-step action. [backup] = previous version (undo / save as copy);
+ * Result bar after a one-step action. [backup] = previous version kept by the reader's unified history
+ * (undo / save as copy go through it; never deleted here);
  * [newFile] = a file the action created (extract, saved copy) to open or share.
  */
 class QuickDone(val message: String, val backup: File? = null, val prevPassword: String? = null, val suffix: String = "edited", val newFile: File? = null)
@@ -93,7 +94,7 @@ class QuickController(val state: ReaderState, private val scope: CoroutineScope,
         val prevPw = state.password
         job = scope.launch {
             try {
-                val backup = state.applyInPlace(newPassword(prevPw), op)
+                val backup = state.applyInPlace(newPassword(prevPw), label = doneText, op = op)
                 if (backup != null) { done = QuickDone(doneText(), backup, prevPw, suffix); after() }
             } catch (e: CancellationException) {
                 message = ctx.getString(R.string.qk_cancelled)
@@ -109,17 +110,12 @@ class QuickController(val state: ReaderState, private val scope: CoroutineScope,
 
     fun cancel() { engine?.cancel(); job?.cancel() }
 
-    /** Put the previous version back. */
+    /** Put the previous version back: the unified undo back through this step (the reader shows «تم التراجع»). */
     fun undo() {
         val d = done ?: return
         val b = d.backup ?: return
         done = null
-        scope.launch {
-            runCatching { state.restoreFrom(b, d.prevPassword) }
-                .onSuccess { message = ctx.getString(R.string.qk_undone) }
-                .onFailure { message = ctx.getString(R.string.qk_failed, it.message ?: "") }
-            b.delete()
-        }
+        if (!state.undoThrough(b)) message = ctx.getString(R.string.hi_gone)
     }
 
     /** Keep the result as a new file next to the documents and restore the open document to its previous version. */
@@ -132,23 +128,23 @@ class QuickController(val state: ReaderState, private val scope: CoroutineScope,
             try {
                 val copy = docs.uniqueFile(docs.docsDir, f.nameWithoutExtension + "_" + d.suffix)
                 withContext(Dispatchers.IO) { f.copyTo(copy, overwrite = true) }
-                state.restoreFrom(b, d.prevPassword)
+                // the open document goes back through the unified history (the change stays available as redo)
+                if (state.history.undoThrough(b) == null) message = ctx.getString(R.string.hi_gone)
                 runCatching { docs.touchRecent(copy) }
                 done = QuickDone(ctx.getString(R.string.qk_saved_copy, copy.name), newFile = copy)
             } catch (e: Throwable) {
                 message = ctx.getString(R.string.qk_failed, e.message ?: "")
-            } finally { b.delete() }
+            }
         }
     }
 
+    /** The previous version stays in the unified history (undo from the top bar); only the bar goes. */
     fun dismissDone() {
-        done?.backup?.let { b -> scope.launch(Dispatchers.IO) { b.delete() } }
         done = null
     }
 
     fun dispose() {
         cancel()
-        done?.backup?.delete()
         engine?.let { e -> CoroutineScope(Dispatchers.IO).launch { runCatching { e.close() } } }
     }
 

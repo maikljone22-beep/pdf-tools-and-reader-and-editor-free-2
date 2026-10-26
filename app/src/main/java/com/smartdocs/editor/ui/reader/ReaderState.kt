@@ -13,6 +13,11 @@ import com.smartdocs.editor.core.pdf.AnnotKind
 import com.smartdocs.editor.core.pdf.AnnotationWriter
 import com.smartdocs.editor.core.pdf.PdfSession
 import com.smartdocs.editor.core.pdf.SearchHit
+import com.smartdocs.editor.core.history.DocHistory
+import com.smartdocs.editor.core.history.HistoryNames
+import com.smartdocs.editor.core.history.HistoryStep
+import com.smartdocs.editor.R
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -48,6 +53,9 @@ data class Placement(val page: Int, val rect: RectF, val image: Bitmap, val rota
 
 /** A measurement in progress or finished: both points in PDF space of one page. */
 data class Measure(val page: Int, val a: Pair<Float, Float>, val b: Pair<Float, Float>?)
+
+/** Last unified undo / redo, shown by the screen as a snackbar (undone: label, with redo). */
+data class HistoryEvent(val undo: Boolean, val label: String, val error: String? = null, val nonce: Long = System.nanoTime())
 
 val PALETTE = listOf(
     0xFFEB3B, 0xFF9800, 0xF44336, 0xE91E63, 0x9C27B0, 0x3F51B5,
@@ -115,14 +123,22 @@ class ReaderState(
 
     // ---- annotations ----
     val annots: SnapshotStateList<Annot> = mutableStateListOf()
-    private val undoStack = ArrayDeque<List<Annot>>()
-    private val redoStack = ArrayDeque<List<Annot>>()
+    /**
+     * Unified multi-level undo / redo of this document (core/history): file snapshots of every change written
+     * into the file plus in-memory steps (pending annotations, form values), in the order they were made.
+     */
+    val history: DocHistory = DocHistory.open(app.documents.tempDir, uriString).also { h ->
+        h.current = { file?.let { it to password } }
+        h.restorer = { src, pw -> restoreFrom(src, pw) }
+    }
+    /** Last undo / redo (the screen shows it and clears it). */
+    var historyEvent by mutableStateOf<HistoryEvent?>(null)
     /** Selection / editing of existing annotations on the page (see AnnotEdit.kt). */
     val edit = AnnotEditor(this)
     /** Polygon/cloud/caret/media/snapshot tools, multi-select, comment threads & exchange (MODULE_annot2). */
     val annot2 = com.smartdocs.editor.ui.reader.annot.Annot2Host(this)
-    var canUndo by mutableStateOf(false); private set
-    var canRedo by mutableStateOf(false); private set
+    val canUndo: Boolean get() = history.canUndo && !saving
+    val canRedo: Boolean get() = history.canRedo && !saving
     var dirty by mutableStateOf(false); private set
     var existing by mutableStateOf<List<AnnotationWriter.Existing>>(emptyList()); private set
     var saving by mutableStateOf(false); private set
@@ -233,6 +249,7 @@ class ReaderState(
             runCatching { s?.closeAsync() }
             // discarded edits: put back the file as it was before stored annotations were taken out for editing
             restore?.let { (backup, target) -> runCatching { if (!backup.renameTo(target)) { backup.copyTo(target, overwrite = true); backup.delete() } } }
+            history.dispose()      // the document is closed for good: its history folder goes too
         }
     }
 
@@ -243,48 +260,81 @@ class ReaderState(
 
     // ================= annotations / undo =================
 
-    private fun snapshot() {
-        undoStack.addLast(annots.toList()); if (undoStack.size > 60) undoStack.removeFirst()
-        redoStack.clear(); canUndo = true; canRedo = false
+    private fun str(id: Int, vararg args: Any): String = context.getString(id, *args)
+
+    /** Before / after lists of one pending-annotation step (mutable: [adoptConverted] adds to every state). */
+    private class AnnotSnap(var before: List<Annot>, var after: List<Annot>)
+
+    /** Record a pending-annotation change (already applied to [annots]) as one unified undo step. */
+    private fun annotStep(labelId: Int, page: Int, before: List<Annot>) {
+        val snap = AnnotSnap(before, annots.toList())
+        history.pushMemory(str(labelId), page, OWNER_ANNOTS, snap, undo = { setAnnots(snap.before) }, redo = { setAnnots(snap.after) })
+    }
+
+    private fun setAnnots(list: List<Annot>) {
+        annots.clear(); annots += list; dirty = true
+        edit.validate()
     }
 
     fun addAnnot(a: Annot) {
-        snapshot(); annots += a; dirty = true
+        val before = annots.toList()
+        annots += a; dirty = true
+        annotStep(R.string.hi_add_annot, a.page, before)
         if (!continueCreating && tool != ReaderTool.INK) tool = null
     }
 
-    /** Several pending-annotation changes as one undo step (multi-select, handwriting → text). */
+    /** Several pending-annotation changes as one undo step (multi-select, handwriting to text). */
     fun batchAnnots(change: (MutableList<Annot>) -> Unit) {
-        val copy = annots.toMutableList(); change(copy)
-        if (copy == annots.toList()) return
-        snapshot(); annots.clear(); annots += copy; dirty = true
+        val before = annots.toList()
+        val copy = before.toMutableList(); change(copy)
+        if (copy == before) return
+        annots.clear(); annots += copy; dirty = true
+        annotStep(R.string.hi_batch_annot, copy.firstOrNull { it !in before }?.page ?: before.firstOrNull { it !in copy }?.page ?: currentPage, before)
         edit.validate()
     }
 
     fun removeAnnot(id: Long) {
-        if (annots.none { it.id == id }) return
-        snapshot(); annots.removeAll { it.id == id }; dirty = true
+        val a = annots.firstOrNull { it.id == id } ?: return
+        val before = annots.toList()
+        annots.removeAll { it.id == id }; dirty = true
+        annotStep(R.string.hi_del_annot, a.page, before)
     }
 
     fun replaceAnnot(a: Annot) {
         val i = annots.indexOfFirst { it.id == a.id }; if (i < 0) return
-        snapshot(); annots[i] = a; dirty = true
+        val before = annots.toList()
+        annots[i] = a; dirty = true
+        annotStep(R.string.hi_edit_annot, a.page, before)
     }
 
-    fun undo() {
-        val prev = undoStack.removeLastOrNull() ?: return
-        redoStack.addLast(annots.toList())
-        annots.clear(); annots += prev
-        canUndo = undoStack.isNotEmpty(); canRedo = true; dirty = true
-        edit.validate()
+    /** Unified undo of the newest step (annotation, form value or file change). */
+    fun undo() { scope.launch { runHistory(true) { history.undo() } } }
+
+    /** Unified redo. */
+    fun redo() { scope.launch { runHistory(false) { history.redo() } } }
+
+    /** History sheet: undo back to before step [id]. */
+    fun undoTo(id: Long) { scope.launch { runHistory(true) { history.undoTo(id) } } }
+
+    /** History sheet: redo up to step [id]. */
+    fun redoTo(id: Long) { scope.launch { runHistory(false) { history.redoTo(id) } } }
+
+    /** Undo through the file step that saved [before] (done bars that kept the returned copy). False: no longer in the history. */
+    fun undoThrough(before: File): Boolean {
+        if (!history.canUndoThrough(before)) return false
+        scope.launch { runHistory(true) { history.undoThrough(before) } }
+        return true
     }
 
-    fun redo() {
-        val next = redoStack.removeLastOrNull() ?: return
-        undoStack.addLast(annots.toList())
-        annots.clear(); annots += next
-        canUndo = true; canRedo = redoStack.isNotEmpty(); dirty = true
-        edit.validate()
+    private suspend fun runHistory(undo: Boolean, block: suspend () -> HistoryStep?) {
+        if (saving) return
+        try {
+            val st = block() ?: return
+            historyEvent = HistoryEvent(undo, st.label)
+        } catch (e: CancellationException) { throw e
+        } catch (e: Throwable) {
+            historyEvent = HistoryEvent(undo, "", e.message ?: e.toString())
+        }
     }
 
     /**
@@ -293,8 +343,7 @@ class ReaderState(
      */
     internal fun adoptConverted(a: Annot) {
         annots += a
-        val u = undoStack.map { it + a }; undoStack.clear(); undoStack.addAll(u)
-        val r = redoStack.map { it + a }; redoStack.clear(); redoStack.addAll(r)
+        history.steps().forEach { st -> ((st as? HistoryStep.Memory)?.tag as? AnnotSnap)?.let { it.before = it.before + a; it.after = it.after + a } }
         dirty = true
     }
 
@@ -315,30 +364,48 @@ class ReaderState(
     suspend fun save(): Boolean {
         saveMutex.withLock {
             val f = file ?: return false
-            // MODULE_forms5: pending form values are written first (FormOps.fillFields -> swapFile)
-            val formsSaved = try { withContext(NonCancellable) { forms5.flushOnSave(f, password) { tmp -> swapFile(tmp) } } }
-                catch (e: Exception) { error = e.message ?: e.toString(); return false }
-            if (annots.isEmpty()) {
-                // stored annotations may have been taken out for editing and then deleted: the file already reflects it
-                if (edit.hasBackup || formsSaved) { writeBackResult = runCatching { app.documents.writeBack(f) }.getOrNull().also { com.smartdocs.editor.core.cloud.SaveHooks.onSaved(app, f) }; if (edit.hasBackup) edit.committed() }
-                dirty = false; return true
-            }
-            saving = true
+            // history: the version before this save (or before stored annotations were taken out for editing);
+            // the pending steps written now become one file step (saving itself is not an undo step)
+            val prevPw = password
+            val willWrite = forms5.hasPending || annots.isNotEmpty() || edit.hasBackup
+            val before = if (willWrite) runCatching { history.copyIn(edit.backupFile?.takeIf { it.exists() } ?: f) }.getOrNull() else null
+            var wrote = false
             try {
-                val pending = annots.toList()
-                withContext(NonCancellable) {
-                    val tmp = File(f.parentFile, ".${f.nameWithoutExtension}.saving.pdf")
-                    AnnotationWriter.commit(context, f, pending, tmp, password)
-                    com.smartdocs.editor.core.collab.CollabLive.beforeSave(context, f, tmp, password)   // share6: merge other reviewers' comments
-                    swapFile(tmp)
-                    // the edit belongs in the user's document, not only in our working copy
-                    writeBackResult = runCatching { app.documents.writeBack(f) }.getOrNull().also { com.smartdocs.editor.core.cloud.SaveHooks.onSaved(app, f) }
+                // MODULE_forms5: pending form values are written first (FormOps.fillFields -> swapFile)
+                val formsSaved = try { withContext(NonCancellable) { forms5.flushOnSave(f, password) { tmp -> swapFile(tmp, record = false) } } }
+                    catch (e: Exception) { error = e.message ?: e.toString(); return false }
+                wrote = formsSaved
+                if (annots.isEmpty()) {
+                    // stored annotations may have been taken out for editing and then deleted: the file already reflects it
+                    if (edit.hasBackup || formsSaved) { wrote = true; writeBackResult = runCatching { app.documents.writeBack(f) }.getOrNull().also { com.smartdocs.editor.core.cloud.SaveHooks.onSaved(app, f) }; if (edit.hasBackup) edit.committed() }
+                    dirty = false; return true
                 }
-                annots.clear(); undoStack.clear(); redoStack.clear(); canUndo = false; canRedo = false; dirty = false
-                edit.committed()
-                return true
-            } catch (e: Exception) { error = e.message ?: e.toString(); return false } finally { saving = false }
+                saving = true
+                try {
+                    val pending = annots.toList()
+                    withContext(NonCancellable) {
+                        val tmp = File(f.parentFile, ".${f.nameWithoutExtension}.saving.pdf")
+                        AnnotationWriter.commit(context, f, pending, tmp, password)
+                        com.smartdocs.editor.core.collab.CollabLive.beforeSave(context, f, tmp, password)   // share6: merge other reviewers' comments
+                        swapFile(tmp, record = false)
+                        wrote = true
+                        // the edit belongs in the user's document, not only in our working copy
+                        writeBackResult = runCatching { app.documents.writeBack(f) }.getOrNull().also { com.smartdocs.editor.core.cloud.SaveHooks.onSaved(app, f) }
+                    }
+                    annots.clear(); dirty = false
+                    edit.committed()
+                    return true
+                } catch (e: Exception) { error = e.message ?: e.toString(); return false } finally { saving = false }
+            } finally {
+                if (wrote && before != null) recordSaved(before, prevPw) else before?.let { runCatching { it.delete() } }
+            }
         }
+    }
+
+    /** The pending steps just written into the file are replaced by one file step holding the version before. */
+    private fun recordSaved(before: File, pw: String?) {
+        val label = HistoryNames.groupLabel(history.memoryLabels(), str(R.string.hi_saved)) { l, n -> str(R.string.hi_saved_group, l, n) }
+        history.replaceMemory(HistoryStep.FileSnapshot(label, before, pw, currentPage))
     }
 
     /** Autosave from ON_PAUSE: runs in a scope that outlives the composable so leaving the screen cannot cut it short. */
@@ -362,7 +429,7 @@ class ReaderState(
                 withContext(NonCancellable) {
                     val tmp = File(f.parentFile, ".${f.nameWithoutExtension}.saving.pdf")
                     AnnotationWriter.delete(f, e.page, e.index, tmp, password)
-                    swapFile(tmp)
+                    swapFile(tmp, str(R.string.hi_del_stored))
                     writeBackResult = runCatching { app.documents.writeBack(f) }.getOrNull().also { com.smartdocs.editor.core.cloud.SaveHooks.onSaved(app, f) }
                 }
                 if ((edit.target as? AnnotTarget.Stored)?.e == e) edit.clear()
@@ -374,16 +441,26 @@ class ReaderState(
      * Replace the document file by [tmp] and reopen. Order matters: the PDFium session on [file] is closed
      * first (waiting for in-flight renders), then the file is replaced, then a fresh session is opened.
      * Nothing is ever written into a file a session still holds.
+     *
+     * Unified history: unless [record] is false (save consolidation, undo / redo restores, taking stored
+     * annotations out for editing), a byte copy of the previous version (opened with [prevPassword]) is kept as
+     * one undo step labelled [label]. Returns that copy (owned by the history: never delete it) or null.
+     * With [requireSnapshot] a failed copy aborts the change; otherwise the change goes on without an undo step.
      */
-    internal suspend fun swapFile(tmp: File) {
-        val f = file ?: return
-        // The closed session stays referenced (not nulled) so the page view keeps its scroll position;
-        // renders issued meanwhile fail fast (session.isClosed) and the canvas keeps its last bitmap.
-        runCatching { session?.closeAsync() }    // waits for the native lock, never frees PDFium mid-render
-        withContext(Dispatchers.IO) {
-            if (!tmp.renameTo(f)) { tmp.copyTo(f, overwrite = true); tmp.delete() }
-        }
+    internal suspend fun swapFile(tmp: File, label: String? = null, prevPassword: String? = password, record: Boolean = true, requireSnapshot: Boolean = false): File? {
+        val f = file ?: return null
+        val snap = if (!record) null else if (requireSnapshot) history.copyIn(f) else runCatching { history.copyIn(f) }.getOrNull()
+        try {
+            // The closed session stays referenced (not nulled) so the page view keeps its scroll position;
+            // renders issued meanwhile fail fast (session.isClosed) and the canvas keeps its last bitmap.
+            runCatching { session?.closeAsync() }    // waits for the native lock, never frees PDFium mid-render
+            withContext(Dispatchers.IO) {
+                if (!tmp.renameTo(f)) { tmp.copyTo(f, overwrite = true); tmp.delete() }
+            }
+        } catch (e: Throwable) { snap?.delete(); throw e }
+        snap?.let { history.push(HistoryStep.FileSnapshot(label ?: str(R.string.hi_doc_change), it, prevPassword, currentPage)) }
         reopen()
+        return snap
     }
 
     /** Open a fresh session on [file] (after it was replaced) keeping scroll position and page sizes when possible. */
@@ -423,28 +500,31 @@ class ReaderState(
      * Run a document-level operation on the open document and replace it in place (one-step tools).
      * Pending annotations are saved first; [op] writes the result from `src` into `out` (never into `src`);
      * then the session is closed, the file atomically replaced, reopened at the same page and written back
-     * to its source. Returns a copy of the previous version (for undo) or null when nothing was done.
+     * to its source. The previous version becomes one step of the unified [history] labelled [label] (evaluated
+     * once the operation succeeded). Returns that snapshot (owned by the history: do not delete it; undo it with
+     * [undoThrough]) or null when nothing was done.
      * [newPassword] is the password the result opens with (protect / remove password change it).
      */
-    suspend fun applyInPlace(newPassword: String? = password, op: suspend (src: File, out: File, pw: String?) -> Unit): File? {
+    suspend fun applyInPlace(newPassword: String? = password, label: (() -> String)? = null, op: suspend (src: File, out: File, pw: String?) -> Unit): File? {
         if (dirty && !save()) return null
         selection = null
         return saveMutex.withLock {
             val f = file ?: return@withLock null
             val out = File(f.parentFile, ".${f.nameWithoutExtension}.quick.pdf")
-            val backup = app.documents.newTemp("undo")
+            val prevPw = password
             try {
-                withContext(Dispatchers.IO) { f.copyTo(backup, overwrite = true); out.delete() }
+                withContext(Dispatchers.IO) { out.delete() }
                 op(f, out, password)
                 if (!out.exists() || out.length() == 0L) throw IllegalStateException("empty result")
                 withContext(NonCancellable) {
+                    val lbl = runCatching { label?.invoke() }.getOrNull()?.takeIf { it.isNotBlank() } ?: str(R.string.hi_doc_change)
                     password = newPassword
-                    swapFile(out)
+                    val snap = try { swapFile(out, lbl, prevPw, requireSnapshot = true) } catch (e: Throwable) { password = prevPw; throw e }
                     writeBackResult = runCatching { app.documents.writeBack(f) }.getOrNull().also { com.smartdocs.editor.core.cloud.SaveHooks.onSaved(app, f) }
+                    snap
                 }
-                backup
             } catch (e: Throwable) {
-                out.delete(); backup.delete(); throw e
+                out.delete(); throw e
             }
         }
     }
@@ -457,18 +537,35 @@ class ReaderState(
                 val tmp = File(f.parentFile, ".${f.nameWithoutExtension}.restore.pdf")
                 withContext(Dispatchers.IO) { backup.copyTo(tmp, overwrite = true) }
                 password = pw
-                swapFile(tmp)
+                swapFile(tmp, record = false)        // undo / redo / restore: never a new history step
                 writeBackResult = runCatching { app.documents.writeBack(f) }.getOrNull().also { com.smartdocs.editor.core.cloud.SaveHooks.onSaved(app, f) }
             }
         }
+    }
+
+    /** Version kept before a full-screen tool opened on this document (label, snapshot, password). */
+    private var externalBase: Triple<String, File, String?>? = null
+
+    /**
+     * A full-screen tool (organize, edit5 / tools screens) is about to open on this document: keep the current
+     * version so a change it saves into the same file becomes one undo step when the reader resumes.
+     */
+    suspend fun beforeExternalTool(label: String) {
+        val f = file ?: return
+        externalBase?.second?.delete()
+        externalBase = runCatching { Triple(label, history.copyIn(f), password) }.getOrNull()
     }
 
     /** Called when the screen resumes: a tool may have replaced the document ("save in the same file"). */
     fun reloadIfChanged() {
         val f = file ?: return
         if (session == null || saving || !f.exists()) return
-        if ((f.lastModified() to f.length()) == openedStamp) return
-        scope.launch { saveMutex.withLock { withContext(NonCancellable) { runCatching { reopen() }.onFailure { error = it.message } } } }
+        if ((f.lastModified() to f.length()) == openedStamp) { externalBase?.second?.delete(); externalBase = null; return }
+        val base = externalBase; externalBase = null
+        scope.launch {
+            saveMutex.withLock { withContext(NonCancellable) { runCatching { reopen() }.onFailure { error = it.message } } }
+            base?.let { (label, snap, pw) -> history.push(HistoryStep.FileSnapshot(label, snap, pw, currentPage)) }
+        }
     }
 
     // ================= search =================
@@ -546,6 +643,9 @@ class ReaderState(
         selection = null
     }
 }
+
+/** Owner tag of pending-annotation steps in the unified history. */
+const val OWNER_ANNOTS = "annots"
 
 @Composable
 fun rememberReaderState(app: SmartDocsApp, uri: String, startPage: Int, settings: AppSettings): ReaderState {

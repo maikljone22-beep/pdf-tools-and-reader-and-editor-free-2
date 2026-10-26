@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Unified multi-level undo / redo of the reader (core/history, ui/reader). Prefix hi_. -->
+<resources>
+    <string name="hi_undo">Undo</string>
+    <string name="hi_redo">Redo</string>
+    <string name="hi_history">Edit history</string>
+    <string name="hi_history_open">Open edit history</string>
+    <string name="hi_history_empty">No edits in this document yet</string>
+    <string name="hi_history_hint">Tap a step to bring the document back to how it was at that point.</string>
+    <string name="hi_history_info">%1$d steps • %2$s</string>
+    <string name="hi_now">Current state</string>
+    <string name="hi_section_redo">Can be redone</string>
+    <string name="hi_section_undo">Earlier steps</string>
+    <string name="hi_page">p. %1$d</string>
+    <string name="hi_undone">Undone: %1$s</string>
+    <string name="hi_redone">Redone: %1$s</string>
+    <string name="hi_undo_failed">Could not undo: %1$s</string>
+    <string name="hi_redo_failed">Could not redo: %1$s</string>
+    <string name="hi_gone">This step is no longer in the edit history</string>
+    <string name="hi_file_step">File</string>
+    <string name="hi_add_annot">Add annotation</string>
+    <string name="hi_del_annot">Delete annotation</string>
+    <string name="hi_edit_annot">Edit annotation</string>
+    <string name="hi_batch_annot">Edit several annotations</string>
+    <string name="hi_del_stored">Delete comment from file</string>
+    <string name="hi_comments_file">Change comments in file</string>
+    <string name="hi_form_value">Fill field “%1$s”</string>
+    <string name="hi_form_values">Fill several fields</string>
+    <string name="hi_form_image">Image in field “%1$s”</string>
+    <string name="hi_form_row">Add form row</string>
+    <string name="hi_doc_change">Document change</string>
+    <string name="hi_content_edit">Edit page %1$d content</string>
+    <string name="hi_ai_edit">AI assistant edit</string>
+    <string name="hi_links">Edit links</string>
+    <string name="hi_comment_check">Change comment status</string>
+    <string name="hi_comment_style">Restyle comment</string>
+    <string name="hi_workbench">Add measure / comment items</string>
+    <string name="hi_collab">Merge reviewers’ comments</string>
+    <string name="hi_origin">Start of history</string>
+    <string name="hi_organize">Organize pages</string>
+    <string name="hi_tool_change">Tool change</string>
+    <string name="hi_saved">Save changes</string>
+    <string name="hi_saved_group">%1$s (+%2$d more changes)</string>
+</resources>

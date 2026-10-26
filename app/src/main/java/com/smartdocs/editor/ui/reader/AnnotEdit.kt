@@ -51,6 +51,8 @@ class AnnotEditor(private val s: ReaderState) {
     private var discard = false
 
     val hasBackup: Boolean get() = backup != null
+    /** The file as it was before the first conversion (the unified history keeps it as the version before the save). */
+    internal val backupFile: File? get() = backup
 
     fun current(): Annot? = when (val t = target) {
         is AnnotTarget.Pending -> s.annots.firstOrNull { it.id == t.id }
@@ -136,7 +138,7 @@ class AnnotEditor(private val s: ReaderState) {
                     }
                     val tmp = File(f.parentFile, ".${f.nameWithoutExtension}.saving.pdf")
                     AnnotationWriter.delete(f, match.page, match.index, tmp, s.password)
-                    s.swapFile(tmp)
+                    s.swapFile(tmp, record = false)      // not an undo step: the annotation lives on as a pending one
                     replaced += match.page to match.index
                     s.adoptConverted(a)
                     a

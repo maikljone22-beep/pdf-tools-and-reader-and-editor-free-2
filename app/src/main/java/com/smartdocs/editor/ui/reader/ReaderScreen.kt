@@ -75,6 +75,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
     var contentEdit by remember { mutableStateOf(false) }          // MODULE_edit: real text/image editing
     var prompt by remember { mutableStateOf<TextPrompt?>(null) }
     var menu by remember { mutableStateOf(false) }
+    var showHistory by remember { mutableStateOf(false) }           // MODULE_history: unified undo / redo sheet
     val tts by ReadAloudController.status.collectAsState()
     val tablet = LocalConfiguration.current.screenWidthDp > 700
 
@@ -101,7 +102,8 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
         if (r !is com.smartdocs.editor.core.files.DocumentRepository.WriteBack.Done && r !is com.smartdocs.editor.core.files.DocumentRepository.WriteBack.NotNeeded) state.file?.let { writeBack(it) }
     }
     LaunchedEffect(state.error) { state.error?.let { snack.showSnackbar(it); state.error = null } }
-    com.smartdocs.editor.ui.cloud.CollabLiveHost(state.file, snack) { op -> state.applyInPlace(state.password, op) }   // share6: live review comments
+    com.smartdocs.editor.ui.cloud.CollabLiveHost(state.file, snack) { op -> state.applyInPlace(state.password, label = { ctx.getString(R.string.hi_collab) }, op = op) }   // share6: live review comments
+    HistorySnackbar(state, snack)                                                                                   // MODULE_history
     state.file?.let { com.smartdocs.editor.ui.share5.ReturnedCommentsHost(it, nav) }                               // share6: returned e-mail-review comments
     val connUri = state.file?.let { android.net.Uri.fromFile(it).toString() }
     LaunchedEffect(state.enterpriseInfo) { if (state.enterpriseInfo != null && connUri != null) { nav.popBackStack(); nav.navigate(com.smartdocs.editor.ui.connected.ConnRoutes.enterprise(connUri)) } }
@@ -180,8 +182,13 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                 val go = {
                     when (id) {
                         "signatures" -> nav.navigate(Routes.tool("signatures"))
-                        else -> nav.navigate(Routes.tool(id, state.fileUri))
+                        else -> {
+                            // MODULE_history: a change the tool saves into this file becomes one undo step on return
+                            val label = ctx.getString(if (id == "organize") R.string.hi_organize else R.string.hi_tool_change)
+                            scope.launch { state.beforeExternalTool(label); nav.navigate(Routes.tool(id, state.fileUri)) }
+                        }
                     }
+                    Unit
                 }
                 if (state.dirty) saveThen(go) else go()      // tools read the file: pending edits go in first
                 }
@@ -206,6 +213,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                         title = { Text(state.file?.name ?: stringResource(R.string.loading), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium) },
                         navigationIcon = { IconButton(onClick = { if (state.dirty) { if (settings.autoSave) saveThen { leave() } else showDiscard = true } else leave() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.back)) } },
                         actions = {
+                            HistoryButtons(state) { showHistory = true }      // MODULE_history: always-visible undo / redo (long press: history)
                             if (state.dirty) IconButton(onClick = actions.save) { Icon(Icons.Default.Save, stringResource(R.string.save), tint = MaterialTheme.colorScheme.primary) }
                             if (!tablet) com.smartdocs.editor.ui.reader.view.ReaderTabsAction(state, switchTab)
                             com.smartdocs.editor.ui.view5.V5TopActions(state)
@@ -214,6 +222,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                                 IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, stringResource(R.string.more)) }
                                 DropdownMenu(menu, { menu = false }) {
                                     DropdownMenuItem(text = { Text(stringResource(R.string.save)) }, leadingIcon = { Icon(Icons.Default.Save, null) }, enabled = state.dirty, onClick = { menu = false; actions.save() })
+                                    DropdownMenuItem(text = { Text(stringResource(R.string.hi_history)) }, leadingIcon = { Icon(Icons.Default.History, null) }, onClick = { menu = false; showHistory = true })
                                     DropdownMenuItem(text = { Text(stringResource(R.string.save_as)) }, leadingIcon = { Icon(Icons.Default.SaveAlt, null) }, onClick = { menu = false; actions.saveAs() })
                                     DropdownMenuItem(text = { Text(stringResource(R.string.share)) }, leadingIcon = { Icon(Icons.Default.Share, null) }, onClick = { menu = false; actions.share() })
                                     DropdownMenuItem(text = { Text(stringResource(R.string.print)) }, leadingIcon = { Icon(Icons.Default.Print, null) }, onClick = { menu = false; actions.print() })
@@ -315,8 +324,10 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
     val agentHost = remember(state) {
         com.smartdocs.editor.core.ai.DocHost(
             file = { state.file }, password = { state.password }, pageCount = { state.pageCount }, currentPage = { state.currentPage },
-            apply = { e -> state.applyInPlace(if (e.changesPassword) e.newPassword else state.password, e.op) },
-            restore = { backup, pw -> state.restoreFrom(backup, pw) },
+            // MODULE_history: the change is a step of the unified history. The chat gets a token path next to the
+            // snapshot (it deletes its "backups" when closed; the token never exists, the snapshot stays the history's)
+            apply = { e -> state.applyInPlace(if (e.changesPassword) e.newPassword else state.password, label = { ctx.getString(R.string.hi_ai_edit) }, op = e.op)?.let { File(it.path + AI_TOKEN) } },
+            restore = { token, _ -> state.history.undoThrough(File(token.path.removeSuffix(AI_TOKEN))) ?: error(ctx.getString(R.string.hi_gone)) },
             goToPage = { state.jumpTo(it) },
             pageText = { state.pageText(it) },
             search = { q -> state.searchOpen = true; state.runSearch(q) },
@@ -338,6 +349,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
         onShare = { ReaderIntents.shareText(ctx, it) }, onDismiss = { textTools = null; state.selection = null }) }
     if (contentEdit && state.session != null) com.smartdocs.editor.ui.edit.EditModeHost(state) { contentEdit = false }
     if (state.saving) ProgressDialog(stringResource(R.string.processing))
+    if (showHistory) HistorySheet(state) { showHistory = false }
     QuickActionHost(quick, snack)
     com.smartdocs.editor.ui.reader.annot.Annot2Dialogs(state, nav, snack)      // MODULE_annot2 pickers & dialogs
     if (state.session != null && !state.needPassword) com.smartdocs.editor.ui.onboarding.ReaderCoachMarks()   // share6
@@ -346,6 +358,9 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
         f?.let { com.smartdocs.editor.ui.share5.Share5Sheet(it, if (it == state.file) state.password else null, state.currentPage, nav) { showShare5 = false } } }
     com.smartdocs.editor.ui.view5.View5ReaderHost(state, nav, snack, actions) { outputFile() }
 }
+
+/** Suffix of the token path handed to the AI chat for its undo (see agentHost). */
+private const val AI_TOKEN = ".ai-undo"
 
 /** One-line hint under the top bar telling the user what the active tool expects. */
 @Composable

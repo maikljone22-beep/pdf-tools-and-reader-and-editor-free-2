@@ -26,15 +26,13 @@ import java.io.File
 /**
  * Apply a content edit to the document open in the reader, in place: pending annotations are saved first,
  * [block] writes the edited PDF from `src` into `out`, then the reader swaps the file and reloads.
- * Returns the previous version (pass it to [ReaderState.restoreFrom] to undo) or null when nothing was done.
+ * The previous version becomes one step of the reader's unified history ([label]); returns that snapshot (owned by
+ * the history, never delete it) or null when nothing was done.
  */
-suspend fun applyEdit(state: ReaderState, block: suspend (src: File, out: File) -> Unit): File? =
-    state.applyInPlace { src, out, _ -> block(src, out) }
+suspend fun applyEdit(state: ReaderState, label: (() -> String)? = null, block: suspend (src: File, out: File) -> Unit): File? =
+    state.applyInPlace(label = label) { src, out, _ -> block(src, out) }
 
 enum class EditMode { TEXT, IMAGE }
-
-/** A previous version kept for undo, with the password it opens with. */
-private class Backup(val file: File, val password: String?)
 
 /** State of the content-edit overlay: page model, selection, pending text / image changes, undo. */
 class EditController(val state: ReaderState, private val scope: CoroutineScope, private val ctx: Context) {
@@ -71,8 +69,9 @@ class EditController(val state: ReaderState, private val scope: CoroutineScope, 
     /** Tap position waiting for a picked image to insert. */
     var insertAt by mutableStateOf<Pair<Float, Float>?>(null)
 
-    private val backups = ArrayDeque<Backup>()
-    var canUndo by mutableStateOf(false); private set
+    /** Undo / redo are the reader's unified history (core/history): content edits are file steps in it. */
+    val canUndo: Boolean get() = state.canUndo
+    val canRedo: Boolean get() = state.canRedo
     private var loadJob: Job? = null
 
     // ================= model =================
@@ -215,11 +214,10 @@ class EditController(val state: ReaderState, private val scope: CoroutineScope, 
     private fun run(done: Int, op: suspend (src: File, out: File) -> Unit) {
         if (busy) return
         busy = true
-        val pw = state.password
+        val p = page
         scope.launch {
             try {
-                val b = applyEdit(state) { src, out -> op(src, out) }
-                if (b != null) { backups.addLast(Backup(b, pw)); while (backups.size > 15) backups.removeFirst().file.delete(); canUndo = true }
+                applyEdit(state, label = { ctx.getString(R.string.hi_content_edit, p + 1) }) { src, out -> op(src, out) }
                 clearSelection()
                 message = ctx.getString(done)
             } catch (e: StalePageException) {
@@ -324,22 +322,27 @@ class EditController(val state: ReaderState, private val scope: CoroutineScope, 
 
     // ================= undo =================
 
-    fun undo() {
+    /** Unified undo of the newest step (usually the last content edit). */
+    fun undo() = history(true)
+
+    fun redo() = history(false)
+
+    private fun history(undo: Boolean) {
         if (busy) return
-        val b = backups.removeLastOrNull() ?: return
-        canUndo = backups.isNotEmpty()
         busy = true
         scope.launch {
-            try { state.restoreFrom(b.file, b.password); clearSelection(); message = ctx.getString(R.string.ed_undone) }
-            catch (e: Throwable) { message = ctx.getString(R.string.ed_failed, e.message ?: "") }
-            finally { b.file.delete(); busy = false; reload() }
+            try {
+                val st = if (undo) state.history.undo() else state.history.redo()
+                clearSelection()
+                if (st != null) message = ctx.getString(if (undo) R.string.hi_undone else R.string.hi_redone, st.label)
+            } catch (e: CancellationException) { throw e
+            } catch (e: Throwable) { message = ctx.getString(R.string.ed_failed, e.message ?: "") }
+            finally { busy = false; reload() }
         }
     }
 
     fun dispose() {
         loadJob?.cancel()
-        val list = backups.toList(); backups.clear()
-        CoroutineScope(Dispatchers.IO).launch { list.forEach { it.file.delete() } }
     }
 
     companion object {

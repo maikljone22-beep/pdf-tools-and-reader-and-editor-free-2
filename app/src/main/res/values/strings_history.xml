@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Unified multi-level undo / redo of the reader (core/history, ui/reader). Prefix hi_. -->
+<resources>
+    <string name="hi_undo">تراجع</string>
+    <string name="hi_redo">إعادة</string>
+    <string name="hi_history">سجل التعديلات</string>
+    <string name="hi_history_open">فتح سجل التعديلات</string>
+    <string name="hi_history_empty">لا توجد تعديلات بعد في هذا المستند</string>
+    <string name="hi_history_hint">اضغط على خطوة للعودة إلى المستند كما كان عندها.</string>
+    <string name="hi_history_info">%1$d خطوة • %2$s</string>
+    <string name="hi_now">الحالة الحالية</string>
+    <string name="hi_section_redo">يمكن إعادتها</string>
+    <string name="hi_section_undo">خطوات سابقة</string>
+    <string name="hi_page">ص %1$d</string>
+    <string name="hi_undone">تم التراجع: %1$s</string>
+    <string name="hi_redone">تمت الإعادة: %1$s</string>
+    <string name="hi_undo_failed">تعذّر التراجع: %1$s</string>
+    <string name="hi_redo_failed">تعذّرت الإعادة: %1$s</string>
+    <string name="hi_gone">لم تعد هذه الخطوة في سجل التعديلات</string>
+    <string name="hi_file_step">ملف</string>
+    <string name="hi_add_annot">إضافة تعليق توضيحي</string>
+    <string name="hi_del_annot">حذف تعليق توضيحي</string>
+    <string name="hi_edit_annot">تعديل تعليق توضيحي</string>
+    <string name="hi_batch_annot">تعديل عدة تعليقات توضيحية</string>
+    <string name="hi_del_stored">حذف تعليق من الملف</string>
+    <string name="hi_comments_file">تعديل التعليقات في الملف</string>
+    <string name="hi_form_value">تعبئة الحقل «%1$s»</string>
+    <string name="hi_form_values">تعبئة عدة حقول</string>
+    <string name="hi_form_image">صورة في الحقل «%1$s»</string>
+    <string name="hi_form_row">إضافة صف إلى النموذج</string>
+    <string name="hi_doc_change">تعديل المستند</string>
+    <string name="hi_content_edit">تعديل محتوى الصفحة %1$d</string>
+    <string name="hi_ai_edit">تعديل بالمساعد الذكي</string>
+    <string name="hi_links">تعديل الروابط</string>
+    <string name="hi_comment_check">تغيير حالة تعليق</string>
+    <string name="hi_comment_style">تنسيق تعليق</string>
+    <string name="hi_workbench">إضافة عناصر قياس وتعليق</string>
+    <string name="hi_collab">دمج تعليقات المراجعين</string>
+    <string name="hi_origin">بداية السجل</string>
+    <string name="hi_organize">تنظيم الصفحات</string>
+    <string name="hi_tool_change">تعديل بأداة</string>
+    <string name="hi_saved">حفظ التغييرات</string>
+    <string name="hi_saved_group">%1$s (+%2$d تغييرات أخرى)</string>
+</resources>

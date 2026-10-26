@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.NavigateBefore
 import androidx.compose.material.icons.automirrored.filled.NavigateNext
+import androidx.compose.material.icons.automirrored.filled.Redo
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -81,6 +82,7 @@ private fun EditTopBar(c: EditController, onExit: () -> Unit, onOutline: () -> U
                 IconButton(onClick = onExit) { Icon(Icons.Default.Close, stringResource(R.string.ed_exit)) }
                 Text(stringResource(R.string.ed_title), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                 IconButton(onClick = { c.undo() }, enabled = c.canUndo && !c.busy) { Icon(Icons.AutoMirrored.Filled.Undo, stringResource(R.string.undo)) }
+                IconButton(onClick = { c.redo() }, enabled = c.canRedo && !c.busy) { Icon(Icons.AutoMirrored.Filled.Redo, stringResource(R.string.redo)) }
                 IconButton(onClick = { c.zoom = when (c.zoom) { 1f -> 1.5f; 1.5f -> 2f; 2f -> 3f; else -> 1f } }) {
                     BadgedBox(badge = { if (c.zoom != 1f) Badge { Text("×" + (if (c.zoom % 1f == 0f) c.zoom.toInt().toString() else c.zoom.toString())) } }) {
                         Icon(Icons.Default.ZoomIn, stringResource(R.string.ed_zoom))

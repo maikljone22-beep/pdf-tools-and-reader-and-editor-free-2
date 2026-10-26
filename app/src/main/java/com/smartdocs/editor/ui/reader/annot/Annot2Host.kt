@@ -399,7 +399,7 @@ class Annot2Host(val s: ReaderState) {
                 tmp.delete()
                 op(f, tmp, s.password)
                 if (!tmp.exists() || tmp.length() == 0L) throw IllegalStateException("empty result")
-                s.swapFile(tmp)
+                s.swapFile(tmp, s.context.getString(com.smartdocs.editor.R.string.hi_comments_file))
                 s.writeBackResult = runCatching { s.app.documents.writeBack(f) }.getOrNull()
             }
         }

@@ -209,7 +209,7 @@ class MultiSelection(private val h: Annot2Host) {
                 s.edit.ensureBackup()
                 val tmp = File(f.parentFile, ".${f.nameWithoutExtension}.saving.pdf")
                 StoredOps.removeOnly(f, tmp, s.password, pg, removed)
-                s.swapFile(tmp)
+                s.swapFile(tmp, record = false)      // not an undo step: they live on as pending annotations
                 converted.forEach { s.adoptConverted(it) }
             }
         }

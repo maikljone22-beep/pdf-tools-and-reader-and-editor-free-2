@@ -99,7 +99,8 @@ fun QuickActionHost(c: QuickController, snack: SnackbarHostState) {
 
 /**
  * "تم" bar shown above the reader's bottom toolbar after a one-step action: undo + save as copy for in-place
- * changes, open + share for new files. Disappears by itself after a few seconds (the undo copy is then dropped).
+ * changes, open + share for new files. Disappears by itself after a few seconds; the change stays undoable from the
+ * reader's unified undo / redo (top bar, history sheet).
  */
 @Composable
 fun QuickDoneBar(c: QuickController, nav: NavHostController) {

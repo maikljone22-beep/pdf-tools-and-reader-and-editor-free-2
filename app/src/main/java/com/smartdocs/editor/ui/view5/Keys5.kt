@@ -38,6 +38,7 @@ object V5Keys {
         K(KeyEvent.KEYCODE_G, true, false, false, R.string.go_to_page),
         K(KeyEvent.KEYCODE_Z, true, false, false, R.string.undo),
         K(KeyEvent.KEYCODE_Y, true, false, false, R.string.redo),
+        K(KeyEvent.KEYCODE_Z, true, true, false, R.string.redo),       // MODULE_history: Ctrl+Shift+Z = redo too
         K(KeyEvent.KEYCODE_EQUALS, true, false, false, R.string.v5_zoom_in),
         K(KeyEvent.KEYCODE_MINUS, true, false, false, R.string.v5_zoom_out),
         K(KeyEvent.KEYCODE_0, true, false, false, R.string.v5_zoom_reset),
@@ -71,7 +72,7 @@ object V5Keys {
             R.string.save -> a?.save?.invoke()
             R.string.save_as -> a?.saveAs?.invoke()
             R.string.go_to_page -> a?.goToPage?.invoke()
-            R.string.undo -> s.undo()
+            R.string.undo -> s.undo()          // unified history (core/history): annotations, form values, file changes
             R.string.redo -> s.redo()
             R.string.v5_zoom_in -> s.zoom = (s.zoom * 1.25f).coerceIn(MIN_ZOOM, MAX_ZOOM)
             R.string.v5_zoom_out -> s.zoom = (s.zoom / 1.25f).coerceIn(MIN_ZOOM, MAX_ZOOM)

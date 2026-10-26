@@ -82,10 +82,9 @@ class FormFillState internal constructor(val reader: ReaderState) {
     var message by mutableStateOf<FormMessage?>(null)
     var busy by mutableStateOf(false)
 
-    var canUndo by mutableStateOf(false); private set
-    var canRedo by mutableStateOf(false); private set
-    private val undoStack = ArrayDeque<Pair<Map<String, String>, Map<String, File>>>()
-    private val redoStack = ArrayDeque<Pair<Map<String, String>, Map<String, File>>>()
+    /** Field-bar undo / redo: the top step of the reader's unified history is a form step (core/history). */
+    val canUndo: Boolean get() = reader.history.canUndo && reader.history.peekUndo()?.owner == OWNER_FORMS
+    val canRedo: Boolean get() = reader.history.canRedo && reader.history.peekRedo()?.owner == OWNER_FORMS
     private var typingField: String? = null
 
     private val acFile by lazy { AutocompleteFile(File(reader.context.filesDir, "forms5_autocomplete.json")) }
@@ -223,15 +222,29 @@ class FormFillState internal constructor(val reader: ReaderState) {
 
     // ------------------------------------------------------------------ editing
 
-    private fun snapshot() {
-        undoStack.addLast(edits.toMap() to images.toMap()); if (undoStack.size > 80) undoStack.removeFirst()
-        redoStack.clear(); canUndo = true; canRedo = false
+    /**
+     * One step of the reader's unified undo history. The state after the step is captured when it is undone
+     * (successive keystrokes of one field keep growing the same step).
+     */
+    private fun snapshot(label: String, page: Int) {
+        val before = edits.toMap() to images.toMap()
+        var after: Pair<Map<String, String>, Map<String, File>>? = null
+        reader.history.pushMemory(label, page, OWNER_FORMS,
+            undo = { after = edits.toMap() to images.toMap(); restore(before) },
+            redo = { after?.let { restore(it) } })
     }
+
+    private fun fieldLabel(name: String, image: Boolean = false): String {
+        val short = name.substringAfterLast('.').replace(Regex("\\[\\d+]"), "").ifBlank { name }.take(40)
+        return reader.context.getString(if (image) com.smartdocs.editor.R.string.hi_form_image else com.smartdocs.editor.R.string.hi_form_value, short)
+    }
+
+    private fun pageOf(name: String): Int = model.widgets.firstOrNull { it.name == name }?.page ?: reader.currentPage
 
     /** Set a raw value. Successive keystrokes in one field ([typing]) form a single undo step. */
     fun setValue(name: String, v: String, typing: Boolean = false) {
         if (value(name) == v && name !in computed) return
-        if (!typing || typingField != name) snapshot()
+        if (!typing || typingField != name) snapshot(fieldLabel(name), pageOf(name))
         typingField = if (typing) name else null
         if (v == model.values[name].orEmpty() && !isCalculated(name)) edits.remove(name) else edits[name] = v
         errors.remove(name)
@@ -241,13 +254,13 @@ class FormFillState internal constructor(val reader: ReaderState) {
     /** Several values as one undo step (reset form, date picker of a group). */
     fun setValues(map: Map<String, String>) {
         if (map.isEmpty()) return
-        snapshot(); typingField = null
+        snapshot(if (map.size == 1) fieldLabel(map.keys.first()) else reader.context.getString(com.smartdocs.editor.R.string.hi_form_values), pageOf(map.keys.first())); typingField = null
         map.forEach { (k, v) -> if (v == model.values[k].orEmpty()) edits.remove(k) else edits[k] = v; errors.remove(k) }
         images.keys.filter { it in map }.forEach { images.remove(it) }
         markDirty()
     }
 
-    fun setImage(name: String, file: File) { snapshot(); typingField = null; images[name] = file; markDirty() }
+    fun setImage(name: String, file: File) { snapshot(fieldLabel(name, image = true), pageOf(name)); typingField = null; images[name] = file; markDirty() }
 
     fun toggle(w: FWidget) {
         if (isReadOnly(w)) return
@@ -258,17 +271,10 @@ class FormFillState internal constructor(val reader: ReaderState) {
         }
     }
 
-    fun undo() {
-        val prev = undoStack.removeLastOrNull() ?: return
-        redoStack.addLast(edits.toMap() to images.toMap())
-        restore(prev); canUndo = undoStack.isNotEmpty(); canRedo = true
-    }
+    /** Field-bar undo: the reader's unified undo while its newest step is a form step. */
+    fun undo() { if (canUndo) reader.undo() }
 
-    fun redo() {
-        val next = redoStack.removeLastOrNull() ?: return
-        undoStack.addLast(edits.toMap() to images.toMap())
-        restore(next); canUndo = true; canRedo = redoStack.isNotEmpty()
-    }
+    fun redo() { if (canRedo) reader.redo() }
 
     private fun restore(s: Pair<Map<String, String>, Map<String, File>>) {
         typingField = null
@@ -399,8 +405,8 @@ class FormFillState internal constructor(val reader: ReaderState) {
         try { writeTo(file, password, tmp) } catch (e: Throwable) { tmp.delete(); throw e }
         withContext(Dispatchers.Main.immediate) {
             Snapshot.withMutableSnapshot {
-                edits.clear(); images.clear(); errors.clear(); activeId = null; menuFor = null
-                undoStack.clear(); redoStack.clear(); canUndo = false; canRedo = false; committed.clear()
+                // the form steps of the unified history become the reader's save step (ReaderState.recordSaved)
+                edits.clear(); images.clear(); errors.clear(); activeId = null; menuFor = null; committed.clear()
             }
         }
         swap(tmp)
@@ -430,7 +436,7 @@ class FormFillState internal constructor(val reader: ReaderState) {
                 if (reader.dirty && !reader.save()) throw IllegalStateException(reader.error ?: "save")
                 val tmp = File(f.parentFile, ".${f.nameWithoutExtension}.rows.pdf")
                 val src = try { XfaGenerated.addRow(reader.context, f, r, tmp) } catch (e: Throwable) { tmp.delete(); throw e }
-                reader.swapFile(tmp)
+                reader.swapFile(tmp, reader.context.getString(com.smartdocs.editor.R.string.hi_form_row))
                 runCatching { reader.app.documents.writeBack(src) }
                 message = FormMessage.RowAdded
             } catch (e: Throwable) {   // XFA layout can overflow the stack / run out of memory on huge forms
@@ -443,9 +449,12 @@ class FormFillState internal constructor(val reader: ReaderState) {
     /** Leaving without saving. */
     fun discard() {
         edits.clear(); images.clear(); errors.clear(); activeId = null; menuFor = null; committed.clear(); alert = null
-        undoStack.clear(); redoStack.clear(); canUndo = false; canRedo = false
+        reader.history.removeOwner(OWNER_FORMS)
     }
 }
+
+/** Owner tag of form-value steps in the reader's unified history. */
+const val OWNER_FORMS = "forms"
 
 /** Feedback shown in the field bar. */
 sealed class FormMessage {
