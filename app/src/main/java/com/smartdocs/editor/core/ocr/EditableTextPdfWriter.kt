@@ -72,7 +72,10 @@ class EditableTextPdfWriter(private val context: Context, src: File, password: S
         val ink = HashMap<OcrWord, Int>()
         val strong = HashSet<OcrWord>()
         words.forEach { w ->
-            val r = Rect(w.box).apply { intersect(0, 0, bmp.width, bmp.height) }
+            // Tesseract's word box often leaves out the letter dots above/below Arabic letters; erase a taller box so
+            // no stray dots stay between the rewritten words
+            val padY = (w.box.height() * 0.28f).toInt().coerceAtLeast(2); val padX = (w.box.height() * 0.08f).toInt().coerceAtLeast(1)
+            val r = Rect(w.box.left - padX, w.box.top - padY, w.box.right + padX, w.box.bottom + padY).apply { intersect(0, 0, bmp.width, bmp.height) }
             if (r.isEmpty) return@forEach
             val bg = borderMedian(bmp, r)
             ink[w] = inkColor(bmp, r, bg)
