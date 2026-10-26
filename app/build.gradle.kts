@@ -50,6 +50,11 @@ android {
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfigs.findByName("release")?.let { signingConfig = it }
         }
+        // test builds install next to the Play/release app instead of conflicting with it
+        debug {
+            applicationIdSuffix = ".test"
+            versionNameSuffix = "-test"
+        }
     }
     // one smaller APK per processor type (+ a universal one); Google Play uses the .aab instead
     splits {
