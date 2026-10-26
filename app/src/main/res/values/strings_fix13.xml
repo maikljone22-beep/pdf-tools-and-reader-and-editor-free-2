@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- audit areas 1-3 fixes (fix/audit-1-3) -->
+<resources>
+    <string name="fx_saved_copy">تم حفظ النسخة</string>
+    <string name="fx_save_failed">تعذّر الحفظ: %1$s</string>
+    <string name="fx_replace_title">استبدال الملف الأصلي؟</string>
+    <string name="fx_replace_text">سيحلّ الناتج محلّ «%1$s». تُحفظ النسخة الحالية في سلة المحذوفات لمدة 30 يومًا ويمكنك استعادتها من هناك.</string>
+    <string name="fx_replace_confirm">استبدال</string>
+    <string name="fx_replaced_kept_in_trash">تم الحفظ في الملف نفسه — النسخة السابقة في سلة المحذوفات</string>
+    <string name="fx_pick_mismatch_title">هل هذا هو الملف الأصلي؟</string>
+    <string name="fx_pick_mismatch_text">الملف المختار «%1$s» لا يطابق الملف الذي فُتح منه «%2$s» (الاسم أو الحجم مختلف). استبداله بنسختك المعدّلة سيمحو محتواه.</string>
+    <string name="fx_rename_exists">يوجد ملف باسم «%1$s» بالفعل</string>
+    <string name="fx_rename_invalid">اسم غير صالح</string>
+    <string name="fx_rename_failed">تعذّرت إعادة التسمية</string>
+    <string name="fx_trash_failed_title">تعذّر النقل إلى سلة المحذوفات</string>
+    <string name="fx_trash_failed_text">لا توجد مساحة كافية لنقل هذه العناصر إلى السلة. هل تريد حذفها نهائيًا؟ لا يمكن التراجع عن ذلك.</string>
+    <string name="fx_delete_permanently">حذف نهائي</string>
+    <string name="fx_redact_skipped">لم يُنقَّح %1$d ملف (محمي أو تالف) — لم يتغيّر:</string>
+</resources>

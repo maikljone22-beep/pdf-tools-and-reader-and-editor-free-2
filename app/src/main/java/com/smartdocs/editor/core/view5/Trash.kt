@@ -34,6 +34,25 @@ class Trash(val dir: File, private val days: Int = DAYS) {
         return Entry(id, target, f.absolutePath, f.name, now, size, isDir)
     }
 
+    /**
+     * Put a COPY of [f] into the trash, leaving [f] in place: the safety copy kept before a tool overwrites a document
+     * (audit UX-02). Returns the entry, or null when the copy failed (the caller must then not overwrite [f]).
+     */
+    fun copyToTrash(f: File, now: Long = System.currentTimeMillis()): Entry? {
+        if (!f.isFile) return null
+        dir.mkdirs()
+        val id = "t${now}_${(f.name.hashCode().toLong() and 0xFFFFFF).toString(16)}_${System.nanoTime() % 100000}"
+        val target = File(dir, id)
+        val ok = runCatching { f.copyTo(target, overwrite = true); target.length() == f.length() }.getOrDefault(false)
+        if (!ok) { target.delete(); return null }
+        val p = Properties().apply {
+            setProperty("path", f.absolutePath); setProperty("name", f.name); setProperty("deleted", now.toString())
+            setProperty("size", f.length().toString()); setProperty("dir", "false")
+        }
+        if (runCatching { metaOf(id).outputStream().use { p.store(it, null) } }.isFailure) { target.delete(); metaOf(id).delete(); return null }
+        return Entry(id, target, f.absolutePath, f.name, now, f.length(), false)
+    }
+
     fun list(): List<Entry> = (dir.listFiles() ?: emptyArray()).filter { it.name.endsWith(".meta") }.mapNotNull { m ->
         runCatching {
             val p = Properties().apply { m.inputStream().use { load(it) } }

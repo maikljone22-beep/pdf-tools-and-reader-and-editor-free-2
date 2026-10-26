@@ -15,7 +15,10 @@ import androidx.compose.ui.res.stringResource
 import com.smartdocs.editor.LocalApp
 import com.smartdocs.editor.R
 import com.smartdocs.editor.core.files.DocumentRepository.WriteBack
+import com.smartdocs.editor.core.files.OriginCheck
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
 /**
@@ -46,26 +49,56 @@ fun rememberWriteBack(): (File) -> Unit {
             if (r is WriteBack.Done) Toast.makeText(ctx, ctx.getString(R.string.wb_saved_original), Toast.LENGTH_SHORT).show() else failed = f
         } else if (f != null) failed = f
     }
+    // a picked "original" that does not look like the imported one: confirm before overwriting it (audit DI-13)
+    var confirmPick by remember { mutableStateOf<Triple<File, android.net.Uri, String>?>(null) }
+    fun writeInto(f: File, uri: android.net.Uri) = scope.launch {
+        runCatching { ctx.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION) }
+        val name = app.documents.displayName(uri)
+        app.documents.setOrigin(f, uri)
+        name?.let { app.documents.setImportedName(f, it) }
+        handle(f, app.documents.writeBack(f)) { permission.launch(it) }
+    }
     // "pick the original again": the picker grants write access to exactly that document
     val regrant = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         val f = failed; failed = null
         if (f != null && uri != null) scope.launch {
-            runCatching { ctx.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION) }
-            app.documents.setOrigin(f, uri)
-            handle(f, app.documents.writeBack(f)) { permission.launch(it) }
+            val picked = withContext(Dispatchers.IO) { app.documents.displayName(uri) }
+            val same = withContext(Dispatchers.IO) {
+                OriginCheck.looksLikeOriginal(app.documents.importedNameOf(f), app.documents.syncedSourceSizeOf(f), picked, app.documents.sourceSize(uri))
+            }
+            if (same) writeInto(f, uri) else confirmPick = Triple(f, uri, picked ?: "?")
         }
     }
     val onCopyCreated: (android.net.Uri?) -> Unit = { uri ->
         val f = failed; failed = null
         if (f != null && uri != null) scope.launch {
-            app.documents.exportTo(f, uri)
+            // audit DI-29: an IO error or a missing stream is reported, never a crash or a false "saved"
+            val r = runCatching { app.documents.exportTo(f, uri) }
+            if (r.isFailure) {
+                withContext(Dispatchers.IO) { runCatching { android.provider.DocumentsContract.deleteDocument(ctx.contentResolver, uri) } }
+                Toast.makeText(ctx, ctx.getString(R.string.fx_save_failed, r.exceptionOrNull()?.message ?: ""), Toast.LENGTH_LONG).show()
+                return@launch
+            }
             runCatching { ctx.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION) }
+            val name = app.documents.displayName(uri)
             app.documents.setOrigin(f, uri)     // from now on this copy is "the original"
+            name?.let { app.documents.setImportedName(f, it) }
+            withContext(Dispatchers.IO) { runCatching { app.documents.markSynced(f, uri) } }
             Toast.makeText(ctx, ctx.getString(R.string.wb_saved_original), Toast.LENGTH_SHORT).show()
         }
     }
     val saveCopy = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf"), onCopyCreated)
     val saveCopyAny = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("*/*"), onCopyCreated)   // office5: non-PDF files
+
+    confirmPick?.let { (f, uri, picked) ->
+        AlertDialog(
+            onDismissRequest = { confirmPick = null },
+            title = { Text(stringResource(R.string.fx_pick_mismatch_title)) },
+            text = { Text(stringResource(R.string.fx_pick_mismatch_text, picked, f.name)) },
+            confirmButton = { TextButton(onClick = { confirmPick = null; writeInto(f, uri) }) { Text(stringResource(R.string.fx_replace_confirm)) } },
+            dismissButton = { TextButton(onClick = { confirmPick = null; failed = f }) { Text(stringResource(R.string.cancel)) } },
+        )
+    }
 
     failed?.let { f ->
         val isPdf = f.extension.equals("pdf", true)
