@@ -148,8 +148,9 @@ fun TextBoxDialog(req: TextRequest, color: Int, dash: DashStyle, author: String,
 }
 
 @Composable
-fun Palette(selected: Int?, allowNone: Boolean, extra: List<Int> = emptyList(), onPick: (Int?) -> Unit) {
-    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+fun Palette(selected: Int?, allowNone: Boolean, extra: List<Int> = emptyList(), scroll: Boolean = true, onPick: (Int?) -> Unit) {
+    // scroll = false when the palette sits inside a row that already scrolls horizontally (nested scroll crashes)
+    Row(if (scroll) Modifier.horizontalScroll(rememberScrollState()) else Modifier, horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
         if (allowNone) Box(Modifier.size(28.dp).clip(CircleShape).border(if (selected == null) 3.dp else 1.dp, if (selected == null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline, CircleShape)
             .clickable { onPick(null) }, contentAlignment = Alignment.Center) { Text("∅", style = MaterialTheme.typography.labelMedium) }
         (extra + PALETTE).distinct().forEach { c ->

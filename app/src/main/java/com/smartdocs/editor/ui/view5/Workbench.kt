@@ -128,7 +128,7 @@ fun WorkbenchSheet(v: V5State, measureFirst: Boolean, onMessage: (String) -> Uni
                     if (m.tool == WTool.TICK || m.tool == WTool.CROSS) listOf(10f, 16f, 24f).forEach { sz ->
                         FilterChip(m.markSize == sz, { m.markSize = sz }, label = { Text(stringResource(when (sz) { 10f -> R.string.v5_small; 16f -> R.string.v5_medium; else -> R.string.v5_large })) })
                     }
-                    Palette(m.color, allowNone = false, extra = listOf(0xE53935, 0x1E88E5, 0x43A047)) { m.color = it ?: 0xE53935 }
+                    Palette(m.color, allowNone = false, extra = listOf(0xE53935, 0x1E88E5, 0x43A047), scroll = false) { m.color = it ?: 0xE53935 }
                 }
                 // ---- hint / live status ----
                 val hint = when {
