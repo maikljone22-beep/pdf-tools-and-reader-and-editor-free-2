@@ -315,7 +315,7 @@ class PdfDocActions(private val ctx: Context, private val host: DocHost, private
             // top-right corner (Arabic documents start on the right); Annot rects are PDF space: top > bottom
             val x = box.right - 36f; val top = box.top - 16f
             val note = Annot(kind = AnnotKind.NOTE, page = page, color = 0xFFEB3B, rects = listOf(RectF(x, top, x + 20f, top - 20f)), text = summary, author = ctx.getString(com.smartdocs.editor.R.string.ai_title))
-            AnnotationWriter.commit(ctx, src, listOf(note), out, pw)
+            AnnotationWriter.commit(ctx, src, listOf(note), out, pw).orThrow()
         }
         host.goToPage(page)
         return r

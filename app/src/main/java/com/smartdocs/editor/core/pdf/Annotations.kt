@@ -66,26 +66,47 @@ object AnnotationWriter {
 
     private fun norm(r: RectF): RectF = RectF(minOf(r.left, r.right), minOf(r.top, r.bottom), maxOf(r.left, r.right), maxOf(r.top, r.bottom))
 
+    /**
+     * Outcome of [commit] (audit DI-05): [failed] annotations could not be written and are NOT in [out]; the caller
+     * must keep them pending and tell the user instead of dropping them.
+     */
+    data class CommitResult(val written: Int, val failed: List<Annot>, val errors: List<String> = emptyList()) {
+        /** For one-shot callers (AI note, search marks): any failure is an error. */
+        fun orThrow() { if (failed.isNotEmpty()) throw java.io.IOException("${failed.size} annotation(s) could not be written: ${errors.firstOrNull().orEmpty()}") }
+    }
+
     /** Write every annotation into a copy of [src] saved at [out]. */
-    suspend fun commit(context: Context, src: File, annots: List<Annot>, out: File, password: String? = null) = withContext(Dispatchers.IO) {
+    suspend fun commit(context: Context, src: File, annots: List<Annot>, out: File, password: String? = null): CommitResult = withContext(Dispatchers.IO) {
         // PdfOps.load re-protects encrypted files so PdfBox 2.0 can save them; never write into [src] itself
         require(out.canonicalPath != src.canonicalPath) { "commit: out must differ from src" }
         PdfOps.load(src, password).use { d ->
-            annots.groupBy { it.page }.forEach { (pi, list) ->
-                if (pi !in 0 until d.numberOfPages) return@forEach
-                val page = d.getPage(pi)
-                val groups = HashMap<Long, com.tom_roush.pdfbox.cos.COSDictionary>()
-                list.forEach { a ->
-                    runCatching {
-                        val before = runCatching { page.annotations.size }.getOrDefault(0)
-                        write(context, d, page, a)
-                        // /NM for every new annotation (merge de-duplication) and /IRT /RT /Group for grouped ones
-                        com.smartdocs.editor.core.annot.Annot2Writer.afterWrite(page, before, a, groups)
-                    }
+            val r = writeAll(d, annots) { page, a -> write(context, d, page, a) }
+            d.save(out)
+            r
+        }
+    }
+
+    /** The per-annotation loop of [commit], separate so a failing writer can be unit tested (audit DI-05). */
+    internal fun writeAll(d: PDDocument, annots: List<Annot>, writeOne: (PDPage, Annot) -> Unit): CommitResult {
+        val failed = ArrayList<Annot>(); val errors = ArrayList<String>(); var written = 0
+        annots.groupBy { it.page }.forEach { (pi, list) ->
+            if (pi !in 0 until d.numberOfPages) { failed += list; errors += "page ${pi + 1} does not exist"; return@forEach }
+            val page = d.getPage(pi)
+            val groups = HashMap<Long, com.tom_roush.pdfbox.cos.COSDictionary>()
+            list.forEach { a ->
+                val before = runCatching { page.annotations.size }.getOrDefault(0)
+                runCatching {
+                    writeOne(page, a)
+                    // /NM for every new annotation (merge de-duplication) and /IRT /RT /Group for grouped ones
+                    com.smartdocs.editor.core.annot.Annot2Writer.afterWrite(page, before, a, groups)
+                }.onSuccess { written++ }.onFailure { e ->
+                    // drop whatever a half-written annotation appended, so a retry does not duplicate it
+                    runCatching { val l = page.annotations; if (l.size > before) page.annotations = l.subList(0, before).toMutableList() }
+                    failed += a; errors += (e.message ?: e.toString())
                 }
             }
-            d.save(out)
         }
+        return CommitResult(written, failed, errors)
     }
 
     internal fun write(context: Context, doc: PDDocument, page: PDPage, a: Annot) {

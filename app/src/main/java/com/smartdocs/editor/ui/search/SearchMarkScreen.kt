@@ -72,7 +72,7 @@ fun SearchMarkScreen(nav: NavHostController, uri: String?) {
             val author = runCatching { app.settings.settings.first().authorName }.getOrDefault("")
             val annots = sel.map { f -> Annot(kind = kind, page = f.hit.page, color = color, opacity = if (kind == AnnotKind.HIGHLIGHT) 0.45f else 1f, rects = f.hit.rects, text = f.hit.snippet.trim(), author = author) }
             val out = app.documents.uniqueFile(app.documents.docsDir, src.nameWithoutExtension + "_marked")
-            AnnotationWriter.commit(ctx, src, annots, out, doc.password)
+            AnnotationWriter.commit(ctx, src, annots, out, doc.password).orThrow()
             runCatching { app.documents.touchRecent(out) }
             out
         }

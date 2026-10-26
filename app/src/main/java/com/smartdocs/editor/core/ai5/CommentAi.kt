@@ -40,7 +40,7 @@ object CommentAi {
     suspend fun addAsNote(ctx: Context, src: File, password: String?, summary: String, author: String, out: File): File {
         val h = withContext(Dispatchers.IO) { PdfOps.load(src, password).use { d -> d.getPage(0).mediaBox.let { it.upperRightY } } }
         val r = RectF(18f, h - 18f, 38f, h - 38f)
-        AnnotationWriter.commit(ctx, src, listOf(Annot(kind = AnnotKind.NOTE, page = 0, rects = listOf(r), text = summary, author = author, color = 0xFFC107)), out, password)
+        AnnotationWriter.commit(ctx, src, listOf(Annot(kind = AnnotKind.NOTE, page = 0, rects = listOf(r), text = summary, author = author, color = 0xFFC107)), out, password).orThrow()
         return out
     }
 }
