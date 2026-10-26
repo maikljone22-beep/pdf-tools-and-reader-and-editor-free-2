@@ -88,7 +88,7 @@ class ScaleParsingTest {
         assertEquals("12.35 cm", MeasureFormat.value(12.345, 2, "cm"))
         assertEquals("١٢٫٣ cm", MeasureFormat.value(12.3, 1, "cm", arabicDigits = true))
         val csv = MeasureFormat.csv(listOf(MeasureRow(0, MeasureType.DISTANCE, 2.0, "m"), MeasureRow(1, MeasureType.DISTANCE, 3.0, "m", label = "a,b")))
-        assertTrue(csv.startsWith("﻿"))
+        assertTrue(csv.startsWith("\uFEFF"))
         assertTrue(csv.contains("\"a,b\""))
         assertTrue(csv.contains("total,distance,5.0000,m,n=2"))
     }
@@ -234,7 +234,7 @@ class CommandAndCommentTest {
 
     @Test fun filters() {
         val rows = listOf(
-            CRow(0, 0, "Highlight", "Ali", "مُراجعة", 10, markedText = "النص"),
+            CRow(0, 0, "Highlight", "Ali", "م\u064Fراجعة", 10, markedText = "النص"),
             CRow(1, 0, "Text", "Sara", "note", 20, status = "Accepted"),
             CRow(2, 1, "Text", "Ali", "other", 30, checked = true),
         )

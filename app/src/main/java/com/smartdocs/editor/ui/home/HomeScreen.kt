@@ -53,6 +53,7 @@ private const val PREFS_HOME = "home_ui"
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(nav: NavHostController) {
+    com.smartdocs.editor.ui.view5.WhatsNewOnce(nav)
     val app = LocalApp.current
     val ctx = LocalContext.current
     val settings = LocalSettings.current

@@ -54,6 +54,7 @@ class MainActivity : ComponentActivity() {
                             uri?.let { nav.navigate(Routes.reader(it.toString())); incoming.value = null }
                         }
                         AppNavHost(nav)
+                        com.smartdocs.editor.ui.view5.V5ShellHost(nav)
                         // reopen the last document when the app is launched normally (setting "restore session")
                         com.smartdocs.editor.ui.reader.view.RestoreLastSession(nav, enabled = !openedByIntent)
                         com.smartdocs.editor.ui.cloud.DeepLinkHandler(nav)
@@ -62,11 +63,17 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+        com.smartdocs.editor.ui.view5.V5Shortcuts.publish(this)
     }
 
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); handleIntent(intent) }
 
+    override fun onProvideKeyboardShortcuts(data: MutableList<android.view.KeyboardShortcutGroup>?, menu: android.view.Menu?, deviceId: Int) {
+        super.onProvideKeyboardShortcuts(data, menu, deviceId); data?.addAll(com.smartdocs.editor.ui.view5.V5Keys.groups(this))
+    }
+
     private fun handleIntent(intent: Intent?) {
+        if (com.smartdocs.editor.ui.view5.V5Shortcuts.handleIntent(this, intent)) return
         val uri: Uri? = when (intent?.action) {
             Intent.ACTION_VIEW -> intent.data
             Intent.ACTION_SEND -> if (Build.VERSION.SDK_INT >= 33) intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)

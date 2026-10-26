@@ -296,7 +296,7 @@ fun FilesScreen(nav: NavHostController) {
             title = { Text(stringResource(R.string.delete)) },
             text = { Text(stringResource(R.string.confirm_delete) + "\n" + list.joinToString("، ") { it.name }.take(300)) },
             confirmButton = {
-                TextButton(onClick = { list.forEach { it.deleteRecursively() }; selected = emptySet(); refreshFolder(); deleteTargets = null },
+                TextButton(onClick = { list.forEach { if (!com.smartdocs.editor.ui.view5.Trash5.moveToTrash(ctx, it)) it.deleteRecursively() }; selected = emptySet(); refreshFolder(); deleteTargets = null },
                     colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text(stringResource(R.string.delete)) }
             },
             dismissButton = { TextButton(onClick = { deleteTargets = null }) { Text(stringResource(R.string.cancel)) } })

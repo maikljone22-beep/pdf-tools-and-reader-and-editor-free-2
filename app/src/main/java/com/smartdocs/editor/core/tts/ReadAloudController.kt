@@ -188,7 +188,7 @@ object ReadAloudController {
     }
 
     private fun applyLanguage(engine: TextToSpeech, text: String) {
-        val arabic = text.any { it in '؀'..'ۿ' }
+        val arabic = text.any { it in '\u0600'..'ۿ' }
         if (arabic) {
             if (!arabicChecked) {
                 val r = engine.setLanguage(Locale("ar"))

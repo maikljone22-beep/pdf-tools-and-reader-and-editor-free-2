@@ -75,7 +75,7 @@ class V5State private constructor(val s: ReaderState) {
     /** A jump from [from] to [to] (recorded unless it came from back / forward, or is a one-page step). */
     fun recordJump(from: Int, to: Int) {
         if (navigatingHistory) { navigatingHistory = false; return }
-        if (kotlin.math.abs(from - to) <= 1) return
+        if (kotlin.math.abs(from - to) <= 2) return          // page flips (one page or one spread) are not jumps
         history.visit(from, to); historyVersion++; showHistoryPill = true
     }
 

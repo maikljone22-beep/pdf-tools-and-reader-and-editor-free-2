@@ -190,7 +190,7 @@ object MeasureFormat {
 
     /** CSV with UTF-8 BOM so Excel opens Arabic correctly; ends with totals per type and unit. */
     fun csv(rows: List<MeasureRow>, header: List<String> = listOf("page", "type", "value", "unit", "label", "author", "scale"), totalLabel: String = "total"): String {
-        val sb = StringBuilder("﻿")
+        val sb = StringBuilder("\uFEFF")
         sb.append(header.joinToString(",") { csvCell(it) }).append("\r\n")
         rows.forEach { r ->
             sb.append(listOf((r.page + 1).toString(), r.type.name.lowercase(Locale.ROOT), String.format(Locale.US, "%.4f", r.value), r.unit, r.label, r.author, r.scale)

@@ -131,6 +131,9 @@ fun SettingsScreen(nav: NavHostController) {
 
             // ---- About ----
             GroupCard(stringResource(R.string.settings_about)) {
+                GroupRow(stringResource(R.string.v5_help_center), icon = Icons.Default.HelpOutline, tile = tiles.green, onClick = { nav.navigate(com.smartdocs.editor.ui.view5.V5Routes.HELP) })
+                GroupRow(stringResource(R.string.v5_trash), icon = Icons.Default.DeleteSweep, tile = tiles.purple, onClick = { nav.navigate(com.smartdocs.editor.ui.view5.V5Routes.TRASH) })
+                GroupRow(stringResource(R.string.v5_whats_new), icon = Icons.Default.NewReleases, tile = tiles.teal, onClick = { nav.navigate(com.smartdocs.editor.ui.view5.V5Routes.WHATS_NEW) })
                 GroupRow(stringResource(R.string.settings_help), icon = Icons.Default.HelpOutline, tile = tiles.green, onClick = { nav.navigate("help") })
                 GroupDivider()
                 GroupRow(stringResource(R.string.app_name), stringResource(R.string.settings_version, BuildConfig.VERSION_NAME), icon = Icons.Default.Info, tile = tiles.blue)

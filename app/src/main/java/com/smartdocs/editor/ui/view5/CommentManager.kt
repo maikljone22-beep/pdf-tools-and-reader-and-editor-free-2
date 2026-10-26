@@ -83,6 +83,7 @@ fun CommentManagerSheet(v: V5State, onMessage: (String) -> Unit) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var reload by remember { mutableIntStateOf(0) }
+    var styling by remember { mutableStateOf<CRow?>(null) }
     val rows by produceState<List<CRow>?>(null, s.renderVersion, s.annots.size, reload) { value = CommentRows.load(s) }
     var filter by remember { mutableStateOf(CFilter()) }
     var sort by remember { mutableStateOf(CSort.PAGE) }
@@ -175,11 +176,58 @@ fun CommentManagerSheet(v: V5State, onMessage: (String) -> Unit) {
                         }
                         Unit
                     })
-                    CommentRowCard(r, onJump = { s.jumpTo(r.page); v.close() }, onCheck = check)
+                    val style: (() -> Unit)? = if (!r.pending && r.index >= 0 && r.type in styleable) ({ styling = r }) else null
+                    CommentRowCard(r, onJump = { s.jumpTo(r.page); v.close() }, onCheck = check, onStyle = style)
                 }
             }
         }
     }
+    styling?.let { r ->
+        RestyleDialog(r, onApply = { w, d, st, en, c ->
+            styling = null
+            scope.launch {
+                runCatching {
+                    s.applyInPlace { src, out, pw ->
+                        withContext(Dispatchers.IO) {
+                            com.smartdocs.editor.core.pdf.PdfOps.load(src, pw).use { doc ->
+                                if (!com.smartdocs.editor.core.view5.CommentWriter5.restyle(doc, r.page, r.index, w, d, st, en, c)) error(ctx.getString(R.string.error_generic))
+                                doc.save(out)
+                            }
+                        }
+                    }
+                }.onFailure { onMessage(it.message ?: "") }
+                reload++
+            }
+        }, onDismiss = { styling = null })
+    }
+}
+
+private val styleable = setOf("Line", "PolyLine", "Polygon", "Square", "Circle", "Ink")
+
+/** Dash, line endings, width and colour of a stored line / shape, rebuilt by PdfBox (CommentWriter5.restyle). */
+@Composable
+fun RestyleDialog(r: CRow, onApply: (Float, com.smartdocs.editor.core.view5.DashStyle, com.smartdocs.editor.core.view5.LineEnd?, com.smartdocs.editor.core.view5.LineEnd?, Int?) -> Unit, onDismiss: () -> Unit) {
+    var dash by remember { mutableStateOf(com.smartdocs.editor.core.view5.DashStyle.SOLID) }
+    var start by remember { mutableStateOf(com.smartdocs.editor.core.view5.LineEnd.NONE) }
+    var end by remember { mutableStateOf(com.smartdocs.editor.core.view5.LineEnd.NONE) }
+    var width by remember { mutableFloatStateOf(2f) }
+    var color by remember { mutableStateOf(r.color) }
+    val lines = r.type == "Line" || r.type == "PolyLine"
+    AlertDialog(onDismissRequest = onDismiss, title = { Text(stringResource(R.string.v5_line_style)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                DashPicker(dash) { dash = it }
+                if (lines) {
+                    Text(stringResource(R.string.v5_line_start), style = MaterialTheme.typography.labelMedium); LineEndPicker(start) { start = it }
+                    Text(stringResource(R.string.v5_line_end), style = MaterialTheme.typography.labelMedium); LineEndPicker(end) { end = it }
+                }
+                Text(stringResource(R.string.v5_width, "%.1f".format(Locale.US, width)), style = MaterialTheme.typography.labelMedium)
+                Slider(width, { width = it }, valueRange = 0.5f..12f)
+                Palette(color, allowNone = false) { color = it }
+            }
+        },
+        confirmButton = { TextButton(onClick = { onApply(width, dash, if (lines) start else null, if (lines) end else null, color) }) { Text(stringResource(R.string.ok)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } })
 }
 
 fun statusLabel(ctx: Context, st: String): String = when (st) {
@@ -219,7 +267,7 @@ private fun SortMenu(sort: CSort, onSort: (CSort) -> Unit) {
 }
 
 @Composable
-private fun CommentRowCard(r: CRow, onJump: () -> Unit, onCheck: (() -> Unit)?) {
+private fun CommentRowCard(r: CRow, onJump: () -> Unit, onCheck: (() -> Unit)?, onStyle: (() -> Unit)?) {
     val ctx = LocalContext.current
     val df = remember { SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.US) }
     ElevatedCard(Modifier.fillMaxWidth().padding(vertical = 3.dp).clickable(onClick = onJump)) {
@@ -238,6 +286,7 @@ private fun CommentRowCard(r: CRow, onJump: () -> Unit, onCheck: (() -> Unit)?) 
                 if (r.contents.isNotBlank()) Text(r.contents, style = MaterialTheme.typography.bodyMedium, maxLines = 4, overflow = TextOverflow.Ellipsis)
                 if (r.replies.isNotEmpty()) Text(stringResource(R.string.v5_replies_n, r.replies.size), style = MaterialTheme.typography.labelSmall)
             }
+            if (onStyle != null) IconButton(onClick = onStyle) { Icon(Icons.Default.LineStyle, stringResource(R.string.v5_line_style)) }
             if (onCheck != null) IconButton(onClick = onCheck) {
                 Icon(if (r.checked) Icons.Default.CheckBox else Icons.Default.CheckBoxOutlineBlank, stringResource(R.string.v5_checked))
             }

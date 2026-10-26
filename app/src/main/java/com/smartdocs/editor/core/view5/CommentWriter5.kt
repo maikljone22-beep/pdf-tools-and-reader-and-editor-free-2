@@ -142,7 +142,7 @@ object CommentWriter5 {
                         else -> bx0 + inner
                     }
                     cs.beginText(); cs.setFont(font, s.fontSize); cs.newLineAtOffset(x, y)
-                    cs.showText(if (font is PDType1Font) line else ArabicShaper.shape(line)); cs.endText()
+                    cs.showText(V5Pdf.shown(font, line)); cs.endText()
                 }
                 y -= s.fontSize * 1.2f
             }

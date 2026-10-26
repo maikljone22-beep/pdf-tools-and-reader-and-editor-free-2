@@ -163,7 +163,7 @@ private fun HistoryPill(v: V5State, modifier: Modifier) {
     LaunchedEffect(ver, v.showHistoryPill) { if (v.showHistoryPill) { delay(6000); v.showHistoryPill = false } }
     val target = v.history.peekBack()
     if (v.showHistoryPill && target != null) {
-        Surface(modifier, shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.inverseSurface, onClick = { v.back(); v.showHistoryPill = false }) {
+        Surface(onClick = { v.back(); v.showHistoryPill = false }, modifier = modifier, shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.inverseSurface) {
             Row(Modifier.padding(horizontal = 14.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, null, Modifier.size(18.dp))
                 Spacer(Modifier.width(6.dp))

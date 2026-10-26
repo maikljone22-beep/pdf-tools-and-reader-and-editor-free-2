@@ -163,8 +163,24 @@ object V5Pdf {
 
     fun fontFor(text: String, arabic: () -> PDFont): PDFont = if (latinOnly(text)) PDType1Font.HELVETICA else arabic()
 
+    /** Replace characters [font] has no glyph for (e.g. superscript two in the Naskh font) so showText never throws. */
+    fun sanitize(font: PDFont, text: String): String = buildString(text.length) {
+        text.forEach { c ->
+            when {
+                runCatching { font.encode(c.toString()) }.isSuccess -> append(c)
+                c == '²' -> append('2')
+                c == '³' -> append('3')
+                c == '×' -> append('x')
+                else -> append('?')
+            }
+        }
+    }
+
+    /** Text ready for showText with [font]: unsupported glyphs replaced, Arabic shaped for non-Type1 fonts. */
+    fun shown(font: PDFont, text: String): String = if (font is PDType1Font) sanitize(font, text) else ArabicShaper.shape(sanitize(font, text))
+
     fun width(font: PDFont, text: String, size: Float): Float =
-        runCatching { font.getStringWidth(if (font is PDType1Font) text else ArabicShaper.shape(text)) / 1000f * size }.getOrDefault(text.length * size * 0.55f)
+        runCatching { font.getStringWidth(shown(font, text)) / 1000f * size }.getOrDefault(text.length * size * 0.55f)
 
     /**
      * Label centred at (cx, cy), rotated by [angle] radians, on a white plate so it stays readable over drawings.
@@ -172,7 +188,7 @@ object V5Pdf {
      */
     fun label(cs: PDPageContentStream, text: String, cx: Float, cy: Float, angle: Double, size: Float, color: Int, font: PDFont, plate: Boolean = true) {
         if (text.isBlank()) return
-        val shown = if (font is PDType1Font) text else ArabicShaper.shape(text)
+        val shown = shown(font, text)
         val w = width(font, text, size)
         var a = angle
         if (a > Math.PI / 2) a -= Math.PI else if (a < -Math.PI / 2) a += Math.PI    // never upside down

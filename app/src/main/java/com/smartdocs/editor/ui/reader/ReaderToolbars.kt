@@ -130,6 +130,7 @@ private fun ViewToolbar(state: ReaderState, a: ReaderActions) {
         ToolChip(Icons.Default.Share, stringResource(R.string.share), onClick = a.share)
         ToolChip(Icons.Default.Print, stringResource(R.string.print), onClick = a.print)
         ToolChip(Icons.Default.Info, stringResource(R.string.tool_doc_info), onClick = a.docInfo)
+        com.smartdocs.editor.ui.view5.View5ViewChips(state)
     }
 }
 
@@ -162,6 +163,7 @@ private fun CommentToolbar(state: ReaderState, a: ReaderActions) {
             }
         }
         com.smartdocs.editor.ui.reader.annot.Annot2CommentChips(state, a)      // MODULE_annot2 tools + comments menu
+        com.smartdocs.editor.ui.view5.View5CommentChips(state)
         VerticalDivider(Modifier.height(36.dp).padding(horizontal = 4.dp))
         ToolChip(Icons.Default.List, stringResource(R.string.panel_annotations)) { a.panels(ReaderPanel.ANNOTATIONS) }
     }

@@ -1,5 +1,6 @@
 package com.smartdocs.editor.ui
 
+import com.smartdocs.editor.ui.view5.view5Routes
 import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
@@ -153,6 +154,7 @@ fun AppNavHost(nav: NavHostController) {
                     }
                     // account / cloud / help / review screens (acct module, see MODULE_acct.md)
                     acctRoutes(nav)
+                    view5Routes(nav)
                 }
             }
         }

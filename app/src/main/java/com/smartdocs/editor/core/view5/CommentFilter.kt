@@ -90,7 +90,7 @@ object CommentFilter {
 
     /** UTF-8 BOM CSV: page, type, author, date, status, checked, contents, marked text, replies. */
     fun csv(rows: List<CRow>, header: List<String>): String {
-        val sb = StringBuilder("﻿").append(header.joinToString(",") { cell(it) }).append("\r\n")
+        val sb = StringBuilder("\uFEFF").append(header.joinToString(",") { cell(it) }).append("\r\n")
         rows.forEach { r ->
             sb.append(listOf((r.page + 1).toString(), r.type, r.author, date(r.date), r.status, if (r.checked) "1" else "0", r.contents, r.markedText,
                 r.replies.joinToString(" | ")).joinToString(",") { cell(it) }).append("\r\n")
