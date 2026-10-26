@@ -204,6 +204,7 @@ fun PageView(
         LaunchedEffect(pagerState, spread) { snapshotFlow { spread.firstPage(pagerState.currentPage) }.collect { if (it != state.currentPage) state.rememberPage(it) } }
     }
     AutoFlipEffect(state)
+    if (mode == ViewMode.CONTINUOUS) com.smartdocs.editor.ui.view5.V5AutoScrollEffect(state, listState)   // MODULE view5: smooth auto-scroll
     // reset pan when zoom returns to 1 or the layout changes
     LaunchedEffect(state.zoom, mode, state.fitPage, state.rotation, viewport, cropOn, vx.facingSeparator) { clampPan() }
     // a new page in the pager starts at its top

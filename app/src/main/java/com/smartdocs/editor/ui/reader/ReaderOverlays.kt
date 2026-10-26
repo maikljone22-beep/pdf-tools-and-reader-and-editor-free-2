@@ -92,6 +92,9 @@ fun SelectionMenu(
             ToolChip(Icons.AutoMirrored.Filled.VolumeUp, stringResource(R.string.tts_from_here)) { onReadFrom(sel) }
             ToolChip(Icons.Default.TravelExplore, stringResource(R.string.rd_web_search)) { onWebSearch(sel.text) }
             ToolChip(Icons.Default.Share, stringResource(R.string.share_text)) { onShare(sel.text) }
+            var e5Link by remember { mutableStateOf(false) }
+            ToolChip(Icons.Default.Link, stringResource(R.string.annot_link)) { e5Link = true }
+            if (e5Link) com.smartdocs.editor.ui.edit5.ReaderLinkFromSelection(state) { e5Link = false }
         }
     }
 }

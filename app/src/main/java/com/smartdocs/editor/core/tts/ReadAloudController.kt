@@ -88,6 +88,7 @@ object ReadAloudController {
         tts?.stop(); com.smartdocs.editor.core.voice.AiVoiceEngine.stop()
         chunks = emptyList(); chunkIdx = 0; provider = null
         _status.value = _status.value.copy(state = State.IDLE, chunkIndex = 0, chunkCount = 0)
+        ReadAloudFocus.release()
         appContext?.let { runCatching { it.stopService(Intent(it, ReadAloudService::class.java)) } }
     }
 
@@ -148,6 +149,7 @@ object ReadAloudController {
         _status.value = st.copy(state = State.PLAYING, chunkIndex = chunkIdx)
         val id = "rd_${++utteranceSeq}"
         val ctx = appContext
+        ctx?.let { ReadAloudFocus.acquire(it) }      // MODULE view5: pause on call / audio focus loss
         if (ctx != null && com.smartdocs.editor.core.voice.AiVoiceEngine.shouldUse(ctx)) {
             // human-like AI voice (needs internet); falls back to the system voice for the rest of the session
             com.smartdocs.editor.core.voice.AiVoiceEngine.speak(ctx, text, st.rate, id, next = chunks.getOrNull(chunkIdx + 1)) { uid, ok ->
@@ -159,7 +161,9 @@ object ReadAloudController {
 
     private fun advancePage() {
         val s = _status.value
-        if (s.page + 1 < s.pageCount) goToPage(s.page + 1) else stop()
+        // MODULE view5: repeat page / repeat document
+        val next = ReadAloudFocus.nextAfter(s.page, s.pageCount)
+        if (next != null) goToPage(next) else stop()
     }
 
     private val listener = object : UtteranceProgressListener() {
