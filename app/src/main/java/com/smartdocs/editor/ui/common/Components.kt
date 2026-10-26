@@ -24,6 +24,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
+import android.widget.Toast
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -198,9 +199,44 @@ fun ResultSheet(file: File, nav: NavHostController, onDismiss: () -> Unit, extra
     // the "save as" document type and the share mime follow the file's extension (txt/docx/png/zip results exist)
     val mime = remember(file.extension) { mimeFor(file.extension) }
     val contract = remember(mime) { ActivityResultContracts.CreateDocument(mime) }
+    // audit DI-30: report the outcome, and remove the empty document CreateDocument made when the copy failed
     val saver = rememberLauncherForActivityResult(contract) { uri ->
-        if (uri != null) CoroutineScope(Dispatchers.IO).launch { runCatching { app.documents.exportTo(file, uri) } }
+        if (uri != null) scope.launch {
+            val r = runCatching { app.documents.exportTo(file, uri) }
+            if (r.isSuccess) Toast.makeText(ctx, ctx.getString(R.string.fx_saved_copy), Toast.LENGTH_SHORT).show()
+            else {
+                withContext(Dispatchers.IO) { runCatching { android.provider.DocumentsContract.deleteDocument(ctx.contentResolver, uri) } }
+                Toast.makeText(ctx, ctx.getString(R.string.fx_save_failed, r.exceptionOrNull()?.message ?: ""), Toast.LENGTH_LONG).show()
+            }
+        }
     }
+    var confirmReplace by remember { mutableStateOf(false) }
+    var replacing by remember { mutableStateOf(false) }
+    if (confirmReplace && source != null) AlertDialog(
+        onDismissRequest = { confirmReplace = false },
+        title = { Text(stringResource(R.string.fx_replace_title)) },
+        text = { Text(stringResource(R.string.fx_replace_text, source.name)) },
+        confirmButton = {
+            TextButton(enabled = !replacing, onClick = {
+                replacing = true
+                scope.launch {
+                    // audit UX-02: the old version is kept in the trash; a failure is shown and the document stays as it was
+                    val r = runCatching { app.documents.replaceOriginal(source, file) }
+                    replacing = false; confirmReplace = false
+                    if (r.isFailure) {
+                        Toast.makeText(ctx, ctx.getString(R.string.fx_save_failed, r.exceptionOrNull()?.message ?: ""), Toast.LENGTH_LONG).show()
+                        return@launch
+                    }
+                    Toast.makeText(ctx, ctx.getString(R.string.fx_replaced_kept_in_trash), Toast.LENGTH_LONG).show()
+                    writeBack(source)
+                    onDismiss()
+                    // back to the document, which reloads itself because its file changed
+                    if (!nav.popBackStack(Routes.READER, inclusive = false)) nav.navigate(Routes.reader(Uri.fromFile(source).toString()))
+                }
+            }) { Text(stringResource(R.string.fx_replace_confirm)) }
+        },
+        dismissButton = { TextButton(onClick = { confirmReplace = false }) { Text(stringResource(R.string.cancel)) } },
+    )
     val naturalBreak = com.smartdocs.editor.core.ads.rememberNaturalBreak()   // share6: interstitial at a natural break (not on Open/Share)
     ModalBottomSheet(onDismissRequest = { onDismiss(); naturalBreak() }, containerColor = MaterialTheme.colorScheme.surfaceContainerLow) {
         Column(Modifier.padding(horizontal = 24.dp).padding(bottom = 32.dp)) {
@@ -224,16 +260,9 @@ fun ResultSheet(file: File, nav: NavHostController, onDismiss: () -> Unit, extra
             Spacer(Modifier.height(20.dp))
             val btnMod = Modifier.fillMaxWidth().height(52.dp)
             if (source != null) {
-                Button(onClick = {
-                    scope.launch {
-                        runCatching { app.documents.replaceOriginal(source, file) }
-                        writeBack(source)
-                        onDismiss()
-                        // back to the document, which reloads itself because its file changed
-                        if (!nav.popBackStack(Routes.READER, inclusive = false)) nav.navigate(Routes.reader(Uri.fromFile(source).toString()))
-                    }
-                }, btnMod, shape = PillShape) { Icon(Icons.Default.Save, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.wb_save_in_original)) }
-                FilledTonalButton(onClick = { onDismiss(); nav.navigate(Routes.reader(Uri.fromFile(file).toString())) }, Modifier.padding(top = 8.dp).fillMaxWidth().height(52.dp), shape = PillShape) { Icon(Icons.Default.OpenInNew, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.wb_open_as_new)) }
+                // audit UX-02: the safe choice (new file) is the default; replacing the document needs a confirmation
+                Button(onClick = { onDismiss(); nav.navigate(Routes.reader(Uri.fromFile(file).toString())) }, btnMod, shape = PillShape) { Icon(Icons.Default.OpenInNew, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.wb_open_as_new)) }
+                FilledTonalButton(onClick = { confirmReplace = true }, Modifier.padding(top = 8.dp).fillMaxWidth().height(52.dp), shape = PillShape) { Icon(Icons.Default.Save, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.wb_save_in_original)) }
             } else {
                 Button(onClick = { onDismiss(); nav.navigate(Routes.reader(Uri.fromFile(file).toString())) }, btnMod, shape = PillShape) { Icon(Icons.Default.OpenInNew, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.open)) }
             }
