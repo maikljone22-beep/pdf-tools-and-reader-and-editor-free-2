@@ -110,9 +110,9 @@
     <string name="qk_ocr_will_download">ستُنزَّل بيانات اللغات غير المُنزَّلة مرة واحدة (تحتاج اتصالاً بالإنترنت).</string>
     <string name="qk_ocr_mode">الوضع</string>
     <string name="qk_ocr_searchable">نص قابل للبحث</string>
-    <string name="qk_ocr_searchable_desc">يمكن البحث في النص وتحديده ونسخه، ولن يتغيّر مظهر الصفحة (طبقة نص غير مرئية فوق صورة الصفحة).</string>
+    <string name="qk_ocr_searchable_desc">(موصى به) يمكن البحث في النص وتحديده ونسخه، ولن يتغيّر مظهر الصفحة أبداً (طبقة نص غير مرئية).</string>
     <string name="qk_ocr_editable">نص قابل للتعديل</string>
-    <string name="qk_ocr_editable_desc">يُستبدل نص الصورة بنص حقيقي يمكن تحريره ونسخه، وقد يختلف المظهر قليلاً.</string>
+    <string name="qk_ocr_editable_desc">للصفحات الممسوحة فقط: تُستبدل الكلمات الواضحة بنص حقيقي قابل للتحرير، والكلمات غير المؤكدة تبقى كما هي. الصفحات التي فيها نص حقيقي لا تتغيّر.</string>
     <string name="qk_ocr_run">تنفيذ</string>
     <string name="qk_ocr_downloading">تنزيل بيانات %1$s… %2$d%%</string>
     <string name="qk_ocr_page">التعرّف على الصفحة %1$d من %2$d</string>

@@ -74,7 +74,13 @@ suspend fun runOcrToFile(
                 val page = engine.recognize(bmp, wantWords = true)
                 coroutineContext.ensureActive()
                 searchable?.addLayer(pi, com.smartdocs.editor.core.ocr.MixedPageOcr.dropExisting(session, pi, page, plan))
-                editable?.replacePage(pi, bmp, page)
+                // a page that already has real text is never rebuilt (its text would become a picture): add new words invisibly
+                if (editable != null) {
+                    val txt = runCatching { session.text(pi) }.getOrDefault("")
+                    if (txt.isNotBlank() && !com.smartdocs.editor.core.search.ArabicTextFix.isGarbage(txt))
+                        editable.addInvisible(pi, com.smartdocs.editor.core.ocr.MixedPageOcr.dropExisting(session, pi, page, plan))
+                    else editable.replacePage(pi, bmp, page)
+                }
                 bmp.recycle()
             }
             onProgress(ctx.getString(R.string.qk_ocr_saving), 1f)

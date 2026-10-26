@@ -39,13 +39,24 @@ class EditableTextPdfWriter(private val context: Context, src: File, password: S
     private val latin: PDFont = PDType1Font.HELVETICA
     private val measure = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Typeface.SANS_SERIF; textSize = 100f }
     val pageCount: Int get() = doc.numberOfPages
+    private val layer by lazy { SearchablePdfWriter(context, doc) }
+
+    /**
+     * For pages that already have real text: keep the page exactly as it is and only add the recognised words as
+     * an invisible, searchable layer (rebuilding such a page would turn its real text into a picture).
+     */
+    suspend fun addInvisible(pageIndex: Int, page: OcrPage) = layer.addLayer(pageIndex, page)
 
     /**
      * Replace page [pageIndex] by [image] (the page rendered in display orientation, must be mutable — it is
      * modified) cleaned of the recognised words, plus the words of [page] as real text.
      */
-    suspend fun replacePage(pageIndex: Int, image: Bitmap, page: OcrPage, minConfidence: Float = 45f) = withContext(Dispatchers.Default) {
-        val words = page.words.filter { it.text.isNotBlank() && it.box.width() > 1 && it.box.height() > 1 }
+    suspend fun replacePage(pageIndex: Int, image: Bitmap, page: OcrPage, minConfidence: Float = 75f) = withContext(Dispatchers.Default) {
+        val all = page.words.filter { it.text.isNotBlank() && it.box.width() > 1 && it.box.height() > 1 && it.text.any { c -> c.isLetterOrDigit() } }
+        if (all.isEmpty()) return@withContext
+        // drop junk "words": far taller than a text line (decorations, borders, big margin marks)
+        val medianH = all.map { it.box.height() }.sorted()[all.size / 2].coerceAtLeast(1)
+        val words = all.filter { it.box.height() <= medianH * 3 && it.box.width() < image.width * 0.95f }
         if (words.isEmpty()) return@withContext
         val bmp = if (image.isMutable) image else image.copy(Bitmap.Config.ARGB_8888, true)
         val pdPage = doc.getPage(pageIndex)
@@ -65,7 +76,9 @@ class EditableTextPdfWriter(private val context: Context, src: File, password: S
             if (r.isEmpty) return@forEach
             val bg = borderMedian(bmp, r)
             ink[w] = inkColor(bmp, r, bg)
-            if (w.confidence >= minConfidence) {
+            // rewrite a word visibly only when it is reliable, sits on plain paper and fits its box without stretching;
+            // otherwise its scanned glyphs stay and it only gets invisible searchable text
+            if (w.confidence >= minConfidence && plainBackground(bmp, r, bg) && fitsBox(w, s)) {
                 strong += w
                 fill.color = bg
                 canvas.drawRect((r.left - 1).toFloat(), (r.top - 1).toFloat(), (r.right + 1).toFloat(), (r.bottom + 1).toFloat(), fill)
@@ -113,9 +126,38 @@ class EditableTextPdfWriter(private val context: Context, src: File, password: S
         cs.setNonStrokingColor((color shr 16) and 0xFF, (color shr 8) and 0xFF, color and 0xFF)
         val natural = runCatching { font.getStringWidth(shaped) / 1000f * fontSize }.getOrDefault(0f)
         val targetW = w.box.width() * s
-        cs.setHorizontalScaling(if (natural > 0.5f) (targetW / natural * 100f).coerceIn(20f, 500f) else 100f)
+        // visible words were checked to fit (fitsBox); invisible ones may stretch freely to cover their scan for selection
+        cs.setHorizontalScaling(if (natural > 0.5f) (targetW / natural * 100f).coerceIn(if (visible) 75f else 10f, if (visible) 135f else 1000f) else 100f)
         cs.setTextMatrix(Matrix.getTranslateInstance(x, y))
         cs.showArabic(text, shaped)
+    }
+
+    /** Natural width of the word in our font is within 0.75..1.35 of its box (no visible stretching). */
+    private fun fitsBox(w: OcrWord, s: Float): Boolean = runCatching {
+        val text = w.text
+        val ar = ArabicShaper.isArabic(text)
+        val shaped = if (ar) ArabicShaper.shape(text) else text
+        val font = if (ar) arabic else latin
+        val b = Rect(); measure.getTextBounds(text, 0, text.length, b)
+        val ratio = (b.height() / 100f).takeIf { it > 0.05f } ?: 0.7f
+        val fontSize = (w.box.height() / ratio * s).coerceIn(3f, 200f)
+        val natural = font.getStringWidth(shaped) / 1000f * fontSize
+        val k = w.box.width() * s / natural
+        natural > 0.5f && k in 0.75f..1.35f
+    }.getOrDefault(false)
+
+    /** The ring around the word is nearly one colour (paper), so painting over the word leaves no patch. */
+    private fun plainBackground(b: Bitmap, r: Rect, bg: Int): Boolean {
+        fun lum(c: Int) = (((c shr 16) and 0xFF) * 299 + ((c shr 8) and 0xFF) * 587 + (c and 0xFF) * 114) / 1000
+        val ref = lum(bg)
+        var n = 0; var off = 0
+        val l = (r.left - 3).coerceAtLeast(0); val rt = (r.right + 2).coerceAtMost(b.width - 1)
+        val step = maxOf(1, (rt - l) / 40)
+        for (y in intArrayOf(r.top - 3, r.bottom + 2)) {
+            if (y !in 0 until b.height) continue
+            var x = l; while (x <= rt) { n++; if (kotlin.math.abs(lum(b.getPixel(x, y)) - ref) > 28) off++; x += step }
+        }
+        return n == 0 || off * 100 / n <= 12
     }
 
     /** Median colour of a 2 px ring just outside [r] — the paper around the word. */

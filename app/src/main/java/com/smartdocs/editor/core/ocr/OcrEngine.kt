@@ -20,7 +20,7 @@ data class OcrWord(val text: String, val box: Rect, val confidence: Float)
 data class OcrPage(val text: String, val words: List<OcrWord>, val imageWidth: Int, val imageHeight: Int)
 
 /**
- * Tesseract wrapper. Language packs (`tessdata_fast`) are downloaded on first use into
+ * Tesseract wrapper. Language packs (`tessdata_best`) are downloaded on first use into
  * `filesDir/tessdata/<lang>.traineddata`.
  */
 class OcrEngine(private val context: Context) : AutoCloseable {
@@ -29,7 +29,8 @@ class OcrEngine(private val context: Context) : AutoCloseable {
     private var initialisedLangs: String? = null
     @Volatile private var cancelled = false
 
-    val tessdataDir: File get() = File(context.filesDir, "tessdata").apply { mkdirs() }
+    // high-accuracy LSTM models (tessdata_best): much better Arabic than tessdata_fast; kept apart from old fast packs
+    val tessdataDir: File get() = File(context.filesDir, "ocr_best/tessdata").apply { mkdirs() }
 
     fun isLanguageInstalled(lang: String): Boolean = File(tessdataDir, "$lang.traineddata").let { it.exists() && it.length() > 100_000 }
 
@@ -43,7 +44,7 @@ class OcrEngine(private val context: Context) : AutoCloseable {
     private suspend fun download(lang: String, onProgress: (String, Float) -> Unit) {
         val target = File(tessdataDir, "$lang.traineddata")
         val tmp = File(tessdataDir, "$lang.traineddata.part")
-        val url = "https://github.com/tesseract-ocr/tessdata_fast/raw/main/$lang.traineddata"
+        val url = "https://github.com/tesseract-ocr/tessdata_best/raw/main/$lang.traineddata"
         val client = OkHttpClient.Builder().connectTimeout(30, TimeUnit.SECONDS).readTimeout(120, TimeUnit.SECONDS).followRedirects(true).build()
         val ctx = coroutineContext
         onProgress(lang, 0f)

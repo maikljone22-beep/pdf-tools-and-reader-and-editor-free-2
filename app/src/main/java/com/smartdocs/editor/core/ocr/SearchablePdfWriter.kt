@@ -19,10 +19,14 @@ import java.io.File
  * Word boxes are in pixels of the rendered page image; they are mapped back to PDF user space, taking the
  * page /Rotate into account.
  */
-class SearchablePdfWriter(private val context: Context, src: File, password: String? = null) : AutoCloseable {
+class SearchablePdfWriter private constructor(private val context: Context, private val doc: PDDocument, private val ownsDoc: Boolean) : AutoCloseable {
 
     // PdfOps.load re-protects encrypted input so PdfBox 2.0 can save it again
-    private val doc: PDDocument = PdfOps.load(src, password)
+    constructor(context: Context, src: File, password: String? = null) : this(context, PdfOps.load(src, password), true)
+
+    /** Adds invisible layers to a document another writer owns (it saves and closes it). */
+    internal constructor(context: Context, doc: PDDocument) : this(context, doc, false)
+
     private val arabic: PDFont by lazy { PdfOps.arabicFont(context, doc) }
     private val latin: PDFont = PDType1Font.HELVETICA
     val pageCount: Int get() = doc.numberOfPages
@@ -84,5 +88,5 @@ class SearchablePdfWriter(private val context: Context, src: File, password: Str
 
     suspend fun save(out: File) = withContext(Dispatchers.IO) { doc.save(out) }
 
-    override fun close() { runCatching { doc.close() } }
+    override fun close() { if (ownsDoc) runCatching { doc.close() } }
 }

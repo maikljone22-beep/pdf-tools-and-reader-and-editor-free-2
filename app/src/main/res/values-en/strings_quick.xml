@@ -110,9 +110,9 @@
     <string name="qk_ocr_will_download">Missing language data will be downloaded once (needs an internet connection).</string>
     <string name="qk_ocr_mode">Mode</string>
     <string name="qk_ocr_searchable">Searchable text</string>
-    <string name="qk_ocr_searchable_desc">Text can be searched, selected and copied; the page looks exactly the same (an invisible text layer over the page image).</string>
+    <string name="qk_ocr_searchable_desc">(Recommended) Text can be searched, selected and copied; the page never changes (an invisible text layer).</string>
     <string name="qk_ocr_editable">Editable text</string>
-    <string name="qk_ocr_editable_desc">The text in the image is replaced by real text you can edit and copy; the appearance may change slightly.</string>
+    <string name="qk_ocr_editable_desc">Scanned pages only: clear words become real editable text, uncertain words stay as they are. Pages that already have real text are not changed.</string>
     <string name="qk_ocr_run">Run</string>
     <string name="qk_ocr_downloading">Downloading %1$s data… %2$d%%</string>
     <string name="qk_ocr_page">Recognizing page %1$d of %2$d</string>
