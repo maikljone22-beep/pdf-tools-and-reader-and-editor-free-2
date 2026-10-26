@@ -26,6 +26,7 @@ val LocalSettings = compositionLocalOf { AppSettings() }
 
 class MainActivity : ComponentActivity() {
     private val incoming = MutableStateFlow<Uri?>(null)
+    private val incomingRoute = MutableStateFlow<String?>(null)
     private var openedByIntent = false
 
     // volume keys / keyboard page turning in the reader
@@ -53,6 +54,8 @@ class MainActivity : ComponentActivity() {
                         LaunchedEffect(uri) {
                             uri?.let { nav.navigate(Routes.reader(it.toString())); incoming.value = null }
                         }
+                        val route by incomingRoute.collectAsStateWithLifecycle()
+                        LaunchedEffect(route) { route?.let { nav.navigate(it); incomingRoute.value = null } }
                         AppNavHost(nav)
                         com.smartdocs.editor.ui.view5.V5ShellHost(nav)
                         // reopen the last document when the app is launched normally (setting "restore session")
@@ -74,6 +77,18 @@ class MainActivity : ComponentActivity() {
 
     private fun handleIntent(intent: Intent?) {
         if (com.smartdocs.editor.ui.view5.V5Shortcuts.handleIntent(this, intent)) return
+        if (com.smartdocs.editor.core.tools5.ShareImport.handles(intent)) {
+            openedByIntent = true
+            val app = application as SmartDocsApp
+            val i = intent!!
+            lifecycleScope.launch {
+                com.smartdocs.editor.core.tools5.ShareImport.pending = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    com.smartdocs.editor.core.tools5.ShareImport.read(this@MainActivity, i, java.io.File(app.documents.tempDir, "shared"))
+                }
+                incomingRoute.value = Routes.tool("share_to_pdf")
+            }
+            return
+        }
         val uri: Uri? = when (intent?.action) {
             Intent.ACTION_VIEW -> intent.data
             Intent.ACTION_SEND -> if (Build.VERSION.SDK_INT >= 33) intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)

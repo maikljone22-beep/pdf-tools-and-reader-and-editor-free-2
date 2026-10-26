@@ -192,4 +192,30 @@
     <string name="s5_protecting">جارٍ التشفير…</string>
     <string name="s5_already_encrypted">الملف محمي حالياً، ستُستبدل حمايته بالإعدادات الجديدة.</string>
     <string name="s5_protect_note">تحترم برامج PDF الأذونات، لكن من يملك كلمة مرور الفتح يستطيع قراءة المحتوى دائماً.</string>
+    <!-- search5b: reader find & replace, reader redaction, PII, encryption scope -->
+    <string name="s5_enc_scope">ما الذي يُشفَّر</string>
+    <string name="s5_scope_all">تشفير كل محتويات المستند</string>
+    <string name="s5_scope_meta">تشفير الكل ما عدا البيانات الوصفية</string>
+    <string name="s5_scope_att">تشفير المرفقات فقط</string>
+    <string name="s5_scope_meta_hint">تبقى البيانات الوصفية (XMP) مقروءة لمحركات البحث والفهرسة؛ يتطلب AES.</string>
+    <string name="s5_scope_att_hint">تبقى الصفحات مقروءة، وكلمة مرور الفتح تحمي الملفات المرفقة فقط (كما في Acrobat). بعض التطبيقات، ومنها هذا التطبيق، تطلب كلمة المرور لفتح الملف نفسه.</string>
+    <string name="s5_scope_att_needs_pw">تشفير المرفقات فقط يحتاج إلى كلمة مرور الفتح.</string>
+    <string name="s5_rr_toggle">بحث واستبدال</string>
+    <string name="s5_rr_with">استبدال بـ</string>
+    <string name="s5_rr_one">استبدال</string>
+    <string name="s5_rr_all">استبدال الكل</string>
+    <string name="s5_rr_working">جارٍ الاستبدال…</string>
+    <string name="s5_rr_done">تم استبدال %1$d</string>
+    <string name="s5_rr_font_warn">تنبيه: خط النص الأصلي غير قابل لإعادة الاستخدام، فرُسم النص الجديد بخط بديل.</string>
+    <string name="s5_rr_lossy">تنبيه: بعض الحروف بلا ترميز نصي، فقد يكون النص المستبدل ناقصاً.</string>
+    <string name="s5_rr_none">لم يُعثر على النص في محتوى الصفحة القابل للتحرير.</string>
+    <string name="s5_rd_chip">تنقيح</string>
+    <string name="s5_rd_page">تنقيح الصفحة</string>
+    <string name="s5_rd_apply">تطبيق التنقيح</string>
+    <string name="s5_rd_working">جارٍ إضافة علامة التنقيح…</string>
+    <string name="s5_rd_marked">أُضيفت علامة تنقيح في الصفحة %1$d</string>
+    <string name="s5_rd_banner">علامات تنقيح: %1$d</string>
+    <string name="s5_pii_detect">كشف البيانات الحساسة (ذكي)</string>
+    <string name="s5_pii_added">أُضيفت %d علامة للمراجعة</string>
+    <string name="s5_marks_off">%d غير محددة</string>
 </resources>

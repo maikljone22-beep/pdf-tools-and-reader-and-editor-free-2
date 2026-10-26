@@ -85,7 +85,7 @@ object OcrRunner {
                 if (maxOf(w, h) * scale > 3500f) scale = 3500f / maxOf(w, h)
                 val bmp = s.render(pi, (w * scale).toInt().coerceAtLeast(1), (h * scale).toInt().coerceAtLeast(1), annotations = false)
                 s.invalidateCache()
-                block(pi, todo.size, bmp.also { if (n < 0) it.recycle() })
+                block(pi, todo.size, bmp)
                 bmp.recycle()
             }
         } finally { s.closeAsync() }

@@ -26,9 +26,10 @@ import com.smartdocs.editor.core.tts.ReadAloudController
 
 /** Search field with prev/next, options and a collapsible result list. */
 @Composable
-fun SearchBar(state: ReaderState, onClose: () -> Unit) {
+fun SearchBar(state: ReaderState, quick: com.smartdocs.editor.ui.quick.QuickController? = null, onClose: () -> Unit) {
     val focus = remember { FocusRequester() }
     var menu by remember { mutableStateOf(false) }
+    var replaceOn by remember { mutableStateOf(false) }      // MODULE_search5b: find & replace in the open document
     var showList by remember { mutableStateOf(true) }
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
     Surface(tonalElevation = 2.dp) {
@@ -46,6 +47,7 @@ fun SearchBar(state: ReaderState, onClose: () -> Unit) {
                 )
                 IconButton(onClick = { state.searchStep(-1) }, enabled = state.searchHits.isNotEmpty()) { Icon(Icons.Default.KeyboardArrowUp, stringResource(R.string.previous)) }
                 IconButton(onClick = { state.searchStep(1) }, enabled = state.searchHits.isNotEmpty()) { Icon(Icons.Default.KeyboardArrowDown, stringResource(R.string.next)) }
+                if (quick != null) com.smartdocs.editor.ui.search.ReaderReplaceToggle(replaceOn) { replaceOn = !replaceOn }
                 Box {
                     IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, stringResource(R.string.more)) }
                     DropdownMenu(menu, { menu = false }) {
@@ -57,6 +59,7 @@ fun SearchBar(state: ReaderState, onClose: () -> Unit) {
                     }
                 }
             }
+            if (replaceOn && quick != null) com.smartdocs.editor.ui.search.ReaderReplaceRow(state, quick)
             if (showList && state.searchHits.isNotEmpty()) {
                 LazyColumn(Modifier.fillMaxWidth().heightIn(max = 220.dp)) {
                     itemsIndexed(state.searchHits) { i, h ->
@@ -80,6 +83,7 @@ fun SelectionMenu(
     sel: TextSelection, state: ReaderState,
     onCopy: (String) -> Unit, onTranslate: (String) -> Unit, onAskAi: (String) -> Unit, onReadFrom: (TextSelection) -> Unit,
     onWebSearch: (String) -> Unit, onShare: (String) -> Unit,
+    onRedact: ((TextSelection) -> Unit)? = null,
 ) {
     Surface(shape = RoundedCornerShape(20.dp), tonalElevation = 6.dp, shadowElevation = 8.dp, modifier = Modifier.padding(12.dp)) {
         Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 6.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -95,6 +99,7 @@ fun SelectionMenu(
             var e5Link by remember { mutableStateOf(false) }
             ToolChip(Icons.Default.Link, stringResource(R.string.annot_link)) { e5Link = true }
             if (e5Link) com.smartdocs.editor.ui.edit5.ReaderLinkFromSelection(state) { e5Link = false }
+            if (onRedact != null) ToolChip(Icons.Default.Block, stringResource(R.string.s5_rd_chip)) { onRedact(sel) }   // MODULE_search5b
         }
     }
 }

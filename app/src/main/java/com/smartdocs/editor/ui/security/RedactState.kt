@@ -39,6 +39,8 @@ fun foundKey(f: Found) = "${f.hit.page}:${f.hit.charIndex}:${f.hit.length}"
  */
 class RedactState(private val context: Context) {
     val marks = mutableStateListOf<RedactMark>()
+    /** Marks unticked in the review list: kept (and shown) but not applied or saved. */
+    var excluded by mutableStateOf<Set<String>>(emptySet())
     var style by mutableStateOf(RedactPrefs.lastStyle(context))
     var geo by mutableStateOf<Map<Int, PageGeo>>(emptyMap())
 
@@ -73,7 +75,7 @@ class RedactState(private val context: Context) {
         }.getOrDefault(emptyList())
         withContext(Dispatchers.Main) {
             geo = g
-            marks.clear(); marks.addAll(existing)
+            marks.clear(); marks.addAll(existing); excluded = emptySet()
             found = emptyList(); checked = emptySet(); searched = false
         }
     }
@@ -114,6 +116,28 @@ class RedactState(private val context: Context) {
         return n
     }
 
+    /** The marks that «تطبيق» / «حفظ العلامات» use (ticked in the review list). */
+    fun activeMarks(): List<RedactMark> = marks.filter { it.id !in excluded }
+
+    fun toggleIncluded(id: String) { excluded = if (id in excluded) excluded - id else excluded + id }
+
+    /**
+     * Hits of the smart PII scan ([com.smartdocs.editor.ui.ai5.PiiScanSheet]) become marks (ticked, so the review
+     * list is where they are unticked or removed). Returns how many new marks were added.
+     */
+    fun addHits(hits: List<com.smartdocs.editor.core.pdf.SearchHit>, labelPrefix: String = ""): Int {
+        val existing = marks.map { "${it.page}:${it.rects.firstOrNull()?.left}:${it.rects.firstOrNull()?.top}" }.toHashSet()
+        var n = 0
+        for (h in hits) {
+            if (h.rects.isEmpty()) continue
+            val key = "${h.page}:${h.rects.first().left}:${h.rects.first().top}"
+            if (!existing.add(key)) continue
+            marks += RedactMark(newId(), h.page, h.rects.map { RectF(it) }, style, labelPrefix + h.snippet.trim())
+            n++
+        }
+        return n
+    }
+
     fun displayBox(page: Int, user: RectF): Box? {
         val g = geo[page] ?: return null
         return RedactMath.map(g.toDisplay, Box.of(user.left, user.bottom, user.right, user.top))
@@ -137,7 +161,7 @@ class RedactState(private val context: Context) {
         pages.filter { it != m.page }.forEach { p -> marks += m.copy(id = newId(), page = p) }
     }
 
-    fun remove(id: String) { marks.removeAll { it.id == id } }
+    fun remove(id: String) { marks.removeAll { it.id == id }; excluded = excluded - id }
 
     fun update(m: RedactMark) { val i = marks.indexOfFirst { it.id == m.id }; if (i >= 0) marks[i] = m }
 
@@ -147,7 +171,7 @@ class RedactState(private val context: Context) {
         for (i in marks.indices) marks[i] = marks[i].copy(style = st)
     }
 
-    fun clear() { marks.clear() }
+    fun clear() { marks.clear(); excluded = emptySet() }
 
     fun saveNames() = RedactPrefs.saveNames(context, names)
 

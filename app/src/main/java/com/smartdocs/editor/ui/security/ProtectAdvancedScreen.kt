@@ -20,6 +20,7 @@ import com.smartdocs.editor.R
 import com.smartdocs.editor.core.pdf.PdfOps
 import com.smartdocs.editor.core.redact.ChangeLevel
 import com.smartdocs.editor.core.redact.EncAlgo
+import com.smartdocs.editor.core.redact.EncScope
 import com.smartdocs.editor.core.redact.Permissions
 import com.smartdocs.editor.core.redact.PrintLevel
 import com.smartdocs.editor.core.redact.ProtectAdvanced
@@ -46,6 +47,7 @@ fun ProtectAdvancedScreen(nav: NavHostController, uri: String?) {
     var algo by remember { mutableStateOf(EncAlgo.AES_256) }
     var perms by remember { mutableStateOf(Permissions()) }
     var restrict by remember { mutableStateOf(false) }
+    var scope by remember { mutableStateOf(EncScope.ALL) }
     var result by remember { mutableStateOf<File?>(null) }
     var info by remember { mutableStateOf<String?>(null) }
     val snack = remember { SnackbarHostState() }
@@ -60,12 +62,12 @@ fun ProtectAdvancedScreen(nav: NavHostController, uri: String?) {
     }
     val mismatch = openPw.isNotEmpty() && openPw != openPw2
     val effective = if (restrict) perms else Permissions()
-    val nothing = openPw.isEmpty() && !restrict
+    val nothing = (openPw.isEmpty() && !restrict) || (scope == EncScope.ATTACHMENTS_ONLY && openPw.isEmpty())
     val msg = stringResource(R.string.s5_protecting)
     val ownerFmt = stringResource(R.string.s5_owner_generated)
     fun protect() {
         val src = file ?: return
-        val o = ProtectOptions(openPw, ownerPw, algo, effective)
+        val o = ProtectOptions(openPw, ownerPw, algo, effective, scope)
         runner.run(msg) {
             val out = app.documents.uniqueFile(app.documents.docsDir, src.nameWithoutExtension + "_protected")
             val owner = ProtectAdvanced.protect(src, out, current, o)
@@ -94,9 +96,21 @@ fun ProtectAdvancedScreen(nav: NavHostController, uri: String?) {
             Section(stringResource(R.string.s5_algorithm))
             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                 val all = EncAlgo.values()
-                all.forEachIndexed { i, a -> SegmentedButton(algo == a, { algo = a }, SegmentedButtonDefaults.itemShape(i, all.size)) { Text(algoLabel(a), maxLines = 1) } }
+                all.forEachIndexed { i, a -> SegmentedButton(algo == a, { algo = a; if (!a.aes) scope = EncScope.ALL }, SegmentedButtonDefaults.itemShape(i, all.size)) { Text(algoLabel(a), maxLines = 1) } }
             }
             if (algo == EncAlgo.RC4_128) Text(stringResource(R.string.s5_rc4_note), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+            Section(stringResource(R.string.s5_enc_scope))
+            EncScope.values().forEach { sc ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    RadioButton(scope == sc, { scope = sc }, enabled = sc == EncScope.ALL || algo.aes)
+                    Column {
+                        Text(scopeLabel(sc), style = MaterialTheme.typography.bodyMedium)
+                        if (sc != EncScope.ALL) Text(stringResource(if (sc == EncScope.ALL_BUT_METADATA) R.string.s5_scope_meta_hint else R.string.s5_scope_att_hint),
+                            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+            if (scope == EncScope.ATTACHMENTS_ONLY && openPw.isEmpty()) Text(stringResource(R.string.s5_scope_att_needs_pw), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
             Section(stringResource(R.string.s5_open_password))
             val vt = if (show) VisualTransformation.None else PasswordVisualTransformation()
             OutlinedTextField(openPw, { openPw = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.password)) }, visualTransformation = vt,
@@ -154,6 +168,13 @@ private fun PermRow(label: String, checked: Boolean, enabled: Boolean = true, on
 
 @Composable
 private fun algoLabel(a: EncAlgo) = stringResource(when (a) { EncAlgo.AES_256 -> R.string.s5_aes256; EncAlgo.AES_128 -> R.string.s5_aes128; EncAlgo.RC4_128 -> R.string.s5_rc4 })
+
+@Composable
+private fun scopeLabel(sc: EncScope) = stringResource(when (sc) {
+    EncScope.ALL -> R.string.s5_scope_all
+    EncScope.ALL_BUT_METADATA -> R.string.s5_scope_meta
+    EncScope.ATTACHMENTS_ONLY -> R.string.s5_scope_att
+})
 
 @Composable
 private fun changeLabel(l: ChangeLevel) = stringResource(when (l) {

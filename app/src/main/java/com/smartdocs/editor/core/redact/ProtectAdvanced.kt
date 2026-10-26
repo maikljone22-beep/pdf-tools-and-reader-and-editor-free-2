@@ -43,12 +43,15 @@ data class ProtectOptions(
     val ownerPassword: String = "",
     val algo: EncAlgo = EncAlgo.AES_256,
     val permissions: Permissions = Permissions(),
+    /** What is encrypted; [EncScope.ALL_BUT_METADATA] and [EncScope.ATTACHMENTS_ONLY] need an AES algorithm. */
+    val scope: EncScope = EncScope.ALL,
 )
 
 /**
  * Detailed encryption (J6): AES-256 / AES-128 / RC4-128 (PdfBox-Android 2.0.27 StandardProtectionPolicy), the
  * eight permission bits with print and change presets. Without an owner password a random one is used, so the
- * permissions cannot be lifted by re-entering the open password.
+ * permissions cannot be lifted by re-entering the open password. [ProtectOptions.scope] also offers "everything
+ * except metadata" and "attachments only" ([ScopedSecurityHandler]).
  */
 object ProtectAdvanced {
 
@@ -73,12 +76,15 @@ object ProtectAdvanced {
     suspend fun protect(src: File, out: File, currentPassword: String?, o: ProtectOptions): String = withContext(Dispatchers.IO) {
         require(out.canonicalPath != src.canonicalPath) { "out must differ from src" }
         require(o.openPassword.isNotEmpty() || o.permissions != Permissions()) { "nothing to protect" }
+        require(o.scope == EncScope.ALL || o.algo.aes) { "this scope needs AES" }
+        require(o.scope != EncScope.ATTACHMENTS_ONLY || o.openPassword.isNotEmpty()) { "attachments need an open password" }
         val owner = o.ownerPassword.ifEmpty { randomPassword() }
         PdfOps.load(src, currentPassword).use { doc ->
             val policy = StandardProtectionPolicy(owner, o.openPassword, accessPermission(o.permissions))
             policy.encryptionKeyLength = o.algo.keyLength
             policy.setPreferAES(o.algo.aes)
-            doc.protect(policy)
+            if (o.scope == EncScope.ALL) doc.protect(policy)
+            else { ScopedSecurityHandler.register(); doc.protect(ScopedProtectionPolicy(policy, o.scope)) }
             doc.save(out)
         }
         owner

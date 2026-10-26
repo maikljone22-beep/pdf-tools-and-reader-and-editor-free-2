@@ -136,6 +136,8 @@ fun ScannerScreen(nav: NavHostController) {
     Scaffold(
         snackbarHost = { SnackbarHost(snack) },
         topBar = { AppTopBar(stringResource(R.string.pg_scan_title), onBack = { nav.popBackStack() }) {
+            // tools5: scan studio (ID card, business card, receipt, book, batch, per-page filters, auto OCR)
+            IconButton(onClick = { nav.navigate(Routes.tool("scan_studio")) }) { Icon(Icons.Default.AutoAwesome, stringResource(R.string.t5_scan_title)) }
             if (pages.isNotEmpty()) IconButton(onClick = { pages = emptyList() }) { Icon(Icons.Default.DeleteSweep, stringResource(R.string.pg_remove)) }
         } },
         floatingActionButton = {

@@ -13,7 +13,7 @@ sealed class RtfBlock
 
 data class RtfPara(val runs: List<RtfRun>, val rtl: Boolean = false, val heading: Int = 0, val align: RtfAlign = RtfAlign.START) : RtfBlock()
 
-/** Rows of cell texts; [rtl] mirrors the column order. */
+/** Rows of cell texts in logical (reading) order; [rtl] lays the columns out right to left. */
 data class RtfTable(val rows: List<List<String>>, val rtl: Boolean = false, val header: Boolean = false, val widthTwips: Int = 9000) : RtfBlock()
 
 object RtfPageBreak : RtfBlock()
@@ -99,7 +99,7 @@ object RtfWriter {
         val w = t.widthTwips / cols
         t.rows.forEachIndexed { ri, row0 ->
             val row = row0 + List(cols - row0.size) { "" }
-            val cells = if (t.rtl) row.reversed() else row
+            val cells = row                // logical order; \rtlrow lays them out right to left
             append("\\trowd\\trgaph108")
             if (t.rtl) append("\\rtlrow")
             for (c in 1..cols) append("\\clbrdrt\\brdrs\\clbrdrl\\brdrs\\clbrdrb\\brdrs\\clbrdrr\\brdrs\\cellx").append(w * c)

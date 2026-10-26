@@ -130,6 +130,8 @@ fun OcrScreen(nav: NavHostController, uri: String?) {
     Scaffold(
         snackbarHost = { SnackbarHost(snack) },
         topBar = { AppTopBar(stringResource(R.string.pg_ocr_title), onBack = { nav.popBackStack() }) {
+            // tools5: batch OCR, auto language, pre-clean and word review
+            IconButton(onClick = { nav.navigate(com.smartdocs.editor.ui.Routes.tool("ocr_plus", file?.let { android.net.Uri.fromFile(it).toString() })) }) { Icon(Icons.Default.DynamicFeed, stringResource(R.string.t5_ocr_title)) }
             if (textPages.isNotEmpty()) {
                 IconButton(onClick = { clipboard.setText(AnnotatedString(fullText)); scope.launch { snack.showSnackbar(copiedMsg) } }) { Icon(Icons.Default.ContentCopy, stringResource(R.string.copy_text)) }
                 IconButton(onClick = { ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, fullText) }, null)) }) { Icon(Icons.Default.Share, stringResource(R.string.share_text)) }

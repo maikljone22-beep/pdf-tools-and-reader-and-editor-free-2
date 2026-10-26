@@ -39,6 +39,7 @@ import com.smartdocs.editor.ui.search.patternLabel
 @Composable
 fun RedactSearchPane(
     st: RedactState, canSearch: Boolean, onSearch: () -> Unit, onMark: () -> Unit, onBatch: () -> Unit, modifier: Modifier = Modifier,
+    onPii: (() -> Unit)? = null,
 ) {
     val ctx = LocalContext.current
     var showMore by remember { mutableStateOf(false) }
@@ -101,6 +102,9 @@ fun RedactSearchPane(
                     Icon(Icons.Default.AutoFixHigh, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.s5_auto_detect), maxLines = 1)
                 }
             }
+            if (onPii != null) OutlinedButton(onClick = onPii, enabled = canSearch, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Default.PersonSearch, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.s5_pii_detect), maxLines = 1)
+            }
             if (st.searched && st.found.isEmpty() && !st.searching) Text(stringResource(R.string.pg_redact_no_hits), Modifier.padding(8.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (st.found.isNotEmpty()) {
@@ -142,14 +146,18 @@ fun RedactPagesPane(st: RedactState, pageCount: Int, modifier: Modifier = Modifi
 @Composable
 fun RedactReviewList(st: RedactState, onJump: (Int) -> Unit, onEdit: (RedactMark) -> Unit, onRepeat: (RedactMark) -> Unit, modifier: Modifier = Modifier) {
     Column(modifier) {
-        Text(stringResource(R.string.s5_marks_n, st.marks.size), Modifier.padding(horizontal = 16.dp, vertical = 6.dp), fontWeight = FontWeight.Bold)
+        Text(stringResource(R.string.s5_marks_n, st.marks.size) + if (st.excluded.isNotEmpty()) " · " + stringResource(R.string.s5_marks_off, st.excluded.size) else "",
+            Modifier.padding(horizontal = 16.dp, vertical = 6.dp), fontWeight = FontWeight.Bold)
         if (st.marks.isEmpty()) Text(stringResource(R.string.s5_no_marks), Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         LazyColumn(Modifier.fillMaxSize()) {
             items(st.marks.sortedBy { it.page }, key = { it.id }) { m ->
                 ListItem(
                     modifier = Modifier.clickable { onJump(m.page) },
                     leadingContent = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(m.id !in st.excluded, { st.toggleIncluded(m.id) })
                         Box(Modifier.size(28.dp).background(Color(0xFF000000 or m.style.fill.toLong())).border(2.dp, Color(0xFF000000 or (m.style.outline ?: 0x9E9E9E).toLong())))
+                        }
                     },
                     headlineContent = {
                         Text(when {

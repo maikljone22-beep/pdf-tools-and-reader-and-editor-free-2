@@ -50,6 +50,7 @@ fun RedactScreen(nav: NavHostController, uri: String?) {
     var repeatMark by remember { mutableStateOf<RedactMark?>(null) }
     var confirm by remember { mutableStateOf(false) }
     var confirmClear by remember { mutableStateOf(false) }
+    var showPii by remember { mutableStateOf(false) }      // smart PII detection (ui/ai5)
     var sanitize by remember { mutableStateOf(false) }
     var maxSecurity by remember { mutableStateOf(false) }
     var result by remember { mutableStateOf<File?>(null) }
@@ -75,7 +76,7 @@ fun RedactScreen(nav: NavHostController, uri: String?) {
     val rasterFmt = stringResource(R.string.s5_report_raster)
     fun applyAll() {
         val src = doc.file ?: return
-        val marks = st.marks.toList()
+        val marks = st.activeMarks()
         runner.run(applying) {
             val out = app.documents.uniqueFile(app.documents.docsDir, src.nameWithoutExtension + "_redacted")
             val r = RedactApplier.apply(ctx, src, out, doc.password, marks, RedactApplier.Options(sanitize = sanitize, maxSecurity = maxSecurity))
@@ -88,7 +89,7 @@ fun RedactScreen(nav: NavHostController, uri: String?) {
     val savingMsg = stringResource(R.string.s5_saving_marks)
     fun saveMarks() {
         val src = doc.file ?: return
-        val marks = st.marks.toList()
+        val marks = st.activeMarks()
         runner.run(savingMsg) {
             val out = app.documents.uniqueFile(app.documents.docsDir, src.nameWithoutExtension + "_marked")
             val author = runCatching { app.settings.settings.first().authorName }.getOrDefault("")
@@ -105,7 +106,7 @@ fun RedactScreen(nav: NavHostController, uri: String?) {
             AppTopBar(stringResource(R.string.pg_redact_title), onBack = { nav.popBackStack() }) {
                 if (doc.session != null) {
                     IconButton(onClick = { styleAll = true }) { Icon(Icons.Default.Palette, stringResource(R.string.s5_style_all)) }
-                    IconButton(onClick = ::saveMarks, enabled = st.marks.isNotEmpty() && !runner.running) { Icon(Icons.Default.BookmarkAdd, stringResource(R.string.s5_save_marks)) }
+                    IconButton(onClick = ::saveMarks, enabled = st.activeMarks().isNotEmpty() && !runner.running) { Icon(Icons.Default.BookmarkAdd, stringResource(R.string.s5_save_marks)) }
                     IconButton(onClick = { confirmClear = true }, enabled = st.marks.isNotEmpty()) { Icon(Icons.Default.DeleteSweep, stringResource(R.string.pg_redact_clear)) }
                 }
             }
@@ -113,10 +114,11 @@ fun RedactScreen(nav: NavHostController, uri: String?) {
         bottomBar = {
             if (doc.session != null) Surface(tonalElevation = 3.dp) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(stringResource(R.string.s5_marks_n, st.marks.size) + " · " + stringResource(R.string.pg_redact_pages_affected, st.marks.map { it.page }.distinct().size),
+                    val active = st.activeMarks()
+                    Text(stringResource(R.string.s5_marks_n, active.size) + " · " + stringResource(R.string.pg_redact_pages_affected, active.map { it.page }.distinct().size),
                         Modifier.weight(1f), style = MaterialTheme.typography.labelLarge)
-                    Button(onClick = { confirm = true }, enabled = st.marks.isNotEmpty() && !runner.running) {
-                        Icon(Icons.Default.Block, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.s5_apply_all, st.marks.size))
+                    Button(onClick = { confirm = true }, enabled = active.isNotEmpty() && !runner.running) {
+                        Icon(Icons.Default.Block, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.s5_apply_all, active.size))
                     }
                 }
             }
@@ -138,7 +140,7 @@ fun RedactScreen(nav: NavHostController, uri: String?) {
                     Row(Modifier.fillMaxSize()) {
                         Box(Modifier.weight(1f).fillMaxHeight()) {
                             TabContent(tab, st, s, page, { page = it.coerceIn(0, s.pageCount - 1) }, ::search, ::markChecked, { batchPick() },
-                                onJump = { page = it; tab = RedactTab.MANUAL }, onEdit = { editMark = it }, onRepeat = { repeatMark = it })
+                                onJump = { page = it; tab = RedactTab.MANUAL }, onEdit = { editMark = it }, onRepeat = { repeatMark = it }, onPii = { showPii = true })
                         }
                         if (tablet) {
                             VerticalDivider()
@@ -159,7 +161,14 @@ fun RedactScreen(nav: NavHostController, uri: String?) {
     if (confirmClear) AlertDialog(onDismissRequest = { confirmClear = false }, title = { Text(stringResource(R.string.pg_redact_clear)) },
         confirmButton = { TextButton(onClick = { st.clear(); confirmClear = false }) { Text(stringResource(R.string.ok)) } },
         dismissButton = { TextButton(onClick = { confirmClear = false }) { Text(stringResource(R.string.cancel)) } })
-    if (confirm) AlertDialog(onDismissRequest = { confirm = false }, title = { Text(stringResource(R.string.s5_apply_all, st.marks.size)) },
+    val piiMsg = stringResource(R.string.s5_pii_added)
+    if (showPii) com.smartdocs.editor.ui.ai5.PiiScanSheet(doc.file, doc.password, doc.session, onApply = { hs ->
+        showPii = false
+        val n = st.addHits(hs)
+        if (tab == RedactTab.SEARCH && doc.session != null) tab = RedactTab.REVIEW   // phone: the review list is its own tab
+        scope.launch { snack.showSnackbar(piiMsg.format(n)) }
+    }, onDismiss = { showPii = false })
+    if (confirm) AlertDialog(onDismissRequest = { confirm = false }, title = { Text(stringResource(R.string.s5_apply_all, st.activeMarks().size)) },
         text = {
             Column {
                 Text(stringResource(R.string.redact_warning))
@@ -185,10 +194,10 @@ private fun tabLabel(t: RedactTab) = stringResource(when (t) {
 @Composable
 private fun TabContent(
     tab: RedactTab, st: RedactState, s: PdfSession, page: Int, onPage: (Int) -> Unit, onSearch: () -> Unit, onMark: () -> Unit, onBatch: () -> Unit,
-    onJump: (Int) -> Unit, onEdit: (RedactMark) -> Unit, onRepeat: (RedactMark) -> Unit,
+    onJump: (Int) -> Unit, onEdit: (RedactMark) -> Unit, onRepeat: (RedactMark) -> Unit, onPii: () -> Unit,
 ) {
     when (tab) {
-        RedactTab.SEARCH -> RedactSearchPane(st, true, onSearch, onMark, onBatch, Modifier.fillMaxSize())
+        RedactTab.SEARCH -> RedactSearchPane(st, true, onSearch, onMark, onBatch, Modifier.fillMaxSize(), onPii = onPii)
         RedactTab.MANUAL -> {
             val boxes = st.marks.filter { it.page == page }.flatMap { m ->
                 if (m.wholePage) listOf(ManualBox(m.id, RectF(), m.style.fill, m.style.outline, wholePage = true))

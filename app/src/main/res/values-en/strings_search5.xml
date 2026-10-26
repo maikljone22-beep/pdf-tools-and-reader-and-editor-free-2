@@ -182,4 +182,30 @@
     <string name="s5_protecting">Encrypting…</string>
     <string name="s5_already_encrypted">The file is already protected; its protection is replaced by the new settings.</string>
     <string name="s5_protect_note">PDF viewers honour the permissions, but anyone with the open password can always read the content.</string>
+    <!-- search5b: reader find & replace, reader redaction, PII, encryption scope -->
+    <string name="s5_enc_scope">What is encrypted</string>
+    <string name="s5_scope_all">Encrypt all document contents</string>
+    <string name="s5_scope_meta">Encrypt all except metadata</string>
+    <string name="s5_scope_att">Encrypt only file attachments</string>
+    <string name="s5_scope_meta_hint">The XMP metadata stays readable for search engines and catalogues; needs AES.</string>
+    <string name="s5_scope_att_hint">Pages stay readable and the open password protects only the attachments (as in Acrobat). Some apps, this one included, ask for the password to open the file itself.</string>
+    <string name="s5_scope_att_needs_pw">Encrypting only attachments needs an open password.</string>
+    <string name="s5_rr_toggle">Find and replace</string>
+    <string name="s5_rr_with">Replace with</string>
+    <string name="s5_rr_one">Replace</string>
+    <string name="s5_rr_all">Replace all</string>
+    <string name="s5_rr_working">Replacing…</string>
+    <string name="s5_rr_done">Replaced %1$d</string>
+    <string name="s5_rr_font_warn">Note: the original font cannot be reused, so the new text is drawn with a substitute font.</string>
+    <string name="s5_rr_lossy">Note: some glyphs have no text mapping, so the replaced text may be incomplete.</string>
+    <string name="s5_rr_none">The text was not found in the editable page content.</string>
+    <string name="s5_rd_chip">Redact</string>
+    <string name="s5_rd_page">Redact page</string>
+    <string name="s5_rd_apply">Apply redaction</string>
+    <string name="s5_rd_working">Adding redaction mark…</string>
+    <string name="s5_rd_marked">Redaction mark added on page %1$d</string>
+    <string name="s5_rd_banner">Redaction marks: %1$d</string>
+    <string name="s5_pii_detect">Detect sensitive data (smart)</string>
+    <string name="s5_pii_added">%d marks added for review</string>
+    <string name="s5_marks_off">%d unticked</string>
 </resources>

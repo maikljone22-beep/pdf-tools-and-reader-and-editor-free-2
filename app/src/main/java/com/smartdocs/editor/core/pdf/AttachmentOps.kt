@@ -60,7 +60,7 @@ object AttachmentOps {
             }
             val ef = spec?.embeddedFile ?: return@use null
             val target = File(dir, att.name.replace(Regex("""[\\/:*?"<>|]"""), "_"))
-            target.outputStream().use { o -> o.write(ef.toByteArray()) }
+            target.outputStream().use { o -> o.write(com.smartdocs.editor.core.redact.EmbeddedFileCrypt.bytes(doc, ef.cosObject)) }   // attachments-only encryption (search5b)
             target
         }
     }

@@ -125,6 +125,7 @@ internal fun ConvertFromPdfPanel(nav: NavHostController, uri: String?, snackbar:
     val scannedMsg = stringResource(R.string.cv_scanned_warning)
     val titles = CvFormat.entries.associateWith { it.title() }
     val convertingFmt = stringResource(R.string.cv_converting)
+    val autoOcrLabel = stringResource(R.string.t5_cv_auto_ocr)
 
     fun start(fmt: CvFormat, o: CvOptions) {
         val src = file ?: return
@@ -155,7 +156,16 @@ internal fun ConvertFromPdfPanel(nav: NavHostController, uri: String?, snackbar:
                         detectTables = o.detectTables, includeImages = o.includeImages,
                         sheetName = { n -> sheetFmt.format(n) }, singleSheetName = allPagesName,
                     )
-                    val stats: ConvertStats = ConvertEngine.convert(ctx, src, pw, opts, out, { d, t -> run.done = d; run.total = t }, { run.cancel.get() })
+                    // tools5 (auto OCR): a scanned PDF first gets a searchable copy, so the Office file receives real text
+                    val ocrCopy = if (target == TargetFormat.PPTX && !o.pptEditable) null else runCatching {
+                        com.smartdocs.editor.core.tools5.AutoOcr.ocrIfScanned(ctx, src, pw, com.smartdocs.editor.ui.ocr.OcrPrefs.languages(ctx).joinToString("+"), app.documents.tempDir) { d, t ->
+                            run.label = autoOcrLabel; run.done = d; run.total = t
+                        }
+                    }.getOrNull()
+                    run.label = convertingFmt.format(titles[fmt])
+                    val stats: ConvertStats = try {
+                        ConvertEngine.convert(ctx, ocrCopy ?: src, pw, opts, out, { d, t -> run.done = d; run.total = t }, { run.cancel.get() })
+                    } finally { ocrCopy?.delete() }
                     val scanned = stats.textPages == 0 && !(target == TargetFormat.PPTX && !o.pptEditable)
                     resultInfo = statsFmt.format(stats.pages, stats.tables, stats.images) + if (scanned) "\n$scannedMsg" else ""
                     result = out

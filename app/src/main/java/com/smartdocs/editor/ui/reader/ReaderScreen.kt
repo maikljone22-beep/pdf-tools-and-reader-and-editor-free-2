@@ -106,6 +106,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
     fun saveThen(block: () -> Unit) { scope.launch { if (state.save()) block() } }
     BackHandler {
         when {
+            com.smartdocs.editor.ui.view5.V5State.of(state).onBack() -> {}
             state.searchOpen -> state.closeSearch()
             state.selection != null -> state.selection = null
             state.edit.target != null -> state.edit.clear()
@@ -161,7 +162,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
             panels = { panel = it }, docInfo = { panel = ReaderPanel.INFO }, search = { state.searchOpen = !state.searchOpen; if (!state.searchOpen) state.closeSearch() },
             readAloud = { if (ReadAloudController.isActive) ReadAloudController.stop() else startReadAloud() },
             share = { scope.launch { outputFile()?.let { ReaderIntents.shareFile(ctx, app, it) } } },
-            print = { scope.launch { outputFile()?.let { ReaderIntents.print(ctx, it, state.pageCount) } } },
+            print = { com.smartdocs.editor.ui.view5.V5State.of(state).open(com.smartdocs.editor.ui.view5.V5Surface.PRINT) },
             save = { scope.launch { if (state.save()) snack.showSnackbar(ctx.getString(R.string.saved_to, state.file?.name ?: "")) } },
             saveAs = { saveAs.launch(state.file?.name ?: "document.pdf") },
             pickImage = { pickImage() }, pickStamp = { showStamps = true },
@@ -181,7 +182,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
             quick = { qa ->
                 quick.open(qa,
                     onShare = { scope.launch { outputFile()?.let { ReaderIntents.shareFile(ctx, app, it) } } },
-                    onPrint = { scope.launch { outputFile()?.let { ReaderIntents.print(ctx, it, state.pageCount) } } })
+                    onPrint = { com.smartdocs.editor.ui.view5.V5State.of(state).open(com.smartdocs.editor.ui.view5.V5Surface.PRINT) })
             },
         )
 
@@ -199,6 +200,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                         actions = {
                             if (state.dirty) IconButton(onClick = actions.save) { Icon(Icons.Default.Save, stringResource(R.string.save), tint = MaterialTheme.colorScheme.primary) }
                             if (!tablet) com.smartdocs.editor.ui.reader.view.ReaderTabsAction(state, switchTab)
+                            com.smartdocs.editor.ui.view5.V5TopActions(state)
                             IconButton(onClick = actions.search) { Icon(Icons.Default.Search, stringResource(R.string.search)) }
                             Box {
                                 IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, stringResource(R.string.more)) }
@@ -211,17 +213,21 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                                     DropdownMenuItem(text = { Text(stringResource(R.string.tool_ocr)) }, leadingIcon = { Icon(Icons.Default.DocumentScanner, null) }, onClick = { menu = false; actions.quick(QuickAction.OCR) })
                                     DropdownMenuItem(text = { Text(stringResource(R.string.tool_protect)) }, leadingIcon = { Icon(Icons.Default.Lock, null) }, onClick = { menu = false; actions.quick(QuickAction.PROTECT) })
                                     DropdownMenuItem(text = { Text(stringResource(R.string.tool_flatten)) }, leadingIcon = { Icon(Icons.Default.Layers, null) }, onClick = { menu = false; actions.quick(QuickAction.FLATTEN) })
+                                    // MODULE_search5b: redaction marks from the reader
+                                    DropdownMenuItem(text = { Text(stringResource(R.string.s5_rd_page)) }, leadingIcon = { Icon(Icons.Default.Block, null) }, onClick = { menu = false; com.smartdocs.editor.ui.search.ReaderRedact.markPage(ctx, state, quick) })
+                                    DropdownMenuItem(text = { Text(stringResource(R.string.s5_rd_apply)) }, leadingIcon = { Icon(Icons.Default.Gavel, null) }, onClick = { menu = false; actions.navigateTool("redact") })
                                     DropdownMenuItem(text = { Text(stringResource(R.string.go_to_page)) }, leadingIcon = { Icon(Icons.Default.Numbers, null) }, onClick = { menu = false; showGoTo = true })
                                     DropdownMenuItem(text = { Text(stringResource(R.string.tool_doc_info)) }, leadingIcon = { Icon(Icons.Default.Info, null) }, onClick = { menu = false; actions.quick(QuickAction.PROPERTIES) })
                                     DropdownMenuItem(text = { Text(stringResource(R.string.keep_screen_on)) }, leadingIcon = { Icon(if (settings.keepScreenOn) Icons.Default.CheckBox else Icons.Default.CheckBoxOutlineBlank, null) },
                                         onClick = { menu = false; scope.launch { app.settings.update { it.copy(keepScreenOn = !it.keepScreenOn) } } })
                                     DropdownMenuItem(text = { Text(stringResource(R.string.settings)) }, leadingIcon = { Icon(Icons.Default.Settings, null) }, onClick = { menu = false; nav.navigate(Routes.SETTINGS) })
+                                    com.smartdocs.editor.ui.view5.V5MoreMenuItems(state, nav) { menu = false }
                                 }
                             }
                         },
                     )
                     if (tablet) com.smartdocs.editor.ui.reader.view.ReaderTabStrip(state, switchTab, alwaysShow = true)
-                    if (state.searchOpen) SearchBar(state) { state.closeSearch() }
+                    if (state.searchOpen) SearchBar(state, quick) { state.closeSearch() }
                     else ReaderTabRow(state) { t ->
                         if (t == ReaderTab.PAGES) actions.navigateTool("organize")
                         else { state.tab = t; state.selectTool(null); state.selection = null }
@@ -236,7 +242,8 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                             onCopy = { ReaderIntents.copy(ctx, it); state.selection = null; scope.launch { snack.showSnackbar(ctx.getString(R.string.copy_text)) } },
                             onTranslate = { textTools = sel to com.smartdocs.editor.core.ai5.TextAction.TRANSLATE }, onAskAi = { textTools = sel to com.smartdocs.editor.core.ai5.TextAction.EXPLAIN },
                             onReadFrom = { s -> startReadAloud(s.start, s.page); state.selection = null },
-                            onWebSearch = { ReaderIntents.webSearch(ctx, it) }, onShare = { ReaderIntents.shareText(ctx, it) })
+                            onWebSearch = { ReaderIntents.webSearch(ctx, it) }, onShare = { ReaderIntents.shareText(ctx, it) },
+                            onRedact = { s -> com.smartdocs.editor.ui.search.ReaderRedact.markSelection(ctx, state, quick, s) })   // MODULE_search5b
                     }
                     if (state.session != null) BottomToolbar(state, actions)
                 }
@@ -247,7 +254,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                     Modifier.weight(1f).fillMaxHeight().focusRequester(focus).focusable().onPreviewKeyEvent { e ->
                         if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                         // volume (if enabled) / arrows / page keys: spread-aware screen flips (view module)
-                        state.vx.handleKeyCode(e.nativeKeyEvent.keyCode, settings.volumeKeysFlip, rtl)
+                        com.smartdocs.editor.ui.view5.V5Keys.onKey(state, e.nativeKeyEvent) || state.vx.handleKeyCode(e.nativeKeyEvent.keyCode, settings.volumeKeysFlip, rtl)
                     },
                 ) {
                     when {
@@ -256,12 +263,15 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                         else -> {
                             PageView(state, onTapCenter = { if (state.tool == null) chrome = !chrome },
                                 onOpenLink = { l -> if (l.destPage == null && l.uri.isNullOrBlank()) scope.launch { com.smartdocs.editor.ui.edit5.followFileLinkAt(state, state.currentPage, l.bounds.centerX(), l.bounds.centerY()) { f, p -> nav.navigate(Routes.reader(android.net.Uri.fromFile(f).toString(), p)) } } else ReaderIntents.openLink(ctx, l) { p -> state.jumpTo(p) } }, onPrompt = { prompt = it })
-                            if (state.reflow) ReflowView(state)
+                            com.smartdocs.editor.ui.view5.View5PageOverlays(state)
+                            if (state.reflow) com.smartdocs.editor.ui.view5.ReflowReader(state)
                             PageIndicator(state.currentPage, state.pageCount, { showGoTo = true }, Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp))
                             if (state.tool != null && state.placement == null) ToolHint(state.tool!!, Modifier.align(Alignment.TopCenter).padding(top = 8.dp))
                             else OcrSuggestionBanner(state, onOcr = { actions.quick(QuickAction.OCR) }, modifier = Modifier.align(Alignment.TopCenter))
                             com.smartdocs.editor.ui.forms5.InPageXfaBanner(state, onOpen = { f -> nav.navigate(Routes.reader(android.net.Uri.fromFile(f).toString(), 0)) },
                                 modifier = Modifier.align(Alignment.TopCenter).padding(top = 48.dp))   // MODULE_forms5
+                            com.smartdocs.editor.ui.search.RedactMarksBanner(state, onApply = { actions.navigateTool("redact") },
+                                modifier = Modifier.align(Alignment.BottomEnd).padding(bottom = 44.dp))   // MODULE_search5b
                         }
                     }
                 }
@@ -287,7 +297,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
     if (showPageColor) PageColorSheet(state, onPersist = { c -> scope.launch { app.settings.update { it.copy(pageColor = c) } } }) { showPageColor = false }
     if (showAutoFlip) AutoFlipDialog(state) { showAutoFlip = false }
     prompt?.let { p -> if (!com.smartdocs.editor.ui.edit5.ReaderLinkPrompt(state, p.tool == ReaderTool.LINK, p.page, p.x, p.y, p.rect) { prompt = null }) TextPromptDialog(state, p) { prompt = null } }
-    if (showStamps) StampPickerSheet(onPicked = { bmp -> state.pendingImage = bmp; state.tool = ReaderTool.STAMP; state.selection = null; showStamps = false }, onDismiss = { showStamps = false; if (state.pendingImage == null) state.selectTool(null) })
+    if (showStamps) com.smartdocs.editor.ui.view5.V5StampPicker(onPicked = { bmp -> state.pendingImage = bmp; state.tool = ReaderTool.STAMP; state.selection = null; showStamps = false }, onDismiss = { showStamps = false; if (state.pendingImage == null) state.selectTool(null) })
     // MODULE_ai2: the assistant can act on the open document (confirm-then-apply, with undo)
     val agentHost = remember(state) {
         com.smartdocs.editor.core.ai.DocHost(
@@ -317,6 +327,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
     if (state.saving) ProgressDialog(stringResource(R.string.processing))
     QuickActionHost(quick, snack)
     com.smartdocs.editor.ui.reader.annot.Annot2Dialogs(state, nav, snack)      // MODULE_annot2 pickers & dialogs
+    com.smartdocs.editor.ui.view5.View5ReaderHost(state, nav, snack, actions) { outputFile() }
 }
 
 /** One-line hint under the top bar telling the user what the active tool expects. */
