@@ -123,16 +123,17 @@ private val defaultTop = listOf("scan", "merge", "compress", "sign", "ocr", "con
 @Composable
 fun ToolsScreen(nav: NavHostController) {
     val ctx = LocalContext.current
+    val g6Tools = com.smartdocs.editor.core.gaps6.AiGate.filter(com.smartdocs.editor.LocalSettings.current, allTools) { it.id }
     var query by rememberSaveable { mutableStateOf("") }
     var usageVersion by remember { mutableIntStateOf(0) }
     val top = remember(usageVersion) {
         val used = ToolUsage.top(ctx, 6)
-        (used + defaultTop).distinct().mapNotNull { id -> allTools.firstOrNull { it.id == id } }.take(6)
+        (used + defaultTop).distinct().mapNotNull { id -> g6Tools.firstOrNull { it.id == id } }.take(6)
     }
-    val labels = allTools.associate { it.id to stringResource(it.label) }
+    val labels = g6Tools.associate { it.id to stringResource(it.label) }
     val filtered = remember(query, labels) {
         val q = query.trim()
-        if (q.isEmpty()) allTools else allTools.filter { labels[it.id].orEmpty().contains(q, ignoreCase = true) || it.id.contains(q, true) }
+        if (q.isEmpty()) g6Tools else g6Tools.filter { labels[it.id].orEmpty().contains(q, ignoreCase = true) || it.id.contains(q, true) }
     }
     fun open(t: ToolDef) { ToolUsage.record(ctx, t.id); usageVersion++; nav.navigate(Routes.tool(t.id)) }
     val scroll = TopAppBarDefaults.pinnedScrollBehavior()

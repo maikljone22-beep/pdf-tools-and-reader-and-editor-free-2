@@ -65,6 +65,7 @@ fun SettingsScreen(nav: NavHostController) {
                 GroupDivider()
                 GroupRow(stringResource(R.string.settings_language), icon = Icons.Default.Language, tile = tiles.teal)
                 Choice(listOf("ar" to "العربية", "en" to "English"), s.language) { v -> upd { it.copy(language = v) } }
+                G6GeneralRows(s) { b -> upd(b) }   // gaps6: layout direction, product improvement
             }
 
             // ---- PDF view ----
@@ -78,7 +79,11 @@ fun SettingsScreen(nav: NavHostController) {
                 SwitchRow(stringResource(R.string.settings_tap_edges), s.tapEdgesFlip, icon = Icons.Default.TouchApp) { v -> upd { it.copy(tapEdgesFlip = v) } }
                 SwitchRow(stringResource(R.string.view_continuous), s.continuousScroll, icon = Icons.Default.ViewDay) { v -> upd { it.copy(continuousScroll = v) } }
                 SwitchRow(stringResource(R.string.night_mode), s.nightMode, icon = Icons.Default.DarkMode) { v -> upd { it.copy(nightMode = v) } }
+                G6ViewRows(s) { b -> upd(b) }      // gaps6: full screen, volume action, timeout, orientation
             }
+
+            // ---- Sync & transfer (gaps6) ----
+            G6SyncCard(s, nav) { b -> upd(b) }
 
             // ---- Annotations ----
             GroupCard(stringResource(R.string.ds_set_annotations)) {
@@ -102,6 +107,8 @@ fun SettingsScreen(nav: NavHostController) {
 
             // ---- AI ----
             GroupCard(stringResource(R.string.settings_ai)) {
+                G6AiSwitch(s) { b -> upd(b) }      // gaps6: AI master switch
+                if (s.aiEnabled) {
                 var key by remember(s.aiApiKey) { mutableStateOf(s.aiApiKey) }
                 var endpoint by remember(s.aiEndpoint) { mutableStateOf(s.aiEndpoint) }
                 var model by remember(s.aiModel) { mutableStateOf(s.aiModel) }
@@ -112,6 +119,7 @@ fun SettingsScreen(nav: NavHostController) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(onClick = { upd { it.copy(aiApiKey = key.trim(), aiEndpoint = endpoint.trim().trimEnd('/'), aiModel = model.trim()) } }, shape = PillShape) { Text(stringResource(R.string.save)) }
                     OutlinedButton(onClick = { nav.navigate(Routes.tool("ai_settings")) }, shape = PillShape) { Text(stringResource(R.string.ds_ai_more)) }
+                }
                 }
             }
 

@@ -199,7 +199,11 @@ private fun ActivationForm(ent: Pro.Entitlement, active: Boolean, code: String, 
                 singleLine = true, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth(),
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters, autoCorrectEnabled = false),
             )
-            Button(onClick = { onResult(ActivationCodes.activate(ctx, code)) }, enabled = code.isNotBlank(), modifier = Modifier.fillMaxWidth().height(52.dp), shape = PillShape) {
+            Button(onClick = {
+                val r = ActivationCodes.activate(ctx, code)
+                if (r is ActivationCodes.Result.Valid) com.smartdocs.editor.core.gaps6.ActivatedDevices.recordActivation(ctx, code, r.plan.name.lowercase())   // gaps6
+                onResult(r)
+            }, enabled = code.isNotBlank(), modifier = Modifier.fillMaxWidth().height(52.dp), shape = PillShape) {
                 Text(stringResource(R.string.ac_activate))
             }
             result?.let { r ->

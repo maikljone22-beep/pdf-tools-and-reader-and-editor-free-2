@@ -126,7 +126,7 @@ private fun ViewToolbar(state: ReaderState, a: ReaderActions) {
         ToolChip(Icons.Default.Bookmark, stringResource(R.string.panel_bookmarks)) { a.panels(ReaderPanel.BOOKMARKS) }
         ToolChip(Icons.Default.GridView, stringResource(R.string.panel_thumbnails)) { a.panels(ReaderPanel.THUMBNAILS) }
         ToolChip(Icons.Default.RecordVoiceOver, stringResource(R.string.tool_read_aloud), onClick = a.readAloud)
-        ToolChip(Icons.Default.AutoAwesome, stringResource(R.string.tool_ai), onClick = a.ai)
+        if (com.smartdocs.editor.LocalSettings.current.aiEnabled) ToolChip(Icons.Default.AutoAwesome, stringResource(R.string.tool_ai), onClick = a.ai)
         ToolChip(Icons.Default.Share, stringResource(R.string.share), onClick = a.share)
         ToolChip(Icons.Default.Print, stringResource(R.string.print), onClick = a.print)
         ToolChip(Icons.Default.Info, stringResource(R.string.tool_doc_info), onClick = a.docInfo)
@@ -282,8 +282,10 @@ private val readerTools: List<ReaderToolItem> = listOf(
 
 @Composable
 private fun ToolsToolbar(a: ReaderActions) {
+    val g6Settings = com.smartdocs.editor.LocalSettings.current
+    val g6ReaderTools = remember(g6Settings.aiEnabled) { readerTools.filter { it !is ReaderToolItem.Screen || com.smartdocs.editor.core.gaps6.AiGate.allowsTool(g6Settings, it.id) } }
     LazyHorizontalGrid(rows = GridCells.Fixed(2), modifier = Modifier.fillMaxWidth().height(132.dp), contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)) {
-        items(readerTools) { t ->
+        items(g6ReaderTools) { t ->
             ToolChip(t.icon, stringResource(t.label)) {
                 when (t) {
                     is ReaderToolItem.Quick -> a.quick(t.action)

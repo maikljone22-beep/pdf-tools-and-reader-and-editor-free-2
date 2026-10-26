@@ -4,11 +4,13 @@ import android.graphics.Bitmap
 import com.smartdocs.editor.core.pdf.PdfOps
 import com.tom_roush.pdfbox.pdmodel.PDPageContentStream
 import com.tom_roush.pdfbox.pdmodel.graphics.image.LosslessFactory
+import com.tom_roush.pdfbox.util.Matrix
 import java.io.File
 
 /**
  * Paging seal ("ختم الصفحات المتعددة" / riding seal): the seal image is cut into N vertical strips and strip i
- * is drawn on the right edge of page i, so when the pages are fanned out the seal reassembles across them.
+ * is drawn upright on the right edge of page i as displayed (crop box and /Rotate honoured), so when the pages are
+ * fanned out the seal reassembles across them.
  * The strips are part of the page content, therefore a digital signature applied afterwards covers them.
  */
 object PagingSeal {
@@ -33,11 +35,13 @@ object PagingSeal {
                 val page = doc.getPage(pageIndex)
                 val box = page.cropBox ?: page.mediaBox
                 val img = LosslessFactory.createFromImage(doc, strip)
-                val y = box.lowerLeftY + (box.height * yFraction.coerceIn(0.05f, 0.95f)) - heightPt / 2f
-                val x = box.upperRightX - stripPt
-                // drawn in unrotated page space (pages with /Rotate get the strip on their unrotated right edge)
+                // right edge of the page as DISPLAYED (crop box + /Rotate), strip drawn upright
+                val geom = SealGeometry(box.lowerLeftX, box.lowerLeftY, box.width, box.height, page.rotation)
+                val y = geom.displayHeight * yFraction.coerceIn(0.05f, 0.95f) - heightPt / 2f
+                val x = geom.displayWidth - stripPt
+                val m = geom.uprightImageMatrix(x, y, stripPt, heightPt)
                 PDPageContentStream(doc, page, PDPageContentStream.AppendMode.APPEND, true, true).use { cs ->
-                    cs.drawImage(img, x, y, stripPt, heightPt)
+                    cs.drawImage(img, Matrix(m[0], m[1], m[2], m[3], m[4], m[5]))
                 }
                 if (strip != seal) strip.recycle()
             }

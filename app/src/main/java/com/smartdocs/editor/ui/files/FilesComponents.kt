@@ -44,6 +44,7 @@ import java.io.File
 internal fun SelectionTopBar(
     count: Int, allPdf: Boolean,
     onClose: () -> Unit, onSelectAll: () -> Unit, onShare: () -> Unit, onZip: () -> Unit, onMove: () -> Unit, onDelete: () -> Unit, onMerge: () -> Unit,
+    onCopy: (() -> Unit)? = null,
 ) {
     TopAppBar(
         navigationIcon = { IconButton(onClick = onClose) { Icon(Icons.Default.Close, stringResource(R.string.close)) } },
@@ -55,6 +56,7 @@ internal fun SelectionTopBar(
             IconButton(onClick = onShare) { Icon(Icons.Default.Share, stringResource(R.string.share)) }
             IconButton(onClick = onZip) { Icon(Icons.Default.FolderZip, stringResource(R.string.ds_zip)) }
             IconButton(onClick = onMove) { Icon(Icons.Default.DriveFileMove, stringResource(R.string.move_to)) }
+            if (onCopy != null) IconButton(onClick = onCopy) { Icon(Icons.Default.FileCopy, stringResource(R.string.g6_copy_to)) }
             if (allPdf) IconButton(onClick = onMerge) { Icon(Icons.Default.CallMerge, stringResource(R.string.merge)) }
             IconButton(onClick = onDelete) { Icon(Icons.Default.DeleteOutline, stringResource(R.string.delete)) }
         },
@@ -99,6 +101,7 @@ internal fun FileRow(
     f: File, checked: Boolean, selecting: Boolean, modifier: Modifier,
     onOpen: () -> Unit, onLongPress: () -> Unit,
     onInfo: () -> Unit, onRename: () -> Unit, onDelete: () -> Unit, onShare: () -> Unit, onZip: () -> Unit, onMove: () -> Unit, onSelect: () -> Unit,
+    onCopy: (() -> Unit)? = null, onUnzip: (() -> Unit)? = null,
 ) {
     var menu by remember { mutableStateOf(false) }
     val thumb = if (f.isDirectory) null else rememberFileThumb(f)
@@ -127,7 +130,9 @@ internal fun FileRow(
                 MenuItem(Icons.Default.DriveFileRenameOutline, stringResource(R.string.rename)) { menu = false; onRename() }
                 if (!f.isDirectory) MenuItem(Icons.Default.Share, stringResource(R.string.share)) { menu = false; onShare() }
                 MenuItem(Icons.Default.FolderZip, stringResource(R.string.ds_zip)) { menu = false; onZip() }
+                if (onUnzip != null && f.isFile && f.extension.equals("zip", true)) MenuItem(Icons.Default.Unarchive, stringResource(R.string.g6_unzip)) { menu = false; onUnzip() }
                 MenuItem(Icons.Default.DriveFileMove, stringResource(R.string.move_to)) { menu = false; onMove() }
+                if (onCopy != null) MenuItem(Icons.Default.FileCopy, stringResource(R.string.g6_copy_to)) { menu = false; onCopy() }
                 MenuItem(Icons.Default.DeleteOutline, stringResource(R.string.delete)) { menu = false; onDelete() }
             }
         }
@@ -241,14 +246,14 @@ private fun InfoLine(label: String, value: String) {
 
 /** Destination picker: every folder under the documents root (excluding the moved folders themselves). */
 @Composable
-internal fun MoveDialog(root: File, moving: List<File>, onDismiss: () -> Unit, onMove: (File) -> Unit) {
+internal fun MoveDialog(root: File, moving: List<File>, onDismiss: () -> Unit, title: String? = null, onMove: (File) -> Unit) {
     val folders = remember(root, moving) {
         val excluded = moving.filter { it.isDirectory }.map { it.absolutePath }
         root.walkTopDown().maxDepth(6).filter { it.isDirectory }
             .filter { d -> excluded.none { d.absolutePath == it || d.absolutePath.startsWith("$it/") } }
             .take(300).toList()
     }
-    AlertDialog(onDismissRequest = onDismiss, icon = { Icon(Icons.Default.DriveFileMove, null) }, title = { Text(stringResource(R.string.move_to)) }, text = {
+    AlertDialog(onDismissRequest = onDismiss, icon = { Icon(if (title != null) Icons.Default.FileCopy else Icons.Default.DriveFileMove, null) }, title = { Text(title ?: stringResource(R.string.move_to)) }, text = {
         LazyColumn(Modifier.heightIn(max = 360.dp)) {
             items(folders, key = { it.absolutePath }) { d ->
                 val depth = d.absolutePath.removePrefix(root.absolutePath).count { it == '/' }

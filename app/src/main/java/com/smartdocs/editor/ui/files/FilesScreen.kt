@@ -95,6 +95,10 @@ fun FilesScreen(nav: NavHostController) {
     var infoTarget by remember { mutableStateOf<File?>(null) }
     var deleteTargets by remember { mutableStateOf<List<File>?>(null) }
     var moveTargets by remember { mutableStateOf<List<File>?>(null) }
+    // gaps6: copy to folder, unzip, list-detail on large / unfolded screens
+    var copyTargets by remember { mutableStateOf<List<File>?>(null) }
+    var detailFile by remember { mutableStateOf<File?>(null) }
+    val fold = com.smartdocs.editor.ui.gaps6.rememberFoldState()
     val snackbar = remember { SnackbarHostState() }
     val pick = rememberPdfPicker { f -> f.firstOrNull()?.let { nav.navigate(Routes.reader(Uri.fromFile(it).toString())) } }
 
@@ -135,7 +139,7 @@ fun FilesScreen(nav: NavHostController) {
     BackHandler(enabled = selecting) { selected = emptySet() }
     BackHandler(enabled = !selecting && tab == 0 && folder != app.documents.docsDir) { folder = folder.parentFile ?: app.documents.docsDir }
 
-    fun openFile(f: File) { if (f.isDirectory) folder = f else nav.navigate(Routes.reader(Uri.fromFile(f).toString())) }
+    fun openFile(f: File) { if (f.isDirectory) folder = f else if (fold.twoPane) detailFile = f else nav.navigate(Routes.reader(Uri.fromFile(f).toString())) }
     fun toggle(f: File) { selected = if (f.absolutePath in selected) selected - f.absolutePath else selected + f.absolutePath }
     val selectedFiles = folderFiles.filter { it.absolutePath in selected }
     fun share(files: List<File>) {
@@ -157,6 +161,20 @@ fun FilesScreen(nav: NavHostController) {
         }
     }
 
+    val unzipDoneFmt = stringResource(R.string.g6_unzip_done)
+    val unzipFailed = stringResource(R.string.g6_unzip_failed)
+    val openLabel = stringResource(R.string.open)
+    fun unzip(f: File) {
+        scope.launch {
+            val target = com.smartdocs.editor.core.files.FileCopy.unzipTarget(f)
+            val extracted = runCatching { ZipUtil.unzip(f, target) }.getOrNull()
+            refreshFolder()
+            if (extracted == null) { target.deleteRecursively(); snackbar.showSnackbar(unzipFailed); return@launch }
+            val r = snackbar.showSnackbar(unzipDoneFmt.format(extracted.size, target.name), actionLabel = openLabel, duration = SnackbarDuration.Long)
+            if (r == SnackbarResult.ActionPerformed) folder = target
+        }
+    }
+
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
         topBar = {
@@ -170,6 +188,7 @@ fun FilesScreen(nav: NavHostController) {
                         onShare = { share(selectedFiles) },
                         onZip = { zip(selectedFiles) },
                         onMove = { moveTargets = selectedFiles },
+                        onCopy = { copyTargets = selectedFiles },
                         onDelete = { deleteTargets = selectedFiles },
                         onMerge = { val first = selectedFiles.first(); selected = emptySet(); nav.navigate(Routes.tool("merge", Uri.fromFile(first).toString())) },
                     ) else TopAppBar(
@@ -219,7 +238,8 @@ fun FilesScreen(nav: NavHostController) {
             )
         },
     ) { pad ->
-        Crossfade(tab, Modifier.padding(pad).fillMaxSize(), label = "filesTab") { t ->
+        val filesBody: @Composable (Modifier) -> Unit = { bodyModifier ->
+        Crossfade(tab, bodyModifier.fillMaxSize(), label = "filesTab") { t ->
             when (t) {
                 0 -> Column(Modifier.fillMaxSize()) {
                     Breadcrumb(folder, app.documents.docsDir) { folder = it }
@@ -244,6 +264,7 @@ fun FilesScreen(nav: NavHostController) {
                                 onOpen = { if (selecting) toggle(f) else openFile(f) }, onLongPress = { toggle(f) },
                                 onInfo = { infoTarget = f }, onRename = { renameTarget = f }, onDelete = { deleteTargets = listOf(f) },
                                 onShare = { share(listOf(f)) }, onZip = { zip(listOf(f)) }, onMove = { moveTargets = listOf(f) }, onSelect = { toggle(f) },
+                                onCopy = { copyTargets = listOf(f) }, onUnzip = { unzip(f) },
                             )
                         }
                     }
@@ -273,6 +294,11 @@ fun FilesScreen(nav: NavHostController) {
                 }
             }
         }
+        }
+        if (fold.twoPane && tab == 0) com.smartdocs.editor.ui.gaps6.TwoPane(fold, Modifier.padding(pad),
+            first = { filesBody(Modifier) },
+            second = { com.smartdocs.editor.ui.gaps6.FileDetailPane(detailFile?.takeIf { it.exists() }, nav) { dir -> folder = dir; detailFile = null } })
+        else filesBody(Modifier.padding(pad))
     }
 
     // ---- dialogs ----
@@ -311,6 +337,17 @@ fun FilesScreen(nav: NavHostController) {
                 }
             }
             moveTargets = null; selected = emptySet(); refreshFolder()
+        }
+    }
+    val copyDoneFmt = stringResource(R.string.g6_copy_done)
+    copyTargets?.let { list ->
+        MoveDialog(app.documents.docsDir, list, onDismiss = { copyTargets = null }, title = stringResource(R.string.g6_copy_to)) { dest ->
+            copyTargets = null; selected = emptySet()
+            scope.launch {
+                val r = withContext(Dispatchers.IO) { com.smartdocs.editor.core.files.FileCopy.copyInto(list, dest) }
+                refreshFolder()
+                snackbar.showSnackbar(copyDoneFmt.format(r.copied.size, if (dest == app.documents.docsDir) ctx.getString(R.string.ds_root) else dest.name))
+            }
         }
     }
 }

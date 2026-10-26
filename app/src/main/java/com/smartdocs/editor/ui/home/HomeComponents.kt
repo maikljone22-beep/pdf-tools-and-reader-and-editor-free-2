@@ -100,6 +100,9 @@ fun DocMenuSheet(d: RecentDoc, tags: List<Tag>, nav: NavHostController, onDismis
     val docTags by app.db.tags().tagsForDoc(d.uri).collectAsStateWithLifecycle(initialValue = emptyList())
     var newTag by remember { mutableStateOf("") }
     val tiles = Brand.tiles
+    // gaps6: at most TagLimit.MAX (5) tags per file
+    var limitHit by remember { mutableStateOf(false) }
+    val atLimit = !com.smartdocs.editor.core.gaps6.TagLimit.canAdd(docTags.size)
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = MaterialTheme.colorScheme.surfaceContainerLow) {
         Column(Modifier.padding(bottom = 24.dp)) {
             Row(Modifier.padding(horizontal = 20.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -132,16 +135,28 @@ fun DocMenuSheet(d: RecentDoc, tags: List<Tag>, nav: NavHostController, onDismis
                     val on = docTags.any { it.id == t.id }
                     FilterChip(
                         selected = on, shape = PillShape,
-                        onClick = { scope.launch { if (on) app.db.tags().detach(DocTag(d.uri, t.id)) else app.db.tags().attach(DocTag(d.uri, t.id)) } },
+                        onClick = {
+                            when (com.smartdocs.editor.core.gaps6.TagLimit.toggle(docTags.map { it.id }, t.id)) {
+                                com.smartdocs.editor.core.gaps6.TagLimit.Decision.DETACH -> { limitHit = false; scope.launch { app.db.tags().detach(DocTag(d.uri, t.id)) } }
+                                com.smartdocs.editor.core.gaps6.TagLimit.Decision.ATTACH -> scope.launch { app.db.tags().attach(DocTag(d.uri, t.id)) }
+                                com.smartdocs.editor.core.gaps6.TagLimit.Decision.LIMIT_REACHED -> limitHit = true
+                            }
+                        },
                         label = { Text(t.name) },
                         leadingIcon = { Box(Modifier.size(10.dp).clip(CircleShape).background(Color(t.color))) },
                     )
                 }
             }
+            if (limitHit || atLimit) Text(
+                stringResource(R.string.g6_tag_limit, com.smartdocs.editor.core.gaps6.TagLimit.MAX),
+                Modifier.padding(horizontal = 20.dp, vertical = 2.dp), style = MaterialTheme.typography.bodySmall,
+                color = if (limitHit) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             Row(Modifier.padding(horizontal = 20.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 OutlinedTextField(newTag, { newTag = it }, Modifier.weight(1f), placeholder = { Text(stringResource(R.string.add_tag)) }, singleLine = true, shape = PillShape)
                 Spacer(Modifier.width(8.dp))
                 FilledIconButton(enabled = newTag.isNotBlank(), onClick = {
+                    if (atLimit) { limitHit = true; return@FilledIconButton }
                     scope.launch {
                         val colors = listOf(0xFFE53935, 0xFF8E24AA, 0xFF3949AB, 0xFF00897B, 0xFFFB8C00, 0xFF6D4C41)
                         val id = app.db.tags().insert(Tag(name = newTag.trim(), color = colors[(tags.size) % colors.size]))

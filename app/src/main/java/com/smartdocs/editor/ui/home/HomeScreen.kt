@@ -74,12 +74,18 @@ fun HomeScreen(nav: NavHostController) {
     }
     fun openDoc(d: RecentDoc) = nav.navigate(Routes.reader(d.uri, d.lastPage))
     fun runTool(id: String) { if (id == "open") pick() else { ToolUsage.record(ctx, id); nav.navigate(Routes.tool(id)) } }
+    // gaps6: list-detail on large / unfolded screens; tool wizard
+    val fold = com.smartdocs.editor.ui.gaps6.rememberFoldState()
+    var detail by remember { mutableStateOf<RecentDoc?>(null) }
+    var wizard by rememberSaveable { mutableStateOf(false) }
+    fun showDoc(d: RecentDoc) { if (fold.twoPane) detail = d else openDoc(d) }
 
     val quick = listOf(
         Quick(Icons.Default.FolderOpen, R.string.open_file, "open") { Brand.tiles.teal },
         Quick(Icons.Default.DocumentScanner, R.string.create_from_scan, "scan") { Brand.tiles.rose },
         Quick(Icons.Default.Image, R.string.create_from_images, "images_to_pdf") { Brand.tiles.purple },
         Quick(Icons.Default.NoteAdd, R.string.create_blank, "blank") { Brand.tiles.blue },
+        Quick(Icons.Default.Dashboard, R.string.g6_from_template, "templates") { Brand.tiles.amber },
     )
     val listState = rememberLazyListState()
     val fabExpanded by remember { derivedStateOf { listState.firstVisibleItemIndex == 0 } }
@@ -93,7 +99,8 @@ fun HomeScreen(nav: NavHostController) {
             )
         },
     ) { pad ->
-        BoxWithConstraints(Modifier.padding(pad).fillMaxSize()) {
+        val homeList: @Composable () -> Unit = {
+        BoxWithConstraints(Modifier.fillMaxSize()) {
             val cols = ((maxWidth - 32.dp) / 128.dp).toInt().coerceIn(2, 8)
             LazyColumn(state = listState, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 104.dp)) {
                 // ---- header ----
@@ -105,7 +112,7 @@ fun HomeScreen(nav: NavHostController) {
                     val hits = (recents + favorites).distinctBy { it.uri }.filter { it.name.contains(q, ignoreCase = true) }
                     item(key = "search_title") { SectionTitle(stringResource(R.string.search_results, hits.size)) }
                     if (hits.isEmpty()) item(key = "search_empty") { EmptyIllustration(R.drawable.ds_empty_search, stringResource(R.string.ds_no_results)) }
-                    items(hits, key = { "s" + it.uri }) { d -> DocRow(d, onOpen = { openDoc(d) }, onMenu = { menuDoc = d }, modifier = Modifier.animateItem()) }
+                    items(hits, key = { "s" + it.uri }) { d -> DocRow(d, onOpen = { showDoc(d) }, onMenu = { menuDoc = d }, modifier = Modifier.animateItem()) }
                     item(key = "search_files") {
                         GoRow(stringResource(R.string.ds_search_all_files), Icons.Default.ManageSearch) { goTab(Routes.FILES) }
                     }
@@ -124,6 +131,9 @@ fun HomeScreen(nav: NavHostController) {
                     }
                 }
 
+                // ---- tool wizard (gaps6); in two-pane mode it lives in the detail pane ----
+                if (!fold.twoPane) item(key = "wizard") { com.smartdocs.editor.ui.gaps6.ToolWizardCard(onOpen = { wizard = true }) }
+
                 // ---- continue reading ----
                 recents.firstOrNull()?.let { last ->
                     item(key = "continue") { ContinueCard(last) { openDoc(last) } }
@@ -134,7 +144,7 @@ fun HomeScreen(nav: NavHostController) {
                     item(key = "fav_title") { SectionTitle(stringResource(R.string.favorites)) }
                     item(key = "fav_row") {
                         LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            items(favorites, key = { "f" + it.uri }) { d -> DocCard(d, Modifier.width(120.dp).animateItem(), onMenu = { menuDoc = d }) { openDoc(d) } }
+                            items(favorites, key = { "f" + it.uri }) { d -> DocCard(d, Modifier.width(120.dp).animateItem(), onMenu = { menuDoc = d }) { showDoc(d) } }
                         }
                     }
                 }
@@ -175,16 +185,22 @@ fun HomeScreen(nav: NavHostController) {
                 } else if (grid) {
                     items(docs.chunked(cols), key = { row -> "g" + row.first().uri }) { row ->
                         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp).animateItem(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            row.forEach { d -> DocCard(d, Modifier.weight(1f), onMenu = { menuDoc = d }) { openDoc(d) } }
+                            row.forEach { d -> DocCard(d, Modifier.weight(1f), onMenu = { menuDoc = d }) { showDoc(d) } }
                             repeat(cols - row.size) { Spacer(Modifier.weight(1f)) }
                         }
                     }
                 } else {
-                    items(docs, key = { "r" + it.uri }) { d -> DocRow(d, onOpen = { openDoc(d) }, onMenu = { menuDoc = d }, modifier = Modifier.animateItem()) }
+                    items(docs, key = { "r" + it.uri }) { d -> DocRow(d, onOpen = { showDoc(d) }, onMenu = { menuDoc = d }, modifier = Modifier.animateItem()) }
                 }
             }
         }
+        }
+        if (fold.twoPane) com.smartdocs.editor.ui.gaps6.TwoPane(fold, Modifier.padding(pad),
+            first = homeList,
+            second = { com.smartdocs.editor.ui.gaps6.HomeDetailPane(detail, nav, onTool = { id -> runTool(id) }) })
+        else Box(Modifier.padding(pad).fillMaxSize()) { homeList() }
     }
+    if (wizard) com.smartdocs.editor.ui.gaps6.ToolWizardSheet(onDismiss = { wizard = false }, onTool = { id -> runTool(id) })
 
     if (addSheet) AddSheet(onDismiss = { addSheet = false }) { id -> addSheet = false; runTool(id) }
     menuDoc?.let { d -> DocMenuSheet(d, tags, nav, onDismiss = { menuDoc = null }) }
@@ -290,6 +306,7 @@ private fun AddSheet(onDismiss: () -> Unit, onPick: (String) -> Unit) {
         Triple("images_to_pdf", R.string.create_from_images, Icons.Default.Image) to t.purple,
         Triple("scan", R.string.create_from_scan, Icons.Default.DocumentScanner) to t.rose,
         Triple("open", R.string.open_file, Icons.Default.FolderOpen) to t.teal,
+        Triple("templates", R.string.g6_from_template, Icons.Default.Dashboard) to t.amber,
         Triple("merge", R.string.tool_merge, Icons.Default.CallMerge) to t.amber,
         Triple("convert", R.string.tool_convert, Icons.Default.SwapHoriz) to t.green,
         Triple("form_builder", R.string.tool_form_builder, Icons.Default.AddBox) to t.blue,

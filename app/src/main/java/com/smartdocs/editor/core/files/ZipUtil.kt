@@ -35,7 +35,7 @@ object ZipUtil {
             var e = z.nextEntry
             while (e != null) {
                 val target = File(dir, e.name)
-                if (target.canonicalPath.startsWith(root)) {
+                if (target.canonicalPath.startsWith(root + File.separator)) {   // separator: "dir2/.." must not pass for "dir"
                     if (e.isDirectory) target.mkdirs() else {
                         target.parentFile?.mkdirs()
                         target.outputStream().use { z.copyTo(it) }

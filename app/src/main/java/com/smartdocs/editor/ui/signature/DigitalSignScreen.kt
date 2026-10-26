@@ -7,6 +7,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -52,7 +53,7 @@ fun DigitalSignScreen(nav: NavHostController, uri: String?) {
             }
             when (tab) {
                 0 -> SignTab(nav, file, identity, onPick = pick, onNeedCert = { tab = 2 })
-                1 -> VerifyTab(file, onPick = pick)
+                1 -> VerifyTab(nav, file, onPick = pick)
                 else -> CertificateTab(identity) { identity = it }
             }
         }
@@ -90,6 +91,14 @@ private fun SignTab(nav: NavHostController, file: File?, identity: DigitalSignat
     val sealMissing = stringResource(R.string.ps_sign_seal_none)
     LaunchedEffect(file) { report = file?.let { f -> runCatching { com.smartdocs.editor.core.sign.PreSignAnalyzer.analyze(f) }.getOrNull() } }
     LaunchedEffect(report) { if (report?.canCertify == false && adv.certify > 0) adv.certify = 0 }
+    // gaps6: appearance designer + changes since the last signed revision
+    val appearance = rememberSigAppearanceState()
+    var changes by remember(file) { mutableStateOf<com.smartdocs.editor.core.sign.RevisionSnapshot.Report?>(null) }
+    var showChanges by remember { mutableStateOf(false) }
+    var changesAck by remember(file) { mutableStateOf(false) }
+    var confirmChanges by remember { mutableStateOf(false) }
+    LaunchedEffect(file) { changes = file?.let { f -> runCatching { com.smartdocs.editor.core.sign.RevisionSnapshot.changes(f) }.getOrNull() } }
+    val today = remember { DocumentRepository.formatDate(System.currentTimeMillis()) }
 
     fun doSign() {
         val f = file ?: run { localError = needFile; return }
@@ -103,8 +112,12 @@ private fun SignTab(nav: NavHostController, file: File?, identity: DigitalSignat
             val vis = if (!visible) null else withContext(Dispatchers.IO) {
                 val pageIdx = (page.toIntOrNull() ?: 1) - 1
                 val (pw, ph, count) = PDDocument.load(f).use { d -> val b = d.getPage(pageIdx.coerceIn(0, d.numberOfPages - 1)).mediaBox; Triple(b.width, b.height, d.numberOfPages) }
-                val img: Bitmap? = if (useSaved) savedPath?.let { BitmapFactory.decodeFile(it) } else null
-                val w = 160f; val h = if (img != null) w * img.height / img.width else 20f
+                val label0 = name.ifBlank { DigitalSignature.friendlyName(id.subject) }
+                val designed: Bitmap? = if (appearance.enabled) runCatching {
+                    SigAppearanceRenderer.render(appearance.spec, appearance.spec.lines(label0, reason, location, today, id.subject, appearance.labels()), id.subject)
+                }.getOrNull() else null
+                val img: Bitmap? = designed ?: if (useSaved) savedPath?.let { BitmapFactory.decodeFile(it) } else null
+                val w = if (designed != null) 190f else 160f; val h = if (img != null) w * img.height / img.width else 20f
                 val (x, y) = when (corner) {
                     Corner.BOTTOM_RIGHT -> pw - w - 36f to 48f
                     Corner.BOTTOM_LEFT -> 36f to 48f
@@ -112,7 +125,7 @@ private fun SignTab(nav: NavHostController, file: File?, identity: DigitalSignat
                     Corner.TOP_LEFT -> 36f to ph - h - 48f
                 }
                 val label = visibleText.ifBlank { name.ifBlank { DigitalSignature.friendlyName(id.subject) } }
-                DigitalSignature.VisibleSignature(pageIdx.coerceIn(0, count - 1), x, y, w, h, image = img, text = label)
+                DigitalSignature.VisibleSignature(pageIdx.coerceIn(0, count - 1), x, y, w, h, image = img, text = if (designed != null) null else label)
             }
             signReport = DigitalSignature.sign(ctx, f, out, id, opts, vis, pagingSeal = seal)
             out
@@ -122,6 +135,7 @@ private fun SignTab(nav: NavHostController, file: File?, identity: DigitalSignat
     fun sign() {
         if (file == null) { localError = needFile; return }
         if (identity == null) { onNeedCert(); return }
+        if (!changesAck && changes?.let { it.base != com.smartdocs.editor.core.sign.RevisionSnapshot.Base.NONE && it.changes.isNotEmpty() } == true) { confirmChanges = true; return }
         val r = report
         if (r != null && r.hasFindings(adv.certify) && (!adv.skipWarning || r.mustWarn(adv.certify))) showWarning = true else doSign()
     }
@@ -151,7 +165,9 @@ private fun SignTab(nav: NavHostController, file: File?, identity: DigitalSignat
                 signatures.forEach { s -> FilterChip(savedPath == s.path, { savedPath = s.path }, label = { Text(File(s.path).nameWithoutExtension.takeLast(8)) }) }
             }
         }
+        if (visible) SigAppearanceDesigner(appearance, name.ifBlank { identity?.let { DigitalSignature.friendlyName(it.subject) } ?: "" }, reason, location, today, identity?.subject ?: "")
         AdvancedSignOptions(adv, signatures, canCertify = report?.canCertify ?: true)
+        SignChangesCard(changes) { showChanges = true }
         (localError ?: runner.error)?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         Button(onClick = { sign() }, Modifier.fillMaxWidth(), enabled = !runner.running) { Text(stringResource(R.string.sa_sign_now)) }
     }
@@ -171,6 +187,10 @@ private fun SignTab(nav: NavHostController, file: File?, identity: DigitalSignat
         }
         ResultSheet(it, nav, onDismiss = { showResult = false }, extraInfo = extra)
     }
+    changes?.let { c ->
+        if (showChanges) SignChangesDialog(c, onDismiss = { showChanges = false })
+        if (confirmChanges) SignChangesDialog(c, onDismiss = { confirmChanges = false }, onConfirm = { confirmChanges = false; changesAck = true; sign() })
+    }
     val r = report
     if (showWarning && r != null) PreSignDialog(
         report = r, certifyLevel = adv.certify, dontShow = adv.skipWarning, onDontShow = { adv.skipWarning = it },
@@ -179,9 +199,11 @@ private fun SignTab(nav: NavHostController, file: File?, identity: DigitalSignat
 }
 
 @Composable
-private fun VerifyTab(file: File?, onPick: () -> Unit) {
+private fun VerifyTab(nav: NavHostController, file: File?, onPick: () -> Unit) {
     val scope = rememberCoroutineScope()
+    val ctx = LocalContext.current
     var results by remember(file) { mutableStateOf<List<DigitalSignature.VerifyResult>?>(null) }
+    var certs by remember(file) { mutableStateOf<List<com.smartdocs.editor.core.sign.CertInspector.SigCert>>(emptyList()) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     fun verify() {
@@ -189,22 +211,28 @@ private fun VerifyTab(file: File?, onPick: () -> Unit) {
         scope.launch {
             busy = true; error = null
             runCatching { DigitalSignature.verify(f) }.onSuccess { results = it }.onFailure { error = it.message ?: it.toString() }
+            certs = runCatching { com.smartdocs.editor.core.sign.CertInspector.inspect(ctx, f) }.getOrDefault(emptyList())   // gaps6
             busy = false
         }
     }
     Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         FilePickRow(file, stringResource(R.string.open_file), onPick)
         Button(onClick = { verify() }, Modifier.fillMaxWidth(), enabled = file != null && !busy) { Text(stringResource(R.string.sa_verify_now)) }
+        OutlinedButton(onClick = { nav.navigate(com.smartdocs.editor.ui.gaps6.G6Routes.TRUSTED_CERTS) }, Modifier.fillMaxWidth()) { Text(stringResource(R.string.g6_certs_title)) }
         if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
         error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         val r = results
         if (r != null && r.isEmpty()) Text(stringResource(R.string.sa_no_signatures_found), color = MaterialTheme.colorScheme.onSurfaceVariant)
-        if (r != null) LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) { items(r) { VerifyCard(it) } }
+        if (r != null) LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            itemsIndexed(r) { i, v ->
+                VerifyCard(v, certs.getOrNull(i), onTrust = { c -> if (com.smartdocs.editor.core.sign.TrustedCerts.add(ctx, c)) verify() })
+            }
+        }
     }
 }
 
 @Composable
-private fun VerifyCard(r: DigitalSignature.VerifyResult) {
+private fun VerifyCard(r: DigitalSignature.VerifyResult, cert: com.smartdocs.editor.core.sign.CertInspector.SigCert? = null, onTrust: (java.security.cert.X509Certificate) -> Unit = {}) {
     val ok = r.signatureValid
     Card {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -232,6 +260,7 @@ private fun VerifyCard(r: DigitalSignature.VerifyResult) {
             if (r.ltvData) Text(stringResource(R.string.ps_verify_ltv), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
             if (r.subFilter.isNotBlank()) Text(r.subFilter, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
             r.error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+            if (cert != null) CertTrustSection(cert, onTrust)   // gaps6: trust + certificate details
         }
     }
 }

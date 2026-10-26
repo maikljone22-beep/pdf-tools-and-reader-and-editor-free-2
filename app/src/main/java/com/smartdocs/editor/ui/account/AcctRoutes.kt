@@ -13,6 +13,7 @@ import com.smartdocs.editor.ui.cloud.WifiScreen
 import com.smartdocs.editor.ui.help.HelpScreen
 import com.smartdocs.editor.ui.help.LicensesScreen
 import com.smartdocs.editor.ui.help.PrivacyPolicyScreen
+import com.smartdocs.editor.ui.gaps6.gaps6Routes
 
 /** Routes of the account / cloud / help module. Registered in the NavHost with [acctRoutes]. */
 object AcctRoutes {
@@ -42,6 +43,7 @@ fun NavGraphBuilder.acctRoutes(nav: NavHostController) {
         CloudBrowserScreen(nav, e.arguments?.getString("provider") ?: "drive")
     }
     composable(AcctRoutes.SYNC) { SyncScreen(nav) }
+    gaps6Routes(nav)   // gaps6: devices, invite, trusted certificates
     composable(AcctRoutes.WIFI) { WifiScreen(nav) }
     composable(
         AcctRoutes.REVIEW,

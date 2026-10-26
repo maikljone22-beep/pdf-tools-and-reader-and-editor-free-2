@@ -42,6 +42,9 @@ class WifiTransferServer(
     @Volatile private var lastActivity = System.currentTimeMillis()
     var port: Int = preferredPort; private set
 
+    /** share6: listen only on this address (Wi‑Fi only mode); null = every interface. Set before [start]. */
+    var bindAddress: java.net.InetAddress? = null
+
     /** Callback invoked (on a worker thread) after an upload changed the folder. */
     var onFilesChanged: (() -> Unit)? = null
     /** Callback invoked (on a worker thread) when the server stopped because it was idle. */
@@ -59,7 +62,7 @@ class WifiTransferServer(
         var p = preferredPort
         var lastErr: IOException? = null
         for (i in 0 until 20) {
-            try { ss = ServerSocket(p); break } catch (e: IOException) { lastErr = e; p++ }
+            try { ss = ServerSocket(p, 50, bindAddress); break } catch (e: IOException) { lastErr = e; p++ }
         }
         socket = ss ?: throw (lastErr ?: IOException("no free port"))
         port = p
@@ -310,6 +313,22 @@ class WifiTransferServer(
         fun newPin(): String = "%06d".format(random.nextInt(1_000_000))
 
         /** Best-effort LAN IPv4 of this device (prefers the Wi-Fi / hotspot interface). */
+        /** share6: address of the Wi‑Fi (or hotspot) interface only; null when not on Wi‑Fi. */
+        fun wifiIp(): String? {
+            val candidates = ArrayList<Pair<String, String>>()
+            runCatching {
+                NetworkInterface.getNetworkInterfaces()?.toList()?.forEach { ni ->
+                    if (!ni.isUp || ni.isLoopback) return@forEach
+                    val n = ni.name
+                    if (!(n.startsWith("wlan") || n.startsWith("ap") || n.startsWith("swlan") || n.startsWith("softap"))) return@forEach
+                    ni.inetAddresses.toList().forEach { addr ->
+                        if (addr is java.net.Inet4Address && !addr.isLoopbackAddress && addr.isSiteLocalAddress) candidates += n to (addr.hostAddress ?: return@forEach)
+                    }
+                }
+            }
+            return (candidates.firstOrNull { it.first.startsWith("wlan") } ?: candidates.firstOrNull())?.second
+        }
+
         fun deviceIp(): String? {
             val candidates = ArrayList<Pair<String, String>>()
             runCatching {

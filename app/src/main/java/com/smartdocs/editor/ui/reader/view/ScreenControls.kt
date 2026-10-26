@@ -102,8 +102,8 @@ fun ReaderViewEffects(state: ReaderState, settings: AppSettings, rtl: Boolean) {
 
     // ---- hardware keys ----
     val volume = settings.volumeKeysFlip
-    DisposableEffect(state, volume, rtl) {
-        val h: (Int) -> Boolean = { code -> vx.handleKeyCode(code, volume, rtl) }
+    DisposableEffect(state, volume, rtl, settings.volumeKeysAction) {
+        val h: (Int) -> Boolean = { code -> com.smartdocs.editor.ui.gaps6.G6Keys.handle(state, code, settings, rtl) }
         ReaderKeyBus.handler = h
         onDispose { if (ReaderKeyBus.handler === h) ReaderKeyBus.handler = null }
     }

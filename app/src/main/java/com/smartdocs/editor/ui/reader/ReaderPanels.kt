@@ -83,7 +83,7 @@ private fun OutlinePanel(state: ReaderState, onJump: (Int) -> Unit, onAiOutline:
     Column(Modifier.fillMaxWidth()) {
         if (outline == null) LinearProgressIndicator(Modifier.fillMaxWidth())
         else if (flat.isEmpty()) EmptyState(Icons.Default.FormatListBulleted, stringResource(R.string.no_outline)) {
-            Button(onClick = onAiOutline) { Icon(Icons.Default.AutoAwesome, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.ai_bookmarks)) }
+            if (com.smartdocs.editor.LocalSettings.current.aiEnabled) Button(onClick = onAiOutline) { Icon(Icons.Default.AutoAwesome, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.ai_bookmarks)) }
         }
         else LazyColumn(Modifier.fillMaxWidth().heightIn(max = 520.dp)) {
             val visible = flat.filter { (item, path) -> path.dropLast(1).all { expanded[it] != false } }

@@ -123,6 +123,9 @@ fun AccountScreen(nav: NavHostController) {
                 }
             }
 
+            // ---- Google account (gaps6) ----
+            com.smartdocs.editor.ui.gaps6.GoogleAccountCard()
+
             // ---- Pro card ----
             Surface(
                 onClick = { nav.navigate(AcctRoutes.PAYWALL) },
@@ -174,8 +177,16 @@ fun AccountScreen(nav: NavHostController) {
             }
             GroupCard(stringResource(R.string.ds_app_section)) {
                 GroupRow(stringResource(R.string.settings), icon = Icons.Default.Settings, tile = tiles.purple, onClick = { nav.navigate(Routes.SETTINGS) })
+                if (settings.aiEnabled) {
+                    GroupDivider()
+                    GroupRow(stringResource(R.string.settings_ai), icon = Icons.Default.AutoAwesome, tile = tiles.rose, onClick = { nav.navigate(Routes.tool("ai_settings")) })
+                }
                 GroupDivider()
-                GroupRow(stringResource(R.string.settings_ai), icon = Icons.Default.AutoAwesome, tile = tiles.rose, onClick = { nav.navigate(Routes.tool("ai_settings")) })
+                GroupRow(stringResource(R.string.g6_devices_title), stringResource(R.string.g6_devices_row_sub), icon = Icons.Default.Devices, tile = tiles.blue,
+                    onClick = { nav.navigate(com.smartdocs.editor.ui.gaps6.G6Routes.DEVICES) })
+                GroupDivider()
+                GroupRow(stringResource(R.string.g6_invite_title), stringResource(R.string.g6_invite_row_sub), icon = Icons.Default.CardGiftcard, tile = tiles.amber,
+                    onClick = { nav.navigate(com.smartdocs.editor.ui.gaps6.G6Routes.INVITE) })
             }
             GroupCard(stringResource(R.string.ds_support_section)) {
                 GroupRow(stringResource(R.string.ac_help_title), icon = Icons.Default.HelpOutline, tile = tiles.green, onClick = { nav.navigate(AcctRoutes.HELP) })

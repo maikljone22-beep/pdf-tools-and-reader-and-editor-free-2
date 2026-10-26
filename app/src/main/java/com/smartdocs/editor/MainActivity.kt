@@ -43,7 +43,7 @@ class MainActivity : ComponentActivity() {
             val app = application as SmartDocsApp
             val settings by app.settings.settings.collectAsStateWithLifecycle(initialValue = AppSettings())
             CompositionLocalProvider(LocalApp provides app, LocalSettings provides settings) {
-                SmartDocsTheme(mode = settings.theme, rtl = settings.language == "ar") {
+                SmartDocsTheme(mode = settings.theme, rtl = com.smartdocs.editor.core.gaps6.LayoutDir.isRtl(settings)) {
                     // first run: onboarding + consent before anything else (acct module)
                     var onboarded by remember { mutableStateOf(com.smartdocs.editor.core.review.AcctPrefs.onboardingDone(this@MainActivity)) }
                     if (!onboarded) {
@@ -82,10 +82,16 @@ class MainActivity : ComponentActivity() {
             val app = application as SmartDocsApp
             val i = intent!!
             lifecycleScope.launch {
-                com.smartdocs.editor.core.tools5.ShareImport.pending = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    com.smartdocs.editor.core.tools5.ShareImport.read(this@MainActivity, i, java.io.File(app.documents.tempDir, "shared"))
+                // a failing share (revoked permission, unreadable stream) must not take the app down
+                val read = runCatching {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        com.smartdocs.editor.core.tools5.ShareImport.read(this@MainActivity, i, java.io.File(app.documents.tempDir, "shared"))
+                    }
                 }
-                incomingRoute.value = Routes.tool("share_to_pdf")
+                read.onSuccess {
+                    com.smartdocs.editor.core.tools5.ShareImport.pending = it
+                    incomingRoute.value = Routes.tool("share_to_pdf")
+                }.onFailure { Toast.makeText(this@MainActivity, getString(R.string.error_generic), Toast.LENGTH_LONG).show() }
             }
             return
         }
