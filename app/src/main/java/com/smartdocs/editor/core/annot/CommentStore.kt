@@ -18,7 +18,7 @@ import java.util.Calendar
 import java.util.TimeZone
 
 /** A reply in a comment thread. */
-data class ThreadReply(val index: Int, val author: String, val text: String, val date: Long)
+data class ThreadReply(val index: Int, val author: String, val text: String, val date: Long, val color: Int? = null)
 
 /** One stored comment with everything the comments panel shows (thread, review status, group). */
 data class CommentItem(
@@ -36,6 +36,14 @@ data class CommentItem(
     val status: ReviewStatus,
     val statusAuthor: String,
     val statusDate: Long,
+    /** Every review state change, oldest first (Review History, Foxit 24.69). */
+    val history: List<Triple<ReviewStatus, String, Long>> = emptyList(),
+    /** Latest /StateModel /Marked state is "Marked" (checkmark, 24.75). */
+    val checked: Boolean = false,
+    /** /Subj (tickmarks, properties). */
+    val subject: String = "",
+    /** /F Locked. */
+    val locked: Boolean = false,
 )
 
 /** Reads comment threads and changes group / delete state of stored annotations. All writes go src → out. */
@@ -93,6 +101,8 @@ object CommentStore {
                 list.forEachIndexed { i, an -> indexOf[an.cosObject] = i }
                 val replies = HashMap<Int, MutableList<ThreadReply>>()
                 val states = HashMap<Int, Triple<ReviewStatus, String, Long>>()
+                val history = HashMap<Int, MutableList<Triple<ReviewStatus, String, Long>>>()
+                val marks = HashMap<Int, Pair<Boolean, Long>>()
                 list.forEachIndexed { i, an ->
                     val cos = an.cosObject
                     val parent = (cos.getDictionaryObject(IRT) as? COSDictionary)?.let { indexOf[it] } ?: return@forEachIndexed
@@ -101,12 +111,18 @@ object CommentStore {
                     if (cos.containsKey(STATE)) {
                         val st = cos.getString(STATE) ?: cos.getNameAsString(STATE) ?: return@forEachIndexed
                         val model = cos.getString(STATE_MODEL) ?: cos.getNameAsString(STATE_MODEL) ?: "Review"
+                        if (model == "Marked") {
+                            val d0 = dateOf(cos); val prevM = marks[parent]
+                            if (prevM == null || d0 >= prevM.second) marks[parent] = st.equals("Marked", true) to d0
+                            return@forEachIndexed
+                        }
                         if (model != "Review") return@forEachIndexed
                         val rs = ReviewStatus.entries.firstOrNull { it.state.equals(st, true) } ?: return@forEachIndexed
                         val d = dateOf(cos)
+                        history.getOrPut(parent) { ArrayList() } += Triple(rs, author, d)
                         val prev = states[parent]
                         if (prev == null || d >= prev.third) states[parent] = Triple(rs, author, d)
-                    } else replies.getOrPut(parent) { ArrayList() } += ThreadReply(i, author, an.contents ?: "", dateOf(cos))
+                    } else replies.getOrPut(parent) { ArrayList() } += ThreadReply(i, author, an.contents ?: "", dateOf(cos), colorOf(cos))
                 }
                 list.forEachIndexed { i, an ->
                     runCatching {
@@ -119,7 +135,8 @@ object CommentStore {
                         val st = states[i]
                         out += CommentItem(pi, i, sub, cos.getString(COSName.T) ?: "", an.contents ?: "",
                             RectF(r.lowerLeftX, r.upperRightY, r.upperRightX, r.lowerLeftY), colorOf(cos), dateOf(cos), an.annotationName, gp,
-                            replies[i]?.sortedBy { it.date } ?: emptyList(), st?.first ?: ReviewStatus.NONE, st?.second ?: "", st?.third ?: 0L)
+                            replies[i]?.sortedBy { it.date } ?: emptyList(), st?.first ?: ReviewStatus.NONE, st?.second ?: "", st?.third ?: 0L,
+                            history[i]?.sortedBy { it.third } ?: emptyList(), marks[i]?.first ?: false, AnnotStyle.subjectOf(cos), AnnotStyle.isLocked(cos))
                     }
                 }
             }
@@ -231,6 +248,27 @@ object CommentStore {
                 s.cosObject.setString(STATE, status.state)
                 s.cosObject.setString(STATE_MODEL, status.model)
                 s.annotationName = "sd-s-${System.nanoTime()}"
+                s.isHidden = true
+                list.add(s); pg.annotations = list
+            }
+            SignedSave.saveEdited(doc, out, pw, listOf(page))
+        }
+    }
+
+    /** Checkmark (/StateModel /Marked) on the comment [index] of [page] (Foxit / Acrobat "check mark"). */
+    suspend fun setChecked(src: File, out: File, pw: String?, page: Int, index: Int, checked: Boolean, author: String) = withContext(Dispatchers.IO) {
+        PdfOps.loadRaw(src, pw).use { doc ->
+            val pg = doc.getPage(page); val list = pg.annotations
+            val parent = list.getOrNull(index)
+            if (parent != null) {
+                val s = com.tom_roush.pdfbox.pdmodel.interactive.annotation.PDAnnotationText()
+                s.contents = if (checked) "Marked" else "Unmarked"; s.titlePopup = author
+                s.setCreationDate(Calendar.getInstance()); s.setModifiedDate(Calendar.getInstance())
+                s.rectangle = parent.rectangle
+                s.cosObject.setItem(IRT, parent.cosObject)
+                s.cosObject.setString(STATE, if (checked) "Marked" else "Unmarked")
+                s.cosObject.setString(STATE_MODEL, "Marked")
+                s.annotationName = "sd-m-${System.nanoTime()}"
                 s.isHidden = true
                 list.add(s); pg.annotations = list
             }

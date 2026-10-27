@@ -294,6 +294,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                             if (state.reflow) com.smartdocs.editor.ui.view5.ReflowReader(state)
                             PageIndicator(state.currentPage, state.pageCount, { showGoTo = true }, Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp))
                             if (state.tool != null && state.placement == null) ToolHint(state.tool!!, Modifier.align(Alignment.TopCenter).padding(top = 8.dp))
+                            else if (state.placement != null) com.smartdocs.editor.ui.reader.annot.PlacementBar(state, Modifier.align(Alignment.TopCenter).padding(top = 8.dp))   // section 7.40 / 24.54
                             else OcrSuggestionBanner(state, onOcr = { actions.quick(QuickAction.OCR) }, modifier = Modifier.align(Alignment.TopCenter))
                             com.smartdocs.editor.ui.forms5.InPageXfaBanner(state, onOpen = { f -> nav.navigate(Routes.reader(android.net.Uri.fromFile(f).toString(), 0)) },
                                 modifier = Modifier.align(Alignment.TopCenter).padding(top = 48.dp))   // MODULE_forms5

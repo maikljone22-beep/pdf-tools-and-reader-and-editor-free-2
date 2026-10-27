@@ -66,6 +66,13 @@ class CommentExtras(private val h: Annot2Host) {
 
     /** Pages are rendered without annotations and pending ones are not drawn (7.65). */
     var hidden by mutableStateOf(false)
+    /** Show a sticky-note glyph on markups that carry a note (Foxit 24.13); remembered in prefs. */
+    var noteIndicators by mutableStateOf(prefs().getBoolean("note_indicators", false))
+        private set
+
+    private fun prefs() = h.s.context.getSharedPreferences("comment_prefs", android.content.Context.MODE_PRIVATE)
+
+    fun toggleNoteIndicators() { noteIndicators = !noteIndicators; prefs().edit().putBoolean("note_indicators", noteIndicators).apply() }
     var props by mutableStateOf<PropsReq?>(null)
     var pagesReq by mutableStateOf<PagesReq?>(null)
     var rotateReq by mutableStateOf<CTarget?>(null)

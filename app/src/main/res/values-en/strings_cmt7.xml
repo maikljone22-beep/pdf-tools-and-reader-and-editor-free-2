@@ -144,4 +144,14 @@
     <string name="cx_width_pt">Width (pt)</string>
     <string name="cx_height_pt">Height (pt)</string>
     <string name="cx_keep_ratio">Keep proportions</string>
+    <string name="cx_expand_all">Expand all</string>
+    <string name="cx_collapse_all">Collapse all</string>
+    <string name="cx_filter_color">Colour</string>
+    <string name="cx_sort_type">Type</string>
+    <string name="cx_sort_status">Status</string>
+    <string name="cx_sort_color">Colour</string>
+    <string name="cx_sort_checked">Check mark</string>
+    <string name="cx_reply_style">Reply author and colour</string>
+    <string name="cx_review_history">Review history</string>
+    <string name="cx_note_indicators">Note indicator on markups</string>
 </resources>

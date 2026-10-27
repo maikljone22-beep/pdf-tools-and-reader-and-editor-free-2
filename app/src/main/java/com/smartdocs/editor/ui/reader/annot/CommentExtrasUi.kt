@@ -181,6 +181,8 @@ fun CommentExtrasMenuItems(h: Annot2Host, close: () -> Unit) {
         DropdownMenuItem(text = { Text(stringResource(R.string.cx_paste)) }, leadingIcon = { Icon(Icons.Default.ContentPaste, null) }, onClick = { close(); cx.paste(false) })
         DropdownMenuItem(text = { Text(stringResource(R.string.cx_paste_in_place)) }, leadingIcon = { Icon(Icons.Default.ContentPasteGo, null) }, onClick = { close(); cx.paste(true) })
     }
+    DropdownMenuItem(text = { Text(stringResource(R.string.cx_note_indicators)) }, leadingIcon = { Icon(if (cx.noteIndicators) Icons.Default.CheckBox else Icons.Default.CheckBoxOutlineBlank, null) },
+        onClick = { close(); cx.toggleNoteIndicators() })
     DropdownMenuItem(text = { Text(stringResource(R.string.cx_prev_comment)) }, leadingIcon = { Icon(Icons.AutoMirrored.Filled.NavigateBefore, null) }, onClick = { close(); cx.stepComment(false) })
     DropdownMenuItem(text = { Text(stringResource(R.string.cx_next_comment)) }, leadingIcon = { Icon(Icons.AutoMirrored.Filled.NavigateNext, null) }, onClick = { close(); cx.stepComment(true) })
     DropdownMenuItem(text = { Text(stringResource(R.string.cx_popups_open)) }, leadingIcon = { Icon(Icons.Default.OpenInFull, null) }, onClick = { close(); cx.popupsOpen(true) })

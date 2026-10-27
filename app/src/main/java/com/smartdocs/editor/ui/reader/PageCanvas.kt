@@ -266,6 +266,11 @@ fun PageCanvas(
             hits.forEachIndexed { i, h -> if (h.page == page) drawPdfRects(h.rects, g, if (i == hitIndex) Color(0x99FF9800) else Color(0x66FFEB3B), multiply = true) }
             val frameDrag = draft.active && draft.annotFrame != null
             if (showAnnots) annots.forEach { a -> if (a.page == page && !(frameDrag && a.id == pendingEditId)) drawAnnot(a, g) }
+            // sticky-note indicator on markups that carry text (Foxit 24.13, optional)
+            if (showAnnots && state.annot2.cx.noteIndicators) {
+                annots.forEach { a -> if (a.page == page && a.text.isNotBlank() && a.kind in NOTE_INDICATOR_KINDS) drawNoteIndicator(annotBounds(a), g, annotColor(a.color)) }
+                state.existing.forEach { e -> if (e.page == page && e.contents.isNotBlank() && e.subtype in NOTE_INDICATOR_SUBTYPES) drawNoteIndicator(PageGeometry.normPdf(e.rect), g, Color(0xFFFFC107)) }
+            }
             if (editBounds != null) {
                 val fr = frameRect(editBounds, g)
                 val shown = if (frameDrag) dragFrame(draft.annotFrame!!, draft.handle, draft.start, draft.current) else fr

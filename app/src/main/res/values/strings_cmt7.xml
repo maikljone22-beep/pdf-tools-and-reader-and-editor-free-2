@@ -144,4 +144,14 @@
     <string name="cx_width_pt">العرض (نقطة)</string>
     <string name="cx_height_pt">الارتفاع (نقطة)</string>
     <string name="cx_keep_ratio">الحفاظ على النسبة</string>
+    <string name="cx_expand_all">توسيع الكل</string>
+    <string name="cx_collapse_all">طي الكل</string>
+    <string name="cx_filter_color">اللون</string>
+    <string name="cx_sort_type">النوع</string>
+    <string name="cx_sort_status">الحالة</string>
+    <string name="cx_sort_color">اللون</string>
+    <string name="cx_sort_checked">علامة التحقق</string>
+    <string name="cx_reply_style">مؤلف الرد ولونه</string>
+    <string name="cx_review_history">سجل المراجعة</string>
+    <string name="cx_note_indicators">مؤشر الملاحظة على التظليل</string>
 </resources>

@@ -147,6 +147,21 @@ fun DrawScope.drawLineEnd(name: String, from: Offset, to: Offset, color: Color, 
     }
 }
 
+val NOTE_INDICATOR_KINDS = setOf(AnnotKind.HIGHLIGHT, AnnotKind.UNDERLINE, AnnotKind.STRIKEOUT, AnnotKind.SQUIGGLY, AnnotKind.INK,
+    AnnotKind.LINE, AnnotKind.ARROW, AnnotKind.RECT, AnnotKind.OVAL, AnnotKind.POLYGON, AnnotKind.POLYLINE, AnnotKind.CLOUD)
+val NOTE_INDICATOR_SUBTYPES = setOf("Highlight", "Underline", "StrikeOut", "Squiggly", "Ink", "Line", "Square", "Circle", "Polygon", "PolyLine")
+
+/** Small sticky-note glyph at the top-right corner of [bounds] (PDF, top = larger y): this markup has a note. */
+fun DrawScope.drawNoteIndicator(bounds: RectF, g: PageGeometry, color: Color) {
+    val o = g.pdfToScreen(bounds.right, bounds.top)
+    val sz = (9f * g.scale).coerceIn(10f, 28f)
+    val tl = Offset(o.x - sz * 0.2f, o.y - sz * 0.8f)
+    drawRect(color, tl, Size(sz, sz * 0.8f))
+    drawRect(Color(0xFF424242), tl, Size(sz, sz * 0.8f), style = Stroke(1.2f))
+    drawLine(Color(0xFF424242), Offset(tl.x + sz * 0.2f, tl.y + sz * 0.3f), Offset(tl.x + sz * 0.8f, tl.y + sz * 0.3f), 1.2f)
+    drawLine(Color(0xFF424242), Offset(tl.x + sz * 0.2f, tl.y + sz * 0.55f), Offset(tl.x + sz * 0.6f, tl.y + sz * 0.55f), 1.2f)
+}
+
 /** Numbered / lettered / symbol tickmark preview (filled circle + white label). */
 fun DrawScope.drawTickmark(a: Annot, s: Rect) {
     drawOval(annotColor(a.color, a.opacity), s.topLeft, s.size)
