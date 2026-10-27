@@ -127,6 +127,41 @@ class NveShellTest {
         assertTrue(runCatching { C.fromJson("{\"format\":\"other\"}") }.isFailure)
     }
 
+    private fun pageTexts(f: File): List<String> = PDDocument.load(f).use { d ->
+        (1..d.numberOfPages).map { i -> PDFTextStripper().apply { startPage = i; endPage = i }.getText(d).trim() }
+    }
+
+    @Test fun insertMergeAndInto() {
+        val a = sample(2); val b = sample(3)
+        val merged = tmp("merged")
+        assertEquals(5, com.smartdocs.editor.core.nve.shell.PageInsert.merge(listOf(a, b), merged))
+        val out = tmp("into")
+        assertEquals(5, com.smartdocs.editor.core.nve.shell.PageInsert.into(b, a, 1, out))
+        assertEquals(listOf("Page 1", "Page 1", "Page 2", "Page 2", "Page 3"), pageTexts(out))
+        val end = tmp("end")
+        com.smartdocs.editor.core.nve.shell.PageInsert.into(b, a, -1, end)
+        assertEquals(listOf("Page 1", "Page 2", "Page 3", "Page 1", "Page 2"), pageTexts(end))
+    }
+
+    @Test fun scanPresetsAndTranslations() {
+        val P = com.smartdocs.editor.core.nve.shell.ScanPreset
+        var l = P.upsert(emptyList(), P("Office", "A4", "GRAY", 80, true))
+        l = P.upsert(l, P("office", "LETTER", "BW", 60, false))
+        assertEquals(1, l.size); assertEquals("LETTER", l[0].paper)
+        assertEquals(l, P.upsert(l, P("good", "A4", "BW", 50, false)))   // built-in name protected
+        assertEquals(l, P.parse(P.format(l + P.BUILT_IN)))
+        assertEquals("office (2)", P.copyOf(l, l[0], "office").name)
+        assertEquals(null, P.decode("bad"))
+        val T = com.smartdocs.editor.core.nve.shell.TranslationHistory
+        val E = com.smartdocs.editor.core.nve.shell.TranslationEntry::class
+        var h = T.add(emptyList(), com.smartdocs.editor.core.nve.shell.TranslationEntry(1, "ar", "en", "مرحبا", "Hello"))
+        h = T.add(h, com.smartdocs.editor.core.nve.shell.TranslationEntry(2, "ar", "en", "مرحبا", "Hi"))
+        assertEquals(1, h.size); assertEquals("Hi", h[0].result)
+        assertEquals(h, T.fromJson(T.toJson(h)))
+        assertEquals(1, T.search(h, "hi").size); assertTrue(T.search(h, "zzz").isEmpty())
+        assertNotNull(E)
+    }
+
     @Test fun featureGuidesWritePages() {
         for (g in FeatureGuides.Guide.entries) {
             val out = tmp(g.name)

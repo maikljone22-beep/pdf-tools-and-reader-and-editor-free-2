@@ -268,6 +268,7 @@ private fun OrganizeToolbar(
             ToolbarButton(Icons.Default.FileOpen, stringResource(R.string.page_insert_file), onClick = onInsertFile)
             ToolbarButton(Icons.Default.Image, stringResource(R.string.page_insert_image), onClick = onInsertImage)
             ToolbarButton(Icons.Default.PhotoCamera, stringResource(R.string.g6_insert_camera), onClick = onInsertCamera)
+            com.smartdocs.editor.ui.nve.shell.NveOrganizeInsertMore(state, onMessage)   // NVE-shell: insert from web / clipboard / files / folder, insert into file
             VerticalDivider(Modifier.height(36.dp).padding(horizontal = 2.dp))
             ToolbarButton(Icons.Default.RotateLeft, stringResource(R.string.page_rotate_left)) { if (state.selected.isEmpty()) onMessage(noSel) else state.rotateSelected(-90) }
             ToolbarButton(Icons.Default.RotateRight, stringResource(R.string.page_rotate_right)) { if (state.selected.isEmpty()) onMessage(noSel) else state.rotateSelected(90) }

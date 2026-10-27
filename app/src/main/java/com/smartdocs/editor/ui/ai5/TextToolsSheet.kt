@@ -64,7 +64,8 @@ fun TextToolsSheet(text: String, initial: TextAction? = null, docContext: String
     fun run(a: TextAction) {
         job?.cancel(); action = a; out = ""; error = null; busy = true
         job = scope.launch {
-            try { TextTools.run(ctx, client, a, text, target, docContext).collect { out += it } ; if (a in TextTools.REPLACING) out = TextTools.clean(out) }
+            try { TextTools.run(ctx, client, a, text, target, docContext).collect { out += it } ; if (a in TextTools.REPLACING) out = TextTools.clean(out)
+                if (a == TextAction.TRANSLATE) com.smartdocs.editor.ui.nve.shell.NveTranslations.add(ctx, AiLang.detect(text), target, text, out) }   // NVE-shell: translation history
             catch (e: CancellationException) { throw e }
             catch (e: Exception) { error = if (AiCalls.isQuota(e)) ctx.getString(R.string.a5_err_quota) else ctx.getString(R.string.a5_err_failed, e.message ?: "") }
             finally { busy = false }
@@ -85,6 +86,7 @@ fun TextToolsSheet(text: String, initial: TextAction? = null, docContext: String
             }
             if (action == TextAction.TRANSLATE) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(stringResource(R.string.a5_target_language)); LanguagePicker(target, { target = it; run(TextAction.TRANSLATE) }, allowAuto = false)
+                com.smartdocs.editor.ui.nve.shell.NveTranslationHistoryChip()   // NVE-shell
             }
             if (busy && out.isEmpty()) LinearProgressIndicator(Modifier.fillMaxWidth())
             error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
