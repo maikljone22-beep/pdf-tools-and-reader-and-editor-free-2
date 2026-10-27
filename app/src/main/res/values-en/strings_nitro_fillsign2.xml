@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- nitro-fillsign2: Fill & Sign / QuickSign gaps (English) -->
+<resources>
+    <plurals name="nf2_locked_not_included">
+        <item quantity="one">%d locked signature not included (unlock it once on this device to include it)</item>
+        <item quantity="other">%d locked signatures not included (unlock each once on this device to include it)</item>
+    </plurals>
+</resources>

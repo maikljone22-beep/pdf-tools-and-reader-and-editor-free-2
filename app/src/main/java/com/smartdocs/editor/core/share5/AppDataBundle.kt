@@ -6,7 +6,11 @@ import com.smartdocs.editor.core.collab.CollabStore
 import com.smartdocs.editor.core.data.CustomStamp
 import com.smartdocs.editor.core.data.DocTag
 import com.smartdocs.editor.core.data.FillProfileField
+import com.smartdocs.editor.core.data.LockedSignatureCrypto
+import com.smartdocs.editor.core.data.LockedSignatureFiles
 import com.smartdocs.editor.core.data.SavedSignature
+import com.smartdocs.editor.core.data.SignatureMeta
+import com.smartdocs.editor.core.data.SignatureMetaStore
 import com.smartdocs.editor.core.data.Tag
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -23,11 +27,16 @@ import java.util.zip.ZipOutputStream
  * App data that follows the user between devices (O4): signatures and initials, custom stamps, the fill profile,
  * tags (and which documents carry them), favourites and the author name. A ZIP with `manifest.json` + images.
  * Import only MERGES (nothing local is deleted); documents are matched by file name + size.
+ *
+ * nitro-fillsign2 (pdf-ad): a password-locked signature leaves the device only together with its lock: the PBKDF2
+ * entry of its sidecar and its image encrypted under the PIN ([LockedSignatureCrypto], written when the lock is set
+ * or the signature is unlocked). A locked signature whose encrypted copy is missing or older than its image is
+ * left out ([Summary.lockedSkipped]). Temporary signatures are never exported.
  */
 object AppDataBundle {
     const val VERSION = 1
 
-    data class Summary(val signatures: Int, val stamps: Int, val fields: Int, val tags: Int, val favorites: Int)
+    data class Summary(val signatures: Int, val stamps: Int, val fields: Int, val tags: Int, val favorites: Int, val lockedSkipped: Int = 0)
     data class Built(val file: File, val hash: String, val summary: Summary)
 
     private fun app(c: Context) = c.applicationContext as SmartDocsApp
@@ -37,7 +46,11 @@ object AppDataBundle {
     /** Writes the bundle to [out]. [Built.hash] covers the content only (not the time), so unchanged data gives the same hash. */
     suspend fun export(c: Context, out: File): Built = withContext(Dispatchers.IO) {
         val a = app(c); val db = a.db
-        val sigs = db.signatures().all().first().filter { File(it.path).exists() }
+        val meta = SignatureMetaStore.flow(c).value
+        val all = db.signatures().all().first().filter { meta[it.path]?.temporary != true }
+        val (lockedSigs, plainSigs) = all.partition { meta[it.path]?.locked == true }
+        val sigs = plainSigs.filter { File(it.path).exists() }
+        val lockedOk = lockedSigs.filter { LockedSignatureFiles.fresh(File(it.path)) }
         val stamps = db.stamps().all().first()
         val fields = db.fillProfile().all().first()
         val tags = db.tags().tags().first()
@@ -46,7 +59,12 @@ object AppDataBundle {
         val images = ArrayList<Pair<String, File>>()
         m.put("signatures", JSONArray().apply {
             sigs.sortedBy { it.created }.forEachIndexed { i, s -> val n = "sig/$i.${File(s.path).extension.ifEmpty { "png" }}"; images += n to File(s.path)
-                put(JSONObject().put("file", n).put("initials", s.isInitials).put("sha", sha(File(s.path)))) }
+                put(JSONObject().put("file", n).put("initials", s.isInitials).put("sha", sha(File(s.path))).also { o -> meta[s.path]?.name?.takeIf { it.isNotEmpty() }?.let { o.put("name", it) } }) }
+            // locked: only the encrypted copy + the lock record (never the image in the clear)
+            lockedOk.sortedBy { it.created }.forEachIndexed { i, s ->
+                val blob = LockedSignatureFiles.blobOf(File(s.path)); val n = "sig/locked_$i.sdlock"; images += n to blob
+                put(lockedEntry(n, s.isInitials, sha(blob), meta.getValue(s.path)))
+            }
         })
         m.put("stamps", JSONArray().apply {
             stamps.sortedBy { it.id }.forEachIndexed { i, s ->
@@ -70,7 +88,26 @@ object AppDataBundle {
             z.putNextEntry(ZipEntry("manifest.json")); z.write(m.toString(2).toByteArray()); z.closeEntry()
             images.forEach { (n, f) -> z.putNextEntry(ZipEntry(n)); f.inputStream().use { it.copyTo(z) }; z.closeEntry() }
         }
-        Built(out, hash, Summary(sigs.size, stamps.size, fields.size, tags.size, favs.size))
+        Built(out, hash, Summary(sigs.size + lockedOk.size, stamps.size, fields.size, tags.size, favs.size, lockedSigs.size - lockedOk.size))
+    }
+
+    /** Manifest entry of a locked signature: the encrypted file, its hash and the lock (PBKDF2 salt / hash / iterations). */
+    internal fun lockedEntry(file: String, initials: Boolean, blobSha: String, m: SignatureMeta): JSONObject = JSONObject()
+        .put("file", file).put("initials", initials).put("sha", blobSha).put("locked", true)
+        .put("salt", m.salt).put("hash", m.hash).put("iter", m.iterations)
+        .also { o -> if (m.name.isNotEmpty()) o.put("name", m.name) }
+
+    /** The lock record of a manifest entry, or null when it is not a (complete) locked entry. */
+    internal fun lockOf(o: JSONObject): SignatureMeta? {
+        if (!o.optBoolean("locked")) return null
+        val m = SignatureMeta(salt = o.optString("salt").ifBlank { null }, hash = o.optString("hash").ifBlank { null }, iterations = o.optInt("iter"), name = o.optString("name"))
+        return m.takeIf { it.locked }
+    }
+
+    /** Locked signatures that would be left out of an export now (no up-to-date encrypted copy: unlock them once). */
+    suspend fun lockedNotExportable(c: Context): Int = withContext(Dispatchers.IO) {
+        val meta = SignatureMetaStore.flow(c).value
+        app(c).db.signatures().all().first().count { meta[it.path]?.let { m -> m.locked && !m.temporary } == true && !LockedSignatureFiles.fresh(File(it.path)) }
     }
 
     /** Hash stored inside a bundle (null when it is not a bundle). */
@@ -86,12 +123,25 @@ object AppDataBundle {
             fun bytes(name: String): ByteArray? = z.getEntry(name)?.let { e -> z.getInputStream(e).use { it.readBytes() } }
             var nSig = 0; var nStamp = 0; var nField = 0; var nTag = 0; var nFav = 0
 
-            val haveSig = db.signatures().all().first().map { sha(File(it.path)) }.toMutableSet()
+            // plain signatures are matched by their image, locked ones by their encrypted copy
+            val haveSig = db.signatures().all().first().flatMap { listOf(sha(File(it.path)), sha(LockedSignatureFiles.blobOf(File(it.path)))) }.filter { it.isNotEmpty() }.toMutableSet()
             m.optJSONArray("signatures")?.let { arr -> for (i in 0 until arr.length()) {
                 val o = arr.getJSONObject(i); val data = bytes(o.optString("file")) ?: continue
                 val h = sha(data); if (h in haveSig) continue
+                val lock = lockOf(o)
+                if (lock != null) {
+                    // stays locked: only the encrypted copy is stored; the image comes back on the first unlock
+                    if (!LockedSignatureCrypto.isBlob(data)) continue
+                    val f = File(a.documents.signaturesDir, "sync_${System.currentTimeMillis()}_$i.png")
+                    LockedSignatureFiles.blobOf(f).writeBytes(data)
+                    SignatureMetaStore.setLockRecord(c, f.absolutePath, lock)
+                    db.signatures().insert(SavedSignature(path = f.absolutePath, isInitials = o.optBoolean("initials"))); haveSig += h; nSig++
+                    continue
+                }
+                if (o.optBoolean("locked")) continue      // incomplete lock record: never import it unlocked
                 val f = File(a.documents.signaturesDir, "sync_${System.currentTimeMillis()}_$i.${o.optString("file").substringAfterLast('.', "png")}")
-                f.writeBytes(data); db.signatures().insert(SavedSignature(path = f.absolutePath, isInitials = o.optBoolean("initials"))); haveSig += h; nSig++
+                f.writeBytes(data); o.optString("name").takeIf { it.isNotBlank() }?.let { SignatureMetaStore.setName(c, f.absolutePath, it) }
+                db.signatures().insert(SavedSignature(path = f.absolutePath, isInitials = o.optBoolean("initials"))); haveSig += h; nSig++
             } }
 
             val stampsDir = File(c.filesDir, "stamps").apply { mkdirs() }

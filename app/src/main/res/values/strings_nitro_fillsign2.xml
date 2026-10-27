@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- nitro-fillsign2: Fill & Sign / QuickSign gaps (Arabic, default) -->
+<resources>
+    <plurals name="nf2_locked_not_included">
+        <item quantity="zero">لم يُضمَّن أي توقيع مقفل</item>
+        <item quantity="one">لم يُضمَّن توقيع مقفل واحد (افتحه مرة على هذا الجهاز لتضمينه)</item>
+        <item quantity="two">لم يُضمَّن توقيعان مقفلان (افتح كلًّا منهما مرة على هذا الجهاز لتضمينه)</item>
+        <item quantity="few">لم تُضمَّن %d توقيعات مقفلة (افتح كلًّا منها مرة على هذا الجهاز لتضمينه)</item>
+        <item quantity="many">لم يُضمَّن %d توقيعًا مقفلًا (افتح كلًّا منها مرة على هذا الجهاز لتضمينه)</item>
+        <item quantity="other">لم يُضمَّن %d توقيع مقفل (افتح كلًّا منها مرة على هذا الجهاز لتضمينه)</item>
+    </plurals>
+</resources>
