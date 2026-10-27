@@ -196,4 +196,7 @@
     <string name="cx_word_spacing">تباعد الكلمات (لاتيني): %1$s</string>
     <string name="cx_char_scale">عرض الأحرف: %1$d%%</string>
     <string name="cx_line_caption">إظهار نص الملاحظة على الخط</string>
+    <string name="cx_spell_check">تدقيق إملائي</string>
+    <string name="cx_spell_none">لا يوجد مدقق إملائي في الجهاز</string>
+    <string name="cx_spell_ok">لا أخطاء إملائية</string>
 </resources>

@@ -139,7 +139,12 @@ private fun AnnotTextDialog(initial: String, fontSize: Float, opacity: Float, on
         modifier = Modifier.alpha(opacity),
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.ae_edit_text)) },
-        text = { OutlinedTextField(text, { text = it }, Modifier.fillMaxWidth(), minLines = 3, textStyle = LocalTextStyle.current.copy(fontSize = androidx.compose.ui.unit.TextUnit(fontSize, androidx.compose.ui.unit.TextUnitType.Sp))) },
+        text = {
+            Column {
+                OutlinedTextField(text, { text = it }, Modifier.fillMaxWidth(), minLines = 3, textStyle = LocalTextStyle.current.copy(fontSize = androidx.compose.ui.unit.TextUnit(fontSize, androidx.compose.ui.unit.TextUnitType.Sp)))
+                com.smartdocs.editor.ui.reader.annot.SpellCheckRow(text) { text = it }      // Foxit 24.25
+            }
+        },
         confirmButton = { Button(onClick = { onOk(text) }) { Text(stringResource(R.string.ok)) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
     )

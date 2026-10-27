@@ -92,9 +92,12 @@ fun TextPromptDialog(state: ReaderState, prompt: TextPrompt, onDismiss: () -> Un
         onDismissRequest = onDismiss,
         title = { Text(stringResource(title)) },
         text = {
-            OutlinedTextField(text, { text = it }, modifier = Modifier.fillMaxWidth(), minLines = if (isLink) 1 else 3, singleLine = isLink,
-                placeholder = { Text(if (isLink) "https://" else "") },
-                keyboardOptions = KeyboardOptions(keyboardType = if (isLink) KeyboardType.Uri else KeyboardType.Text))
+            androidx.compose.foundation.layout.Column {
+                OutlinedTextField(text, { text = it }, modifier = Modifier.fillMaxWidth(), minLines = if (isLink) 1 else 3, singleLine = isLink,
+                    placeholder = { Text(if (isLink) "https://" else "") },
+                    keyboardOptions = KeyboardOptions(keyboardType = if (isLink) KeyboardType.Uri else KeyboardType.Text))
+                if (!isLink) com.smartdocs.editor.ui.reader.annot.SpellCheckRow(text) { text = it }      // Foxit 24.25
+            }
         },
         confirmButton = {
             Button(enabled = text.isNotBlank(), onClick = {

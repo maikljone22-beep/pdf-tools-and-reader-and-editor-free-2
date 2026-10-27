@@ -110,6 +110,17 @@ class AnnotStyleTest {
         assertNull(AnnotStyle.readRich(annot("FreeText")))
     }
 
+    @Test fun richFormatRoundTrip() {
+        val ft = annot("FreeText")
+        AnnotStyle.applyRich(ft, "one\ntwo", AnnotStyle.Rich(11f, 0x112233, bold = false, italic = false, strike = true, family = 1, align = 3,
+            lineHeight = 1.8f, letterSpacing = 1.5f, wordSpacing = 4f, bullets = true), rtl = false)
+        val r = AnnotStyle.readRich(ft)!!
+        assertTrue(r.strike); assertEquals(1, r.family); assertEquals(3, r.align)
+        assertEquals(1.8f, r.lineHeight, 0.01f); assertEquals(1.5f, r.letterSpacing, 0.01f); assertEquals(4f, r.wordSpacing, 0.01f)
+        assertTrue(r.bullets)
+        assertEquals("one\ntwo", AnnotStyle.richPlain(ft.getString(COSName.getPDFName("RC"))!!))
+    }
+
     @Test fun shapeStreamWithFillAndDash() {
         val d = PDDocument(); val p = PDPage(); d.addPage(p)
         val sq = annot("Square")

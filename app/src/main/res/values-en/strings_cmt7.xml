@@ -196,4 +196,7 @@
     <string name="cx_word_spacing">Word spacing (Latin): %1$s</string>
     <string name="cx_char_scale">Character scale: %1$d%%</string>
     <string name="cx_line_caption">Show note text on the line</string>
+    <string name="cx_spell_check">Check spelling</string>
+    <string name="cx_spell_none">No spell checker on this device</string>
+    <string name="cx_spell_ok">No spelling mistakes</string>
 </resources>
