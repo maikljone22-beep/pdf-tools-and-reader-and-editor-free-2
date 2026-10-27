@@ -266,18 +266,22 @@ object HeaderFooterOps {
     )
 
     /**
-     * Bates over [files] in order ([BatesSpec.mode]: continue, one number per document, or restart per document).
-     * [passwords] gives the password of each locked file (asked once per file by the screen); outputs are protected
-     * like their source unless [protection] is REMOVE. Returns each output with the range of numbers it got.
+     * Bates over [files] in order ([BatesSpec.mode]: continue, one number per document, or restart per document;
+     * [BatesSpec.increment] may be negative). [outFor] names each output from the file and its first / last Bates
+     * number. [passwords] gives the password of each locked file (asked once per file by the screen); outputs are
+     * protected like their source unless [protection] is REMOVE. Returns each output with its first and last number.
      */
-    suspend fun bates(context: Context, files: List<File>, outFor: (File) -> File, bates: BatesSpec, layout: BatesLayout,
-                      passwords: (File) -> String? = { null }, protection: OutProtection = OutProtection.KEEP): List<Pair<File, LongRange>> = withContext(Dispatchers.IO) {
+    suspend fun bates(context: Context, files: List<File>, outFor: (File, String, String) -> File, bates: BatesSpec, layout: BatesLayout,
+                      passwords: (File) -> String? = { null }, protection: OutProtection = OutProtection.KEEP): List<Triple<File, String, String>> = withContext(Dispatchers.IO) {
         val stamped = files.map { f -> E5Io.load(f, passwords(f)).use { d -> d.numberOfPages to PageSet.filter(PageSet.parse(layout.range, d.numberOfPages), layout.subset) { E5Io.isLandscape(d.getPage(it)) } } }
         val plan = Bates.plan(bates, stamped)
         val total = Bates.total(plan).toString()
         files.mapIndexed { k, f ->
-            val out = outFor(f)
             val numbers = plan[k]
+            val ordered = numbers.keys.sorted().map { numbers.getValue(it) }
+            val firstText = ordered.firstOrNull()?.let { Bates.format(bates, it) } ?: ""
+            val lastText = ordered.lastOrNull()?.let { Bates.format(bates, it) } ?: ""
+            val out = outFor(f, firstText, lastText)
             E5Io.edit(f, out, passwords(f)) { doc ->
                 E5Locks.applyTo(doc, protection, passwords(f))
                 doc.pages.forEach { p -> Marked.strip(doc, p) { it == KIND_BATES } }
@@ -295,7 +299,7 @@ object HeaderFooterOps {
                 Marked.putSetting(doc, "BATES", org.json.JSONObject().put("prefix", bates.prefix).put("suffix", bates.suffix).put("digits", bates.digits)
                     .put("first", first).put("last", last).toString())
             }
-            out to ((numbers.values.minOrNull() ?: bates.start)..(numbers.values.maxOrNull() ?: (bates.start - 1)))
+            Triple(out, firstText, lastText)
         }
     }
 

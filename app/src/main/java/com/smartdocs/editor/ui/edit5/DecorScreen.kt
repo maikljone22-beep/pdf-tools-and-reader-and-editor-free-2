@@ -56,6 +56,8 @@ fun DecorScreen(nav: NavHostController, uri: String?, type: DecorType) {
     }
     var existing by remember { mutableStateOf(false) }
     var page by remember { mutableIntStateOf(0) }
+    val batch = remember { com.smartdocs.editor.ui.tools5.OptimizeBatch().apply { suffix = "_" + spec.kind } }
+    var logFile by remember { mutableStateOf<java.io.File?>(null) }
     val pickImage = rememberImagePicker(multiple = false) { it.firstOrNull()?.let { f -> spec = spec.copy(source = DecorSource.IMAGE, imagePath = f.absolutePath) } }
     val pickPdf = rememberPdfPicker { it.firstOrNull()?.let { f -> spec = spec.copy(source = DecorSource.PDF, pdfPath = f.absolutePath) } }
     val processing = stringResource(R.string.processing)
@@ -216,6 +218,31 @@ fun DecorScreen(nav: NavHostController, uri: String?, type: DecorType) {
                 }
             }, enabled = doc.work != null, modifier = Modifier.weight(1f)) { Icon(Icons.Default.DeleteSweep, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.e5_remove)) }
         }
+        // Foxit: the same watermark / background on more files, and Remove All over them, each with a log file
+        com.smartdocs.editor.ui.tools5.OptimizeBatchSection(batch, stringResource(R.string.nt_decor_batch, batch.files.size), stringResource(R.string.nt_decor_batch_help))
+        if (batch.files.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = {
+                val sp = spec; val files = batch.files; val title = ctx.getString(R.string.nt_decor_batch_apply)
+                runner.runMany(processing) {
+                    val (outs, log) = com.smartdocs.editor.ui.tools5.runBatchWithLog(ctx, app.documents.docsDir, { d, b, e -> app.documents.uniqueFile(d, b, e) }, files, batch, title) { s, o ->
+                        WatermarkOps.apply(ctx, s, o, null, sp, replace = true, fileName = s.name); ""
+                    }
+                    logFile = log; outs
+                }
+            }, modifier = Modifier.weight(1f)) { Icon(Icons.Default.LibraryAdd, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.nt_decor_batch_apply)) }
+            OutlinedButton(onClick = {
+                val files = batch.files; val title = ctx.getString(R.string.nt_batch_remove_all)
+                runner.runMany(processing) {
+                    val (outs, log) = com.smartdocs.editor.ui.tools5.runBatchWithLog(ctx, app.documents.docsDir, { d, b, e -> app.documents.uniqueFile(d, b, e) }, files,
+                        com.smartdocs.editor.ui.tools5.OptimizeBatch().apply { suffix = "_clean"; folder = batch.folder; replaceSameName = batch.replaceSameName }, title) { s, o ->
+                        "${WatermarkOps.remove(s, o, null, type, others = true)} p."
+                    }
+                    logFile = log; outs
+                }
+            }, modifier = Modifier.weight(1f)) { Icon(Icons.Default.LayersClear, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.nt_batch_remove_all)) }
+        }
+        if (runner.results.isNotEmpty()) com.smartdocs.editor.ui.tools.ResultsList(runner.results, nav, "application/pdf")
+        logFile?.let { Text(stringResource(R.string.nt_bates_log_saved, it.name), style = MaterialTheme.typography.bodySmall) }
         val ready = doc.work != null && when (spec.source) { DecorSource.TEXT -> spec.text.isNotBlank(); DecorSource.IMAGE -> spec.imagePath.isNotBlank(); DecorSource.COLOR -> true; DecorSource.PDF -> spec.pdfPath.isNotBlank() }
         PrimaryButton(stringResource(if (existing) R.string.e5_update else R.string.apply), enabled = ready, icon = Icons.Default.BrandingWatermark) {
             val sp = spec

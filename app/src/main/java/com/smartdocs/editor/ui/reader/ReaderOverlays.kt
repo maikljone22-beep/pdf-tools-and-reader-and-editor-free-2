@@ -102,6 +102,11 @@ fun SelectionMenu(
             ToolChip(Icons.Default.Link, stringResource(R.string.annot_link)) { e5Link = true }
             if (e5Link) com.smartdocs.editor.ui.edit5.ReaderLinkFromSelection(state) { e5Link = false }
             if (onRedact != null) ToolChip(Icons.Default.Block, stringResource(R.string.s5_rd_chip)) { onRedact(sel) }   // MODULE_search5b
+            var wordCount by remember { mutableStateOf(false) }
+            ToolChip(Icons.Default.Numbers, stringResource(R.string.nt_wc_title)) { wordCount = true }   // Foxit "Word Count" of the selection
+            if (wordCount) AlertDialog(onDismissRequest = { wordCount = false }, title = { Text(stringResource(R.string.nt_wc_selection)) },
+                text = { com.smartdocs.editor.ui.tools5.WordCountTable(com.smartdocs.editor.core.tools5.WordCount.count(sel.text)) },
+                confirmButton = { TextButton(onClick = { wordCount = false }) { Text(stringResource(R.string.ok)) } })
         }
     }
 }

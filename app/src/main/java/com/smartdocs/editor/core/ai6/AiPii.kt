@@ -27,7 +27,8 @@ object AiPii {
     fun prompt(material: String): String =
         "استخرج من النص التالي كل البيانات الشخصية التي تعرّف أشخاصاً حقيقيين: أسماء الأشخاص (لا أسماء الشركات أو الأماكن العامة)، " +
             "العناوين البريدية والسكنية، أرقام الهويات والجوازات والحسابات والهواتف المكتوبة بصيغ غير معتادة أو بالكلمات، والبريد الإلكتروني. " +
-            "انسخ النص كما ورد حرفياً دون تصحيح. kind واحد من: name, address, id, phone, email, other. " +
+            "وإن طُلب ذلك أيضاً: أسماء الجهات والمؤسسات (org) والمناصب والوظائف (role). " +
+            "انسخ النص كما ورد حرفياً دون تصحيح. kind واحد من: name, address, id, phone, email, org, role, other. " +
             "أعد JSON فقط: {\"items\":[{\"page\":1,\"kind\":\"name\",\"text\":\"...\"}]}\n\n" + material
 
     fun kindOf(s: String): PiiKind = when (s.lowercase().trim()) {
@@ -36,6 +37,8 @@ object AiPii {
         "phone", "mobile" -> PiiKind.PHONE
         "email", "e-mail" -> PiiKind.EMAIL
         "passport" -> PiiKind.PASSPORT
+        "org", "organization", "organisation", "company" -> PiiKind.ORG
+        "role", "title", "position" -> PiiKind.ROLE
         else -> PiiKind.NATIONAL_ID   // id / account / other identifiers
     }
 

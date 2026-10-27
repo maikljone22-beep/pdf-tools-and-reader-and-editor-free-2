@@ -29,6 +29,7 @@ import java.io.File
 @Composable
 fun SanitizeScreen(nav: NavHostController, uri: String?) {
     val app = LocalApp.current
+    val ctx = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
     val runner = rememberToolRunner()
     var file by remember { mutableStateOf(fileOf(uri)) }
@@ -64,7 +65,7 @@ fun SanitizeScreen(nav: NavHostController, uri: String?) {
         val items = selected
         runner.run(cleaningMsg) {
             val out = app.documents.uniqueFile(app.documents.docsDir, src.nameWithoutExtension + "_clean")
-            val r = Sanitizer.cleanFile(src, out, password, items)
+            val r = Sanitizer.cleanFile(src, out, password, items, ctx)
             report = r.entries.joinToString("\n") { (k, v) -> "• ${itemNames[k]}" + if (v > 0) ": $v" else "" }.ifBlank { null }
             runCatching { app.documents.touchRecent(out) }
             out
@@ -109,6 +110,7 @@ fun SanitizeScreen(nav: NavHostController, uri: String?) {
                                         if (k == SanitizeItem.INVISIBLE_TEXT && r.ocrLayer) Text(stringResource(R.string.s5_ocr_warning), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
                                         if (k == SanitizeItem.FORMS) Text(stringResource(R.string.s5_forms_note), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                         if (k == SanitizeItem.STRUCTURE) Text(stringResource(R.string.nt_san_structure_note), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        if (k == SanitizeItem.OVERLAPPING) Text(stringResource(R.string.nt_san_overlapping_note), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     }
                                 },
                                 trailingContent = { if (f.details.isNotEmpty()) Icon(if (expanded == k) Icons.Default.ExpandLess else Icons.Default.ExpandMore, null) },
@@ -145,4 +147,6 @@ fun sanitizeLabel(k: SanitizeItem): String = stringResource(when (k) {
     SanitizeItem.REVISIONS -> R.string.s5_san_revisions
     SanitizeItem.SEARCH_INDEX -> R.string.nt_san_search_index
     SanitizeItem.STRUCTURE -> R.string.nt_san_structure
+    SanitizeItem.MULTIMEDIA -> R.string.nt_san_multimedia
+    SanitizeItem.OVERLAPPING -> R.string.nt_san_overlapping
 })
