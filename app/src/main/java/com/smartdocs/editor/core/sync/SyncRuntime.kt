@@ -58,7 +58,7 @@ object SyncRuntime {
      * Runs one pair under its lock, updating its stored status and live progress. Returns false when the pair
      * was already running (the caller's request is then folded into a rerun).
      */
-    suspend fun runPair(context: Context, pairId: String, force: Boolean): Boolean {
+    suspend fun runPair(context: Context, pairId: String, force: Boolean, deletes: DeleteGuard.Policy = DeleteGuard.Policy.GUARD): Boolean {
         val mutex = lock(pairId)
         if (!mutex.tryLock()) { markRerun(pairId); return false }
         try {
@@ -68,13 +68,16 @@ object SyncRuntime {
                 SyncStore.update(context, p.id) { it.copy(status = SyncStatus.RUNNING, message = null) }
                 val started = System.currentTimeMillis()
                 setProgress(SyncProgress(p.id, null, 0, started), p.id)
-                val engine = SyncEngine(context, p, force = force && passes == 0) { name, done -> setProgress(SyncProgress(p.id, name, done, started), p.id) }
+                val engine = SyncEngine(context, p, force = force && passes == 0, onProgress = { name, done -> setProgress(SyncProgress(p.id, name, done, started), p.id) },
+                    deletes = if (passes == 0) deletes else DeleteGuard.Policy.GUARD)
                 try {
                     engine.run()
                     SyncStore.update(context, p.id) {
-                        it.copy(status = if (engine.failed > 0) SyncStatus.FAILED else SyncStatus.SYNCED, lastSync = System.currentTimeMillis(),
-                            message = if (engine.failed > 0) SyncWorker.MSG_FILES_FAILED else null,
-                            uploaded = engine.uploaded, downloaded = engine.downloaded, conflicts = engine.conflicts, failed = engine.failed)
+                        val held = engine.withheldDeletes
+                        it.copy(status = when { held > 0 -> SyncStatus.NEEDS_CONFIRMATION; engine.failed > 0 -> SyncStatus.FAILED; else -> SyncStatus.SYNCED },
+                            lastSync = System.currentTimeMillis(),
+                            message = when { held > 0 -> SyncWorker.MSG_CONFIRM_DELETES; engine.failed > 0 -> SyncWorker.MSG_FILES_FAILED; else -> null },
+                            uploaded = engine.uploaded, downloaded = engine.downloaded, conflicts = engine.conflicts, failed = engine.failed, pendingDeletes = held)
                     }
                 } catch (e: AuthRequiredException) {
                     SyncStore.update(context, p.id) { it.copy(status = SyncStatus.FAILED, message = SyncWorker.MSG_AUTH) }; throw e

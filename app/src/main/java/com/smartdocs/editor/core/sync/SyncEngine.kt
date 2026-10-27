@@ -22,18 +22,28 @@ import kotlin.coroutines.coroutineContext
  * Provider-native documents (Google Docs/Sheets/Slides) are skipped.
  *
  * [force] = a manual "sync now": failed files are retried even while their back-off is running.
+ *
+ * Deletions (DI-25) are collected during the pass and run at its end, unless [DeleteGuard.tooMany] says the set is
+ * suspicious: then none runs and [withheldDeletes] tells the caller to ask the user ([deletes] = what the user chose).
+ * Local deletions go to the app trash first.
  */
 class SyncEngine(
     private val context: Context,
     private val pair: SyncPair,
     private val force: Boolean = false,
     private val onProgress: (String?, Int) -> Unit = { _, _ -> },
+    private val deletes: DeleteGuard.Policy = DeleteGuard.Policy.GUARD,
 ) {
     private val provider: CloudProvider = Clouds.provider(context, pair.provider)
     private val cr = context.contentResolver
     private val snapshot = SyncStore.snapshot(context, pair.id)
     private val queue = SyncStore.queue(context, pair.id)
     private val seen = HashSet<String>()
+    private val snapshotSize = snapshot.size
+    private class PendingDelete(val localDir: DocumentFile, val remoteId: String, val key: String, val name: String, val l: DocumentFile?, val r: CloudItem?, val action: Action)
+    private val pendingDeletes = ArrayList<PendingDelete>()
+    /** Deletions this pass did not run because they need the user's confirmation (0 = none). */
+    var withheldDeletes = 0; private set
     var uploaded = 0; private set
     var downloaded = 0; private set
     var conflicts = 0; private set
@@ -51,6 +61,9 @@ class SyncEngine(
         queue.recoverInterrupted(System.currentTimeMillis())
         try {
             syncFolder(root, pair.remoteFolderId, "", 0)
+            val run = DeleteGuard.toRun(pendingDeletes, snapshotSize, deletes)
+            withheldDeletes = pendingDeletes.size - run.size // withheld entries keep their snapshot (they are in [seen]) until the user decides
+            for (d in run) execute(d.localDir, d.remoteId, d.key, d.name, d.l, d.r, d.action)
         } finally {
             File(context.cacheDir, "sync_up").deleteRecursively()
             queue.prune(System.currentTimeMillis(), exists = { it in seen })
@@ -94,6 +107,14 @@ class SyncEngine(
         )
         if (action == Action.NONE) return
         if (action == Action.RECORD) { record(key, l!!, r!!); return }
+        if (DeleteGuard.isDelete(action)) {
+            if (deletes == DeleteGuard.Policy.RESTORE) return execute(localDir, remoteId, key, name, l, r, DeleteGuard.restored(action))
+            pendingDeletes += PendingDelete(localDir, remoteId, key, name, l, r, action); return
+        }
+        execute(localDir, remoteId, key, name, l, r, action)
+    }
+
+    private suspend fun execute(localDir: DocumentFile, remoteId: String, key: String, name: String, l: DocumentFile?, r: CloudItem?, action: Action) {
         val op = SyncQueue.opFor(action) ?: return
         val now = System.currentTimeMillis()
         if (!queue.mayRun(key, now, force)) { failed++; return } // still backing off: keep the old snapshot entry
@@ -105,15 +126,14 @@ class SyncEngine(
             coroutineContext.ensureActive()
             when (action) {
                 Action.UPLOAD -> record(key, l!!, provider.update(r!!, toTemp(l)).also { uploaded++ })
-                Action.DOWNLOAD -> { download(r!!, l!!); downloaded++; record(key, l, r) }
+                Action.DOWNLOAD -> { val got = download(r!!, localDir, name, l!!); downloaded++; record(key, got, r) }
                 Action.CONFLICT -> conflict(localDir, key, name, l!!, r!!)
                 Action.UPLOAD_NEW -> { val up = provider.upload(toTemp(l!!), remoteId, name); uploaded++; record(key, l, up) }
                 Action.DOWNLOAD_NEW -> {
-                    val created = localDir.createFile(mimeOf(name), name) ?: throw IllegalStateException("cannot create $name")
-                    download(r!!, created); downloaded++
+                    val created = download(r!!, localDir, name, null); downloaded++
                     record(key, localDir.findFile(created.name ?: name) ?: created, r)
                 }
-                Action.DELETE_LOCAL -> { if (!l!!.delete()) throw IllegalStateException("cannot delete $name"); snapshot.remove(key); seen -= key }
+                Action.DELETE_LOCAL -> { deleteLocal(l!!, name); snapshot.remove(key); seen -= key }
                 Action.DELETE_REMOTE -> { provider.delete(r!!); snapshot.remove(key); seen -= key }
                 else -> Unit
             }
@@ -130,24 +150,57 @@ class SyncEngine(
         }
     }
 
+    /** DI-25: a local deletion first copies the document into the app trash (30 days), then deletes it. */
+    private fun deleteLocal(l: DocumentFile, name: String) {
+        val entry = SyncTrash.add(File(context.applicationContext.filesDir, "trash"), name, l.uri.toString(), l.length()) { f ->
+            (cr.openInputStream(l.uri) ?: throw IllegalStateException("cannot read $name")).use { i -> f.outputStream().use { i.copyTo(it) } }
+        }
+        if (!l.delete()) { SyncTrash.remove(entry); throw IllegalStateException("cannot delete $name") }
+    }
+
     /** Keeps the cloud version as a conflict copy beside the local file, then uploads the local version. */
     private suspend fun conflict(localDir: DocumentFile, key: String, name: String, l: DocumentFile, r: CloudItem) {
         val copyName = SyncRules.conflictName(name) { localDir.findFile(it) != null }
-        val copy = localDir.createFile(mimeOf(name), copyName) ?: throw IllegalStateException("cannot create conflict copy")
-        download(r, copy); downloaded++
+        download(r, localDir, copyName, null); downloaded++
         val updated = provider.update(r, toTemp(l)); uploaded++
         conflicts++
         record(key, l, updated)
         // the conflict copy is uploaded as a new file on the next pass (it has no snapshot entry)
     }
 
-    private suspend fun download(r: CloudItem, target: DocumentFile) {
+    /**
+     * Downloads [r] into [dir] as [name], replacing [target] when given (DI-26: never in place; see [SafeReplace]).
+     * Returns the document that now holds the cloud content.
+     */
+    private suspend fun download(r: CloudItem, dir: DocumentFile, name: String, target: DocumentFile?): DocumentFile {
         val tmp = File(context.cacheDir, "sync_dl_${System.nanoTime()}")
         try {
             provider.download(r, tmp)
-            (runCatching { cr.openOutputStream(target.uri, "wt") }.getOrNull() ?: cr.openOutputStream(target.uri, "w"))?.use { o -> tmp.inputStream().use { it.copyTo(o) } }
-                ?: throw IllegalStateException("cannot write ${target.name}")
+            return SafeReplace.replace(SafOps(dir, name), target, name, tmp)
         } finally { tmp.delete() }
+    }
+
+    /** SAF side of [SafeReplace]: documents of one tree folder. */
+    private inner class SafOps(private val dir: DocumentFile, private val name: String) : SafeReplace.Ops<DocumentFile> {
+        override fun create(name: String): DocumentFile? {
+            if (name == SafeReplace.partName(this.name)) dir.findFile(name)?.delete() // stale part of an interrupted run
+            // octet-stream: the provider must not append an extension to the hidden temp names
+            val mime = if (name == this.name) mimeOf(name) else "application/octet-stream"
+            return dir.createFile(mime, name)
+        }
+        private fun out(d: DocumentFile) = runCatching { cr.openOutputStream(d.uri, "wt") }.getOrNull() ?: cr.openOutputStream(d.uri, "w")
+        override fun write(doc: DocumentFile, src: File) {
+            out(doc)?.use { o -> src.inputStream().use { it.copyTo(o) } } ?: throw IllegalStateException("cannot write ${doc.name}")
+        }
+        override fun copy(from: DocumentFile, to: DocumentFile) {
+            (cr.openInputStream(from.uri) ?: throw IllegalStateException("cannot read ${from.name}")).use { i ->
+                out(to)?.use { o -> i.copyTo(o) } ?: throw IllegalStateException("cannot write ${to.name}")
+            }
+        }
+        override fun length(doc: DocumentFile): Long = (DocumentFile.fromSingleUri(context, doc.uri) ?: doc).length()
+        override fun rename(doc: DocumentFile, name: String): DocumentFile? =
+            doc.takeIf { runCatching { it.renameTo(name) }.getOrDefault(false) } // TreeDocumentFile updates its uri
+        override fun delete(doc: DocumentFile): Boolean = runCatching { doc.delete() }.getOrDefault(false)
     }
 
     /** SAF documents have no File path: copy to a temp file (named like the original, for the MIME type) before uploading. */
