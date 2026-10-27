@@ -4,6 +4,10 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
+import com.tom_roush.pdfbox.cos.COSArray
+import com.tom_roush.pdfbox.cos.COSBase
+import com.tom_roush.pdfbox.cos.COSDictionary
+import com.tom_roush.pdfbox.cos.COSName
 import com.tom_roush.pdfbox.multipdf.PDFMergerUtility
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDPage
@@ -37,16 +41,55 @@ object PdfOps {
      * (used by [removeSecurity]) and a later [PDDocument.protect] (used by [protect]) both override this.
      */
     internal fun load(src: File, password: String? = null): PDDocument {
-        val doc = if (password.isNullOrEmpty()) PDDocument.load(src) else PDDocument.load(src, password)
-        if (doc.isEncrypted) {
-            val pw = password.orEmpty()
-            runCatching {
-                val ap = doc.currentAccessPermission ?: AccessPermission()
-                doc.protect(StandardProtectionPolicy(pw, pw, ap).apply { encryptionKeyLength = 128; setPreferAES(true) })
-            }
-        }
+        val doc = loadRaw(src, password)
+        reprotect(doc, password)
         return doc
     }
+
+    /** Load without re-protecting: for incremental saves, which keep the original security handler ([SignedSave]). */
+    internal fun loadRaw(src: File, password: String? = null): PDDocument =
+        if (password.isNullOrEmpty()) PDDocument.load(src) else PDDocument.load(src, password)
+
+    /** Re-protect an encrypted [doc] (loaded with [loadRaw]) like its source, so a full save keeps its protection. */
+    internal fun reprotect(doc: PDDocument, password: String?) {
+        if (doc.isEncrypted) runCatching { doc.protect(keepProtection(doc, password)) }
+    }
+
+    /**
+     * The protection a full save gives an encrypted document (audit DI-28 / AN-29): the source's key length, cipher
+     * (RC4 or AES) and permission bits (/P), never a downgrade.
+     * - Opened with the owner password: that owner password is kept. The user password is recovered for RC4/AES-128
+     *   files (revision 2–4: it is stored in /O under the owner key) or kept when it is empty; for an AES-256 file
+     *   with a non-empty user password it cannot be recovered, so the owner password is used for both (limitation).
+     * - Opened with the user password (or none): the owner password is unknown. A random one is set, so the
+     *   restrictions stay in force; the original owner password no longer lifts them (limitation; the original
+     *   is never changed by this, only the saved output).
+     */
+    internal fun keepProtection(doc: PDDocument, password: String?): StandardProtectionPolicy {
+        val enc = doc.encryption
+        val pw = password.orEmpty()
+        val bits = enc.length.let { if (enc.version <= 1 || it <= 40) 40 else if (it <= 128) 128 else 256 }
+        val cfm = runCatching { enc.stdCryptFilterDictionary?.cryptFilterMethod?.name }.getOrNull()
+        val aes = bits == 256 || (enc.version >= 4 && cfm != null && cfm.startsWith("AESV"))
+        val perms = AccessPermission(enc.permissions)
+        val asOwner = doc.currentAccessPermission?.isOwnerPermission == true
+        val (user, owner) = if (asOwner) (recoverUserPassword(doc, pw) ?: pw) to pw
+            else pw to java.util.UUID.randomUUID().toString().replace("-", "")
+        return StandardProtectionPolicy(owner, user, perms).apply { encryptionKeyLength = bits; setPreferAES(aes) }
+    }
+
+    /** The user password of a document opened with its owner password [ownerPw], when it can be determined. */
+    private fun recoverUserPassword(doc: PDDocument, ownerPw: String): String? = runCatching {
+        val enc = doc.encryption
+        val h = com.tom_roush.pdfbox.pdmodel.encryption.StandardSecurityHandler()
+        val id = (doc.document.documentID?.getObject(0) as? com.tom_roush.pdfbox.cos.COSString)?.bytes ?: ByteArray(0)
+        val len = if (enc.version == 1) 5 else enc.length / 8
+        fun isUser(c: String) = h.isUserPassword(c.toByteArray(Charsets.ISO_8859_1), enc.userKey, enc.ownerKey, enc.permissions, id, enc.revision, len, enc.isEncryptMetaData)
+        if (enc.revision >= 5) return@runCatching "".takeIf { isUser(it) }
+        val padded = h.getUserPassword(ownerPw.toByteArray(Charsets.ISO_8859_1), enc.ownerKey, enc.revision, len)
+        // strip the standard 32-byte padding (Algorithm 2 step a): the password is the part before it
+        (0..padded.size).map { String(padded, 0, it, Charsets.ISO_8859_1) }.firstOrNull { isUser(it) }
+    }.getOrNull()
 
     /** Write [doc] to [out] safely even when [out] is the file the document was loaded from. */
     private fun saveTo(doc: PDDocument, out: File) {
@@ -114,7 +157,74 @@ object PdfOps {
         }
     }
 
-    suspend fun reorder(src: File, order: List<Int>, out: File, password: String? = null) = keepPages(src, order, out, password)
+    /**
+     * Reorder (and, for paste, duplicate) the pages of [src] in place on its own page tree (audit AN-22): the
+     * catalog — outline, AcroForm, page labels, named destinations, structure tree — and the encryption stay, unlike
+     * [keepPages], which builds a new document and is meant for extract / split only.
+     */
+    suspend fun reorder(src: File, order: List<Int>, out: File, password: String? = null) = withContext(Dispatchers.IO) {
+        load(src, password).use { doc ->
+            arrangeInPlace(doc, order)
+            saveTo(doc, out)
+        }
+    }
+
+    private val INHERITABLE = listOf(COSName.RESOURCES, COSName.MEDIA_BOX, COSName.CROP_BOX, COSName.ROTATE)
+
+    /**
+     * Make the page tree of [doc] hold the pages [order] (zero-based indexes into the current pages, each at least
+     * once; an index listed again gets a copy of that page). The same page dictionaries are kept, so outline / link destinations and form
+     * widgets still point at them. The tree is flattened under its root after the inheritable attributes were pushed
+     * down to each page.
+     */
+    internal fun arrangeInPlace(doc: PDDocument, order: List<Int>) {
+        val pages = (0 until doc.numberOfPages).map { doc.getPage(it).cosObject }
+        // every page stays (deleting is [deletePages]); indexes may repeat (paste)
+        require(order.all { it in pages.indices } && order.toSet().size == pages.size) { "bad page order" }
+        val root = doc.pages.cosObject
+        for (p in pages) for (key in INHERITABLE) if (!p.containsKey(key)) inherited(p, key)?.let { p.setItem(key, it) }
+        val used = HashSet<Int>()
+        val kids = COSArray()
+        for (i in order) {
+            val page = if (used.add(i)) pages[i] else copyPage(pages[i])
+            page.setItem(COSName.PARENT, root)
+            kids.add(page)
+        }
+        root.setItem(COSName.KIDS, kids)
+        root.setInt(COSName.COUNT, kids.size())
+    }
+
+    private fun inherited(page: COSDictionary, key: COSName): COSBase? {
+        var node = page.getDictionaryObject(COSName.PARENT) as? COSDictionary
+        var depth = 0
+        while (node != null && depth++ < 64) {
+            node.getDictionaryObject(key)?.let { return it }
+            node = node.getDictionaryObject(COSName.PARENT) as? COSDictionary
+        }
+        return null
+    }
+
+    /** A pasted duplicate: shares content and resources; gets its own copies of the non-form annotations. */
+    private fun copyPage(page: COSDictionary): COSDictionary {
+        val copy = COSDictionary()
+        for ((k, v) in page.entrySet()) if (k != COSName.ANNOTS && k != COSName.STRUCT_PARENTS && k != COSName.B) copy.setItem(k, v)
+        val annots = page.getDictionaryObject(COSName.ANNOTS) as? COSArray
+        if (annots != null) {
+            val out = COSArray()
+            for (i in 0 until annots.size()) {
+                val a = annots.getObject(i) as? COSDictionary ?: continue
+                val sub = a.getNameAsString(COSName.SUBTYPE)
+                if (sub == "Widget" || sub == "Popup") continue   // form fields belong to one page; popups to their parent
+                val c = COSDictionary()
+                for ((k, v) in a.entrySet()) if (k.name != "Popup" && k != COSName.STRUCT_PARENT) c.setItem(k, v)
+                c.setItem(COSName.P, copy)
+                out.add(c)
+            }
+            if (out.size() > 0) copy.setItem(COSName.ANNOTS, out)
+        }
+        return copy
+    }
+
 
     /** Split into one file per page or per range chunk. Returns the files created. */
     suspend fun split(src: File, outDir: File, baseName: String, chunk: Int = 1): List<File> = withContext(Dispatchers.IO) {
