@@ -59,4 +59,24 @@ object OcgState {
         d.setItem(OFF, offArr); d.setItem(ON, onArr)
         return true
     }
+
+    /**
+     * Apply [ops] to [src] and write [out]: a signed file gets an incremental update (its signatures stay valid),
+     * others a full save re-protected like the source. Unchanged configuration: [out] is a copy of [src].
+     */
+    fun applyFile(src: java.io.File, out: java.io.File, password: String?, ops: List<Pair<String, List<String>>>, preserveRB: Boolean) {
+        com.smartdocs.editor.core.pdf.PdfOps.loadRaw(src, password).use { doc ->
+            if (!apply(doc, ops, preserveRB)) { src.copyTo(out, overwrite = true); return }
+            if (com.smartdocs.editor.core.pdf.SignedSave.isSigned(doc)) {
+                (doc.documentCatalog.cosObject.getDictionaryObject(OCPROPERTIES) as? COSDictionary)?.let { ocp ->
+                    ocp.isNeedToBeUpdated = true
+                    (ocp.getDictionaryObject(COSName.D) as? COSDictionary)?.isNeedToBeUpdated = true
+                }
+                com.smartdocs.editor.core.pdf.SignedSave.saveIncremental(doc, emptyList(), out)
+            } else {
+                com.smartdocs.editor.core.pdf.PdfOps.reprotect(doc, password)
+                doc.save(out)
+            }
+        }
+    }
 }

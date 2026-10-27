@@ -18,6 +18,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Redo
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.material.icons.filled.Calculate
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.CheckBox
 import androidx.compose.material.icons.filled.Clear
@@ -68,9 +70,13 @@ import kotlinx.coroutines.launch
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun InPageFormBar(reader: ReaderState, modifier: Modifier = Modifier) {
+fun InPageFormBar(reader: ReaderState, modifier: Modifier = Modifier, onOpen: (java.io.File, Int) -> Unit = { _, _ -> }, onSign: (java.io.File) -> Unit = {}) {
     val fs = remember(reader) { FormFill.of(reader) }
     val scope = rememberCoroutineScope()
+    // GoToR / Launch of another PDF: the reader opens it (hook in ReaderScreen)
+    val open = fs.openRequest
+    LaunchedEffect(open) { if (open != null) { fs.openRequest = null; onOpen(open.first, open.second) } }
+    FormRuntimeDialogs(fs, onSign)
     val w = fs.active
     val enabled = fs.enabled
     // choosing a tool, a placement or a selection ends field editing
@@ -82,6 +88,7 @@ fun InPageFormBar(reader: ReaderState, modifier: Modifier = Modifier) {
             FieldBar(fs, w, Modifier.align(Alignment.BottomCenter))
         }
         val msg = fs.message
+        if (w == null && enabled) FormStatusStrip(fs, Modifier.align(Alignment.BottomCenter))
         if (msg != null && w == null) {
             LaunchedEffect(msg) { delay(4000); if (fs.message == msg) fs.message = null }
             Surface(Modifier.align(Alignment.BottomCenter).padding(16.dp).navigationBarsPadding(), shape = MaterialTheme.shapes.medium,
@@ -180,6 +187,9 @@ private fun FieldBar(fs: FormFillState, w: FWidget, modifier: Modifier) {
                 if (isDate) IconButton(onClick = { fs.datePickerFor = w.name }) { Icon(Icons.Default.CalendarMonth, stringResource(R.string.f5_pick_date)) }
                 if (w.kind == WKind.CHECK || w.kind == WKind.RADIO) IconButton(onClick = { fs.toggle(w) }) { Icon(Icons.Default.CheckBox, stringResource(R.string.f5_toggle)) }
                 if (w.kind == WKind.COMBO || w.kind == WKind.LIST) IconButton(onClick = { fs.menuFor = w.id }) { Icon(Icons.Default.ArrowDropDown, stringResource(R.string.f5_choose)) }
+                if (w.fileSelect) IconButton(onClick = { fs.filePickFor = w.name }) { Icon(Icons.Default.AttachFile, stringResource(R.string.f8_pick_file)) }
+                if (!com.smartdocs.editor.core.forms5.FormPrefs.autoCalculate && (fs.model.calc.hasCalculations || fs.scripts?.hasCalculations == true))
+                    IconButton(onClick = { fs.calculateNow(); fs.message = FormMessage.Calculated }) { Icon(Icons.Default.Calculate, stringResource(R.string.f8_calc_now)) }
                 IconButton(onClick = { fs.setValue(w.name, if (w.kind == WKind.CHECK) "false" else "") }) { Icon(Icons.Default.Clear, stringResource(R.string.f5_clear)) }
                 IconButton(onClick = { fs.undo() }, enabled = fs.canUndo) { Icon(Icons.AutoMirrored.Filled.Undo, stringResource(R.string.f5_undo)) }
                 IconButton(onClick = { fs.redo() }, enabled = fs.canRedo) { Icon(Icons.AutoMirrored.Filled.Redo, stringResource(R.string.f5_redo)) }
@@ -215,4 +225,9 @@ private fun messageText(m: FormMessage): String = when (m) {
     FormMessage.PrintHint -> stringResource(R.string.f5_print_hint)
     is FormMessage.Reset -> stringResource(R.string.f5_reset_done, m.count)
     FormMessage.RowAdded -> stringResource(R.string.f5_row_added)
+    FormMessage.RowRemoved -> stringResource(R.string.f8_row_removed)
+    is FormMessage.NotFound -> stringResource(R.string.f8_not_found, m.what)
+    is FormMessage.Unsupported -> stringResource(R.string.f8_unsupported, m.what)
+    is FormMessage.Imported -> stringResource(R.string.f8_imported, m.count)
+    FormMessage.Calculated -> stringResource(R.string.f8_calculated)
 }

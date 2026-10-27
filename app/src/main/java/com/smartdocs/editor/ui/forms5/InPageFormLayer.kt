@@ -19,6 +19,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -70,6 +71,7 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.smartdocs.editor.LocalSettings
 import com.smartdocs.editor.R
 import com.smartdocs.editor.core.forms.KeystrokeKind
@@ -84,8 +86,7 @@ import kotlinx.coroutines.withContext
 import kotlin.math.max
 import kotlin.math.roundToInt
 
-private val HIGHLIGHT = Color(0x3D7C9CFF)
-private val REQUIRED = Color(0xCCE53935)
+// field highlight and required-field colours come from Settings -> Forms (FormPrefs)
 
 /**
  * The form layer of one reader page (hook: one call inside PageCanvas's page Box, after the Canvas).
@@ -98,11 +99,14 @@ fun InPageFormLayer(reader: ReaderState, pageIndex: Int, g: PageGeometry) {
     LaunchedEffect(reader.file, reader.session, reader.renderVersion) { fs.ensureLoaded() }
     val model = fs.model
     val widgets = remember(model, pageIndex) { model.onPage(pageIndex) }.filter { !fs.isHidden(it) }
-    val repeats = remember(model, pageIndex) { model.xfaRepeats.filter { it.page == pageIndex && it.canAdd } }
+    val repeats = remember(model, pageIndex) { model.xfaRepeats.filter { it.page == pageIndex && (it.canAdd || it.count > 1) } }
     if (widgets.isEmpty() && repeats.isEmpty()) return
     val density = LocalDensity.current
     val accent = MaterialTheme.colorScheme.primary
     val highlight = LocalSettings.current.highlightFields
+    LaunchedEffect(Unit) { com.smartdocs.editor.core.forms5.FormPrefs.load(reader.context) }
+    val HIGHLIGHT = Color(com.smartdocs.editor.core.forms5.FormPrefs.highlightColor)
+    val REQUIRED = Color(com.smartdocs.editor.core.forms5.FormPrefs.requiredColor)
     val night = reader.nightMode
     val enabled = fs.enabled
     val rects = remember(widgets, g) { widgets.associate { w -> w.id to g.pdfRectToLayout(RectF(w.box.left, w.box.top, w.box.right, w.box.bottom)) } }
@@ -151,13 +155,14 @@ fun InPageFormLayer(reader: ReaderState, pageIndex: Int, g: PageGeometry) {
                         drawPending(fs, w, frame, if (fill != null && !night) fill else bg, if (night) fg else ink, g.scale, tm, thumbs[w.name + "|" + fs.images[w.name]?.path])
                     }
                 }
-                if (w.name in fs.errors) drawRect(REQUIRED, r.topLeft, r.size, style = Stroke(3f))
+                if (w.name in fs.errors) drawRect(REQUIRED.copy(alpha = 1f), r.topLeft, r.size, style = Stroke(3f))
                 if (w.id == active?.id || active?.let { a -> a.kind == WKind.RADIO && w.name == a.name } == true) drawRect(accent, r.topLeft, r.size, style = Stroke(2.5f))
             }
         }
         if (enabled) widgets.forEach { w ->
             if (fs.isReadOnly(w) && w.kind != WKind.BUTTON) return@forEach
-            if (w.kind == WKind.SIGNATURE || (w.kind == WKind.BUTTON && w.action == null) || fs.isCalculated(w.name) || w.id == editing?.id) return@forEach
+            if ((w.kind == WKind.BUTTON && w.action == null && w.triggers.isEmpty()) || fs.isCalculated(w.name) || w.id == editing?.id) return@forEach
+            if (w.kind == WKind.SIGNATURE && fs.isReadOnly(w)) return@forEach
             val r = rects[w.id] ?: return@forEach
             val minPx = if (w.kind == WKind.CHECK || w.kind == WKind.RADIO) with(density) { 36.dp.toPx() } else 0f
             val t = expand(r, minPx)
@@ -177,9 +182,15 @@ fun InPageFormLayer(reader: ReaderState, pageIndex: Int, g: PageGeometry) {
                     .size(with(density) { r.width.toDp() }, 28.dp),
                 contentAlignment = Alignment.CenterEnd,
             ) {
-                FilledTonalButton(onClick = { fs.addRow(rp) }, enabled = !fs.busy, contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
-                    modifier = Modifier.height(28.dp)) {
-                    Icon(Icons.Default.Add, null, Modifier.size(16.dp)); Text(stringResource(R.string.f5_add_row), style = MaterialTheme.typography.labelMedium)
+                androidx.compose.foundation.layout.Row(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp)) {
+                    if (rp.count > 1) androidx.compose.material3.OutlinedButton(onClick = { fs.removeRow(rp) }, enabled = !fs.busy,
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp), modifier = Modifier.height(28.dp)) {
+                        Icon(Icons.Default.Remove, null, Modifier.size(16.dp)); Text(stringResource(R.string.f8_remove_row), style = MaterialTheme.typography.labelMedium)
+                    }
+                    if (rp.canAdd) FilledTonalButton(onClick = { fs.addRow(rp) }, enabled = !fs.busy, contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
+                        modifier = Modifier.height(28.dp)) {
+                        Icon(Icons.Default.Add, null, Modifier.size(16.dp)); Text(stringResource(R.string.f5_add_row), style = MaterialTheme.typography.labelMedium)
+                    }
                 }
             }
         }
@@ -229,7 +240,7 @@ private fun DrawScope.drawPending(fs: FormFillState, w: FWidget, r: Rect, bg: Co
             if (text.isEmpty()) return
             val color = if (d.red) Color(0xFFD32F2F) else fg
             val px = if (w.fontSize > 0f) w.fontSize * scale else if (w.multiline) 11f * scale else (r.height * 0.6f).coerceAtMost(14f * scale)
-            val style = TextStyle(fontSize = px.toSp(), color = color, textDirection = TextDirection.Content,
+            var style = TextStyle(fontSize = px.toSp(), color = color, textDirection = TextDirection.Content,
                 textAlign = when (w.quadding) { 1 -> TextAlign.Center; 2 -> TextAlign.Right; else -> if (rtlText(text)) TextAlign.Right else TextAlign.Left })
             val pad = 2f * scale.coerceAtLeast(0.5f)
             val maxW = (r.width - 2 * pad).roundToInt().coerceAtLeast(1)
@@ -240,6 +251,17 @@ private fun DrawScope.drawPending(fs: FormFillState, w: FWidget, r: Rect, bg: Co
                     drawText(l, topLeft = Offset(r.left + i * cell, r.top + (r.height - l.size.height) / 2f))
                 }
                 return
+            }
+            if (w.fontSize <= 0f && !w.multiline) {
+                // /DA size 0 (auto): shrink until the text fits the width, as viewers do for auto-sized fields
+                var fit = style
+                var guard = 0
+                while (guard++ < 12) {
+                    val probe = tm.measure(AnnotatedString(text), fit, maxLines = 1, softWrap = false)
+                    if (probe.size.width <= maxW || fit.fontSize.value <= 4f) break
+                    fit = fit.copy(fontSize = (fit.fontSize.value * maxOf(0.5f, maxW.toFloat() / probe.size.width) * 0.98f).coerceAtLeast(4f).sp)
+                }
+                style = fit
             }
             val layout = tm.measure(AnnotatedString(text), style, overflow = TextOverflow.Clip, softWrap = w.multiline,
                 maxLines = if (w.multiline) Int.MAX_VALUE else 1,

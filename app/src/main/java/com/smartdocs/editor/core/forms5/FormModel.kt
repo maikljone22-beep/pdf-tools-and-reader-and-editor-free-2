@@ -358,7 +358,7 @@ object FormModelLoader {
         allJs += docActions.values; allJs += dScripts
         jsScripts.values.forEach { listOfNotNull(it.keystroke, it.format, it.validate, it.calculate).forEach { c -> allJs += c } }
         val words = if (allJs.any { it.contains("getPageNthWord") || it.contains("getPageNumWords") }) runCatching { pageWords(doc) }.getOrDefault(emptyList()) else emptyList()
-        val formJs = if (jsScripts.isEmpty() && !actionJs) FormJs.EMPTY else FormJs(jsFields.map { it.copy(calcIndex = coIndex[it.name] ?: -1) }, jsScripts, co,
+        val formJs = if (jsFields.isEmpty() && !actionJs) FormJs.EMPTY else FormJs(jsFields.map { it.copy(calcIndex = coIndex[it.name] ?: -1) }, jsScripts, co,
             dScripts, doc.numberOfPages, hasActionJs = actionJs, pageWords = words)
         val repeats = if (generated) runCatching { XfaRepeat.parse(doc.documentInformation?.getCustomMetadataValue(XfaGenerated.KEY_REPEAT)) }.getOrDefault(emptyList()) else emptyList()
         return FormModel(widgets, values, calc, xfa, tabs, generated, formJs, repeats, docActions)
