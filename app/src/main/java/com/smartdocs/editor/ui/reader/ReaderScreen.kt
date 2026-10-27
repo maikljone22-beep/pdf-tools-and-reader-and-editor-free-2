@@ -1,5 +1,6 @@
 package com.smartdocs.editor.ui.reader
 
+import com.smartdocs.editor.ui.signature.SigFieldSheet
 import android.Manifest
 import android.net.Uri
 import android.os.Build
@@ -322,7 +323,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
             PanelsContent(state, shownPanel, onPanel = { panel = it }, onJump = { state.jumpTo(it); panel = null }, onAiOutline = { panel = null; nav.navigate(Routes.tool("ai", state.fileUri)) }, onClose = { panel = null })
         } }
         com.smartdocs.editor.ui.forms5.InPageFormBar(state, Modifier.align(Alignment.BottomCenter))   // MODULE_forms5
-        com.smartdocs.editor.ui.signature.SigFieldSheet(state, nav)   // Nitro signature-field actions
+        SigFieldSheet(state, nav)   // Nitro signature-field actions + signed/certified bar
     }
 
     // ---- dialogs & sheets ----
@@ -397,7 +398,7 @@ private fun ToolHint(tool: ReaderTool, modifier: Modifier = Modifier) {
     val text = stringResource(
         when (tool) {
             ReaderTool.HIGHLIGHT, ReaderTool.UNDERLINE, ReaderTool.STRIKEOUT, ReaderTool.SQUIGGLY -> R.string.rd_hint_markup
-            ReaderTool.INK, ReaderTool.LINE, ReaderTool.ARROW, ReaderTool.RECT, ReaderTool.OVAL -> R.string.rd_hint_draw
+            ReaderTool.INK, ReaderTool.LINE, ReaderTool.ARROW, ReaderTool.RECT, ReaderTool.OVAL, ReaderTool.FS_RRECT -> R.string.rd_hint_draw
             ReaderTool.ERASER -> R.string.rd_hint_eraser
             ReaderTool.MEASURE -> R.string.rd_hint_measure
             ReaderTool.LINK -> R.string.rd_hint_link

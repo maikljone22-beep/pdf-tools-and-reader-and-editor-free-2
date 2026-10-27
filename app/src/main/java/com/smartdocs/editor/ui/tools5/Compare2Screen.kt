@@ -125,7 +125,7 @@ fun Compare2Screen(nav: NavHostController, uri: String?) {
     val settings = LocalSettings.current
     val snackbar = remember { SnackbarHostState() }
     var old by remember { mutableStateOf(fileOf(uri)) }
-    var new by remember { mutableStateOf<File?>(null) }
+    var new by remember { mutableStateOf<File?>(com.smartdocs.editor.ui.signature.SignedCompare.take(old)) }   // signed version vs current
     var oldPw by remember { mutableStateOf<String?>(null) }
     var newPw by remember { mutableStateOf<String?>(null) }
     var ask by remember { mutableStateOf(0) }   // 1 = old, 2 = new

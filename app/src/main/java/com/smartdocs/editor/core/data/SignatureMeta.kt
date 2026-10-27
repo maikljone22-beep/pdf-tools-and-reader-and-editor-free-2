@@ -29,6 +29,17 @@ data class SignatureMeta(
     val salt: String? = null,
     val hash: String? = null,
     val iterations: Int = 0,
+    // nitro-fillsign2
+    /** User label shown in Manage Signatures (empty = "Signature" / "Initials"). */
+    val name: String = "",
+    /** Position in the palette (Manage Signatures move up / down); -1 = not ordered yet (newest first). */
+    val order: Int = -1,
+    /** Default placement width in points ("Set current size as default" / "Keep original size"); 0 = automatic. */
+    val widthPt: Float = 0f,
+    /** Temporary signature: deleted on the next app start, never synced or exported. */
+    val temporary: Boolean = false,
+    /** Bumped when the image is replaced or recoloured in place (UI cache key). */
+    val rev: Int = 0,
 ) {
     val locked: Boolean get() = salt != null && hash != null && iterations > 0
 }
@@ -48,6 +59,11 @@ object SignatureMetaStore {
             val o = JSONObject()
             if (m.lastUsed > 0) o.put("used", m.lastUsed)
             if (m.locked) o.put("salt", m.salt).put("hash", m.hash).put("iter", m.iterations)
+            if (m.name.isNotEmpty()) o.put("name", m.name)
+            if (m.order >= 0) o.put("order", m.order)
+            if (m.widthPt > 0f) o.put("width", m.widthPt.toDouble())
+            if (m.temporary) o.put("temp", true)
+            if (m.rev > 0) o.put("rev", m.rev)
             if (o.length() > 0) put(path, o)
         }
     }.toString()
@@ -58,8 +74,26 @@ object SignatureMetaStore {
             val e = o.optJSONObject(k) ?: return@mapNotNull null
             val salt = e.optString("salt").ifBlank { null }; val hash = e.optString("hash").ifBlank { null }; val iter = e.optInt("iter")
             val lock = salt != null && hash != null && iter > 0
-            k to SignatureMeta(e.optLong("used"), if (lock) salt else null, if (lock) hash else null, if (lock) iter else 0)
+            k to SignatureMeta(e.optLong("used"), if (lock) salt else null, if (lock) hash else null, if (lock) iter else 0,
+                name = e.optString("name"), order = e.optInt("order", -1), widthPt = e.optDouble("width", 0.0).toFloat().takeIf { it.isFinite() && it > 0f } ?: 0f,
+                temporary = e.optBoolean("temp"), rev = e.optInt("rev"))
         }.toMap()
+    }
+
+    /**
+     * Palette order (nitro-fillsign2): signatures with a stored [SignatureMeta.order] first (ascending), then the
+     * others in the given order ([paths] comes newest first from Room).
+     */
+    fun ordered(map: Map<String, SignatureMeta>, paths: List<String>): List<String> {
+        val (withOrder, rest) = paths.partition { (map[it]?.order ?: -1) >= 0 }
+        return withOrder.sortedBy { map[it]!!.order } + rest
+    }
+
+    /** [paths] (already in palette order) with the entry at [index] moved by [delta] (-1 up, +1 down); unchanged at the ends. */
+    fun move(paths: List<String>, index: Int, delta: Int): List<String> {
+        val to = index + delta
+        if (index !in paths.indices || to !in paths.indices) return paths
+        return paths.toMutableList().apply { add(to, removeAt(index)) }
     }
 
     /** Paths sorted by most recent use (only used ones), limited to [max]. */
@@ -105,14 +139,42 @@ object SignatureMetaStore {
     internal fun setLock(context: Context, path: String, salt: String?, hash: String?, iterations: Int) =
         update(context) { m -> m + (path to (m[path] ?: SignatureMeta()).copy(salt = salt, hash = hash, iterations = iterations)) }
 
-    /** A copy of a signature (e.g. its black-and-white version) inherits the lock of the original. */
+    /** An imported locked signature: its lock record (and name) from the data bundle. */
+    fun setLockRecord(context: Context, path: String, lock: SignatureMeta) =
+        update(context) { m -> m + (path to (m[path] ?: SignatureMeta()).copy(salt = lock.salt, hash = lock.hash, iterations = lock.iterations, name = lock.name)) }
+
+    /** A copy of a signature (e.g. its black-and-white version) inherits the lock (and the temporary flag) of the original. */
     fun copyLock(context: Context, from: String, to: String) {
         val src = get(context, from)
         if (src.locked) setLock(context, to, src.salt, src.hash, src.iterations)
+        if (src.temporary) setTemporary(context, to, true)
     }
 
     /** Forget a deleted signature. */
     fun remove(context: Context, path: String) = update(context) { it - path }
+
+    // ---------- nitro-fillsign2 ----------
+
+    private fun edit(context: Context, path: String, f: (SignatureMeta) -> SignatureMeta) =
+        update(context) { m -> m + (path to f(m[path] ?: SignatureMeta())) }
+
+    fun setName(context: Context, path: String, name: String) = edit(context, path) { it.copy(name = name.trim().take(60)) }
+
+    /** Default placement width in points (0 = automatic). */
+    fun setWidth(context: Context, path: String, widthPt: Float) = edit(context, path) { it.copy(widthPt = widthPt.coerceAtLeast(0f)) }
+
+    fun setTemporary(context: Context, path: String, temporary: Boolean) = edit(context, path) { it.copy(temporary = temporary) }
+
+    /** The image file at [path] was rewritten (recolour / replace). */
+    fun bumpRev(context: Context, path: String) = edit(context, path) { it.copy(rev = it.rev + 1) }
+
+    /** Stores the palette order of [paths] (all signatures, first = top). */
+    fun setOrder(context: Context, paths: List<String>) = update(context) { m ->
+        m + paths.mapIndexed { i, p -> p to (m[p] ?: SignatureMeta()).copy(order = i) }
+    }
+
+    /** Paths of temporary signatures (deleted at the next start by [TemporarySignatures.cleanUp]). */
+    fun temporaryPaths(context: Context): List<String> = ensureLoaded(context).filterValues { it.temporary }.keys.toList()
 }
 
 /**
@@ -165,6 +227,12 @@ object SignatureLock {
         synchronized(this) {
             if (ok) failures = 0 else if (++failures >= MAX_TRIES) { failures = 0; blockedUntil = System.currentTimeMillis() + LOCKOUT_MS }
         }
+        // nitro-fillsign2: decrypt an imported locked signature / refresh its encrypted copy for the data bundle
+        if (ok) withContext(Dispatchers.IO) {
+            val had = File(path).exists()
+            runCatching { LockedSignatureFiles.sync(File(path), secret) }
+            if (!had && File(path).exists()) SignatureMetaStore.bumpRev(context, path)      // the card shows the decrypted image
+        }
         return ok
     }
 
@@ -172,8 +240,13 @@ object SignatureLock {
     suspend fun lock(context: Context, path: String, secret: CharArray) {
         val (salt, hash, iter) = withContext(Dispatchers.Default) { create(secret) }
         SignatureMetaStore.setLock(context, path, salt, hash, iter)
+        // nitro-fillsign2: encrypted copy under the same PIN, the only form a locked signature leaves the device in
+        withContext(Dispatchers.IO) { runCatching { LockedSignatureFiles.write(File(path), secret) } }
     }
 
     /** Removes the lock; the caller must have unlocked first. */
-    fun clear(context: Context, path: String) = SignatureMetaStore.setLock(context, path, null, null, 0)
+    fun clear(context: Context, path: String) {
+        SignatureMetaStore.setLock(context, path, null, null, 0)
+        LockedSignatureFiles.blobOf(File(path)).delete()
+    }
 }

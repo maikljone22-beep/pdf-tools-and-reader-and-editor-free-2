@@ -42,6 +42,8 @@ fun AppDataScreen(nav: NavHostController) {
     var resumeSync by remember { mutableStateOf(false) }
 
     fun summary(s: AppDataBundle.Summary) = ctx.getString(R.string.sh5_appdata_added, s.signatures, s.stamps, s.fields, s.tags, s.favorites)
+    // nitro-fillsign2: locked signatures without an up-to-date encrypted copy stay on this device
+    fun lockedNote(n: Int) = if (n > 0) "\n" + ctx.resources.getQuantityString(R.plurals.nf2_locked_not_included, n, n) else ""
 
     val consent = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { res ->
         if (res.resultCode == Activity.RESULT_OK) { runCatching { AppDataSync.finishAuthorization(ctx, res.data) }; resumeSync = true }
@@ -54,7 +56,7 @@ fun AppDataScreen(nav: NavHostController) {
                 .onSuccess { o ->
                     when (o) {
                         is AppDataSync.Outcome.NeedsUi -> { consent.launch(IntentSenderRequest.Builder(o.pendingIntent.intentSender).build()); return@launch }
-                        is AppDataSync.Outcome.Done -> Toast.makeText(ctx, ctx.getString(R.string.sh5_appdata_synced, o.imported) + "\n" + summary(o.added), Toast.LENGTH_LONG).show()
+                        is AppDataSync.Outcome.Done -> Toast.makeText(ctx, ctx.getString(R.string.sh5_appdata_synced, o.imported) + "\n" + summary(o.added) + lockedNote(AppDataBundle.lockedNotExportable(ctx)), Toast.LENGTH_LONG).show()
                     }
                 }
                 .onFailure { Toast.makeText(ctx, it.message ?: it.toString(), Toast.LENGTH_LONG).show() }
@@ -68,9 +70,10 @@ fun AppDataScreen(nav: NavHostController) {
             busy = true
             runCatching {
                 val tmp = File(ctx.cacheDir, "appdata_export.zip")
-                AppDataBundle.export(ctx, tmp)
+                val built = AppDataBundle.export(ctx, tmp)
                 withContext(Dispatchers.IO) { ctx.contentResolver.openOutputStream(uri)?.use { o -> tmp.inputStream().use { it.copyTo(o) } }; tmp.delete() }
-            }.onSuccess { Toast.makeText(ctx, ctx.getString(R.string.sh5_exported), Toast.LENGTH_SHORT).show() }
+                built.summary.lockedSkipped
+            }.onSuccess { skipped -> Toast.makeText(ctx, ctx.getString(R.string.sh5_exported) + lockedNote(skipped), if (skipped > 0) Toast.LENGTH_LONG else Toast.LENGTH_SHORT).show() }
                 .onFailure { Toast.makeText(ctx, it.message ?: it.toString(), Toast.LENGTH_LONG).show() }
             busy = false
         }

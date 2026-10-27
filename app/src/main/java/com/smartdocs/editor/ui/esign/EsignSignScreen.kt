@@ -27,6 +27,7 @@ import androidx.navigation.NavHostController
 import com.smartdocs.editor.LocalApp
 import com.smartdocs.editor.R
 import com.smartdocs.editor.core.data.SavedSignature
+import com.smartdocs.editor.core.esign.EsignBrand
 import com.smartdocs.editor.core.esign.EsignClient
 import com.smartdocs.editor.core.esign.EsignConfig
 import com.smartdocs.editor.core.esign.EsignField
@@ -124,7 +125,8 @@ fun EsignSignScreen(nav: NavHostController, id: String, token: String) {
                 v != null -> {
                     item {
                         val me = v.request.signers.getOrNull(v.me)
-                        Text(stringResource(R.string.cn_from, v.request.sender), style = MaterialTheme.typography.titleSmall)
+                        if (EsignBrand.shows(v.request.brand)) SignerBrandHeader(v.request.brand!!, id, v.request.title, v.request.sender)
+                        else Text(stringResource(R.string.cn_from, v.request.sender), style = MaterialTheme.typography.titleSmall)
                         if (v.request.message.isNotBlank()) Text(v.request.message, style = MaterialTheme.typography.bodyMedium)
                         Spacer(Modifier.height(6.dp))
                         NoteCard(if (v.canSign) stringResource(R.string.cn_sign_hint, me?.name ?: "") else reasonText(v.reason))

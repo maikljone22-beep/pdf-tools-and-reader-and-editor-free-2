@@ -76,7 +76,8 @@ fun DrawScope.drawAnnot(a: Annot, g: PageGeometry) {
         AnnotKind.FREETEXT, AnnotKind.STAMP_TEXT -> a.rects.firstOrNull()?.let { r ->
             val s = g.pdfRectToScreen(r)
             if (a.kind == AnnotKind.STAMP_TEXT) drawRect(c, s.topLeft, s.size, style = Stroke(2f * g.scale))
-            drawTextBlock(a.text, s, a.fontSize * g.scale, c)
+            if (a.kind == AnnotKind.FREETEXT && a.comb > 0) drawCombText(a.text, a.comb, s, a.fontSize * g.scale, c)
+            else drawTextBlock(a.text, s, a.fontSize * g.scale, c)
         }
         AnnotKind.LINE, AnnotKind.ARROW -> if (a.points.size >= 2) {
             val p1 = g.pdfToScreen(a.points[0].first, a.points[0].second)
@@ -84,7 +85,14 @@ fun DrawScope.drawAnnot(a: Annot, g: PageGeometry) {
             drawLine(c, p1, p2, sw, cap = StrokeCap.Round)
             if (a.kind == AnnotKind.ARROW) drawArrowHead(p1, p2, c, sw)
         }
-        AnnotKind.RECT -> a.rects.firstOrNull()?.let { r -> val s = g.pdfRectToScreen(r); drawRect(c, s.topLeft, s.size, style = Stroke(sw)) }
+        AnnotKind.RECT -> a.rects.firstOrNull()?.let { r ->
+            val s = g.pdfRectToScreen(r)
+            if (a.corner > 0f) {
+                // nitro-fillsign2: rounded rectangle (radius clamped like the saved appearance)
+                val rad = com.smartdocs.editor.core.fillsign2.RoundRect.radius(s.width, s.height, a.corner * g.scale)
+                drawRoundRect(c, s.topLeft, s.size, androidx.compose.ui.geometry.CornerRadius(rad), style = Stroke(sw))
+            } else drawRect(c, s.topLeft, s.size, style = Stroke(sw))
+        }
         AnnotKind.OVAL -> a.rects.firstOrNull()?.let { r -> val s = g.pdfRectToScreen(r); drawOval(c, s.topLeft, s.size, style = Stroke(sw)) }
         AnnotKind.STAMP_IMAGE -> a.rects.firstOrNull()?.let { r ->
             val s = g.pdfRectToScreen(r); val img = a.image ?: return@let
@@ -121,6 +129,18 @@ fun DrawScope.drawTextBlock(text: String, box: Rect, textSizePx: Float, color: C
             if (y > box.bottom + textSizePx) return@forEach
             cv.nativeCanvas.drawText(line, x, y, paint)
             y += textSizePx * 1.3f
+        }
+    }
+}
+
+/** Comb text (nitro-fillsign2): one glyph centred in each of [cells] equal cells of [box], like the saved appearance. */
+fun DrawScope.drawCombText(text: String, cells: Int, box: Rect, textSizePx: Float, color: Color) {
+    if (text.isBlank()) return
+    drawIntoCanvas { cv ->
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = color.toArgb(); textSize = textSizePx }
+        val y = box.center.y + textSizePx * 0.35f
+        com.smartdocs.editor.core.fillsign2.CombLayout.place(text, cells, text.any { it in '؀'..'ۿ' }).forEach { (cell, ch) ->
+            cv.nativeCanvas.drawText(ch, com.smartdocs.editor.core.fillsign2.CombLayout.glyphX(box.left, box.width, cells, cell, paint.measureText(ch)), y, paint)
         }
     }
 }
