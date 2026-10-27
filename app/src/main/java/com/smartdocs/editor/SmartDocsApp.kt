@@ -25,6 +25,10 @@ class SmartDocsApp : Application() {
         runCatching { com.smartdocs.editor.core.sync.SyncLive.install(this) }                 // near-real-time sync, 15-min jobs, review notifications
         runCatching { com.smartdocs.editor.core.billing.LicenseCheckWorker.schedule(this) }   // licence re-check (no-op without LICENSE_URL)
         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch { runCatching { com.smartdocs.editor.core.share5.AppDataSync.autoSyncQuietly(this@SmartDocsApp) } }
+        // nitro-protect: the script entry points read "Run JavaScript in PDF documents" through JsPolicy
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Default).launch {
+            runCatching { settings.settings.collect { com.smartdocs.editor.core.security.JsPolicy.enabled = it.runJavaScript } }
+        }
     }
 
     companion object {

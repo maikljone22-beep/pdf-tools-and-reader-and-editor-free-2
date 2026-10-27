@@ -63,6 +63,7 @@ class MainActivity : ComponentActivity() {
                         // reopen the last document when the app is launched normally (setting "restore session")
                         com.smartdocs.editor.ui.reader.view.RestoreLastSession(nav, enabled = !openedByIntent)
                         com.smartdocs.editor.ui.cloud.DeepLinkHandler(nav)
+                        com.smartdocs.editor.ui.security.DocSecurityHost()   // nitro-protect: Internet-access / file-launch questions of documents
                         com.smartdocs.editor.core.review.ReviewPromptHost()
                         com.smartdocs.editor.core.ads.AdsConsentHost()   // share6: UMP consent; no ads ever show without it (no-op when ads are off)
                     }

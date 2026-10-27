@@ -152,5 +152,15 @@ object SignatureImage {
         return if (s < 1f) Bitmap.createScaledBitmap(src, (src.width * s).toInt().coerceAtLeast(1), (src.height * s).toInt().coerceAtLeast(1), true) else src
     }
 
+    /** Monochrome copy: ink to black, alpha kept (see [SignatureMono]). */
+    fun toBlackAndWhite(src: Bitmap, threshold: Int = SignatureMono.DEFAULT_THRESHOLD): Bitmap {
+        val w = src.width; val h = src.height
+        val px = IntArray(w * h)
+        src.getPixels(px, 0, w, 0, 0, w, h)
+        val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        out.setPixels(SignatureMono.toBlackAndWhite(px, threshold), 0, w, 0, 0, w, h)
+        return out
+    }
+
     fun savePng(bmp: Bitmap, file: File) { file.outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) } }
 }

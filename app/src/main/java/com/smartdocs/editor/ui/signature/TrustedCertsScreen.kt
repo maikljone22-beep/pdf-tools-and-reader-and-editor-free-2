@@ -28,7 +28,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/** Trusted certificates: import .cer / .crt / .pem, list with details, delete. */
+/** Trusted certificates: import .cer / .crt / .pem, list with details, delete, export, request one by e-mail. */
 @Composable
 fun TrustedCertsScreen(nav: NavHostController) {
     val ctx = LocalContext.current
@@ -36,6 +36,7 @@ fun TrustedCertsScreen(nav: NavHostController) {
     var entries by remember { mutableStateOf<List<TrustedCerts.Entry>>(emptyList()) }
     var message by remember { mutableStateOf<String?>(null) }
     var confirmDelete by remember { mutableStateOf<TrustedCerts.Entry?>(null) }
+    var exporting by remember { mutableStateOf(false) }
     fun reload() { scope.launch { entries = withContext(Dispatchers.IO) { TrustedCerts.list(ctx) } } }
     LaunchedEffect(Unit) { reload() }
     val addedFmt = stringResource(R.string.g6_certs_added)
@@ -53,7 +54,12 @@ fun TrustedCertsScreen(nav: NavHostController) {
         }
     }
     Scaffold(
-        topBar = { AppTopBar(stringResource(R.string.g6_certs_title), onBack = { nav.popBackStack() }) },
+        topBar = {
+            AppTopBar(stringResource(R.string.g6_certs_title), onBack = { nav.popBackStack() }) {
+                IconButton(onClick = { requestCertificateByMail(ctx) }) { Icon(Icons.Default.ForwardToInbox, stringResource(R.string.np_request_cert)) }
+                IconButton(onClick = { exporting = true }, enabled = entries.isNotEmpty()) { Icon(Icons.Default.IosShare, stringResource(R.string.np_export_certs)) }
+            }
+        },
         floatingActionButton = {
             ExtendedFloatingActionButton(onClick = { runCatching { picker.launch(arrayOf("application/x-x509-ca-cert", "application/pkix-cert", "application/x-pem-file", "application/octet-stream", "*/*")) } },
                 icon = { Icon(Icons.Default.Add, null) }, text = { Text(stringResource(R.string.g6_certs_import)) })
@@ -81,6 +87,7 @@ fun TrustedCertsScreen(nav: NavHostController) {
             }
         }
     }
+    if (exporting) CertExportDialog(entries, onDismiss = { exporting = false })
     confirmDelete?.let { e ->
         AlertDialog(onDismissRequest = { confirmDelete = null }, title = { Text(stringResource(R.string.delete)) },
             text = { Text(DigitalSignature.friendlyName(e.cert.subjectX500Principal.name)) },
@@ -104,6 +111,8 @@ fun CertDetailsBlock(d: CertInspector.Details) {
     Text("${stringResource(R.string.g6_cert_algorithm)}: ${d.signatureAlgorithm} · ${d.publicKey}", style = small)
     if (d.selfSigned) Text(stringResource(R.string.g6_cert_self_signed), style = small, color = MaterialTheme.colorScheme.tertiary)
     Text("SHA-256: ${d.sha256}", style = MaterialTheme.typography.labelSmall, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Text("SHA-1: ${d.sha1}", style = MaterialTheme.typography.labelSmall, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    if (d.md5.isNotEmpty()) Text("MD5: ${d.md5}", style = MaterialTheme.typography.labelSmall, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
 @Composable

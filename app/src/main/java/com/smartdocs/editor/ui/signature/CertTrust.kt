@@ -28,7 +28,8 @@ fun CertTrustSection(cert: CertInspector.SigCert, onTrust: (X509Certificate) -> 
             tint = if (trusted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.tertiary)
         Spacer(Modifier.width(6.dp))
         Text(
-            if (trusted) stringResource(R.string.g6_trusted, cert.anchor ?: "") else stringResource(R.string.g6_untrusted),
+            if (trusted) stringResource(R.string.g6_trusted, cert.anchor ?: "") + (if (cert.systemAnchor) " · " + stringResource(R.string.ns_trust_system_source) else "")
+            else stringResource(R.string.g6_untrusted),
             style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f),
             color = if (trusted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.tertiary,
         )
