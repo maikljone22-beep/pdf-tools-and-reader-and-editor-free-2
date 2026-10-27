@@ -153,7 +153,6 @@ fun SignaturesScreen(nav: NavHostController) {
             dismissButton = { TextButton(onClick = { toDelete = null }) { Text(stringResource(R.string.cancel)) } },
         )
     }
-}
 
     lockFor?.let { sig -> SetSignatureLockDialog(sig.path, onDismiss = { lockFor = null }) { lockFor = null } }
 }
