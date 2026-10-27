@@ -93,6 +93,11 @@ fun NveRecoveryEffect(state: ReaderState) {
     // saved (no longer dirty): the copy is obsolete
     LaunchedEffect(state) { snapshotFlow { state.dirty }.collect { d -> if (!d) state.file?.let { NveRecovery.discard(ctx, it) } } }
     DisposableEffect(state) { onDispose { if (state.discarded) state.file?.let { NveRecovery.discard(ctx, it) } } }
+    // the crash reporter can offer to attach the document that was open
+    DisposableEffect(state.file) {
+        com.smartdocs.editor.core.util.CrashLog.currentDocument = state.file?.absolutePath
+        onDispose { com.smartdocs.editor.core.util.CrashLog.currentDocument = null }
+    }
 }
 
 /** Offered after a crash: open the recovered copy or discard it (hook at the top of the page area). */

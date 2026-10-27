@@ -77,6 +77,7 @@ fun NveToolbarCustomizeSheet(onDismiss: () -> Unit) {
                 ListItem(headlineContent = { Text(chipLabel(id)) },
                     leadingContent = { Checkbox(id !in hiddenChips, { on -> if (on) hiddenChips.remove(id) else hiddenChips.add(id); save() }) })
             }
+            item { NveUserTabsEditor() }
             item { Spacer(Modifier.height(24.dp)) }
         }
     }

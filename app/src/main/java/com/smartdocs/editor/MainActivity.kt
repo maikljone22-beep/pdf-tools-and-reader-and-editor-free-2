@@ -58,7 +58,9 @@ open class MainActivity : ComponentActivity() {   // NVE-shell: open for NveWind
                         }
                         val route by incomingRoute.collectAsStateWithLifecycle()
                         LaunchedEffect(route) { route?.let { nav.navigate(it); incomingRoute.value = null } }
-                        AppNavHost(nav)
+                        // NVE-shell: drag and drop a PDF / Office / image file onto the window opens it
+                        com.smartdocs.editor.ui.nve.shell.NveDropRoot(onFile = { f -> incoming.value = Uri.fromFile(f) }) { AppNavHost(nav) }
+                        com.smartdocs.editor.ui.nve.shell.NveTrustDialogHost()   // NVE-shell: safe-reading prompt for links / JavaScript
                         com.smartdocs.editor.ui.view5.V5ShellHost(nav)
                         // reopen the last document when the app is launched normally (setting "restore session")
                         com.smartdocs.editor.ui.reader.view.RestoreLastSession(nav, enabled = !openedByIntent)

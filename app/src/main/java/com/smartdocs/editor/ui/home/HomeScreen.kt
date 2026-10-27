@@ -54,6 +54,7 @@ private const val PREFS_HOME = "home_ui"
 @Composable
 fun HomeScreen(nav: NavHostController) {
     com.smartdocs.editor.ui.view5.WhatsNewOnce(nav)
+    com.smartdocs.editor.ui.nve.shell.NveNpsOnce()   // NVE-shell: in-app NPS survey, once after a week of use
     val app = LocalApp.current
     val ctx = LocalContext.current
     val settings = LocalSettings.current
@@ -138,6 +139,8 @@ fun HomeScreen(nav: NavHostController) {
                 }
 
                 item(key = "nve_favs") { com.smartdocs.editor.ui.nve.shell.NveHomeFavorites(nav) }   // NVE-shell: favourite tools
+                item(key = "nve_cloud") { com.smartdocs.editor.ui.nve.shell.NveHomeCloudPanel(nav) }   // NVE-shell: start-page cloud panel
+                item(key = "nve_folders") { com.smartdocs.editor.ui.nve.shell.NveHomePinnedFolders(nav) }   // NVE-shell: pinned folders
                 // ---- tool wizard (gaps6); in two-pane mode it lives in the detail pane ----
                 if (!fold.twoPane) item(key = "wizard") { com.smartdocs.editor.ui.gaps6.ToolWizardCard(onOpen = { wizard = true }) }
 
@@ -174,7 +177,7 @@ fun HomeScreen(nav: NavHostController) {
                 }
 
                 // ---- recent / tagged documents ----
-                val docs = if (selectedTag != null) tagged else recents
+                val docs = (if (selectedTag != null) tagged else recents).take(com.smartdocs.editor.ui.nve.shell.NveFolders.recentSize(ctx))   // NVE-shell: recent list size
                 item(key = "recent_title") {
                     SectionTitle(tags.firstOrNull { it.id == selectedTag }?.name ?: stringResource(R.string.recent_files)) {
                         if (docs.isNotEmpty()) IconButton(onClick = { grid = !grid; prefs.edit().putBoolean("recent_grid", grid).apply() }) {

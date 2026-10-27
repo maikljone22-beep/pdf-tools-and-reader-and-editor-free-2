@@ -78,6 +78,21 @@ fun NveShellSettingsRows() {
     GroupRow(stringResource(R.string.nl_customize_toolbar), stringResource(R.string.nl_customize_toolbar_sub), icon = Icons.Default.Tune, onClick = { toolbar = true })
     GroupRow(stringResource(R.string.nl_rename_custom_tab), NveShellPrefs.customTabName(ctx) ?: stringResource(R.string.an_custom_tab), icon = Icons.Default.Edit, onClick = { renameTab = true })
 
+    GroupDivider()
+    val v = NveShellPrefs.version.intValue
+    val recent = remember(v) { NveFolders.recentSize(ctx) }
+    GroupRow(stringResource(R.string.nl_recent_size), null, icon = Icons.Default.History)
+    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        listOf(5, 10, 20, 30, 50).forEach { n -> FilterChip(recent == n, { NveFolders.setRecentSize(ctx, n) }, label = { Text(n.toString()) }) }
+    }
+    val saveFolder = remember(v) { NveFolders.defaultSaveFolder(ctx) }
+    val pickSave = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocumentTree()) { it?.let { t -> NveFolders.setDefaultSaveFolder(ctx, t) } }
+    GroupRow(stringResource(R.string.nl_default_save_folder), saveFolder?.let { NveFolders.label(it) } ?: stringResource(R.string.nl_none), icon = Icons.Default.SaveAlt,
+        onClick = { runCatching { pickSave.launch(null) } },
+        trailing = { if (saveFolder != null) IconButton(onClick = { NveFolders.setDefaultSaveFolder(ctx, null) }) { Icon(Icons.Default.Clear, stringResource(R.string.nl_clear)) } })
+    var trust by remember { mutableStateOf(false) }
+    GroupRow(stringResource(R.string.nl_trust_title), stringResource(R.string.nl_trust_sub), icon = Icons.Default.Shield, onClick = { trust = true })
+    if (trust) NveTrustSettingsSheet { trust = false }
     if (toolbar) NveToolbarCustomizeSheet { toolbar = false }
     if (renameTab) RenameDialog(stringResource(R.string.nl_rename_custom_tab), NveShellPrefs.customTabName(ctx) ?: "", onOk = { NveShellPrefs.setCustomTabName(ctx, it) }) { renameTab = false }
 }

@@ -93,3 +93,49 @@ object PdfRepair {
     /** "<name> (repaired).pdf" */
     fun repairedName(original: String): String = original.substringBeforeLast('.', original) + " (repaired).pdf"
 }
+
+/** Offline help ranking (help chatbot fallback and "Get help on <keywords>"): article indexes by keyword overlap. */
+object HelpRank {
+    private fun words(s: String): List<String> = s.lowercase().split(Regex("[^\p{L}\p{N}]+")).filter { it.length > 1 }
+
+    fun rank(articles: List<Pair<String, String>>, query: String, max: Int = 3): List<Int> {
+        val q = words(query).toSet()
+        if (q.isEmpty()) return emptyList()
+        return articles.mapIndexed { i, (t, b) ->
+            val tw = words(t); val bw = words(b)
+            val score = q.sumOf { w -> (if (tw.any { it.startsWith(w) }) 3 else 0) + bw.count { it.startsWith(w) }.coerceAtMost(3) }
+            i to score
+        }.filter { it.second > 0 }.sortedByDescending { it.second }.take(max).map { it.first }
+    }
+}
+
+/** In-app NPS survey answers (0..10 + comment), kept locally as lines "time|score|comment". */
+object Nps {
+    fun encode(time: Long, score: Int, comment: String) = "$time|${score.coerceIn(0, 10)}|${comment.replace('\n', ' ').replace("|", "/")}"
+    fun decode(line: String): Triple<Long, Int, String>? = line.split('|', limit = 3).takeIf { it.size == 3 }?.let { p ->
+        val t = p[0].toLongOrNull() ?: return null; val s = p[1].toIntOrNull() ?: return null; Triple(t, s, p[2])
+    }
+    /** Net promoter score of [scores]: % promoters (9-10) minus % detractors (0-6). */
+    fun nps(scores: List<Int>): Int = if (scores.isEmpty()) 0 else ((scores.count { it >= 9 } - scores.count { it <= 6 }) * 100.0 / scores.size).toInt()
+    /** Ask once: after [minLaunches] launches and [minDays] days since install, never again after an answer. */
+    fun shouldAsk(launches: Int, installedAt: Long, now: Long, answered: Boolean, minLaunches: Int = 8, minDays: Int = 7): Boolean =
+        !answered && launches >= minLaunches && now - installedAt >= minDays * 24L * 3600 * 1000
+}
+
+/** "Save to Google Drive as Google Docs / Sheets / Slides": the Drive conversion target of a local file. */
+object DriveConvert {
+    const val DOC = "application/vnd.google-apps.document"
+    const val SHEET = "application/vnd.google-apps.spreadsheet"
+    const val SLIDES = "application/vnd.google-apps.presentation"
+
+    /** Google target type for [fileName] (null = Drive cannot convert it). PDFs and images become Docs (OCR). */
+    fun targetFor(fileName: String): String? = when (fileName.substringAfterLast('.', "").lowercase()) {
+        "doc", "docx", "odt", "rtf", "txt", "html", "htm", "pdf", "jpg", "jpeg", "png" -> DOC
+        "xls", "xlsx", "ods", "csv", "tsv" -> SHEET
+        "ppt", "pptx", "odp" -> SLIDES
+        else -> null
+    }
+
+    /** Name without the extension (Google files have none). */
+    fun googleName(fileName: String): String = fileName.substringBeforeLast('.', fileName)
+}
