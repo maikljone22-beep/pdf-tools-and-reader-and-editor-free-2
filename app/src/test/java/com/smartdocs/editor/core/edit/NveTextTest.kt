@@ -11,7 +11,7 @@ import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDPage
 import com.tom_roush.pdfbox.pdmodel.common.PDRectangle
 import com.tom_roush.pdfbox.pdmodel.font.PDFont
-import com.tom_roush.pdfbox.pdmodel.font.PDType0Font
+import com.tom_roush.pdfbox.pdmodel.font.NveTestFont
 import com.tom_roush.pdfbox.pdmodel.graphics.form.PDFormXObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -23,27 +23,26 @@ import java.io.File
 
 /**
  * NVE-text: rich text writer, text helpers, kerning removal and form rewriting, round-tripped through saved PDFs.
- * The standard-14 fonts need Android assets, so the tests embed the app's bundled TrueType font (it has Latin glyphs).
+ * pdfbox-android's standard-14 and TrueType fonts need Android assets, so every font slot of the writer gets the
+ * test font [NveTestFont] (no PDType1Font / PDType0Font is ever touched here).
  */
 class NveTextTest {
-    private val fontFile: File = listOf("src/main/assets/fonts/NotoNaskhArabic-Regular.ttf", "app/src/main/assets/fonts/NotoNaskhArabic-Regular.ttf")
-        .map { File(it) }.first { it.exists() }
-
-    private fun loader(d: PDDocument): () -> PDFont { var f: PDFont? = null; return { f ?: PDType0Font.load(d, fontFile).also { f = it } } }
+    private val font: PDFont = NveTestFont()
+    private val loader: () -> PDFont = { font }
+    private val std: (FontFamily, Boolean, Boolean) -> PDFont = { _, _, _ -> font }
 
     /** Writes [text] with [style] on a fresh page, saves, reloads and returns the page content tokens. */
     private fun write(text: String, style: EditTextStyle, width: Float = 400f): List<Any> {
         val f = File.createTempFile("nvet", ".pdf").also { it.deleteOnExit() }
         PDDocument().use { d ->
             val p = PDPage(PDRectangle.A4); d.addPage(p)
-            val l = loader(d)
-            RichWriter.write(d, p, Affine.identity(), null, text, style, 50f, 50f + width, 700f, false, l, l)
+            RichWriter.write(d, p, Affine.identity(), null, text, style, 50f, 50f + width, 700f, false, loader, loader, std)
             d.save(f)
         }
         return PDDocument.load(f).use { d -> PDFStreamParser(d.getPage(0)).let { it.parse(); it.tokens } }
     }
 
-    private fun <T> withLayout(style: EditTextStyle, block: (RichLayout) -> T): T = PDDocument().use { d -> val l = loader(d); block(RichLayout(RichFonts(null, style, l, l), style)) }
+    private fun <T> withLayout(style: EditTextStyle, block: (RichLayout) -> T): T = block(RichLayout(RichFonts(null, style, loader, loader, std), style))
 
     private fun ops(tokens: List<Any>) = tokens.filterIsInstance<Operator>().map { it.name }
 

@@ -175,6 +175,8 @@ internal class RichFonts(
     private val base: EditTextStyle,
     private val arabicLoader: () -> PDFont,
     customLoader: (() -> PDFont?)?,
+    /** Standard-14 faces, resolved only when needed (JVM tests inject their own font: PDType1Font needs Android assets). */
+    private val standardLoader: (FontFamily, Boolean, Boolean) -> PDFont = { f, b, i -> FontSet.standard(f, b, i) },
 ) {
     private var arabicCache: PDFont? = null
     val arabic: PDFont get() = arabicCache ?: arabicLoader().also { arabicCache = it }
@@ -186,7 +188,7 @@ internal class RichFonts(
 
     fun canEncode(f: PDFont, c: Char): Boolean = encodable.getOrPut(f to c) { try { f.encode(c.toString()); true } catch (e: Exception) { false } }
 
-    private fun standard(bold: Boolean, italic: Boolean) = std.getOrPut(bold to italic) { FontSet.standard(base.family, bold, italic) }
+    private fun standard(bold: Boolean, italic: Boolean) = std.getOrPut(bold to italic) { standardLoader(base.family, bold, italic) }
 
     fun latin(st: CharStyle): PDFont = custom ?: original?.takeIf { st.bold == base.bold && st.italic == base.italic } ?: standard(st.bold, st.italic)
 
@@ -453,8 +455,9 @@ internal object RichWriter {
         doc: PDDocument, page: PDPage, toUser: Matrix, original: PDFont?, text: String, style: EditTextStyle,
         left: Float, right: Float, baseline: Float, defaultRtl: Boolean,
         arabicLoader: () -> PDFont, customLoader: (() -> PDFont?)?,
+        standardLoader: (FontFamily, Boolean, Boolean) -> PDFont = { f, b, i -> FontSet.standard(f, b, i) },
     ): RichFonts {
-        val fonts = RichFonts(original?.takeIf { style.embed != FontEmbed.SYSTEM && style.fontPath == null }, style, arabicLoader, customLoader)
+        val fonts = RichFonts(original?.takeIf { style.embed != FontEmbed.SYSTEM && style.fontPath == null }, style, arabicLoader, customLoader, standardLoader)
         val layout = RichLayout(fonts, style)
         val lines = layout.layout(text, (right - left).coerceAtLeast(style.size * 2), defaultRtl)
         PDPageContentStream(doc, page, PDPageContentStream.AppendMode.APPEND, true, true).use { cs ->
