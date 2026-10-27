@@ -77,7 +77,7 @@ class FxEditorTest {
         reload(d).use { r ->
             val s = FxEditor.readAll(r).single()
             assertEquals(FxCheckStyle.STAR, s.checkStyle); assertEquals("Accepted", s.exportValue); assertTrue(s.checkedByDefault)
-            val f = r.documentCatalog.acroForm.getField("agree") as PDCheckBox
+            val f = r.documentCatalog.getAcroForm(null).getField("agree") as PDCheckBox
             assertEquals("Accepted", f.cosObject.getCOSName(COSName.V).name)
             assertEquals("Accepted", f.widgets[0].cosObject.getCOSName(COSName.AS).name)
             val n = (f.widgets[0].cosObject.getDictionaryObject(COSName.AP) as COSDictionary).getDictionaryObject(COSName.N) as COSDictionary
@@ -95,7 +95,7 @@ class FxEditorTest {
             assertEquals(listOf("S", "M", "L"), s.widgets.map { it.export })
             assertTrue(s.radiosInUnison)
             assertEquals(FxCheckStyle.CIRCLE, s.checkStyle)
-            assertEquals("M", r.documentCatalog.acroForm.getField("size").cosObject.getCOSName(COSName.V).name)
+            assertEquals("M", r.documentCatalog.getAcroForm(null).getField("size").cosObject.getCOSName(COSName.V).name)
         }
     }
 
@@ -142,7 +142,7 @@ class FxEditorTest {
             assertEquals(actions, s.actions[FxTrigger.MOUSE_UP])
             assertEquals(listOf(FxAction.Named("Print")), s.actions[FxTrigger.MOUSE_DOWN])
             // Mouse Up lives in /A with a /Next chain
-            val w = r.documentCatalog.acroForm.getField("go").widgets[0].cosObject
+            val w = r.documentCatalog.getAcroForm(null).getField("go").widgets[0].cosObject
             val a = w.getDictionaryObject(COSName.A) as COSDictionary
             assertEquals("SubmitForm", a.getCOSName(COSName.S).name)
             assertEquals(FxActions.SUBMIT_EXCLUDE or FxActions.SUBMIT_INCLUDE_NO_VALUE or FxActions.SUBMIT_XFDF or FxActions.SUBMIT_CANONICAL, a.getInt(COSName.getPDFName("Flags")))
@@ -194,13 +194,13 @@ class FxEditorTest {
         val form = FxEditor.acroForm(d)
         val tf = PDTextField(form); tf.partialName = "merged"
         val w = tf.widgets[0]; w.rectangle = com.tom_roush.pdfbox.pdmodel.common.PDRectangle(10f, 10f, 100f, 20f); w.page = d.getPage(0)
-        d.getPage(0).annotations.add(w); form.fields.add(tf)
+        d.getPage(0).annotations.add(w); (form.cosObject.getDictionaryObject(COSName.FIELDS) as COSArray).add(tf.cosObject)
         assertEquals(2, FxEditor.duplicateToPages(d, FxRef("merged"), listOf(0, 1, 2)))
         reload(d).use { r ->
-            val s = FxEditor.readAll(r).single()
+            val s = FxEditor.read(r, r.documentCatalog.getAcroForm(null).getField("merged") as com.tom_roush.pdfbox.pdmodel.interactive.form.PDTerminalField)
             assertEquals(listOf(0, 1, 2), s.widgets.map { it.page })
             assertTrue(s.widgets.all { it.rect == FxRect(10f, 10f, 110f, 30f) })
-            val f = r.documentCatalog.acroForm.getField("merged")
+            val f = r.documentCatalog.getAcroForm(null).getField("merged")
             assertNotNull(f.cosObject.getDictionaryObject(COSName.KIDS))
             assertNull(f.cosObject.getDictionaryObject(COSName.SUBTYPE))
         }
@@ -239,7 +239,7 @@ class FxEditorTest {
         reload(d).use { r ->
             val s = FxEditor.readAll(r).first { it.name == "sig" }
             assertEquals(FxSigLock(FxSigLock.Mode.EXCLUDE, listOf("date"), "app.alert('signed');"), s.sigLock)
-            val f = r.documentCatalog.acroForm.getField("sig").cosObject
+            val f = r.documentCatalog.getAcroForm(null).getField("sig").cosObject
             val lock = f.getDictionaryObject(COSName.getPDFName("Lock")) as COSDictionary
             assertEquals("SigFieldLock", lock.getCOSName(COSName.TYPE).name)
             assertEquals("Exclude", lock.getCOSName(COSName.getPDFName("Action")).name)
@@ -256,7 +256,7 @@ class FxEditorTest {
         FxEditor.create(d, FieldSpec("g", FxType.RADIO, listOf(FxWidget(0, FxRect(50f, 300f, 62f, 312f), "A"))))
         assertTrue(FxEditor.addRadioWidget(d, "g", 0, FxRect(80f, 300f, 92f, 312f), "B"))
         reload(d).use { r ->
-            val w = r.documentCatalog.acroForm.getField("pic").widgets[0].cosObject
+            val w = r.documentCatalog.getAcroForm(null).getField("pic").widgets[0].cosObject
             val mk = w.getDictionaryObject(COSName.getPDFName("MK")) as COSDictionary
             assertNotNull(mk.getDictionaryObject(COSName.getPDFName("I")))
             val n = (w.getDictionaryObject(COSName.AP) as COSDictionary).getDictionaryObject(COSName.N) as com.tom_roush.pdfbox.cos.COSStream

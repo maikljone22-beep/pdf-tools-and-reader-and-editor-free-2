@@ -39,7 +39,7 @@ object FormData {
 
     fun values(doc: PDDocument): LinkedHashMap<String, String> {
         val out = LinkedHashMap<String, String>()
-        val form = doc.documentCatalog.acroForm ?: return out
+        val form = doc.documentCatalog.getAcroForm(null) ?: return out
         FxEditor.terminals(form).forEach { f ->
             if (f is PDPushButton || f is PDSignatureField) return@forEach
             out[f.fullyQualifiedName] = valueOf(f)
@@ -48,7 +48,7 @@ object FormData {
     }
 
     /** Check boxes and radio groups: their FDF values are names. */
-    fun buttonNames(doc: PDDocument): Set<String> = doc.documentCatalog.acroForm?.let { form ->
+    fun buttonNames(doc: PDDocument): Set<String> = doc.documentCatalog.getAcroForm(null)?.let { form ->
         FxEditor.terminals(form).filter { it is PDCheckBox || it is PDRadioButton }.map { it.fullyQualifiedName }.toSet() } ?: emptySet()
 
     private fun valueOf(f: PDTerminalField): String = when (f) {
@@ -283,7 +283,7 @@ object FormData {
 
     /** Put [values] into the form fields of [doc]. Returns how many fields were set. */
     fun importInto(doc: PDDocument, values: Map<String, String>): Int {
-        val form = doc.documentCatalog.acroForm ?: return 0
+        val form = doc.documentCatalog.getAcroForm(null) ?: return 0
         var count = 0
         values.forEach { (name, v) ->
             val f = form.getField(name) as? PDTerminalField ?: return@forEach

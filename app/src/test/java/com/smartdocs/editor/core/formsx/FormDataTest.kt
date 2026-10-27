@@ -29,7 +29,7 @@ class FormDataTest {
 
     private fun setRaw(d: PDDocument, values: Map<String, String>) {
         // text values on the COS level (PdfBox's setValue needs font metrics that JVM tests do not have)
-        values.forEach { (k, v) -> d.documentCatalog.acroForm.getField(k).cosObject.setItem(COSName.V, COSString(v)) }
+        values.forEach { (k, v) -> d.documentCatalog.getAcroForm(null).getField(k).cosObject.setItem(COSName.V, COSString(v)) }
     }
 
     @Test fun scriptsRoundTrip() {
@@ -47,7 +47,7 @@ class FormDataTest {
     @Test fun exportAndParseEveryFormat() {
         formDoc().use { d ->
             setRaw(d, mapOf("person.name" to "Ali, \"the\" first", "note" to "line"))
-            d.documentCatalog.acroForm.getField("agree").cosObject.setItem(COSName.V, COSName.getPDFName("Yes"))
+            d.documentCatalog.getAcroForm(null).getField("agree").cosObject.setItem(COSName.V, COSName.getPDFName("Yes"))
             val expected = mapOf("person.name" to "Ali, \"the\" first", "agree" to "Yes", "size" to "Off", "note" to "line")
             assertEquals(expected, FormData.values(d))
             for (fmt in DataFormat.entries) {
@@ -69,7 +69,7 @@ class FormDataTest {
         formDoc().use { d ->
             val n = FormData.importInto(d, mapOf("agree" to "true", "size" to "L", "missing" to "x"))
             assertEquals(2, n)
-            val form = d.documentCatalog.acroForm
+            val form = d.documentCatalog.getAcroForm(null)
             assertEquals("Yes", form.getField("agree").cosObject.getCOSName(COSName.V).name)
             assertEquals("L", form.getField("size").cosObject.getCOSName(COSName.V).name)
             val radios = (form.getField("size") as com.tom_roush.pdfbox.pdmodel.interactive.form.PDRadioButton).widgets
@@ -108,7 +108,7 @@ class FormDataTest {
             setRaw(d, mapOf("person.name" to "Ali", "note" to "n1"))
             val b = FxBarcode(FxBarcodeKind.QR, fields = listOf("person.name", "note"))
             FxEditor.create(d, FieldSpec("code", FxType.BARCODE, listOf(FxWidget(0, FxRect(300f, 300f, 420f, 420f))), barcode = b))
-            val f = d.documentCatalog.acroForm.getField("code")
+            val f = d.documentCatalog.getAcroForm(null).getField("code")
             assertEquals("person.name\tnote\nAli\tn1", f.cosObject.getString(COSName.V))
             val sym = FxBarcodes.encode(f.cosObject.getString(COSName.V), b)!!
             assertEquals("person.name\tnote\nAli\tn1", decodeQr(sym.modules))

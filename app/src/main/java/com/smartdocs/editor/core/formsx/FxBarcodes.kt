@@ -128,7 +128,7 @@ object FxBarcodes {
 
     /** (name, value) of the fields a barcode encodes: its list, or every data field except barcodes. */
     fun sourceValues(doc: PDDocument, b: FxBarcode, self: String): List<Pair<String, String>> {
-        val form = doc.documentCatalog.acroForm ?: return emptyList()
+        val form = doc.documentCatalog.getAcroForm(null) ?: return emptyList()
         val all = FxEditor.terminals(form)
         val chosen = if (b.fields.isNotEmpty()) b.fields.mapNotNull { nm -> all.firstOrNull { it.fullyQualifiedName == nm } }
             else all.filter { it !is PDPushButton && it !is PDSignatureField && it.fullyQualifiedName != self && it.cosObject.getDictionaryObject(SD_BARCODE) == null }
@@ -156,7 +156,7 @@ object FxBarcodes {
 
     /** Refresh every barcode field of [doc] (call after form values changed). Returns how many were redrawn. */
     fun refreshAll(doc: PDDocument): Int {
-        val form = doc.documentCatalog.acroForm ?: return 0
+        val form = doc.documentCatalog.getAcroForm(null) ?: return 0
         var count = 0
         FxEditor.terminals(form).filterIsInstance<PDTextField>().forEach { f ->
             if (f.cosObject.getDictionaryObject(SD_BARCODE) == null && f.cosObject.getDictionaryObject(n("PMD")) == null) return@forEach

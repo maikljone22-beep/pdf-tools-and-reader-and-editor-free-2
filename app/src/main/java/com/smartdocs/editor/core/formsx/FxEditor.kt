@@ -67,7 +67,7 @@ object FxEditor {
     // ================= helpers =================
 
     fun acroForm(doc: PDDocument): PDAcroForm {
-        doc.documentCatalog.acroForm?.let { return it }
+        doc.documentCatalog.getAcroForm(null)?.let { return it }
         val form = PDAcroForm(doc)
         doc.documentCatalog.acroForm = form
         FxAppearance.ensureDr(form.cosObject, FxFont.HELVETICA)
@@ -77,7 +77,7 @@ object FxEditor {
 
     fun terminals(form: PDAcroForm): List<PDTerminalField> = runCatching { form.fieldTree.filterIsInstance<PDTerminalField>() }.getOrDefault(emptyList())
 
-    fun field(doc: PDDocument, name: String): PDTerminalField? = doc.documentCatalog.acroForm?.getField(name) as? PDTerminalField
+    fun field(doc: PDDocument, name: String): PDTerminalField? = doc.documentCatalog.getAcroForm(null)?.getField(name) as? PDTerminalField
 
     fun pageIndex(doc: PDDocument, w: PDAnnotationWidget): Int {
         w.page?.let { p -> val i = doc.pages.indexOf(p); if (i >= 0) return i }
@@ -124,7 +124,7 @@ object FxEditor {
     // ================= read =================
 
     fun readAll(doc: PDDocument): List<FieldSpec> {
-        val form = doc.documentCatalog.acroForm ?: return emptyList()
+        val form = doc.documentCatalog.getAcroForm(null) ?: return emptyList()
         return terminals(form).mapNotNull { f -> runCatching { read(doc, f) }.getOrNull() }
     }
 
@@ -139,7 +139,7 @@ object FxEditor {
         }
         val w0 = ws.firstOrNull()?.cosObject ?: cos
         val ff = f.fieldFlags
-        val daStr = cos.getString(COSName.DA) ?: (cos.getDictionaryObject(COSName.PARENT) as? COSDictionary)?.getString(COSName.DA) ?: doc.documentCatalog.acroForm?.defaultAppearance
+        val daStr = cos.getString(COSName.DA) ?: (cos.getDictionaryObject(COSName.PARENT) as? COSDictionary)?.getString(COSName.DA) ?: doc.documentCatalog.getAcroForm(null)?.defaultAppearance
         val da = FxAppearance.parseDa(daStr)
         val mk = w0.getDictionaryObject(FxAppearance.MK) as? COSDictionary
         val bs = w0.getDictionaryObject(COSName.BS) as? COSDictionary
@@ -246,7 +246,8 @@ object FxEditor {
     private fun addWidget(doc: PDDocument, f: PDTerminalField, page: Int, r: FxRect, template: COSDictionary? = null): PDAnnotationWidget {
         splitMerged(doc, f)
         val w = COSDictionary()
-        template?.let { t -> t.keySet().forEach { k -> if (k.name !in setOf("Parent", "P", "Rect", "NM", "StructParent", "AP")) w.setItem(k, t.getItem(k)) } }
+        // widget keys only (a merged field/widget template also carries field keys such as /T /FT /Kids /V)
+        template?.let { t -> listOf("F", "MK", "BS", "Border", "H", "AA", "A", "C", "OC", "DA", "Q").forEach { k -> t.getItem(n(k))?.let { v -> w.setItem(n(k), v) } } }
         w.setItem(COSName.TYPE, COSName.ANNOT); w.setItem(COSName.SUBTYPE, n("Widget"))
         val widget = PDAnnotationWidget(w)
         widget.rectangle = pdRect(r)
@@ -275,13 +276,35 @@ object FxEditor {
     fun create(doc: PDDocument, spec: FieldSpec): String {
         val form = acroForm(doc)
         val f = newField(form, spec.type)
-        val name = uniqueName(form, spec.name)
-        f.partialName = name
+        // "a.b.c": a hierarchy of non-terminal parents (shared by fields with the same prefix), the field is "c"
+        val parts = spec.name.trim().split('.').map { it.trim() }.filter { it.isNotEmpty() }.ifEmpty { listOf("field") }
+        var siblings = (form.cosObject.getDictionaryObject(COSName.FIELDS) as? COSArray) ?: COSArray().also { form.cosObject.setItem(COSName.FIELDS, it) }
+        var parent: COSDictionary? = null
+        for (p in parts.dropLast(1)) {
+            var node: COSDictionary? = null
+            for (i in 0 until siblings.size()) {
+                val d = siblings.getObject(i) as? COSDictionary ?: continue
+                if (d.getString(COSName.T) == p && d.getDictionaryObject(COSName.FT) == null && d.getDictionaryObject(COSName.KIDS) is COSArray) { node = d; break }
+            }
+            if (node == null) {
+                node = COSDictionary().apply { setString(COSName.T, p); setItem(COSName.KIDS, COSArray()) }
+                parent?.let { node.setItem(COSName.PARENT, it) }
+                siblings.add(node)
+            }
+            parent = node
+            siblings = node.getDictionaryObject(COSName.KIDS) as COSArray
+        }
+        val prefix = parts.dropLast(1).joinToString(".")
+        fun taken(x: String) = form.getField(if (prefix.isEmpty()) x else "$prefix.$x") != null
+        var leaf = parts.last()
+        if (taken(leaf)) { var k = 2; while (taken("${leaf}_$k")) k++; leaf = "${leaf}_$k" }
+        f.partialName = leaf
+        if (parent != null) f.cosObject.setItem(COSName.PARENT, parent)
         // no merged widget: always a field with kids, so later duplicates are simple
         f.cosObject.setItem(COSName.KIDS, COSArray())
         spec.widgets.forEach { addWidget(doc, f, it.page, it.rect) }
-        val top = (form.cosObject.getDictionaryObject(COSName.FIELDS) as? COSArray) ?: COSArray().also { form.cosObject.setItem(COSName.FIELDS, it) }
-        top.add(f.cosObject)
+        siblings.add(f.cosObject)
+        val name = f.fullyQualifiedName
         writeProps(doc, f, spec.copy(name = name), created = true)
         return name
     }
@@ -448,6 +471,7 @@ object FxEditor {
      */
     fun addRadioWidget(doc: PDDocument, name: String, page: Int, r: FxRect, export: String): Boolean {
         val f = field(doc, name) as? PDRadioButton ?: return false
+        splitMerged(doc, f)
         val spec = read(doc, f)
         val template = f.widgets.firstOrNull()?.cosObject
         val w = addWidget(doc, f, page, r, template)
@@ -465,8 +489,7 @@ object FxEditor {
     /** A form XObject that draws [image] at its pixel size (the /MK /I icon of a button). */
     fun iconFromImage(doc: PDDocument, image: com.tom_roush.pdfbox.pdmodel.graphics.image.PDImageXObject): COSStream {
         val w = image.width.toFloat().coerceAtLeast(1f); val h = image.height.toFloat().coerceAtLeast(1f)
-        val st = FxAppearance.stream(doc, w, h, "q ${FxAppearance.f(w)} 0 0 ${FxAppearance.f(h)} 0 0 cm /Im0 Do Q
-")
+        val st = FxAppearance.stream(doc, w, h, "q ${FxAppearance.f(w)} 0 0 ${FxAppearance.f(h)} 0 0 cm /Im0 Do Q\n")
         (st.getDictionaryObject(COSName.RESOURCES) as COSDictionary).setItem(COSName.XOBJECT, COSDictionary().apply { setItem(n("Im0"), image.cosObject) })
         return st
     }
@@ -512,7 +535,7 @@ object FxEditor {
 
     /** Remove fields (and all their widgets) by name. Returns how many were removed. */
     fun delete(doc: PDDocument, names: Collection<String>): Int {
-        val form = doc.documentCatalog.acroForm ?: return 0
+        val form = doc.documentCatalog.getAcroForm(null) ?: return 0
         var count = 0
         names.distinct().forEach { name ->
             val f = form.getField(name) as? PDTerminalField ?: return@forEach
@@ -554,6 +577,7 @@ object FxEditor {
     fun duplicateToPages(doc: PDDocument, ref: FxRef, pages: Collection<Int>): Int {
         val f = field(doc, ref.name) ?: return 0
         if (f is PDRadioButton) return 0
+        splitMerged(doc, f)
         val w = f.widgets.getOrNull(ref.widget) ?: return 0
         val src = pageIndex(doc, w)
         val r = rectOf(w)
@@ -574,6 +598,7 @@ object FxEditor {
      */
     fun makeCopies(doc: PDDocument, name: String, rows: Int, cols: Int, dx: Float = 0f, dy: Float = 0f, sameName: Boolean = false): List<String> {
         val f = field(doc, name) ?: return emptyList()
+        if (sameName) splitMerged(doc, f)
         val spec = read(doc, f)
         val base = spec.widgets.firstOrNull() ?: return emptyList()
         val sx = if (dx > 0f) dx else base.rect.width + 4f
@@ -642,7 +667,7 @@ object FxEditor {
 
     /** Fields in calculation order (/CO). */
     fun calcOrder(doc: PDDocument): List<String> {
-        val form = doc.documentCatalog.acroForm ?: return emptyList()
+        val form = doc.documentCatalog.getAcroForm(null) ?: return emptyList()
         val co = form.cosObject.getDictionaryObject(CO) as? COSArray ?: return emptyList()
         val all = terminals(form)
         return (0 until co.size()).mapNotNull { i -> val o = co.getObject(i); all.firstOrNull { it.cosObject === o }?.fullyQualifiedName }
