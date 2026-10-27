@@ -1,6 +1,7 @@
 package com.smartdocs.editor.core.search
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -23,5 +24,29 @@ class IndexTextTest {
     @Test fun ftsOperatorsAreNeutralised() {
         // FTS operators are upper case; the folded query is lower case and has no quotes or parentheses
         assertEquals("cat* or* dog*", IndexText.ftsQuery("\"cats\" OR (dogs)", SearchMode.PHRASE))
+    }
+
+    /** FTS4 prefix semantics for the expressions [IndexText.ftsQueries] produces (AND of terms, or OR). */
+    private fun ftsMatches(body: String, expr: String): Boolean {
+        val words = body.split(' ')
+        fun term(t: String) = if (t.endsWith("*")) words.any { it.startsWith(t.dropLast(1)) } else t in words
+        return if (" OR " in expr) expr.split(" OR ").any(::term) else expr.split(' ').all(::term)
+    }
+
+    /** Audit AN-15: a part stored in visual (reversed) order is a candidate for a normal logical-order query. */
+    @Test fun reversedArabicIsFoundByANormalQuery() {
+        val logical = "درس الكيمياء مع محمد في الكتابه"
+        val visual = logical.reversed()
+        val body = IndexText.body(visual)
+        for (q in listOf("محمد", "الكيمياء", "الكتابه", "محمد الكيمياء")) {
+            assertFalse("forward-only query misses '$q' (the bug)", ftsMatches(body, IndexText.ftsQuery(q, SearchMode.PHRASE)!!))
+            assertTrue("'$q' must reach TextMatcher", IndexText.ftsQueries(q, SearchMode.PHRASE).any { ftsMatches(body, it) })
+            assertTrue(IndexText.ftsQueries(q, SearchMode.ANY_WORDS).any { ftsMatches(body, it) })
+            assertTrue("TextMatcher then verifies '$q'", TextMatcher.find(visual, q, SearchOptions()).isNotEmpty() || q.contains(' '))
+        }
+        // a logical-order part still matches, and Latin-only queries are unchanged
+        assertTrue(IndexText.ftsQueries("محمد", SearchMode.PHRASE).any { ftsMatches(IndexText.body(logical), it) })
+        assertEquals(listOf("report*"), IndexText.ftsQueries("Reports", SearchMode.PHRASE))
+        assertEquals(emptyList<String>(), IndexText.ftsQueries("a.*b", SearchMode.REGEX))
     }
 }
