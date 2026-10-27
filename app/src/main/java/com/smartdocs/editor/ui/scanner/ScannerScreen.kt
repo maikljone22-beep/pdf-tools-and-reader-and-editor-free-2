@@ -68,6 +68,7 @@ fun ScannerScreen(nav: NavHostController) {
     var scannerError by remember { mutableStateOf<String?>(null) }
     var previous by remember { mutableStateOf<List<File>>(emptyList()) }
     var result by remember { mutableStateOf<File?>(null) }
+    var lastScan by remember { mutableStateOf<File?>(null) }   // ai6 (B16): offer AI on the saved scan
     var ocrAfter by remember { mutableStateOf(false) }
     var nameDialog by remember { mutableStateOf(false) }
     val runner = rememberToolRunner()
@@ -128,13 +129,14 @@ fun ScannerScreen(nav: NavHostController) {
         runner.result?.let { f ->
             refreshPrevious()
             if (ocrAfter) { ocrAfter = false; runner.result = null; nav.navigate(Routes.tool("ocr", Uri.fromFile(f).toString())) }
-            else { result = f; runner.result = null }
+            else { result = f; lastScan = f; runner.result = null }
         }
     }
     LaunchedEffect(runner.error) { runner.error?.let { snack.showSnackbar(it); runner.error = null } }
 
     Scaffold(
         snackbarHost = { SnackbarHost(snack) },
+        bottomBar = { lastScan?.takeIf { it.exists() }?.let { f -> ScanAiBar(f, nav) { lastScan = null } } },   // ai6 (B16)
         topBar = { AppTopBar(stringResource(R.string.pg_scan_title), onBack = { nav.popBackStack() }) {
             // tools5: scan studio (ID card, business card, receipt, book, batch, per-page filters, auto OCR)
             IconButton(onClick = { nav.navigate(Routes.tool("scan_studio")) }) { Icon(Icons.Default.AutoAwesome, stringResource(R.string.t5_scan_title)) }

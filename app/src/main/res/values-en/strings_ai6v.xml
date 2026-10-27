@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ai6v: podcast editing (B14), voice barge-in (B6), summary read aloud -->
+    <string name="ai6v_focus">Focus areas (optional)</string>
+    <string name="ai6v_focus_hint">e.g. only the results and recommendations</string>
+    <string name="ai6v_length">Length</string>
+    <string name="ai6v_len_short">Short</string>
+    <string name="ai6v_len_medium">Medium</string>
+    <string name="ai6v_len_long">Long</string>
+    <string name="ai6v_chapters">Chapters</string>
+    <string name="ai6v_edit">Edit transcript</string>
+    <string name="ai6v_edit_close">Close editor</string>
+    <string name="ai6v_duplicate">Duplicate</string>
+    <string name="ai6v_duplicated">Copy created: %1$s</string>
+    <string name="ai6v_add_line">Add line</string>
+    <string name="ai6v_swap">Swap speaker</string>
+    <string name="ai6v_up">Move up</string>
+    <string name="ai6v_down">Move down</string>
+    <string name="ai6v_delete_line">Delete line</string>
+    <string name="ai6v_changed">Lines that need new audio: %1$d (the rest comes from the cache)</string>
+    <string name="ai6v_resynth">Generate audio again</string>
+    <string name="ai6v_mic_on">Microphone on</string>
+    <string name="ai6v_mic_muted">Microphone muted</string>
+    <string name="ai6v_barge_in">Interrupt by speaking</string>
+    <string name="ai6v_interrupt">Interrupt and talk</string>
+    <string name="ai6v_read_summary">Read the summary aloud</string>
+    <string name="ai6v_stop_reading">Stop reading</string>
+    <string name="ai6v_audio_summary">Audio file of the summary</string>
+</resources>

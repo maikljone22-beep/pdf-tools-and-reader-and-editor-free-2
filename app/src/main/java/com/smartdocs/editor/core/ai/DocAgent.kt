@@ -35,7 +35,10 @@ class DocAgent(private val client: AiClient) {
                 "أرقام الصفحات تبدأ من 1، ويقبل المستخدم الأرقام العربية (٣) والهندية (3) وعبارات مثل \"من ٣ إلى ٥\" أو \"الصفحة الحالية\" أو \"الأخيرة\". " +
                 "عندما يطلب المستخدم تعديل المستند أو التنقل فيه استدعِ الأداة المناسبة مباشرة بالمعاملات الصحيحة ولا تسأل عن التأكيد بنفسك؛ التطبيق يعرض بطاقة تأكيد للمستخدم. " +
                 "لا تخترع أرقام صفحات غير موجودة. للأسئلة عن المحتوى أجب نصاً بالاعتماد على نص المستند واذكر رقم الصفحة. " +
-                "لتلخيص صفحة في ملاحظة اكتب الملخص بنفسك في المعامل summary إن كان نص الصفحة متاحاً."
+                "لتلخيص صفحة في ملاحظة اكتب الملخص بنفسك في المعامل summary إن كان نص الصفحة متاحاً. " +
+                // ai6 (B10 / AI-7): edit through chat
+                "لتعديل المستند نفسه استعمل: highlight_text للتظليل (نص أو تعبير نمطي)، redact_pattern لحجب نوع من البيانات (بريد، هاتف، تواريخ…)، " +
+                "replace_text لاستبدال نص بنص، rewrite_text لإعادة صياغة فقرة أو النص المحدد."
 
         /** Extract `{"function": name, "args": {...}}` (or an array of them) from free text. */
         fun parseJsonCommands(text: String): List<DocCommand> {
@@ -182,6 +185,11 @@ class DocCommandRunner(private val ctx: Context, private val actions: DocActions
             DocCmd.SUMMARIZE_TO_NOTE -> s(R.string.ai2_cf_note, (c.page("page", n, cur) ?: cur) + 1)
             DocCmd.TRANSLATE_SELECTION -> s(R.string.ai2_cf_translate, c.str("target_language") ?: s(R.string.ai2_lang_arabic))
             DocCmd.CREATE_BLANK_PDF -> s(R.string.ai2_cf_create, c.int("pages") ?: 1)
+            // ai6 (B10 / AI-7)
+            DocCmd.HIGHLIGHT_TEXT -> s(R.string.ai6r_cf_highlight, c.str("query") ?: "", c.pages("pages", n, cur).let { if (it.isEmpty()) s(R.string.ai2_all_pages) else DocCommand.formatPages(it) })
+            DocCmd.REDACT_PATTERN -> s(R.string.ai6r_cf_redact_pattern, c.str("kind") ?: c.str("regex") ?: "")
+            DocCmd.REPLACE_TEXT -> s(R.string.ai6r_cf_replace, c.str("find") ?: "", c.str("replace") ?: "")
+            DocCmd.REWRITE_TEXT -> s(R.string.ai6r_cf_rewrite, (c.str("original") ?: actions.selectedText() ?: "").take(120), c.str("instruction") ?: "")
         }
     }
 
@@ -226,6 +234,18 @@ class DocCommandRunner(private val ctx: Context, private val actions: DocActions
                 ActionResult(text.trim())
             }
             DocCmd.CREATE_BLANK_PDF -> actions.createBlankPdf(c.int("pages") ?: 1)
+            // ai6 (B10 / AI-7): edit through chat (each is one undoable step)
+            DocCmd.HIGHLIGHT_TEXT -> actions.highlightText(need(c.str("query")), c.bool("regex") ?: false, AiEditPatterns.color(c.str("color")), c.pages("pages", n, cur).ifEmpty { null })
+            DocCmd.REDACT_PATTERN -> actions.redactPattern(c.str("kind") ?: "custom", c.str("regex"), c.pages("pages", n, cur).ifEmpty { null })
+            DocCmd.REPLACE_TEXT -> actions.replaceText(need(c.str("find")), (c.args["replace"] as? kotlinx.serialization.json.JsonPrimitive)?.contentOrNull ?: throw ActionError(s(R.string.ai2_err_args)), c.bool("match_case") ?: false)
+            DocCmd.REWRITE_TEXT -> {
+                val original = c.str("original") ?: actions.selectedText()?.trim()?.takeIf { it.isNotBlank() } ?: throw ActionError(s(R.string.ai2_err_no_selection))
+                val newText = c.str("new_text") ?: AiEditPatterns.cleanRewrite(client.complete(listOf(ChatMessage("system", AiClient.SYSTEM_PROMPT),
+                    ChatMessage("user", AiEditPatterns.rewritePrompt(original.take(4000), c.str("instruction") ?: "")))))
+                if (newText.isBlank()) throw ActionError(s(R.string.ai2_err_args))
+                val r = actions.replaceText(original, newText, false)
+                r.copy(message = s(R.string.ai6r_done_rewrite) + "\n\n" + newText.take(600) + "\n\n" + r.message)
+            }
         }
     }
 }

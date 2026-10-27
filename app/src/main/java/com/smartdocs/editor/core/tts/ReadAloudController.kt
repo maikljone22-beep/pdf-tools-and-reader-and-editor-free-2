@@ -39,6 +39,13 @@ object ReadAloudController {
     private val _status = MutableStateFlow(Status())
     val status: StateFlow<Status> = _status.asStateFlow()
 
+    /** ai6 (C1): the sentence being spoken, as [start, end) offsets in the provider's text of [page]. */
+    data class Spoken(val page: Int, val start: Int, val end: Int)
+    private val _spoken = MutableStateFlow<Spoken?>(null)
+    val spoken: StateFlow<Spoken?> = _spoken.asStateFlow()
+    private var pieces: List<com.smartdocs.editor.core.ai6.ReadingOrder.Piece> = emptyList()
+    private var bodyOffset = 0
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var appContext: Context? = null
     private var tts: TextToSpeech? = null
@@ -86,7 +93,7 @@ object ReadAloudController {
 
     fun stop() {
         tts?.stop(); com.smartdocs.editor.core.voice.AiVoiceEngine.stop()
-        chunks = emptyList(); chunkIdx = 0; provider = null
+        chunks = emptyList(); chunkIdx = 0; provider = null; pieces = emptyList(); _spoken.value = null
         _status.value = _status.value.copy(state = State.IDLE, chunkIndex = 0, chunkCount = 0)
         ReadAloudFocus.release()
         appContext?.let { runCatching { it.stopService(Intent(it, ReadAloudService::class.java)) } }
@@ -134,7 +141,10 @@ object ReadAloudController {
     private suspend fun loadPage(page: Int, fromChar: Int) {
         val text = runCatching { withContext(Dispatchers.IO) { provider?.invoke(page) ?: "" } }.getOrDefault("")
         val body = if (fromChar in 1 until text.length) text.substring(fromChar) else text
-        chunks = chunk(body)
+        // ai6 (C1): sentence pieces keep a map back to the page text for the on-page sentence highlight
+        bodyOffset = if (fromChar in 1 until text.length) fromChar else 0
+        pieces = com.smartdocs.editor.core.ai6.ReadingOrder.pieces(body)
+        chunks = pieces.map { it.text }
         chunkIdx = 0
         _status.value = _status.value.copy(page = page, chunkIndex = 0, chunkCount = chunks.size)
     }
@@ -147,11 +157,13 @@ object ReadAloudController {
         applyLanguage(engine, text)
         engine.setSpeechRate(st.rate); engine.setPitch(pitch)
         _status.value = st.copy(state = State.PLAYING, chunkIndex = chunkIdx)
+        markSpoken(chunkIdx, 0, wholePiece = false)   // ai6: first sentence of the piece
         val id = "rd_${++utteranceSeq}"
         val ctx = appContext
         ctx?.let { ReadAloudFocus.acquire(it) }      // MODULE view5: pause on call / audio focus loss
         if (ctx != null && com.smartdocs.editor.core.voice.AiVoiceEngine.shouldUse(ctx)) {
             // human-like AI voice (needs internet); falls back to the system voice for the rest of the session
+            markSpoken(chunkIdx, 0, wholePiece = true)   // ai6: no word progress from the AI voice: highlight the piece
             com.smartdocs.editor.core.voice.AiVoiceEngine.speak(ctx, text, st.rate, id, next = chunks.getOrNull(chunkIdx + 1)) { uid, ok ->
                 if (ok) listener.onDone(uid) else { com.smartdocs.editor.core.voice.AiVoiceEngine.disableForSession(); if (uid == "rd_$utteranceSeq") speakCurrent() }
             }
@@ -166,8 +178,24 @@ object ReadAloudController {
         if (next != null) goToPage(next) else stop()
     }
 
+    /** ai6 (C1): publish the sentence of piece [idx] containing char [at] (or the whole piece). */
+    private fun markSpoken(idx: Int, at: Int, wholePiece: Boolean) {
+        val p = pieces.getOrNull(idx) ?: return
+        if (p.map.isEmpty()) return
+        val r = if (wholePiece) 0 until p.text.length else com.smartdocs.editor.core.ai6.ReadingOrder.sentenceAt(p, at)
+        val a = p.map[r.first.coerceIn(0, p.map.size - 1)]; val z = p.map[r.last.coerceIn(0, p.map.size - 1)]
+        _spoken.value = Spoken(_status.value.page, bodyOffset + minOf(a, z), bodyOffset + maxOf(a, z) + 1)
+    }
+
     private val listener = object : UtteranceProgressListener() {
         override fun onStart(utteranceId: String?) {}
+        // ai6 (C1): word progress from the system voice → highlight its sentence
+        override fun onRangeStart(utteranceId: String?, start: Int, end: Int, frame: Int) {
+            scope.launch {
+                if (utteranceId != "rd_$utteranceSeq") return@launch
+                markSpoken(chunkIdx, start, wholePiece = false)
+            }
+        }
         override fun onDone(utteranceId: String?) {
             scope.launch {
                 // ignore callbacks of utterances that were stopped/replaced (pause, rate change, page jump)

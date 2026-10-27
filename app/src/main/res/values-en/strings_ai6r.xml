@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ai6 reader AI: rewrite in place (B11), AI edit via chat (B10), smart fill, read aloud (C1), scan AI (B16) -->
+    <string name="ai6r_rewrite_chip">Rewrite</string>
+    <string name="ai6r_replacing">Replacing the text in the document…</string>
+    <string name="ai6r_replaced">Text replaced in the document</string>
+    <string name="ai6r_replace_failed">The text could not be replaced in place: the selection spans several paragraphs or the page text is not editable. Copy the text or add it as a note.</string>
+    <string name="ai6r_err_pattern">The pattern is not valid.</string>
+    <string name="ai6r_err_none_found">No data of type \"%1$s\" was found.</string>
+    <string name="ai6r_cf_highlight">Highlight every \"%1$s\" (%2$s)?</string>
+    <string name="ai6r_cf_redact_pattern">Redact (permanently remove) all data of type \"%1$s\"?</string>
+    <string name="ai6r_cf_replace">Replace \"%1$s\" with \"%2$s\" in the whole document?</string>
+    <string name="ai6r_cf_rewrite">Rewrite \"%1$s\" (%2$s) and replace it in the document?</string>
+    <string name="ai6r_done_highlight">Highlighted %1$d matches of \"%2$s\".</string>
+    <string name="ai6r_done_redact_pattern">Redacted %1$d items of type \"%2$s\".</string>
+    <string name="ai6r_done_replace">Replaced %1$d matches of \"%2$s\".</string>
+    <string name="ai6r_done_rewrite">New text:</string>
+    <string name="ai6r_smart_fill">Smart fill</string>
+    <string name="ai6r_field_checked">checked</string>
+    <string name="ai6r_field_unchecked">not checked</string>
+    <string name="ai6r_scan_ai">Ask the assistant about \"%1$s\"</string>
+    <string name="ai6r_scan_summary">Summarize</string>
+    <string name="ai6r_scan_ask">Ask</string>
+</resources>

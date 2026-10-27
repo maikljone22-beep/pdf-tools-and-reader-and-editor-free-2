@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- office6: print, read aloud, find and replace in Excel / PowerPoint, AI commands -->
+    <string name="of6_print">طباعة</string>
+    <string name="of6_preparing_print">جارٍ تجهيز الطباعة…</string>
+    <string name="of6_print_failed">تعذرت الطباعة: %1$s</string>
+    <string name="of6_read_aloud">قراءة بصوت عالٍ</string>
+    <string name="of6_stop_reading">إيقاف القراءة</string>
+    <string name="of6_reading_item">%1$d/%2$d</string>
+    <string name="of6_nothing_to_read">لا يوجد نص للقراءة</string>
+    <string name="of6_match_case">مطابقة حالة الأحرف</string>
+    <string name="of6_whole_word">كلمة كاملة</string>
+    <string name="of6_whole_cell">محتوى الخلية كاملاً</string>
+    <string name="of6_replaced">تم الاستبدال: %1$d</string>
+    <string name="of6_ai_command">أمر بالذكاء الاصطناعي</string>
+    <string name="of6_ai_hint">مثال: اجعل العنوان عريضاً وفي الوسط</string>
+    <string name="of6_ai_rewrite_hint">مثال: أعد صياغة الفقرة بأسلوب رسمي</string>
+    <string name="of6_ai_formula_hint">مثال: مجموع العمود B إذا كان العمود C أكبر من 100</string>
+    <string name="of6_ai_mode_commands">أوامر</string>
+    <string name="of6_ai_mode_rewrite">إعادة صياغة الفقرة</string>
+    <string name="of6_ai_mode_formula">صيغة</string>
+    <string name="of6_ai_run">تنفيذ</string>
+    <string name="of6_ai_apply">تطبيق</string>
+    <string name="of6_ai_none">لم يجد المساعد أمراً مناسباً. جرّب صياغة أخرى.</string>
+    <string name="of6_ai_applied">نُفّذ %1$d من %2$d (يمكن التراجع)</string>
+    <string name="of6_ai_rewrite_need_para">اختر فقرة أولاً بالنقر عليها.</string>
+    <string name="of6_ai_will_run">سيُنفَّذ:</string>
+    <string name="of6_ai_result">النتيجة:</string>
+</resources>

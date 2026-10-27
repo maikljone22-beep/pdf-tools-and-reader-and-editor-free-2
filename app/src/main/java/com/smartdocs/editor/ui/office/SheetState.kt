@@ -43,6 +43,33 @@ class SheetState(val wb: Workbook5, override val file: File) : OfficeHost {
 
     fun bump() { tick++ }
 
+    // ---------------- office6: find & replace ----------------
+    var findOpen by mutableStateOf(false)
+    var query by mutableStateOf("")
+    var replacement by mutableStateOf("")
+    var matchIndex by mutableIntStateOf(0)
+    var findOpts by mutableStateOf(FindOptions())
+    /** Cell the grid should scroll to (consumed by SheetGrid). */
+    var reveal by mutableStateOf<Pair<Int, Int>?>(null)
+    val matches: List<SheetHit> get() { tick; return SheetFind.find(wb.book, sheet, query, findOpts) }
+
+    fun gotoMatch(i: Int) {
+        val ms = matches; if (ms.isEmpty()) return
+        matchIndex = i.mod(ms.size)
+        val h = ms[matchIndex]
+        if (editing) commit(false)
+        select(h.row, h.col); reveal = h.row to h.col
+    }
+
+    fun replaceCurrent() {
+        val ms = matches; if (ms.isEmpty()) return
+        val h = ms[matchIndex.coerceIn(0, ms.size - 1)]
+        change { SheetFind.replaceCell(wb, sheet, h.row, h.col, query, replacement, findOpts) }
+        if (matches.isNotEmpty()) gotoMatch(matchIndex)
+    }
+
+    fun replaceAll(): Int { if (editing) commit(false); val n = SheetFind.replaceAll(wb, active, sheet, query, replacement, findOpts); bump(); return n }
+
     // ---------------- selection ----------------
 
     fun select(r: Int, c: Int, extend: Boolean = false) {

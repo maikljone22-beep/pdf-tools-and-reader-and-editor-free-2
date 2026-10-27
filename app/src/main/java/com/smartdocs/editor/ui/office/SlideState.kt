@@ -33,6 +33,34 @@ class SlideState(val doc: PptDoc, override val file: File) : OfficeHost {
 
     fun bump() { tick++ }
 
+    // ---------------- office6: find & replace ----------------
+    var findOpen by mutableStateOf(false)
+    var query by mutableStateOf("")
+    var replacement by mutableStateOf("")
+    var matchIndex by mutableIntStateOf(0)
+    var findOpts by mutableStateOf(FindOptions())
+    val matches: List<SlideHit> get() { tick; return SlideFind.find(doc, query, findOpts) }
+
+    fun gotoMatch(i: Int) {
+        val ms = matches; if (ms.isEmpty()) return
+        matchIndex = i.mod(ms.size)
+        val h = ms[matchIndex]
+        if (h.slide != current) go(h.slide) else { if (editingText) commitText(); bump() }
+        // select the shape that holds the matching run
+        val t = SlideFind.runs(doc, h.slide).getOrNull(h.ordinal)
+        val sh = t?.let { run -> slide(h.slide).shapes.firstOrNull { sh -> sh.elem != null && sh.elem.findAll("t").any { it === run } } }
+        selected = sh?.elem; bump()
+    }
+
+    fun replaceCurrent() {
+        val ms = matches; if (ms.isEmpty()) return
+        if (editingText) commitText()
+        SlideFind.replace(doc, ms[matchIndex.coerceIn(0, ms.size - 1)], replacement); bump()
+        if (matches.isNotEmpty()) gotoMatch(matchIndex)
+    }
+
+    fun replaceAll(): Int { if (editingText) commitText(); val n = SlideFind.replaceAll(doc, query, replacement, findOpts); bump(); return n }
+
     fun go(i: Int) { if (editingText) commitText(); current = i.coerceIn(0, (doc.slideCount - 1).coerceAtLeast(0)); selected = null; bump() }
 
     fun select(e: XElem?) { if (editingText) commitText(); selected = e; bump() }

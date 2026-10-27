@@ -1,6 +1,6 @@
 package com.smartdocs.editor.core.ai5
 
-enum class PiiKind { EMAIL, PHONE, CARD, IBAN, NATIONAL_ID, PASSPORT, DATE, URL, IP }
+enum class PiiKind { EMAIL, PHONE, CARD, IBAN, NATIONAL_ID, PASSPORT, DATE, URL, IP, NAME, ADDRESS }   // ai6: NAME, ADDRESS come only from the AI pass (AiPii)
 
 /** One finding in the text given to [PiiDetector.detect]: [start] inclusive, [end] exclusive (char indices). */
 data class PiiMatch(val kind: PiiKind, val start: Int, val end: Int, val value: String)

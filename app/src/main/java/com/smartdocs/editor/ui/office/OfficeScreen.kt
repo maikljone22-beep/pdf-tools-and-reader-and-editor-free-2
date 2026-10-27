@@ -116,6 +116,42 @@ private fun OfficeChrome(nav: NavHostController, host: OfficeHost, replaceHost: 
     var menu by remember { mutableStateOf(false) }
     var pdf by remember { mutableStateOf<File?>(null) }
     val tick = host.tick
+    // office6: read aloud, print, AI commands and the command registry
+    val settings6 = com.smartdocs.editor.LocalSettings.current
+    val speaker = remember { OfficeSpeaker(ctx) }
+    DisposableEffect(Unit) { onDispose { speaker.shutdown() } }
+    var aiBox by remember { mutableStateOf(false) }
+    fun printDoc() {
+        host.commitPending(); busy = R.string.of6_preparing_print
+        scope.launch {
+            val r = runCatching { OfficePrint.print(ctx, app, host) }
+            busy = null
+            r.onFailure { Toast.makeText(ctx, ctx.getString(R.string.of6_print_failed, it.message ?: ""), Toast.LENGTH_LONG).show() }
+        }
+    }
+    fun readAloudDoc() {
+        if (speaker.active) { speaker.stop(); return }
+        host.commitPending()
+        val items = officeSpeechItems(host, scope)
+        if (items.isEmpty()) Toast.makeText(ctx, ctx.getString(R.string.of6_nothing_to_read), Toast.LENGTH_SHORT).show() else speaker.start(items)
+    }
+    fun exportPdf6() {
+        host.commitPending(); busy = R.string.o5_exporting
+        scope.launch {
+            val r = runCatching { OfficeActions.exportPdf(ctx, app, host) }
+            busy = null
+            r.onSuccess { pdf = it }.onFailure { Toast.makeText(ctx, ctx.getString(R.string.o5_export_failed, it.message ?: ""), Toast.LENGTH_LONG).show() }
+        }
+    }
+    DisposableEffect(host) {
+        OfficeCommandRegistry.host = host
+        OfficeCommandRegistry.ui = object : OfficeUi {
+            override fun print() = printDoc()
+            override fun readAloud() = readAloudDoc()
+            override fun exportPdf() = exportPdf6()
+        }
+        onDispose { if (OfficeCommandRegistry.host === host) { OfficeCommandRegistry.host = null; OfficeCommandRegistry.ui = null } }
+    }
 
     fun save(after: () -> Unit = {}) {
         host.commitPending()
@@ -164,6 +200,11 @@ private fun OfficeChrome(nav: NavHostController, host: OfficeHost, replaceHost: 
                     Box {
                         IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, stringResource(R.string.o5_more)) }
                         DropdownMenu(menu, { menu = false }) {
+                            // office6: find, print, read aloud, AI commands
+                            if (host is WordState || host is SheetState || host is SlideState) DropdownMenuItem({ Text(stringResource(R.string.o5_find)) }, { menu = false; OfficeCommandRegistry.run(host, com.smartdocs.editor.core.office5.OfficeCall("find")) }, leadingIcon = { Icon(Icons.Default.FindReplace, null) })
+                            DropdownMenuItem({ Text(stringResource(R.string.of6_print)) }, { menu = false; printDoc() }, leadingIcon = { Icon(Icons.Default.Print, null) })
+                            DropdownMenuItem({ Text(stringResource(if (speaker.active) R.string.of6_stop_reading else R.string.of6_read_aloud)) }, { menu = false; readAloudDoc() }, leadingIcon = { Icon(Icons.Default.RecordVoiceOver, null) })
+                            if (settings6.aiEnabled && (host is WordState || host is SheetState || host is SlideState)) DropdownMenuItem({ Text(stringResource(R.string.of6_ai_command)) }, { menu = false; host.commitPending(); aiBox = true }, leadingIcon = { Icon(Icons.Default.AutoAwesome, null) })
                             DropdownMenuItem({ Text(stringResource(R.string.o5_save_as)) }, { menu = false; saveAs.launch(host.file.nameWithoutExtension + "." + host.ext) }, leadingIcon = { Icon(Icons.Default.SaveAs, null) })
                             if (host is SheetState && host.wb.kind == Workbook5.Kind.CSV) DropdownMenuItem({ Text(stringResource(R.string.o5_save_as_xlsx)) }, {
                                 menu = false
@@ -172,14 +213,7 @@ private fun OfficeChrome(nav: NavHostController, host: OfficeHost, replaceHost: 
                                     if (f != null) { OfficeRoutes.open(nav, f) }
                                 }
                             }, leadingIcon = { Icon(Icons.Default.TableChart, null) })
-                            DropdownMenuItem({ Text(stringResource(R.string.o5_export_pdf)) }, {
-                                menu = false; host.commitPending(); busy = R.string.o5_exporting
-                                scope.launch {
-                                    val r = runCatching { OfficeActions.exportPdf(ctx, app, host) }
-                                    busy = null
-                                    r.onSuccess { pdf = it }.onFailure { Toast.makeText(ctx, ctx.getString(R.string.o5_export_failed, it.message ?: ""), Toast.LENGTH_LONG).show() }
-                                }
-                            }, leadingIcon = { Icon(Icons.Default.PictureAsPdf, null) })
+                            DropdownMenuItem({ Text(stringResource(R.string.o5_export_pdf)) }, { menu = false; exportPdf6() }, leadingIcon = { Icon(Icons.Default.PictureAsPdf, null) })
                             DropdownMenuItem({ Text(stringResource(R.string.o5_share)) }, {
                                 menu = false; host.commitPending()
                                 scope.launch { val f = withContext(Dispatchers.IO) { runCatching { OfficeActions.currentCopy(app, host) }.getOrNull() }; if (f != null) OfficeActions.share(ctx, app, f) }
@@ -209,8 +243,10 @@ private fun OfficeChrome(nav: NavHostController, host: OfficeHost, replaceHost: 
                 is TextState -> TextEditor(host)
                 is ImportState -> ImportView(host)
             }
+            OfficeReadAloudBar(speaker, Modifier.align(Alignment.BottomCenter))   // office6
         }
     }
+    if (aiBox) OfficeAiDialog(host) { aiBox = false }   // office6
 
     busy?.let { ProgressDialog(stringResource(it)) }
     pdf?.let { ResultSheet(it, nav, onDismiss = { pdf = null }) }
