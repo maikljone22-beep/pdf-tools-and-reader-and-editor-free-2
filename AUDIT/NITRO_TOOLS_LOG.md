@@ -47,3 +47,18 @@ Test: `RedactNitroTest`.
 | Remove Bates Numbering (CODE-ONLY) | done | `HeaderFooterOps.removeBates` (ours and Acrobat /BatesN, restores grown pages) + button in the Bates screen. The header/footer "remove" no longer strips Acrobat Bates numbers (verifier note: it stripped Acrobat's but not ours) |
 
 Test: `NitroDecorTest`.
+
+## 14 Optimize / compress
+
+| Row | Result | Where |
+|---|---|---|
+| Separate settings for colour / grayscale / monochrome images | done | `OptimizeOptions.separateClasses` + `grayDpi/grayQuality/grayMode`, `monoDpi/monoMode` (`Optimizer.processImage`, `mono`) |
+| Compression: Automatic / JPEG / ZIP | done | `ImgCompression` per class (AUTO = the earlier behaviour; ZIP = lossless Flate re-encode); a result is only kept when smaller |
+| Compression: CCITT G3 / G4 | done | new `core/tools5/Ccitt.kt` encoder (T.6 G4 `/K -1`, T.4 1-D G3 with EOLs `/K 0`), 1-bit downsampling; `MonoCompression` |
+| Remove: embedded fonts (unembed) | done | `OptimizeExtras.unembedFonts` — standard-14 only, or all simple fonts (CID/Type0 fonts keep their programs: Arabic/CJK cannot be shown without them) |
+| Remove: annotations / form widgets / links / bookmarks in Optimize | done | `removeAnnotations/removeForms/removeLinks/removeBookmarks` → `Sanitizer.clean` (same rules as Sanitize; forms are flattened) |
+| Remove: named destinations | done | `OptimizeExtras.removeNamedDestinations` — links, actions, OpenAction and bookmarks that use a name get the explicit destination first |
+| Troubleshooting tips | done | `OptimizeTip` / `OptimizeExtras.tips` from the audit of the result, shown in a card |
+| Encrypted input in Optimize (bug: null password) | fixed | password prompt in `OptimizeScreen`; the result stays protected with the same password (`keepProtection`, switchable). `PdfOps.compress` keeps its own re-protect (`keepProtection = false` there) |
+
+Test: `NitroOptimizeTest`.

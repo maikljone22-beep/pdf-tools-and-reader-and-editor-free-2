@@ -461,7 +461,7 @@ object PdfOps {
         // old callers pass a pixel limit for an A4-ish page; the optimizer works in dpi of each page
         val dpi = (maxDim / 11.7f).toInt().coerceIn(72, 300)
         val opts = com.smartdocs.editor.core.tools5.OptimizeOptions(imageDpi = dpi, jpegQuality = quality.coerceIn(20, 95),
-            stripMetadata = false, stripJavaScript = false, onlyIfSmaller = false)
+            stripMetadata = false, stripJavaScript = false, onlyIfSmaller = false, keepProtection = false)
         val tmp = File(out.absoluteFile.parentFile, ".${out.nameWithoutExtension}.${System.nanoTime()}.opt.pdf")
         try {
             com.smartdocs.editor.core.tools5.Optimizer.optimize(src, password, tmp, opts)
