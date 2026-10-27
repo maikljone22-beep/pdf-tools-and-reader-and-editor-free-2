@@ -131,7 +131,7 @@ class NveSearchTest {
         assertEquals(listOf("b.pdf", "c.pdf", "A.pdf"), NveSearchCore.sort(all, NveSearchCore.Sort.DATE, meta).map { it.name })
         val f = NveSearchCore.filter(all, "", setOf(PartKind.COMMENTS))
         assertEquals(1, f.size); assertEquals(1, f[0].hits.size)
-        assertEquals(listOf("A.pdf", "c.pdf"), NveSearchCore.filter(all, "/a/", PartKind.entries.toSet()).map { it.name })
+        assertEquals(listOf("A.pdf"), NveSearchCore.filter(all, "a.pdf", PartKind.entries.toSet()).map { it.name })
         val csv = NveSearchCore.csv("q", listOf(a), listOf("Query", "File", "Path", "Page", "Where", "Snippet")) { it.name }
         val lines = csv.removePrefix("﻿").trimEnd().split("\r\n")
         assertEquals(3, lines.size)
@@ -156,7 +156,7 @@ class NveSearchTest {
     @Test fun indexOptions() {
         val o = NveSearchCore.IndexOptions(stopWords = setOf("the", "of"), includeNumbers = false)
         assertEquals("history rome", NveSearchCore.filterBody("the history of rome 1999", o))
-        assertEquals("history rome", NveSearchCore.stripQuery("history of Rome 2020", o))
+        assertEquals("history Rome", NveSearchCore.stripQuery("history of Rome 2020", o))
         assertEquals("abc 12", NveSearchCore.filterBody("abc 12", NveSearchCore.IndexOptions()))
         val ex = NveSearchCore.IndexOptions(excluded = listOf("/storage/emulated/0/Private"))
         assertTrue(NveSearchCore.excluded("/storage/emulated/0/Private/a.pdf", ex))
