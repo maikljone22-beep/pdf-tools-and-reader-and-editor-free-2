@@ -242,7 +242,7 @@ internal object ImageEdit5 {
         l += op("q")
         Affine.values(m).forEach { l += COSFloat(it) }
         l += op("cm")
-        inner.forEach { l.add(it) }
+        inner.forEach { l.addAll(it) }
         if (ownGs != null) { l += ownGs; l += op("gs") }
         if (crop != null) l.addAll(clipTokens(crop, localBox, ellipse))
         l.addAll(body)
