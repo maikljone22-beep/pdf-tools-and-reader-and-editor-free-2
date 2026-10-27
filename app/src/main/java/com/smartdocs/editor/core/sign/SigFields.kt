@@ -251,7 +251,7 @@ object SigFields {
                 matrixFor(rot)?.let { m -> cosObject.setItem(COSName.MATRIX, COSArray().apply { m.forEach { add(COSFloat(it)) } }) }
             }
             PDPageContentStream(t, ap).use { cs -> draw(t, cs, upW, upH) }
-            w.appearance = PDAppearanceDictionary().apply { normalAppearance = ap }
+            w.appearance = PDAppearanceDictionary().apply { setNormalAppearance(ap) }
             form.fields.add(field)
             page.annotations.add(w)
             ByteArrayOutputStream().also { t.save(it) }.toByteArray()
@@ -287,7 +287,7 @@ object SigFields {
             f.cosObject.isNeedToBeUpdated = true
             for (w in f.widgets) {
                 val r = w.rectangle ?: PDRectangle()
-                w.appearance = PDAppearanceDictionary().apply { normalAppearance = PDAppearanceStream(d).apply { bBox = PDRectangle(r.width, r.height) } }
+                w.appearance = PDAppearanceDictionary().apply { setNormalAppearance(PDAppearanceStream(d).apply { bBox = PDRectangle(r.width, r.height) }) }
                 w.cosObject.isNeedToBeUpdated = true
             }
             form.cosObject.isNeedToBeUpdated = true
