@@ -86,6 +86,8 @@ android {
         isCoreLibraryDesugaringEnabled = true
     }
     buildFeatures { compose = true; buildConfig = true }
+    // JVM unit tests: android.util.Log (called inside PdfBox-Android, e.g. on a second getAcroForm()) returns defaults instead of throwing
+    testOptions { unitTests.isReturnDefaultValues = true }
     packaging {
         resources.excludes += setOf("META-INF/{AL2.0,LGPL2.1}", "META-INF/DEPENDENCIES", "META-INF/LICENSE*", "META-INF/NOTICE*", "META-INF/versions/9/OSGI-INF/MANIFEST.MF")
     }
