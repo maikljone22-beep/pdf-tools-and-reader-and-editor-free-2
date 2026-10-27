@@ -7,7 +7,6 @@ import com.smartdocs.editor.SmartDocsApp
 import com.smartdocs.editor.core.convert6.Cv6Catalog
 import com.smartdocs.editor.core.convert6.Cv6Engine
 import com.smartdocs.editor.core.convert6.Cv6Opts
-import com.smartdocs.editor.core.edit5.Bates
 import com.smartdocs.editor.core.edit5.BatesSpec
 import com.smartdocs.editor.core.edit5.DecorSpec
 import com.smartdocs.editor.core.edit5.E5Profiles
@@ -236,9 +235,10 @@ class RecipeRunner(private val ctx: Context, private val tempDir: File) {
                 val spec = BatesSpec(prefix = s.p("prefix"), suffix = s.p("suffix"), digits = s.int("digits", 6).coerceIn(1, 15),
                     start = batesNext[index] ?: s.p("start").trim().toLongOrNull() ?: 1L)
                 val slot = HeaderFooterOps.Slot.entries.firstOrNull { it.name.equals(s.p("position").trim(), true) } ?: HeaderFooterOps.Slot.BOTTOM_RIGHT
-                val res = HeaderFooterOps.bates(ctx, listOf(src), { out }, spec, HeaderFooterOps.BatesLayout(slot = slot), passwords = { password })
-                val range = res.firstOrNull()?.second
-                if (range != null) { batesNext[index] = range.last + 1; if (!range.isEmpty()) notes += str(R.string.nbt_note_bates, Bates.format(spec, range.first), Bates.format(spec, range.last)) }
+                val res = HeaderFooterOps.bates(ctx, listOf(src), { _, _, _ -> out }, spec, HeaderFooterOps.BatesLayout(slot = slot), passwords = { password })
+                // every page is stamped (default layout range), so the next file continues after this one's pages
+                batesNext[index] = spec.start + PdfOps.pageCount(src, password)
+                res.firstOrNull()?.let { (_, first, last) -> if (first.isNotEmpty()) notes += str(R.string.nbt_note_bates, first, last) }
             }
             StepType.REDACT -> {
                 val req = BatchSteps.redactRequest(s)
