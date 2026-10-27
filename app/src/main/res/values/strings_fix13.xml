@@ -16,4 +16,5 @@
     <string name="fx_trash_failed_text">لا توجد مساحة كافية لنقل هذه العناصر إلى السلة. هل تريد حذفها نهائيًا؟ لا يمكن التراجع عن ذلك.</string>
     <string name="fx_delete_permanently">حذف نهائي</string>
     <string name="fx_redact_skipped">لم يُنقَّح %1$d ملف (محمي أو تالف) — لم يتغيّر:</string>
+    <string name="fx_annots_not_saved">تعذّر حفظ %1$d تعليق توضيحي — ما زالت معلّقة ولم تُفقد</string>
 </resources>

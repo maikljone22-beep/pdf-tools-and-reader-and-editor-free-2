@@ -104,5 +104,7 @@ class V5State private constructor(val s: ReaderState) {
         const val PREFS = "view5"
         private val map = WeakHashMap<ReaderState, V5State>()
         fun of(s: ReaderState): V5State = synchronized(map) { map.getOrPut(s) { V5State(s) } }
+        /** The reader was closed: drop its state (the value holds the reader, so the weak key alone never clears it). */
+        fun forget(reader: ReaderState) { synchronized(map) { map.remove(reader) } }
     }
 }

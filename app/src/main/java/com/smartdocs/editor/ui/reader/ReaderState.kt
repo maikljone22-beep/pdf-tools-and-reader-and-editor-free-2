@@ -23,6 +23,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -240,12 +241,30 @@ class ReaderState(
     @Volatile private var disposed = false
     internal val saveMutex = Mutex()
 
+    /** The user chose "discard" for the pending edits: [close] must not save them. */
+    @Volatile var discarded = false
+        private set
+
+    fun discardChanges() { discarded = true; edit.discardOnClose(); forms5.discard() }
+
+    /**
+     * The document is closed for good (its back-stack entry was removed, see [ReaderHolder]). Pending edits the user
+     * did not discard are saved first (audit AN-01 / DI-10): no way out of the reader drops them silently.
+     */
     fun close() {
         disposed = true
-        val s = session; session = null
+        val saveFirst = dirty && !discarded
+        val s = session
+        if (!saveFirst) session = null
         val restore = edit.restoreOnClose()
+        // side-car states keyed by this reader hold it strongly: drop them (audit ARCH-03)
+        com.smartdocs.editor.ui.forms5.FormFill.forget(this)
+        com.smartdocs.editor.ui.view5.V5State.forget(this)
+        com.smartdocs.editor.ui.pageflip.PageFlipController.forget(this)
         // PdfSession.closeAsync waits for in-flight renders, so no delay is needed
         ioScope.launch {
+            if (saveFirst) withContext(NonCancellable) { runCatching { save() } }
+            runCatching { session?.closeAsync() }; session = null
             runCatching { s?.closeAsync() }
             // discarded edits: put back the file as it was before stored annotations were taken out for editing
             restore?.let { (backup, target) -> runCatching { if (!backup.renameTo(target)) { backup.copyTo(target, overwrite = true); backup.delete() } } }
@@ -383,17 +402,23 @@ class ReaderState(
                 saving = true
                 try {
                     val pending = annots.toList()
+                    var failed: List<Annot> = emptyList()
                     withContext(NonCancellable) {
                         val tmp = File(f.parentFile, ".${f.nameWithoutExtension}.saving.pdf")
-                        AnnotationWriter.commit(context, f, pending, tmp, password)
+                        failed = AnnotationWriter.commit(context, f, pending, tmp, password).failed
                         com.smartdocs.editor.core.collab.CollabLive.beforeSave(context, f, tmp, password)   // share6: merge other reviewers' comments
                         swapFile(tmp, record = false)
                         wrote = true
                         // the edit belongs in the user's document, not only in our working copy
                         writeBackResult = runCatching { app.documents.writeBack(f) }.getOrNull().also { com.smartdocs.editor.core.cloud.SaveHooks.onSaved(app, f) }
                     }
-                    annots.clear(); dirty = false
+                    // only what was written leaves the pending list: annotations that failed stay (audit DI-05) and
+                    // ones added while the save ran are kept too (audit DI-36)
+                    val keep = stillPendingAfterSave(annots.toList(), pending, failed)
+                    annots.retainAll { a -> keep.any { it.id == a.id } }
+                    dirty = annots.isNotEmpty() || forms5.hasPending
                     edit.committed()
+                    if (failed.isNotEmpty()) { error = str(R.string.fx_annots_not_saved, failed.size); return false }
                     return true
                 } catch (e: Exception) { error = e.message ?: e.toString(); return false } finally { saving = false }
             } finally {
@@ -650,9 +675,33 @@ const val OWNER_ANNOTS = "annots"
 @Composable
 fun rememberReaderState(app: SmartDocsApp, uri: String, startPage: Int, settings: AppSettings): ReaderState {
     val ctx = androidx.compose.ui.platform.LocalContext.current
-    val scope = rememberCoroutineScope()
-    val state = remember(uri) { ReaderState(app, ctx.applicationContext, scope, uri, startPage, settings) }
+    // audit AN-03 / DI-11 / RD-25 / AN-01: the reader lives as long as its back-stack entry, not its composition.
+    // Opening Settings, AI, e-sign, a linked file or a tool and coming back keeps pending edits, the undo history
+    // and the open document (same ReaderState instance per entry, so per-reader side-cars stay attached).
+    val holder: ReaderHolder = androidx.lifecycle.viewmodel.compose.viewModel(key = "reader:$uri")
+    val state = holder.state?.takeIf { it.uriString == uri }
+        ?: ReaderState(app, ctx.applicationContext, holder.scope, uri, startPage, settings).also { holder.state = it }
     LaunchedEffect(uri) { if (state.session == null && !state.needPassword) state.open(null) }
-    DisposableEffect(uri) { onDispose { state.close() } }
     return state
+}
+
+/**
+ * The pending annotations after a save that wrote [pending] (a snapshot of [current] taken when it started) and could
+ * not write [failed]: the failed ones plus everything added meanwhile (audit DI-05 / DI-36).
+ */
+internal fun stillPendingAfterSave(current: List<Annot>, pending: List<Annot>, failed: List<Annot>): List<Annot> {
+    val written = pending.map { it.id }.toHashSet().apply { removeAll(failed.map { it.id }.toSet()) }
+    return current.filter { it.id !in written }
+}
+
+/** Owns the reader of one back-stack entry; [onCleared] (entry popped for good) closes it, saving undiscarded edits. */
+class ReaderHolder : androidx.lifecycle.ViewModel() {
+    /** Main-thread scope of the reader; cancelled only after the reader was closed. */
+    val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    var state: ReaderState? = null
+
+    override fun onCleared() {
+        state?.close(); state = null
+        scope.cancel()
+    }
 }

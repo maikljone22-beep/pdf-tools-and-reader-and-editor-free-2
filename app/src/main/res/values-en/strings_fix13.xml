@@ -16,4 +16,5 @@
     <string name="fx_trash_failed_text">There is not enough space to move these items to the Trash. Delete them permanently? This cannot be undone.</string>
     <string name="fx_delete_permanently">Delete permanently</string>
     <string name="fx_redact_skipped">%1$d file(s) NOT redacted (protected or unreadable):</string>
+    <string name="fx_annots_not_saved">%1$d annotation(s) could not be saved — they are still pending, nothing was lost</string>
 </resources>

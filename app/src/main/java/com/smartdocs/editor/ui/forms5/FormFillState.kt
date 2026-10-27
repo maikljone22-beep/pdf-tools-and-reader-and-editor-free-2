@@ -38,6 +38,8 @@ import java.util.WeakHashMap
 object FormFill {
     private val states = WeakHashMap<ReaderState, FormFillState>()
     fun of(reader: ReaderState): FormFillState = synchronized(states) { states.getOrPut(reader) { FormFillState(reader) } }
+    /** The reader was closed: drop its state (the value holds the reader, so the weak key alone never clears it). */
+    fun forget(reader: ReaderState) { synchronized(states) { states.remove(reader) } }
 }
 
 /**

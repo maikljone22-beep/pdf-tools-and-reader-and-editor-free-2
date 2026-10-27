@@ -36,7 +36,7 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize|uiMode"
+            android:configChanges="orientation|screenSize|screenLayout|keyboard|keyboardHidden|navigation|smallestScreenSize|uiMode|density|fontScale|layoutDirection"
             android:windowSoftInputMode="adjustResize"
             android:launchMode="singleTask"
             android:theme="@style/Theme.SmartDocs.Splash">

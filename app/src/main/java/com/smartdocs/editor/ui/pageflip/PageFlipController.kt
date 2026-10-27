@@ -115,6 +115,8 @@ class PageFlipController private constructor(val s: ReaderState) {
         private const val K_GLOBAL = "global"
         private val map = WeakHashMap<ReaderState, PageFlipController>()
         fun of(s: ReaderState): PageFlipController = synchronized(map) { map.getOrPut(s) { PageFlipController(s) } }
+        /** The reader was closed: drop its state (the value holds the reader, so the weak key alone never clears it). */
+        fun forget(reader: ReaderState) { synchronized(map) { map.remove(reader) } }
 
         /** System "animator duration scale" (developer options / accessibility "remove animations" sets 0). */
         fun animatorScale(ctx: Context): Float =
