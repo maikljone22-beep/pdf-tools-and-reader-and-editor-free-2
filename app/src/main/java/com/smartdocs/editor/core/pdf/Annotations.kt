@@ -53,6 +53,8 @@ data class Annot(
     val mime: String = "",
     val groupId: Long? = null,                  // pending annotations grouped together (/IRT + /RT /Group on commit)
     val nm: String? = null,                     // /NM unique name, kept across edit round trips
+    val video: com.smartdocs.editor.core.annot.VideoPdf.Options? = null,   // VIDEO: in-page player options
+    val posterPath: String? = null,             // VIDEO: poster frame JPEG (appearance in other viewers)
 )
 
 object AnnotationWriter {
@@ -381,7 +383,9 @@ object AnnotationWriter {
     }
 
     /** Read existing annotations of a file for the annotations panel (title, contents, page, kind). */
-    data class Existing(val page: Int, val subtype: String, val author: String, val contents: String, val rect: RectF, val index: Int)
+    data class Existing(val page: Int, val subtype: String, val author: String, val contents: String, val rect: RectF, val index: Int,
+                        /** Non-null for a video annotation (Screen / RichMedia / video attachment): played in the page. */
+                        val video: com.smartdocs.editor.core.annot.VideoPdf.Info? = null)
 
     suspend fun list(src: File, password: String? = null): List<Existing> = withContext(Dispatchers.IO) {
         val doc = if (password.isNullOrEmpty()) PDDocument.load(src) else PDDocument.load(src, password)
@@ -396,7 +400,8 @@ object AnnotationWriter {
                         // replies and review states are hidden children of another comment: not selectable on the page
                         if (com.smartdocs.editor.core.annot.Annot2Writer.isReplyOrState(an)) return@forEachIndexed
                         val r = an.rectangle ?: PDRectangle()
-                        out += Existing(pi, an.subtype ?: "", (an as? PDAnnotationMarkup)?.titlePopup ?: "", an.contents ?: "", RectF(r.lowerLeftX, r.upperRightY, r.upperRightX, r.lowerLeftY), ai)
+                        out += Existing(pi, an.subtype ?: "", (an as? PDAnnotationMarkup)?.titlePopup ?: an.cosObject.getString(COSName.T) ?: "", an.contents ?: "",
+                            RectF(r.lowerLeftX, r.upperRightY, r.upperRightX, r.lowerLeftY), ai, com.smartdocs.editor.core.annot.VideoPdf.detect(an))
                     }
                 }
             }
@@ -409,13 +414,13 @@ object AnnotationWriter {
      * re-committed. Returns null for kinds the editor cannot rewrite (stamps, widgets, attachments, ...).
      * Rects use the editor's convention (PDF space, top = larger y).
      */
-    suspend fun extract(src: File, page: Int, index: Int, password: String? = null): Annot? = withContext(Dispatchers.IO) {
+    suspend fun extract(src: File, page: Int, index: Int, password: String? = null, media: Boolean = true): Annot? = withContext(Dispatchers.IO) {
         val doc = if (password.isNullOrEmpty()) PDDocument.load(src) else PDDocument.load(src, password)
         doc.use { d ->
             if (page !in 0 until d.numberOfPages) return@use null
             val list = runCatching { d.getPage(page).annotations }.getOrNull() ?: return@use null
             val an = list.getOrNull(index) ?: return@use null
-            runCatching { toAnnot(an, page)?.copy(nm = an.annotationName) }.getOrNull()
+            runCatching { toAnnot(an, page, media)?.copy(nm = an.annotationName) }.getOrNull()
         }
     }
 
@@ -437,7 +442,8 @@ object AnnotationWriter {
         }
     }
 
-    internal fun toAnnot(an: PDAnnotation, page: Int): Annot? {
+    /** [media] false: a video's embedded file is not extracted (selection preview only; the copy needs it). */
+    internal fun toAnnot(an: PDAnnotation, page: Int, media: Boolean = true): Annot? {
         val cos = an.cosObject
         val sub = an.subtype ?: return null
         val r = an.rectangle ?: return null
@@ -493,7 +499,7 @@ object AnnotationWriter {
                 base.copy(kind = if (stamp) AnnotKind.STAMP_TEXT else AnnotKind.FREETEXT, rects = listOf(rect), fontSize = size, color = rgb ?: 0x212121)
             }
             "Text" -> base.copy(kind = AnnotKind.NOTE, rects = listOf(RectF(rect.left, rect.top, rect.left + 20f, rect.top - 20f)), color = color ?: 0xFFEB3B)
-            else -> com.smartdocs.editor.core.annot.Annot2Writer.read(an, page, base, rect)
+            else -> com.smartdocs.editor.core.annot.Annot2Writer.read(an, page, base, rect, media)
         }
     }
 
