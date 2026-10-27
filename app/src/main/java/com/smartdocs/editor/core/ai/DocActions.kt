@@ -93,6 +93,10 @@ interface DocActions {
     suspend fun createBlankPdf(pages: Int): ActionResult
     suspend fun pageText(page: Int): String
     fun selectedText(): String?
+    // ai6 (B10 / AI-7): edit through chat. [pages] null = every page.
+    suspend fun highlightText(query: String, regex: Boolean, color: Int, pages: List<Int>?): ActionResult
+    suspend fun redactPattern(kind: String, regex: String?, pages: List<Int>?): ActionResult
+    suspend fun replaceText(find: String, replace: String, matchCase: Boolean): ActionResult
 }
 
 /** Failure meant for the user as is (e.g. "cannot delete every page"). */
@@ -330,6 +334,55 @@ class PdfDocActions(private val ctx: Context, private val host: DocHost, private
 
     override suspend fun pageText(page: Int): String = host.pageText(page)
     override fun selectedText(): String? = host.selectedText()
+
+    // ---------------- ai6 (B10 / AI-7): edit through chat ----------------
+
+    /** Hits of [matcher] on [pages] (null = all), searched with PDFium so rects match the page text. */
+    private suspend fun findAll(pages: List<Int>?, matcher: (String) -> List<IntRange>): List<com.smartdocs.editor.core.pdf.SearchHit> {
+        val f = host.file() ?: throw ActionError(s(com.smartdocs.editor.R.string.ai2_err_no_doc))
+        val wanted = pages?.takeIf { it.isNotEmpty() }?.toSet()
+        val hits = try {
+            withSession(f) { session ->
+                val range = if (wanted == null) 0 until session.pageCount else (wanted.minOrNull() ?: 0)..(wanted.maxOrNull() ?: 0)
+                session.searchWith(range, matcher)
+            }
+        } catch (e: IllegalArgumentException) { throw ActionError(s(com.smartdocs.editor.R.string.ai6r_err_pattern)) }
+        return hits.filter { (wanted == null || it.page in wanted) && it.rects.isNotEmpty() }
+    }
+
+    override suspend fun highlightText(query: String, regex: Boolean, color: Int, pages: List<Int>?): ActionResult {
+        val hits = findAll(pages) { t -> AiEditPatterns.highlightRanges(t, query, regex) }
+        if (hits.isEmpty()) throw ActionError(s(com.smartdocs.editor.R.string.ai2_err_not_found, query))
+        val author = s(com.smartdocs.editor.R.string.ai_title)
+        val annots = hits.map { h ->
+            Annot(kind = AnnotKind.HIGHLIGHT, page = h.page, color = color,
+                rects = h.rects.map { r -> RectF(minOf(r.left, r.right), maxOf(r.top, r.bottom), maxOf(r.left, r.right), minOf(r.top, r.bottom)) }, author = author)
+        }
+        val r = edit(s(com.smartdocs.editor.R.string.ai6r_done_highlight, hits.size, query)) { src, out, pw -> AnnotationWriter.commit(ctx, src, annots, out, pw).orThrow() }
+        host.goToPage(hits.first().page)
+        return r
+    }
+
+    override suspend fun redactPattern(kind: String, regex: String?, pages: List<Int>?): ActionResult {
+        val hits = findAll(pages) { t -> AiEditPatterns.redactRanges(t, kind, regex) }
+        if (hits.isEmpty()) throw ActionError(s(com.smartdocs.editor.R.string.ai6r_err_none_found, kind))
+        val marks = hits.mapIndexed { i, h -> com.smartdocs.editor.core.redact.RedactMark("ai6_$i", h.page, h.rects) }
+        return edit(s(com.smartdocs.editor.R.string.ai6r_done_redact_pattern, hits.size, kind)) { src, out, pw -> com.smartdocs.editor.core.redact.RedactApplier.apply(ctx, src, out, pw, marks) }
+    }
+
+    override suspend fun replaceText(find: String, replace: String, matchCase: Boolean): ActionResult {
+        if (find.isBlank()) throw ActionError(s(com.smartdocs.editor.R.string.ai2_err_args))
+        var outcome: com.smartdocs.editor.core.search.ReplaceOutcome? = null
+        val options = com.smartdocs.editor.core.search.SearchOptions(norm = com.smartdocs.editor.core.search.NormOptions(matchCase = matchCase))
+        val r = edit(s(com.smartdocs.editor.R.string.ai6r_done_replace, 0, find)) { src, out, pw ->
+            val o = com.smartdocs.editor.core.search.FindReplace.replaceAllIn(ctx, src, out, pw, find, options, replace, ctx.cacheDir)
+            if (o.count == 0) { out.delete(); throw ActionError(s(com.smartdocs.editor.R.string.ai2_err_not_found, find)) }
+            outcome = o
+        }
+        val o = outcome
+        val warn = (if (o?.fontWarning == true) "\n" + s(com.smartdocs.editor.R.string.s5_rr_font_warn) else "") + (if (o?.lossy == true) "\n" + s(com.smartdocs.editor.R.string.s5_rr_lossy) else "")
+        return r.copy(message = s(com.smartdocs.editor.R.string.ai6r_done_replace, o?.count ?: 0, find) + warn)
+    }
 
     private suspend fun <T> withSession(f: File, block: suspend (PdfSession) -> T): T {
         val session = PdfSession.open(ctx, f, host.password())

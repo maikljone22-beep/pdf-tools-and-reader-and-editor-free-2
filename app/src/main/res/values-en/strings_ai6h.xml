@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ai6 hub chat: attachments, skills, web search, exports, conversations, Spaces sources, help chat -->
+    <string name="ai6h_add">Add</string>
+    <string name="ai6h_add_images">Images from gallery</string>
+    <string name="ai6h_add_link">Web link</string>
+    <string name="ai6h_add_pdfs">More PDF files</string>
+    <string name="ai6h_add_text">Pasted text</string>
+    <string name="ai6h_all">All</string>
+    <string name="ai6h_anki">Export to Anki</string>
+    <string name="ai6h_ask_skill">Type your question for this skill…</string>
+    <string name="ai6h_attach">Attach</string>
+    <string name="ai6h_bad">Bad answer</string>
+    <string name="ai6h_bad_url">The link is not valid</string>
+    <string name="ai6h_camera">Take a photo</string>
+    <string name="ai6h_chat_files">The chat covers %1$d files</string>
+    <string name="ai6h_chat_missing">The files of this conversation no longer exist.</string>
+    <string name="ai6h_conversations">Conversations</string>
+    <string name="ai6h_csv">Export CSV</string>
+    <string name="ai6h_export">Export</string>
+    <string name="ai6h_export_docx">Export to Word</string>
+    <string name="ai6h_fetch_empty">No readable text was found on this page.</string>
+    <string name="ai6h_fetch_failed">Could not fetch the page: %1$s</string>
+    <string name="ai6h_good">Good answer</string>
+    <string name="ai6h_help_ask">Ask how to use the app…</string>
+    <string name="ai6h_help_chat">Support assistant</string>
+    <string name="ai6h_help_hello">Ask me about any feature of the app and I will answer from the help centre.</string>
+    <string name="ai6h_help_q1">How do I add a signature to a file?</string>
+    <string name="ai6h_help_q2">How do I read the document aloud?</string>
+    <string name="ai6h_help_q3">How do I restore a file I deleted?</string>
+    <string name="ai6h_import">Import</string>
+    <string name="ai6h_n_images">%1$d images attached</string>
+    <string name="ai6h_new_skill">New skill</string>
+    <string name="ai6h_page">Page number</string>
+    <string name="ai6h_page_of">Page number (of %1$d)</string>
+    <string name="ai6h_page_snapshot">Page snapshot</string>
+    <string name="ai6h_panel_width">Panel width</string>
+    <string name="ai6h_remove">Remove</string>
+    <string name="ai6h_skill_image">Needs an image (formula, chart…)</string>
+    <string name="ai6h_skill_instruction">Instructions</string>
+    <string name="ai6h_skill_name">Skill name</string>
+    <string name="ai6h_skills">Skills</string>
+    <string name="ai6h_skills_hint">A skill is an instruction put before your question. Pick it in the chat bar or type /name at the start of the question. Export shares JSON; import reads JSON from the clipboard or a file.</string>
+    <string name="ai6h_skills_imported">%1$d skills imported</string>
+    <string name="ai6h_source">Source</string>
+    <string name="ai6h_space_bad">This file is not a valid SmartDocs Space.</string>
+    <string name="ai6h_space_import">Import a Space</string>
+    <string name="ai6h_space_imported">Space “%1$s” imported</string>
+    <string name="ai6h_space_share">Share the Space</string>
+    <string name="ai6h_text_body">Text</string>
+    <string name="ai6h_text_title">Title</string>
+    <string name="ai6h_url">Page link (https://…)</string>
+    <string name="ai6h_web">Web search</string>
+    <string name="ai6h_you">You</string>
+    <string name="ai6h_assistant">Assistant</string>
+    <string name="ai6h_export_chat_docx">Chat to Word</string>
+</resources>

@@ -29,5 +29,5 @@ object AltTextAi {
         return AiCalls.ask(ctx, AiClient(settings), system, user).trim().trim('"').take(250)
     }
 
-    fun available(settings: AppSettings): Boolean = AiClient.available(settings)
+    fun available(settings: AppSettings): Boolean = settings.aiEnabled && AiClient.available(settings)   // ai6: AI master switch
 }

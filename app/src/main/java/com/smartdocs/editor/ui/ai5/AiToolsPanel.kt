@@ -13,6 +13,15 @@ import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.PrivacyTip
 import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.Toc
+import androidx.compose.material.icons.filled.Analytics
+import androidx.compose.material.icons.filled.Audiotrack
+import androidx.compose.material.icons.filled.CompareArrows
+import androidx.compose.material.icons.filled.Gavel
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.ReportProblem
+import androidx.compose.material.icons.filled.Slideshow
+import androidx.compose.material.icons.filled.TableChart
+import androidx.compose.material.icons.filled.ViewColumn
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -64,6 +73,12 @@ fun AiToolsPanel(nav: NavHostController, file: File?, modifier: Modifier = Modif
     var lang by remember { mutableStateOf("en") }
     var mode by remember { mutableStateOf(TranslateMode.OVERLAY) }
     var pages by remember { mutableStateOf("") }
+    // ai6 (fork T): translation guidance + pictures, slides / video, reviews, tables
+    var guidance by remember { mutableStateOf("") }
+    var trImages by remember { mutableStateOf(false) }
+    var slides by remember { mutableStateOf(false) }
+    var review by remember { mutableStateOf<com.smartdocs.editor.core.ai6.DocReview.Kind?>(null) }
+    var tables by remember { mutableStateOf(false) }
     val processing = stringResource(R.string.a5_working)
     val quota = stringResource(R.string.a5_err_quota)
     val uri = file?.let { Uri.fromFile(it).toString() }
@@ -72,6 +87,16 @@ fun AiToolsPanel(nav: NavHostController, file: File?, modifier: Modifier = Modif
 
     Column(modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         ToolRow(Icons.Default.GTranslate, stringResource(R.string.a5_translate_doc), stringResource(R.string.a5_translate_doc_sub), ok) { translate = true }
+        // ai6: side-by-side view (with the last whole translation of this file when there is one)
+        ToolRow(Icons.Default.ViewColumn, stringResource(R.string.ai6t_side_by_side), stringResource(R.string.ai6t_side_by_side_sub), ok) { nav.navigate(Routes.tool("ai_side_by_side", uri)) }
+        ToolRow(Icons.Default.Slideshow, stringResource(R.string.ai6t_slides), stringResource(R.string.ai6t_slides_sub), ok) { slides = true }
+        ToolRow(Icons.Default.Gavel, stringResource(R.string.ai6t_contract), stringResource(R.string.ai6t_contract_sub), ok) { review = com.smartdocs.editor.core.ai6.DocReview.Kind.CONTRACT }
+        ToolRow(Icons.Default.CompareArrows, stringResource(R.string.ai6t_compare), stringResource(R.string.ai6t_compare_sub), ok) { review = com.smartdocs.editor.core.ai6.DocReview.Kind.COMPARE }
+        ToolRow(Icons.Default.Analytics, stringResource(R.string.ai6t_analysis), stringResource(R.string.ai6t_analysis_sub), ok) { review = com.smartdocs.editor.core.ai6.DocReview.Kind.ANALYSIS }
+        ToolRow(Icons.Default.ReportProblem, stringResource(R.string.ai6t_risk), stringResource(R.string.ai6t_risk_sub), ok) { review = com.smartdocs.editor.core.ai6.DocReview.Kind.RISK }
+        ToolRow(Icons.Default.TableChart, stringResource(R.string.ai6t_tables), stringResource(R.string.ai6t_tables_sub), ok) { tables = true }
+        ToolRow(Icons.Default.Image, stringResource(R.string.ai6t_image_gen), stringResource(R.string.ai6t_image_gen_sub), true) { nav.navigate(Routes.tool("ai_image", uri)) }
+        ToolRow(Icons.Default.Audiotrack, stringResource(R.string.ai6t_transcribe), stringResource(R.string.ai6t_transcribe_sub), true) { nav.navigate(Routes.tool("ai_transcribe", uri)) }
         ToolRow(Icons.Default.PrivacyTip, stringResource(R.string.a5_pii_title), stringResource(R.string.a5_pii_sub), ok) { pii = true }
         ToolRow(Icons.Default.EditNote, stringResource(R.string.a5_form_fill), stringResource(R.string.a5_form_fill_sub), ok) { form = true }
         ToolRow(Icons.Default.Comment, stringResource(R.string.a5_comments_summary), stringResource(R.string.a5_comments_summary_sub), ok) {
@@ -114,6 +139,11 @@ fun AiToolsPanel(nav: NavHostController, file: File?, modifier: Modifier = Modif
                     FilterChip(mode == TranslateMode.TEXT_ONLY, { mode = TranslateMode.TEXT_ONLY }, label = { Text(stringResource(R.string.a5_tr_text)) })
                 }
                 OutlinedTextField(pages, { pages = it }, label = { Text(stringResource(R.string.a5_pages_optional)) }, singleLine = true)
+                // ai6: per-language guidance and translation of picture-only pages (vision model)
+                OutlinedTextField(guidance, { guidance = it }, label = { Text(stringResource(R.string.ai6t_guidance)) }, singleLine = true)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(trImages, { trImages = it }); Text(stringResource(R.string.ai6t_translate_images), style = MaterialTheme.typography.bodySmall)
+                }
                 Text(stringResource(R.string.a5_tr_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         },
@@ -124,13 +154,20 @@ fun AiToolsPanel(nav: NavHostController, file: File?, modifier: Modifier = Modif
                 runner.run(processing) {
                     val range = pages.takeIf { it.isNotBlank() }?.let { parsePages(it) }
                     val out = app.documents.uniqueFile(app.documents.docsDir, f.nameWithoutExtension + "_" + lang)
-                    try { DocTranslator.translate(ctx, client, f, null, lang, mode, out, range) { a, b -> runner.message = "$processing ${a}/${b}" } }
-                    catch (e: Exception) { throw if (AiCalls.isQuota(e)) IllegalStateException(quota) else e }
+                    try {
+                        DocTranslator.translate(ctx, client, f, null, lang, mode, out, range, { a, b -> runner.message = "$processing ${a}/${b}" }, guidance, trImages)
+                            .also { com.smartdocs.editor.ui.ai6.SideBySideArgs.translated[f.absolutePath] = it }   // ai6: the side-by-side view shows it
+                    }
+                    catch (e: Exception) { throw if (AiCalls.isQuota(e)) IllegalStateException(quota) else if (e is com.smartdocs.editor.core.ai6.AiNotConfiguredException) IllegalStateException(ctx.getString(R.string.ai6_not_configured)) else e }
                 }
             }) { Text(stringResource(R.string.a5_start)) }
         },
         dismissButton = { TextButton(onClick = { translate = false }) { Text(stringResource(R.string.a5_cancel)) } })
 
+    // ai6 (fork T)
+    if (slides && file != null) com.smartdocs.editor.ui.ai6.SlidesSheet(nav, listOf(file), onDismiss = { slides = false })
+    review?.let { k -> if (file != null) com.smartdocs.editor.ui.ai6.ReviewSheet(nav, file, k, onDismiss = { review = null }) }
+    if (tables && file != null) com.smartdocs.editor.ui.ai6.TablesSheet(file, onDismiss = { tables = false })
     if (pii && file != null) PiiScanSheet(file, null, onApply = { pii = false; nav.navigate(Routes.tool("redact", uri)) }, onDismiss = { pii = false })
     if (form && file != null) FormFillSheet(file, null, onFile = { runner.result = it }, onDismiss = { form = false })
     if (runner.running) ProgressDialog(runner.message)

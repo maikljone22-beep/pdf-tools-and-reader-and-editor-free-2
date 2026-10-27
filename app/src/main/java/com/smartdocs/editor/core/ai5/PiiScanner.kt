@@ -9,7 +9,8 @@ data class PiiHit(val match: PiiMatch, val hit: SearchHit)
 /** Runs [PiiDetector] over pages of an open session; rects come from [PdfSession.searchWith]. */
 object PiiScanner {
 
-    suspend fun scan(session: PdfSession, kinds: Set<PiiKind> = PiiKind.entries.toSet(), pages: IntRange = 0 until session.pageCount,
+    /** On-device scan; NAME / ORG / ROLE come from the offline Smart Redact patterns when asked for (AI: [com.smartdocs.editor.core.ai6.AiPii]). */
+    suspend fun scan(session: PdfSession, kinds: Set<PiiKind> = PiiKind.entries.toSet() - PiiEntities.KINDS, pages: IntRange = 0 until session.pageCount,
                      progress: (Int, Int) -> Unit = { _, _ -> }): List<PiiHit> {
         val out = ArrayList<PiiHit>()
         for (p in pages) {
@@ -24,5 +25,5 @@ object PiiScanner {
     }
 
     /** Only the [SearchHit]s, for screens that already handle search hits (redaction). */
-    suspend fun hits(session: PdfSession, kinds: Set<PiiKind> = PiiKind.entries.toSet()): List<SearchHit> = scan(session, kinds).map { it.hit }
+    suspend fun hits(session: PdfSession, kinds: Set<PiiKind> = PiiKind.entries.toSet() - PiiEntities.KINDS): List<SearchHit> = scan(session, kinds).map { it.hit }
 }

@@ -51,11 +51,15 @@ fun BatesScreen(nav: NavHostController, uri: String?) {
     var spec by remember { mutableStateOf(BatesSpec(prefix = "DOC-", digits = 6, start = 1)) }
     var layout by remember { mutableStateOf(HeaderFooterOps.BatesLayout()) }
     var unit by remember { mutableStateOf(E5Unit.PT) }
+    var naming by remember { mutableStateOf(com.smartdocs.editor.core.edit5.BatesNaming.KEEP) }
+    var writeLog by remember { mutableStateOf(false) }
+    var replaceSame by remember { mutableStateOf(false) }
+    var logFile by remember { mutableStateOf<java.io.File?>(null) }
     val style = layout.style
     val tree = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { t ->
-        val outs = runner.results
+        val outs = runner.results + listOfNotNull(logFile)
         if (t != null && outs.isNotEmpty()) scope.launch {
-            val n = runCatching { com.smartdocs.editor.ui.convert6.Cv6Save.toTree(ctx, t, outs.map { it to it.name }) }.getOrDefault(0)
+            val n = runCatching { com.smartdocs.editor.ui.tools5.saveToTree(ctx, t, outs, replaceSame) }.getOrDefault(0)
             runner.error = ctx.getString(R.string.nt_bates_saved_folder, n)
         }
     }
@@ -67,7 +71,6 @@ fun BatesScreen(nav: NavHostController, uri: String?) {
         if (skipped.isNotEmpty()) files = files.filter { f -> skipped.none { it.absolutePath == f.absolutePath } }
     }
     LaunchedEffect(first) { if (files.isNotEmpty()) unlockNew() }
-    val pick = rememberPdfPicker(multiple = true) { picked -> files = (files + picked).distinctBy { it.absolutePath }; unlockNew() }
     val processing = stringResource(R.string.processing)
     ToolScaffold(stringResource(R.string.e5_bates_title), nav, runner) {
         E5Section(stringResource(R.string.e5_bates_files, files.size)) {
@@ -79,7 +82,7 @@ fun BatesScreen(nav: NavHostController, uri: String?) {
                     IconButton(onClick = { files = files.toMutableList().apply { removeAt(i) }; unlocker.forget(f) }) { Icon(Icons.Default.Close, null) }
                 }
             }
-            OutlinedButton(onClick = pick) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.e5_add_files)) }
+            com.smartdocs.editor.ui.tools5.BatchSources(files) { files = it; unlockNew() }
         }
         E5Section(stringResource(R.string.e5_bates_format)) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -87,9 +90,11 @@ fun BatesScreen(nav: NavHostController, uri: String?) {
                 OutlinedTextField(spec.suffix, { spec = spec.copy(suffix = it) }, Modifier.weight(1f), singleLine = true, label = { Text(stringResource(R.string.e5_suffix)) })
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FloatField(spec.digits.toFloat(), stringResource(R.string.e5_digits), Modifier.weight(1f)) { spec = spec.copy(digits = it.toInt().coerceIn(1, 12)) }
+                FloatField(spec.digits.toFloat(), stringResource(R.string.e5_digits), Modifier.weight(1f)) { spec = spec.copy(digits = it.toInt().coerceIn(1, 15)) }
                 FloatField(spec.start.toFloat(), stringResource(R.string.e5_start_number), Modifier.weight(1f)) { spec = spec.copy(start = it.toLong().coerceAtLeast(0)) }
+                FloatField(spec.increment.toFloat(), stringResource(R.string.nt_bates_increment), Modifier.weight(1f)) { spec = spec.copy(increment = it.toLong().takeIf { v -> v != 0L } ?: 1L) }
             }
+            if (spec.increment < 0) Text(stringResource(R.string.nt_bates_increment_down), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(stringResource(R.string.e5_example, Bates.format(spec, spec.start)), style = MaterialTheme.typography.bodyMedium)
             ChoiceChips(BatesMode.values().toList(), spec.mode, { stringResource(when (it) {
                 BatesMode.CONTINUE -> R.string.nt_bates_continue; BatesMode.PER_DOCUMENT -> R.string.nt_bates_per_doc; BatesMode.RESTART -> R.string.nt_bates_restart }) }) { spec = spec.copy(mode = it) }
@@ -120,17 +125,31 @@ fun BatesScreen(nav: NavHostController, uri: String?) {
             Slider(layout.rotation, { layout = layout.copy(rotation = it) }, valueRange = -90f..90f)
             SwitchRow(stringResource(R.string.e5_behind), layout.behind) { layout = layout.copy(behind = it) }
         }
+        E5Section(stringResource(R.string.nt_opt_output)) {
+            ChoiceChips(com.smartdocs.editor.core.edit5.BatesNaming.values().toList(), naming, { stringResource(when (it) {
+                com.smartdocs.editor.core.edit5.BatesNaming.KEEP -> R.string.nt_bates_name_keep
+                com.smartdocs.editor.core.edit5.BatesNaming.ADD_RANGE -> R.string.nt_bates_name_add
+                com.smartdocs.editor.core.edit5.BatesNaming.REPLACE_WITH_RANGE -> R.string.nt_bates_name_replace }) }) { naming = it }
+            val ex = Bates.format(spec, spec.start)
+            Text(Bates.outputName("file", ex, ex, naming) + ".pdf", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            SwitchRow(stringResource(R.string.nt_bates_log), writeLog) { writeLog = it }
+            SwitchRow(stringResource(R.string.nt_opt_replace_same), replaceSame) { replaceSame = it }
+        }
         if (files.any { unlocker.isLocked(it) }) E5Section(stringResource(R.string.e5_lock_section)) { ProtectionChoice(protection) { protection = it } }
         E5UnlockDialog(unlocker)
         PrimaryButton(stringResource(R.string.e5_bates_apply), enabled = files.isNotEmpty(), icon = Icons.Default.Numbers) {
-            val list = files; val sp = spec; val lay = layout; val pr = protection
+            val list = files; val sp = spec; val lay = layout; val pr = protection; val nm = naming; val log = writeLog
             scope.launch {
                 // files added before a cancel, or reopened: make sure every locked one has its password
                 val skipped = runCatching { unlocker.unlockAll(list) }.getOrElse { runner.error = it.message ?: it.toString(); return@launch }
                 if (skipped.isNotEmpty()) { files = list - skipped.toSet(); return@launch }
                 val pw = unlocker.book.lookup()
                 runner.runMany(processing) {
-                    HeaderFooterOps.bates(ctx, list, { f -> app.documents.uniqueFile(app.documents.docsDir, f.nameWithoutExtension + "_bates") }, sp, lay, pw, pr).map { it.first }
+                    val done = HeaderFooterOps.bates(ctx, list, { f, a, b -> app.documents.uniqueFile(app.documents.docsDir, Bates.outputName(f.nameWithoutExtension, a, b, nm)) }, sp, lay, pw, pr)
+                    logFile = if (log) app.documents.uniqueFile(app.documents.docsDir, "bates_log", "txt").also { f ->
+                        f.writeText(Bates.log(sp, done.mapIndexed { i, (out, a, b) -> Triple(list[i].name + " → " + out.name, a, b) }))
+                    } else null
+                    done.map { it.first }
                 }
             }
         }
@@ -152,6 +171,7 @@ fun BatesScreen(nav: NavHostController, uri: String?) {
         ResultsList(runner.results, nav, "application/pdf")
         if (runner.results.isNotEmpty()) {
             Text(stringResource(R.string.e5_bates_done), style = MaterialTheme.typography.bodySmall)
+            logFile?.let { Text(stringResource(R.string.nt_bates_log_saved, it.name), style = MaterialTheme.typography.bodySmall) }
             OutlinedButton(onClick = { tree.launch(null) }, Modifier.fillMaxWidth()) { Icon(Icons.Default.DriveFolderUpload, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.nt_bates_to_folder)) }
         }
     }

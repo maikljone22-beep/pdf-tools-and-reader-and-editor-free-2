@@ -133,6 +133,11 @@ fun patternLabel(k: PatternKind): String = stringResource(when (k) {
     PatternKind.DATE_HIJRI -> R.string.s5_pat_hijri
     PatternKind.DATE_MONTH_NAME -> R.string.s5_pat_month
     PatternKind.AMOUNT -> R.string.s5_pat_amount
+    PatternKind.US_SSN -> R.string.nt_pat_us_ssn; PatternKind.US_PHONE -> R.string.nt_pat_us_phone; PatternKind.UK_NINO -> R.string.nt_pat_uk_nino
+    PatternKind.UK_PHONE -> R.string.nt_pat_uk_phone; PatternKind.UK_POSTCODE -> R.string.nt_pat_uk_postcode; PatternKind.UK_DRIVING -> R.string.nt_pat_uk_driving
+    PatternKind.CA_SIN -> R.string.nt_pat_ca_sin; PatternKind.IN_AADHAAR -> R.string.nt_pat_in_aadhaar; PatternKind.IN_PAN -> R.string.nt_pat_in_pan
+    PatternKind.ES_DNI -> R.string.nt_pat_es_dni; PatternKind.BR_CPF -> R.string.nt_pat_br_cpf; PatternKind.CN_ID -> R.string.nt_pat_cn_id
+    PatternKind.FR_PHONE -> R.string.nt_pat_fr_phone; PatternKind.DE_PHONE -> R.string.nt_pat_de_phone
 })
 
 /** Chips for the pattern library. */
@@ -147,7 +152,13 @@ fun PatternChips(selected: Set<PatternKind>, onChange: (Set<PatternKind>) -> Uni
             }
         }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            PatternKind.values().forEach { k ->
+            PatternKind.values().filter { it !in PatternKind.REGIONAL }.forEach { k ->
+                FilterChip(k in selected, { onChange(if (k in selected) selected - k else selected + k) }, label = { Text(patternLabel(k)) })
+            }
+        }
+        Text(stringResource(R.string.nt_pat_regions), style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 4.dp))
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            PatternKind.REGIONAL.forEach { k ->
                 FilterChip(k in selected, { onChange(if (k in selected) selected - k else selected + k) }, label = { Text(patternLabel(k)) })
             }
         }

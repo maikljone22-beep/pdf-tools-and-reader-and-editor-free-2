@@ -10,7 +10,9 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.automirrored.filled.Article
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.Share
@@ -89,7 +91,8 @@ fun SuggestionRow(items: List<String>, enabled: Boolean, onPick: (String) -> Uni
 }
 
 @Composable
-fun CitedMessageList(chat: CitedChatState, onCitation: (Citation) -> Unit, onShare: (String) -> Unit, onExportPdf: (String) -> Unit, modifier: Modifier = Modifier) {
+fun CitedMessageList(chat: CitedChatState, onCitation: (Citation) -> Unit, onShare: (String) -> Unit, onExportPdf: (String) -> Unit, modifier: Modifier = Modifier,
+                     onExportDocx: ((String) -> Unit)? = null) {   // ai6 (AI-15)
     val listState = rememberLazyListState()
     val clipboard = LocalClipboardManager.current
     LaunchedEffect(chat.messages.size, chat.messages.lastOrNull()?.text?.length) { if (chat.messages.isNotEmpty()) listState.animateScrollToItem(chat.messages.size - 1) }
@@ -116,14 +119,21 @@ fun CitedMessageList(chat: CitedChatState, onCitation: (Citation) -> Unit, onSha
                                 Text(m.text, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                             }
                             m.streaming && m.text.isBlank() -> Text(stringResource(R.string.a5_thinking), style = MaterialTheme.typography.bodyMedium)
-                            m.answer != null -> AnswerText(m.answer, onCitation)
+                            m.answer != null -> com.smartdocs.editor.ui.ai6.RichAnswer(m.answer, onCitation)   // ai6 (AI-11): code / LaTeX blocks
                             else -> SelectionContainer { Text(m.text, style = MaterialTheme.typography.bodyMedium.copy(textDirection = TextDirection.Content)) }
+                        }
+                        if (user && m.images > 0) Row(verticalAlignment = Alignment.CenterVertically) {   // ai6 (AI-4 / AI-10)
+                            Icon(Icons.Default.Image, null, Modifier.size(14.dp)); Spacer(Modifier.width(4.dp))
+                            Text(stringResource(R.string.ai6h_n_images, m.images), style = MaterialTheme.typography.labelSmall)
                         }
                         val a = m.answer
                         if (!user && a != null && !m.streaming) {
                             SourceChips(a, onCitation)
+                            com.smartdocs.editor.ui.ai6.WebChips(m.web)   // ai6 (AI-14)
                             Row(Modifier.align(Alignment.End)) {
-                                val plain = a.plainWithSources()
+                                val plain = a.plainWithSources() + (if (m.web.isNotEmpty()) "\n\n" + m.web.mapIndexed { i, w -> "[W${i + 1}] ${w.title} — ${w.url}" }.joinToString("\n") else "")
+                                com.smartdocs.editor.ui.ai6.FeedbackButtons(m.feedback) { v -> chat.setFeedback(m.id, v) }   // ai6: thumbs
+                                if (onExportDocx != null) IconButton(onClick = { onExportDocx(plain) }, Modifier.size(32.dp)) { Icon(Icons.AutoMirrored.Filled.Article, stringResource(R.string.ai6h_export_docx), Modifier.size(16.dp)) }
                                 IconButton(onClick = { clipboard.setText(AnnotatedString(plain)) }, Modifier.size(32.dp)) { Icon(Icons.Default.ContentCopy, stringResource(R.string.a5_copy), Modifier.size(16.dp)) }
                                 IconButton(onClick = { onShare(plain) }, Modifier.size(32.dp)) { Icon(Icons.Default.Share, stringResource(R.string.a5_share), Modifier.size(16.dp)) }
                                 IconButton(onClick = { onExportPdf(plain) }, Modifier.size(32.dp)) { Icon(Icons.Default.Description, stringResource(R.string.a5_export_pdf), Modifier.size(16.dp)) }
@@ -160,7 +170,7 @@ fun CitedChatInput(enabled: Boolean, busy: Boolean, onSend: (String) -> Unit, on
 /** Saved chats of the current scope (open / delete) + "new chat" + temporary toggle. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ChatHistorySheet(chat: CitedChatState, onDismiss: () -> Unit) {
+fun ChatHistorySheet(chat: CitedChatState, onExportChat: ((String) -> Unit)? = null, onDismiss: () -> Unit) {
     val ctx = LocalContext.current
     var list by remember { mutableStateOf(chat.savedChats()) }
     ModalBottomSheet(onDismissRequest = onDismiss) {
@@ -170,7 +180,13 @@ fun ChatHistorySheet(chat: CitedChatState, onDismiss: () -> Unit) {
                 Switch(chat.temporary, { chat.temporary = it }); Spacer(Modifier.width(8.dp))
                 Text(stringResource(R.string.a5_temporary_chat), style = MaterialTheme.typography.bodyMedium)
             }
-            Button(onClick = { chat.newChat(); onDismiss() }) { Text(stringResource(R.string.a5_new_chat)) }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = { chat.newChat(); onDismiss() }) { Text(stringResource(R.string.a5_new_chat)) }
+                // ai6 (AI-15): the whole conversation to Word
+                if (onExportChat != null && chat.messages.isNotEmpty()) OutlinedButton(onClick = {
+                    onExportChat(chat.transcript(ctx.getString(R.string.ai6h_you), ctx.getString(R.string.ai6h_assistant))); onDismiss()
+                }) { Text(stringResource(R.string.ai6h_export_chat_docx)) }
+            }
             if (list.isEmpty()) Text(stringResource(R.string.a5_no_history), color = MaterialTheme.colorScheme.onSurfaceVariant)
             LazyColumn(Modifier.heightIn(max = 420.dp)) {
                 items(list, key = { it.id }) { c ->

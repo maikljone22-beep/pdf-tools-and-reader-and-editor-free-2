@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ai6 core: media routes (vision, images, transcription, embeddings, web search, usage) -->
+    <string name="ai6_not_configured">This feature is not configured: the proxy has no key for it, or its address is missing in this build. Add your own key in the assistant settings, or see the README in ai-proxy.</string>
+    <string name="ai6_usage_title">Assistant usage today</string>
+    <string name="ai6_usage_chat">Chat: %1$d of %2$d</string>
+    <string name="ai6_usage_tts">Speech: %1$d of %2$d</string>
+    <string name="ai6_usage_images">Images: %1$d of %2$d</string>
+    <string name="ai6_usage_local">Local counter on this device (the server does not report usage)</string>
+    <string name="ai6_usage_server">From the server counter</string>
+    <string name="ai6_usage_unlimited">Your own key: no daily limit from the app</string>
+    <string name="ai6_off">The AI assistant is turned off in Settings</string>
+</resources>
