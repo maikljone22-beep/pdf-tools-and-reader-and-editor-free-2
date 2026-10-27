@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- nitro-protect2 (Protect / safe reading: security properties, reader restrictions, Protected View, Trust Manager,
+     attachment security, JavaScript run levels, action inspector, EU trusted list, certificate change, security
+     watermark profiles). Prefix np2_. -->
+<resources>
+    <!-- security properties (document info) -->
+    <string name="np2_sec_title">Security</string>
+    <string name="np2_sec_method">Security method</string>
+    <string name="np2_sec_none">No security</string>
+    <string name="np2_sec_password">Password security</string>
+    <string name="np2_sec_certificate">Certificate security</string>
+    <string name="np2_sec_other">Other security handler</string>
+    <string name="np2_sec_algorithm">Encryption</string>
+    <string name="np2_sec_algo_fmt">%1$s, %2$d-bit key</string>
+    <string name="np2_sec_revision">Handler version</string>
+    <string name="np2_sec_revision_fmt">Version %1$d, revision %2$d</string>
+    <string name="np2_sec_metadata">Metadata encrypted</string>
+    <string name="np2_sec_access_owner">Opened with the permissions (owner) password: no restrictions apply. These are the author\'s settings:</string>
+    <string name="np2_sec_access_user">Opened without the permissions password: the restrictions below are enforced.</string>
+    <string name="np2_sec_access_cert">Permissions granted to your certificate:</string>
+    <string name="np2_sec_allowed">Allowed</string>
+    <string name="np2_sec_denied">Not allowed</string>
+
+    <!-- reader restrictions / Protected View -->
+    <string name="np2_restricted_author">Not allowed: restricted by the document\'s author.</string>
+    <string name="np2_restricted_note">Restricted by the author (see Document info)</string>
+    <string name="np2_pv_blocked">Protected view: tap \"Enable editing\" first.</string>
+    <string name="np2_pv_title">Protected view</string>
+    <string name="np2_pv_body">This file comes from a location that may be unsafe. It is open read-only until you enable editing.</string>
+    <string name="np2_pv_enable">Enable editing</string>
+
+    <!-- action inspector -->
+    <string name="np2_ai_title">This document contains active content</string>
+    <string name="np2_ai_auto">Actions that run on their own (on open, document or page events): %1$d</string>
+    <string name="np2_ai_js">JavaScript: %1$d</string>
+    <string name="np2_ai_launch">Launch a file or program: %1$d</string>
+    <string name="np2_ai_uri">Web links: %1$d</string>
+    <string name="np2_ai_submit">Send form data: %1$d</string>
+    <string name="np2_ai_import">Import data: %1$d</string>
+    <string name="np2_ai_remote">Open other files: %1$d</string>
+    <string name="np2_ai_media">Play media: %1$d</string>
+    <string name="np2_ai_doc_scripts">Document-level scripts: %1$d</string>
+    <string name="np2_ai_safe_mode">Safe reading mode is on: scripts and actions stay blocked.</string>
+    <string name="np2_ai_js_off">JavaScript is off in Settings.</string>
+    <string name="np2_ai_trusted_only">Scripts run only in trusted documents (privileged locations).</string>
+    <string name="np2_ai_allow">Allow</string>
+    <string name="np2_ai_block">Keep blocked</string>
+
+    <!-- Safe Reading Mode / Trust Manager -->
+    <string name="np2_safe_blocked">Blocked by safe reading mode: %1$s</string>
+    <string name="np2_tm_title">Trust Manager</string>
+    <string name="np2_safe_title">Safe reading mode</string>
+    <string name="np2_safe_sub">Block everything that leaves the document: web links, form submission, file launch and JavaScript (except in privileged locations)</string>
+    <string name="np2_priv_title">Privileged locations</string>
+    <string name="np2_priv_count">%1$d folders, %2$d hosts</string>
+    <string name="np2_priv_hint">Documents in these places are trusted: safe reading mode and Protected View do not apply, and their scripts may run. Web addresses on these hosts stay reachable in safe reading mode.</string>
+    <string name="np2_priv_app">Documents in the app\'s own storage</string>
+    <string name="np2_priv_folders">Folders</string>
+    <string name="np2_priv_folder_path">Folder path</string>
+    <string name="np2_priv_pick_folder">Choose a folder</string>
+    <string name="np2_priv_folder_bad">This folder cannot be used (choose one on the device storage).</string>
+    <string name="np2_priv_hosts">Hosts</string>
+    <string name="np2_pv_set">Protected View</string>
+    <string name="np2_pv_set_sub">Open files read-only until you enable editing</string>
+    <string name="np2_pv_off">Off</string>
+    <string name="np2_pv_unsafe">Files from other apps</string>
+    <string name="np2_pv_all">All files</string>
+    <string name="np2_trusted_docs">Remembered script decisions</string>
+    <string name="np2_trusted_docs_count">%1$d documents (tap to forget)</string>
+    <string name="np2_trusted_docs_clear_q">Forget every \"Allow\" and \"Keep blocked\" answer? The documents will ask again.</string>
+    <string name="np2_clear">Forget</string>
+
+    <!-- JavaScript run levels -->
+    <string name="np2_js_level_sub">Off, ask for each document, trusted documents only, or always</string>
+    <string name="np2_js_off">Off</string>
+    <string name="np2_js_ask">Ask per document</string>
+    <string name="np2_js_trusted">Trusted only</string>
+    <string name="np2_js_on">On</string>
+
+    <!-- attachment security -->
+    <string name="np2_att_set">Attachment security</string>
+    <string name="np2_att_set_sub">Allow, ask or block opening attachments in other apps, by file type</string>
+    <string name="np2_att_title">Open this attachment?</string>
+    <string name="np2_att_body">Attachments can contain harmful content. It will be handed to another app.</string>
+    <string name="np2_att_once">Open once</string>
+    <string name="np2_att_always">Always allow .%1$s</string>
+    <string name="np2_att_blocked">This type of attachment is blocked: %1$s</string>
+    <string name="np2_att_allow">Allow</string>
+    <string name="np2_att_ask">Ask</string>
+    <string name="np2_att_block">Block</string>
+    <string name="np2_att_ext">Extension</string>
+    <string name="np2_att_rules_hint">Executables and scripts are blocked, common documents and images are allowed.</string>
+    <string name="np2_att_other">Other types: ask.</string>
+    <string name="np2_att_restore">Restore defaults</string>
+
+    <!-- EU trusted list -->
+    <string name="np2_eutl_use">Use the EU trusted list</string>
+    <string name="np2_eutl_use_sub">Trust signatures from qualified certificate authorities of the EU member states</string>
+    <string name="np2_eutl_auto">Update automatically</string>
+    <string name="np2_eutl_auto_sub">Once a month over Wi-Fi</string>
+    <string name="np2_eutl_update">Update trust list now</string>
+    <string name="np2_eutl_status">%1$d certificates from %2$d countries, updated %3$s</string>
+    <string name="np2_eutl_never">Not downloaded yet</string>
+    <string name="np2_eutl_done">Updated: %1$d certificates from %2$d countries</string>
+    <string name="np2_eutl_failed">Update failed: %1$s</string>
+    <string name="np2_eutl_note">Downloaded over HTTPS from the official EU address only; the lists\' own XML signatures are not checked. Adobe\'s AATL is not public and cannot be used.</string>
+
+    <!-- certificate protection: change / remove, metadata -->
+    <string name="np2_cert_no_meta">Don\'t encrypt metadata</string>
+    <string name="np2_cert_no_meta_hint">The document\'s XMP metadata stays readable (for search and catalogues); everything else is encrypted.</string>
+    <string name="np2_cert_change">Re-encrypt for these recipients</string>
+    <string name="np2_cert_change_title">This file is certificate-protected</string>
+    <string name="np2_cert_change_hint">Choose the digital ID it was encrypted for. You can then encrypt it for a new list of recipients, or remove the protection. A new file is written.</string>
+    <string name="np2_cert_no_ids">No digital ID on this device. Create or import one under Signatures, Certificate.</string>
+    <string name="np2_cert_pick_id">Choose a digital ID</string>
+    <string name="np2_cert_keychain">Android key store</string>
+    <string name="np2_cert_own_id">My digital ID</string>
+    <string name="np2_cert_remove">Remove certificate protection</string>
+
+    <!-- Change Settings (password protection) -->
+    <string name="np2_change_prefilled">The current algorithm, permissions and metadata option are shown. Passwords are not.</string>
+    <string name="np2_change_needs_owner">The file was opened without its permissions password, so its security cannot be changed.</string>
+    <string name="np2_change_enter_owner">Enter the permissions password</string>
+
+    <!-- security watermark profiles -->
+    <string name="np2_wm_layers">Watermarks in this profile</string>
+    <string name="np2_wm_layers_hint">A profile can hold several security watermarks. They are applied together, the one being edited first.</string>
+    <string name="np2_wm_layer_n">Watermark %1$d: %2$s</string>
+    <string name="np2_wm_layer_edit">Edit</string>
+    <string name="np2_wm_layer_add">Keep this one and add another</string>
+</resources>
