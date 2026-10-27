@@ -2,6 +2,7 @@ package com.smartdocs.editor.ui
 
 import com.smartdocs.editor.ui.webdav.webDavRoutes
 import com.smartdocs.editor.ui.view5.view5Routes
+import com.smartdocs.editor.ui.openall.openAllRoutes
 import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
@@ -151,11 +152,10 @@ fun AppNavHost(nav: NavHostController) {
                         Routes.READER,
                         arguments = listOf(navArgument("uri") { type = NavType.StringType }, navArgument("page") { type = NavType.IntType; defaultValue = -1 }),
                     ) { e ->
-                        // office5: one central dispatch — Office files opened through Routes.reader(...) go to the Office editor
+                        // open-all: one central dispatch by content type — PDFs → reader, editable Office files → Office editors,
+                        // every other type → the in-app universal viewer (gaps/OPEN_ALL_FILES.md)
                         val u = Uri.decode(e.arguments?.getString("uri") ?: "")
-                        val office = androidx.compose.runtime.remember(u) { com.smartdocs.editor.ui.office.OfficeRoutes.isOffice(u) }
-                        if (office) com.smartdocs.editor.ui.office.OfficeScreen(nav, u)
-                        else ReaderScreen(nav, uri = u, startPage = e.arguments?.getInt("page") ?: -1)
+                        com.smartdocs.editor.ui.openall.OpenDispatch(nav, u, e.arguments?.getInt("page") ?: -1)
                     }
                     composable(
                         Routes.TOOL,
@@ -174,6 +174,7 @@ fun AppNavHost(nav: NavHostController) {
                     webDavRoutes(nav)   // nav-attach: WebDAV places
                     connRoutes(nav)     // share6: signature requests, connected / protected documents
                     view5Routes(nav)
+                    openAllRoutes(nav)   // open-all: archive entries / attachments → viewer
                 }
             }
         }

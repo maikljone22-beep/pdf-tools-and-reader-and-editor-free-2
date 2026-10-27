@@ -125,6 +125,8 @@ open class MainActivity : ComponentActivity() {   // NVE-shell: open for NveWind
         }
         if (uri.scheme == "file") { incoming.value = uri; return }
         runCatching { contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+        // open-all: audio / video are streamed from the sender (a film is never copied whole); the viewer plays the content uri
+        if (com.smartdocs.editor.ui.openall.OpenAll.isStreamedMedia(this, uri)) { incoming.value = uri; return }
         val app = application as SmartDocsApp
         lifecycleScope.launch {
             val local = runCatching { app.documents.localFile(uri) }.getOrNull()

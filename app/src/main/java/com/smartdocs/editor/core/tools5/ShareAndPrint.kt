@@ -37,12 +37,13 @@ object ShareImport {
     /** Set by MainActivity.handleIntent, consumed by ShareToPdfScreen. */
     @Volatile var pending: SharePayload? = null
 
-    /** True for share intents this module should take (everything except one shared PDF, which the reader opens). */
+    /** True for share intents this module should take: several files, or shared text / links (one shared file is opened in-app). */
     fun handles(intent: Intent?): Boolean {
         intent ?: return false
         return when (intent.action) {
             Intent.ACTION_SEND_MULTIPLE -> true
-            Intent.ACTION_SEND -> intent.type != "application/pdf"
+            // open-all: one shared file opens in the in-app viewer (which offers Convert to PDF); text / links still go here
+            Intent.ACTION_SEND -> intent.type != "application/pdf" && streams(intent).isEmpty()
             else -> false
         }
     }

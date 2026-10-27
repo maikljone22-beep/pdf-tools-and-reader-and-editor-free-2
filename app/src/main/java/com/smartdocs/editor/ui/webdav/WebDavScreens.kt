@@ -233,7 +233,7 @@ fun WebDavBrowserScreen(nav: NavHostController, placeId: String) {
             progress = null
             linksVersion++
             if (ok == true) {
-                if (local.extension.equals("pdf", true)) nav.navigate(Routes.reader(Uri.fromFile(local).toString()))
+                if (local.isFile) nav.navigate(Routes.reader(Uri.fromFile(local).toString()))   // open-all: any type opens in-app
                 else runCatching {
                     ctx.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(app.documents.shareUri(local), e.contentType ?: mimeOf(e.name))
                         .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK))
