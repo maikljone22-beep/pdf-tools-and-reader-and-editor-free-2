@@ -13,8 +13,8 @@ data class Cubic(val x0: Float, val y0: Float, val x1: Float, val y1: Float, val
  */
 object CloudPath {
 
-    /** Radius of one bump for a border intensity (1 or 2) and a line width. */
-    fun radius(intensity: Int, lineWidth: Float): Float = (if (intensity >= 2) 9f else 5f) + lineWidth * 0.5f
+    /** Radius of one bump for a border intensity (1, 2 or 3) and a line width. */
+    fun radius(intensity: Int, lineWidth: Float): Float = (when { intensity >= 3 -> 13f; intensity >= 2 -> 9f; else -> 5f }) + lineWidth * 0.5f
 
     /** Extra margin a cloudy outline needs outside the polygon (bump height + stroke). */
     fun margin(intensity: Int, lineWidth: Float): Float = radius(intensity, lineWidth) * 1.1f + lineWidth

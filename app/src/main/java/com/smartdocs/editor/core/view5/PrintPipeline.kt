@@ -35,11 +35,14 @@ data class PrintExtras(val grayscale: Boolean = false, val asImage: Boolean = fa
  */
 object PrintPipeline {
 
-    suspend fun prepare(ctx: Context, src: File, pw: String?, o: PrintOptions, x: PrintExtras, tempDir: File, labels: SummaryLabels? = null): Pair<File, Int> {
+    suspend fun prepare(
+        ctx: Context, src: File, pw: String?, o: PrintOptions, x: PrintExtras, tempDir: File, labels: SummaryLabels? = null,
+        summaryOptions: com.smartdocs.editor.core.annot.SummaryOptions = com.smartdocs.editor.core.annot.SummaryOptions(),
+    ): Pair<File, Int> {
         tempDir.mkdirs()
         fun tmp(tag: String) = File(tempDir, "nbt_print_${tag}_${System.nanoTime()}.pdf")
         val summary = if (x.summary && labels != null) tmp("summary").takeIf { out ->
-            runCatching { commentSummary(ctx, src, pw, out, labels) > 0 }.getOrDefault(false)
+            runCatching { commentSummary(ctx, src, pw, out, labels, summaryOptions) > 0 }.getOrDefault(false)
         } else null
         val opts = if (summary != null) o.copy(appendix = summary) else o
         var cur = src
@@ -76,12 +79,15 @@ object PrintPipeline {
     }
 
     /** Comment summary PDF of [src] (thumbnails with numbered markers and the list). Returns the number of comments. */
-    suspend fun commentSummary(ctx: Context, src: File, pw: String?, out: File, labels: SummaryLabels): Int {
+    suspend fun commentSummary(
+        ctx: Context, src: File, pw: String?, out: File, labels: SummaryLabels,
+        opts: com.smartdocs.editor.core.annot.SummaryOptions = com.smartdocs.editor.core.annot.SummaryOptions(),
+    ): Int {
         val session = runCatching { PdfSession.open(ctx, src, pw) }.getOrNull()
         try {
             return CommentSummary.build(ctx, src, pw, out, labels,
                 pageSize = { p -> session?.pageSize(p) ?: (595f to 842f) },
-                thumb = { p, w, h -> runCatching { session?.render(p, w, h, false, true) }.getOrNull() })
+                thumb = { p, w, h -> runCatching { session?.render(p, w, h, false, true) }.getOrNull() }, opts = opts)
         } finally { session?.closeAsync() }
     }
 

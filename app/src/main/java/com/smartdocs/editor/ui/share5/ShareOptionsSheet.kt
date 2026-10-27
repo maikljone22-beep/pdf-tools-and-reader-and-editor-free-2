@@ -88,6 +88,8 @@ internal fun ShareOptionsContent(file: File, password: String?, currentPage: Int
     var busy by remember { mutableStateOf<Float?>(null) }
     var working by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var strip by remember { mutableStateOf(com.smartdocs.editor.core.share5.ShareStrip.load(ctx)) }   // nav-attach: remove hidden info on share
+    fun setStrip(o: com.smartdocs.editor.core.share5.ShareStrip.Options) { strip = o; com.smartdocs.editor.core.share5.ShareStrip.save(ctx, o) }
     LaunchedEffect(file) {
         count = withContext(Dispatchers.IO) { runCatching { PdfOps.load(file, password).use { it.numberOfPages } }.getOrDefault(0) }
     }
@@ -100,7 +102,7 @@ internal fun ShareOptionsContent(file: File, password: String?, currentPage: Int
         error = null
         scope.launch {
             working = true; busy = null
-            runCatching { ShareBuilder.build(ctx, file, password, count, pages, format) { busy = it } }
+            runCatching { ShareBuilder.build(ctx, file, password, count, pages, format, { busy = it }, com.smartdocs.editor.core.share5.ShareStrip.items(strip)) }
                 .onSuccess { r ->
                     if (email) S5Share.email(ctx, r.files, r.mime, emptyList(), file.nameWithoutExtension, "")
                     else S5Share.shareFiles(ctx, r.files, r.mime)
@@ -127,6 +129,15 @@ internal fun ShareOptionsContent(file: File, password: String?, currentPage: Int
         Format.IMAGES to (R.string.sh5_fmt_images to R.string.sh5_fmt_images_sub),
         Format.COMMENTS_XFDF to (R.string.sh5_fmt_xfdf to R.string.sh5_fmt_xfdf_sub),
     ).forEach { (f, s) -> RadioRow(format == f, stringResource(s.first), stringResource(s.second), f) { format = it } }
+    // nav-attach: remove hidden information from the shared copy (Sanitizer)
+    if (format != Format.IMAGES && format != Format.COMMENTS_XFDF) {
+        Spacer(Modifier.height(10.dp))
+        Text(stringResource(R.string.nat_strip_title), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+        CheckRow(strip.metadata, stringResource(R.string.nat_strip_meta)) { setStrip(strip.copy(metadata = it)) }
+        CheckRow(strip.scripts, stringResource(R.string.nat_strip_js)) { setStrip(strip.copy(scripts = it)) }
+        CheckRow(strip.attachments, stringResource(R.string.nat_strip_att)) { setStrip(strip.copy(attachments = it)) }
+        Text(stringResource(R.string.nat_strip_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
     error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
     Spacer(Modifier.height(12.dp))
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -151,6 +162,15 @@ internal fun ShareOptionsContent(file: File, password: String?, currentPage: Int
     MoreRow(Icons.Default.ForwardToInbox, stringResource(R.string.sh5_email_review), stringResource(R.string.sh5_email_review_sub), true) {
         onDone(); nav.navigate(Share5Routes.emailNew(uri))
     }
+    // nav-attach: Foxit "E-mail all open tabs"
+    val openTabs = com.smartdocs.editor.ui.reader.view.ReaderTabs.tabs
+    if (openTabs.size > 1) MoreRow(Icons.Default.AllInbox, stringResource(R.string.nat_email_tabs, openTabs.size), stringResource(R.string.nat_email_tabs_sub), true) {
+        scope.launch {
+            working = true; busy = null
+            runCatching { emailOpenTabs(ctx, file, com.smartdocs.editor.core.share5.ShareStrip.items(strip)) }.onSuccess { onDone() }.onFailure { error = it.message ?: it.toString() }
+            working = false
+        }
+    }
     if (working) ProgressDialog(stringResource(R.string.sh5_preparing), busy)
 }
 
@@ -163,4 +183,33 @@ private fun MoreRow(icon: androidx.compose.ui.graphics.vector.ImageVector, title
         supportingContent = { Text(if (enabled) sub else stringResource(R.string.sh5_server_off_short)) },
         colors = ListItemDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent),
     )
+}
+
+@Composable
+private fun CheckRow(checked: Boolean, label: String, onChange: (Boolean) -> Unit) {
+    Row(Modifier.fillMaxWidth().selectable(checked, role = Role.Checkbox) { onChange(!checked) }.padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+        Checkbox(checked, onCheckedChange = null)
+        Spacer(Modifier.width(8.dp))
+        Text(label, style = MaterialTheme.typography.bodyLarge)
+    }
+}
+
+/**
+ * E-mails every open reader tab (the active one as [current], which carries its pending annotations). With [strip]
+ * each copy is cleaned first; a file that cannot be cleaned (protected, damaged) is sent as it is.
+ */
+private suspend fun emailOpenTabs(ctx: android.content.Context, current: File, strip: Set<com.smartdocs.editor.core.redact.SanitizeItem>) {
+    val tabs = com.smartdocs.editor.ui.reader.view.ReaderTabs
+    val active = tabs.active
+    val files = tabs.tabs.mapNotNull { t -> if (t.uri == active) current else Uri.parse(t.uri).path?.let(::File)?.takeIf { it.exists() } }.distinctBy { it.absolutePath }
+    val out = withContext(Dispatchers.IO) {
+        if (strip.isEmpty()) files else {
+            val dir = File(ctx.cacheDir, "share5_tabs").apply { deleteRecursively(); mkdirs() }
+            files.map { f ->
+                val copy = File(dir, ShareBuilder.safe(f.name))
+                runCatching { com.smartdocs.editor.core.redact.Sanitizer.cleanFile(f, copy, null, strip); copy }.getOrElse { f }
+            }
+        }
+    }
+    S5Share.email(ctx, out, "application/pdf", emptyList(), out.joinToString(", ") { it.nameWithoutExtension }.take(120), "")
 }

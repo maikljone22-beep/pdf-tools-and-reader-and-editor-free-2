@@ -286,6 +286,18 @@ object XfaSupport {
         }
     }
 
+    /**
+     * Remove instance [index] (-1 = the last one) of the repeating data group [name] under [parentPath], keeping at
+     * least [min] instances. Throws when that would go below [min].
+     */
+    suspend fun removeInstance(src: File, parentPath: String, name: String, index: Int, out: File, password: String? = null, min: Int = 1) = rewriteData(src, out, password) { data ->
+        val parent = (if (parentPath.isBlank()) data else locate(data, parsePath(parentPath), false)) ?: throw IllegalStateException("no data group")
+        val have = parent.children().filter { it.local() == name }
+        if (have.size <= min.coerceAtLeast(0)) throw IllegalStateException("minimum rows")
+        val victim = if (index in have.indices) have[index] else have.last()
+        parent.removeChild(victim)
+    }
+
     private fun clearText(e: Element) {
         if (e.children().isEmpty()) { while (e.firstChild != null) e.removeChild(e.firstChild); return }
         var n = e.firstChild

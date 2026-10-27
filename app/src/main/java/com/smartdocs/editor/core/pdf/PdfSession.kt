@@ -122,7 +122,7 @@ class PdfSession private constructor(
         }
 
     /** Render a region of a page (used for high-zoom tiles). [clip] is in fractions 0..1 of the page. */
-    suspend fun renderRegion(index: Int, fullWidth: Int, fullHeight: Int, clip: RectF, nightMode: Boolean): Bitmap =
+    suspend fun renderRegion(index: Int, fullWidth: Int, fullHeight: Int, clip: RectF, nightMode: Boolean, annotations: Boolean = true): Bitmap =
         withContext(Dispatchers.IO) {
             mutex.withLock {
                 val w = ((clip.width()) * fullWidth).toInt().coerceAtLeast(1)
@@ -130,7 +130,7 @@ class PdfSession private constructor(
                 val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
                 val startX = -(clip.left * fullWidth).toInt()
                 val startY = -(clip.top * fullHeight).toInt()
-                page(index).renderPageBitmap(bmp, startX, startY, fullWidth, fullHeight, true, false, Color.WHITE, Color.WHITE)
+                page(index).renderPageBitmap(bmp, startX, startY, fullWidth, fullHeight, annotations, false, Color.WHITE, Color.WHITE)
                 if (nightMode) invert(bmp) else bmp
             }
         }

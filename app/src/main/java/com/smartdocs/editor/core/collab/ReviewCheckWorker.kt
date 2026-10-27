@@ -32,6 +32,7 @@ class ReviewCheckWorker(context: Context, params: WorkerParameters) : CoroutineW
     override suspend fun doWork(): Result {
         val c = applicationContext
         if (!CollabConfig.enabled) return Result.success()
+        if (com.smartdocs.editor.core.share5.ReviewLocal.offline(c)) return Result.success()   // nav-attach: "work offline"
         val me = CollabStore.participantId(c)
         for (ref in CollabStore.load(c).filter { !it.closed }) {
             if (CollabLive.isAttached(java.io.File(ref.localPath))) continue
@@ -52,10 +53,13 @@ class ReviewCheckWorker(context: Context, params: WorkerParameters) : CoroutineW
         const val CHANNEL = "review"
         private const val NAME = "review_check"
 
-        fun schedule(c: Context) {
-            val req = PeriodicWorkRequestBuilder<ReviewCheckWorker>(30, TimeUnit.MINUTES)
+        /** nav-attach: the interval is a preference ([com.smartdocs.editor.core.share5.ReviewLocal.interval], 0 = off); [update] applies a change. */
+        fun schedule(c: Context, update: Boolean = false) {
+            val minutes = com.smartdocs.editor.core.share5.ReviewLocal.interval(c)
+            if (minutes <= 0) { WorkManager.getInstance(c).cancelUniqueWork(NAME); return }
+            val req = PeriodicWorkRequestBuilder<ReviewCheckWorker>(minutes.toLong().coerceAtLeast(15), TimeUnit.MINUTES)
                 .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()).build()
-            WorkManager.getInstance(c).enqueueUniquePeriodicWork(NAME, ExistingPeriodicWorkPolicy.KEEP, req)
+            WorkManager.getInstance(c).enqueueUniquePeriodicWork(NAME, if (update) ExistingPeriodicWorkPolicy.UPDATE else ExistingPeriodicWorkPolicy.KEEP, req)
         }
 
         private fun prefs(c: Context) = c.applicationContext.getSharedPreferences("collab_notified", Context.MODE_PRIVATE)
@@ -66,6 +70,7 @@ class ReviewCheckWorker(context: Context, params: WorkerParameters) : CoroutineW
             prefs(c).edit().putString(id, JSONArray(s.toList().takeLast(2000)).toString()).apply()
 
         fun notify(c: Context, ref: ReviewRef, count: Int) {
+            runCatching { com.smartdocs.editor.core.share5.ReviewLocal.addNote(c, ref.id, ref.title, count) }   // nav-attach: in-app inbox
             if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(c, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
             if (Build.VERSION.SDK_INT >= 26) {
                 val nm = c.getSystemService(NotificationManager::class.java)

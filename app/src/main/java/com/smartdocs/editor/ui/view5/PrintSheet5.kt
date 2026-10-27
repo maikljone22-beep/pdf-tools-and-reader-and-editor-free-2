@@ -42,6 +42,7 @@ fun PrintSheet5(v: V5State, outputFile: suspend () -> File?, onMessage: (String)
     var docPrefs by remember { mutableStateOf(DocPrintPrefs()) }
     var busy by remember { mutableStateOf(false) }
     var preview by remember { mutableStateOf<File?>(null) }
+    var sumOpts by remember { mutableStateOf(com.smartdocs.editor.core.annot.SummaryOptions()) }
     val labels = rememberPageLabels(s)
     LaunchedEffect(s.file) {
         val f = s.file ?: return@LaunchedEffect
@@ -55,7 +56,8 @@ fun PrintSheet5(v: V5State, outputFile: suspend () -> File?, onMessage: (String)
     suspend fun prepared(): Pair<File, Int>? = runCatching {
         val src = outputFile() ?: error("no file")
         val spec = when (which) { 1 -> (s.currentPage + 1).toString(); 2 -> PrintLayout.labelRange(range, labels); else -> "" }
-        PrintPipeline.prepare(ctx, src, s.password, settings.toOptions(spec), settings.extras(), app.documents.tempDir, printSummaryLabels(ctx))
+        PrintPipeline.prepare(ctx, src, s.password, settings.toOptions(spec), settings.extras(), app.documents.tempDir, printSummaryLabels(ctx),
+            summaryOptions = sumOpts.copy(pageCount = s.pageCount))
     }.onFailure { onMessage(it.message ?: ctx.getString(R.string.error_generic)) }.getOrNull()
 
     ModalBottomSheet(onDismissRequest = { v.close() }) {
@@ -71,6 +73,7 @@ fun PrintSheet5(v: V5State, outputFile: suspend () -> File?, onMessage: (String)
                 supportingText = if (labels != null) ({ Text(stringResource(R.string.nbt_range_labels)) }) else null)
             if (docPrefs.copies > 1) Text(stringResource(R.string.nbt_doc_copies, docPrefs.copies), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             PrintOptionsForm(settings) { settings = it }
+            if (settings.summary) com.smartdocs.editor.ui.reader.annot.SummaryOptionsFields(sumOpts, s.pageCount) { sumOpts = it }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(enabled = !busy, modifier = Modifier.weight(1f), onClick = {
                     busy = true

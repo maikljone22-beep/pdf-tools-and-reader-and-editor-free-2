@@ -35,19 +35,27 @@ import com.smartdocs.editor.core.pdf.OutlineItem
 import com.smartdocs.editor.ui.common.EmptyState
 import kotlinx.coroutines.launch
 
-/** Side panels: outline / bookmarks / annotations / thumbnails / info. Shown in a sheet on phones, beside the pages on tablets. */
+/**
+ * Side panels: outline / bookmarks / annotations / thumbnails / attachments / info. Shown in a sheet on phones, beside the
+ * pages on tablets. [onOpenPdf] opens a PDF attachment in the reader (nav-attach).
+ */
 @Composable
-fun PanelsContent(state: ReaderState, panel: ReaderPanel, onPanel: (ReaderPanel) -> Unit, onJump: (Int) -> Unit, onAiOutline: () -> Unit, onClose: () -> Unit, modifier: Modifier = Modifier) {
+fun PanelsContent(state: ReaderState, panel: ReaderPanel, onPanel: (ReaderPanel) -> Unit, onJump: (Int) -> Unit, onAiOutline: () -> Unit, onClose: () -> Unit, modifier: Modifier = Modifier,
+                  onOpenPdf: ((java.io.File) -> Unit)? = null) {
     val tabs = listOf(
         ReaderPanel.OUTLINE to Icons.Default.FormatListBulleted, ReaderPanel.BOOKMARKS to Icons.Default.Bookmark,
-        ReaderPanel.ANNOTATIONS to Icons.Default.Comment, ReaderPanel.THUMBNAILS to Icons.Default.GridView, ReaderPanel.INFO to Icons.Default.Info,
+        ReaderPanel.ANNOTATIONS to Icons.Default.Comment, ReaderPanel.THUMBNAILS to Icons.Default.GridView,
+        ReaderPanel.ATTACHMENTS to Icons.Default.AttachFile, ReaderPanel.INFO to Icons.Default.Info,
     )
+    // nav-attach: a dot on the attachments tab when the document has any (Foxit "indicator")
+    val attachments = com.smartdocs.editor.ui.attachments.rememberReaderAttachments(state)
     Column(modifier.fillMaxWidth()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             tabs.forEach { (p, icon) ->
                 val sel = p == panel
                 IconButton(onClick = { onPanel(p) }, colors = IconButtonDefaults.iconButtonColors(contentColor = if (sel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)) {
-                    Icon(icon, panelTitle(p))
+                    if (p == ReaderPanel.ATTACHMENTS && !attachments.isNullOrEmpty()) BadgedBox(badge = { Badge() }) { Icon(icon, panelTitle(p)) }
+                    else Icon(icon, panelTitle(p))
                 }
             }
             Spacer(Modifier.weight(1f))
@@ -61,6 +69,7 @@ fun PanelsContent(state: ReaderState, panel: ReaderPanel, onPanel: (ReaderPanel)
                 // threads, review status, type + author filters, sorting, export / import (MODULE_annot2)
                 ReaderPanel.ANNOTATIONS -> com.smartdocs.editor.ui.reader.annot.CommentsPanel(state, onJump)
                 ReaderPanel.THUMBNAILS -> ThumbnailsPanel(state, onJump)
+                ReaderPanel.ATTACHMENTS -> com.smartdocs.editor.ui.attachments.ReaderAttachmentsPanel(state, onJump, onOpenPdf)   // nav-attach
                 ReaderPanel.INFO -> DocInfoContent(state)
             }
         }
@@ -72,6 +81,7 @@ fun panelTitle(p: ReaderPanel): String = stringResource(
     when (p) {
         ReaderPanel.OUTLINE -> R.string.panel_outline; ReaderPanel.BOOKMARKS -> R.string.panel_bookmarks
         ReaderPanel.ANNOTATIONS -> R.string.panel_annotations; ReaderPanel.THUMBNAILS -> R.string.panel_thumbnails
+        ReaderPanel.ATTACHMENTS -> R.string.panel_attachments
         ReaderPanel.INFO -> R.string.tool_doc_info
     }
 )
