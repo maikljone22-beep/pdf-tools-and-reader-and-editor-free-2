@@ -18,25 +18,46 @@ import androidx.navigation.NavHostController
 import com.smartdocs.editor.LocalApp
 import com.smartdocs.editor.R
 import com.smartdocs.editor.core.files.WifiTransferServer
-import com.smartdocs.editor.core.util.PrintHelper
+import com.smartdocs.editor.core.util.PdfPrint
+import com.smartdocs.editor.core.view5.PrintPipeline
+import com.smartdocs.editor.core.view5.PrintPresets
+import com.smartdocs.editor.core.view5.PrintSettings
 import com.smartdocs.editor.ui.Routes
 import com.smartdocs.editor.ui.common.FilePickRow
 import com.smartdocs.editor.ui.common.rememberPdfPicker
 import com.smartdocs.editor.ui.common.rememberToolRunner
 
-/** Tool "print": hand a PDF to the system print dialog. */
+/**
+ * Tool "print": print options (range, what to print, scale, N-up, booklet, poster, greyscale, as image, comment
+ * summary, presets) then the system print dialog; "Batch print" prints many files.
+ */
 @Composable
 fun PrintScreen(nav: NavHostController, uri: String?) {
     val ctx = LocalContext.current
+    val app = LocalApp.current
     val runner = rememberToolRunner()
     var file by rememberInputFile(uri)
+    var range by remember { mutableStateOf("") }
+    var settings by remember { mutableStateOf(PrintPresets.last(ctx) ?: PrintSettings()) }
     val pick = rememberPdfPicker { file = it.firstOrNull() }
+    val preparing = stringResource(R.string.nbt_print_preparing)
     ToolScaffold(stringResource(R.string.tool_print), nav, runner) {
         FilePickRow(file, stringResource(R.string.tl_input_file), pick)
         Text(stringResource(R.string.tl_print_hint), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        OutlinedTextField(range, { range = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.v5_range)) },
+            supportingText = { Text(stringResource(R.string.v5_range_hint)) })
+        com.smartdocs.editor.ui.view5.PrintOptionsForm(settings) { settings = it }
         PrimaryButton(stringResource(R.string.print), enabled = file != null, icon = Icons.Default.Print) {
             val f = file ?: return@PrimaryButton
-            runCatching { PrintHelper.printPdf(ctx, f) }.onFailure { runner.error = it.message ?: it.toString() }
+            runner.run(preparing) {
+                PrintPresets.remember(ctx, settings)
+                val (out, n) = PrintPipeline.prepare(ctx, f, null, settings.toOptions(range), settings.extras(), app.documents.tempDir, com.smartdocs.editor.ui.view5.printSummaryLabels(ctx))
+                PdfPrint.print(ctx, out, f.nameWithoutExtension, n, mono = settings.grayscale, media = settings.paper)
+                null
+            }
+        }
+        OutlinedButton(onClick = { nav.navigate(Routes.tool("batch_print")) }, Modifier.fillMaxWidth()) {
+            Icon(Icons.Default.LocalPrintshop, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.nbt_batch_print))
         }
     }
 }

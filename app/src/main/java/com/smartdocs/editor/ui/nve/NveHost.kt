@@ -60,7 +60,9 @@ fun NveReaderHost(s: ReaderState, nav: NavHostController, snack: SnackbarHostSta
         NveSurface.EDIT5 -> NveEdit5Sheet(s, actions)
         NveSurface.KEYS -> NveKeysSheet { n.close() }
     }
-    val pane = n.pane
+    // the attachments pane is main's reader panel (pdf-3c); requests for ours (banner "portfolio") go there
+    if (n.pane == NvePane.ATTACHMENTS) LaunchedEffect(Unit) { n.pane = null; actions.panels(com.smartdocs.editor.ui.reader.ReaderPanel.ATTACHMENTS) }
+    val pane = n.pane?.takeIf { it != NvePane.ATTACHMENTS }
     if (pane != null && !tablet) ModalBottomSheet(onDismissRequest = { n.pane = null }) {
         NveExternal.pane(s, pane, nav, onJump = { s.jumpTo(it); n.pane = null }, onClose = { n.pane = null })
     }
@@ -74,7 +76,7 @@ fun NveReaderHost(s: ReaderState, nav: NavHostController, snack: SnackbarHostSta
 @Composable
 fun NveSidePane(s: ReaderState, nav: NavHostController) {
     val n = NveState.of(s)
-    val pane = n.pane ?: return
+    val pane = n.pane?.takeIf { it != NvePane.ATTACHMENTS } ?: return
     if (LocalConfiguration.current.screenWidthDp <= 700) return
     VerticalDivider()
     Surface(Modifier.width(340.dp).fillMaxHeight(), tonalElevation = 1.dp) {
@@ -107,7 +109,6 @@ fun NveViewChips(s: ReaderState) {
     ToolChip(Icons.Default.Crop, stringResource(R.string.nv_area_snapshot), selected = n.dragMode == NveDrag.SNAPSHOT) { n.dragMode = if (n.dragMode == NveDrag.SNAPSHOT) null else NveDrag.SNAPSHOT }
     ToolChip(Icons.Default.ContentPaste, stringResource(R.string.nv_paste)) { n.open(NveSurface.PASTE) }
     ToolChip(Icons.Default.SelectAll, stringResource(R.string.nv_select_all)) { s.scope.launchSelectAll(s) }
-    ToolChip(Icons.Default.AttachFile, stringResource(R.string.nv_pane_attachments)) { n.pane = NvePane.ATTACHMENTS }
     ToolChip(Icons.Default.VerifiedUser, stringResource(R.string.nv_pane_signatures)) { n.pane = NvePane.SIGNATURES }
     ToolChip(Icons.Default.AccountTree, stringResource(R.string.nv_pane_tags)) { n.pane = NvePane.TAGS }
     ToolChip(Icons.Default.Checklist, stringResource(R.string.nv_pane_fields)) { n.pane = NvePane.FIELDS }
@@ -139,7 +140,6 @@ fun NveMoreMenuItems(s: ReaderState, close: () -> Unit) {
     DropdownMenuItem(text = { Text(stringResource(R.string.nv_paste)) }, leadingIcon = { Icon(Icons.Default.ContentPaste, null) }, onClick = { close(); n.open(NveSurface.PASTE) })
     DropdownMenuItem(text = { Text(stringResource(R.string.nv_page_snapshot)) }, leadingIcon = { Icon(Icons.Default.PhotoCamera, null) }, onClick = { close(); n.open(NveSurface.SNAPSHOT) })
     DropdownMenuItem(text = { Text(stringResource(R.string.nv_spell_doc)) }, leadingIcon = { Icon(Icons.Default.Spellcheck, null) }, onClick = { close(); n.open(NveSurface.SPELL_DOC) })
-    DropdownMenuItem(text = { Text(stringResource(R.string.nv_pane_attachments)) }, leadingIcon = { Icon(Icons.Default.AttachFile, null) }, onClick = { close(); n.pane = NvePane.ATTACHMENTS })
     DropdownMenuItem(text = { Text(stringResource(R.string.nv_pane_signatures)) }, leadingIcon = { Icon(Icons.Default.VerifiedUser, null) }, onClick = { close(); n.pane = NvePane.SIGNATURES })
     DropdownMenuItem(text = { Text(stringResource(R.string.nv_customize_toolbar)) }, leadingIcon = { Icon(Icons.Default.DashboardCustomize, null) }, onClick = { close(); n.open(NveSurface.TOOLBAR_CUSTOMIZE) })
     DropdownMenuItem(text = { Text(stringResource(R.string.nv_keys_title)) }, leadingIcon = { Icon(Icons.Default.Keyboard, null) }, onClick = { close(); n.open(NveSurface.KEYS) })
@@ -192,7 +192,7 @@ object NveCommands {
             V5Command("nv_save_as", R.string.nv_save_as_more, Icons.Default.SaveAs, "save as copy pdfa optimized حفظ باسم") { n.open(NveSurface.SAVE_AS) },
             V5Command("nv_props", R.string.nv_properties, Icons.Default.Description, "properties fonts security xmp خصائص خطوط أمان") { n.open(NveSurface.DOC_INFO) },
             V5Command("nv_customize", R.string.nv_customize_toolbar, Icons.Default.DashboardCustomize, "customize toolbar tabs تخصيص شريط الأدوات") { n.open(NveSurface.TOOLBAR_CUSTOMIZE) },
-            V5Command("nv_attachments", R.string.nv_pane_attachments, Icons.Default.AttachFile, "attachments مرفقات") { n.pane = NvePane.ATTACHMENTS },
+            V5Command("nv_attachments", R.string.nv_pane_attachments, Icons.Default.AttachFile, "attachments مرفقات") { a.panels(com.smartdocs.editor.ui.reader.ReaderPanel.ATTACHMENTS) },   // main's attachments panel (pdf-3c)
             V5Command("nv_signatures", R.string.nv_pane_signatures, Icons.Default.VerifiedUser, "signatures validate التواقيع تحقق") { n.pane = NvePane.SIGNATURES },
             V5Command("nv_tags", R.string.nv_pane_tags, Icons.Default.AccountTree, "tags structure accessibility وسوم بنية") { n.pane = NvePane.TAGS },
             V5Command("nv_fields", R.string.nv_pane_fields, Icons.Default.Checklist, "form fields حقول") { n.pane = NvePane.FIELDS },

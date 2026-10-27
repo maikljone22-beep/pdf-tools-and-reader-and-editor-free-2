@@ -86,6 +86,8 @@ android {
         isCoreLibraryDesugaringEnabled = true
     }
     buildFeatures { compose = true; buildConfig = true }
+    // JVM unit tests: android.util.Log (called inside PdfBox-Android, e.g. on a second getAcroForm()) returns defaults instead of throwing
+    testOptions { unitTests.isReturnDefaultValues = true }
     packaging {
         resources.excludes += setOf("META-INF/{AL2.0,LGPL2.1}", "META-INF/DEPENDENCIES", "META-INF/LICENSE*", "META-INF/NOTICE*", "META-INF/versions/9/OSGI-INF/MANIFEST.MF")
     }
@@ -136,6 +138,7 @@ dependencies {
     implementation("io.legere:pdfiumandroid:2.0.1")
     implementation("com.tom-roush:pdfbox-android:2.0.27.0")
     implementation("org.mozilla:rhino:1.7.15.1")
+    implementation("com.google.zxing:core:3.5.3")   // barcode form fields: PDF417 / QR / Data Matrix encoders (formsx)
     implementation("androidx.window:window:1.2.0")   // foldable / dual screen (gaps6)   // form JavaScript (forms5b)
 
     // Scanner + OCR

@@ -43,8 +43,12 @@ data class FormJs(
     val docScripts: List<String> = emptyList(),
     val numPages: Int = 1,
     val fileName: String = "",
+    /** Widgets / document actions carry JavaScript (Mouse Up, Focus, ... or catalog /AA): the runtime is needed. */
+    val hasActionJs: Boolean = false,
+    /** Words per page for getPageNthWord (only filled when a script uses it). */
+    val pageWords: List<List<String>> = emptyList(),
 ) {
-    val hasScripts: Boolean get() = scripts.values.any { !it.isEmpty }
+    val hasScripts: Boolean get() = hasActionJs || scripts.values.any { !it.isEmpty }
     companion object { val EMPTY = FormJs() }
 }
 
@@ -100,7 +104,7 @@ class FormScripts(val js: FormJs, private val limits: JsLimits = JsLimits()) {
         engineTried = true
         if (!com.smartdocs.editor.core.security.JsPolicy.enabled) { unavailableReason = "JavaScript is turned off"; return null }
         if (!js.hasScripts && js.docScripts.isEmpty()) return null
-        engine = try { AcroJs(fieldsJson(js.fields), js.docScripts, limits, js.numPages, js.fileName) }
+        engine = try { AcroJs(fieldsJson(js.fields), js.docScripts, limits, js.numPages, js.fileName, js.pageWords) }
         catch (e: Throwable) { if (e is VirtualMachineError && e !is StackOverflowError) throw e; unavailableReason = e.message ?: e.toString(); null }
         engine?.let { js.fields.forEach { f -> pushed[f.name] = f.value } }
         return engine
@@ -191,6 +195,24 @@ class FormScripts(val js: FormJs, private val limits: JsLimits = JsLimits()) {
         }
         return CalcOutcome(changed.filter { (k, v) -> values[k] != v }, failed, pr, alerts)
     }
+
+    /**
+     * An action script ([trigger] e.g. "Mouse Up", "Focus", "WillSave", "Console") of field [target] (null for
+     * document actions and the console) with the current [values]; [page] is the reader's page (this.pageNum).
+     * Null when the runtime is unavailable.
+     */
+    @Synchronized
+    fun action(target: String?, trigger: String, code: String, values: Map<String, String>, page: Int): JsResult? {
+        if (code.isBlank()) return null
+        val e = engine() ?: return null
+        val r = e.run(trigger, target, code, JsEvent(target?.let { values[it] }.orEmpty()), delta(values), page)
+        if (r.ok) absorb(r) else { pushed.putAll(r.setValues) }
+        return r
+    }
+
+    /** Console output of the runtime so far (console.println), and clear it. */
+    @Synchronized
+    fun drainConsole(): List<String> = engine()?.drainLog().orEmpty()
 
     /** Formatted display text of [raw] (Format event) and whether a script made it red; null = no script / error. */
     @Synchronized

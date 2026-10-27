@@ -80,6 +80,8 @@ val allTools = listOf(
     ToolDef("mail_merge", R.string.t5_mm_title, Icons.Default.MergeType, 0),
     ToolDef("portfolio", R.string.t5_portfolio_title, Icons.Default.FolderZip, 0),
     ToolDef("ocr_plus", R.string.t5_ocr_title, Icons.Default.DynamicFeed, 3),
+    ToolDef("ocr_zone", R.string.nt_ocr_zone, Icons.Default.Crop, 3),
+    ToolDef("ocr_review", R.string.nt_ocr_review, Icons.Default.Spellcheck, 3),
     ToolDef("export_plus", R.string.t5_export_title, Icons.Default.Output, 3),
     ToolDef("optimize", R.string.t5_opt_title, Icons.Default.Compress, 3),
     ToolDef("pdfa", R.string.t5_pdfa_title, Icons.Default.Inventory, 3),
@@ -91,7 +93,7 @@ val allTools = listOf(
     ToolDef("podcast", R.string.ai2_podcast_title, Icons.Default.Podcasts, 3),
     ToolDef("ai_spaces", R.string.a5_spaces, Icons.Default.Workspaces, 3),
     ToolDef("print", R.string.tool_print, Icons.Default.Print, 3),
-    ToolDef("print_batch", R.string.nf_batch_print, Icons.Default.Print, 3),       // NVE: batch print
+    ToolDef("batch_print", R.string.nbt_batch_print, Icons.Default.LocalPrintshop, 3),     // nav-batch
     ToolDef("e5_hub", R.string.e5_hub_title, Icons.Default.EditNote, 1),
     ToolDef("esign", R.string.cn_tool_esign, Icons.Default.HistoryEdu, 2),           // share6
     ToolDef("connected", R.string.cn_tool_connected, Icons.Default.Link, 2),         // share6

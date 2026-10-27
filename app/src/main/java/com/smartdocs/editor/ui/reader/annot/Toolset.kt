@@ -53,6 +53,7 @@ object ToolCatalog {
         ToolEntry(ReaderTool.VIDEO, Icons.Default.Movie, R.string.an_video, R.string.an_group_comment),
         ToolEntry(ReaderTool.SNAPSHOT, Icons.Default.Screenshot, R.string.an_snapshot, R.string.an_group_comment),
         ToolEntry(ReaderTool.SELECT, Icons.Default.HighlightAlt, R.string.an_select, R.string.an_group_comment),
+        ToolEntry(ReaderTool.TICKMARK, Icons.Default.LooksOne, R.string.cx_tickmark, R.string.an_group_comment),
         ToolEntry(ReaderTool.INK, Icons.Default.Draw, R.string.annot_ink, R.string.an_group_drawing),
         ToolEntry(ReaderTool.ERASER, Icons.Default.CleaningServices, R.string.annot_eraser, R.string.an_group_drawing),
         ToolEntry(ReaderTool.RECT, Icons.Default.CropSquare, R.string.annot_rect, R.string.an_group_drawing),
@@ -78,7 +79,7 @@ object ToolCatalog {
 
     /** The tools of MODULE_annot2 shown after the existing ones in the Comment tab. */
     val commentExtras = listOf(ReaderTool.REPLACE, ReaderTool.CARET, ReaderTool.POLYLINE, ReaderTool.POLYGON, ReaderTool.CLOUD,
-        ReaderTool.ATTACH, ReaderTool.SOUND, ReaderTool.VIDEO, ReaderTool.SNAPSHOT, ReaderTool.SELECT).mapNotNull { of(it) }
+        ReaderTool.ATTACH, ReaderTool.SOUND, ReaderTool.VIDEO, ReaderTool.SNAPSHOT, ReaderTool.SELECT, ReaderTool.TICKMARK).mapNotNull { of(it) }
 }
 
 /** User's favourite tools, in order, persisted in SharedPreferences "toolset". */

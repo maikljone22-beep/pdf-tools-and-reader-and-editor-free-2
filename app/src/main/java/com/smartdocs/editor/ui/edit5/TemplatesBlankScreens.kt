@@ -40,6 +40,8 @@ fun TemplatesScreen(nav: NavHostController, uri: String?) {
     var at by remember { mutableFloatStateOf(1f) }
     var count by remember { mutableFloatStateOf(1f) }
     var busy by remember { mutableStateOf(false) }
+    var renaming by remember { mutableStateOf<String?>(null) }
+    var newName by remember { mutableStateOf("") }
     val processing = stringResource(R.string.processing)
     LaunchedEffect(doc.work, doc.version) { val w = doc.work ?: return@LaunchedEffect; list = runCatching { PageTemplates.list(w, doc.password) }.getOrDefault(emptyList()) }
     fun run(op: suspend (java.io.File, java.io.File, String?) -> Unit) {
@@ -72,6 +74,10 @@ fun TemplatesScreen(nav: NavHostController, uri: String?) {
                             supportingContent = { Text(if (t.visible) stringResource(R.string.e5_tpl_visible, t.pageIndex + 1) else stringResource(R.string.e5_tpl_hidden)) },
                             trailingContent = {
                                 Row {
+                                    // go to a visible template's page, rename, replace with the page shown in the preview
+                                    if (t.visible && t.pageIndex >= 0) IconButton(onClick = { page = t.pageIndex }) { Icon(Icons.Default.Pageview, stringResource(R.string.f8_tpl_goto)) }
+                                    IconButton(onClick = { renaming = t.name; newName = t.name }) { Icon(Icons.Default.DriveFileRenameOutline, stringResource(R.string.f8_tpl_rename)) }
+                                    IconButton(onClick = { val p = page; run { s, o, pw -> PageTemplates.replaceWithPage(s, o, pw, t.name, p) } }) { Icon(Icons.Default.FindReplace, stringResource(R.string.f8_tpl_replace, page + 1)) }
                                     IconButton(onClick = { val a = at.toInt() - 1; val c = count.toInt(); run { s, o, pw -> PageTemplates.instantiate(s, o, pw, t.name, a, c) } }) { Icon(Icons.Default.AddToPhotos, stringResource(R.string.e5_tpl_insert)) }
                                     IconButton(onClick = { run { s, o, pw -> PageTemplates.setVisible(s, o, pw, t.name, !t.visible) } }) { Icon(if (t.visible) Icons.Default.VisibilityOff else Icons.Default.Visibility, null) }
                                     IconButton(onClick = { run { s, o, pw -> PageTemplates.delete(s, o, pw, t.name) } }) { Icon(Icons.Default.Delete, stringResource(R.string.delete)) }
@@ -89,6 +95,20 @@ fun TemplatesScreen(nav: NavHostController, uri: String?) {
         }
     }
     if (busy) ProgressDialog(processing)
+    renaming?.let { old ->
+        AlertDialog(
+            onDismissRequest = { renaming = null },
+            title = { Text(stringResource(R.string.f8_tpl_rename)) },
+            text = { OutlinedTextField(newName, { newName = it }, singleLine = true, label = { Text(stringResource(R.string.e5_tpl_name)) }) },
+            confirmButton = {
+                TextButton(onClick = {
+                    val nn = newName.trim(); renaming = null
+                    if (nn.isNotEmpty() && nn != old) run { s, o, pw -> PageTemplates.rename(s, o, pw, old, nn) }
+                }) { Text(stringResource(R.string.ok)) }
+            },
+            dismissButton = { TextButton(onClick = { renaming = null }) { Text(stringResource(R.string.cancel)) } },
+        )
+    }
 }
 
 fun paperStyleLabel(s: PaperStyle) = when (s) {

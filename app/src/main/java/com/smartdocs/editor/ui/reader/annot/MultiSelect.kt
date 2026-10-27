@@ -40,6 +40,18 @@ class MultiSelection(private val h: Annot2Host) {
 
     fun clear() { pending.clear(); stored.clear(); page = -1 }
 
+    /** Select exactly these annotations of [pg] (tickmarks of a page, section 7). */
+    fun selectSet(pg: Int, ids: Collection<Long>, st: Collection<AnnotationWriter.Existing>) {
+        clear(); page = pg; pending += ids; stored += st
+        if (!active) page = -1
+    }
+
+    /** Locked annotations (7.58) refuse move / delete / restyle until unlocked. */
+    private fun refuseLocked(): Boolean {
+        val t = CTarget(page, pending.toList(), stored.toList())
+        return h.cx.refuseLocked(t)
+    }
+
     fun pendingAnnots(): List<Annot> = s.annots.filter { it.id in pending }
 
     /** Union frame (PDF space, top = larger y) of everything selected. */
@@ -124,6 +136,7 @@ class MultiSelection(private val h: Annot2Host) {
     /** Move everything by (dx, dy) PDF points. */
     fun moveBy(dx: Float, dy: Float) {
         if (abs(dx) < 0.01f && abs(dy) < 0.01f) return
+        if (refuseLocked()) return
         val ids = pending.toSet()
         if (ids.isNotEmpty()) s.batchAnnots { list ->
             for (i in list.indices) if (list[i].id in ids) {
@@ -140,6 +153,7 @@ class MultiSelection(private val h: Annot2Host) {
     }
 
     fun delete() {
+        if (refuseLocked()) return
         val ids = pending.toSet()
         if (ids.isNotEmpty()) s.batchAnnots { list -> list.removeAll { it.id in ids } }
         val refs = stored.map { it.index }; val pg = page
@@ -153,6 +167,7 @@ class MultiSelection(private val h: Annot2Host) {
 
     /** Style changes need fresh appearance streams: stored annotations the editor can rewrite become pending first. */
     private fun restyle(change: (Annot) -> Annot) {
+        if (refuseLocked()) return
         run(false) {
             if (stored.isNotEmpty()) convertStored()
             val ids = pending.toSet()
@@ -186,7 +201,7 @@ class MultiSelection(private val h: Annot2Host) {
     }
 
     /** After a file change: point the stored selection at the re-listed annotations (same indices). */
-    private suspend fun refreshStored(pg: Int, refs: List<Int>) {
+    internal suspend fun refreshStored(pg: Int, refs: List<Int>) {
         val f = s.file ?: return
         val now = runCatching { AnnotationWriter.list(f, s.password) }.getOrDefault(emptyList())
         stored.clear(); now.filter { it.page == pg && it.index in refs }.forEach { stored += it }

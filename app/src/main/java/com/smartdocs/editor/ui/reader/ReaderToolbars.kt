@@ -54,7 +54,7 @@ class ReaderActions(
     val quick: (com.smartdocs.editor.ui.quick.QuickAction) -> Unit = {},
 )
 
-enum class ReaderPanel { OUTLINE, BOOKMARKS, ANNOTATIONS, THUMBNAILS, INFO }
+enum class ReaderPanel { OUTLINE, BOOKMARKS, ANNOTATIONS, THUMBNAILS, ATTACHMENTS, INFO }
 
 @Composable
 fun ReaderTabRow(state: ReaderState, onTab: (ReaderTab) -> Unit) {
@@ -114,7 +114,7 @@ fun BottomToolbar(state: ReaderState, actions: ReaderActions) {
                 ReaderTab.VIEW -> ViewToolbar(state, actions)
                 ReaderTab.COMMENT -> { PropertyBar(state); CommentToolbar(state, actions) }
                 ReaderTab.EDIT -> { if (state.tool != null) PropertyBar(state); EditToolbar(state, actions) }
-                ReaderTab.FILL_SIGN -> { if (state.tool != null) PropertyBar(state); FillSignToolbar(state) }
+                ReaderTab.FILL_SIGN -> { if (state.tool != null) PropertyBar(state); FillSignToolbar(state, actions) }
                 ReaderTab.SIGN -> SignToolbar(state, actions)
                 ReaderTab.TOOLS -> ToolsToolbar(actions)
                 ReaderTab.PAGES -> {}
@@ -147,6 +147,7 @@ private fun ViewToolbar(state: ReaderState, a: ReaderActions) {
         if ("panels" !in nveHidden) ToolChip(Icons.Default.FormatListBulleted, stringResource(R.string.rd_panels)) { a.panels(ReaderPanel.OUTLINE) }
         if ("bookmarks" !in nveHidden) ToolChip(Icons.Default.Bookmark, stringResource(R.string.panel_bookmarks)) { a.panels(ReaderPanel.BOOKMARKS) }
         if ("thumbnails" !in nveHidden) ToolChip(Icons.Default.GridView, stringResource(R.string.panel_thumbnails)) { a.panels(ReaderPanel.THUMBNAILS) }
+        if ("attachments" !in nveHidden) ToolChip(Icons.Default.AttachFile, stringResource(R.string.panel_attachments)) { a.panels(ReaderPanel.ATTACHMENTS) }   // nav-attach
         if ("read_aloud" !in nveHidden) ToolChip(Icons.Default.RecordVoiceOver, stringResource(R.string.tool_read_aloud), onClick = a.readAloud)
         if ("ai" !in nveHidden && com.smartdocs.editor.LocalSettings.current.aiEnabled) ToolChip(Icons.Default.AutoAwesome, stringResource(R.string.tool_ai), onClick = a.ai)
         if ("share" !in nveHidden) ToolChip(Icons.Default.Share, stringResource(R.string.share), onClick = a.share)
@@ -205,11 +206,12 @@ private fun EditToolbar(state: ReaderState, a: ReaderActions) {
         ToolChip(Icons.Default.Info, stringResource(R.string.tool_doc_info)) { a.quick(QuickAction.PROPERTIES) }
         ToolChip(Icons.Default.AutoAwesomeMotion, stringResource(R.string.tool_organize)) { a.navigateTool("organize") }
         ToolChip(Icons.Default.EditNote, stringResource(R.string.nv_edit5_tools)) { com.smartdocs.editor.ui.nve.NveState.of(state).open(com.smartdocs.editor.ui.nve.NveSurface.EDIT5) }   // NVE
+        ToolChip(Icons.Default.AddBox, stringResource(R.string.fx_edit_fields)) { a.navigateTool("form_builder") }   // formsx: form designer
     }
 }
 
 @Composable
-private fun FillSignToolbar(state: ReaderState) {
+private fun FillSignToolbar(state: ReaderState, a: ReaderActions) {
     val app = com.smartdocs.editor.LocalApp.current
     val fields by app.db.fillProfile().all().collectAsState(initial = emptyList())
     ToolRow {
@@ -226,6 +228,7 @@ private fun FillSignToolbar(state: ReaderState) {
             state.selectTool(ReaderTool.FS_DATE)
             if (state.tool == ReaderTool.FS_DATE) state.pendingText = java.text.SimpleDateFormat("yyyy/MM/dd", java.util.Locale.US).format(java.util.Date())
         }
+        com.smartdocs.editor.ui.forms5.FillSignFormChips(state, openDocJs = { a.navigateTool("e5_doc_js") })     // form menu (data, JavaScript)
         VerticalDivider(Modifier.height(36.dp).padding(horizontal = 4.dp))
         if (fields.isEmpty()) {
             Text(stringResource(R.string.rd_profile_empty), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 8.dp))
@@ -382,6 +385,7 @@ fun PropertyBar(state: ReaderState) {
             }
         }
         com.smartdocs.editor.ui.reader.annot.Annot2PropertyRow(state)      // MODULE_annot2: polygon progress, fill, cloud
+        com.smartdocs.editor.ui.reader.annot.CreationExtrasRow(state)      // section 7: fill, dash, no border, line ends, rich text, icons, tickmarks
     }
 }
 

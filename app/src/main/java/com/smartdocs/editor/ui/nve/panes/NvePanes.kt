@@ -80,7 +80,6 @@ private fun Empty(text: String) {
 }
 
 private val paneIcons: List<Triple<NvePane, ImageVector, Int>> = listOf(
-    Triple(NvePane.ATTACHMENTS, Icons.Default.AttachFile, R.string.np_pane_attachments),
     Triple(NvePane.SIGNATURES, Icons.Default.VerifiedUser, R.string.np_pane_signatures),
     Triple(NvePane.TAGS, Icons.Default.AccountTree, R.string.np_pane_tags),
     Triple(NvePane.FIELDS, Icons.Default.Checklist, R.string.np_pane_fields),

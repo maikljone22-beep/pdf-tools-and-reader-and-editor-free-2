@@ -115,11 +115,7 @@ object DocPropsOps {
         if (doc.numberOfPages > 0) {
             val arr = COSArray().apply {
                 add(doc.getPage(v.openPage.coerceIn(0, doc.numberOfPages - 1)).cosObject)
-                when (v.openFit) {
-                    DestFit.FIT -> add(COSName.getPDFName("Fit"))
-                    DestFit.FITH -> { add(COSName.getPDFName("FitH")); add(COSNull.NULL) }
-                    DestFit.XYZ -> { add(COSName.getPDFName("XYZ")); add(COSNull.NULL); add(COSNull.NULL); add(if (v.openZoom > 0f) COSFloat(v.openZoom) else COSNull.NULL) }
-                }
+                Dests.appendView(this, DestView(v.openFit, zoom = v.openZoom))
             }
             if (v.openPage == 0 && v.openFit == DestFit.FIT && cd.getDictionaryObject(COSName.OPEN_ACTION) == null) Unit else cd.setItem(COSName.OPEN_ACTION, arr)
         }

@@ -15,6 +15,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import com.smartdocs.editor.ui.reader.ReaderTool
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -58,6 +59,10 @@ fun Annot2Dialogs(state: ReaderState, nav: NavHostController, snack: SnackbarHos
         val tap = h.pendingTap; h.pendingTap = null
         if (uri != null && tap != null) scope.launch { MediaIntents.importUri(ctx, uri, h.mediaDir())?.let { (f, name) -> h.addMedia(tap, f, name) } }
     }
+    val audioPick = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        val tap = h.pendingTap; h.pendingTap = null
+        if (uri != null && tap != null) scope.launch { MediaIntents.importUri(ctx, uri, h.mediaDir())?.let { (f, name) -> h.addMedia(tap, f, name) } }
+    }
     val msgImported = stringResource(R.string.an_imported); val msgNone = stringResource(R.string.an_nothing_imported)
     val msgMerged = stringResource(R.string.an_merged); val msgExported = stringResource(R.string.an_exported)
     val msgNoComments = stringResource(R.string.an_no_comments)
@@ -90,6 +95,7 @@ fun Annot2Dialogs(state: ReaderState, nav: NavHostController, snack: SnackbarHos
 
     SideEffect {
         h.launchAttach = { attach.launch(arrayOf("*/*")) }
+        h.launchAudio = { audioPick.launch(arrayOf("audio/*")) }
         h.launchImport = { importer.launch(arrayOf("application/vnd.fdf", "application/vnd.adobe.xfdf", "application/xml", "text/xml", "application/octet-stream", "*/*")) }
         h.launchMerge = { merge() }
         h.launchExport = { xfdf ->
@@ -105,20 +111,23 @@ fun Annot2Dialogs(state: ReaderState, nav: NavHostController, snack: SnackbarHos
                 snack.showSnackbar(String.format(msgExported, n))
             }
         }
-        h.launchSummary = {
+        h.launchSummary = { h.cx.summaryAsk = true }       // section 7.70: options first
+        h.cx.runSummary = { opts ->
             h.launchBusy {
                 if (state.dirty && !state.save()) return@launchBusy
                 val f = state.file ?: return@launchBusy
                 val out = state.app.documents.uniqueFile(state.app.documents.docsDir, "Summarize_" + f.nameWithoutExtension)
                 val n = CommentSummary.build(ctx, f, state.password, out, summaryLabels,
                     pageSize = { state.pageSize(it) },
-                    thumb = { p, w, hh -> runCatching { state.session?.render(p, w, hh, false, true) }.getOrNull() })
+                    thumb = { p, w, hh -> runCatching { state.session?.render(p, w, hh, false, true) }.getOrNull() },
+                    opts = opts.copy(pageCount = state.pageCount))
                 if (n == 0) { out.delete(); snack.showSnackbar(msgNoComments) } else h.summaryFile = out
             }
         }
     }
 
     VideoDialogs(state)      // in-page video: picker, warnings, options, full screen, lifecycle
+    CommentExtrasDialogs(state)      // section 7: properties, rotate, place on pages, calculator, export selected
 
     // ---------------- dialogs ----------------
     h.prompt?.let { p -> Prompt2Dialog(p, onOk = { h.confirmPrompt(p, it) }, onDismiss = { h.prompt = null }) }
@@ -132,7 +141,7 @@ fun Annot2Dialogs(state: ReaderState, nav: NavHostController, snack: SnackbarHos
 
 /** Labels of the summary PDF, resolved from resources. */
 @Composable
-private fun summaryLabels(): SummaryLabels {
+internal fun summaryLabels(): SummaryLabels {
     val ctx = LocalContext.current
     return remember(ctx) {
         SummaryLabels(
@@ -209,7 +218,15 @@ private fun RecordDialog(h: Annot2Host, tap: Tap2) {
             }, enabled = !denied) { Icon(Icons.Default.FiberManualRecord, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.an_record_start)) }
             else Button(onClick = { finish() }) { Icon(Icons.Default.Stop, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.an_record_stop)) }
         },
-        dismissButton = { TextButton(onClick = { recorder.stop(discard = true); h.recordTap = null }) { Text(stringResource(R.string.cancel)) } },
+        dismissButton = {
+            Row {
+                // Foxit 19.x: add an existing sound file instead of recording
+                if (!recording) TextButton(onClick = { recorder.stop(discard = true); h.recordTap = null; h.pendingTap = Tap2(ReaderTool.SOUND, tap.page, tap.x, tap.y); h.launchAudio() }) {
+                    Text(stringResource(R.string.cx_pick_audio))
+                }
+                TextButton(onClick = { recorder.stop(discard = true); h.recordTap = null }) { Text(stringResource(R.string.cancel)) }
+            }
+        },
     )
 }
 
@@ -262,6 +279,16 @@ private fun SnapshotSheet(state: ReaderState, snap: Snapshot2, onDismiss: () -> 
                     Icon(Icons.Default.SaveAlt, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.an_save_png))
                 }
             }
+            // nav-batch: Foxit "Snapshot → Print" (print a portion of a page)
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(onClick = {
+                scope.launch {
+                    runCatching {
+                        val pdf = com.smartdocs.editor.core.tools5.ToPdf.convert(ctx, snap.file, state.app.documents.newTemp("snapshot"))
+                        com.smartdocs.editor.core.util.PdfPrint.print(ctx, pdf, "snapshot", 1)
+                    }.onFailure { state.error = it.message }
+                }
+            }) { Icon(Icons.Default.Print, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.print)) }
             Spacer(Modifier.height(24.dp))
         }
     }

@@ -62,7 +62,13 @@ data class FWidget(
     val hidden: Boolean = false,
     val mkRotation: Int = 0,        // /MK /R of the widget (counter-clockwise, 0/90/180/270)
     val pageRotation: Int = 0,      // /Rotate of its page (clockwise)
-)
+    /** Actions per trigger (/A as Mouse Up first, then /AA U D E X Fo Bl), /Next chains followed. */
+    val triggers: Map<Trigger, List<PdfAction>> = emptyMap(),
+    /** Text field with the FileSelect flag: its value is a file path picked by the user. */
+    val fileSelect: Boolean = false,
+) {
+    val mouseUp: List<PdfAction> get() = triggers[Trigger.MOUSE_UP].orEmpty()
+}
 
 data class FormModel(
     val widgets: List<FWidget>,
@@ -73,6 +79,10 @@ data class FormModel(
     val generatedFromXfa: Boolean = false,
     val js: FormJs = FormJs.EMPTY,                 // raw field / document JavaScript for the Rhino runtime
     val xfaRepeats: List<XfaRepeat> = emptyList(),   // generated XFA forms: subforms that can take another row
+    /** Document actions of the catalog /AA (WC, WS, DS, WP, DP) as JavaScript text. */
+    val docActions: Map<String, String> = emptyMap(),
+    /** Page open / close JavaScript (page /AA O and C): page index -> ("O"|"C" -> code). */
+    val pageActions: Map<Int, Map<String, String>> = emptyMap(),
 ) {
     val byName: Map<String, List<FWidget>> by lazy { widgets.groupBy { it.name } }
     fun onPage(page: Int) = widgets.filter { it.page == page && !it.hidden }
@@ -89,6 +99,29 @@ object FormModelLoader {
     private val BG = COSName.getPDFName("BG")
     private val R = COSName.getPDFName("R")
     private val JAVASCRIPT = COSName.getPDFName("JavaScript")
+
+    /** /Ff bit 21 (FileSelect) of text fields. */
+    const val FF_FILE_SELECT = 1 shl 20
+
+    /** Document actions (catalog /AA: WC will close, WS will save, DS did save, WP will print, DP did print) as JavaScript. */
+    fun docActions(doc: PDDocument): Map<String, String> {
+        val aa = doc.documentCatalog.cosObject.getDictionaryObject(COSName.AA) as? COSDictionary ?: return emptyMap()
+        val out = LinkedHashMap<String, String>()
+        for (k in listOf("WC", "WS", "DS", "WP", "DP")) {
+            val code = PdfActions.chain(aa.getDictionaryObject(COSName.getPDFName(k)), null).filterIsInstance<PdfAction.JavaScript>().joinToString("\n") { it.code }
+            if (code.isNotBlank()) out[k] = code
+        }
+        return out
+    }
+
+    /** Words of the first 200 pages (getPageNthWord), split on white space. */
+    fun pageWords(doc: PDDocument): List<List<String>> {
+        val st = com.tom_roush.pdfbox.text.PDFTextStripper()
+        return (1..minOf(doc.numberOfPages, 200)).map { p ->
+            st.startPage = p; st.endPage = p
+            runCatching { st.getText(doc) }.getOrDefault("").split(Regex("\\s+")).filter { it.isNotEmpty() }
+        }
+    }
 
     /** Document-level scripts (/Names /JavaScript name tree), in tree order. */
     internal fun docScripts(doc: PDDocument): List<String> {
@@ -213,7 +246,7 @@ object FormModelLoader {
 
     fun load(doc: PDDocument): FormModel {
         val xfa = runCatching { XfaSupport.detect(doc).kind }.getOrDefault(XfaSupport.Kind.NONE)
-        val acro = doc.documentCatalog.acroForm ?: return FormModel.EMPTY.copy(xfa = xfa)
+        val acro = doc.documentCatalog.getAcroForm(null) ?: return FormModel.EMPTY.copy(xfa = xfa)
         // where every annotation lives: page index and position in /Annots (one pass over the pages)
         val where = HashMap<COSDictionary, Pair<Int, Int>>()
         val geom = ArrayList<FloatArray>()
@@ -232,6 +265,8 @@ object FormModelLoader {
         val widgets = ArrayList<FWidget>(); val values = LinkedHashMap<String, String>()
         val jsFields = ArrayList<JsField>(); val jsScripts = LinkedHashMap<String, FieldJs>()
         val dictName = HashMap<COSDictionary, String>()
+        var actionJs = false
+        val allJs = ArrayList<String>()
         for (f in acro.fieldTree) {
             if (f !is PDTerminalField) continue
             val name = f.fullyQualifiedName ?: continue
@@ -249,6 +284,7 @@ object FormModelLoader {
                 else -> emptyList<String>() to emptyList()
             }
             val states = ws.map { onStates(it.cosObject).firstOrNull() ?: "" }
+            val fileSelect = f is PDTextField && (f.cosObject.getInt(COSName.FF, 0) and FF_FILE_SELECT) != 0
             values[name] = fieldValue(f, if (f is PDButton) exports else emptyList(), states)
             val da = (f as? PDTextField)?.defaultAppearance ?: (f as? PDChoice)?.defaultAppearance
             val (fs, tc) = parseDa(runCatching { da }.getOrNull())
@@ -276,6 +312,8 @@ object FormModelLoader {
                 val box = PageSpace.rectToDisplay(r.lowerLeftX, r.lowerLeftY, r.upperRightX, r.upperRightY, g[0], g[1], g[2], g[3], g[4].toInt())
                 if (box.width < 1f || box.height < 1f) return@forEachIndexed
                 val action = if (f is PDPushButton) buttonAction(f, w.cosObject) else null
+                val trig = runCatching { PdfActions.triggers(w.cosObject, f.cosObject, doc) }.getOrDefault(emptyMap())
+                trig.values.forEach { l -> l.forEach { a -> if (a is PdfAction.JavaScript && a.code.isNotBlank()) { actionJs = true; allJs += a.code } } }
                 val kind = when (f) {
                     is PDTextField -> WKind.TEXT
                     is PDCheckBox -> WKind.CHECK
@@ -307,6 +345,7 @@ object FormModelLoader {
                     action = action, validate = validate,
                     hidden = runCatching { w.isHidden || w.isNoView }.getOrDefault(false),
                     mkRotation = runCatching { AppearanceRotation.rotationOf(w.cosObject) }.getOrDefault(0), pageRotation = FieldRotation.norm(g[4].toInt()),
+                    triggers = trig, fileSelect = fileSelect,
                 )
             }
         }
@@ -318,10 +357,27 @@ object FormModelLoader {
         }
         jsScripts.forEach { (n, s) -> if (s.calculate != null && n !in co) co += n }
         val coIndex = co.withIndex().associate { it.value to it.index }
-        val formJs = if (jsScripts.isEmpty()) FormJs.EMPTY else FormJs(jsFields.map { it.copy(calcIndex = coIndex[it.name] ?: -1) }, jsScripts, co,
-            if (jsOn) runCatching { docScripts(doc) }.getOrDefault(emptyList()) else emptyList(), doc.numberOfPages)
+        // JavaScript policy (main): with JavaScript off no action / page / document scripts reach the runtime
+        val docActions = if (jsOn) runCatching { docActions(doc) }.getOrDefault(emptyMap()) else emptyMap()
+        if (docActions.isNotEmpty()) actionJs = true
+        val pageActions = HashMap<Int, Map<String, String>>()
+        if (jsOn) doc.pages.forEachIndexed { pi, pg ->
+            val aa = pg.cosObject.getDictionaryObject(COSName.AA) as? COSDictionary ?: return@forEachIndexed
+            val m = listOf("O", "C").mapNotNull { k ->
+                PdfActions.chain(aa.getDictionaryObject(COSName.getPDFName(k)), null).filterIsInstance<PdfAction.JavaScript>()
+                    .joinToString("\n") { it.code }.takeIf { it.isNotBlank() }?.let { k to it }
+            }.toMap()
+            if (m.isNotEmpty()) { pageActions[pi] = m; actionJs = true; allJs += m.values }
+        }
+        if (!jsOn) actionJs = false
+        val dScripts = if (jsOn) runCatching { docScripts(doc) }.getOrDefault(emptyList()) else emptyList()
+        allJs += docActions.values; allJs += dScripts
+        jsScripts.values.forEach { listOfNotNull(it.keystroke, it.format, it.validate, it.calculate).forEach { c -> allJs += c } }
+        val words = if (allJs.any { it.contains("getPageNthWord") || it.contains("getPageNumWords") }) runCatching { pageWords(doc) }.getOrDefault(emptyList()) else emptyList()
+        val formJs = if (jsFields.isEmpty() && !actionJs || !jsOn) FormJs.EMPTY else FormJs(jsFields.map { it.copy(calcIndex = coIndex[it.name] ?: -1) }, jsScripts, co,
+            dScripts, doc.numberOfPages, hasActionJs = actionJs, pageWords = words)
         val repeats = if (generated) runCatching { XfaRepeat.parse(doc.documentInformation?.getCustomMetadataValue(XfaGenerated.KEY_REPEAT)) }.getOrDefault(emptyList()) else emptyList()
-        return FormModel(widgets, values, calc, xfa, tabs, generated, formJs, repeats)
+        return FormModel(widgets, values, calc, xfa, tabs, generated, formJs, repeats, docActions, pageActions)
     }
 
     suspend fun load(file: File, password: String?): FormModel = withContext(Dispatchers.IO) {

@@ -19,17 +19,19 @@ import java.io.FileOutputStream
  */
 object PdfPrint {
 
+    /**
+     * [mono] preselects black and white, [media] the paper ("A4", "Letter", "A3", "A5", "Legal") and [duplex] a
+     * [PrintAttributes] duplex mode (from the document's print preferences); the user can still change them.
+     */
     fun print(context: Context, file: File, jobName: String = file.nameWithoutExtension, pageCount: Int = PrintDocumentInfo.PAGE_COUNT_UNKNOWN,
-              monochrome: Boolean = false, duplex: String = "", media: PrintAttributes.MediaSize? = PrintAttributes.MediaSize.ISO_A4) {
+              mono: Boolean = false, media: String? = null, duplex: Int? = null) {
         val pm = context.getSystemService(Context.PRINT_SERVICE) as PrintManager
-        // NVE-file: grey-scale default, duplex from the document's /ViewerPreferences or the print sheet, paper choice
-        val b = PrintAttributes.Builder().setColorMode(if (monochrome) PrintAttributes.COLOR_MODE_MONOCHROME else PrintAttributes.COLOR_MODE_COLOR)
-        if (media != null) b.setMediaSize(media)
-        when (duplex) {
-            "DuplexFlipLongEdge" -> b.setDuplexMode(PrintAttributes.DUPLEX_MODE_LONG_EDGE)
-            "DuplexFlipShortEdge" -> b.setDuplexMode(PrintAttributes.DUPLEX_MODE_SHORT_EDGE)
-            "Simplex" -> b.setDuplexMode(PrintAttributes.DUPLEX_MODE_NONE)
+        val size = when (media?.lowercase()) {
+            "letter" -> PrintAttributes.MediaSize.NA_LETTER; "a3" -> PrintAttributes.MediaSize.ISO_A3; "a5" -> PrintAttributes.MediaSize.ISO_A5
+            "legal" -> PrintAttributes.MediaSize.NA_LEGAL; else -> PrintAttributes.MediaSize.ISO_A4
         }
+        val b = PrintAttributes.Builder().setMediaSize(size).setColorMode(if (mono) PrintAttributes.COLOR_MODE_MONOCHROME else PrintAttributes.COLOR_MODE_COLOR)
+        if (duplex != null) b.setDuplexMode(duplex)
         pm.print(jobName, StreamAdapter(file, jobName, pageCount), b.build())
     }
 

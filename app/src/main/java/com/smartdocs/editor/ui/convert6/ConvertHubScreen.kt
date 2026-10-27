@@ -129,6 +129,11 @@ fun ConvertHubScreen(nav: NavHostController, uri: String?) {
             val base = message
             try {
                 val r = Cv6Engine(ctx, app.documents).run(c, ins, o, pw) { stage, d, t -> message = if (stage == Stage.OCR) ocrLabel else base; step(d, t) }
+                if (o.attachSource && c.to == com.smartdocs.editor.core.convert6.Fmt.PDF) {   // nav-attach: embed the originals
+                    val desc = ctx.getString(R.string.nat_source_desc)
+                    com.smartdocs.editor.core.pdf.AttachmentOps.pairSources(r.files.filter { it.extension.equals("pdf", true) }, ins)
+                        .forEach { (pdf, src) -> com.smartdocs.editor.core.pdf.AttachmentOps.attachSources(pdf, src, desc) }
+                }
                 needPassword = false
                 info = r.info
                 when {

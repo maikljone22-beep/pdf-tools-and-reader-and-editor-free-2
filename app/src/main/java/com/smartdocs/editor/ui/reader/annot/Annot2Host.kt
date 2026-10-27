@@ -53,6 +53,26 @@ class Annot2Host(val s: ReaderState) {
     // ---- property bar extras ----
     var fillColor by mutableStateOf<Int?>(null)
     var cloudIntensity by mutableIntStateOf(1)
+    // ---- section 7 creation extras (remembered per tool, ToolMemory) ----
+    var dash by mutableIntStateOf(0)
+    var noBorder by mutableStateOf(false)
+    var lineStart by mutableStateOf("None")
+    var lineEnd by mutableStateOf("")
+    var rectCloud by mutableIntStateOf(0)
+    var bold by mutableStateOf(false)
+    var italic by mutableStateOf(false)
+    var underline by mutableStateOf(false)
+    var noteIcon by mutableStateOf("")
+    /** Text box formatting for new FreeText (font family, strike, alignment, spacing, scale, bullets). */
+    var textFmt by mutableStateOf(TextFmt())
+    /** New lines / arrows show their note text on the line (/Cap). */
+    var caption by mutableStateOf(false)
+    /** Ink strokes that look like a line / rectangle / ellipse become that shape (OLD_PLAN D2). */
+    var inkToShapes by mutableStateOf(false)
+    /** Rectangle / oval drawn as square / circle (Shift constraint). */
+    var constrain by mutableStateOf(false)
+    /** Comment features of section 7 (clipboard, align, lock, flatten, pop-ups, tickmarks...). */
+    val cx = CommentExtras(this)
 
     // ---- polygon / polyline / cloud in progress ----
     var polyPage by mutableIntStateOf(-1); private set
@@ -82,10 +102,14 @@ class Annot2Host(val s: ReaderState) {
     // ---- launchers installed by Annot2Dialogs (they need the composition) ----
     var launchAttach: () -> Unit = {}
     var launchVideo: () -> Unit = {}
+    /** Pick an audio file (.mp3 / .wav / .m4a ...) for the Sound tool instead of recording (Foxit 19.x). */
+    var launchAudio: () -> Unit = {}
     var launchImport: () -> Unit = {}
     var launchMerge: () -> Unit = {}
     var launchExport: (xfdf: Boolean) -> Unit = {}
     var launchSummary: () -> Unit = {}
+    /** Export the selection (or all when [all]) as XFDF / FDF; [share] sends it (e-mail) instead of saving. */
+    var launchExportSelected: (xfdf: Boolean, share: Boolean, all: Boolean) -> Unit = { _, _, _ -> }
 
     val polyTools = setOf(ReaderTool.POLYGON, ReaderTool.POLYLINE, ReaderTool.CLOUD)
 
@@ -172,6 +196,7 @@ class Annot2Host(val s: ReaderState) {
             ReaderTool.SOUND -> recordTap = Tap2(ReaderTool.SOUND, page, x, y)
             ReaderTool.SNAPSHOT -> {}
             ReaderTool.SELECT -> { if (!multi.toggleAt(page, x, y, tol)) multi.clear() }
+            ReaderTool.TICKMARK -> cx.placeTick(page, x, y)
             else -> return false
         }
         return true
@@ -200,7 +225,7 @@ class Annot2Host(val s: ReaderState) {
             fillColor = if (kind == AnnotKind.POLYLINE) null else fillColor,
             cloud = if (kind == AnnotKind.CLOUD) cloudIntensity else 0,
         )
-        s.addAnnot(a)
+        cx.addNew(a)
     }
 
     fun undoVertex() { if (vertices.isNotEmpty()) vertices.removeAt(vertices.lastIndex); if (vertices.isEmpty()) polyPage = -1 }
@@ -316,6 +341,15 @@ class Annot2Host(val s: ReaderState) {
     /** Open the selected attachment / sound / video annotation (pending: its file, stored: extracted). */
     fun openSelected() {
         val ed = s.edit
+        // a native /Sound or a Screen audio clip of another PDF has no editable model: play it directly
+        (ed.target as? AnnotTarget.Stored)?.e?.takeIf { it.subtype == "Sound" || (it.subtype == "Screen" && it.video == null) }?.let { e ->
+            val f = s.file ?: return
+            s.scope.launch {
+                val r = runCatching { MediaAnnots.extractAt(f, s.password, e.page, e.index, File(s.context.cacheDir, "annot2_open")) }.getOrNull()
+                if (r != null) playing = r.first else message = s.context.getString(com.smartdocs.editor.R.string.cx_no_audio)
+            }
+            return
+        }
         val a = ed.current() ?: return
         // videos play inside the page (never in another app)
         if (a.kind == AnnotKind.VIDEO) { s.video.playSelected(); return }
@@ -448,6 +482,6 @@ class Annot2Host(val s: ReaderState) {
     companion object {
         /** Tools whose toolbar click goes through [pick]. */
         val OWN_TOOLS = setOf(ReaderTool.POLYGON, ReaderTool.POLYLINE, ReaderTool.CLOUD, ReaderTool.CARET, ReaderTool.REPLACE,
-            ReaderTool.ATTACH, ReaderTool.SOUND, ReaderTool.VIDEO, ReaderTool.SNAPSHOT, ReaderTool.SELECT)
+            ReaderTool.ATTACH, ReaderTool.SOUND, ReaderTool.VIDEO, ReaderTool.SNAPSHOT, ReaderTool.SELECT, ReaderTool.TICKMARK)
     }
 }

@@ -37,7 +37,7 @@ import kotlinx.coroutines.delay
  * dialog. Errors / info go to [snack]. Place it once in the reader; the done bar is [QuickDoneBar].
  */
 @Composable
-fun QuickActionHost(c: QuickController, snack: SnackbarHostState) {
+fun QuickActionHost(c: QuickController, snack: SnackbarHostState, onTool: ((String) -> Unit)? = null) {
     LaunchedEffect(c.message) { c.message?.let { snack.showSnackbar(it); c.message = null } }
     val close = { c.sheet = null }
     when (c.sheet) {
@@ -50,6 +50,7 @@ fun QuickActionHost(c: QuickController, snack: SnackbarHostState) {
         QuickAction.OCR -> OcrSheet(
             pageCount = c.state.pageCount, currentPage = c.state.currentPage, lockedPage = c.ocrLockedPage,
             isInstalled = { c.isLanguageInstalled(it) }, onRun = { c.ocr(it) }, onDismiss = close,
+            onArea = onTool?.let { go -> { close(); go("ocr_zone") } },
         )
         else -> Unit
     }

@@ -109,16 +109,17 @@ fun TextPromptDialog(state: ReaderState, prompt: TextPrompt, onDismiss: () -> Un
                 }
                 Text(stringResource(R.string.nf2_comb_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else
-            OutlinedTextField(text, { text = it }, modifier = Modifier.fillMaxWidth(), minLines = if (isLink) 1 else 3, singleLine = isLink,
-                placeholder = { Text(if (isLink) "https://" else "") },
-                visualTransformation = com.smartdocs.editor.ui.nve.spellTransformation(nveIssues),
-                trailingIcon = if (isLink) null else ({ com.smartdocs.editor.ui.nve.SpellCheckButton(text, { text = it }) }),
-                keyboardOptions = KeyboardOptions(keyboardType = if (isLink) KeyboardType.Uri else KeyboardType.Text))
+            androidx.compose.foundation.layout.Column {
+                OutlinedTextField(text, { text = it }, modifier = Modifier.fillMaxWidth(), minLines = if (isLink) 1 else 3, singleLine = isLink,
+                    placeholder = { Text(if (isLink) "https://" else "") },
+                    keyboardOptions = KeyboardOptions(keyboardType = if (isLink) KeyboardType.Uri else KeyboardType.Text))
+                if (!isLink) com.smartdocs.editor.ui.reader.annot.SpellCheckRow(text) { text = it }      // Foxit 24.25
+            }
         },
         confirmButton = {
             Button(enabled = text.isNotBlank(), onClick = {
                 if (!isLink) text = com.smartdocs.editor.ui.nve.NveDigits.apply(state.context, text)   // NVE: digit shapes setting
-                val rtl = text.any { it in '؀'..'ۿ' }
+                val rtl = text.any { it in '\u0600'..'\u06FF' }
                 val pageW = state.pageSizes[prompt.page]?.first ?: 595f
                 when (prompt.tool) {
                     ReaderTool.NOTE -> state.addAnnot(state.newAnnot(AnnotKind.NOTE, prompt.page, rects = listOf(RectF(prompt.x, prompt.y, prompt.x + 20f, prompt.y - 20f)), text = text))
@@ -165,7 +166,7 @@ fun PageColorSheet(state: ReaderState, onPersist: (Long) -> Unit, onDismiss: () 
     }
 }
 
-/** Auto flip: 20–100 s in 10 s steps (reference range), remembered between sessions. */
+/** Auto flip: 20\u2013100 s in 10 s steps (reference range), remembered between sessions. */
 @Composable
 fun AutoFlipDialog(state: ReaderState, onDismiss: () -> Unit) {
     val vx = state.vx
@@ -223,7 +224,7 @@ private fun InfoRow(label: String, value: String) {
 }
 
 /**
- * Reflow: the page text in a scrollable column. Font scale ×1.25 / ×0.8 within 1–8 (reference values),
+ * Reflow: the page text in a scrollable column. Font scale \u00D71.25 / \u00D70.8 within 1\u20138 (reference values),
  * colours follow the page-colour preset (background + matching text colour) or night mode.
  */
 @Composable
@@ -240,7 +241,7 @@ fun ReflowView(state: ReaderState, modifier: Modifier = Modifier) {
             IconButton(onClick = { vx.reflowSmaller() }, enabled = vx.reflowScale > com.smartdocs.editor.ui.reader.view.ViewExtras.REFLOW_MIN + 0.001f) {
                 Icon(Icons.Default.TextDecrease, stringResource(R.string.vw_font_smaller))
             }
-            Text("×%.2f".format(java.util.Locale.US, vx.reflowScale), style = MaterialTheme.typography.labelMedium)
+            Text("\u00D7%.2f".format(java.util.Locale.US, vx.reflowScale), style = MaterialTheme.typography.labelMedium)
             IconButton(onClick = { vx.reflowLarger() }, enabled = vx.reflowScale < com.smartdocs.editor.ui.reader.view.ViewExtras.REFLOW_MAX - 0.001f) {
                 Icon(Icons.Default.TextIncrease, stringResource(R.string.vw_font_larger))
             }

@@ -37,7 +37,7 @@ Paths are relative to `app/src/main/java/com/smartdocs/editor/`.
 | Zoom marquee tool | DONE | parent: NveOverlays.kt (drag = zoom to rectangle, tap = 2×, zoom-out mode) |
 | Copy With Formatting | DONE | parent: NveSelection.kt copyWithFormatting (HTML clip with size / bold / italic / colour / font of the text blocks) |
 | Copy As Table | DONE | parent: core/nve/TextStats.kt TableCopy (HTML table + TSV) |
-| Pane: Attachments | DONE | F: ui/nve/panes/NvePanes.kt (read-only, reusable `NveAttachmentsList`; open / save / jump) |
+| Pane: Attachments | ALREADY-PRESENT (main, pdf-3c nav-attach) | main's reader ATTACHMENTS panel is the one pane; NVE entry points (command, portfolio banner) open it. F's read-only `NveAttachmentsList` stays as a reusable component, not a second pane |
 | Pane: Layers | OWNED ELSEWHERE | pdf-39 (layers) |
 | Pane: Tags | DONE | F: structure-tree pane (view only), "not tagged" → accessibility tool |
 | Pane: Signatures | DONE | F + parent: list + validate via main's `DigitalSignature.verify(file, revocation = false)` (matched by fieldName), "view signed version" via `SigRevisions.extract`; field tap sheet = main's SigFieldSheet |
@@ -52,11 +52,11 @@ Paths are relative to `app/src/main/java/com/smartdocs/editor/`.
 
 | Row | Status | Where |
 |---|---|---|
-| Print: custom N×M | DONE | C: core/view5/PrintLayout.kt, PrintPrep.kt, ui/nve/file/NvePrint.kt |
-| Print: Booklet both sides / front only / back only | DONE | C: PrintLayout.bookletSides |
-| Print: auto-rotate and center, page scaling | DONE | C: fit / actual / shrink oversized / custom % |
-| Print: only pages with markups | DONE | C: core/nve/PrintExtras.markupPages |
-| Batch Print | DONE | C: ui/nve/file/BatchPrintScreen.kt, Tools tile "print_batch", print sheet "Print other files…" |
+| Print: custom N×M | ALREADY-PRESENT (main nav-batch) | core/view5/PrintPrep.kt cols/rows, ui/view5/PrintForm.kt (C's duplicate dropped at merge eb22f83) |
+| Print: Booklet both sides / front only / back only | ALREADY-PRESENT (main nav-batch) | PrintLayout.Sides / bookletSides |
+| Print: auto-rotate and center, page scaling | ALREADY-PRESENT (main nav-batch) | PrintLayout.Scale, autoRotate |
+| Print: only pages with markups | DONE (ported onto main's print sheet) | PrintSettings/PrintOptions `markedOnly`, PrintPrep filter via core/nve/PrintExtras.markupPages, chip in ui/view5/PrintForm.kt |
+| Batch Print | ALREADY-PRESENT (main nav-batch) | ui/tools5/BatchPrintScreen.kt, Tools tile "batch_print" (C's duplicate tool removed) |
 | Properties: Base URL | DONE | C: core/nve/DocInspect.kt, XmpOps base URL write; DocPropsScreen + NveDocInfoSheet |
 | Properties: Page Size / Fast Web View / Locked | DONE | C: DocInspect |
 | Properties Security tab (method + current permissions) | DONE | C: NveSecurityPanel (method, key length, revision, 8 permissions) |
@@ -115,21 +115,21 @@ Paths are relative to `app/src/main/java/com/smartdocs/editor/`.
 | SHL-13 accent colour | DONE | G: core/theme/Accent.kt (AccentColors), named colour themes, dynamic colour |
 | FILE-1 XMP import / export | DONE | C: export, append/merge, replace, raw view |
 | FILE-4 fonts screen (PdfInspect code-only) | DONE | C: DocInspect.fonts + Fonts tab |
-| FILE-5 print presets read by the print sheet | DONE | C: built-in + user presets; /ViewerPreferences print settings as defaults |
+| FILE-5 print presets read by the print sheet | ALREADY-PRESENT (main nav-batch: core/view5/PrintSettings.kt presets + /ViewerPreferences); C's editing of PrintScaling / Duplex / PickTrayByPDFSize / PrintPageRange / NumCopies in DocPropsScreen kept | C |
 | FILE-10 unified Save As | DONE | C: NveSaveAsSheet (⋮ "Save as…") |
-| PRN-1 greyscale, scale, comment summary | DONE | C (greyscale = vector overlay + monochrome default) |
-| PRN-3 print many files | DONE | C |
+| PRN-1 greyscale, scale, comment summary | ALREADY-PRESENT (main nav-batch PrintPipeline) | C's duplicate print sheet dropped at merge |
+| PRN-3 print many files | ALREADY-PRESENT (main nav-batch) | ui/tools5/BatchPrintScreen.kt |
 | HOME-1 paste / HOME-2 page snapshot | DONE | G (Home: clipboard → new PDF, page → PNG); parent (reader: paste into the PDF, page / area snapshot + paste back) |
 | Security summary in properties | DONE | C |
 | Document notification banners | DONE | F |
 | Signatures pane (read-only list + validate) | DONE | F + parent, reusing main's verifier |
-| Attachments pane (list / open / save, read-only, reusable) | DONE | F |
+| Attachments pane (list / open / save, read-only, reusable) | ALREADY-PRESENT (main pdf-3c panel) / reusable list kept | F's NveAttachmentsList; reader uses main's panel |
 
 ## Foxit rows (fcmp_01-08 §1-3, fcmp_09-13_22 §9/10/12/13 word count/22, fcmp_14-21_23 §14, fcmp_28-42 §39 + extras)
 
 | Row | Status | Where |
 |---|---|---|
-| §1 Batch Print / Invoice Print | DONE / NOT-FEASIBLE (invoice print is a Foxit plug-in for invoices) | C |
+| §1 Batch Print / Invoice Print | ALREADY-PRESENT (main nav-batch) / NOT-FEASIBLE (invoice print is a Foxit plug-in for invoices) | main |
 | §1 "Get Help on keywords" from the command search | DONE | G: NveHelp.openWithQuery; parent: command sheet item |
 | §1 Online tutorial videos | NOT-FEASIBLE | no curated videos to link; feature-guide PDFs instead |
 | §1 Support chatbot ("how do I") | DONE | G: help assistant grounded on Help-centre articles (offline ranking fallback) |
@@ -258,7 +258,7 @@ core/edit/NveTextTest (A, with an asset-free test font `test/java/com/tom_roush/
 core/edit/NveImageTest (B), core/nve/NveFileTest (C), core/nve/NveSearchTest (D), core/nve/NveShapesTest (E),
 core/nve/NvePanesTest (F), core/nve/NveShellTest (G). JVM-test notes: pdfbox-android cannot initialise the standard-14
 fonts, parse TrueType fonts or log (android.util.Log) on a plain JVM, so the tests use NveTestFont and a test-only
-`android/util/Log.java` stand-in; the AcroForm is read with `getAcroForm(null)` (no standard-font fix-up).
+unitTests.isReturnDefaultValues (main) for android.util.Log; the AcroForm is read with `getAcroForm(null)` (no standard-font fix-up).
 
 ## Commits and CI
 

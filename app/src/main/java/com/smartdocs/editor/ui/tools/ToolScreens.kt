@@ -64,11 +64,14 @@ private fun ToolScreensInner(nav: NavHostController, id: String, uri: String?) {
         "mail_merge" -> com.smartdocs.editor.ui.tools5.MailMergeScreen(nav, uri)
         "portfolio" -> com.smartdocs.editor.ui.tools5.PortfolioScreen(nav, uri)
         "ocr_plus" -> com.smartdocs.editor.ui.tools5.OcrBatchScreen(nav, uri)
+        "ocr_zone" -> com.smartdocs.editor.ui.ocr.OcrZoneScreen(nav, uri)
+        "ocr_review" -> com.smartdocs.editor.ui.ocr.OcrReviewScreen(nav, uri)
         "recipes" -> com.smartdocs.editor.ui.tools5.RecipesScreen(nav, uri)
         "batch" -> com.smartdocs.editor.ui.tools5.BatchScreen(nav)
         "compare_plus" -> com.smartdocs.editor.ui.tools5.Compare2Screen(nav, uri)
         "accessibility" -> com.smartdocs.editor.ui.tools5.AccessibilityScreen(nav, uri)
         "print" -> PrintScreen(nav, uri)
+        "batch_print" -> com.smartdocs.editor.ui.tools5.BatchPrintScreen(nav, uri)     // nav-batch
         "read_aloud" -> ReadAloudScreen(nav, uri)
         "wifi" -> com.smartdocs.editor.ui.cloud.WifiScreen(nav)
         "help" -> com.smartdocs.editor.ui.help.HelpScreen(nav)
@@ -90,7 +93,6 @@ private fun ToolScreensInner(nav: NavHostController, id: String, uri: String?) {
         "podcast" -> com.smartdocs.editor.ui.voice.PodcastScreen(nav, uri)
         "outline" -> com.smartdocs.editor.ui.edit5.Edit5Screens(nav, "e5_bookmarks", uri)   // NVE: the edit5 bookmarks editor (old screen: "outline_classic")
         "outline_classic" -> com.smartdocs.editor.ui.edit.OutlineEditorScreen(nav, uri)
-        "print_batch" -> com.smartdocs.editor.ui.nve.file.BatchPrintScreen(nav)   // NVE: print many files
         "form_builder" -> com.smartdocs.editor.ui.forms.FormBuilderScreen(nav, uri)
         "signatures", "sign" -> SignaturesScreen(nav)
         "digital_sign" -> DigitalSignScreen(nav, uri)

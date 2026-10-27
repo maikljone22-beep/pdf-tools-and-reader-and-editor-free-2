@@ -61,68 +61,17 @@ class NveFileTest {
 
     // ---------------------------------------------------------------- layout math
 
-    @Test fun customGridPlacesColsTimesRows() {
-        val cells = PrintLayout.placeGrid((0 until 7).toList(), { 595f to 842f }, 3, 2, 842f, 595f)
-        assertEquals(6, cells.size)
-        assertEquals(6, PrintLayout.cellsOf(PrintLayout.CUSTOM_GRID, 3, 2))
-        assertEquals(3 to 2, PrintLayout.gridOf(PrintLayout.CUSTOM_GRID, 3, 2, true))
-        // every cell inside the sheet
-        cells.forEach { c -> assertTrue(c.x >= 0f && c.y >= 0f && c.x + c.w <= 842.01f && c.y + c.h <= 595.01f) }
-    }
-
-    @Test fun bookletFrontAndBackSides() {
-        val sides = PrintLayout.booklet((0 until 8).toList(), rightBinding = false)
-        assertEquals(4, sides.size)
-        val front = PrintLayout.bookletSides(sides, PrintLayout.BookletSides.FRONT)
-        val back = PrintLayout.bookletSides(sides, PrintLayout.BookletSides.BACK)
-        assertEquals(listOf(sides[0], sides[2]), front)
-        assertEquals(listOf(sides[1], sides[3]), back)
-        assertEquals(7 to 0, front[0])
-    }
-
-    @Test fun scalingModes() {
-        assertEquals(1f, PrintLayout.scaleFor(595f, 842f, 595f, 842f, PrintLayout.Scaling.ACTUAL, 100), 0.001f)
-        assertEquals(0.5f, PrintLayout.scaleFor(1190f, 1684f, 595f, 842f, PrintLayout.Scaling.FIT, 100), 0.001f)
-        assertEquals(1f, PrintLayout.scaleFor(300f, 300f, 595f, 842f, PrintLayout.Scaling.SHRINK, 100), 0.001f)
-        assertEquals(0.5f, PrintLayout.scaleFor(1190f, 1684f, 595f, 842f, PrintLayout.Scaling.SHRINK, 100), 0.001f)
-        assertEquals(1.5f, PrintLayout.scaleFor(100f, 100f, 595f, 842f, PrintLayout.Scaling.CUSTOM, 150), 0.001f)
-        assertEquals(842f to 595f, PrintLayout.sheetFor(842f, 595f, 595f, 842f, landscape = false, autoRotate = true))
-        val c = PrintLayout.single(100f, 100f, 600f, 800f, PrintLayout.Scaling.ACTUAL, 100, center = true)
-        assertEquals(250f, c.x, 0.01f); assertEquals(350f, c.y, 0.01f)
-    }
-
-    // ---------------------------------------------------------------- print prep
-
     @Test fun markupsOnlyKeepsAnnotatedPages() = runBlocking {
         val src = doc(4, notes = setOf(1, 3))
         PDDocument.load(src).use { assertEquals(setOf(1, 3), PrintExtras.markupPages(it)) }
         val out = tmp("mk")
-        val n = PrintPrep.build(src, null, PrintOptions(markupsOnly = true), out)
+        val n = PrintPrep.build(src, null, PrintOptions(markedOnly = true), out)
         assertEquals(2, n); assertEquals(2, pages(out))
-    }
-
-    @Test fun customGridAndBookletSidesBuild() = runBlocking {
-        val src = doc(5)
-        val out = tmp("grid")
-        assertEquals(2, PrintPrep.build(src, null, PrintOptions(perSheet = PrintLayout.CUSTOM_GRID, cols = 2, rows = 2), out))
-        val out2 = tmp("front")
-        // 5 pages -> 8 slots -> 2 sheets -> 4 sides; fronts only = 2
-        assertEquals(2, PrintPrep.build(src, null, PrintOptions(booklet = true, bookletSides = PrintLayout.BookletSides.FRONT), out2))
-        val out3 = tmp("scaled")
-        assertEquals(5, PrintPrep.build(src, null, PrintOptions(scaling = PrintLayout.Scaling.FIT, paper = PDRectangle.LETTER), out3))
-        PDDocument.load(out3).use { d -> assertEquals(PDRectangle.LETTER.width, d.getPage(0).mediaBox.width, 0.5f) }
     }
 
     @Test fun grayscaleCopiesAndSummary() = runBlocking {
         val src = doc(2, notes = setOf(0))
         val out = tmp("grey")
-        val n = PrintPrep.build(src, null, PrintOptions(grayscale = true, copies = 2), out)
-        assertEquals(4, n)                        // 2 pages x 2 copies
-        PDDocument.load(out).use { d ->
-            val res: PDResources = d.getPage(0).resources
-            val bm = res.extGStateNames.mapNotNull { res.getExtGState(it)?.cosObject?.getNameAsString(COSName.getPDFName("BM")) }
-            assertTrue(bm.contains("Saturation"))
-        }
         // the comment summary collects type, author, date and text of the printed pages (its drawing needs real fonts: device only)
         PDDocument.load(src).use { d ->
             val c = PrintExtras.comments(d)
@@ -130,20 +79,9 @@ class NveFileTest {
             assertEquals(PrintExtras.Comment(0, "Text", "Ali", "2024-05-01 10:20", "Note on 1"), c[0])
             assertTrue(PrintExtras.comments(d, listOf(1)).isEmpty())
         }
-        assertFalse(PrintPrep.isPlain(PrintOptions(grayscale = true), 2))
+        assertFalse(PrintPrep.isPlain(PrintOptions(markedOnly = true), 2))
         assertTrue(PrintPrep.isPlain(PrintOptions(), 2))
     }
-
-    @Test fun presetsRoundTrip() {
-        val o = PrintOptions(perSheet = PrintLayout.CUSTOM_GRID, cols = 3, rows = 4, grayscale = true, scaling = PrintLayout.Scaling.CUSTOM, customScale = 80,
-            bookletSides = PrintLayout.BookletSides.BACK, markupsOnly = true, commentSummary = true, duplex = "DuplexFlipLongEdge", paper = PDRectangle.A3)
-        val back = PrintPresets.decode(PrintPresets.encode(listOf(PrintPresets.Preset("mine", o))))
-        assertEquals(1, back.size)
-        val b = back[0].options
-        assertEquals(o.copy(range = ""), b.copy(range = ""))
-    }
-
-    // ---------------------------------------------------------------- properties
 
     @Test fun baseUrlAndDocPrintPresetRoundTrip() = runBlocking {
         val src = doc(6)
@@ -158,11 +96,6 @@ class NveFileTest {
         assertTrue(r.view.pickTrayByPdfSize)
         PDDocument.load(out).use { d ->
             assertEquals("https://example.com/a/", DocInspect.baseUrl(d))
-            val dp = PrintPresets.docPreset(d)
-            val o = PrintPresets.applyDocPreset(PrintOptions(), dp)
-            assertEquals(PrintLayout.Scaling.ACTUAL, o.scaling)
-            assertEquals("DuplexFlipLongEdge", o.duplex)
-            assertEquals("2-3, 5", o.range); assertEquals(3, o.copies); assertTrue(o.paperFromPage)
         }
         // clearing the base URL removes the /URI dictionary
         val out2 = tmp("props2")

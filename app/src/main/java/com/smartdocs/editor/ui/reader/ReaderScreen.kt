@@ -152,7 +152,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
             ReadAloudController.start(ctx, state.file?.name ?: "", p0, state.pageCount, settings.ttsRate, settings.ttsPitch, { pg -> state.file?.let { f -> com.smartdocs.editor.ui.nve.tts.NveReadText.pageText(ctx, f, state.password, pg, base = ReaderAi6.readingText(state, pg)) } ?: ReaderAi6.readingText(state, pg) }, from)   // NVE: + comments / alt text per reading prefs
         }
     }
-    // API 33+: ask for POST_NOTIFICATIONS first, start reading once the user answered (granted or not —
+    // API 33+: ask for POST_NOTIFICATIONS first, start reading once the user answered (granted or not \u2014
     // the foreground service is allowed either way, only the notification would be hidden).
     var pendingRead by remember { mutableStateOf<Pair<Int, Int>?>(null) }
     val notifPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { _ ->
@@ -172,6 +172,8 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
     suspend fun outputFile(): File? {
         val f = state.file ?: return null
         if (!state.dirty) return f
+        // nav-attach (Foxit "automatically save document as e-mail attachment"): with auto-save on, save first
+        if (settings.autoSave && runCatching { state.save() }.getOrDefault(false) && !state.dirty) return f
         val tmp = app.documents.newTemp("share"); state.exportWithAnnots(tmp); return tmp
     }
 
@@ -322,6 +324,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                             if (state.reflow) com.smartdocs.editor.ui.view5.ReflowReader(state)
                             PageIndicator(state.currentPage, state.pageCount, { showGoTo = true }, Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp))
                             if (state.tool != null && state.placement == null) ToolHint(state.tool!!, Modifier.align(Alignment.TopCenter).padding(top = 8.dp))
+                            else if (state.placement != null) com.smartdocs.editor.ui.reader.annot.PlacementBar(state, Modifier.align(Alignment.TopCenter).padding(top = 8.dp))   // section 7.40 / 24.54
                             else OcrSuggestionBanner(state, onOcr = { actions.quick(QuickAction.OCR) }, modifier = Modifier.align(Alignment.TopCenter))
                             com.smartdocs.editor.ui.forms5.InPageXfaBanner(state, onOpen = { f -> nav.navigate(Routes.reader(android.net.Uri.fromFile(f).toString(), 0)) },
                                 modifier = Modifier.align(Alignment.TopCenter).padding(top = 48.dp))   // MODULE_forms5
@@ -336,7 +339,8 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                 if (tablet && panel != null) {
                     VerticalDivider()
                     Surface(Modifier.width(340.dp).fillMaxHeight(), tonalElevation = 1.dp) {
-                        PanelsContent(state, panel!!, onPanel = { panel = it }, onJump = { state.jumpTo(it) }, onAiOutline = { nav.navigate(Routes.tool("ai", state.fileUri)) }, onClose = { panel = null })
+                        PanelsContent(state, panel!!, onPanel = { panel = it }, onJump = { state.jumpTo(it) }, onAiOutline = { nav.navigate(Routes.tool("ai", state.fileUri)) }, onClose = { panel = null },
+                            onOpenPdf = { f -> nav.navigate(Routes.reader(android.net.Uri.fromFile(f).toString())) })
                     }
                 }
                 com.smartdocs.editor.ui.nve.NveSidePane(state, nav)      // NVE: attachments / signatures / tags / fields / destinations / articles
@@ -344,10 +348,14 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
         }
         // captured value: the sheet's own composition can recompose after panel became null (NPE with panel!!)
         if (!tablet) panel?.let { shownPanel -> ModalBottomSheet(onDismissRequest = { panel = null }) {
-            PanelsContent(state, shownPanel, onPanel = { panel = it }, onJump = { state.jumpTo(it); panel = null }, onAiOutline = { panel = null; nav.navigate(Routes.tool("ai", state.fileUri)) }, onClose = { panel = null })
+            PanelsContent(state, shownPanel, onPanel = { panel = it }, onJump = { state.jumpTo(it); panel = null }, onAiOutline = { panel = null; nav.navigate(Routes.tool("ai", state.fileUri)) }, onClose = { panel = null },
+                onOpenPdf = { f -> panel = null; nav.navigate(Routes.reader(android.net.Uri.fromFile(f).toString())) })
         } }
-        com.smartdocs.editor.ui.forms5.InPageFormBar(state, Modifier.align(Alignment.BottomCenter))   // MODULE_forms5
+        com.smartdocs.editor.ui.forms5.InPageFormBar(state, Modifier.align(Alignment.BottomCenter),    // MODULE_forms5
+            onOpen = { f, p -> nav.navigate(Routes.reader(android.net.Uri.fromFile(f).toString(), p)) },
+            onSign = { f -> nav.navigate(Routes.tool("digital_sign", android.net.Uri.fromFile(f).toString())) })
         SigFieldSheet(state, nav)   // Nitro signature-field actions + signed/certified bar
+        com.smartdocs.editor.ui.attachments.PortfolioPrompt(state) { nav.navigate(Routes.tool("portfolio", state.fileUri)) }   // nav-attach: portfolio detection
     }
 
     // ---- dialogs & sheets ----
@@ -392,7 +400,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
     if (showAi) state.file?.let { f -> com.smartdocs.editor.ui.ai5.DocAssistantSheet(agentHost, f, state.password, state.pageCount, { state.pageText(it) },
         onCitation = { c -> showAi = false; if (c.filePath == f.absolutePath) ReaderAi6.highlightQuote(scope, state, c.page, c.quote) else nav.navigate(com.smartdocs.editor.ui.ai5.citationRoute(c)) },   // ai6 (B1): highlight the passage
         onDismiss = { showAi = false },
-        initialQuestion = aiText?.let { "اشرح هذا النص:\n$it" },
+        initialQuestion = aiText?.let { "\u0627\u0634\u0631\u062D \u0647\u0630\u0627 \u0627\u0644\u0646\u0635:\n$it" },
         onPodcast = { showAi = false; nav.navigate(Routes.tool("podcast", state.fileUri)) }, currentPage = state.currentPage) }   // ai6: snapshot page
     textTools?.let { (sel, act) -> com.smartdocs.editor.ui.ai5.TextToolsSheet(sel.text, act, docContext = null,
         onReplace = if (sel.rects.isNotEmpty() && state.session != null) ({ t: String -> ReaderAi6.replaceSelection(ctx, state, quick, sel, t) }) else null,   // ai6 (B11): replace in the document, undoable
@@ -403,7 +411,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
     if (contentEdit && state.session != null) com.smartdocs.editor.ui.edit.EditModeHost(state) { contentEdit = false }
     if (state.saving) ProgressDialog(stringResource(R.string.processing))
     if (showHistory) HistorySheet(state) { showHistory = false }
-    QuickActionHost(quick, snack)
+    QuickActionHost(quick, snack) { id -> actions.navigateTool(id) }
     com.smartdocs.editor.ui.reader.annot.Annot2Dialogs(state, nav, snack)      // MODULE_annot2 pickers & dialogs
     if (state.session != null && !state.needPassword) com.smartdocs.editor.ui.onboarding.ReaderCoachMarks()   // share6
     // share6: share sheet (whole/page/range, compressed, without comments, flattened, images, XFDF, e-mail)

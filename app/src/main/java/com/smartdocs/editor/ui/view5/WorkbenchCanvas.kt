@@ -75,6 +75,12 @@ fun WorkbenchCanvas(m: WorkbenchModel, bitmap: Bitmap?, view: WbView, snapTo: (P
     fun resolve(o: Offset): P {
         val raw = view.toPdf(o)
         var p = if (m.v.snap) snapTo(raw, 14f / view.scale) ?: raw else raw
+        if (m.v.snapGrid) {
+            // grid from the top-left corner like the overlay grid; gridMm in millimetres
+            val step = (m.v.gridMm * 72.0 / 25.4).coerceAtLeast(1.0)
+            val top = view.pageH - p.y
+            p = P(Math.round(p.x / step) * step, view.pageH - Math.round(top / step) * step)
+        }
         p = com.smartdocs.editor.ui.nve.NveGridSnap.snapP(m.v.s, p, m.page)   // NVE: snap to grid / guides
         if (m.v.ortho && m.pts.isNotEmpty() && (m.tool == WTool.DISTANCE || m.tool == WTool.PERIMETER || m.tool == WTool.AREA || m.tool == WTool.LINE || m.calibrating)) p = Geom.constrain45(m.pts.last(), p)
         return p

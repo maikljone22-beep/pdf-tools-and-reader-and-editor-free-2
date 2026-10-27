@@ -5,7 +5,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.snapshots.Snapshot
+import com.smartdocs.editor.core.forms5.FieldVisibility
+import com.smartdocs.editor.core.forms5.FormPrefs
+import com.smartdocs.editor.core.forms5.JsResult
+import com.smartdocs.editor.core.forms5.PdfAction
+import com.smartdocs.editor.core.forms5.Trigger
 import com.smartdocs.editor.core.forms.AfFormat
 import com.smartdocs.editor.core.forms.Display
 import com.smartdocs.editor.core.forms.XfaSupport
@@ -40,7 +47,11 @@ object FormFill {
     private val states = WeakHashMap<ReaderState, FormFillState>()
     fun of(reader: ReaderState): FormFillState = synchronized(states) { states.getOrPut(reader) { FormFillState(reader) } }
     /** The reader was closed: drop its state (the value holds the reader, so the weak key alone never clears it). */
-    fun forget(reader: ReaderState) { synchronized(states) { states.remove(reader) } }
+    fun forget(reader: ReaderState) {
+        // document action "will close" (WC): scripts may log or alert; nothing can be saved any more
+        synchronized(states) { states[reader] }?.let { st -> runCatching { st.runDocAction("WC") } }
+        synchronized(states) { states.remove(reader) }
+    }
 }
 
 /**
@@ -87,16 +98,33 @@ class FormFillState internal constructor(val reader: ReaderState) {
     var sigStatus by mutableStateOf<Map<String, Boolean>>(emptyMap())
     /** Date picker request for the active field. */
     var datePickerFor by mutableStateOf<String?>(null)
-    /** Short feedback for the field bar (submit result, required fields…), cleared by the UI. */
+    /** Short feedback for the field bar (submit result, required fields\u2026), cleared by the UI. */
     var message by mutableStateOf<FormMessage?>(null)
     var busy by mutableStateOf(false)
+
+    /** Visibility changed by Hide actions / removeField while filling (field name -> hidden); written on save. */
+    val hiddenOverride = mutableStateMapOf<String, Boolean>()
+    /** Action list waiting for the user's consent (it submits, opens a link, resets, imports or leaves the file). */
+    var pendingChain by mutableStateOf<Triple<FWidget?, Trigger?, List<PdfAction>>?>(null)
+    /** File-select text field waiting for the file picker (the layer launches it). */
+    var filePickFor by mutableStateOf<String?>(null)
+    /** ImportData / importAnFDF without a file next to the PDF: the bar asks for a data file. */
+    var importPick by mutableStateOf(false)
+    /** Another PDF to open in the reader (GoToR / Launch), with its zero-based page. */
+    var openRequest by mutableStateOf<Pair<File, Int>?>(null)
+    /** Body of a submit response to show (mime type, text). */
+    var response by mutableStateOf<Pair<String, String>?>(null)
+    /** JavaScript console output (console.println, results, errors). */
+    val consoleLog = mutableStateListOf<String>()
+    /** Values the calculation pass sees while automatic calculation is off (null = follow every edit). */
+    private var frozenEdits by mutableStateOf<Map<String, String>?>(null)
 
     /** Field-bar undo / redo: the top step of the reader's unified history is a form step (core/history). */
     val canUndo: Boolean get() = reader.history.canUndo && reader.history.peekUndo()?.owner == OWNER_FORMS
     val canRedo: Boolean get() = reader.history.canRedo && reader.history.peekRedo()?.owner == OWNER_FORMS
     private var typingField: String? = null
 
-    private val acFile by lazy { AutocompleteFile(File(reader.context.filesDir, "forms5_autocomplete.json")) }
+    private val acFile by lazy { FormPrefs.load(reader.context); AutocompleteFile.shared(FormPrefs.autocompleteFile(reader.context)) }
 
     // ------------------------------------------------------------------ derived
 
@@ -109,7 +137,9 @@ class FormFillState internal constructor(val reader: ReaderState) {
     private val live: Live by derivedStateOf {
         val m = model; val sc = scripts
         @Suppress("UNUSED_VARIABLE") val v = propsVersion
-        val base = m.values.keys.associateWith { k -> edits[k] ?: m.values[k].orEmpty() }
+        // automatic calculation off: the pass sees the values of the last "Calculate now" (the stored ones before that)
+        val ed: Map<String, String> = if (FormPrefs.autoCalculate) edits else (frozenEdits ?: emptyMap())
+        val base = m.values.keys.associateWith { k -> ed[k] ?: m.values[k].orEmpty() }
         val js = if (sc != null && sc.hasCalculations) runCatching { sc.calculate(base) }.getOrNull() else null
         when {
             sc != null && js != null -> {
@@ -129,7 +159,83 @@ class FormFillState internal constructor(val reader: ReaderState) {
     /** Field properties changed by scripts (display, readonly, required, colours). */
     fun props(name: String): JsProps? = live.props[name]
 
-    fun isHidden(w: FWidget) = w.hidden || props(w.name)?.hidden == true
+    fun isHidden(w: FWidget) = hiddenFor(w.name) ?: (w.hidden || props(w.name)?.hidden == true)
+
+    private fun hiddenFor(name: String): Boolean? {
+        if (hiddenOverride.isEmpty()) return null
+        hiddenOverride[name]?.let { return it }
+        // a parent name hides its descendants
+        var n = name
+        while (n.contains('.')) { n = n.substringBeforeLast('.'); hiddenOverride[n]?.let { return it } }
+        return null
+    }
+
+    /** Hide / show fields (Hide action, removeField) as one undo step. */
+    fun setHidden(names: Collection<String>, hide: Boolean) {
+        val targets = names.filter { it.isNotBlank() }
+        if (targets.isEmpty()) return
+        val before = hiddenOverride.toMap()
+        targets.forEach { hiddenOverride[it] = hide }
+        if (before == hiddenOverride.toMap()) return
+        val after = hiddenOverride.toMap()
+        reader.history.pushMemory(reader.context.getString(com.smartdocs.editor.R.string.f8_hi_visibility), pageOf(targets.first()), OWNER_FORMS,
+            undo = { hiddenOverride.clear(); hiddenOverride.putAll(before); markDirty() },
+            redo = { hiddenOverride.clear(); hiddenOverride.putAll(after); markDirty() })
+        if (active?.let { isHidden(it) } == true) { activeId = null; menuFor = null }
+        markDirty()
+    }
+
+    /** "Calculate now" while automatic calculation is off: the calculation pass takes the current values. */
+    fun calculateNow() { frozenEdits = edits.toMap() }
+
+    /** Automatic calculation was switched on or off. */
+    fun onAutoCalculateChanged() { frozenEdits = if (FormPrefs.autoCalculate) null else edits.toMap() }
+
+    /** Values of every field (pending edits, calculations, stored values). */
+    fun currentValues(): Map<String, String> = allValues()
+
+    /**
+     * Result of an action script: values it set (one undo step), changed properties (redraw), the first alert.
+     * Requests are handled by the caller (FormActions).
+     */
+    fun applyActionResult(r: JsResult) {
+        val set = r.setValues.filter { (k, v) -> k in model.values && value(k) != v }
+        if (set.isNotEmpty()) setValues(set)
+        if (r.props.isNotEmpty()) propsVersion++
+        r.alerts.firstOrNull { it.kind == null && it.text.isNotBlank() }?.let { alert = it.text; alertField = null }
+        if (r.calculateNow) calculateNow()
+    }
+
+    /** Widget whose focus / blur triggers last ran (focus changes are watched in [init]). */
+    private var focusedForTriggers: String? = null
+
+    init {
+        // page open / close actions (page /AA O, C) as the reader moves between pages
+        // yield first: the collectors must not run before the rest of this object is initialised
+        reader.scope.launch {
+            kotlinx.coroutines.yield()
+            var prev = -1
+            snapshotFlow { reader.currentPage to model }.collect { (page, m) ->
+                if (page == prev || m.pageActions.isEmpty()) { prev = page; return@collect }
+                val sc = scripts
+                if (sc != null) {
+                    m.pageActions[prev]?.get("C")?.let { code -> runCatching { sc.action(null, "Page/Close", code, allValues(), prev) }.getOrNull()?.let { applyActionResult(it) } }
+                    m.pageActions[page]?.get("O")?.let { code -> runCatching { sc.action(null, "Page/Open", code, allValues(), page) }.getOrNull()?.let { applyActionResult(it) } }
+                }
+                prev = page
+            }
+        }
+        reader.scope.launch {
+            kotlinx.coroutines.yield()
+            snapshotFlow { activeId }.collect { id ->
+                val old = focusedForTriggers?.let { o -> model.widgets.firstOrNull { it.id == o } }
+                focusedForTriggers = id
+                if (old != null) old.triggers[Trigger.BLUR]?.let { FormActions.fire(this@FormFillState, old, Trigger.BLUR, it) }
+                val now = id?.let { n -> model.widgets.firstOrNull { it.id == n } }
+                if (now != null) now.triggers[Trigger.FOCUS]?.let { FormActions.fire(this@FormFillState, now, Trigger.FOCUS, it) }
+            }
+        }
+    }
     fun isReadOnly(w: FWidget) = w.readOnly || props(w.name)?.readOnly == true
 
     /** Next/Previous order of widget ids. */
@@ -146,7 +252,7 @@ class FormFillState internal constructor(val reader: ReaderState) {
     /** The form layer only reacts while no annotation tool, placement or text selection is active. */
     val enabled: Boolean get() = reader.tool == null && reader.placement == null && reader.selection == null
 
-    val hasPending: Boolean get() = edits.isNotEmpty() || images.isNotEmpty()
+    val hasPending: Boolean get() = edits.isNotEmpty() || images.isNotEmpty() || hiddenOverride.isNotEmpty()
 
     fun isCalculated(name: String) = model.calc.isCalculated(name) || scripts?.hasCalculate(name) == true
 
@@ -312,11 +418,30 @@ class FormFillState internal constructor(val reader: ReaderState) {
         when (w.kind) {
             WKind.CHECK, WKind.RADIO -> { toggle(w); activeId = w.id; typingField = null }
             WKind.COMBO, WKind.LIST -> { if (isReadOnly(w)) return; activeId = w.id; menuFor = if (w.kind == WKind.COMBO && w.editable) null else w.id }
-            WKind.TEXT -> { if (isReadOnly(w) || isCalculated(w.name)) return; activeId = w.id }
+            WKind.TEXT -> {
+                if (isReadOnly(w) || isCalculated(w.name)) return
+                activeId = w.id
+                if (w.fileSelect) filePickFor = w.name
+            }
             WKind.IMAGE -> if (!isReadOnly(w)) imageTarget = w.name
-            WKind.BUTTON -> w.action?.let { pendingAction = w to it }
+            WKind.BUTTON -> {
+                // Enter, Mouse Down, Mouse Up (/A + /AA U), Exit: a tap enters and leaves the widget
+                val t = w.triggers
+                val useChain = w.mouseUp.isNotEmpty() && (scripts != null || w.mouseUp.any { it !is PdfAction.JavaScript })
+                if (useChain || t.isNotEmpty()) {
+                    val list = t[Trigger.ENTER].orEmpty() + t[Trigger.MOUSE_DOWN].orEmpty() + (if (useChain) w.mouseUp else emptyList()) + t[Trigger.EXIT].orEmpty()
+                    if (list.isNotEmpty()) FormActions.fire(this, w, Trigger.MOUSE_UP, list)
+                }
+                if (!useChain) w.action?.let { pendingAction = w to it }
+                return
+            }
+            // main (pdf-3c): a signature field opens the signature-field sheet (sign this field, lock, verify)
             WKind.SIGNATURE -> sigTapped = w
         }
+        // other widgets: their mouse triggers run after the default behaviour
+        val t = w.triggers
+        val list = t[Trigger.ENTER].orEmpty() + t[Trigger.MOUSE_DOWN].orEmpty() + t[Trigger.MOUSE_UP].orEmpty() + t[Trigger.EXIT].orEmpty()
+        if (list.isNotEmpty()) FormActions.fire(this, w, Trigger.MOUSE_UP, list)
     }
 
     fun focus(id: String?) {
@@ -373,7 +498,7 @@ class FormFillState internal constructor(val reader: ReaderState) {
     }
 
     private fun remember(w: FWidget) {
-        if (w.kind == WKind.TEXT && !w.password && w.name in edits) runCatching { acFile.store().record(w.name, value(w.name)); acFile.save() }
+        if (FormPrefs.autocomplete && w.kind == WKind.TEXT && !w.password && !w.fileSelect && w.name in edits) runCatching { acFile.store().record(w.name, value(w.name)); acFile.save() }
     }
 
     fun validate(w: FWidget, requiredToo: Boolean): Issue? {
@@ -386,8 +511,9 @@ class FormFillState internal constructor(val reader: ReaderState) {
     }
 
     fun suggestions(w: FWidget, typed: String): List<String> {
-        if (w.password) return emptyList()
+        if (w.password || w.fileSelect) return emptyList()
         if (w.kind == WKind.COMBO) return w.options.filter { typed.isBlank() || it.contains(typed, ignoreCase = true) }.take(6)
+        if (!FormPrefs.autocomplete) return emptyList()
         return runCatching { acFile.store().suggestions(w.name, typed, 5) }.getOrDefault(emptyList())
     }
 
@@ -411,6 +537,8 @@ class FormFillState internal constructor(val reader: ReaderState) {
     private suspend fun writeTo(src: File, password: String?, out: File) {
         val (values, display) = pending()
         FormValueWriter.write(reader.context, src, values, display, images.toMap(), out, password, dropXfa = model.xfa == XfaSupport.Kind.STATIC)
+        // field visibility changed by Hide actions + barcode fields re-encoded from the new values
+        FieldVisibility.applyTo(out, password, hiddenOverride.toMap())
     }
 
     /**
@@ -423,14 +551,16 @@ class FormFillState internal constructor(val reader: ReaderState) {
         // save() may run on the autosave IO scope: touch Compose state on the main thread only
         withContext(Dispatchers.Main.immediate) { commitActive() }
         val tmp = File(file.parentFile, ".${file.nameWithoutExtension}.forms5.pdf")
+        withContext(Dispatchers.Main.immediate) { runDocAction("WS") }        // document action: will save
         try { writeTo(file, password, tmp) } catch (e: Throwable) { tmp.delete(); throw e }
         withContext(Dispatchers.Main.immediate) {
             Snapshot.withMutableSnapshot {
                 // the form steps of the unified history become the reader's save step (ReaderState.recordSaved)
-                edits.clear(); images.clear(); errors.clear(); activeId = null; menuFor = null; committed.clear()
+                edits.clear(); images.clear(); errors.clear(); activeId = null; menuFor = null; committed.clear(); hiddenOverride.clear()
             }
         }
         swap(tmp)
+        withContext(Dispatchers.Main.immediate) { runDocAction("DS") }        // did save
         return true
     }
 
@@ -468,9 +598,48 @@ class FormFillState internal constructor(val reader: ReaderState) {
         }
     }
 
+    /**
+     * Document action [key] of the catalog /AA (WC, WS, DS, WP, DP) on the JavaScript runtime; values it sets
+     * become pending edits. Its viewer requests are ignored except alerts (no navigation while saving / printing).
+     */
+    fun runDocAction(key: String) {
+        val code = model.docActions[key] ?: return
+        val sc = scripts ?: return
+        val r = runCatching { sc.action(null, "Doc/" + key, code, allValues(), reader.currentPage) }.getOrNull() ?: return
+        applyActionResult(r)
+    }
+
+    /** Remove an Acrobat-style "remove field" from a script: the field is hidden (the form structure is kept). */
+    fun removeFieldByScript(name: String) { setHidden(listOf(name), true) }
+
+    /** Generated XFA form: remove the last instance of the repeating subform [r] (one undoable file step). */
+    fun removeRow(r: XfaRepeat) {
+        val f = reader.file ?: return
+        if (busy || r.count <= 1) return
+        reader.scope.launch {
+            busy = true
+            try {
+                if (!commitActive()) return@launch
+                activeId = null
+                if (reader.dirty && !reader.save()) throw IllegalStateException(reader.error ?: "save")
+                val tmp = File(f.parentFile, ".${f.nameWithoutExtension}.rows.pdf")
+                val src = try { XfaGenerated.removeRow(reader.context, f, r, tmp) } catch (e: Throwable) { tmp.delete(); throw e }
+                reader.swapFile(tmp, reader.context.getString(com.smartdocs.editor.R.string.f8_hi_row_removed))
+                runCatching { reader.app.documents.writeBack(src) }
+                message = FormMessage.RowRemoved
+            } catch (e: Throwable) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                message = FormMessage.Failed(e.message ?: e.toString())
+            } finally { busy = false }
+        }
+    }
+
+    /** Signature field tapped: the bar offers the signing flow for this document. */
+    var signRequest by mutableStateOf<String?>(null)
+
     /** Leaving without saving. */
     fun discard() {
-        edits.clear(); images.clear(); errors.clear(); activeId = null; menuFor = null; committed.clear(); alert = null
+        edits.clear(); images.clear(); errors.clear(); activeId = null; menuFor = null; committed.clear(); alert = null; hiddenOverride.clear()
         reader.history.removeOwner(OWNER_FORMS)
     }
 }
@@ -486,4 +655,9 @@ sealed class FormMessage {
     data object PrintHint : FormMessage()
     data class Reset(val count: Int) : FormMessage()
     data object RowAdded : FormMessage()
+    data object RowRemoved : FormMessage()
+    data class NotFound(val what: String) : FormMessage()
+    data class Unsupported(val what: String) : FormMessage()
+    data class Imported(val count: Int) : FormMessage()
+    data object Calculated : FormMessage()
 }

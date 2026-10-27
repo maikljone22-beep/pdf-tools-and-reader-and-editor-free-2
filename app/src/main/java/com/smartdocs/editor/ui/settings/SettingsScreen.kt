@@ -106,6 +106,7 @@ fun SettingsScreen(nav: NavHostController) {
                 )
                 SwitchRow(stringResource(R.string.settings_pressure), s.pressureSensitivity, icon = Icons.Default.Gesture) { v -> upd { it.copy(pressureSensitivity = v) } }
             }
+            FormRunSettings()      // forms: auto-calculate, autocomplete, highlight colours, fillable banner
 
             // ---- Read aloud ----
             GroupCard(stringResource(R.string.settings_tts), Modifier.nveSettingsAnchor(nveAnchors, "tts")) {

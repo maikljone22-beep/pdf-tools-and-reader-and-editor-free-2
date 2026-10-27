@@ -19,12 +19,15 @@ import androidx.compose.material.icons.filled.SaveAlt
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.LineWeight
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.FormatSize
 import androidx.compose.material.icons.filled.Opacity
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
@@ -47,6 +50,10 @@ private enum class AeSub { NONE, COLOR, OPACITY, THICKNESS }
 fun AnnotActionBar(state: ReaderState, annot: Annot?, frame: Rect) {
     val ed = state.edit
     var sub by remember(ed.target) { mutableStateOf(AeSub.NONE) }
+    var fmtOpen by remember(ed.target) { mutableStateOf(false) }
+    if (fmtOpen && annot != null) com.smartdocs.editor.ui.reader.annot.TextFormatDialog(com.smartdocs.editor.ui.reader.annot.TextFmt.of(annot), onDismiss = { fmtOpen = false }, showBiu = true) { fm ->
+        fmtOpen = false; ed.edit { a -> fm.applyAll(a) }
+    }
     val loaded = annot != null
     val enabled = loaded && !ed.busy
     Surface(
@@ -60,7 +67,10 @@ fun AnnotActionBar(state: ReaderState, annot: Annot?, frame: Rect) {
                 if (!video) AeButton(Icons.Default.Opacity, R.string.ae_opacity, enabled, sub == AeSub.OPACITY) { sub = if (sub == AeSub.OPACITY) AeSub.NONE else AeSub.OPACITY }
                 if (hasStroke(annot)) AeButton(Icons.Default.LineWeight, R.string.ae_thickness, enabled, sub == AeSub.THICKNESS) { sub = if (sub == AeSub.THICKNESS) AeSub.NONE else AeSub.THICKNESS }
                 if (hasEditableText(annot)) AeButton(Icons.Default.Edit, R.string.ae_edit_text, enabled, false) { sub = AeSub.NONE; ed.editingText = true }
+                if (annot?.kind == AnnotKind.FREETEXT) AeButton(Icons.Default.FormatSize, R.string.cx_text_format, enabled, false) { sub = AeSub.NONE; fmtOpen = true }
                 AeButton(Icons.Default.ContentCopy, R.string.ae_copy, enabled, false) { sub = AeSub.NONE; ed.copy() }
+                val nativeAudio = (ed.target as? AnnotTarget.Stored)?.e?.let { it.subtype == "Sound" || (it.subtype == "Screen" && it.video == null) } == true
+                if (nativeAudio) AeButton(Icons.Default.PlayArrow, R.string.an_open, !ed.busy, false) { sub = AeSub.NONE; state.annot2.openSelected() }
                 StampActionButtons(state, annot, enabled)      // nitro-fillsign2: cut / copy / default size / multiple pages
                 if (annot?.kind == AnnotKind.FILE_ATTACH || annot?.kind == AnnotKind.SOUND)
                     AeButton(if (annot?.kind == AnnotKind.FILE_ATTACH) Icons.Default.OpenInNew else Icons.Default.PlayArrow, R.string.an_open, enabled, false) { sub = AeSub.NONE; state.annot2.openSelected() }
@@ -78,6 +88,16 @@ fun AnnotActionBar(state: ReaderState, annot: Annot?, frame: Rect) {
                 if (nveStored != null && (annot?.kind == AnnotKind.STAMP_IMAGE || nveStored.subtype == "Stamp")) AeButton(Icons.Default.Tune, R.string.ni_ia_title, enabled, false) { sub = AeSub.NONE; nveProps = true }
                 if (nveProps && nveStored != null) com.smartdocs.editor.ui.reader.annot.ImageAnnotPropsDialog5(state, nveStored) { nveProps = false }
                 AeButton(Icons.Default.Delete, R.string.ae_delete, !ed.busy, false, tint = MaterialTheme.colorScheme.error) { ed.delete() }
+                if (annot?.locked == true) Icon(androidx.compose.material.icons.Icons.Default.Lock, stringResource(R.string.cx_locked), Modifier.padding(horizontal = 4.dp).size(18.dp))
+                com.smartdocs.editor.ui.reader.annot.SelectionMoreButton(state, multi = false)      // section 7: properties, lock, clipboard, rotate, flatten...
+                if (annot != null && annot.kind in setOf(AnnotKind.HIGHLIGHT, AnnotKind.UNDERLINE, AnnotKind.STRIKEOUT, AnnotKind.SQUIGGLY)) {
+                    // Foxit 24.9: adjust the markup range word by word at either end
+                    val cx = state.annot2.cx
+                    TextButton(onClick = { cx.adjustMarkup(true, -1) }, enabled = enabled) { Text("\u2190|") }
+                    TextButton(onClick = { cx.adjustMarkup(true, 1) }, enabled = enabled) { Text("|\u2192") }
+                    TextButton(onClick = { cx.adjustMarkup(false, -1) }, enabled = enabled) { Text("\u2190]") }
+                    TextButton(onClick = { cx.adjustMarkup(false, 1) }, enabled = enabled) { Text("]\u2192") }
+                }
                 if (ed.busy || ed.storedLoading) CircularProgressIndicator(Modifier.padding(horizontal = 8.dp).size(18.dp), strokeWidth = 2.dp)
             }
             if (annot != null) when (sub) {
@@ -96,7 +116,8 @@ fun AnnotActionBar(state: ReaderState, annot: Annot?, frame: Rect) {
             }
         }
     }
-    if (ed.editingText && annot != null) AnnotTextDialog(annot.text, onOk = { ed.editingText = false; ed.setText(it) }, onDismiss = { ed.editingText = false })
+    if (ed.editingText && annot != null) AnnotTextDialog(annot.text, state.annot2.cx.noteFontSize, state.annot2.cx.noteOpacity,
+        onOk = { ed.editingText = false; ed.setText(it) }, onDismiss = { ed.editingText = false })
 }
 
 @Composable
@@ -120,13 +141,18 @@ private fun AeSlider(label: String, value: Float, range: ClosedFloatingPointRang
 }
 
 @Composable
-private fun AnnotTextDialog(initial: String, onOk: (String) -> Unit, onDismiss: () -> Unit) {
+private fun AnnotTextDialog(initial: String, fontSize: Float, opacity: Float, onOk: (String) -> Unit, onDismiss: () -> Unit) {
     var text by remember { mutableStateOf(initial) }
     AlertDialog(
+        modifier = Modifier.alpha(opacity),
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.ae_edit_text)) },
-        text = { OutlinedTextField(text, { text = it }, Modifier.fillMaxWidth(), minLines = 3,   // NVE: spell check
-            visualTransformation = com.smartdocs.editor.ui.nve.spellTransformation(com.smartdocs.editor.ui.nve.rememberSpellIssues(text)), trailingIcon = { com.smartdocs.editor.ui.nve.SpellCheckButton(text, { text = it }) }) },
+        text = {
+            Column {
+                OutlinedTextField(text, { text = it }, Modifier.fillMaxWidth(), minLines = 3, textStyle = LocalTextStyle.current.copy(fontSize = androidx.compose.ui.unit.TextUnit(fontSize, androidx.compose.ui.unit.TextUnitType.Sp)))
+                com.smartdocs.editor.ui.reader.annot.SpellCheckRow(text) { text = it }      // Foxit 24.25
+            }
+        },
         confirmButton = { Button(onClick = { onOk(text) }) { Text(stringResource(R.string.ok)) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
     )
