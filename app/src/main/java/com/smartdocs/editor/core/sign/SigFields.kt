@@ -224,7 +224,10 @@ object SigFields {
             w.cosObject.setItem(COSName.PARENT, fd)
             kids.add(w.cosObject)
             page.annotations.add(w)
+            // incremental save writes only flagged objects: the page and its /Annots carry the new widget
+            page.cosObject.isNeedToBeUpdated = true
             (page.cosObject.getDictionaryObject(COSName.ANNOTS) as? COSArray)?.isNeedToBeUpdated = true
+            w.cosObject.isNeedToBeUpdated = true
         }
         fd.setItem(COSName.KIDS, kids)
     }
