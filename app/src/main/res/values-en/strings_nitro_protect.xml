@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- nitro-protect (Protect gaps: RC4-40, security profiles, trusted-contact recipients, certificate export / request,
+     Internet access, file-launch warnings, JavaScript switch). Prefix np_. -->
+<resources>
+    <!-- 40-bit ARC4 -->
+    <string name="np_rc4_40">RC4 40</string>
+    <string name="np_rc4_40_warn_title">40-bit RC4 is not real protection</string>
+    <string name="np_rc4_40_warn_body">This 1990s encryption can be removed by free tools in seconds, and its permissions are ignored. Use it only when a very old reader cannot open anything newer, and never for confidential files. Choose AES 256 whenever you can.</string>
+
+    <!-- security profiles -->
+    <string name="np_profiles_title">Security profiles</string>
+    <string name="np_profiles_empty">No profiles yet. Set the options on this screen, then save them as a profile.</string>
+    <string name="np_profiles_no_passwords">Profiles keep the algorithm, what is encrypted and the permissions. Passwords are never saved: type them each time.</string>
+    <string name="np_profile_save_current">Save current settings</string>
+    <string name="np_profile_apply">Apply</string>
+    <string name="np_profile_update">Replace with current settings</string>
+    <string name="np_profile_rename">Rename</string>
+    <string name="np_profile_more">More options</string>
+    <string name="np_profile_name">Profile name</string>
+    <string name="np_profile_name_used">Another profile already has this name.</string>
+    <string name="np_profile_will_replace">A profile with this name exists and will be replaced.</string>
+    <string name="np_profile_applied">Profile \"%1$s\" applied. Enter the passwords.</string>
+    <string name="np_profile_updated">Profile \"%1$s\" updated.</string>
+    <string name="np_profile_restricted">Restricted</string>
+    <string name="np_profile_unrestricted">No restrictions</string>
+
+    <!-- certificate security: recipients from Trusted Contacts -->
+    <string name="np_recipients_from_contacts">Choose from trusted contacts</string>
+    <string name="np_contacts_none">The trusted contacts list is empty. Import certificates in Digital signature → Verify → Trusted certificates.</string>
+    <string name="np_add_count">Add (%1$d)</string>
+
+    <!-- trusted contacts: export / request -->
+    <string name="np_export_certs">Export certificates</string>
+    <string name="np_export_format">Format</string>
+    <string name="np_export_cer_hint">One certificate, binary (DER). Opens on Windows, Android and in Acrobat.</string>
+    <string name="np_export_pem_hint">Text (Base64), one or more certificates. Common on Linux and servers.</string>
+    <string name="np_export_p7_hint">PKCS#7 bundle with one or more certificates (.p7b and .p7c hold the same data).</string>
+    <string name="np_export_cer_one">.cer holds exactly one certificate. Select one, or choose .pem / .p7b / .p7c.</string>
+    <string name="np_export_failed">The certificates could not be exported.</string>
+    <string name="np_request_cert">Request certificate by e-mail</string>
+    <string name="np_request_subject">Request for your digital certificate</string>
+    <string name="np_request_body">Hello,\n\nPlease send me your public digital certificate as a .cer file (or .p7b / .pem) by replying to this e-mail. I will add it to my trusted contacts so I can verify your signatures and send you encrypted PDF documents.\n\nPlease send only the public certificate, never your .p12 / .pfx file or its password.</string>
+    <string name="np_request_body_attached">My own public certificate is attached so you can do the same.</string>
+    <string name="np_request_body_not_attached">My own certificate is not attached to this message.</string>
+    <string name="np_no_mail_app">No app can send this e-mail.</string>
+
+    <!-- Internet access / file launch -->
+    <string name="np_net_ask_title">Allow this document to access the Internet?</string>
+    <string name="np_net_ask_body">The document wants to open or send data to:</string>
+    <string name="np_net_allow_once">Allow once</string>
+    <string name="np_net_always_allow">Always allow %1$s</string>
+    <string name="np_net_block">Block</string>
+    <string name="np_net_blocked">Internet access is blocked for documents: %1$s</string>
+    <string name="np_launch_title">Open another file?</string>
+    <string name="np_launch_body">This document wants to open another file or app. Open it only if you trust the document and the file:</string>
+    <string name="np_launch_open">Open</string>
+    <string name="np_launch_blocked">Opening files from documents is turned off in Settings: %1$s</string>
+    <string name="np_launch_exe_blocked">Blocked: %1$s is a program or script. Programs from documents are never run.</string>
+
+    <!-- settings -->
+    <string name="np_set_title">Document security</string>
+    <string name="np_set_run_js">Run JavaScript in PDF documents</string>
+    <string name="np_set_run_js_sub">Form calculations, formatting, validation and script actions. When off, no document script runs.</string>
+    <string name="np_set_net">Internet access of documents</string>
+    <string name="np_set_net_sub">Web links, form buttons and form submission</string>
+    <string name="np_net_mode_ask">Ask</string>
+    <string name="np_net_mode_allow">Allow all</string>
+    <string name="np_net_mode_block">Block all</string>
+    <string name="np_set_sites">Trusted sites</string>
+    <string name="np_set_sites_count">%1$d sites opened without asking</string>
+    <string name="np_site_host">Site (host)</string>
+    <string name="np_site_add">Add site</string>
+    <string name="np_site_invalid">Not a valid host name.</string>
+    <string name="np_sites_empty">No trusted sites.</string>
+    <string name="np_sites_hint">A site also covers its sub-domains (example.com covers www.example.com). Used when access is set to Ask.</string>
+    <string name="np_set_block_launch">Block opening files from documents</string>
+    <string name="np_set_block_launch_sub">Launch and remote go-to actions. Programs and scripts are always blocked.</string>
+</resources>

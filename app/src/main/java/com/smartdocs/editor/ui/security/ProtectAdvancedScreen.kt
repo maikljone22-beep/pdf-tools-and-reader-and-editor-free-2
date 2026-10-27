@@ -25,9 +25,11 @@ import com.smartdocs.editor.core.redact.Permissions
 import com.smartdocs.editor.core.redact.PrintLevel
 import com.smartdocs.editor.core.redact.ProtectAdvanced
 import com.smartdocs.editor.core.redact.ProtectOptions
+import com.smartdocs.editor.core.redact.SecurityProfile
 import com.smartdocs.editor.ui.common.*
 import com.smartdocs.editor.ui.search.PasswordDialog
 import com.smartdocs.editor.ui.search.fileOf
+import kotlinx.coroutines.launch
 import java.io.File
 
 /** Tool `protect_advanced` (J6): algorithm, open / permissions passwords, print and change levels, the 8 permissions. */
@@ -50,6 +52,7 @@ fun ProtectAdvancedScreen(nav: NavHostController, uri: String?) {
     var scope by remember { mutableStateOf(EncScope.ALL) }
     var result by remember { mutableStateOf<File?>(null) }
     var info by remember { mutableStateOf<String?>(null) }
+    var showProfiles by remember { mutableStateOf(false) }
     val snack = remember { SnackbarHostState() }
     val pick = rememberPdfPicker { it.firstOrNull()?.let { f -> file = f; current = null } }
 
@@ -81,7 +84,11 @@ fun ProtectAdvancedScreen(nav: NavHostController, uri: String?) {
 
     Scaffold(
         snackbarHost = { SnackbarHost(snack) },
-        topBar = { AppTopBar(stringResource(R.string.s5_protect_title), onBack = { nav.popBackStack() }) },
+        topBar = {
+            AppTopBar(stringResource(R.string.s5_protect_title), onBack = { nav.popBackStack() }) {
+                IconButton(onClick = { showProfiles = true }) { Icon(Icons.Default.Bookmarks, stringResource(R.string.np_profiles_title)) }
+            }
+        },
         bottomBar = {
             Surface(tonalElevation = 3.dp) {
                 Button(onClick = ::protect, enabled = file != null && !mismatch && !nothing && !runner.running, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)) {
@@ -99,6 +106,7 @@ fun ProtectAdvancedScreen(nav: NavHostController, uri: String?) {
                 all.forEachIndexed { i, a -> SegmentedButton(algo == a, { algo = a; if (!a.aes) scope = EncScope.ALL }, SegmentedButtonDefaults.itemShape(i, all.size)) { Text(algoLabel(a), maxLines = 1) } }
             }
             if (algo == EncAlgo.RC4_128) Text(stringResource(R.string.s5_rc4_note), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+            if (algo == EncAlgo.RC4_40) Rc40Warning()
             Section(stringResource(R.string.s5_enc_scope))
             EncScope.values().forEach { sc ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -150,9 +158,47 @@ fun ProtectAdvancedScreen(nav: NavHostController, uri: String?) {
             Text(stringResource(R.string.s5_protect_note), Modifier.padding(vertical = 12.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
+    if (showProfiles) {
+        val appliedFmt = stringResource(R.string.np_profile_applied)
+        val scopeSnack = rememberCoroutineScope()
+        SecurityProfilesDialog(
+            current = SecurityProfile("", algo, scope, restrict, perms),
+            summary = { profileSummary(it) },
+            onApply = { p ->
+                // passwords are left as typed: a profile never carries them
+                algo = p.algo; scope = if (p.algo.aes) p.scope else EncScope.ALL; restrict = p.restrict; perms = p.permissions
+                showProfiles = false
+                scopeSnack.launch { snack.showSnackbar(appliedFmt.format(p.name)) }
+            },
+            onDismiss = { showProfiles = false },
+        )
+    }
     if (askCurrent) PasswordDialog(onDismiss = { askCurrent = false }) { current = it; askCurrent = false }
     if (runner.running) ProgressDialog(runner.message)
     result?.let { ResultSheet(it, nav, onDismiss = { result = null }, extraInfo = info) }
+}
+
+/** Strong warning for 40-bit ARC4: anyone can remove it, so it only fits files for very old readers. */
+@Composable
+private fun Rc40Warning() {
+    Card(Modifier.fillMaxWidth().padding(top = 6.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
+        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.Top) {
+            Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.onErrorContainer)
+            Spacer(Modifier.width(10.dp))
+            Column {
+                Text(stringResource(R.string.np_rc4_40_warn_title), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onErrorContainer, style = MaterialTheme.typography.titleSmall)
+                Text(stringResource(R.string.np_rc4_40_warn_body), color = MaterialTheme.colorScheme.onErrorContainer, style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
+}
+
+/** One line under a profile name: algorithm, scope and whether editing / printing are restricted. */
+@Composable
+private fun profileSummary(p: SecurityProfile): String {
+    val parts = mutableListOf(algoLabel(p.algo), scopeLabel(p.scope))
+    parts += if (p.restrict) stringResource(R.string.np_profile_restricted) else stringResource(R.string.np_profile_unrestricted)
+    return parts.joinToString(" · ")
 }
 
 @Composable
@@ -167,7 +213,7 @@ private fun PermRow(label: String, checked: Boolean, enabled: Boolean = true, on
 }
 
 @Composable
-private fun algoLabel(a: EncAlgo) = stringResource(when (a) { EncAlgo.AES_256 -> R.string.s5_aes256; EncAlgo.AES_128 -> R.string.s5_aes128; EncAlgo.RC4_128 -> R.string.s5_rc4 })
+private fun algoLabel(a: EncAlgo) = stringResource(when (a) { EncAlgo.AES_256 -> R.string.s5_aes256; EncAlgo.AES_128 -> R.string.s5_aes128; EncAlgo.RC4_128 -> R.string.s5_rc4; EncAlgo.RC4_40 -> R.string.np_rc4_40 })
 
 @Composable
 private fun scopeLabel(sc: EncScope) = stringResource(when (sc) {
