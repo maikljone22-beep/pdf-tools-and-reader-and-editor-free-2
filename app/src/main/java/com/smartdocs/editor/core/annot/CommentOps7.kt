@@ -251,6 +251,19 @@ object CommentOps7 {
         }
     }
 
+    /** File name of the PDF an FDF (/F) or XFDF (<f href>) belongs to (Foxit 24.90), or null. */
+    fun fdfTargetName(file: File): String? = runCatching {
+        val head = file.inputStream().use { i -> ByteArray(minOf(file.length(), 1 shl 20).toInt()).also { i.read(it) } }
+        val text = String(head, Charsets.ISO_8859_1)
+        if (text.contains("<xfdf")) Regex("""<f\s+href\s*=\s*"([^"]+)"""").find(String(head, Charsets.UTF_8))?.groupValues?.get(1)
+        else com.tom_roush.pdfbox.pdmodel.fdf.FDFDocument.load(file).use { fdf -> fdf.catalog?.fdf?.file?.file }
+    }.getOrNull()?.substringAfterLast('/')?.substringAfterLast('\\')?.takeIf { it.isNotBlank() }
+
+    /** Find the PDF named [name] in [dirs] (recursively, newest first). */
+    fun findPdf(name: String, dirs: List<File>): File? = dirs.asSequence().filter { it.isDirectory }
+        .flatMap { d -> d.walkTopDown().maxDepth(4).filter { it.isFile && it.name.equals(name, true) } }
+        .maxByOrNull { it.lastModified() }
+
     /** Write numbered tickmarks [marks] (page, x, y, label) into the file. */
     suspend fun tickmarks(src: File, out: File, pw: String?, marks: List<Pair<Int, Triple<Float, Float, String>>>, color: Int, author: String) =
         edit(src, out, pw, marks.map { it.first }.distinct()) { d ->

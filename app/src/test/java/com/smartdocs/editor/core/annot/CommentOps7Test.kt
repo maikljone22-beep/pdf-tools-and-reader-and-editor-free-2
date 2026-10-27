@@ -76,6 +76,21 @@ class CommentOps7Test {
         assertEquals(5f, m[5], 1e-4f)
     }
 
+    @Test fun keepOnlySelectionAndFdfTarget() {
+        val d = PDDocument(); val p = PDPage(); d.addPage(p)
+        square(d, p, 10f, 10f, 50f, 50f); val second = square(d, p, 100f, 100f, 120f, 130f)
+        AnnotStyle.addPopup(p, second)
+        CommentOps7.keepOnly(d, mapOf(0 to setOf(1)))
+        assertEquals(listOf("Square", "Popup"), p.annotations.map { it.subtype })
+        val x = java.io.File.createTempFile("c", ".xfdf")
+        x.writeText("<?xml version=\"1.0\"?><xfdf xmlns=\"http://ns.adobe.com/xfdf/\"><f href=\"dir/Report 1.pdf\"/></xfdf>")
+        assertEquals("Report 1.pdf", CommentOps7.fdfTargetName(x))
+        val dir = java.nio.file.Files.createTempDirectory("fdf").toFile()
+        java.io.File(dir, "Report 1.pdf").writeText("x")
+        assertEquals("Report 1.pdf", CommentOps7.findPdf("report 1.pdf", listOf(dir))?.name)
+        x.delete(); dir.deleteRecursively(); d.close()
+    }
+
     @Test fun popupsResetAndOpen() {
         val d = PDDocument(); val p = PDPage(); d.addPage(p)
         val c = square(d, p, 10f, 10f, 50f, 50f)
