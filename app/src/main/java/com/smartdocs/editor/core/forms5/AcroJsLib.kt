@@ -205,8 +205,9 @@ G.resetForm = function (arr) {
 function arg(a, k, i) { var o = a[0]; if (o !== null && typeof o === "object" && !(o instanceof Array)) return o[k]; return a[i]; }
 function names(x) { if (x === undefined || x === null) return ""; if (x instanceof Array) return x.map(str).join("\n"); return str(x); }
 G.submitForm = function () {
-  var a = arguments, fmt = arg(a, "cSubmitAs", 9);
-  if (!fmt) fmt = arg(a, "bFDF", 1) === false ? "HTML" : (arg(a, "bXML", 7) ? "XFDF" : "FDF");
+  // positional order: cURL, bFDF, bEmpty, aFields, bGet, bAnnotations, bXML, bIncrChanges, bPDF, bCanonical, ..., cSubmitAs (15)
+  var a = arguments, fmt = arg(a, "cSubmitAs", 15);
+  if (!fmt) fmt = arg(a, "bPDF", 8) ? "PDF" : (arg(a, "bXML", 6) ? "XFDF" : (arg(a, "bFDF", 1) === false ? "HTML" : "FDF"));
   rq({ k: "submit", u: str(arg(a, "cURL", 0)), f: str(fmt).toUpperCase(), e: arg(a, "bEmpty", 2) ? "1" : "", fl: names(arg(a, "aFields", 3)),
        g: arg(a, "bGet", 4) ? "1" : "", an: arg(a, "bAnnotations", 5) ? "1" : "", cn: arg(a, "bCanonical", 9) ? "1" : "" });
 };
