@@ -125,6 +125,7 @@ fun DocMenuSheet(d: RecentDoc, tags: List<Tag>, nav: NavHostController, onDismis
                 }
                 SheetAction(Icons.Default.DeleteOutline, stringResource(R.string.ds_remove_record), Modifier.weight(1f)) { scope.launch { app.db.docs().remove(d.uri) }; onDismiss() }
             }
+            com.smartdocs.editor.ui.nve.shell.NveDocMenuExtras(d, onDismiss)   // NVE-shell: copy path, new window, save to default folder
             HorizontalDivider(Modifier.padding(vertical = 12.dp, horizontal = 20.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
             Row(Modifier.padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconTile(Icons.Default.Label, tiles.teal, size = 28.dp, iconSize = 16.dp); Spacer(Modifier.width(10.dp))

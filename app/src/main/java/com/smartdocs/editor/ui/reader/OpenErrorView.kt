@@ -19,7 +19,7 @@ import com.smartdocs.editor.R
 
 /** Full-screen "could not open" state of the reader (audit RD-01): what happened and what the user can do. */
 @Composable
-fun OpenErrorView(error: OpenError, onRetry: () -> Unit, onBack: () -> Unit, onOpenWith: (() -> Unit)?) {
+fun OpenErrorView(error: OpenError, onRetry: () -> Unit, onBack: () -> Unit, onOpenWith: (() -> Unit)?, repair: (@Composable () -> Unit)? = null) {   // NVE-shell: repair slot
     val (icon, title, text) = when (error) {
         OpenError.MISSING -> Triple(Icons.Default.FindInPage, R.string.fx_open_missing_title, R.string.fx_open_missing_text)
         OpenError.PERMISSION -> Triple(Icons.Default.Lock, R.string.fx_open_permission_title, R.string.fx_open_permission_text)
@@ -38,6 +38,7 @@ fun OpenErrorView(error: OpenError, onRetry: () -> Unit, onBack: () -> Unit, onO
             if (onOpenWith != null) OutlinedButton(onClick = onOpenWith, Modifier.fillMaxWidth().padding(top = 8.dp)) {
                 Icon(Icons.Default.OpenInNew, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.fx_open_with))
             }
+            if (repair != null && (error == OpenError.DAMAGED || error == OpenError.OTHER)) repair()   // NVE-shell: "Try to repair"
             TextButton(onClick = onBack, Modifier.padding(top = 4.dp)) { Text(stringResource(R.string.back)) }
         }
     }

@@ -108,6 +108,91 @@
                 <data android:mimeType="application/vnd.openxmlformats-officedocument.presentationml.presentation" />
             </intent-filter>
         </activity>
+        <!-- NVE-shell: "Convert to Word / Excel / PowerPoint / Text" share / open-with targets (Convert hub preselected) -->
+        <activity-alias
+            android:name=".ConvertToWord"
+            android:targetActivity=".MainActivity"
+            android:label="@string/nl_alias_word"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/pdf" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:mimeType="application/pdf" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".ConvertToExcel"
+            android:targetActivity=".MainActivity"
+            android:label="@string/nl_alias_excel"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/pdf" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:mimeType="application/pdf" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".ConvertToPowerPoint"
+            android:targetActivity=".MainActivity"
+            android:label="@string/nl_alias_ppt"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/pdf" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:mimeType="application/pdf" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".ConvertToText"
+            android:targetActivity=".MainActivity"
+            android:label="@string/nl_alias_text"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/pdf" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:mimeType="application/pdf" />
+            </intent-filter>
+        </activity-alias>
+        <!-- NVE-shell: second reader window (multi-window "New Window") -->
+        <activity
+            android:name=".NveWindowActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|keyboard|keyboardHidden|navigation|smallestScreenSize|uiMode|density|fontScale|layoutDirection"
+            android:windowSoftInputMode="adjustResize"
+            android:launchMode="standard"
+            android:documentLaunchMode="always"
+            android:taskAffinity="${applicationId}.window"
+            android:resizeableActivity="true"
+            android:theme="@style/Theme.SmartDocs.Splash" />
+
 
         <!-- nav-prefs: WorkManager's foreground service for sync / cloud uploads (setForeground in SyncWorker, CloudUploadWorker) -->
         <service

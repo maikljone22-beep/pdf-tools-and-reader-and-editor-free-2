@@ -152,7 +152,8 @@ fun ScannerScreen(nav: NavHostController) {
             if (tablet && pages.isNotEmpty()) Row(Modifier.fillMaxSize()) {
                 PageList(pages, mode, onChange = { pages = it }, Modifier.weight(1f).fillMaxHeight())
                 Column(Modifier.width(340.dp).fillMaxHeight().padding(16.dp)) {
-                    OptionsPanel(paper, { paper = it }, mode, { mode = it }, quality, { quality = it })
+                    com.smartdocs.editor.ui.nve.shell.NveScanPresetsRow(paper.name, mode.name, quality, ocrAfter) { p -> runCatching { paper = PaperSize.valueOf(p.paper); mode = ColorMode.valueOf(p.mode) }; quality = p.quality.toFloat(); ocrAfter = p.ocr }   // NVE-shell: scan presets
+                            OptionsPanel(paper, { paper = it }, mode, { mode = it }, quality, { quality = it })
                     Spacer(Modifier.height(16.dp))
                     SaveButtons(enabled = pages.isNotEmpty() && !runner.running, onSave = { nameDialog = true }, onOcr = { ocrAfter = true; savePdf("") })
                 }
@@ -183,6 +184,7 @@ fun ScannerScreen(nav: NavHostController) {
                     }
                     item {
                         Column(Modifier.padding(16.dp)) {
+                            com.smartdocs.editor.ui.nve.shell.NveScanPresetsRow(paper.name, mode.name, quality, ocrAfter) { p -> runCatching { paper = PaperSize.valueOf(p.paper); mode = ColorMode.valueOf(p.mode) }; quality = p.quality.toFloat(); ocrAfter = p.ocr }   // NVE-shell: scan presets
                             OptionsPanel(paper, { paper = it }, mode, { mode = it }, quality, { quality = it })
                             Spacer(Modifier.height(12.dp))
                             SaveButtons(enabled = !runner.running, onSave = { nameDialog = true }, onOcr = { ocrAfter = true; savePdf("") })

@@ -15,7 +15,9 @@ import java.io.File
 enum class ScanFilter { ORIGINAL, AUTO, GRAY, BW, WHITEBOARD, NO_SHADOW, RECEIPT }
 
 /** Per-page edits; [rotation] is clockwise 0/90/180/270. */
-data class PageEdit(val filter: ScanFilter = ScanFilter.AUTO, val brightness: Float = 0f, val contrast: Float = 1f, val rotation: Int = 0)
+/** Edits of one scanned picture; [erase] rects are fractions (left, top, right, bottom) of the rotated picture. */
+data class PageEdit(val filter: ScanFilter = ScanFilter.AUTO, val brightness: Float = 0f, val contrast: Float = 1f, val rotation: Int = 0,
+                    val despeckle: Boolean = false, val erase: List<FloatArray> = emptyList())
 
 /** Default filter for a scan kind. */
 fun ScanKind.defaultFilter(): ScanFilter = when (this) {
@@ -77,6 +79,9 @@ object ScanImage {
             ScanFilter.RECEIPT -> { PixelOps.toGray(px); PixelOps.normalizeBackground(px, w, h); PixelOps.brightnessContrast(px, 0f, 1.5f) }
         }
         if (edit.filter != ScanFilter.BW) PixelOps.brightnessContrast(px, edit.brightness, edit.contrast)
+        // old plan K12 / K8: dust removal and the eraser
+        if (edit.despeckle) ScanClean.despeckle(px, w, h)
+        if (edit.erase.isNotEmpty()) ScanClean.erase(px, w, h, edit.erase)
         b.setPixels(px, 0, w, 0, 0, w, h)
         return b
     }

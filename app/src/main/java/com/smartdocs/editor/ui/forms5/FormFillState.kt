@@ -76,6 +76,8 @@ class FormFillState internal constructor(val reader: ReaderState) {
     /** Field whose rejected value the [alert] is about. */
     var alertField by mutableStateOf<String?>(null)
     private var loadedKey: String? = null
+    /** NVE: documents whose JavaScript the user allowed for this session. */
+    private val nveJsAllowed = java.util.Collections.synchronizedSet(HashSet<String>())
     private val loadMutex = Mutex()
 
     val edits = mutableStateMapOf<String, String>()
@@ -319,7 +321,14 @@ class FormFillState internal constructor(val reader: ReaderState) {
             val m = FormModelLoader.load(f, reader.password)
             withContext(Dispatchers.IO) { runCatching { acFile.store() } }
             // the Rhino runtime starts here (document-level scripts run once), off the main thread
-            val sc = if (m.js.hasScripts) withContext(Dispatchers.Default) { FormScripts(m.js).takeIf { runCatching { it.available() }.getOrDefault(false) } } else null
+            // NVE: safe reading - document JavaScript runs only when trusted (once / always), see NveTrust
+            val nveCtx = reader.context
+            val nveDecision = if (!m.js.hasScripts || f.path in nveJsAllowed) com.smartdocs.editor.core.nve.shell.TrustPolicy.Decision.ALLOW
+                else com.smartdocs.editor.core.nve.shell.TrustPolicy.script(f.path, com.smartdocs.editor.ui.nve.shell.NveTrust.docs(nveCtx), com.smartdocs.editor.ui.nve.shell.NveTrust.scriptMode(nveCtx))
+            if (nveDecision == com.smartdocs.editor.core.nve.shell.TrustPolicy.Decision.ASK) withContext(Dispatchers.Main) {
+                com.smartdocs.editor.ui.nve.shell.NveTrust.guardScript(nveCtx, f.path, f.name) { nveJsAllowed += f.path; loadedKey = null; reader.scope.launch { ensureLoaded() } }
+            }
+            val sc = if (m.js.hasScripts && nveDecision == com.smartdocs.editor.core.nve.shell.TrustPolicy.Decision.ALLOW) withContext(Dispatchers.Default) { FormScripts(m.js).takeIf { runCatching { it.available() }.getOrDefault(false) } } else null
             Snapshot.withMutableSnapshot {
                 model = m; scripts = sc; loadedKey = key; committed.clear()
                 if (activeId != null && m.widgets.none { it.id == activeId }) activeId = null

@@ -106,6 +106,7 @@ fun SelectionMenu(
             ToolChip(Icons.Default.BookmarkAdd, stringResource(R.string.nbm_bm_from_selection)) { nbmBookmark = true }
             if (nbmBookmark) com.smartdocs.editor.ui.edit5.ReaderBookmarkFromSelection(state) { nbmBookmark = false }
             if (onRedact != null) ToolChip(Icons.Default.Block, stringResource(R.string.s5_rd_chip)) { onRedact(sel) }   // MODULE_search5b
+            com.smartdocs.editor.ui.nve.NveSelectionChips(sel, state)   // NVE: squiggly, note, bookmark, word count, copy formatted / table, export, rewrite, edit
             var wordCount by remember { mutableStateOf(false) }
             ToolChip(Icons.Default.Numbers, stringResource(R.string.nt_wc_title)) { wordCount = true }   // Foxit "Word Count" of the selection
             if (wordCount) AlertDialog(onDismissRequest = { wordCount = false }, title = { Text(stringResource(R.string.nt_wc_selection)) },

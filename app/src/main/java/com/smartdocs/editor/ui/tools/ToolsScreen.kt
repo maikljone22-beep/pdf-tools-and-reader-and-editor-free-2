@@ -1,5 +1,6 @@
 package com.smartdocs.editor.ui.tools
 
+import com.smartdocs.editor.ui.nve.shell.NveFavoriteBadge
 import android.content.Context
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
@@ -143,6 +144,7 @@ fun ToolsScreen(nav: NavHostController) {
         if (q.isEmpty()) g6Tools else g6Tools.filter { labels[it.id].orEmpty().contains(q, ignoreCase = true) || it.id.contains(q, true) }
     }
     fun open(t: ToolDef) { ToolUsage.record(ctx, t.id); usageVersion++; nav.navigate(Routes.tool(t.id)) }
+    var favEditing by rememberSaveable { mutableStateOf(false) }   // NVE-shell: favourite tools
     val scroll = TopAppBarDefaults.pinnedScrollBehavior()
 
     Scaffold(
@@ -177,6 +179,8 @@ fun ToolsScreen(nav: NavHostController) {
             horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             if (query.isBlank()) {
+                // NVE-shell: favourite tools (pin any tool, reorder, rename, remove all)
+                item(span = { GridItemSpan(maxLineSpan) }, key = "nve_favs") { com.smartdocs.editor.ui.nve.shell.NveFavoritesSection(g6Tools, favEditing, { favEditing = it }) { open(it) } }
                 // convert6: the Convert hub card leads the Tools tab
                 item(span = { GridItemSpan(maxLineSpan) }, key = "cv6_hub") {
                     com.smartdocs.editor.ui.convert6.ConvertHubBanner { g6Tools.firstOrNull { it.id == "convert_hub" }?.let { open(it) } ?: nav.navigate(Routes.tool("convert_hub")) }
@@ -197,7 +201,10 @@ fun ToolsScreen(nav: NavHostController) {
                     item(span = { GridItemSpan(maxLineSpan) }, key = "g$gi") { SectionTitleCompact(stringResource(title), groupIcons[gi], toolGroupTile(gi)) }
                     items(inGroup, key = { it.id }) { t ->
                         CompositionLocalProvider(LocalToolTile provides toolGroupTile(gi)) {
-                            ToolCard(t.icon, labels[t.id].orEmpty(), modifier = Modifier.animateItem()) { open(t) }
+                            Box(Modifier.animateItem()) {   // NVE-shell: in "choose favourites" mode a tap stars the tool
+                                ToolCard(t.icon, labels[t.id].orEmpty()) { if (favEditing) com.smartdocs.editor.ui.nve.shell.NveShellPrefs.toggleFavorite(ctx, t.id) else open(t) }
+                                if (favEditing) NveFavoriteBadge(t.id)
+                            }
                         }
                     }
                 }

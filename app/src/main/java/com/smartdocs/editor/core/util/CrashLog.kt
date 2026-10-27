@@ -16,6 +16,12 @@ import java.util.Locale
  */
 object CrashLog {
     private const val NAME = "last_crash.txt"
+    private const val DOC = "last_crash_doc.txt"
+    /** NVE-shell: the document open in the reader (set by the reader), so the crash report can attach it. */
+    @Volatile var currentDocument: String? = null
+
+    /** The document that was open when the app crashed (null: none / already cleared). */
+    fun crashedDocument(context: Context): File? = File(context.filesDir, DOC).takeIf { it.exists() }?.readText()?.trim()?.let { File(it) }?.takeIf { it.exists() }
 
     fun file(context: Context) = File(context.filesDir, NAME)
 
@@ -30,10 +36,12 @@ object CrashLog {
                     pw.println("Device: ${Build.MANUFACTURER} ${Build.MODEL}, Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
                     pw.println("Time: ${SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date())}")
                     pw.println("Thread: ${thread.name}")
+                    currentDocument?.let { pw.println("Document: ${File(it).name}") }   // NVE-shell
                     pw.println()
                     error.printStackTrace(pw)
                 }
                 file(app).writeText(sw.toString())
+                currentDocument?.let { File(app.filesDir, DOC).writeText(it) } ?: File(app.filesDir, DOC).delete()   // NVE-shell
             }
             previous?.uncaughtException(thread, error)
         }
@@ -41,5 +49,5 @@ object CrashLog {
 
     fun pending(context: Context): String? = file(context).takeIf { it.exists() && it.length() > 0 }?.readText()
 
-    fun clear(context: Context) { file(context).delete() }
+    fun clear(context: Context) { file(context).delete(); File(context.filesDir, DOC).delete() }
 }
