@@ -27,6 +27,8 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.draw.alpha
 import com.smartdocs.editor.R
 import com.smartdocs.editor.core.annot.AnnotStyle
 import com.smartdocs.editor.core.annot.CalcTape
@@ -184,6 +186,9 @@ fun CommentExtrasMenuItems(h: Annot2Host, close: () -> Unit) {
     }
     DropdownMenuItem(text = { Text(stringResource(R.string.cx_note_indicators)) }, leadingIcon = { Icon(if (cx.noteIndicators) Icons.Default.CheckBox else Icons.Default.CheckBoxOutlineBlank, null) },
         onClick = { close(); cx.toggleNoteIndicators() })
+    DropdownMenuItem(text = { Text(stringResource(R.string.cx_copy_encircled)) }, leadingIcon = { Icon(if (cx.copyEncircled) Icons.Default.CheckBox else Icons.Default.CheckBoxOutlineBlank, null) },
+        onClick = { close(); cx.toggleCopyEncircled() })
+    DropdownMenuItem(text = { Text(stringResource(R.string.cx_note_prefs)) }, leadingIcon = { Icon(Icons.Default.TextFormat, null) }, onClick = { close(); cx.notePrefsOpen = true })
     DropdownMenuItem(text = { Text(stringResource(R.string.cx_prev_comment)) }, leadingIcon = { Icon(Icons.AutoMirrored.Filled.NavigateBefore, null) }, onClick = { close(); cx.stepComment(false) })
     DropdownMenuItem(text = { Text(stringResource(R.string.cx_next_comment)) }, leadingIcon = { Icon(Icons.AutoMirrored.Filled.NavigateNext, null) }, onClick = { close(); cx.stepComment(true) })
     DropdownMenuItem(text = { Text(stringResource(R.string.cx_popups_open)) }, leadingIcon = { Icon(Icons.Default.OpenInFull, null) }, onClick = { close(); cx.popupsOpen(true) })
@@ -215,6 +220,17 @@ fun CommentExtrasDialogs(state: ReaderState) {
     cx.rotateReq?.let { RotateDialog(onDismiss = { cx.rotateReq = null }) { deg -> cx.rotate(deg) } }
     cx.pagesReq?.let { PagesDialog(state.pageCount, onDismiss = { cx.pagesReq = null }) { spec -> cx.placeOnPages(spec) } }
     if (cx.calculator) CalculatorDialog(state) { cx.calculator = false }
+    if (cx.notePrefsOpen) AlertDialog(onDismissRequest = { cx.saveNotePrefs(); cx.notePrefsOpen = false }, title = { Text(stringResource(R.string.cx_note_prefs)) },
+        text = { Column {
+            Text(stringResource(R.string.cx_note_font, cx.noteFontSize.toInt()), style = MaterialTheme.typography.labelMedium)
+            Slider(cx.noteFontSize, { cx.noteFontSize = it }, valueRange = 10f..28f)
+            Text(stringResource(R.string.cx_note_opacity, (cx.noteOpacity * 100).toInt()), style = MaterialTheme.typography.labelMedium)
+            Slider(cx.noteOpacity, { cx.noteOpacity = it }, valueRange = 0.4f..1f)
+            Surface(tonalElevation = 2.dp, modifier = Modifier.fillMaxWidth().alpha(cx.noteOpacity)) {
+                Text(stringResource(R.string.cx_note_sample), Modifier.padding(8.dp), fontSize = cx.noteFontSize.sp)
+            }
+        } },
+        confirmButton = { TextButton(onClick = { cx.saveNotePrefs(); cx.notePrefsOpen = false }) { Text(stringResource(R.string.ok)) } })
     if (cx.summaryAsk) SummaryOptionsDialog(state.pageCount, onDismiss = { cx.summaryAsk = false }) { o -> cx.summaryAsk = false; cx.runSummary(o) }
 }
 

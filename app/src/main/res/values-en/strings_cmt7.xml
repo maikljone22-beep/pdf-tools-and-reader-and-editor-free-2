@@ -183,4 +183,9 @@
     <string name="cx_scale_app">In the app only</string>
     <string name="cx_doc_scales">Scales stored in the document</string>
     <string name="cx_scale_saved">Drawing scale</string>
+    <string name="cx_copy_encircled">Copy encircled text into shape notes</string>
+    <string name="cx_note_prefs">Pop-up note appearance</string>
+    <string name="cx_note_font">Font size: %1$d</string>
+    <string name="cx_note_opacity">Opacity: %1$d%%</string>
+    <string name="cx_note_sample">Sample note text — نص للمعاينة</string>
 </resources>

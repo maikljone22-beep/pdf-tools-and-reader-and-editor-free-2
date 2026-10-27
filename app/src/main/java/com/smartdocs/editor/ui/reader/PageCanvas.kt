@@ -465,7 +465,7 @@ private fun finishDraft(state: ReaderState, draft: GestureDraft, page: Int, g: P
         // audit AN-13: the pending ink went while dragging; saved ink is erased in one write at the end
         ReaderTool.ERASER -> state.eraseStoredInk(page, draft.points.map { g.screenToPdf(it.x, it.y) }, 10f / g.scale.coerceAtLeast(0.1f))
         ReaderTool.MEASURE -> {}
-        else -> draftToAnnot(state, draft, page, g, pressure)?.let { state.addAnnot(it) }
+        else -> draftToAnnot(state, draft, page, g, pressure)?.let { state.annot2.cx.addNew(it) }
     }
     draft.end()
 }

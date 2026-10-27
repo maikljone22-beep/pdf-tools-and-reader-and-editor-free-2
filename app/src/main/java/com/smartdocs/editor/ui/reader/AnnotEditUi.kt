@@ -26,6 +26,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
@@ -75,6 +76,14 @@ fun AnnotActionBar(state: ReaderState, annot: Annot?, frame: Rect) {
                 AeButton(Icons.Default.Delete, R.string.ae_delete, !ed.busy, false, tint = MaterialTheme.colorScheme.error) { ed.delete() }
                 if (annot?.locked == true) Icon(androidx.compose.material.icons.Icons.Default.Lock, stringResource(R.string.cx_locked), Modifier.padding(horizontal = 4.dp).size(18.dp))
                 com.smartdocs.editor.ui.reader.annot.SelectionMoreButton(state, multi = false)      // section 7: properties, lock, clipboard, rotate, flatten...
+                if (annot != null && annot.kind in setOf(AnnotKind.HIGHLIGHT, AnnotKind.UNDERLINE, AnnotKind.STRIKEOUT, AnnotKind.SQUIGGLY)) {
+                    // Foxit 24.9: adjust the markup range word by word at either end
+                    val cx = state.annot2.cx
+                    TextButton(onClick = { cx.adjustMarkup(true, -1) }, enabled = enabled) { Text("\u2190|") }
+                    TextButton(onClick = { cx.adjustMarkup(true, 1) }, enabled = enabled) { Text("|\u2192") }
+                    TextButton(onClick = { cx.adjustMarkup(false, -1) }, enabled = enabled) { Text("\u2190]") }
+                    TextButton(onClick = { cx.adjustMarkup(false, 1) }, enabled = enabled) { Text("]\u2192") }
+                }
                 if (ed.busy || ed.storedLoading) CircularProgressIndicator(Modifier.padding(horizontal = 8.dp).size(18.dp), strokeWidth = 2.dp)
             }
             if (annot != null) when (sub) {
@@ -93,7 +102,8 @@ fun AnnotActionBar(state: ReaderState, annot: Annot?, frame: Rect) {
             }
         }
     }
-    if (ed.editingText && annot != null) AnnotTextDialog(annot.text, onOk = { ed.editingText = false; ed.setText(it) }, onDismiss = { ed.editingText = false })
+    if (ed.editingText && annot != null) AnnotTextDialog(annot.text, state.annot2.cx.noteFontSize, state.annot2.cx.noteOpacity,
+        onOk = { ed.editingText = false; ed.setText(it) }, onDismiss = { ed.editingText = false })
 }
 
 @Composable
@@ -117,12 +127,13 @@ private fun AeSlider(label: String, value: Float, range: ClosedFloatingPointRang
 }
 
 @Composable
-private fun AnnotTextDialog(initial: String, onOk: (String) -> Unit, onDismiss: () -> Unit) {
+private fun AnnotTextDialog(initial: String, fontSize: Float, opacity: Float, onOk: (String) -> Unit, onDismiss: () -> Unit) {
     var text by remember { mutableStateOf(initial) }
     AlertDialog(
+        modifier = Modifier.alpha(opacity),
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.ae_edit_text)) },
-        text = { OutlinedTextField(text, { text = it }, Modifier.fillMaxWidth(), minLines = 3) },
+        text = { OutlinedTextField(text, { text = it }, Modifier.fillMaxWidth(), minLines = 3, textStyle = LocalTextStyle.current.copy(fontSize = androidx.compose.ui.unit.TextUnit(fontSize, androidx.compose.ui.unit.TextUnitType.Sp))) },
         confirmButton = { Button(onClick = { onOk(text) }) { Text(stringResource(R.string.ok)) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
     )

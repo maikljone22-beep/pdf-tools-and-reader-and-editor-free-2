@@ -17,6 +17,7 @@ import com.smartdocs.editor.ui.reader.annotBounds
 import com.smartdocs.editor.ui.reader.mapAnnot
 import com.smartdocs.editor.ui.reader.resizable
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 
@@ -71,6 +72,61 @@ class CommentExtras(private val h: Annot2Host) {
         private set
 
     private fun prefs() = h.s.context.getSharedPreferences("comment_prefs", android.content.Context.MODE_PRIVATE)
+
+    /** Pop-up note text size and opacity (7.74 / 24.12), used by the note text dialogs. */
+    var noteFontSize by mutableFloatStateOf(prefs().getFloat("note_font", 16f))
+    var noteOpacity by mutableFloatStateOf(prefs().getFloat("note_opacity", 1f))
+    var notePrefsOpen by mutableStateOf(false)
+    fun saveNotePrefs() { prefs().edit().putFloat("note_font", noteFontSize).putFloat("note_opacity", noteOpacity).apply() }
+
+    /** Copy the text inside a new rectangle / oval / polygon into its note (Foxit 24.41), remembered in prefs. */
+    var copyEncircled by mutableStateOf(prefs().getBoolean("copy_encircled", false))
+        private set
+    fun toggleCopyEncircled() { copyEncircled = !copyEncircled; prefs().edit().putBoolean("copy_encircled", copyEncircled).apply() }
+
+    /** Add a freshly drawn annotation; drawing shapes first get the encircled page text when [copyEncircled]. */
+    fun addNew(a: Annot) {
+        if (!copyEncircled || a.text.isNotBlank() || a.kind !in setOf(AnnotKind.RECT, AnnotKind.OVAL, AnnotKind.POLYGON, AnnotKind.CLOUD)) { s.addAnnot(a); return }
+        s.scope.launch {
+            val text = runCatching {
+                val boxes = s.charBoxes(a.page); val pt = s.pageText(a.page)
+                val b = annotBounds(a)
+                val inside = boxes.indices.filter { i ->
+                    val r = PageGeometry.normPdf(boxes[i]); val cx = (r.left + r.right) / 2; val cy = (r.top + r.bottom) / 2
+                    cx >= b.left && cx <= b.right && cy <= b.top && cy >= b.bottom
+                }
+                if (inside.isEmpty()) "" else com.smartdocs.editor.ui.reader.TextSelectionLogic.text(pt, inside.first(), inside.last(), boxes).trim()
+            }.getOrDefault("")
+            s.addAnnot(if (text.isBlank()) a else a.copy(text = text.take(2000)))
+        }
+    }
+
+    /**
+     * Move the start or the end of the selected text markup by one word (Foxit 24.9 "adjust markup range"):
+     * [delta] -1 = one word earlier, +1 = one word later. Stored markups become pending first (normal edit path).
+     */
+    fun adjustMarkup(start: Boolean, delta: Int) {
+        val a = s.edit.current() ?: return
+        if (a.kind !in setOf(AnnotKind.HIGHLIGHT, AnnotKind.UNDERLINE, AnnotKind.STRIKEOUT, AnnotKind.SQUIGGLY)) return
+        s.scope.launch {
+            val boxes = s.charBoxes(a.page); val pt = s.pageText(a.page)
+            val inside = boxes.indices.filter { i ->
+                val r = PageGeometry.normPdf(boxes[i]); val cx = (r.left + r.right) / 2; val cy = (r.top + r.bottom) / 2
+                a.rects.any { q -> val n = PageGeometry.normPdf(q); cx >= n.left && cx <= n.right && cy <= n.top && cy >= n.bottom }
+            }
+            if (inside.isEmpty() || pt.isEmpty()) return@launch
+            var st = inside.first(); var en = inside.last()
+            val sel = com.smartdocs.editor.ui.reader.TextSelectionLogic
+            fun prevWordStart(i: Int): Int { var k = (i - 1).coerceAtLeast(0); while (k > 0 && pt[k].isWhitespace()) k--; return sel.wordAt(pt, k).first }
+            fun nextWordEnd(i: Int): Int { var k = (i + 1).coerceAtMost(pt.length - 1); while (k < pt.length - 1 && pt[k].isWhitespace()) k++; return sel.wordAt(pt, k).last }
+            if (start) st = if (delta < 0) prevWordStart(st) else minOf(nextWordEnd(st) + 1, en).let { k -> var x = k; while (x < en && pt[x].isWhitespace()) x++; x }
+            else en = if (delta > 0) nextWordEnd(en) else maxOf(prevWordStart(en) - 1, st).let { k -> var x = k; while (x > st && pt[x].isWhitespace()) x--; x }
+            if (en < st) return@launch
+            val rects = sel.rects(boxes, st, en)
+            if (rects.isEmpty()) return@launch
+            s.edit.edit { it.copy(rects = rects, text = if (it.text.isBlank()) it.text else sel.text(pt, st, en, boxes)) }
+        }
+    }
 
     fun toggleNoteIndicators() { noteIndicators = !noteIndicators; prefs().edit().putBoolean("note_indicators", noteIndicators).apply() }
     var props by mutableStateOf<PropsReq?>(null)

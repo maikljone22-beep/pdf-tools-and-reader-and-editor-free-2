@@ -183,4 +183,9 @@
     <string name="cx_scale_app">في التطبيق فقط</string>
     <string name="cx_doc_scales">المقاييس المحفوظة في المستند</string>
     <string name="cx_scale_saved">مقياس الرسم</string>
+    <string name="cx_copy_encircled">نسخ النص المحاط إلى ملاحظة الشكل</string>
+    <string name="cx_note_prefs">مظهر الملاحظات المنبثقة</string>
+    <string name="cx_note_font">حجم الخط: %1$d</string>
+    <string name="cx_note_opacity">العتامة: %1$d%%</string>
+    <string name="cx_note_sample">نص ملاحظة للمعاينة — Sample note</string>
 </resources>

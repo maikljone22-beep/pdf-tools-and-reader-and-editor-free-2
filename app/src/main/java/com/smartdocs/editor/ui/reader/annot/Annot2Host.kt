@@ -219,7 +219,7 @@ class Annot2Host(val s: ReaderState) {
             fillColor = if (kind == AnnotKind.POLYLINE) null else fillColor,
             cloud = if (kind == AnnotKind.CLOUD) cloudIntensity else 0,
         )
-        s.addAnnot(a)
+        cx.addNew(a)
     }
 
     fun undoVertex() { if (vertices.isNotEmpty()) vertices.removeAt(vertices.lastIndex); if (vertices.isEmpty()) polyPage = -1 }
