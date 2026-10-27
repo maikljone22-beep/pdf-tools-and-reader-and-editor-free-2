@@ -8,7 +8,7 @@ import androidx.compose.ui.graphics.luminance
  * SHL-13 accent colours (NVE-shell): the app's colour scheme re-tinted around a user-chosen accent.
  * 0 = app default, 1 = Android 12+ dynamic colour, otherwise 0xRRGGBB.
  */
-object Accent {
+object AccentColors {
     const val DEFAULT = 0L
     const val DYNAMIC = 1L
 

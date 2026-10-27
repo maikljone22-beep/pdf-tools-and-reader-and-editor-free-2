@@ -1,5 +1,6 @@
 package com.smartdocs.editor.ui.edit
 
+import androidx.compose.foundation.gestures.detectDragGestures
 import android.graphics.Bitmap
 import android.graphics.RectF
 import androidx.compose.foundation.Canvas
@@ -255,13 +256,13 @@ private fun InlineEditor(c: EditController, scale: Float, pageH: Float, rtlUi: B
     val hs = with(density) { 28.dp.toPx() }
     Box(Modifier.absoluteOffset { IntOffset((x - hs).roundToInt(), (y - hs).roundToInt()) }.size(with(density) { hs.toDp() })
         .background(primary, androidx.compose.foundation.shape.CircleShape)
-        .pointerInput(scale) { androidx.compose.foundation.gestures.detectDragGestures(onDragEnd = { tt.dragEnd() }) { ch, d -> ch.consume(); tt.drag(true, d.x / scale, -d.y / scale) } },
+        .pointerInput(scale) { detectDragGestures(onDragEnd = { tt.dragEnd() }) { ch, d -> ch.consume(); tt.drag(true, d.x / scale, -d.y / scale) } },
         contentAlignment = Alignment.Center) {
         androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.Default.OpenWith, androidx.compose.ui.res.stringResource(com.smartdocs.editor.R.string.nt_move), tint = Color.White, modifier = Modifier.size(18.dp))
     }
     Box(Modifier.absoluteOffset { IntOffset((x + w).roundToInt(), (y + hs * 0.2f).roundToInt()) }.size(with(density) { (hs * 0.6f).toDp() }, with(density) { hs.toDp() })
         .background(primary.copy(alpha = 0.85f), androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
-        .pointerInput(scale) { androidx.compose.foundation.gestures.detectDragGestures(onDragEnd = { tt.dragEnd() }) { ch, d -> ch.consume(); tt.drag(false, d.x / scale, 0f) } })
+        .pointerInput(scale) { detectDragGestures(onDragEnd = { tt.dragEnd() }) { ch, d -> ch.consume(); tt.drag(false, d.x / scale, 0f) } })
     if (tt.guides.isNotEmpty()) Canvas(Modifier.fillMaxSize()) {
         tt.guides.forEach { (vertical, pos) ->
             if (vertical) drawLine(Color(0xFFE91E63), Offset(pos * scale, 0f), Offset(pos * scale, size.height), 1.5.dp.toPx())

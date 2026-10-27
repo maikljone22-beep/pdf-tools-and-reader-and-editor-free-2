@@ -54,6 +54,7 @@ fun DocPropsScreen(nav: NavHostController, uri: String?) {
         }
     }
     var xmpMode by remember { mutableStateOf(com.smartdocs.editor.core.nve.XmpOps.Mode.MERGE) }
+    val processing = stringResource(R.string.processing)
     val importXmp = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { u ->
         if (u == null) return@rememberLauncherForActivityResult
         val mode = xmpMode
@@ -65,7 +66,6 @@ fun DocPropsScreen(nav: NavHostController, uri: String?) {
             null
         }
     }
-    val processing = stringResource(R.string.processing)
     LaunchedEffect(doc.work) { val w = doc.work ?: return@LaunchedEffect; p = runCatching { DocPropsOps.read(w, doc.password) }.getOrNull() }
     ToolScaffold(stringResource(R.string.e5_props_title), nav, runner) {
         E5FileRow(doc)

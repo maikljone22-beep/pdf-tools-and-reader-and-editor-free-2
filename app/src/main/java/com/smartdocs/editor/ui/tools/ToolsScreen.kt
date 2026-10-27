@@ -1,5 +1,6 @@
 package com.smartdocs.editor.ui.tools
 
+import com.smartdocs.editor.ui.nve.shell.NveFavoriteBadge
 import android.content.Context
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
@@ -200,7 +201,7 @@ fun ToolsScreen(nav: NavHostController) {
                         CompositionLocalProvider(LocalToolTile provides toolGroupTile(gi)) {
                             Box(Modifier.animateItem()) {   // NVE-shell: in "choose favourites" mode a tap stars the tool
                                 ToolCard(t.icon, labels[t.id].orEmpty()) { if (favEditing) com.smartdocs.editor.ui.nve.shell.NveShellPrefs.toggleFavorite(ctx, t.id) else open(t) }
-                                if (favEditing) com.smartdocs.editor.ui.nve.shell.NveFavoriteBadge(t.id)
+                                if (favEditing) NveFavoriteBadge(t.id)
                             }
                         }
                     }

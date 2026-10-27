@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.navigation.NavHostController
+import kotlinx.coroutines.launch
 import com.smartdocs.editor.R
 import com.smartdocs.editor.ui.edit5.EDIT5_TOOLS
 import com.smartdocs.editor.ui.reader.ReaderActions
@@ -116,7 +117,7 @@ fun NveViewChips(s: ReaderState) {
     ToolChip(Icons.Default.DashboardCustomize, stringResource(R.string.nv_customize_toolbar)) { n.open(NveSurface.TOOLBAR_CUSTOMIZE) }
 }
 
-private fun kotlinx.coroutines.CoroutineScope.launchSelectAll(s: ReaderState) { kotlinx.coroutines.launch { NveSelectionOps.selectAll(s, s.currentPage) } }
+private fun kotlinx.coroutines.CoroutineScope.launchSelectAll(s: ReaderState) { launch { NveSelectionOps.selectAll(s, s.currentPage) } }
 
 /** Edit5 tools for the reader's Tools tab (hook inside its grid). */
 @Composable

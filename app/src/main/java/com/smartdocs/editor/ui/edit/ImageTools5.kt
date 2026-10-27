@@ -96,7 +96,7 @@ internal class ImageTools5(val c: EditController) {
     private var snapPt = 6f
 
     fun toggleSmart() { smart = !smart; prefs.edit().putBoolean("smart_align", smart).apply() }
-    fun setFilter(f: ObjFilter5) { filter = f; prefs.edit().putInt("obj_filter", f.ordinal).apply(); c.selectImageNve(null); selected.clear() }
+    fun chooseFilter(f: ObjFilter5) { filter = f; prefs.edit().putInt("obj_filter", f.ordinal).apply(); c.selectImageNve(null); selected.clear() }
 
     fun toggleMulti() { multi = !multi; selected.clear(); marquee = null; if (multi) c.selectImageNve(null) }
 
@@ -488,7 +488,7 @@ private fun FilterRow5(c: EditController) {
     val t = c.tools5
     Chip5(Icons.Default.TextFields, stringResource(R.string.ni_f_text)) { c.clearSelection(); c.mode = EditMode.TEXT }
     listOf(ObjFilter5.ALL to R.string.ni_f_all, ObjFilter5.IMAGE to R.string.ni_f_image, ObjFilter5.SHAPE to R.string.ni_f_shape, ObjFilter5.SHADING to R.string.ni_f_shading).forEach { (f, l) ->
-        FilterChip(selected = t.filter == f, onClick = { t.setFilter(f) }, label = { Text(stringResource(l)) }, modifier = Modifier.padding(horizontal = 3.dp))
+        FilterChip(selected = t.filter == f, onClick = { t.chooseFilter(f) }, label = { Text(stringResource(l)) }, modifier = Modifier.padding(horizontal = 3.dp))
     }
 }
 

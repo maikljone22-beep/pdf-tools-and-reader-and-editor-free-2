@@ -15,7 +15,6 @@ import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDPage
 import com.tom_roush.pdfbox.pdmodel.PDResources
 import com.tom_roush.pdfbox.pdmodel.common.PDStream
-import com.tom_roush.pdfbox.pdmodel.graphics.color.PDDeviceCMYK
 import com.tom_roush.pdfbox.pdmodel.graphics.color.PDDeviceGray
 import com.tom_roush.pdfbox.pdmodel.graphics.form.PDFormXObject
 import com.tom_roush.pdfbox.pdmodel.graphics.image.PDImage
@@ -243,10 +242,10 @@ internal object ImageEdit5 {
         l += op("q")
         Affine.values(m).forEach { l += COSFloat(it) }
         l += op("cm")
-        inner.forEach { l += it }
+        inner.forEach { l.add(it) }
         if (ownGs != null) { l += ownGs; l += op("gs") }
-        if (crop != null) l += clipTokens(crop, localBox, ellipse)
-        l += body
+        if (crop != null) l.addAll(clipTokens(crop, localBox, ellipse))
+        l.addAll(body)
         l += op("Q")
         l += op("EMC")
         return l
@@ -554,7 +553,9 @@ internal object ImageEdit5 {
             out[i * 4 + 2] = (((1f - b - k) / d) * 255f).toInt().coerceIn(0, 255).toByte()
             out[i * 4 + 3] = (k * 255f).toInt().coerceIn(0, 255).toByte()
         }
-        return PDImageXObject(doc, ByteArrayInputStream(deflate(out)), COSName.FLATE_DECODE, w, h, 8, PDDeviceCMYK.INSTANCE)
+        // pdfbox-android has no PDDeviceCMYK class: write as RGB, then set /ColorSpace /DeviceCMYK on the stream (4 components)
+        return PDImageXObject(doc, ByteArrayInputStream(deflate(out)), COSName.FLATE_DECODE, w, h, 8, com.tom_roush.pdfbox.pdmodel.graphics.color.PDDeviceRGB.INSTANCE)
+            .also { it.cosObject.setItem(COSName.COLORSPACE, COSName.DEVICECMYK) }
     }
 
     /** Paint [make]'s image in place of the image of op [op], with exactly the same placement, clip and opacity. */

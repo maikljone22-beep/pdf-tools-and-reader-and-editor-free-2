@@ -408,15 +408,14 @@ internal class RichLayout(private val fonts: RichFonts, private val style: EditT
         val colW = style.size * 1.3f
         var colX = right - colW
         var offset = 0
-        for (para in text.split('
-')) {
+        for (para in text.split('\n')) {
             var y = top
             for (i in para.indices) {
                 val st = styles[offset + i]
                 val ds = st.drawSize
                 y -= ds * 1.1f + style.charSpacing
                 val c = para[i]
-                if (c == ' ' || c == '') continue
+                if (c == ' ' || c == '\r') continue
                 val f = fonts.fontFor(c, st) ?: continue
                 val w = runWidth(f, c.toString(), st)
                 val r = (st.color shr 16) and 0xFF; val g = (st.color shr 8) and 0xFF; val b = st.color and 0xFF

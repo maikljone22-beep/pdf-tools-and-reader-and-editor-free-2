@@ -126,7 +126,7 @@ class EditController(val state: ReaderState, private val scope: CoroutineScope, 
                 if (hit != null) selectBlock(hit) else startNew(x, y)
             }
             EditMode.IMAGE -> {
-                if (ImageTools5.of(this).onTap(m, x, y)) return      // NVE-img: multi-select
+                if (tools5.onTap(m, x, y)) return      // NVE-img: multi-select
                 val hit = m.images.lastOrNull { x in it.rect.left..it.rect.right && y in it.rect.bottom..it.rect.top }
                 if (hit != null) { image = hit; affine = identity(); insertAt = null }
                 else if (image != null) { image = null; affine = identity() }

@@ -23,14 +23,14 @@ import com.smartdocs.editor.LocalApp
 import com.smartdocs.editor.LocalSettings
 import com.smartdocs.editor.R
 import com.smartdocs.editor.core.nve.shell.RecoveryNames
-import com.smartdocs.editor.core.theme.Accent
+import com.smartdocs.editor.core.theme.AccentColors
 import com.smartdocs.editor.ui.settings.GroupDivider
 import com.smartdocs.editor.ui.settings.GroupRow
 import kotlinx.coroutines.launch
 
-/** Named colour themes ("skins"): label + accent (Accent.DEFAULT = classic app colours). */
+/** Named colour themes ("skins"): label + accent (AccentColors.DEFAULT = classic app colours). */
 val NVE_SKINS: List<Pair<Int, Long>> = listOf(
-    R.string.nl_skin_classic to Accent.DEFAULT, R.string.nl_skin_gray to 0x607D8BL, R.string.nl_skin_colorful to 0xE91E63L,
+    R.string.nl_skin_classic to AccentColors.DEFAULT, R.string.nl_skin_gray to 0x607D8BL, R.string.nl_skin_colorful to 0xE91E63L,
     R.string.nl_skin_blue to 0x1565C0L, R.string.nl_skin_orange to 0xEF6C00L, R.string.nl_skin_purple to 0x6A1B9AL,
 )
 
@@ -52,11 +52,11 @@ fun NveShellSettingsRows() {
     GroupRow(stringResource(R.string.nl_accent), stringResource(R.string.nl_accent_sub), icon = Icons.Default.ColorLens)
     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         NVE_SKINS.forEach { (label, v) -> FilterChip(s.accentColor == v, { setAccent(v) }, label = { Text(stringResource(label)) }) }
-        if (Build.VERSION.SDK_INT >= 31) FilterChip(s.accentColor == Accent.DYNAMIC, { setAccent(Accent.DYNAMIC) }, label = { Text(stringResource(R.string.nl_accent_dynamic)) },
+        if (Build.VERSION.SDK_INT >= 31) FilterChip(s.accentColor == AccentColors.DYNAMIC, { setAccent(AccentColors.DYNAMIC) }, label = { Text(stringResource(R.string.nl_accent_dynamic)) },
             leadingIcon = { Icon(Icons.Default.Wallpaper, null, Modifier.size(16.dp)) })
     }
     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        Accent.PRESETS.forEach { c ->
+        AccentColors.PRESETS.forEach { c ->
             val sel = s.accentColor == c
             Box(Modifier.size(34.dp).clip(CircleShape).background(Color(0xFF000000 or c))
                 .border(if (sel) 3.dp else 1.dp, if (sel) MaterialTheme.colorScheme.onSurface else Color(0x33000000), CircleShape)

@@ -90,10 +90,10 @@ private class EDoc(base: Bitmap) {
 
     private fun snap() = Snap(layers.map { it.copy() }, active, mask?.copyOf())
     fun push() { undo.addLast(snap()); while (undo.size > maxSteps) undo.removeFirst(); redo.clear() }
-    private fun restore(s: Snap) { layers.clear(); layers.addAll(s.layers); active = s.active.coerceIn(0, layers.size - 1); setMask(s.mask); version++ }
+    private fun restore(s: Snap) { layers.clear(); layers.addAll(s.layers); active = s.active.coerceIn(0, layers.size - 1); putMask(s.mask); version++ }
     fun undo() { val s = undo.removeLastOrNull() ?: return; redo.addLast(snap()); restore(s) }
     fun redo() { val s = redo.removeLastOrNull() ?: return; undo.addLast(snap()); restore(s) }
-    fun setMask(m: ByteArray?) { mask = m; overlay = m?.let { ImageOps.maskOverlay(it, w, h) } }
+    fun putMask(m: ByteArray?) { mask = m; overlay = m?.let { ImageOps.maskOverlay(it, w, h) } }
     val cur: Layer get() = layers[active.coerceIn(0, layers.size - 1)]
     fun composite(): Bitmap = ImageOps.flatten(layers)
 }
@@ -337,14 +337,14 @@ private fun EditorBody(d: EDoc, onDone: (Bitmap) -> Unit, onCancel: () -> Unit) 
                             val x = start.x.toInt(); val y = start.y.toInt()
                             if (x in 0 until d.w && y in 0 until d.h) {
                                 d.push(); val comp = d.composite()
-                                d.setMask(ImageOps.floodMask(ImageOps.pixels(comp), d.w, d.h, x, y, tolerance.roundToInt(), contiguous)); comp.recycle()
+                                d.putMask(ImageOps.floodMask(ImageOps.pixels(comp), d.w, d.h, x, y, tolerance.roundToInt(), contiguous)); comp.recycle()
                             }
                         }
-                        ETool.LASSO -> lassoPath?.let { p -> p.close(); d.push(); d.setMask(ImageOps.pathMask(p, d.w, d.h)); lassoPath = null }
+                        ETool.LASSO -> lassoPath?.let { p -> p.close(); d.push(); d.putMask(ImageOps.pathMask(p, d.w, d.h)); lassoPath = null }
                         ETool.SEL_RECT -> rectSel?.let { (a, b) ->
                             rectSel = null
                             if (hypot(a.x - b.x, a.y - b.y) > 3f) {
-                                d.push(); d.setMask(ImageOps.pathMask(Path().apply { addRect(min(a.x, b.x), min(a.y, b.y), max(a.x, b.x), max(a.y, b.y), Path.Direction.CW) }, d.w, d.h))
+                                d.push(); d.putMask(ImageOps.pathMask(Path().apply { addRect(min(a.x, b.x), min(a.y, b.y), max(a.x, b.x), max(a.y, b.y), Path.Direction.CW) }, d.w, d.h))
                             }
                         }
                         ETool.POLY_LASSO -> if (!multi) { polyPts.add(start); d.version++ }
@@ -423,7 +423,7 @@ private fun EditorBody(d: EDoc, onDone: (Bitmap) -> Unit, onCancel: () -> Unit) 
                     ETool.POLY_LASSO -> Row(verticalAlignment = Alignment.CenterVertically) {
                         TextButton(onClick = { polyPts.clear(); d.version++ }) { Text(stringResource(R.string.cancel)) }
                         Button(onClick = {
-                            if (polyPts.size >= 3) { val p = Path().apply { polyPts.forEachIndexed { i, o -> if (i == 0) moveTo(o.x, o.y) else lineTo(o.x, o.y) }; close() }; d.push(); d.setMask(ImageOps.pathMask(p, d.w, d.h)) }
+                            if (polyPts.size >= 3) { val p = Path().apply { polyPts.forEachIndexed { i, o -> if (i == 0) moveTo(o.x, o.y) else lineTo(o.x, o.y) }; close() }; d.push(); d.putMask(ImageOps.pathMask(p, d.w, d.h)) }
                             polyPts.clear(); d.version++
                         }, enabled = polyPts.size >= 3) { Text(stringResource(R.string.nh_ie_finish_poly)) }
                     }
@@ -437,9 +437,9 @@ private fun EditorBody(d: EDoc, onDone: (Bitmap) -> Unit, onCancel: () -> Unit) 
                 }
                 // selection / edit actions
                 Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
-                    Act(Icons.Default.SelectAll, R.string.nh_ie_select_all) { d.push(); d.setMask(ByteArray(d.w * d.h) { 1 }) }
-                    Act(Icons.Default.Deselect, R.string.nh_ie_deselect, d.mask != null) { d.push(); d.setMask(null) }
-                    Act(Icons.Default.FlipToBack, R.string.nh_ie_invert_sel, d.mask != null) { d.push(); d.setMask(d.mask?.let { ImageOps.invert(it) }) }
+                    Act(Icons.Default.SelectAll, R.string.nh_ie_select_all) { d.push(); d.putMask(ByteArray(d.w * d.h) { 1 }) }
+                    Act(Icons.Default.Deselect, R.string.nh_ie_deselect, d.mask != null) { d.push(); d.putMask(null) }
+                    Act(Icons.Default.FlipToBack, R.string.nh_ie_invert_sel, d.mask != null) { d.push(); d.putMask(d.mask?.let { ImageOps.invert(it) }) }
                     Act(Icons.Default.ContentCut, R.string.nh_ie_cut) {
                         ImageOps.extract(d.cur.bmp, d.mask)?.let { (b, x, y) -> d.clip = b; d.clipX = x; d.clipY = y }
                         d.push(); ImageOps.clear(d.cur.bmp, d.mask); d.version++

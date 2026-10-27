@@ -54,7 +54,7 @@
     <string name="ns_csv_where">Location</string>
     <string name="ns_done">Done</string>
     <string name="ns_down">Move down</string>
-    <string name="ns_embedded_index_na">Embedded index (Acrobat's proprietary format) is not supported; the app index is used.</string>
+    <string name="ns_embedded_index_na">Embedded index (Acrobat\'s proprietary format) is not supported; the app index is used.</string>
     <string name="ns_excluded">Folders excluded from indexing</string>
     <string name="ns_failed">Could not save</string>
     <string name="ns_filter_name">Filter by file name or path</string>

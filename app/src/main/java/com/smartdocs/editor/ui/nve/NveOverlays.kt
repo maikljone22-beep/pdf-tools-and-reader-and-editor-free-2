@@ -20,6 +20,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
@@ -235,7 +236,7 @@ internal fun SnapshotResultDialog(s: ReaderState, bmp: Bitmap, onDismiss: () -> 
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } })
 }
 
-internal fun Bitmap.asImageBitmapSafe(): androidx.compose.ui.graphics.ImageBitmap = androidx.compose.ui.graphics.asImageBitmap(this)
+internal fun Bitmap.asImageBitmapSafe(): androidx.compose.ui.graphics.ImageBitmap = asImageBitmap()
 
 internal suspend fun saveBitmapToPictures(ctx: Context, bmp: Bitmap, name: String): Boolean = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
     runCatching {

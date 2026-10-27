@@ -117,8 +117,7 @@ fun HelpScreen(nav: NavHostController) {
             },
             confirmButton = { TextButton(onClick = {
                 feedbackDialog = false
-                if (attachDoc) runCatching { ctx.startActivity(com.smartdocs.editor.ui.nve.shell.NveCrash.shareIntent(ctx, (CrashLog.pending(ctx)?.take(20_000) ?: "") + "
-" + deviceInfo(ctx), true)) }   // NVE-shell
+                if (attachDoc) runCatching { ctx.startActivity(com.smartdocs.editor.ui.nve.shell.NveCrash.shareIntent(ctx, (CrashLog.pending(ctx)?.take(20_000) ?: "") + "\n" + deviceInfo(ctx), true)) }   // NVE-shell
                 else sendFeedback(ctx, attach)
             }) { Text(stringResource(R.string.ac_send)) } },
             dismissButton = { TextButton(onClick = { feedbackDialog = false }) { Text(stringResource(R.string.cancel)) } },

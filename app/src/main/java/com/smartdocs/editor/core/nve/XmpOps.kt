@@ -4,7 +4,7 @@ import com.tom_roush.pdfbox.cos.COSDictionary
 import com.tom_roush.pdfbox.cos.COSName
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.common.PDMetadata
-import com.tom_roush.pdfbox.pdmodel.documentinterchange.markedcontent.PDMarkInfo
+import com.tom_roush.pdfbox.pdmodel.documentinterchange.logicalstructure.PDMarkInfo
 import org.w3c.dom.Document
 import org.w3c.dom.Element
 import org.w3c.dom.Node

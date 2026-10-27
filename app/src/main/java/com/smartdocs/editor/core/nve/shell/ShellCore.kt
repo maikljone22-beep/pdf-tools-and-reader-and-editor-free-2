@@ -96,7 +96,7 @@ object PdfRepair {
 
 /** Offline help ranking (help chatbot fallback and "Get help on <keywords>"): article indexes by keyword overlap. */
 object HelpRank {
-    private fun words(s: String): List<String> = s.lowercase().split(Regex("[^\p{L}\p{N}]+")).filter { it.length > 1 }
+    private fun words(s: String): List<String> = s.lowercase().split(Regex("[^\\p{L}\\p{N}]+")).filter { it.length > 1 }
 
     fun rank(articles: List<Pair<String, String>>, query: String, max: Int = 3): List<Int> {
         val q = words(query).toSet()
