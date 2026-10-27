@@ -104,6 +104,8 @@ fun CertDetailsBlock(d: CertInspector.Details) {
     Text("${stringResource(R.string.g6_cert_algorithm)}: ${d.signatureAlgorithm} · ${d.publicKey}", style = small)
     if (d.selfSigned) Text(stringResource(R.string.g6_cert_self_signed), style = small, color = MaterialTheme.colorScheme.tertiary)
     Text("SHA-256: ${d.sha256}", style = MaterialTheme.typography.labelSmall, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Text("SHA-1: ${d.sha1}", style = MaterialTheme.typography.labelSmall, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    if (d.md5.isNotEmpty()) Text("MD5: ${d.md5}", style = MaterialTheme.typography.labelSmall, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
 @Composable
