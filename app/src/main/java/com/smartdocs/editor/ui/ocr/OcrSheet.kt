@@ -40,6 +40,8 @@ fun OcrSheet(
     isInstalled: (String) -> Boolean,
     onRun: (OcrOptions) -> Unit,
     onDismiss: () -> Unit,
+    /** Nitro zone OCR: recognise a selected area (opens the area tool); null hides the button. */
+    onArea: (() -> Unit)? = null,
 ) {
     val ctx = LocalContext.current
     // 0 = current page (default), 1 = all pages, 2 = from–to
@@ -49,6 +51,8 @@ fun OcrSheet(
     var to by remember { mutableStateOf(pageCount.toString()) }
     val langs = remember { mutableStateListOf<String>().apply { addAll(OcrPrefs.languages(ctx)) } }
     var editable by remember { mutableStateOf(OcrPrefs.editable(ctx)) }
+    var tuning by remember { mutableStateOf(com.smartdocs.editor.core.ocr.OcrTuning.load(ctx)) }
+    var moreLangs by remember { mutableStateOf(false) }
 
     fun clamp(v: String) = v.filter { it.isDigit() }.take(6).toIntOrNull()?.coerceIn(1, pageCount.coerceAtLeast(1))
     val fromN = clamp(from) ?: 1
@@ -93,6 +97,12 @@ fun OcrSheet(
                     FilterChip(sel, { if (sel) langs.remove(code) else langs.add(code) }, label = { Text(stringResource(label)) },
                         leadingIcon = { Icon(if (sel) Icons.Default.Check else if (isInstalled(code)) Icons.Default.Check else Icons.Default.CloudDownload, null, Modifier.size(16.dp)) })
                 }
+                // Nitro: every downloadable language (the extra ones picked show here)
+                langs.filter { c -> OCR_LANGUAGES.none { it.first == c } }.forEach { code ->
+                    FilterChip(true, { langs.remove(code) }, label = { Text(com.smartdocs.editor.core.ocr.OcrEngine.label(code)) },
+                        leadingIcon = { Icon(Icons.Default.Check, null, Modifier.size(16.dp)) })
+                }
+                AssistChip(onClick = { moreLangs = true }, label = { Text(stringResource(R.string.nt_ocr_more_langs)) }, leadingIcon = { Icon(Icons.Default.Language, null, Modifier.size(16.dp)) })
             }
             if (langs.isEmpty()) Text(stringResource(R.string.qk_ocr_need_lang), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
             else if (langs.any { !isInstalled(it) }) Text(stringResource(R.string.qk_ocr_will_download), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
@@ -102,24 +112,31 @@ fun OcrSheet(
             ModeCard(Icons.Default.ManageSearch, stringResource(R.string.qk_ocr_searchable), stringResource(R.string.qk_ocr_searchable_desc), !editable) { editable = false }
             Spacer(Modifier.height(8.dp))
             ModeCard(Icons.Default.EditNote, stringResource(R.string.qk_ocr_editable), stringResource(R.string.qk_ocr_editable_desc), editable) { editable = true }
+            Spacer(Modifier.height(12.dp))
+            OcrTuningSection(tuning) { tuning = it }
+            if (onArea != null) OutlinedButton(onClick = onArea, Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                Icon(Icons.Default.Crop, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.nt_ocr_zone))
+            }
 
             Spacer(Modifier.height(20.dp))
             Button(
                 onClick = {
-                    val ordered = OCR_LANGUAGES.map { it.first }.filter { it in langs }
+                    val ordered = OCR_LANGUAGES.map { it.first }.filter { it in langs } + langs.filter { c -> OCR_LANGUAGES.none { it.first == c } }
                     OcrPrefs.save(ctx, ordered, editable)
+                    com.smartdocs.editor.core.ocr.OcrTuning.save(ctx, tuning)
                     val pages = when {
                         lockedPage != null -> listOf(lockedPage)
                         scope == 0 -> listOf(currentPage.coerceIn(0, (pageCount - 1).coerceAtLeast(0)))
                         allPages -> null
                         else -> (minOf(fromN, toN) - 1..maxOf(fromN, toN) - 1).toList()
                     }
-                    onRun(OcrOptions(pages, ordered, editable))
+                    onRun(OcrOptions(pages, ordered, editable, tuning))
                 },
                 enabled = langs.isNotEmpty(), modifier = Modifier.fillMaxWidth().height(52.dp),
             ) { Text(stringResource(R.string.qk_ocr_run), style = MaterialTheme.typography.titleMedium) }
         }
     }
+    if (moreLangs) OcrLanguagePicker(langs.toSet(), onDismiss = { moreLangs = false }) { set -> langs.clear(); langs.addAll(OCR_LANGUAGES.map { it.first }.filter { it in set } + set.filter { c -> OCR_LANGUAGES.none { it.first == c } }); moreLangs = false }
 }
 
 @Composable

@@ -379,7 +379,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
     if (contentEdit && state.session != null) com.smartdocs.editor.ui.edit.EditModeHost(state) { contentEdit = false }
     if (state.saving) ProgressDialog(stringResource(R.string.processing))
     if (showHistory) HistorySheet(state) { showHistory = false }
-    QuickActionHost(quick, snack)
+    QuickActionHost(quick, snack) { id -> actions.navigateTool(id) }
     com.smartdocs.editor.ui.reader.annot.Annot2Dialogs(state, nav, snack)      // MODULE_annot2 pickers & dialogs
     if (state.session != null && !state.needPassword) com.smartdocs.editor.ui.onboarding.ReaderCoachMarks()   // share6
     // share6: share sheet (whole/page/range, compressed, without comments, flattened, images, XFDF, e-mail)

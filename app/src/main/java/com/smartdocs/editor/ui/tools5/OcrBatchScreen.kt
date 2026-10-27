@@ -99,7 +99,9 @@ fun OcrBatchScreen(nav: NavHostController, uri: String?) {
                         list.forEachIndexed { i, f ->
                             message = ctx.getString(R.string.t5_ocr_file, i + 1, list.size, f.name)
                             val dst = app.documents.uniqueFile(app.documents.docsDir, f.nameWithoutExtension + "_ocr")
-                            OcrRunner.ocrFile(ctx, engine, f, null, p, dst) { a, b -> step(a, b) }?.let { out += it }
+                            val r = if (!OcrRunner.isImage(f) && Portfolio.isPortfolio(f)) OcrRunner.ocrPortfolio(ctx, engine, f, null, p, dst) { a, b -> step(a, b) }
+                                else OcrRunner.ocrFile(ctx, engine, f, null, p, dst) { a, b -> step(a, b) }
+                            r?.let { out += it }
                         }
                         if (out.isEmpty()) error = nothing else if (out.size == 1) result = out[0] else results = out
                     }

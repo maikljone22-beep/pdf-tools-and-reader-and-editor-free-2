@@ -167,3 +167,26 @@ Test: `FoxitRedactTest`.
 | Page labels shown in the reader | moved | part of feature/nitro-pages-convert (old plan A5), as agreed |
 
 Test: `FoxitBatesTest`.
+
+## 13 OCR (+ Foxit §5 OCR rows; scanner-only rows of §5 go to feature/nitro-pages-convert)
+
+| Row | Result | Where |
+|---|---|---|
+| Zone Tool (OCR a selected area) | done | new tool `ocr_zone` (`ui/ocr/OcrToolsScreens.kt` `OcrZoneScreen`): drag an area, recognise it, copy the text or add it to the page as searchable text (`OcrReview.placeZone`); "OCR a selected area" button in the reader OCR sheet |
+| Pre-processing: correct image skew; Auto de-skew for existing PDFs | done | `OcrPrep.skewAngle` (projection profile) + `OcrPrep.straighten` (lossless turn of the page content), run before recognition (`OcrPipeline.correctedCopy`) when "Correct page skew" is on |
+| Pre-processing: detect text orientation | done | four quick recognitions (`OcrEngine.score`) → the page /Rotate is set (`OcrPrep.correctPages`); Tesseract OSD needs the legacy engine, which the LSTM-only build cannot use |
+| Pre-processing: fixed threshold | done | `OcrTuning.threshold` NONE / FIXED (value) / ADAPTIVE (Sauvola), `OcrPrep.filter` |
+| Pre-processing: smooth colour image | done | `OcrTuning.smooth` (3×3 median) |
+| Recognition quality (fast / best) | done | `OcrEngine(fast = …)` uses tessdata_fast in its own folder |
+| Output: downsample images, compression factor | done | `OcrTuning.outputDpi/outputQuality` → `OcrPipeline.shrinkOutput` (optimizer) |
+| Languages ita/por/rus/ell/heb/hin/chi_sim selectable; all ~100 others | done | `core/ocr/OcrModels.kt`: every tessdata_best (162) and tessdata_fast (163) model pinned by commit, size and git blob id (from the GitHub tree API); "More languages…" picker (`OcrLanguagePicker`) in the reader sheet, OCR plus and the area tool |
+| Special: numbers only | done | `OcrTuning.numericOnly` → Tesseract character whitelist |
+| Special: OCR-A / OCR-B, CMC7, handprint | not feasible | Tesseract has no models for these (noted in the options) |
+| Foxit: OCR PDF portfolios | done | `OcrRunner.ocrPortfolio` (each PDF part recognised and put back, then the cover) |
+| Foxit: Find OCR Suspects (red boxes, page / document, accept, not text, correct) and All Suspects dialog | done | OCR words are stored in the page (`OcrStore`, /SDOcrWords); new tool `ocr_review` (`OcrReviewScreen`): red boxes on the page, page or document list editable all at once, accept / not text / accept all, save rewrites the invisible layer (`OcrReview.rewrite`). Files OCRed before this build have no stored words |
+| Foxit: Optimize scanned PDF — JBIG2 / CCITT / MRC, deskew | done | Foxit §20 and above |
+| Foxit: background removal / descreen / text sharpening / adaptive compression | done | optimizer `scanBackground`, `scanDescreen`, `scanSharpen` (`ScanFilters`); adaptive compression = MRC |
+| Foxit: post-scan colour mode black & white of an existing PDF | done | optimizer `bwImages` (Sauvola → 1-bit CCITT G4) |
+| Foxit: JPEG 2000 for scans | not feasible | no JPX encoder (see §20) |
+
+Test: `NitroOcrTest`.

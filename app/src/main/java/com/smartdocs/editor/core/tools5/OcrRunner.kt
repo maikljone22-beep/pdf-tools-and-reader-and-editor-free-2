@@ -186,6 +186,29 @@ object OcrRunner {
         return com.smartdocs.editor.core.ocr.OcrPipeline.correctedCopy(ctx, src, password, (0 until n).toList(), plan.tuning, engine, ctx.cacheDir)
     }
 
+    /**
+     * Foxit "OCR PDF portfolios": every PDF part of the portfolio [src] is recognised and put back; the portfolio's own
+     * pages (the cover) are recognised too when they need it. Returns null when nothing needed OCR.
+     */
+    suspend fun ocrPortfolio(ctx: Context, engine: OcrEngine, src: File, password: String?, plan: OcrPlan, out: File, onPart: (Int, Int) -> Unit = { _, _ -> }): File? {
+        val dir = File(ctx.cacheDir, "ocr_portfolio_${System.nanoTime()}").also { it.mkdirs() }
+        try {
+            val keys = Portfolio.pdfKeys(src, password)
+            val done = LinkedHashMap<String, File>()
+            keys.forEachIndexed { i, k ->
+                onPart(i, keys.size)
+                val part = Portfolio.extract(src, k, dir, password) ?: return@forEachIndexed
+                val o = File(dir, "ocr_$i.pdf")
+                runCatching { ocrFile(ctx, engine, part, null, plan, o) }.getOrNull()?.let { done[k] = it }
+            }
+            val withParts = if (done.isEmpty()) src else Portfolio.replaceParts(src, password, File(dir, "parts.pdf"), done)
+            val cover = runCatching { ocrFile(ctx, engine, withParts, password, plan, File(dir, "cover.pdf")) }.getOrNull()
+            val result = cover ?: if (done.isNotEmpty()) withParts else return null
+            result.copyTo(out, overwrite = true)
+            return out
+        } finally { dir.deleteRecursively() }
+    }
+
     /** Pages without a text layer / all pages. */
     suspend fun scannedShare(ctx: Context, src: File, password: String?): Pair<Int, Int> {
         val s = PdfSession.open(ctx, src, password)

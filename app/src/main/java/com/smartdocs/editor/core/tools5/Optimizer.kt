@@ -80,7 +80,15 @@ data class OptimizeOptions(
     val mrc: Boolean = false,
     val flattenTransparencyDpi: Int = 0,
     val cleanup: CleanupOptions = CleanupOptions(),
-)
+    /** Foxit "Optimize scanned PDF": whiten the paper, remove the halftone pattern, sharpen text (colour / grey images). */
+    val scanBackground: Boolean = false,
+    val scanDescreen: Boolean = false,
+    val scanSharpen: Boolean = false,
+    /** Foxit post-scan colour mode "black & white": colour / grey images become 1-bit CCITT G4 images. */
+    val bwImages: Boolean = false,
+) {
+    val scanFilters: Boolean get() = scanBackground || scanDescreen || scanSharpen || bwImages
+}
 
 class OptimizeResult(val before: SpaceAudit, val after: SpaceAudit, val imagesChanged: Int, val keptOriginal: Boolean, val fontsUnembedded: Int = 0, val tips: List<OptimizeTip> = emptyList(),
                      val fontsSubset: Int = 0, val cleaned: Map<String, Int> = emptyMap(), val fragmentsMerged: Int = 0, val flattenedPages: Int = 0)
@@ -212,7 +220,7 @@ object Optimizer {
         val mode = if (gray) c.o.grayMode else c.o.colorMode
         val (maxDim, above) = limits(c.o, pageMax, dpi)
         val needScale = c.o.downsample != Downsample.OFF && long > above
-        val recode = when (mode) {
+        val recode = c.o.scanFilters || when (mode) {
             ImgCompression.AUTO -> needScale || (isJpeg && c.o.recompressJpeg) || c.o.grayImages
             ImgCompression.JPEG -> true
             ImgCompression.ZIP -> needScale || isJpeg.not() || c.o.grayImages
@@ -225,6 +233,29 @@ object Optimizer {
             bmp = scaled(bmp0, (bmp0.width * k).toInt().coerceAtLeast(1), (bmp0.height * k).toInt().coerceAtLeast(1), c.o.downsample)
         }
         if (c.o.grayImages) { val g = toGray(bmp); if (bmp !== bmp0) bmp.recycle(); bmp = g }
+        if (c.o.scanFilters) {
+            val w = bmp.width; val h = bmp.height
+            var px = IntArray(w * h); bmp.getPixels(px, 0, w, 0, 0, w, h)
+            if (c.o.scanBackground) PixelOps.normalizeBackground(px, w, h)
+            if (c.o.scanDescreen) px = ScanFilters.descreen(px, w, h)
+            if (c.o.scanSharpen) px = ScanFilters.sharpen(px, w, h)
+            if (c.o.bwImages) {
+                val bits = ScanFilters.toBilevel(px, w, h)
+                if (bmp !== bmp0) bmp.recycle(); bmp0.recycle()
+                val s = c.doc.document.createCOSStream()
+                s.setItem(COSName.TYPE, COSName.XOBJECT); s.setItem(COSName.SUBTYPE, COSName.IMAGE)
+                s.setInt(COSName.WIDTH, w); s.setInt(COSName.HEIGHT, h); s.setInt(COSName.BITS_PER_COMPONENT, 1); s.setItem(COSName.COLORSPACE, COSName.DEVICEGRAY)
+                s.setItem(COSName.FILTER, COSName.CCITTFAX_DECODE)
+                s.setItem(COSName.DECODE_PARMS, COSDictionary().apply { setInt(COSName.K, -1); setInt(COSName.COLUMNS, w); setInt(COSName.ROWS, h) })
+                s.createRawOutputStream().use { it.write(Ccitt.encodeG4(bits, w, h)) }
+                val bw = PDImageXObject(com.tom_roush.pdfbox.pdmodel.common.PDStream(s), null)
+                c.done[img.cosObject] = bw; c.changed++
+                return bw
+            }
+            val nb = Bitmap.createBitmap(px, w, h, Bitmap.Config.ARGB_8888)
+            if (bmp !== bmp0) bmp.recycle()
+            bmp = nb
+        }
         val made = runCatching {
             if (mode == ImgCompression.ZIP) LosslessFactory.createFromImage(c.doc, bmp)
             else JPEGFactory.createFromImage(c.doc, bmp, quality.coerceIn(20, 95) / 100f)
@@ -233,7 +264,7 @@ object Optimizer {
         bmp0.recycle()
         made ?: return null
         val newLen = runCatching { made.cosObject.length }.getOrDefault(Long.MAX_VALUE)
-        if (newLen >= oldLen) return null                         // never make an image bigger
+        if (newLen >= oldLen && !c.o.scanFilters) return null     // never make an image bigger (filters change the look on purpose)
         c.done[img.cosObject] = made; c.changed++
         return made
     }
