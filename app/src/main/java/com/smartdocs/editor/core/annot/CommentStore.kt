@@ -3,6 +3,7 @@ package com.smartdocs.editor.core.annot
 import android.graphics.RectF
 import com.smartdocs.editor.core.pdf.PdfOps
 import com.smartdocs.editor.core.pdf.ReviewStatus
+import com.smartdocs.editor.core.pdf.SignedSave
 import com.tom_roush.pdfbox.cos.COSArray
 import com.tom_roush.pdfbox.cos.COSDictionary
 import com.tom_roush.pdfbox.cos.COSName
@@ -137,7 +138,7 @@ object CommentStore {
 
     /** Group annotations [indices] of [page]: the first becomes the primary, the rest get /IRT + /RT /Group. */
     suspend fun group(src: File, out: File, pw: String?, page: Int, indices: List<Int>) = withContext(Dispatchers.IO) {
-        PdfOps.load(src, pw).use { doc ->
+        PdfOps.loadRaw(src, pw).use { doc ->
             val list = doc.getPage(page).annotations
             val members = indices.distinct().mapNotNull { list.getOrNull(it) }
             if (members.size >= 2) {
@@ -152,13 +153,13 @@ object CommentStore {
                     }
                 }
             }
-            doc.save(out)
+            SignedSave.saveEdited(doc, out, pw, listOf(page))
         }
     }
 
     /** Remove group links of [indices] of [page] (and of the members of groups they lead). */
     suspend fun ungroup(src: File, out: File, pw: String?, page: Int, indices: List<Int>) = withContext(Dispatchers.IO) {
-        PdfOps.load(src, pw).use { doc ->
+        PdfOps.loadRaw(src, pw).use { doc ->
             val list = doc.getPage(page).annotations
             val sel = indices.mapNotNull { list.getOrNull(it)?.cosObject }.toSet()
             list.forEach { an ->
@@ -167,13 +168,13 @@ object CommentStore {
                 val parent = cos.getDictionaryObject(IRT) as? COSDictionary
                 if (cos in sel || parent in sel) { cos.removeItem(IRT); cos.removeItem(RT) }
             }
-            doc.save(out)
+            SignedSave.saveEdited(doc, out, pw, listOf(page))
         }
     }
 
     /** Delete annotations ([page] → indices) together with their replies, states and popups. */
     suspend fun deleteMany(src: File, out: File, pw: String?, refs: Map<Int, List<Int>>) = withContext(Dispatchers.IO) {
-        PdfOps.load(src, pw).use { doc ->
+        PdfOps.loadRaw(src, pw).use { doc ->
             refs.forEach { (pi, idx) ->
                 if (pi !in 0 until doc.numberOfPages) return@forEach
                 val page = doc.getPage(pi)
@@ -192,13 +193,13 @@ object CommentStore {
                 val kept = list.filter { it.cosObject !in doomed }
                 page.annotations = kept
             }
-            doc.save(out)
+            SignedSave.saveEdited(doc, out, pw, refs.keys)
         }
     }
 
     /** Add a reply (Text annotation /IRT parent /RT /R, hidden). */
     suspend fun addReply(src: File, out: File, pw: String?, page: Int, index: Int, author: String, text: String) = withContext(Dispatchers.IO) {
-        PdfOps.load(src, pw).use { doc ->
+        PdfOps.loadRaw(src, pw).use { doc ->
             val pg = doc.getPage(page); val list = pg.annotations
             val parent = list.getOrNull(index)
             if (parent != null) {
@@ -212,13 +213,13 @@ object CommentStore {
                 r.isHidden = true
                 list.add(r); pg.annotations = list
             }
-            doc.save(out)
+            SignedSave.saveEdited(doc, out, pw, listOf(page))
         }
     }
 
     /** Set the review status (a hidden state Text annotation, /StateModel Review). */
     suspend fun setStatus(src: File, out: File, pw: String?, page: Int, index: Int, status: ReviewStatus, author: String) = withContext(Dispatchers.IO) {
-        PdfOps.load(src, pw).use { doc ->
+        PdfOps.loadRaw(src, pw).use { doc ->
             val pg = doc.getPage(page); val list = pg.annotations
             val parent = list.getOrNull(index)
             if (parent != null) {
@@ -233,7 +234,7 @@ object CommentStore {
                 s.isHidden = true
                 list.add(s); pg.annotations = list
             }
-            doc.save(out)
+            SignedSave.saveEdited(doc, out, pw, listOf(page))
         }
     }
 

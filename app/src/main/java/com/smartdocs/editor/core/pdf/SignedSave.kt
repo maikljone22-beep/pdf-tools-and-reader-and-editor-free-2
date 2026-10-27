@@ -32,6 +32,8 @@ class SignedDocumentException(val reason: Reason, message: String, cause: Throwa
  */
 object SignedSave {
 
+    private val POPUP = COSName.getPDFName("Popup")
+
     /** True when [doc] has at least one signature field with a value (/FT /Sig with /V). */
     fun isSigned(doc: PDDocument): Boolean = runCatching { doc.signatureDictionaries.isNotEmpty() }.getOrDefault(false)
 
@@ -66,12 +68,36 @@ object SignedSave {
         val seen = HashSet<COSDictionary>()
         for (page in pages) {
             var node: COSDictionary? = page.cosObject
-            (node?.getDictionaryObject(COSName.ANNOTS) as? COSArray)?.isNeedToBeUpdated = true
+            (node?.getDictionaryObject(COSName.ANNOTS) as? COSArray)?.let { annots ->
+                annots.isNeedToBeUpdated = true
+                // edited existing annotations (moved, regrouped, unlinked) and their popups must be rewritten too
+                for (i in 0 until annots.size()) {
+                    val an = annots.getObject(i) as? COSDictionary ?: continue
+                    an.isNeedToBeUpdated = true
+                    (an.getDictionaryObject(POPUP) as? COSDictionary)?.isNeedToBeUpdated = true
+                }
+            }
             while (node != null && seen.add(node)) {
                 node.isNeedToBeUpdated = true
                 (node.getDictionaryObject(COSName.KIDS) as? COSArray)?.isNeedToBeUpdated = true
                 node = node.getDictionaryObject(COSName.PARENT) as? COSDictionary
             }
+        }
+    }
+
+    /**
+     * Save [doc] (loaded with [PdfOps.loadRaw]) after an annotation edit of the zero-based [pages] to [out]: for a
+     * signed file an incremental update ([saveIncremental]; certified files that forbid it throw), otherwise a full
+     * save re-protected like the source ([PdfOps.reprotect]). Used by the comment, review and stored-annotation
+     * writers so they keep signatures valid like [AnnotationWriter] (audit AN-28 / DI-27).
+     */
+    fun saveEdited(doc: PDDocument, out: File, password: String?, pages: Collection<Int>) {
+        if (isSigned(doc)) {
+            requireAnnotationsAllowed(doc)
+            saveIncremental(doc, pages.distinct().filter { it in 0 until doc.numberOfPages }.map { doc.getPage(it) }, out)
+        } else {
+            PdfOps.reprotect(doc, password)
+            doc.save(out)
         }
     }
 

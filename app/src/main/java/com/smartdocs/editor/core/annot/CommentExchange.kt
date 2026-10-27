@@ -3,6 +3,7 @@ package com.smartdocs.editor.core.annot
 import android.content.Context
 import com.smartdocs.editor.core.pdf.AnnotationWriter
 import com.smartdocs.editor.core.pdf.PdfOps
+import com.smartdocs.editor.core.pdf.SignedSave
 import com.tom_roush.pdfbox.cos.COSArray
 import com.tom_roush.pdfbox.cos.COSDictionary
 import com.tom_roush.pdfbox.cos.COSInteger
@@ -249,10 +250,10 @@ object CommentExchange {
         val xml = head.trimStart().startsWith("<") || data.extension.equals("xfdf", true)
         val fdf = if (xml) FDFDocument.loadXFDF(data) else FDFDocument.load(data)
         fdf.use {
-            PdfOps.load(src, pw).use { doc ->
+            PdfOps.loadRaw(src, pw).use { doc ->
                 val entries = fdf.catalog.getFDF().annotations.orEmpty().mapNotNull { fa -> (fa.page ?: 0) to fa.cosObject }
                 val n = append(context, doc, entries)
-                doc.save(out)
+                SignedSave.saveEdited(doc, out, pw, entries.map { it.first })
                 n
             }
         }
@@ -261,13 +262,13 @@ object CommentExchange {
     /** Merge comments of [other] (another copy of the same document) into [src] → [out]. Returns the count added. */
     suspend fun merge(context: Context, src: File, out: File, pw: String?, other: File, otherPw: String? = null): Int = withContext(Dispatchers.IO) {
         open(other, otherPw).use { o ->
-            PdfOps.load(src, pw).use { doc ->
+            PdfOps.loadRaw(src, pw).use { doc ->
                 val entries = ArrayList<Pair<Int, COSDictionary>>()
                 o.pages.forEachIndexed { pi, page ->
                     runCatching { page.annotations }.getOrNull()?.forEach { an -> if (an.subtype !in SKIP) entries += pi to an.cosObject }
                 }
                 val n = append(context, doc, entries)
-                doc.save(out)            // the other document stays open until its objects are written
+                SignedSave.saveEdited(doc, out, pw, entries.map { it.first })  // the other document stays open until its objects are written
                 n
             }
         }

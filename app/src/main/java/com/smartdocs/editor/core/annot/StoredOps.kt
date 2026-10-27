@@ -1,6 +1,7 @@
 package com.smartdocs.editor.core.annot
 
 import com.smartdocs.editor.core.pdf.PdfOps
+import com.smartdocs.editor.core.pdf.SignedSave
 import com.tom_roush.pdfbox.cos.COSArray
 import com.tom_roush.pdfbox.cos.COSDictionary
 import com.tom_roush.pdfbox.cos.COSFloat
@@ -29,7 +30,7 @@ object StoredOps {
      * stream follows /Rect (its BBox is mapped onto the rect), so custom appearances and threads stay intact.
      */
     suspend fun translate(src: File, out: File, pw: String?, page: Int, indices: List<Int>, dx: Float, dy: Float) = withContext(Dispatchers.IO) {
-        PdfOps.load(src, pw).use { doc ->
+        PdfOps.loadRaw(src, pw).use { doc ->
             val list = doc.getPage(page).annotations
             indices.distinct().mapNotNull { list.getOrNull(it) }.forEach { an ->
                 val cos = an.cosObject
@@ -48,17 +49,17 @@ object StoredOps {
                 (cos.getDictionaryObject(COSName.getPDFName("Popup")) as? COSDictionary)?.let { shiftArray(it, COSName.RECT, dx, dy) }
                 an.setModifiedDate(java.util.Calendar.getInstance())
             }
-            doc.save(out)
+            SignedSave.saveEdited(doc, out, pw, listOf(page))
         }
     }
 
     /** Remove only annotations [indices] of [page] (their replies stay, like a single delete). */
     suspend fun removeOnly(src: File, out: File, pw: String?, page: Int, indices: List<Int>) = withContext(Dispatchers.IO) {
-        PdfOps.load(src, pw).use { doc ->
+        PdfOps.loadRaw(src, pw).use { doc ->
             val p = doc.getPage(page)
             val drop = indices.toSet()
             p.annotations = p.annotations.filterIndexed { i, _ -> i !in drop }
-            doc.save(out)
+            SignedSave.saveEdited(doc, out, pw, listOf(page))
         }
     }
 

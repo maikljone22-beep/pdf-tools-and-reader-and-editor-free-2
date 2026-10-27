@@ -1,10 +1,13 @@
 package com.smartdocs.editor.core.pdf
 
+import com.smartdocs.editor.core.annot.CommentStore
+import com.smartdocs.editor.core.annot.StoredOps
 import com.tom_roush.pdfbox.cos.COSArray
 import com.tom_roush.pdfbox.cos.COSDictionary
 import com.tom_roush.pdfbox.cos.COSName
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDPage
+import com.tom_roush.pdfbox.pdmodel.common.PDRectangle
 import com.tom_roush.pdfbox.pdmodel.interactive.annotation.PDAnnotationText
 import com.tom_roush.pdfbox.pdmodel.interactive.digitalsignature.PDSignature
 import com.tom_roush.pdfbox.pdmodel.interactive.digitalsignature.SignatureInterface
@@ -31,9 +34,15 @@ import java.util.Calendar
 class SignedSaveTest {
     @get:Rule val tmp = TemporaryFolder()
 
-    private fun signedPdf(): File {
+    private fun signedPdf(note: Boolean = false): File {
         val plain = tmp.newFile("plain.pdf")
-        PDDocument().use { d -> d.addPage(PDPage()); d.addPage(PDPage()); d.save(plain) }
+        PDDocument().use { d ->
+            d.addPage(PDPage()); d.addPage(PDPage())
+            if (note) d.getPage(0).annotations.add(PDAnnotationText().apply {
+                contents = "signed note"; rectangle = PDRectangle(100f, 100f, 20f, 20f)
+            })
+            d.save(plain)
+        }
         val id = runBlocking { DigitalSignature.generateSelfSigned(tmp.newFile("id.p12"), "Test Signer", "", "", "pw".toCharArray()) }
         val signer = SignatureInterface { content ->
             val gen = CMSSignedDataGenerator()
@@ -96,5 +105,29 @@ class SignedSaveTest {
             try { SignedSave.requireAnnotationsAllowed(d); fail("P=1 forbids annotations") }
             catch (e: SignedDocumentException) { assertEquals(SignedDocumentException.Reason.CERTIFIED_NO_CHANGES, e.reason) }
         }
+    }
+
+    private fun assertStillSigned(signed: File, out: File) {
+        val orig = signed.readBytes(); val now = out.readBytes()
+        assertArrayEquals("the signed revision is a byte-identical prefix", orig, now.copyOf(orig.size))
+        val after = runBlocking { DigitalSignature.verify(out) }
+        assertEquals(1, after.size); assertTrue("signature still verifies", after[0].signatureValid)
+    }
+
+    /** The other annotation writers (comments, moves, reviews) go through [SignedSave.saveEdited] too. */
+    @Test fun movingAStoredAnnotationOnASignedPdfIsWrittenIncrementally() {
+        val signed = signedPdf(note = true)
+        val out = File(tmp.root, "moved.pdf")
+        runBlocking { StoredOps.translate(signed, out, null, 0, listOf(0), 50f, 0f) }
+        assertStillSigned(signed, out)
+        PDDocument.load(out).use { d -> assertEquals("the edited annotation itself is rewritten", 150f, d.getPage(0).annotations[0].rectangle.lowerLeftX, 0.01f) }
+    }
+
+    @Test fun replyOnASignedPdfKeepsTheSignature() {
+        val signed = signedPdf(note = true)
+        val out = File(tmp.root, "reply.pdf")
+        runBlocking { CommentStore.addReply(signed, out, null, 0, 0, "Reviewer", "ok") }
+        assertStillSigned(signed, out)
+        PDDocument.load(out).use { d -> assertEquals(listOf("signed note", "ok"), d.getPage(0).annotations.map { it.contents }) }
     }
 }

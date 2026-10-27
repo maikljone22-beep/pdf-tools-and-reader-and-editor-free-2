@@ -1,6 +1,7 @@
 package com.smartdocs.editor.core.collab
 
 import android.content.Context
+import com.smartdocs.editor.core.pdf.SignedSave
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -172,7 +173,7 @@ object CollabStore {
             ioLock.withLock {
                 PDDocument.load(src, password ?: "").use { doc ->
                     val plan = planFor(c, ref, remote, presentNames(doc))
-                    if (!plan.isEmpty) { applyPlan(doc, remote, plan); saveAtomically(doc, dest) }
+                    if (!plan.isEmpty) { applyPlan(doc, remote, plan); saveAtomically(doc, dest, password) }
                     else if (src.absolutePath != dest.absolutePath) src.copyTo(dest, overwrite = true)
                     plan
                 }
@@ -182,9 +183,11 @@ object CollabStore {
     fun authorName(c: Context): String = prefs(c).getString("author", null).orEmpty()
     fun setAuthorName(c: Context, name: String) = prefs(c).edit().putString("author", name).apply()
 
-    private fun saveAtomically(doc: PDDocument, target: File) {
+    private fun saveAtomically(doc: PDDocument, target: File, password: String?) {
         val tmp = File(target.parentFile, ".${target.name}.collab")
-        doc.save(tmp)
+        // a signed file gets the merged comments as an incremental update, so its signatures stay valid (audit AN-28)
+        if (SignedSave.isSigned(doc)) SignedSave.saveEdited(doc, tmp, password, 0 until doc.numberOfPages)
+        else doc.save(tmp)
         if (!tmp.renameTo(target)) { tmp.copyTo(target, overwrite = true); tmp.delete() }
     }
 }
