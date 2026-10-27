@@ -67,15 +67,20 @@ class FoxitOptimizeTest {
         val w = 131; val h = 47
         val data = sample(w, h, 3)
         val enc = Jbig2.encode(data, w, h)
-        val iis = javax.imageio.ImageIO.createImageInputStream(ByteArrayInputStream(enc))
-        val reader = org.apache.pdfbox.jbig2.JBIG2ImageReader(org.apache.pdfbox.jbig2.JBIG2ImageReaderSpi())
-        reader.input = iis
-        val img = reader.read(0, reader.defaultReadParam)
-        assertEquals(w, img.width); assertEquals(h, img.height)
+        // javax.imageio is not on the Android compile classpath of unit tests, but it is in the test JVM: use reflection
+        val stream = Class.forName("javax.imageio.ImageIO").getMethod("createImageInputStream", Any::class.java).invoke(null, ByteArrayInputStream(enc))
+        val spi = Class.forName("org.apache.pdfbox.jbig2.JBIG2ImageReaderSpi").getConstructor().newInstance()
+        val readerCls = Class.forName("org.apache.pdfbox.jbig2.JBIG2ImageReader")
+        val reader = readerCls.getConstructor(Class.forName("javax.imageio.spi.ImageReaderSpi")).newInstance(spi)
+        readerCls.getMethod("setInput", Any::class.java).invoke(reader, stream)
+        val img = readerCls.getMethod("read", Int::class.javaPrimitiveType).invoke(reader, 0)
+        val ic = img.javaClass
+        assertEquals(w, ic.getMethod("getWidth").invoke(img) as Int); assertEquals(h, ic.getMethod("getHeight").invoke(img) as Int)
+        val getRGB = ic.getMethod("getRGB", Int::class.javaPrimitiveType, Int::class.javaPrimitiveType)
         val rb = (w + 7) / 8
         for (y in 0 until h) for (x in 0 until w) {
             val black = (data[y * rb + (x shr 3)].toInt() shr (7 - (x and 7)) and 1) == 0
-            val shownBlack = (img.getRGB(x, y) and 0xFFFFFF) == 0
+            val shownBlack = ((getRGB.invoke(img, x, y) as Int) and 0xFFFFFF) == 0
             assertEquals("pixel $x,$y", black, shownBlack)
         }
         assertTrue(enc.size < data.size)
