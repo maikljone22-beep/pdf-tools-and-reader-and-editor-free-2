@@ -56,6 +56,23 @@ class JsPolicyGateTest {
         assertTrue(s.commit("x", "1", emptyMap()).ran)
     }
 
+    @Test fun formModelDropsScriptsWhenDisabled() {
+        JsPolicy.enabled = true
+        formDoc().use { doc ->
+            val m = FormModelLoader.load(doc)
+            assertTrue(m.js.hasScripts)
+            assertTrue(m.widgets.first { it.name == "a" }.validate != null)
+        }
+        JsPolicy.enabled = false
+        formDoc().use { doc ->
+            val m = FormModelLoader.load(doc)
+            assertFalse(m.js.hasScripts)
+            assertTrue(m.calc.scripts.isEmpty())
+            assertTrue(m.widgets.first { it.name == "a" }.validate == null)
+            assertTrue(m.values.containsKey("total"))       // the fields themselves stay fillable
+        }
+    }
+
     @Test fun nothingRunsWhenDisabled() {
         JsPolicy.enabled = false
         formDoc().use { doc ->
