@@ -97,7 +97,6 @@
     <string name="npf_n_review">تعليقات جديدة في المراجعات المشتركة</string>
     <string name="npf_n_tasks">اكتمال المهام</string>
     <string name="npf_n_tasks_sub">المعالجة المجمعة والملفات المحفوظة من الطباعة</string>
-    <string name="npf_review_every">فحص المراجعات المشتركة</string>
     <string name="npf_s_search">البحث</string>
     <string name="npf_s_scopes">البحث أيضاً في التعليقات والإشارات والحقول والمرفقات</string>
     <string name="npf_s_scopes_sub">نتائج إضافية تحت نتائج الصفحات</string>

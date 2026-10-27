@@ -54,7 +54,7 @@ object NpfPrefs {
         const val S_SCOPES = "s_scopes"; const val S_ATTACH = "s_attach_content"; const val S_MAX = "s_max"
         const val A11Y_ON = "a11y_on"; const val A11Y_BG = "a11y_bg"; const val A11Y_FG = "a11y_fg"; const val READ_ORDER = "read_order"
         const val FONT_MAP = "font_map"
-        const val OFFLINE = "offline"; const val ACCENT = "accent"; const val REVIEW_MIN = "review_min"
+        const val OFFLINE = "offline"; const val ACCENT = "accent"
     }
 
     // ---- files & saving ----
@@ -136,8 +136,6 @@ object NpfPrefs {
     val notifySync: Boolean get() = b(K.N_SYNC, true)
     val notifyReview: Boolean get() = b(K.N_REVIEW, true)
     val notifyTasks: Boolean get() = b(K.N_TASKS, true)
-    /** Shared-review check interval in minutes. */
-    val reviewMinutes: Int get() = i(K.REVIEW_MIN, 30)
 
     // ---- search ----
     val searchMatchCase: Boolean get() = b(K.S_CASE, false)

@@ -86,6 +86,7 @@ object CollabLive {
     /** Fetches now (e.g. a "refresh" button). */
     suspend fun refresh(c: Context) {
         val r = ref ?: return
+        if (com.smartdocs.editor.core.share5.ReviewLocal.offline(c)) return   // nav-attach: "work offline"
         val list = CollabClient.comments(r.id, r.code)
         offer(c, r, list)
     }

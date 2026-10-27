@@ -97,7 +97,6 @@
     <string name="npf_n_review">New comments in shared reviews</string>
     <string name="npf_n_tasks">Finished tasks</string>
     <string name="npf_n_tasks_sub">Batch processing and files saved from printing</string>
-    <string name="npf_review_every">Check shared reviews</string>
     <string name="npf_s_search">Search</string>
     <string name="npf_s_scopes">Also search comments, bookmarks, fields and attachments</string>
     <string name="npf_s_scopes_sub">Extra results under the page hits</string>

@@ -214,11 +214,6 @@ private fun sections(nav: NavHostController): List<Section> = listOf(
         Sw(R.string.npf_n_sync, NpfPrefs.notifySync, R.string.npf_n_sync_sub) { NpfPrefs.setBool(K.N_SYNC, it) }
         Sw(R.string.npf_n_review, NpfPrefs.notifyReview) { NpfPrefs.setBool(K.N_REVIEW, it) }
         Sw(R.string.npf_n_tasks, NpfPrefs.notifyTasks, R.string.npf_n_tasks_sub) { NpfPrefs.setBool(K.N_TASKS, it) }
-        Label(stringResource(R.string.npf_review_every))
-        Chips(listOf(15, 30, 60, 180).map { it to stringResource(R.string.npf_minutes, it.toString()) }, NpfPrefs.reviewMinutes) {
-            NpfPrefs.setInt(K.REVIEW_MIN, it)
-            if (com.smartdocs.editor.core.collab.CollabConfig.enabled) runCatching { com.smartdocs.editor.core.collab.ReviewCheckWorker.schedule(ctx.applicationContext) }
-        }
         GroupRow(stringResource(R.string.ds_set_notifications_sub), icon = Icons.Default.Notifications, onClick = {
             val i = Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, ctx.packageName).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             runCatching { ctx.startActivity(i) }

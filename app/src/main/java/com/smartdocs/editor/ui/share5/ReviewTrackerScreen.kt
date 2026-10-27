@@ -35,9 +35,18 @@ fun ReviewTrackerScreen(nav: NavHostController) {
     var email by remember { mutableStateOf(EmailReview.records(ctx)) }
     var reload by remember { mutableIntStateOf(0) }
     LaunchedEffect(reload) { items = ReviewTracker.load(ctx); email = EmailReview.records(ctx) }
+    // nav-attach (Foxit §31): search, local folders, per-review menu
+    var query by remember { mutableStateOf("") }
+    var folderMap by remember { mutableStateOf(com.smartdocs.editor.core.share5.ReviewLocal.folders(ctx)) }
+    var folder by remember { mutableStateOf<String?>(null) }
+    var menuFor by remember { mutableStateOf<com.smartdocs.editor.core.collab.ReviewRef?>(null) }
+    fun changed() { folderMap = com.smartdocs.editor.core.share5.ReviewLocal.folders(ctx); items = null; reload++ }
 
     Scaffold(
-        topBar = { AppTopBar(stringResource(R.string.sh5_tracker), onBack = { nav.popBackStack() }) { IconButton(onClick = { items = null; reload++ }) { Icon(Icons.Default.Refresh, stringResource(R.string.sh5_refresh)) } } },
+        topBar = { AppTopBar(stringResource(R.string.sh5_tracker), onBack = { nav.popBackStack() }) {
+            IconButton(onClick = { items = null; reload++ }) { Icon(Icons.Default.Refresh, stringResource(R.string.sh5_refresh)) }
+            TrackerActions(nav, items.orEmpty()) { changed() }
+        } },
         floatingActionButton = { ExtendedFloatingActionButton(onClick = { nav.navigate(if (tab == 2) Share5Routes.emailNew(null) else Share5Routes.reviewNew(null)) },
             icon = { Icon(Icons.Default.Add, null) }, text = { Text(stringResource(R.string.sh5_new)) }) },
     ) { pad ->
@@ -48,12 +57,25 @@ fun ReviewTrackerScreen(nav: NavHostController) {
                 }
             }
             if (items == null && tab != 2) LinearProgressIndicator(Modifier.fillMaxWidth())
+            if (tab != 2) {
+                OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), singleLine = true,
+                    placeholder = { Text(stringResource(R.string.nat_rv_search)) }, leadingIcon = { Icon(Icons.Default.Search, null) },
+                    trailingIcon = { if (query.isNotEmpty()) IconButton(onClick = { query = "" }) { Icon(Icons.Default.Close, stringResource(R.string.close)) } },
+                    shape = RoundedCornerShape(50))
+                TrackerFolderChips(com.smartdocs.editor.core.share5.ReviewLocal.folderNames(folderMap), folder, { folder = it }) { f ->
+                    com.smartdocs.editor.core.share5.ReviewLocal.removeFolder(ctx, f); folder = null; changed()
+                }
+            }
             when (tab) {
                 0, 1 -> {
-                    val list = items.orEmpty().filter { it.ref.isOwner == (tab == 0) }.sortedWith(compareBy<ReviewTracker.Item> { it.ended }.thenByDescending { it.ref.lastSync })
+                    val q = query.trim()
+                    val list = items.orEmpty().filter { it.ref.isOwner == (tab == 0) }
+                        .filter { q.isEmpty() || it.ref.title.contains(q, true) || it.ref.fileName.contains(q, true) || it.meta?.reviewers?.any { r -> r.name.contains(q, true) } == true }
+                        .filter { folder == null || folderMap[it.ref.id].orEmpty() == folder }
+                        .sortedWith(compareBy<ReviewTracker.Item> { it.ended }.thenByDescending { it.ref.lastSync })
                     if (items != null && list.isEmpty()) EmptyState(Icons.Default.RateReview, stringResource(R.string.sh5_tracker_empty))
                     else LazyColumn(contentPadding = PaddingValues(16.dp, 8.dp, 16.dp, 96.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        items(list, key = { it.ref.id }) { it -> TrackerCard(it) { ReviewTracker.markSeen(ctx, it); nav.navigate(Share5Routes.review(it.ref.id)) } }
+                        items(list, key = { it.ref.id }) { it -> TrackerCard(it, folderMap[it.ref.id], onMore = { menuFor = it.ref }) { ReviewTracker.markSeen(ctx, it); com.smartdocs.editor.core.share5.ReviewLocal.markRead(ctx, it.ref.id); nav.navigate(Share5Routes.review(it.ref.id)) } }
                     }
                 }
                 else -> if (email.isEmpty()) EmptyState(Icons.Default.ForwardToInbox, stringResource(R.string.sh5_email_empty))
@@ -76,10 +98,11 @@ fun ReviewTrackerScreen(nav: NavHostController) {
             }
         }
     }
+    menuFor?.let { r -> TrackerItemMenu(r, com.smartdocs.editor.core.share5.ReviewLocal.folderNames(folderMap), onDismiss = { menuFor = null }) { changed() } }
 }
 
 @Composable
-private fun TrackerCard(it: ReviewTracker.Item, onClick: () -> Unit) {
+private fun TrackerCard(it: ReviewTracker.Item, folderName: String? = null, onMore: (() -> Unit)? = null, onClick: () -> Unit) {
     val tiles = Brand.tiles
     Surface(onClick = onClick, shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainerLow, modifier = Modifier.fillMaxWidth()) {
         Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -95,13 +118,14 @@ private fun TrackerCard(it: ReviewTracker.Item, onClick: () -> Unit) {
                     stringResource(R.string.sh5_n_comments, it.comments),
                     (m?.deadline ?: it.ref.deadline).takeIf { d -> d > 0 }?.let { d -> stringResource(R.string.sh5_due, S5Share.date(d)) },
                 )
-                Text(parts.joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text((parts + listOfNotNull(folderName)).joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             when {
                 it.gone -> StatusPill(stringResource(R.string.sh5_gone), MaterialTheme.colorScheme.error)
                 it.ended -> StatusPill(stringResource(R.string.sh5_review_ended), MaterialTheme.colorScheme.outline)
                 it.newComments > 0 -> StatusPill(stringResource(R.string.sh5_new_comments, it.newComments), MaterialTheme.colorScheme.primary)
             }
+            if (onMore != null) IconButton(onClick = onMore) { Icon(Icons.Default.MoreVert, stringResource(R.string.nat_actions)) }
         }
     }
 }

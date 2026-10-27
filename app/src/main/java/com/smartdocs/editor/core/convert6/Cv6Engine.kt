@@ -49,6 +49,8 @@ data class Cv6Opts(
     val url: String = "",
     val text: String = "",
     val pdfaStrict: Boolean = false,
+    /** To-PDF: embed the original file(s) in the result (applied by the convert hub after [Cv6Engine.run]; nav-attach). */
+    val attachSource: Boolean = false,
 )
 
 enum class Stage { WORK, OCR }
