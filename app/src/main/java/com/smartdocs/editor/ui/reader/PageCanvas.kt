@@ -328,7 +328,7 @@ private fun Modifier.pageDrag(
     }
 }
 
-private val dragTools = setOf(ReaderTool.INK, ReaderTool.ERASER, ReaderTool.LINE, ReaderTool.ARROW, ReaderTool.RECT, ReaderTool.OVAL,
+private val dragTools = setOf(ReaderTool.INK, ReaderTool.ERASER, ReaderTool.LINE, ReaderTool.ARROW, ReaderTool.RECT, ReaderTool.OVAL, ReaderTool.FS_RRECT,
     ReaderTool.HIGHLIGHT, ReaderTool.UNDERLINE, ReaderTool.STRIKEOUT, ReaderTool.SQUIGGLY, ReaderTool.LINK, ReaderTool.MEASURE)
 
 private fun quantise(r: Rect): Rect {
@@ -394,7 +394,7 @@ private fun handleTap(
             links.firstOrNull { l -> val r = PageGeometry.normPdf(l.bounds); x >= r.left && x <= r.right && y <= r.top && y >= r.bottom }?.let { onOpenLink(it); return }
             onTap(p, layout)
         }
-        ReaderTool.NOTE, ReaderTool.FREETEXT, ReaderTool.TEXTBOX, ReaderTool.FS_TEXT -> onPrompt(TextPrompt(t, page, x, y))
+        ReaderTool.NOTE, ReaderTool.FREETEXT, ReaderTool.TEXTBOX, ReaderTool.FS_TEXT, ReaderTool.FS_COMB -> onPrompt(TextPrompt(t, page, x, y))
         ReaderTool.FS_PROFILE, ReaderTool.FS_DATE -> {
             val text = state.pendingText.ifBlank { return }
             state.addAnnot(state.newAnnot(AnnotKind.FREETEXT, page, rects = listOf(textRectAt(x, y, text, state.fontSize, g.pageW, text.any { it in '؀'..'ۿ' })), text = text))
@@ -406,7 +406,9 @@ private fun handleTap(
         }
         ReaderTool.SIGNATURE, ReaderTool.STAMP, ReaderTool.IMAGE -> {
             val img = state.pendingImage ?: return
-            val w = (g.pageW * 0.35f).coerceAtLeast(40f); val h = w * img.height / img.width.coerceAtLeast(1)
+            // nitro-fillsign2: a signature's remembered default size ("Set current size as default" / "Keep original size")
+            val pref = if (t == ReaderTool.SIGNATURE && state.pendingText.isNotBlank()) com.smartdocs.editor.core.data.SignatureMetaStore.get(state.context, state.pendingText).widthPt else 0f
+            val w = if (pref > 0f) pref.coerceIn(8f, g.pageW * 0.95f) else (g.pageW * 0.35f).coerceAtLeast(40f); val h = w * img.height / img.width.coerceAtLeast(1)
             state.placement = Placement(page, RectF(x - w / 2, y + h / 2, x + w / 2, y - h / 2), img)
         }
         ReaderTool.LINK -> onPrompt(TextPrompt(t, page, x, y))
@@ -418,7 +420,7 @@ private fun handleTap(
             inkHits(state.annots, page, x, y, 10f / g.scale.coerceAtLeast(0.1f)).forEach { state.removeAnnot(it) }
             state.eraseStoredInk(page, listOf(x to y), 10f / g.scale.coerceAtLeast(0.1f))   // audit AN-13: saved ink too
         }
-        ReaderTool.INK, ReaderTool.LINE, ReaderTool.ARROW, ReaderTool.RECT, ReaderTool.OVAL -> {
+        ReaderTool.INK, ReaderTool.LINE, ReaderTool.ARROW, ReaderTool.RECT, ReaderTool.OVAL, ReaderTool.FS_RRECT -> {
             // a tap with the pen makes a dot
             if (t == ReaderTool.INK) state.addAnnot(state.newAnnot(AnnotKind.INK, page, paths = listOf(listOf(x to y, x + 0.1f to y))))
         }
@@ -474,6 +476,10 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawDraft(draft: Ge
         ReaderTool.LINE -> drawLine(c, draft.start, draft.current, sw, cap = StrokeCap.Round)
         ReaderTool.ARROW -> { drawLine(c, draft.start, draft.current, sw, cap = StrokeCap.Round); drawArrowHead(draft.start, draft.current, c, sw) }
         ReaderTool.RECT -> drawRect(c, draft.rect.topLeft, draft.rect.size, style = Stroke(sw))
+        ReaderTool.FS_RRECT -> {
+            val r = com.smartdocs.editor.core.fillsign2.RoundRect.defaultRadius(draft.rect.width / g.scale.coerceAtLeast(0.01f), draft.rect.height / g.scale.coerceAtLeast(0.01f)) * g.scale
+            drawRoundRect(c, draft.rect.topLeft, draft.rect.size, androidx.compose.ui.geometry.CornerRadius(r), style = Stroke(sw))
+        }
         ReaderTool.OVAL -> drawOval(c, draft.rect.topLeft, draft.rect.size, style = Stroke(sw))
         ReaderTool.HIGHLIGHT, ReaderTool.UNDERLINE, ReaderTool.STRIKEOUT, ReaderTool.SQUIGGLY, ReaderTool.LINK ->
             drawRect(c.copy(alpha = 0.25f), draft.rect.topLeft, draft.rect.size)

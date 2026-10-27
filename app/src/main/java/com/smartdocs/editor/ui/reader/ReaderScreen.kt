@@ -388,7 +388,7 @@ private fun ToolHint(tool: ReaderTool, modifier: Modifier = Modifier) {
     val text = stringResource(
         when (tool) {
             ReaderTool.HIGHLIGHT, ReaderTool.UNDERLINE, ReaderTool.STRIKEOUT, ReaderTool.SQUIGGLY -> R.string.rd_hint_markup
-            ReaderTool.INK, ReaderTool.LINE, ReaderTool.ARROW, ReaderTool.RECT, ReaderTool.OVAL -> R.string.rd_hint_draw
+            ReaderTool.INK, ReaderTool.LINE, ReaderTool.ARROW, ReaderTool.RECT, ReaderTool.OVAL, ReaderTool.FS_RRECT -> R.string.rd_hint_draw
             ReaderTool.ERASER -> R.string.rd_hint_eraser
             ReaderTool.MEASURE -> R.string.rd_hint_measure
             ReaderTool.LINK -> R.string.rd_hint_link

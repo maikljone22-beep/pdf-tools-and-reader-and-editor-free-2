@@ -70,6 +70,8 @@ object ToolCatalog {
         ToolEntry(ReaderTool.FS_CROSS, Icons.Default.Close, R.string.fill_sign_cross, R.string.an_group_fill),
         ToolEntry(ReaderTool.FS_DOT, Icons.Default.FiberManualRecord, R.string.fill_sign_dot, R.string.an_group_fill),
         ToolEntry(ReaderTool.FS_LINE, Icons.Default.HorizontalRule, R.string.fill_sign_line, R.string.an_group_fill),
+        ToolEntry(ReaderTool.FS_RRECT, Icons.Default.CropDin, R.string.nf2_rounded_rect, R.string.an_group_fill),
+        ToolEntry(ReaderTool.FS_COMB, Icons.Default.Pin, R.string.nf2_comb, R.string.an_group_fill),
     )
 
     fun of(t: ReaderTool): ToolEntry? = all.firstOrNull { it.tool == t }

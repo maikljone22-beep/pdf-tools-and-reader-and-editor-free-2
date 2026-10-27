@@ -1,8 +1,53 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- nitro-fillsign2: Fill & Sign / QuickSign gaps (English) -->
 <resources>
+    <string name="nf2_rounded_rect">Rounded rectangle</string>
+    <string name="nf2_comb">Comb text</string>
+    <string name="nf2_comb_cells">Cells</string>
+    <string name="nf2_comb_cell_width">Cell width (pt)</string>
+    <string name="nf2_comb_hint">One character per cell, for boxed paper forms. Leave the cell count empty for one cell per character.</string>
+    <string name="nf2_apply_all">Apply all signatures</string>
+    <string name="nf2_apply_all_msg">All placed signatures and initials become part of the page content and can no longer be moved or deleted. Not possible on a digitally signed file.</string>
+    <string name="nf2_apply">Apply</string>
+    <string name="nf2_flatten_on_save">Flatten signatures when saving</string>
+    <string name="nf2_none_to_apply">There are no placed signatures to apply</string>
+    <string name="nf2_paging_seal">Paging seal</string>
+    <string name="nf2_seal_msg">The seal image is split across the right edge of the pages and comes together when the pages are fanned out. No digital signature needed.</string>
+    <string name="nf2_seal_image">Image…</string>
+    <string name="nf2_seal_size">Size</string>
+    <string name="nf2_seal_position">Vertical position</string>
+    <string name="nf2_seal_add">Add paging seal</string>
+    <string name="nf2_seal_remove">Remove paging seals</string>
+    <string name="nf2_seal_none">No paging seal added by this app was found</string>
+    <string name="nf2_seal_no_image">The seal image could not be read</string>
+    <string name="nf2_bad_range">Invalid page range</string>
+    <string name="nf2_cut">Cut</string>
+    <string name="nf2_copy_clip">Copy to clipboard</string>
+    <string name="nf2_copied">Copied. Paste it from the Sign tab</string>
+    <string name="nf2_paste">Paste</string>
+    <string name="nf2_set_default_size">Set current size as default</string>
+    <string name="nf2_size_saved">This size will be used the next time you place this signature</string>
+    <string name="nf2_multi_pages">Place on multiple pages</string>
+    <string name="nf2_multi_pages_msg">A copy is placed at the same position on each chosen page.</string>
+    <string name="nf2_pages_all">All pages</string>
+    <string name="nf2_pages_odd">Odd pages</string>
+    <string name="nf2_pages_even">Even pages</string>
+    <string name="nf2_pages_custom">Custom range</string>
+    <string name="nf2_pages_range">Pages (1–%1$d)</string>
     <plurals name="nf2_locked_not_included">
         <item quantity="one">%d locked signature not included (unlock it once on this device to include it)</item>
         <item quantity="other">%d locked signatures not included (unlock each once on this device to include it)</item>
+    </plurals>
+    <plurals name="nf2_placed_on_pages">
+        <item quantity="one">Placed on %d page</item>
+        <item quantity="other">Placed on %d pages</item>
+    </plurals>
+    <plurals name="nf2_applied">
+        <item quantity="one">%d signature applied</item>
+        <item quantity="other">%d signatures applied</item>
+    </plurals>
+    <plurals name="nf2_seal_removed">
+        <item quantity="one">Paging seal removed from %d page</item>
+        <item quantity="other">Paging seal removed from %d pages</item>
     </plurals>
 </resources>
