@@ -333,7 +333,12 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
             // MODULE_history: the change is a step of the unified history. The chat gets a token path next to the
             // snapshot (it deletes its "backups" when closed; the token never exists, the snapshot stays the history's)
             apply = { e -> state.applyInPlace(if (e.changesPassword) e.newPassword else state.password, label = { ctx.getString(R.string.hi_ai_edit) }, op = e.op)?.let { File(it.path + AI_TOKEN) } },
-            restore = { token, _ -> state.history.undoThrough(File(token.path.removeSuffix(AI_TOKEN))) ?: error(ctx.getString(R.string.hi_gone)) },
+            restore = { token, _ ->
+                val b = File(token.path.removeSuffix(AI_TOKEN))
+                // audit AN-08: never undo the user's later changes along with the AI edit
+                if (state.fileUndoBlocked) error(ctx.getString(R.string.fx_undo_save_first))
+                state.history.undoThrough(b) ?: error(state.history.newerStepsThan(b).let { n -> if (n > 0) ctx.getString(R.string.fx_undo_newer, n) else ctx.getString(R.string.hi_gone) })
+            },
             goToPage = { state.jumpTo(it) },
             pageText = { state.pageText(it) },
             search = { q -> state.searchOpen = true; state.runSearch(q) },

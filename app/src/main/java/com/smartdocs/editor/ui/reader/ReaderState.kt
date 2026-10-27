@@ -327,26 +327,39 @@ class ReaderState(
     }
 
     /** Unified undo of the newest step (annotation, form value or file change). */
-    fun undo() { scope.launch { runHistory(true) { history.undo() } } }
+    fun undo() { scope.launch { runHistory(true, listOfNotNull(history.peekUndo())) { history.undo() } } }
 
     /** Unified redo. */
-    fun redo() { scope.launch { runHistory(false) { history.redo() } } }
+    fun redo() { scope.launch { runHistory(false, listOfNotNull(history.peekRedo())) { history.redo() } } }
 
     /** History sheet: undo back to before step [id]. */
-    fun undoTo(id: Long) { scope.launch { runHistory(true) { history.undoTo(id) } } }
+    fun undoTo(id: Long) { scope.launch { runHistory(true, history.undoStepsTo(id)) { history.undoTo(id) } } }
 
     /** History sheet: redo up to step [id]. */
-    fun redoTo(id: Long) { scope.launch { runHistory(false) { history.redoTo(id) } } }
+    fun redoTo(id: Long) { scope.launch { runHistory(false, history.redoStepsTo(id)) { history.redoTo(id) } } }
 
-    /** Undo through the file step that saved [before] (done bars that kept the returned copy). False: no longer in the history. */
+    /**
+     * Audit AN-04: while stored annotations are taken out of the file for editing (not saved yet), restoring another
+     * file version would bring the original annotation back next to its pending copy (a duplicate after save), and
+     * the save's "before" snapshot would no longer match. File steps wait until the next save.
+     */
+    val fileUndoBlocked: Boolean get() = edit.hasBackup
+
+    /**
+     * Undo through the file step that saved [before] (done bars that kept the returned copy). False: no longer in the
+     * history, or newer changes were made since (audit AN-08: they are not undone silently; see [DocHistory.newerStepsThan]).
+     */
     fun undoThrough(before: File): Boolean {
-        if (!history.canUndoThrough(before)) return false
-        scope.launch { runHistory(true) { history.undoThrough(before) } }
+        if (!history.canUndoThrough(before) || history.newerStepsThan(before) > 0 || fileUndoBlocked) return false
+        scope.launch { runHistory(true, emptyList()) { history.undoThrough(before) } }
         return true
     }
 
-    private suspend fun runHistory(undo: Boolean, block: suspend () -> HistoryStep?) {
+    private suspend fun runHistory(undo: Boolean, steps: List<HistoryStep>, block: suspend () -> HistoryStep?) {
         if (saving) return
+        if (com.smartdocs.editor.core.history.HistoryGuards.blocksFileSteps(steps, fileUndoBlocked)) {
+            historyEvent = HistoryEvent(undo, "", str(R.string.fx_undo_save_first)); return
+        }
         try {
             val st = block() ?: return
             historyEvent = HistoryEvent(undo, st.label)
@@ -423,6 +436,9 @@ class ReaderState(
                 } catch (e: Exception) { error = e.message ?: e.toString(); return false } finally { saving = false }
             } finally {
                 if (wrote && before != null) recordSaved(before, prevPw) else before?.let { runCatching { it.delete() } }
+                // audit AN-05: written without a snapshot (copy failed, e.g. storage full) -> the memory steps describe
+                // annotations / values that are now in the file; replaying them would duplicate them
+                if (wrote && before == null) { history.removeOwner(OWNER_ANNOTS); history.removeOwner(com.smartdocs.editor.ui.forms5.OWNER_FORMS) }
             }
         }
     }

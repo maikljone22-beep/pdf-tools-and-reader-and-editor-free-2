@@ -17,4 +17,6 @@
     <string name="fx_delete_permanently">Delete permanently</string>
     <string name="fx_redact_skipped">%1$d file(s) NOT redacted (protected or unreadable):</string>
     <string name="fx_annots_not_saved">%1$d annotation(s) could not be saved — they are still pending, nothing was lost</string>
+    <string name="fx_undo_newer">Not undone: %1$d later change(s) would be undone too. Use the edit history to go back that far.</string>
+    <string name="fx_undo_save_first">Save the annotations you are editing first, then undo file changes.</string>
 </resources>

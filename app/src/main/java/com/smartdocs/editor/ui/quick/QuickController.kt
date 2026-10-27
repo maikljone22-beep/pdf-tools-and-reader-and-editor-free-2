@@ -110,12 +110,19 @@ class QuickController(val state: ReaderState, private val scope: CoroutineScope,
 
     fun cancel() { engine?.cancel(); job?.cancel() }
 
+    /** Why "undo through [b]" did nothing: the step is gone, or newer changes would be undone too (audit AN-08). */
+    private fun undoRefusal(b: java.io.File): String {
+        val n = state.history.newerStepsThan(b)
+        if (n == 0 && state.fileUndoBlocked) return ctx.getString(R.string.fx_undo_save_first)
+        return if (n > 0) ctx.getString(R.string.fx_undo_newer, n) else ctx.getString(R.string.hi_gone)
+    }
+
     /** Put the previous version back: the unified undo back through this step (the reader shows «تم التراجع»). */
     fun undo() {
         val d = done ?: return
         val b = d.backup ?: return
         done = null
-        if (!state.undoThrough(b)) message = ctx.getString(R.string.hi_gone)
+        if (!state.undoThrough(b)) message = undoRefusal(b)
     }
 
     /** Keep the result as a new file next to the documents and restore the open document to its previous version. */
@@ -129,7 +136,7 @@ class QuickController(val state: ReaderState, private val scope: CoroutineScope,
                 val copy = docs.uniqueFile(docs.docsDir, f.nameWithoutExtension + "_" + d.suffix)
                 withContext(Dispatchers.IO) { f.copyTo(copy, overwrite = true) }
                 // the open document goes back through the unified history (the change stays available as redo)
-                if (state.history.undoThrough(b) == null) message = ctx.getString(R.string.hi_gone)
+                if (state.fileUndoBlocked || state.history.undoThrough(b) == null) message = undoRefusal(b)
                 runCatching { docs.touchRecent(copy) }
                 done = QuickDone(ctx.getString(R.string.qk_saved_copy, copy.name), newFile = copy)
             } catch (e: Throwable) {
