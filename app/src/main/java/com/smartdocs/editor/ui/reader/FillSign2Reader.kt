@@ -54,6 +54,10 @@ object StampClipboard {
         private set
 
     fun put(a: Annot, size: Pair<Float, Float>?) { annot = a; pageSize = size }
+
+    /** Long-press on the page with something on the clipboard: a "Paste here" bar at that PDF point. */
+    data class Offer(val owner: ReaderState, val page: Int, val x: Float, val y: Float)
+    var offer by mutableStateOf<Offer?>(null)
 }
 
 private fun Annot.box(): MultiPage.Box { val r = PageGeometry.normPdf(rects.first()); return MultiPage.Box(r.left, r.bottom, r.right, r.top) }
@@ -70,6 +74,18 @@ fun ReaderState.pasteStamp() {
     scope.launch {
         val (w, h) = pageSize(page)
         val b = MultiPage.pasteBox(src.box(), w, h)
+        val c = src.copy(id = System.nanoTime(), page = page, rects = listOf(b.rect()), created = System.currentTimeMillis(), nm = null, groupId = null)
+        addAnnot(c); edit.selectPending(c)
+    }
+}
+
+/** Long-press "Paste here": the clipboard stamp centred on PDF point ([x], [y]) of [page]. */
+fun ReaderState.pasteStampAt(page: Int, x: Float, y: Float) {
+    val src = StampClipboard.annot ?: return
+    StampClipboard.offer = null
+    scope.launch {
+        val (w, h) = pageSize(page)
+        val b = MultiPage.boxAt(src.box(), x, y, w, h)
         val c = src.copy(id = System.nanoTime(), page = page, rects = listOf(b.rect()), created = System.currentTimeMillis(), nm = null, groupId = null)
         addAnnot(c); edit.selectPending(c)
     }
@@ -158,10 +174,13 @@ fun StampActionButtons(state: ReaderState, annot: Annot?, enabled: Boolean) {
     val ctx = state.context
     var multi by remember { mutableStateOf(false) }
     val copied = stringResource(R.string.nf2_copied)
+    // a signature read back from the file knows only its reference: find the saved signature it came from
+    val sigs by com.smartdocs.editor.LocalApp.current.db.signatures().all().collectAsState(initial = emptyList())
+    val sigPath = annot.sigPath ?: com.smartdocs.editor.core.fillsign2.StampRead.resolve(annot.sigRef, sigs.map { it.path })
     val sizeSaved = stringResource(R.string.nf2_size_saved)
     IconButton(onClick = { state.cutStamp(annot) }, enabled = enabled) { Icon(Icons.Default.ContentCut, stringResource(R.string.nf2_cut)) }
     IconButton(onClick = { state.copyStamp(annot); Toast.makeText(ctx, copied, Toast.LENGTH_SHORT).show() }, enabled = enabled) { Icon(Icons.Default.CopyAll, stringResource(R.string.nf2_copy_clip)) }
-    annot.sigPath?.let { path ->
+    sigPath?.let { path ->
         IconButton(onClick = {
             val r = PageGeometry.normPdf(annot.rects.first())
             SignatureMetaStore.setWidth(ctx, path, r.right - r.left)
@@ -203,13 +222,36 @@ fun MultiPageDialog(pageCount: Int, onDismiss: () -> Unit, onApply: (MultiPage.P
     )
 }
 
+/** Paste chip for the Fill & Sign tab (and any toolbar): shown while a stamp is on the clipboard. */
+@Composable
+fun PasteStampChip(state: ReaderState) {
+    if (StampClipboard.annot != null) ToolChip(Icons.Default.ContentPaste, stringResource(R.string.nf2_paste)) { state.pasteStamp() }
+}
+
+/** The "Paste here" bar of a long-press on [page] (layout space of the page box). */
+@Composable
+fun PasteHereBar(state: ReaderState, page: Int, g: PageGeometry) {
+    val o = StampClipboard.offer?.takeIf { it.owner === state && it.page == page } ?: return
+    if (StampClipboard.annot == null) return
+    val at = g.pdfRectToLayout(RectF(o.x, o.y, o.x, o.y))
+    Surface(
+        Modifier.offset { androidx.compose.ui.unit.IntOffset((at.left - 60f).roundToInt().coerceAtLeast(0), (at.top - 140f).roundToInt().coerceAtLeast(0)) },
+        shape = RoundedCornerShape(14.dp), tonalElevation = 3.dp, shadowElevation = 6.dp,
+    ) {
+        Row(Modifier.padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
+            TextButton(onClick = { state.pasteStampAt(o.page, o.x, o.y) }) { Icon(Icons.Default.ContentPaste, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.nf2_paste_here)) }
+            IconButton(onClick = { StampClipboard.offer = null }) { Icon(Icons.Default.Close, stringResource(R.string.cancel)) }
+        }
+    }
+}
+
 /** Chips added to the Sign tab: paste, Apply All Signatures, paging seal. */
 @Composable
 fun FillSign2SignChips(state: ReaderState, sigs: List<SavedSignature>) {
     val ctx = state.context
     var apply by remember { mutableStateOf(false) }
     var seal by remember { mutableStateOf(false) }
-    if (StampClipboard.annot != null) ToolChip(Icons.Default.ContentPaste, stringResource(R.string.nf2_paste)) { state.pasteStamp() }
+    PasteStampChip(state)
     ToolChip(Icons.Default.Layers, stringResource(R.string.nf2_apply_all), enabled = !state.saving) { apply = true }
     ToolChip(Icons.Default.ViewWeek, stringResource(R.string.nf2_paging_seal), enabled = !state.saving) { seal = true }
     if (apply) ApplyAllDialog(onDismiss = { apply = false }) {

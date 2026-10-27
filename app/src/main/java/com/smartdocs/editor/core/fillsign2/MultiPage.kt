@@ -43,6 +43,15 @@ object MultiPage {
         return Box(l, bt, l + w, bt + h)
     }
 
+    /** Paste at a point (long-press "Paste here"): the box centred on ([x], [y]), kept on the page and shrunk only when bigger. */
+    fun boxAt(b: Box, x: Float, y: Float, pageW: Float, pageH: Float): Box {
+        val s = minOf(1f, pageW / b.width.coerceAtLeast(0.01f), pageH / b.height.coerceAtLeast(0.01f))
+        val w = b.width * s; val h = b.height * s
+        val l = (x - w / 2f).coerceIn(0f, (pageW - w).coerceAtLeast(0f))
+        val bt = (y - h / 2f).coerceIn(0f, (pageH - h).coerceAtLeast(0f))
+        return Box(l, bt, l + w, bt + h)
+    }
+
     /** Paste: the same spot when the box fits on the ([pageW], [pageH]) page, otherwise centred on it. */
     fun pasteBox(b: Box, pageW: Float, pageH: Float): Box {
         if (b.left >= 0f && b.bottom >= 0f && b.right <= pageW && b.top <= pageH) return b

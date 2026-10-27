@@ -155,6 +155,8 @@ fun PageCanvas(
                         val s = g.layoutToScreen(p); val (x, y) = g.screenToPdf(s.x, s.y)
                         // an annotation under the finger wins over text selection
                         if (state.placement == null && state.edit.selectAt(page, x, y, 8f / g.scale.coerceAtLeast(0.1f))) return@detectTapGestures
+                        // nitro-fillsign2: a stamp on the clipboard can be pasted where the finger is
+                        if (state.placement == null && StampClipboard.annot != null) StampClipboard.offer = StampClipboard.Offer(state, page, x, y)
                         state.scope.launch {
                             val boxes = state.charBoxes(page); val text = state.pageText(page)
                             val i = TextSelectionLogic.charAt(boxes, x, y) ?: return@launch
@@ -301,6 +303,7 @@ fun PageCanvas(
         AnnotActionBar(state, editAnnot, g.pdfRectToLayout(PageGeometry.normPdf(g.screenRectToPdf(frameRect(editBounds, g)))))
     }
     com.smartdocs.editor.ui.reader.annot.MultiActionBar(state, page, g)
+    PasteHereBar(state, page, g)      // nitro-fillsign2: long-press "Paste here"
     }
 }
 
@@ -370,6 +373,7 @@ private fun handleTap(
     onTap: (Offset, Size) -> Unit, onOpenLink: (PageLink) -> Unit, onPrompt: (TextPrompt) -> Unit,
 ) {
     val s = g.layoutToScreen(p); val (x, y) = g.screenToPdf(s.x, s.y)
+    StampClipboard.offer = null
     val pl = state.placement
     if (pl != null && pl.page == page) {
         if (hitPlacement(pl, g, s) == PlacementHandle.NONE) state.confirmPlacement()

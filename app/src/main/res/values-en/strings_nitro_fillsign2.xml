@@ -47,6 +47,7 @@
     <string name="nf2_recolor">Ink colour</string>
     <string name="nf2_replace_image">Replace image</string>
     <string name="nf2_edit_failed">The signature could not be saved</string>
+    <string name="nf2_paste_here">Paste here</string>
     <plurals name="nf2_locked_not_included">
         <item quantity="one">%d locked signature not included (unlock it once on this device to include it)</item>
         <item quantity="other">%d locked signatures not included (unlock each once on this device to include it)</item>

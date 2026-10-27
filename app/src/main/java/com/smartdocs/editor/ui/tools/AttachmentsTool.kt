@@ -65,7 +65,8 @@ fun AttachmentsTool(nav: NavHostController, uri: String?) {
             ListItem(
                 modifier = Modifier.clickable {
                     val f = file.value ?: return@clickable
-                    scope.launch { extracted = runCatching { AttachmentOps.extract(f, a, File(app.documents.docsDir, "Attachments")) }.getOrNull() }
+                    // nitro-protect2: attachment security before the file is saved out and offered to other apps
+                    scope.launch { if (com.smartdocs.editor.ui.security.DocSecurityGate.confirmAttachment(ctx, a.name)) extracted = runCatching { AttachmentOps.extract(f, a, File(app.documents.docsDir, "Attachments")) }.getOrNull() }
                 },
                 leadingContent = { Icon(Icons.Default.InsertDriveFile, null) },
                 headlineContent = { Text(a.name) },

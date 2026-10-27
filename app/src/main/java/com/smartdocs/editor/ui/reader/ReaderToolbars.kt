@@ -200,6 +200,7 @@ private fun FillSignToolbar(state: ReaderState) {
         // nitro-fillsign2: rounded rectangle (drag) and comb text for boxed forms (tap)
         ToolChip(Icons.Default.CropDin, stringResource(R.string.nf2_rounded_rect), selected = state.tool == ReaderTool.FS_RRECT) { state.selectTool(ReaderTool.FS_RRECT) }
         ToolChip(Icons.Default.Pin, stringResource(R.string.nf2_comb), selected = state.tool == ReaderTool.FS_COMB) { state.selectTool(ReaderTool.FS_COMB) }
+        PasteStampChip(state)      // nitro-fillsign2: a copied signature / stamp
         ToolChip(Icons.Default.Today, stringResource(R.string.fill_sign_date), selected = state.tool == ReaderTool.FS_DATE) {
             state.selectTool(ReaderTool.FS_DATE)
             if (state.tool == ReaderTool.FS_DATE) state.pendingText = java.text.SimpleDateFormat("yyyy/MM/dd", java.util.Locale.US).format(java.util.Date())
