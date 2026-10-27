@@ -190,6 +190,10 @@
     <string name="npf_conn_none">هذا المستند غير متصل.</string>
     <string name="npf_conn_yes">هذا مستند متصل.</string>
     <string name="npf_conn_open">المستندات المتصلة</string>
+    <string name="npf_tabs_close_others">إغلاق التبويبات الأخرى</string>
+    <string name="npf_tabs_close_all">إغلاق كل التبويبات</string>
+    <string name="npf_tab_limit">عدد التبويبات المفتوحة</string>
+    <string name="npf_present_bg">خلفية العرض بملء الشاشة</string>
     <!-- set to the real forum / testing pages; empty = the app's Play Store page / Play testing page -->
     <string name="npf_url_community" translatable="false"></string>
     <string name="npf_url_labs" translatable="false"></string>

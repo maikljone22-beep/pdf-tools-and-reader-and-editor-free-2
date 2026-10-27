@@ -156,6 +156,10 @@ private fun sections(nav: NavHostController): List<Section> = listOf(
             .map { it.first to stringResource(it.second) }, NpfPrefs.panelOnOpen) { NpfPrefs.setString(K.PANEL, it) }
         Slide(stringResource(R.string.npf_panel_width, NpfPrefs.panelWidthDp), NpfPrefs.panelWidthDp.toFloat(), 260f..520f) { NpfPrefs.setInt(K.PANEL_W, it.toInt()) }
         Sw(R.string.npf_doc_title, NpfPrefs.showDocTitle) { NpfPrefs.setBool(K.DOC_TITLE, it) }
+        Label(stringResource(R.string.npf_tab_limit))
+        Chips((2..10).map { it to it.toString() }, NpfPrefs.tabLimit) { NpfPrefs.setInt(K.TAB_LIMIT, it) }
+        Label(stringResource(R.string.npf_present_bg))
+        Column(Modifier.padding(horizontal = 16.dp)) { NpfColorRow(NpfPrefs.presentBackground, listOf(0x000000, 0x212121, 0x263238, 0x0D1B2A, 0xFFFFFF)) { NpfPrefs.setInt(K.PRESENT_BG, it) } }
         Sw(R.string.npf_hf_rotation, NpfPrefs.hfIgnoreRotation, R.string.npf_hf_rotation_sub) { NpfPrefs.setBool(K.HF_IGNORE_ROT, it) }
         Hint(stringResource(R.string.npf_thin_lines_na))
     },

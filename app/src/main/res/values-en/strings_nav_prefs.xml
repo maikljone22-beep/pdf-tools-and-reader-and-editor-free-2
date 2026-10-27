@@ -190,4 +190,8 @@
     <string name="npf_conn_none">This document is not connected.</string>
     <string name="npf_conn_yes">This is a connected document.</string>
     <string name="npf_conn_open">Connected documents</string>
+    <string name="npf_tabs_close_others">Close other tabs</string>
+    <string name="npf_tabs_close_all">Close all tabs</string>
+    <string name="npf_tab_limit">Open document tabs</string>
+    <string name="npf_present_bg">Full-screen presentation background</string>
 </resources>
