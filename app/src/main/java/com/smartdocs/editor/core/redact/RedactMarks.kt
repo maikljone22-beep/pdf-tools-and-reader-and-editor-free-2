@@ -55,9 +55,14 @@ data class RedactStyle(
     }
 }
 
+/** One review state change of a mark (Foxit "Review History"): Accepted, Rejected, Cancelled, Completed or None. */
+data class RedactReview(val state: String, val author: String, val time: Long)
+
 /**
  * A redaction mark in PDF user space (unrotated, top > bottom like [com.smartdocs.editor.core.pdf.SearchHit]).
  * [wholePage] wipes the page when applied. [label] is what was found (shown in the review list).
+ * Foxit properties: [author] and [subject] (General tab), [locked] (cannot be moved, resized or removed) and the
+ * [reviews] history (written as review-state replies, like other viewers do).
  */
 data class RedactMark(
     val id: String,
@@ -66,7 +71,14 @@ data class RedactMark(
     val style: RedactStyle = RedactStyle(),
     val label: String = "",
     val wholePage: Boolean = false,
+    val author: String = "",
+    val subject: String = "",
+    val locked: Boolean = false,
+    val reviews: List<RedactReview> = emptyList(),
 ) {
+    /** The latest review state ("" when never reviewed). */
+    val status: String get() = reviews.lastOrNull()?.state.orEmpty()
+
     fun boxes(): List<Box> = rects.map { Box.of(it.left, it.bottom, it.right, it.top) }
     fun bounds(): Box? = boxes().reduceOrNull { a, b -> a.union(b) }
 }
@@ -84,6 +96,11 @@ object RedactMarks {
     private val K_DA = COSName.getPDFName("DA")
     private val K_NM = COSName.getPDFName("NM")
     private val K_FONT = COSName.getPDFName("SDFont")
+    private val K_SUBJ = COSName.getPDFName("Subj")
+    private val K_IRT = COSName.getPDFName("IRT")
+    private val K_STATE = COSName.getPDFName("State")
+    private val K_STATE_MODEL = COSName.getPDFName("StateModel")
+    private const val F_LOCKED = 128
     private val K_CASE = COSName.getPDFName("SDCase")
 
     fun isRedact(a: PDAnnotation) = a.subtype == REDACT
@@ -96,11 +113,25 @@ object RedactMarks {
         return (f(0) shl 16) or (f(1) shl 8) or f(2)
     }
 
+    /** Review-state replies (IRT → the mark's annotation dictionary) of a page, oldest first. */
+    private fun reviewsOf(page: PDPage): Map<com.tom_roush.pdfbox.cos.COSDictionary, List<RedactReview>> {
+        val out = HashMap<com.tom_roush.pdfbox.cos.COSDictionary, MutableList<RedactReview>>()
+        runCatching { page.annotations }.getOrNull()?.forEach { a ->
+            val d = a.cosObject
+            if (a.subtype != "Text" || d.getString(K_STATE_MODEL) != "Review") return@forEach
+            val target = d.getDictionaryObject(K_IRT) as? com.tom_roush.pdfbox.cos.COSDictionary ?: return@forEach
+            val time = runCatching { (a as? PDAnnotationMarkup)?.creationDate?.timeInMillis ?: PDAnnotationMarkup(d).creationDate?.timeInMillis }.getOrNull() ?: 0L
+            out.getOrPut(target) { ArrayList() } += RedactReview(d.getString(K_STATE) ?: "None", d.getString(COSName.T) ?: "", time)
+        }
+        return out.mapValues { (_, v) -> v.sortedBy { it.time } }
+    }
+
     /** Every /Redact annotation of the document as marks (page order). */
     fun read(doc: PDDocument): List<RedactMark> {
         val out = ArrayList<RedactMark>()
         val seen = HashSet<String>()   // /NM can repeat (copied annotations): ids are LazyColumn keys and must be unique
         doc.pages.forEachIndexed { pi, page ->
+            val reviews = reviewsOf(page)
             runCatching { page.annotations }.getOrNull()?.forEachIndexed { ai, an ->
                 if (!isRedact(an)) return@forEachIndexed
                 val d = an.cosObject
@@ -134,19 +165,22 @@ object RedactMarks {
                     font = d.getString(K_FONT) ?: "",
                     textCase = d.getInt(K_CASE, RedactStyle.CASE_AS_TYPED).coerceIn(0, 3),
                 )
-                out += RedactMark((d.getString(K_NM) ?: "r:$pi:$ai").let { if (seen.add(it)) it else "$it#$pi:$ai:${System.nanoTime()}".also { k -> seen.add(k) } }, pi, rects, style, an.contents ?: "", d.getBoolean(K_WHOLE, false))
+                out += RedactMark((d.getString(K_NM) ?: "r:$pi:$ai").let { if (seen.add(it)) it else "$it#$pi:$ai:${System.nanoTime()}".also { k -> seen.add(k) } }, pi, rects, style, an.contents ?: "", d.getBoolean(K_WHOLE, false),
+                    author = d.getString(COSName.T) ?: "", subject = d.getString(K_SUBJ) ?: "", locked = (d.getInt(COSName.F, 0) and F_LOCKED) != 0,
+                    reviews = reviews[d].orEmpty())
             }
         }
         return out
     }
 
-    /** Removes every /Redact annotation (all pages). Returns how many were removed. */
+    /** Removes every /Redact annotation (all pages) and the review replies on them. Returns how many marks were removed. */
     fun removeAll(doc: PDDocument): Int {
         var n = 0
         doc.pages.forEach { page ->
             val list = runCatching { page.annotations }.getOrNull() ?: return@forEach
-            val keep = list.filterNot { isRedact(it) }
-            if (keep.size != list.size) { n += list.size - keep.size; page.annotations = keep }
+            val gone = list.filter { isRedact(it) }.map { it.cosObject }.toSet()
+            val keep = list.filterNot { a -> isRedact(a) || (a.subtype == "Text" && a.cosObject.getDictionaryObject(K_IRT) in gone) }
+            if (keep.size != list.size) { n += gone.size; page.annotations = keep }
         }
         return n
     }
@@ -159,7 +193,11 @@ object RedactMarks {
             if (pi !in 0 until doc.numberOfPages) return@forEach
             val page = doc.getPage(pi)
             val annots = page.annotations
-            list.forEach { m -> annots.add(toAnnotation(doc, page, m, author, now)) }
+            list.forEach { m ->
+                val a = toAnnotation(doc, page, m, author, now)
+                annots.add(a)
+                m.reviews.forEach { r -> annots.add(reviewReply(a, page, r)) }
+            }
             page.annotations = annots
         }
     }
@@ -193,10 +231,27 @@ object RedactMarks {
         d.setBoolean(K_WHOLE, m.wholePage)
         d.setBoolean(K_AUTO, m.style.fontSize <= 0f)
         a.contents = m.label
-        a.titlePopup = author
+        a.titlePopup = m.author.ifBlank { author }
+        if (m.subject.isNotBlank()) d.setString(K_SUBJ, m.subject)
+        if (m.locked) d.setInt(COSName.F, d.getInt(COSName.F, 0) or F_LOCKED)
         a.setCreationDate(now); a.setModifiedDate(now)
         a.appearance = PDAppearanceDictionary().apply { setNormalAppearance(appearance(doc, a.rectangle, rects, m.style)) }
         return a
+    }
+
+    /** A hidden review-state reply to [target] (Review state model, as Acrobat and Foxit write them). */
+    private fun reviewReply(target: PDAnnotation, page: PDPage, r: RedactReview): PDAnnotation {
+        val t = com.tom_roush.pdfbox.pdmodel.interactive.annotation.PDAnnotationText()
+        val d = t.cosObject
+        d.setItem(K_IRT, target.cosObject)
+        d.setString(K_STATE_MODEL, "Review"); d.setString(K_STATE, r.state)
+        t.titlePopup = r.author
+        t.contents = r.state
+        t.rectangle = target.rectangle
+        t.isHidden = true; t.isNoView = true
+        t.setCreationDate(java.util.Calendar.getInstance().apply { timeInMillis = r.time })
+        t.page = page
+        return t
     }
 
     /** Before applying, a mark shows as an outline with a light tint of the fill colour. */

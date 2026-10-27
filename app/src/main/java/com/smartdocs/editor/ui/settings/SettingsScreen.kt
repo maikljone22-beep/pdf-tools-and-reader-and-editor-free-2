@@ -84,6 +84,7 @@ fun SettingsScreen(nav: NavHostController) {
 
             // ---- Document security (nitro-protect): JavaScript, Internet access, file launch ----
             NpSecurityCard(s) { b -> upd(b) }
+            Np2TrustCard()      // nitro-protect2: Trust Manager (safe reading, privileged locations, Protected View, attachments, EU trusted list)
 
             // ---- Sync & transfer (gaps6) ----
             G6SyncCard(s, nav) { b -> upd(b) }

@@ -55,6 +55,8 @@ fun SlideRibbon(s: SlideState) {
             "show" -> RibbonRow {
                 RibbonButton(Icons.Default.Slideshow, R.string.o5_show_start) { s.commitPending(); s.showFrom = 0; s.bump() }
                 RibbonButton(Icons.Default.PlayArrow, R.string.o5_show_current) { s.commitPending(); s.showFrom = s.current; s.bump() }
+                RibbonButton(Icons.Default.RecordVoiceOver, R.string.of6_read_aloud) { OfficeCommandRegistry.run("read_aloud") }   // office6 (registry)
+                RibbonButton(Icons.Default.Print, R.string.of6_print) { OfficeCommandRegistry.run("print") }
             }
             "view" -> RibbonRow {
                 RibbonButton(Icons.Default.ViewSidebar, R.string.o5_thumbnails, s.thumbs) { s.thumbs = !s.thumbs; s.bump() }
@@ -73,6 +75,7 @@ private fun SlideHome(s: SlideState) {
     RibbonRow {
         RibbonButton(Icons.Default.AddBox, R.string.o5_new_slide) { s.newSlide() }
         RibbonButton(Icons.Default.ContentCopy, R.string.o5_duplicate_slide) { s.duplicate() }
+        RibbonButton(Icons.Default.FindReplace, R.string.o5_find, s.findOpen) { s.findOpen = !s.findOpen; s.bump() }   // office6
         RibbonButton(Icons.Default.Delete, R.string.o5_delete_slide, enabled = s.count > 1) { s.deleteSlide() }
         RibbonButton(Icons.Default.ArrowUpward, R.string.o5_move_up, enabled = s.current > 0) { s.moveSlide(-1) }
         RibbonButton(Icons.Default.ArrowDownward, R.string.o5_move_down, enabled = s.current < s.count - 1) { s.moveSlide(1) }

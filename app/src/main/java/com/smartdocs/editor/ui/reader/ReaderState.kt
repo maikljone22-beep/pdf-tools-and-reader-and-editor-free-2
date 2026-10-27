@@ -42,6 +42,8 @@ enum class ReaderTool {
     TEXTBOX, IMAGE, LINK,
     FS_TEXT, FS_CHECK, FS_CROSS, FS_DOT, FS_LINE, FS_DATE, FS_PROFILE,
     SIGNATURE,
+    // nitro-fillsign2: Fill & Sign rounded rectangle and comb text
+    FS_RRECT, FS_COMB,
     // MODULE_annot2 (ui/reader/annot)
     CARET, REPLACE, POLYGON, POLYLINE, CLOUD, ATTACH, SOUND, VIDEO, SNAPSHOT, SELECT,
 }
@@ -111,7 +113,11 @@ class ReaderState(
 
     // ---- tabs / tools ----
     var tab by mutableStateOf(ReaderTab.VIEW)
-    var tool by mutableStateOf<ReaderTool?>(null)
+    private var toolState by mutableStateOf<ReaderTool?>(null)
+    /** The active tool. nitro-protect2: a tool the document's restrictions or Protected View forbid is refused here. */
+    var tool: ReaderTool?
+        get() = toolState
+        set(v) { if (v != null && v != toolState && ReaderGuard.actionFor(v)?.let { guard.check(it) } == false) return; toolState = v }
     var color by mutableIntStateOf(0xFFEB3B)
     var opacity by mutableFloatStateOf(1f)
     var thickness by mutableFloatStateOf(3f)
@@ -149,6 +155,8 @@ class ReaderState(
     var saving by mutableStateOf(false); private set
     /** In-page form filling (MODULE_forms5): pending field values, live calculations, field bar. */
     val forms5 = com.smartdocs.editor.ui.forms5.FormFill.of(this).also { it.markDirty = { dirty = true } }
+    /** nitro-protect2: restrictions, Protected View, Safe Reading Mode, action inspector. */
+    val guard = ReaderGuard(this)
     /** Result of copying the saved file back into the document it was opened from (watched by the screen). */
     var writeBackResult by mutableStateOf<com.smartdocs.editor.core.files.DocumentRepository.WriteBack?>(null)
     /** lastModified/length of the file when the current session was opened; a tool replacing the file changes it. */
@@ -217,6 +225,7 @@ class ReaderState(
                 val near = (initialPage - 15).coerceAtLeast(0)..(initialPage + 15).coerceAtMost(s.pageCount - 1)
                 runCatching { s.pageSizes(near) }.getOrNull()?.forEach { (i, sz) -> pageSizes[i] = sz }
                 openedStamp = f.lastModified() to f.length()
+                runCatching { guard.prepare(f, openPw) }    // nitro-protect2: before the first tap can edit / copy / print
                 session = s
                 scope.launch { runCatching { s.pageSizes() }.getOrNull()?.let { all -> androidx.compose.runtime.snapshots.Snapshot.withMutableSnapshot { all.forEach { (i, sz) -> pageSizes[i] = sz } } } }
                 needPassword = false; wrongPassword = false; error = null
@@ -285,6 +294,7 @@ class ReaderState(
      */
     fun close() {
         disposed = true
+        guard.release()
         runCatching { video.release() }      // player + extracted video copies
         val saveFirst = dirty && !discarded
         val s = session
@@ -338,6 +348,7 @@ class ReaderState(
     }
 
     fun addAnnot(a: Annot) {
+        if (!guard.check(com.smartdocs.editor.core.security.DocAction.ANNOTATE)) return
         val before = annots.toList()
         annots += a; dirty = true
         annotStep(R.string.hi_add_annot, a.page, before)
@@ -346,6 +357,7 @@ class ReaderState(
 
     /** Several pending-annotation changes as one undo step (multi-select, handwriting to text). */
     fun batchAnnots(change: (MutableList<Annot>) -> Unit) {
+        if (!guard.check(com.smartdocs.editor.core.security.DocAction.ANNOTATE)) return
         val before = annots.toList()
         val copy = before.toMutableList(); change(copy)
         if (copy == before) return
@@ -363,6 +375,7 @@ class ReaderState(
 
     fun replaceAnnot(a: Annot) {
         val i = annots.indexOfFirst { it.id == a.id }; if (i < 0) return
+        if (!guard.check(com.smartdocs.editor.core.security.DocAction.ANNOTATE)) return
         val before = annots.toList()
         annots[i] = a; dirty = true
         annotStep(R.string.hi_edit_annot, a.page, before)
@@ -461,6 +474,7 @@ class ReaderState(
                     withContext(NonCancellable) {
                         val tmp = File(f.parentFile, ".${f.nameWithoutExtension}.saving.pdf")
                         failed = AnnotationWriter.commit(context, f, pending, tmp, password).failed
+                        flattenSignaturesOnSave(pending, tmp)
                         com.smartdocs.editor.core.collab.CollabLive.beforeSave(context, f, tmp, password)   // share6: merge other reviewers' comments
                         swapFile(tmp, record = false)
                         wrote = true
@@ -474,6 +488,7 @@ class ReaderState(
                     dirty = annots.isNotEmpty() || forms5.hasPending
                     edit.committed()
                     if (failed.isNotEmpty()) { error = str(R.string.fx_annots_not_saved, failed.size); return false }
+                    if (wrote) guard.afterSave(f)      // nitro-protect2: a trusted document stays trusted
                     return true
                 } catch (e: com.smartdocs.editor.core.pdf.SignedDocumentException) {
                     // signed / certified file: the pending annotations stay pending; the screen offers "Save a copy"
@@ -485,6 +500,21 @@ class ReaderState(
                 // annotations / values that are now in the file; replaying them would duplicate them
                 if (wrote && before == null) { history.removeOwner(OWNER_ANNOTS); history.removeOwner(com.smartdocs.editor.ui.forms5.OWNER_FORMS) }
             }
+        }
+    }
+
+    /**
+     * nitro-fillsign2 preference "Flatten signatures when saving": the signature stamps just written into [tmp] (and
+     * any placed before) become page content. Never on a digitally signed file: its signatures would break.
+     */
+    private suspend fun flattenSignaturesOnSave(pending: List<Annot>, tmp: File) {
+        if (pending.none { it.isSignature } || !com.smartdocs.editor.core.fillsign2.FillSignPrefs.flattenOnSave(context)) return
+        withContext(Dispatchers.IO) {
+            if (!tmp.exists() || com.smartdocs.editor.core.pdf.SignedSave.isSigned(tmp, password)) return@withContext
+            val flat = File(tmp.parentFile, tmp.nameWithoutExtension + ".sigflat.pdf")
+            runCatching {
+                if (com.smartdocs.editor.core.pdf.PdfOps.flattenSignatureStamps(tmp, flat, password) > 0 && !flat.renameTo(tmp)) { flat.copyTo(tmp, overwrite = true); flat.delete() }
+            }.onFailure { flat.delete() }
         }
     }
 
@@ -512,6 +542,7 @@ class ReaderState(
      * (PDF space) is removed from the file in one write, which is one undo step.
      */
     fun eraseStoredInk(page: Int, pts: List<Pair<Float, Float>>, radius: Float) {
+        if (!guard.check(com.smartdocs.editor.core.security.DocAction.ANNOTATE)) return      // nitro-protect2
         if (pts.isEmpty() || saving) return
         val candidates = existing.filter { it.page == page && it.subtype == "Ink" && EraseLogic.nearRect(it.rect.left, it.rect.bottom, it.rect.right, it.rect.top, pts, radius + 4f) }
         if (candidates.isEmpty()) return
@@ -536,6 +567,7 @@ class ReaderState(
     }
 
     suspend fun deleteExisting(e: AnnotationWriter.Existing) {
+        if (!guard.check(com.smartdocs.editor.core.security.DocAction.ANNOTATE)) return      // nitro-protect2
         saveMutex.withLock {
             val f = file ?: return
             saving = true
@@ -619,7 +651,11 @@ class ReaderState(
      * [undoThrough]) or null when nothing was done.
      * [newPassword] is the password the result opens with (protect / remove password change it).
      */
-    suspend fun applyInPlace(newPassword: String? = password, label: (() -> String)? = null, op: suspend (src: File, out: File, pw: String?) -> Unit): File? {
+    suspend fun applyInPlace(newPassword: String? = password, label: (() -> String)? = null,
+                             action: com.smartdocs.editor.core.security.DocAction? = com.smartdocs.editor.core.security.DocAction.MODIFY,
+                             op: suspend (src: File, out: File, pw: String?) -> Unit): File? {
+        // nitro-protect2: the author's restrictions / Protected View ([action] = what the change needs; null = none)
+        action?.let { guard.require(it) }
         if (dirty && !save()) return null
         selection = null
         return saveMutex.withLock {
@@ -727,7 +763,7 @@ class ReaderState(
             ReaderTool.UNDERLINE, ReaderTool.STRIKEOUT, ReaderTool.SQUIGGLY, ReaderTool.INK, ReaderTool.LINE, ReaderTool.ARROW,
             ReaderTool.RECT, ReaderTool.OVAL -> if (color == 0xFFEB3B) color = 0xF44336
             ReaderTool.FREETEXT, ReaderTool.TEXTBOX, ReaderTool.FS_TEXT, ReaderTool.FS_PROFILE, ReaderTool.FS_DATE,
-            ReaderTool.FS_CHECK, ReaderTool.FS_CROSS, ReaderTool.FS_DOT, ReaderTool.FS_LINE -> if (color == 0xFFEB3B) color = 0x212121
+            ReaderTool.FS_CHECK, ReaderTool.FS_CROSS, ReaderTool.FS_DOT, ReaderTool.FS_LINE, ReaderTool.FS_RRECT, ReaderTool.FS_COMB -> if (color == 0xFFEB3B) color = 0x212121
             else -> {}
         }
     }
@@ -738,7 +774,9 @@ class ReaderState(
         // nitro-quicksign: Recently used (pendingText = the saved signature's path while the signature tool is active)
         if (tool == ReaderTool.SIGNATURE && pendingText.isNotBlank()) com.smartdocs.editor.core.data.SignatureMetaStore.markUsed(context, pendingText)
         val bmp = if (p.rotation != 0f) rotateBitmap(p.image, p.rotation) else p.image
-        addAnnot(newAnnot(AnnotKind.STAMP_IMAGE, p.page, rects = listOf(PageGeometry.normPdf(p.rect)), image = bmp))
+        // nitro-fillsign2: a placed signature remembers its source (default size, Apply All Signatures)
+        val sig = pendingText.takeIf { tool == ReaderTool.SIGNATURE && it.isNotBlank() }
+        addAnnot(newAnnot(AnnotKind.STAMP_IMAGE, p.page, rects = listOf(PageGeometry.normPdf(p.rect)), image = bmp).copy(sigPath = sig))
         placement = null
         if (!continueCreating) { tool = null; pendingImage = null }
     }

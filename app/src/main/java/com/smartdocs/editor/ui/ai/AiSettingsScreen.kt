@@ -94,6 +94,13 @@ fun AiSettingsScreen(nav: NavHostController) {
                     Text(it, Modifier.padding(16.dp))
                 }
             }
+            // ai6 (AI-18): today's usage (server counter through the proxy, else local / unlimited)
+            val usageClient = remember(s.aiEndpoint, s.aiModel, s.aiApiKey) { com.smartdocs.editor.core.ai.AiClient(s) }
+            Box(Modifier.padding(16.dp, 8.dp)) { com.smartdocs.editor.ui.ai6.AiUsageLine(usageClient, detailed = true) }
+            // ai6 (AI-6): chat skills
+            TextButton(onClick = { nav.navigate(com.smartdocs.editor.ui.Routes.tool("ai_skills")) }, Modifier.padding(horizontal = 8.dp)) {
+                Text(stringResource(R.string.ai6h_skills))
+            }
         }
     }
 }

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ai6v: podcast editing (B14), voice barge-in (B6), summary read aloud -->
+    <string name="ai6v_focus">محاور التركيز (اختياري)</string>
+    <string name="ai6v_focus_hint">مثلاً: النتائج والتوصيات فقط</string>
+    <string name="ai6v_length">الطول</string>
+    <string name="ai6v_len_short">قصير</string>
+    <string name="ai6v_len_medium">متوسط</string>
+    <string name="ai6v_len_long">طويل</string>
+    <string name="ai6v_chapters">الفصول</string>
+    <string name="ai6v_edit">تحرير النص</string>
+    <string name="ai6v_edit_close">إغلاق المحرر</string>
+    <string name="ai6v_duplicate">نسخة مكررة</string>
+    <string name="ai6v_duplicated">أُنشئت نسخة: %1$s</string>
+    <string name="ai6v_add_line">إضافة مداخلة</string>
+    <string name="ai6v_swap">تبديل المتحدث</string>
+    <string name="ai6v_up">نقل للأعلى</string>
+    <string name="ai6v_down">نقل للأسفل</string>
+    <string name="ai6v_delete_line">حذف المداخلة</string>
+    <string name="ai6v_changed">مداخلات تحتاج صوتاً جديداً: %1$d (الباقي من الذاكرة المؤقتة)</string>
+    <string name="ai6v_resynth">إعادة توليد الصوت</string>
+    <string name="ai6v_mic_on">الميكروفون يعمل</string>
+    <string name="ai6v_mic_muted">الميكروفون مكتوم</string>
+    <string name="ai6v_barge_in">المقاطعة بالكلام</string>
+    <string name="ai6v_interrupt">قاطع وتكلّم</string>
+    <string name="ai6v_read_summary">قراءة الملخص بصوت عالٍ</string>
+    <string name="ai6v_stop_reading">إيقاف القراءة</string>
+    <string name="ai6v_audio_summary">ملف صوتي للملخص</string>
+</resources>

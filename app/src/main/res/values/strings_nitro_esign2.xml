@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- nitro-esign2 (التوقيع الإلكتروني: الإرسال الجماعي، النماذج الموقّعة عبر رابط، الهوية البصرية للمرسل). Prefix ne2_. -->
+<resources>
+    <!-- الإرسال الجماعي -->
+    <string name="ne2_bulk_mode">إرسال جماعي</string>
+    <string name="ne2_bulk_mode_desc">يُرسل المستند نفسه طلبًا مستقلًا لكل شخص في القائمة، ويوقّع كل شخص نسخته فقط.</string>
+    <string name="ne2_step_recipients">المستلمون</string>
+    <string name="ne2_bulk_paste_label">الصق القائمة: شخص في كل سطر (الاسم، البريد، أعمدة أخرى)</string>
+    <string name="ne2_bulk_import">استيراد CSV</string>
+    <string name="ne2_bulk_clear">مسح</string>
+    <string name="ne2_bulk_import_failed">تعذّرت قراءة الملف: %1$s</string>
+    <string name="ne2_bulk_ready">%1$d مستلمًا جاهزًا</string>
+    <string name="ne2_bulk_more">و%1$d غيرها</string>
+    <string name="ne2_bulk_issues">تم تخطي %1$d صفًا</string>
+    <string name="ne2_issue_missing_name">السطر %1$d: لا يوجد اسم</string>
+    <string name="ne2_issue_bad_email">السطر %1$d: بريد غير صالح (%2$s)</string>
+    <string name="ne2_issue_duplicate">السطر %1$d: البريد مكرر في القائمة (%2$s)</string>
+    <string name="ne2_issue_too_many">السطر %1$d: تجاوز الحد الأقصى وهو %2$d مستلمًا</string>
+    <string name="ne2_bulk_placeholders">يمكنك استخدامها في العنوان والرسالة: %1$s</string>
+    <string name="ne2_bulk_title_hint">خصّص العنوان والرسالة باستخدام {name} أو {email} أو أي عمود من قائمتك، مثل: عقد {name}.</string>
+    <string name="ne2_bulk_need_rows">أضف مستلمًا واحدًا على الأقل.</string>
+    <string name="ne2_each_recipient">كل مستلم</string>
+    <string name="ne2_bulk_summary">%1$d طلبًا مستقلًا، طلب لكل مستلم</string>
+    <string name="ne2_bulk_sample">أول مستلم: %1$s</string>
+    <string name="ne2_bulk_sending">جارٍ إرسال %1$d من %2$d…</string>
+    <string name="ne2_bulk_cancelling">جارٍ الإيقاف بعد الطلب الحالي…</string>
+    <string name="ne2_bulk_progress_count">أُرسل %1$d من %2$d</string>
+    <string name="ne2_bulk_result_cancelled">تم إلغاء %1$d، ويمكن إرسالها بإعادة المحاولة</string>
+    <string name="ne2_bulk_result_title">انتهى الإرسال الجماعي</string>
+    <string name="ne2_bulk_result_body">أُرسل: %1$d · فشل: %2$d</string>
+    <string name="ne2_bulk_failed_row">%1$s: %2$s</string>
+    <string name="ne2_bulk_retry">إعادة محاولة الفاشلة (%1$d)</string>
+    <string name="ne2_bulk_copy_links">نسخ كل الروابط</string>
+    <string name="ne2_bulk_links_note">المستلمون بلا بريد إلكتروني (أو عندما لا يرسل الخادم البريد) يحتاجون إلى روابطهم. انسخ كل الروابط وأرسل لكل شخص رابطه.</string>
+
+    <!-- النموذج عبر الرابط -->
+    <string name="ne2_tab_forms">النماذج</string>
+    <string name="ne2_new_form">نموذج جديد</string>
+    <string name="ne2_forms_empty">لا توجد نماذج بعد. أنشئ نموذجًا لجمع توقيعات أشخاص كثيرين برابط واحد.</string>
+    <string name="ne2_form_mode_desc">نموذج عبر الرابط: رابط عام واحد، كل من يفتحه يكتب اسمه ويملأ الحقول ويوقّع نسخته الخاصة.</string>
+    <string name="ne2_form_link_note">أي شخص لديه الرابط يستطيع التوقيع. شاركه فقط حيث تريد الردود، ويمكنك إيقافه في أي وقت.</string>
+    <string name="ne2_step_form_options">خيارات النموذج</string>
+    <string name="ne2_form_max">الحد الأقصى للردود</string>
+    <string name="ne2_form_bad_max">اكتب رقمًا من 1 إلى 5000.</string>
+    <string name="ne2_form_require_email">طلب البريد الإلكتروني</string>
+    <string name="ne2_form_notify">أرسل لي بريدًا مع كل رد</string>
+    <string name="ne2_each_person">كل شخص</string>
+    <string name="ne2_form_summary">نموذج عبر الرابط، حتى %1$d ردًا</string>
+    <string name="ne2_form_creating">جارٍ إنشاء النموذج…</string>
+    <string name="ne2_form_state_active">يستقبل الردود</string>
+    <string name="ne2_form_state_disabled">متوقف</string>
+    <string name="ne2_form_state_full">اكتمل العدد</string>
+    <string name="ne2_form_state_draft">غير منشور</string>
+    <string name="ne2_form_counter">الردود: %1$s</string>
+    <string name="ne2_form_link">الرابط العام</string>
+    <string name="ne2_form_invite">يرجى تعبئة «%1$s» وتوقيعه: %2$s</string>
+    <string name="ne2_form_disable">إيقاف استقبال الردود</string>
+    <string name="ne2_form_enable">استئناف استقبال الردود</string>
+    <string name="ne2_form_responses">الردود (%1$s)</string>
+    <string name="ne2_form_no_responses">لا توجد ردود بعد.</string>
+    <string name="ne2_form_make_copy">النسخة الموقّعة</string>
+    <string name="ne2_form_copy_done">سُجّلت النسخة الموقّعة</string>
+    <string name="ne2_form_delete_q">حذف النموذج ورابطه وكل ردوده من الخادم؟</string>
+
+    <!-- الهوية البصرية -->
+    <string name="ne2_brand_title">هوية التوقيع الإلكتروني</string>
+    <string name="ne2_brand_on">استخدام هويتي في الطلبات والنماذج</string>
+    <string name="ne2_brand_name">اسم المرسل أو الجهة</string>
+    <string name="ne2_brand_color">لون الهوية</string>
+    <string name="ne2_brand_hex">رمز اللون (#RRGGBB)</string>
+    <string name="ne2_brand_bad_color">رمز لون غير صالح</string>
+    <string name="ne2_brand_logo">الشعار</string>
+    <string name="ne2_brand_pick_logo">اختيار الشعار</string>
+    <string name="ne2_brand_remove_logo">إزالة الشعار</string>
+    <string name="ne2_brand_logo_failed">تعذّر استخدام هذه الصورة.</string>
+    <string name="ne2_brand_note">يظهر الشعار واللون والاسم في صفحة التوقيع وفي رسائل البريد التي تصل إلى الموقّعين. يُصغَّر الشعار إلى 256 بكسل.</string>
+    <string name="ne2_brand_save">حفظ</string>
+    <string name="ne2_brand_saved">حُفظت الهوية</string>
+    <string name="ne2_brand_preview">ما سيراه الموقّعون</string>
+    <string name="ne2_brand_none">بلا هوية: يرى الموقّعون المظهر الافتراضي.</string>
+    <string name="ne2_brand_edit">تعديل الهوية</string>
+    <string name="ne2_brand_sample_title">عقد</string>
+    <string name="ne2_brand_asks">%1$s يطلب توقيعك على «%2$s».</string>
+    <string name="ne2_brand_review_btn">مراجعة المستند وتوقيعه</string>
+</resources>

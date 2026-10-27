@@ -12,10 +12,10 @@ import kotlinx.serialization.json.contentOrNull
 import java.io.File
 
 /** One spoken line: speaker 0 = host / narrator, 1 = guest. */
-data class ScriptLine(val speaker: Int, val text: String)
+data class ScriptLine(val speaker: Int, val text: String, val chapter: String? = null)   // ai6v: chapter starts here
 
 /** A line with its position in the final audio. */
-data class TimedLine(val speaker: Int, val text: String, val startMs: Long, val endMs: Long)
+data class TimedLine(val speaker: Int, val text: String, val startMs: Long, val endMs: Long, val chapter: String? = null)
 
 data class SpokenAudio(val file: File, val lines: List<TimedLine>, val transcript: File)
 
@@ -41,11 +41,14 @@ object PodcastGenerator {
             "[{\"speaker\": \"host\", \"text\": \"...\"}, {\"speaker\": \"guest\", \"text\": \"...\"}]"
 
     /** Ask the model for the script. [docText] should already be trimmed (see [AiClient.trimDocument]). */
-    suspend fun script(client: AiClient, docText: String, mode: Mode, docName: String): List<ScriptLine> {
+    suspend fun script(client: AiClient, docText: String, mode: Mode, docName: String, options: PodcastOptions? = null): List<ScriptLine> {
+        // ai6v (B14): focus areas + length when the user set them
+        val prompt = if (options == null) (if (mode == Mode.SUMMARY) SUMMARY_PROMPT else PODCAST_PROMPT)
+            else if (mode == Mode.SUMMARY) PodcastScript.summaryPrompt(options) else PodcastScript.podcastPrompt(options)
         val msgs = listOf(
             ChatMessage("system", AiClient.SYSTEM_PROMPT),
             ChatMessage("system", "عنوان المستند: $docName\nنص المستند:\n$docText"),
-            ChatMessage("user", if (mode == Mode.SUMMARY) SUMMARY_PROMPT else PODCAST_PROMPT),
+            ChatMessage("user", prompt),
         )
         val answer = client.complete(msgs)
         val lines = if (mode == Mode.SUMMARY) summaryLines(answer) else podcastLines(answer)
@@ -68,7 +71,8 @@ object PodcastGenerator {
                 val o = el as? JsonObject ?: return@mapNotNull null
                 val sp = (o["speaker"] as? JsonPrimitive)?.contentOrNull.orEmpty().lowercase()
                 val text = cleanText((o["text"] as? JsonPrimitive)?.contentOrNull.orEmpty())
-                if (text.isEmpty()) null else ScriptLine(if (sp.contains("guest") || sp.contains("ضيف")) 1 else 0, text)
+                val chapter = (o["chapter"] as? JsonPrimitive)?.contentOrNull?.let { cleanText(it) }?.takeIf { it.isNotEmpty() }
+                if (text.isEmpty()) null else ScriptLine(if (sp.contains("guest") || sp.contains("ضيف")) 1 else 0, text, chapter)
             }.orEmpty()
             if (parsed.isNotEmpty()) return parsed
         }
@@ -101,7 +105,7 @@ object PodcastGenerator {
             val voice = if (line.speaker == 1) guestVoice else hostVoice
             val f = AiSpeech.synthesizeLong(ctx, line.text, voice, 1f, if (line.speaker == 1) instructionsGuest else instructionsHost)
             val d = AudioConcat.durationMs(f).coerceAtLeast(1L)
-            timed += TimedLine(line.speaker, line.text, t, t + d)
+            timed += TimedLine(line.speaker, line.text, t, t + d, line.chapter)
             t += d
             pieces += f
             onProgress(i + 1, lines.size)
@@ -112,9 +116,10 @@ object PodcastGenerator {
         val transcript = File(out.parentFile, out.nameWithoutExtension + ".txt")
         transcript.writeText(buildString {
             append(title).append("\n\n")
-            timed.forEach { l -> append("[").append(fmt(l.startMs)).append("] ").append(if (l.speaker == 1) "الضيف: " else if (lines.any { it.speaker == 1 }) "المضيف: " else "").append(l.text).append('\n') }
+            timed.forEach { l -> l.chapter?.let { append("\n## ").append(it).append('\n') }; append("[").append(fmt(l.startMs)).append("] ").append(if (l.speaker == 1) "الضيف: " else if (lines.any { it.speaker == 1 }) "المضيف: " else "").append(l.text).append('\n') }
         })
         saveSidecar(out, timed)
+        PodcastScript.saveScript(out, lines)   // ai6v: the editable script next to the audio
         SpokenAudio(out, timed, transcript)
     }
 
@@ -123,6 +128,7 @@ object PodcastGenerator {
         val arr = kotlinx.serialization.json.buildJsonArray {
             lines.forEach { l -> add(kotlinx.serialization.json.buildJsonObject {
                 put("s", JsonPrimitive(l.speaker)); put("t", JsonPrimitive(l.text)); put("a", JsonPrimitive(l.startMs)); put("b", JsonPrimitive(l.endMs))
+                l.chapter?.let { put("c", JsonPrimitive(it)) }
             }) }
         }
         runCatching { File(audio.parentFile, audio.nameWithoutExtension + ".lines.json").writeText(arr.toString()) }
@@ -138,6 +144,7 @@ object PodcastGenerator {
                 TimedLine(
                     (o["s"] as? JsonPrimitive)?.contentOrNull?.toIntOrNull() ?: 0, (o["t"] as? JsonPrimitive)?.contentOrNull.orEmpty(),
                     (o["a"] as? JsonPrimitive)?.contentOrNull?.toLongOrNull() ?: 0L, (o["b"] as? JsonPrimitive)?.contentOrNull?.toLongOrNull() ?: 0L,
+                    (o["c"] as? JsonPrimitive)?.contentOrNull,
                 )
             }
         }.getOrDefault(emptyList())

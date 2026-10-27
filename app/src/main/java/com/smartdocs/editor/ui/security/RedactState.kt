@@ -80,8 +80,11 @@ class RedactState(private val context: Context) {
         }
     }
 
+    /** Phrases of the word list and their own overlay texts ("phrase | overlay"). */
+    fun phrases() = com.smartdocs.editor.core.redact.PhraseList.parse(wordsText)
+
     fun request(): SearchRequest {
-        val words = (wordsText.lines() + if (useNames) names.lines() else emptyList()).map { it.trim() }.filter { it.isNotEmpty() }
+        val words = (phrases().first + if (useNames) names.lines() else emptyList()).map { it.trim() }.filter { it.isNotEmpty() }
         return SearchRequest(query = query, options = options, words = words, patterns = patterns,
             regexes = regexText.lines().map { it.trim() }.filter { it.isNotEmpty() }, keepLast = keepLast)
     }
@@ -104,12 +107,15 @@ class RedactState(private val context: Context) {
     fun markChecked(): Int {
         val sel = found.filter { foundKey(it) in checked && it.hit.rects.isNotEmpty() }
         val existing = marks.map { "${it.page}:${it.label}:${it.rects.firstOrNull()?.left}" }.toHashSet()
+        val overlays = phrases().second
         var n = 0
         for (f in sel) {
             val label = f.hit.snippet.trim()
             val key = "${f.hit.page}:$label:${f.hit.rects.first().left}"
             if (key in existing) continue
-            marks += RedactMark(newId(), f.hit.page, f.hit.rects.map { RectF(it) }, style, label)
+            // Foxit: a phrase group can carry its own overlay text
+            val own = overlays.entries.firstOrNull { (w, _) -> label.contains(w, ignoreCase = true) || w.contains(label, ignoreCase = true) }?.value
+            marks += RedactMark(newId(), f.hit.page, f.hit.rects.map { RectF(it) }, if (own != null) style.copy(overlay = own) else style, label)
             n++
         }
         checked = emptySet()
@@ -161,7 +167,60 @@ class RedactState(private val context: Context) {
         pages.filter { it != m.page }.forEach { p -> marks += m.copy(id = newId(), page = p) }
     }
 
-    fun remove(id: String) { marks.removeAll { it.id == id }; excluded = excluded - id }
+    fun remove(id: String) { if (marks.any { it.id == id && it.locked }) return; marks.removeAll { it.id == id }; excluded = excluded - id }
+
+    /** Moves an unlocked mark by ([dx], [dy]) display points. */
+    fun move(id: String, page: Int, dx: Float, dy: Float) {
+        val i = marks.indexOfFirst { it.id == id }; if (i < 0 || marks[i].locked || marks[i].wholePage) return
+        val m = marks[i]
+        val moved = m.rects.mapNotNull { r ->
+            val d = displayBox(page, r) ?: return@mapNotNull null
+            userRect(page, RectF(d.l + dx, d.t + dy, d.r + dx, d.b + dy))
+        }
+        if (moved.size == m.rects.size) marks[i] = m.copy(rects = moved)
+    }
+
+    /** Gives an unlocked one-rectangle mark the display rectangle [display] (top > bottom). */
+    fun resize(id: String, page: Int, display: RectF) {
+        val i = marks.indexOfFirst { it.id == id }; if (i < 0 || marks[i].locked || marks[i].rects.size != 1) return
+        marks[i] = marks[i].copy(rects = listOf(userRect(page, display)))
+    }
+
+    private fun userRect(page: Int, display: RectF): RectF {
+        val g = geo[page]
+        val u = if (g == null) Box.of(display.left, display.bottom, display.right, display.top)
+                else RedactMath.map(g.toUser, Box.of(display.left, display.bottom, display.right, display.top))
+        return RectF(u.l, u.t, u.r, u.b)
+    }
+
+    /**
+     * Foxit "double-click an image to mark the whole image": the image under display point ([x], [y]) on [page]
+     * becomes a mark. Returns false when there is no image there.
+     */
+    suspend fun markImageAt(file: File, password: String?, page: Int, x: Float, y: Float): Boolean = withContext(Dispatchers.IO) {
+        val g = geo[page]
+        val pt = if (g == null) Box.of(x, y, x, y) else RedactMath.map(g.toUser, Box.of(x, y, x, y))
+        val box = runCatching {
+            PdfOps.load(file, password).use { doc ->
+                val p = doc.getPage(page)
+                com.smartdocs.editor.core.redact.PageInspector(p, doc.documentCatalog.ocProperties).run(p).paints
+                    .filter { it.kind == com.smartdocs.editor.core.redact.PaintKind.IMAGE || it.kind == com.smartdocs.editor.core.redact.PaintKind.INLINE_IMAGE }
+                    .filter { it.box.contains(pt.l, pt.b) }.minByOrNull { it.box.area }?.box
+            }
+        }.getOrNull() ?: return@withContext false
+        withContext(Dispatchers.Main) { marks += RedactMark(newId(), page, listOf(RectF(box.l, box.t, box.r, box.b)), style, "") }
+        true
+    }
+
+    fun setGeneral(id: String, author: String, subject: String, locked: Boolean) {
+        val i = marks.indexOfFirst { it.id == id }; if (i >= 0) marks[i] = marks[i].copy(author = author, subject = subject, locked = locked)
+    }
+
+    /** Adds a review state (Accepted, Rejected, Cancelled, Completed, None) to the mark's history. */
+    fun review(id: String, state: String, author: String) {
+        val i = marks.indexOfFirst { it.id == id }
+        if (i >= 0) marks[i] = marks[i].copy(reviews = marks[i].reviews + com.smartdocs.editor.core.redact.RedactReview(state, author, System.currentTimeMillis()))
+    }
 
     fun update(m: RedactMark) { val i = marks.indexOfFirst { it.id == m.id }; if (i >= 0) marks[i] = m }
 
@@ -171,15 +230,16 @@ class RedactState(private val context: Context) {
         for (i in marks.indices) marks[i] = marks[i].copy(style = st)
     }
 
-    fun clear() { marks.clear(); excluded = emptySet() }
+    fun clear() { marks.removeAll { !it.locked }; excluded = excluded.filter { id -> marks.any { it.id == id } }.toSet() }
 
     fun saveNames() = RedactPrefs.saveNames(context, names)
 
-    fun profile(name: String) = RedactProfile(name, wordsText.lines().filter { it.isNotBlank() }, patterns,
-        regexText.lines().filter { it.isNotBlank() }, style, options.wholeWord, keepLast)
+    fun profile(name: String) = phrases().let { (words, overlays) ->
+        RedactProfile(name, words, patterns, regexText.lines().filter { it.isNotBlank() }, style, options.wholeWord, keepLast, overlays)
+    }
 
     fun loadProfile(p: RedactProfile) {
-        wordsText = p.words.joinToString("\n"); patterns = p.patterns; regexText = p.regexes.joinToString("\n")
+        wordsText = com.smartdocs.editor.core.redact.PhraseList.format(p.words, p.overlays); patterns = p.patterns; regexText = p.regexes.joinToString("\n")
         style = p.style; options = options.copy(wholeWord = p.wholeWord); keepLast = p.keepLast
     }
 }

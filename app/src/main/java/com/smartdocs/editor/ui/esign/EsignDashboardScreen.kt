@@ -19,8 +19,11 @@ import androidx.navigation.NavHostController
 import com.smartdocs.editor.R
 import com.smartdocs.editor.core.esign.EsignClient
 import com.smartdocs.editor.core.esign.EsignConfig
+import com.smartdocs.editor.core.esign.EsignFormRef
+import com.smartdocs.editor.core.esign.EsignFormStore
 import com.smartdocs.editor.core.esign.EsignRef
 import com.smartdocs.editor.core.esign.EsignStore
+import com.smartdocs.editor.core.esign.FormState
 import com.smartdocs.editor.core.esign.RequestStatus
 import com.smartdocs.editor.core.esign.SignerStatus
 import com.smartdocs.editor.core.files.DocumentRepository
@@ -40,10 +43,11 @@ fun EsignDashboardScreen(nav: NavHostController) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val items by EsignStore.items.collectAsStateWithLifecycle()
+    val forms by EsignFormStore.items.collectAsStateWithLifecycle()
     var tab by remember { mutableIntStateOf(0) }
     var refreshing by remember { mutableStateOf(false) }
     var paste by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { EsignStore.load(ctx) }
+    LaunchedEffect(Unit) { EsignStore.load(ctx); EsignFormStore.load(ctx) }
 
     fun refresh() = scope.launch {
         refreshing = true
@@ -61,6 +65,12 @@ fun EsignDashboardScreen(nav: NavHostController) {
                     }
                 }.onFailure { e -> if (EsignClient.isGone(e)) EsignStore.update(ctx, r.id, r.sent) { it.copy(status = "gone") } }
             }
+            EsignFormStore.load(ctx).forEach { r ->
+                runCatching {
+                    val f = EsignClient.getForm(r.id, r.secret)
+                    EsignFormStore.update(ctx, r.id) { it.copy(state = f.state.name.lowercase(), count = f.count, max = f.maxResponses) }
+                }.onFailure { e -> if (EsignClient.isGone(e)) EsignFormStore.update(ctx, r.id) { it.copy(state = "gone") } }
+            }
         }
         refreshing = false
     }
@@ -69,13 +79,23 @@ fun EsignDashboardScreen(nav: NavHostController) {
     Scaffold(
         topBar = {
             AppTopBar(stringResource(R.string.cn_esign_title), onBack = { nav.popBackStack() }) {
+                IconButton(onClick = { nav.navigate(ConnRoutes.ESIGN_BRAND) }) { Icon(Icons.Default.Palette, stringResource(R.string.ne2_brand_title)) }
                 IconButton(onClick = { paste = true }) { Icon(Icons.Default.Link, stringResource(R.string.cn_open_link)) }
                 IconButton(onClick = { refresh() }, enabled = !refreshing) { Icon(Icons.Default.Refresh, stringResource(R.string.cn_refresh)) }
             }
         },
         floatingActionButton = {
-            if (EsignConfig.enabled) ExtendedFloatingActionButton(onClick = { nav.navigate(ConnRoutes.esignCreate()) },
-                icon = { Icon(Icons.Default.HistoryEdu, null) }, text = { Text(stringResource(R.string.cn_new_request)) })
+            if (EsignConfig.enabled) {
+                if (tab == 2) ExtendedFloatingActionButton(onClick = { nav.navigate(ConnRoutes.esignCreate(mode = EsignCreateMode.FORM)) },
+                    icon = { Icon(Icons.Default.Link, null) }, text = { Text(stringResource(R.string.ne2_new_form)) })
+                else Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    SmallFloatingActionButton(onClick = { nav.navigate(ConnRoutes.esignCreate(mode = EsignCreateMode.BULK)) }) {
+                        Icon(Icons.Default.Groups, stringResource(R.string.ne2_bulk_mode))
+                    }
+                    ExtendedFloatingActionButton(onClick = { nav.navigate(ConnRoutes.esignCreate()) },
+                        icon = { Icon(Icons.Default.HistoryEdu, null) }, text = { Text(stringResource(R.string.cn_new_request)) })
+                }
+            }
         },
     ) { pad ->
         if (!EsignConfig.enabled) { NotConfigured(Modifier.padding(pad)); return@Scaffold }
@@ -83,10 +103,16 @@ fun EsignDashboardScreen(nav: NavHostController) {
             TabRow(selectedTabIndex = tab) {
                 Tab(tab == 0, { tab = 0 }, text = { Text(stringResource(R.string.cn_tab_sent)) })
                 Tab(tab == 1, { tab = 1 }, text = { Text(stringResource(R.string.cn_tab_received)) })
+                Tab(tab == 2, { tab = 2 }, text = { Text(stringResource(R.string.ne2_tab_forms)) })
             }
             if (refreshing) LinearProgressIndicator(Modifier.fillMaxWidth())
             val list = items.filter { it.sent == (tab == 0) }.sortedByDescending { it.created }
-            if (list.isEmpty()) EmptyState(Icons.Default.Draw, stringResource(if (tab == 0) R.string.cn_empty_sent else R.string.cn_empty_received))
+            if (tab == 2) {
+                if (forms.isEmpty()) EmptyState(Icons.Default.Link, stringResource(R.string.ne2_forms_empty))
+                else LazyColumn(contentPadding = PaddingValues(16.dp, 8.dp, 16.dp, 96.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    items(forms.sortedByDescending { it.created }, key = { "f" + it.id }) { r -> FormRefCard(r) { nav.navigate(ConnRoutes.esignForm(r.id)) } }
+                }
+            } else if (list.isEmpty()) EmptyState(Icons.Default.Draw, stringResource(if (tab == 0) R.string.cn_empty_sent else R.string.cn_empty_received))
             else LazyColumn(contentPadding = PaddingValues(16.dp, 8.dp, 16.dp, 96.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 items(list, key = { (if (it.sent) "s" else "r") + it.id }) { r -> RefCard(r) {
                     if (r.sent) nav.navigate(ConnRoutes.esignDetail(r.id)) else nav.navigate(ConnRoutes.esignSign(r.id, r.secret))
@@ -114,6 +140,22 @@ fun EsignDashboardScreen(nav: NavHostController) {
             }) { Text(stringResource(R.string.cn_open)) } },
             dismissButton = { TextButton(onClick = { paste = false }) { Text(stringResource(R.string.cancel)) } },
         )
+    }
+}
+
+@Composable
+private fun FormRefCard(r: EsignFormRef, onClick: () -> Unit) {
+    Surface(onClick = onClick, shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainerLow, modifier = Modifier.fillMaxWidth()) {
+        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+            IconTile(Icons.Default.Link, Brand.tiles.teal, size = 42.dp, iconSize = 22.dp)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(r.title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(DocumentRepository.formatDate(r.created) + " · " + stringResource(R.string.ne2_form_counter, "${r.count}/${r.max}"),
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            if (r.state == "gone") Chip(stringResource(R.string.cn_gone), MaterialTheme.colorScheme.outline) else FormStateChip(FormState.of(r.state))
+        }
     }
 }
 
