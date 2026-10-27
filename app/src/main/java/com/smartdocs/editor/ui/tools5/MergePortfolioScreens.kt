@@ -148,13 +148,14 @@ fun PortfolioScreen(nav: NavHostController, uri: String?) {
                             IconButton(onClick = {
                                 val s = source ?: return@IconButton
                                 scope.launch {
+                                    if (!p.name.endsWith(".pdf", true) && !com.smartdocs.editor.ui.security.DocSecurityGate.confirmAttachment(ctx, p.name)) return@launch   // nitro-protect2
                                     val f = runCatching { Portfolio.extract(s, p.name, File(app.documents.docsDir, s.nameWithoutExtension + "_parts")) }.getOrNull() ?: return@launch
                                     if (f.extension.equals("pdf", true)) openPdf(nav, f) else shareFiles(ctx, app.documents, listOf(f), p.mime)
                                 }
                             }) { Icon(Icons.Default.OpenInNew, stringResource(R.string.t5_open)) }
                             IconButton(onClick = {
                                 val s = source ?: return@IconButton
-                                scope.launch { runCatching { Portfolio.extract(s, p.name, File(app.documents.docsDir, s.nameWithoutExtension + "_parts")) }.getOrNull()?.let { shareFiles(ctx, app.documents, listOf(it), p.mime) } }
+                                scope.launch { if (com.smartdocs.editor.ui.security.DocSecurityGate.confirmAttachment(ctx, p.name)) runCatching { Portfolio.extract(s, p.name, File(app.documents.docsDir, s.nameWithoutExtension + "_parts")) }.getOrNull()?.let { shareFiles(ctx, app.documents, listOf(it), p.mime) } }
                             }) { Icon(Icons.Default.Share, stringResource(R.string.share)) }
                         }
                     },

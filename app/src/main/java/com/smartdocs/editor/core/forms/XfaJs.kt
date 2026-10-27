@@ -23,6 +23,7 @@ object XfaJs {
     data class Outcome(val changedValues: Int, val changedPresence: Int, val errors: Int)
 
     fun run(m: XMerged, eventMillis: Long = 200, totalMillis: Long = 3000): Outcome {
+        if (!com.smartdocs.editor.core.security.JsPolicy.enabled) return Outcome(0, 0, 0)   // "Run JavaScript" off: stored values stay
         val all = XfaMerge.walk(m.root).toList()
         if (all.none { it.node.scripts.initialize != null || it.node.scripts.calculate != null }) return Outcome(0, 0, 0)
         val ids = HashMap<XInst, Int>(); all.forEachIndexed { i, n -> ids[n] = i }

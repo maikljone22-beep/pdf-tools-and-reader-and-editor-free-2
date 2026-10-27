@@ -16,6 +16,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MicNone
+import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -97,9 +98,16 @@ fun VoiceChatDialog(busy: Boolean, onAsk: (String) -> Unit, latestAnswer: () -> 
     var asked by remember { mutableStateOf(false) }
     var granted by remember { mutableStateOf(ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) }
     val perm = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted = it }
-    DisposableEffect(Unit) { onDispose { input.stop(); speaker.release() } }
+    // ai6v (B6): barge-in (speaking interrupts the answer) and a mic mute toggle
+    var muted by remember { mutableStateOf(false) }
+    var bargeIn by remember { mutableStateOf(true) }
+    val listenRef = remember { arrayOfNulls<() -> Unit>(1) }   // plain holder: no state write during composition
+    val detector = remember { com.smartdocs.editor.core.voice.BargeInDetector { if (phase == 3) { speaker.stop(); listenRef[0]?.invoke() } } }
+    DisposableEffect(Unit) { onDispose { detector.stop(); input.stop(); speaker.release() } }
 
     fun listen() {
+        detector.stop()
+        if (muted) { speaker.stop(); phase = 0; return }
         if (!granted) { perm.launch(Manifest.permission.RECORD_AUDIO); return }
         speaker.stop()
         heard = ""; phase = 1
@@ -110,6 +118,7 @@ fun VoiceChatDialog(busy: Boolean, onAsk: (String) -> Unit, latestAnswer: () -> 
         input.onEnd = { level = 0f }
         input.start(VoicePrefs5.language)
     }
+    listenRef[0] = { listen() }
     LaunchedEffect(granted) { if (granted && phase == 0 && SpeechInput.available(ctx)) listen() }
     LaunchedEffect(busy) {
         if (!busy && asked && phase == 2) {
@@ -117,7 +126,8 @@ fun VoiceChatDialog(busy: Boolean, onAsk: (String) -> Unit, latestAnswer: () -> 
             val a = latestAnswer()
             if (a.isNullOrBlank()) { phase = 0; return@LaunchedEffect }
             phase = 3
-            speaker.speak(a, AiLang.detect(a).ifBlank { "ar" }) { if (phase == 3) listen() }
+            if (bargeIn && !muted && granted) detector.start()
+            speaker.speak(a, AiLang.detect(a).ifBlank { "ar" }) { detector.stop(); if (phase == 3) { if (muted) phase = 0 else listen() } }
         }
     }
     val scale by animateFloatAsState(if (phase == 1) 1f + level * 0.35f else if (phase == 3) 1.1f else 1f, label = "orb")
@@ -128,11 +138,21 @@ fun VoiceChatDialog(busy: Boolean, onAsk: (String) -> Unit, latestAnswer: () -> 
                 if (!SpeechInput.available(ctx)) Text(stringResource(R.string.a5_no_recognizer), color = MaterialTheme.colorScheme.error)
                 Box(Modifier.size(120.dp).scale(scale).background(
                     if (phase == 1) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary, CircleShape)
-                    .clickable { if (phase == 1) { input.stop(); phase = 0 } else listen() }, contentAlignment = Alignment.Center) {
+                    .clickable { if (phase == 1) { input.stop(); phase = 0 } else { muted = false; listen() } }, contentAlignment = Alignment.Center) {
                     Icon(Icons.Default.Mic, null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(48.dp))
                 }
                 Text(stringResource(when (phase) { 1 -> R.string.a5_listening; 2 -> R.string.a5_thinking; 3 -> R.string.a5_speaking; else -> R.string.a5_tap_to_talk }),
                     style = MaterialTheme.typography.titleSmall)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(selected = muted, onClick = {
+                        muted = !muted
+                        if (muted) { detector.stop(); if (phase == 1) { input.stop(); phase = 0 } }
+                    }, label = { Text(stringResource(if (muted) R.string.ai6v_mic_muted else R.string.ai6v_mic_on)) },
+                        leadingIcon = { Icon(if (muted) Icons.Default.MicOff else Icons.Default.Mic, null, Modifier.size(18.dp)) })
+                    FilterChip(selected = bargeIn, onClick = { bargeIn = !bargeIn; if (!bargeIn) detector.stop() else if (phase == 3 && !muted && granted) detector.start() },
+                        label = { Text(stringResource(R.string.ai6v_barge_in)) })
+                }
+                if (phase == 3) TextButton(onClick = { detector.stop(); speaker.stop(); listen() }) { Text(stringResource(R.string.ai6v_interrupt)) }
                 if (heard.isNotBlank()) Text(heard, textAlign = TextAlign.Center, modifier = Modifier.heightIn(max = 120.dp).verticalScroll(rememberScrollState()),
                     style = MaterialTheme.typography.bodyMedium)
             }

@@ -28,7 +28,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/** Trusted certificates: import .cer / .crt / .pem, list with details, delete. */
+/** Trusted certificates: import .cer / .crt / .pem, list with details, delete, export, request one by e-mail. */
 @Composable
 fun TrustedCertsScreen(nav: NavHostController) {
     val ctx = LocalContext.current
@@ -36,6 +36,7 @@ fun TrustedCertsScreen(nav: NavHostController) {
     var entries by remember { mutableStateOf<List<TrustedCerts.Entry>>(emptyList()) }
     var message by remember { mutableStateOf<String?>(null) }
     var confirmDelete by remember { mutableStateOf<TrustedCerts.Entry?>(null) }
+    var exporting by remember { mutableStateOf(false) }
     fun reload() { scope.launch { entries = withContext(Dispatchers.IO) { TrustedCerts.list(ctx) } } }
     LaunchedEffect(Unit) { reload() }
     val addedFmt = stringResource(R.string.g6_certs_added)
@@ -53,7 +54,12 @@ fun TrustedCertsScreen(nav: NavHostController) {
         }
     }
     Scaffold(
-        topBar = { AppTopBar(stringResource(R.string.g6_certs_title), onBack = { nav.popBackStack() }) },
+        topBar = {
+            AppTopBar(stringResource(R.string.g6_certs_title), onBack = { nav.popBackStack() }) {
+                IconButton(onClick = { requestCertificateByMail(ctx) }) { Icon(Icons.Default.ForwardToInbox, stringResource(R.string.np_request_cert)) }
+                IconButton(onClick = { exporting = true }, enabled = entries.isNotEmpty()) { Icon(Icons.Default.IosShare, stringResource(R.string.np_export_certs)) }
+            }
+        },
         floatingActionButton = {
             ExtendedFloatingActionButton(onClick = { runCatching { picker.launch(arrayOf("application/x-x509-ca-cert", "application/pkix-cert", "application/x-pem-file", "application/octet-stream", "*/*")) } },
                 icon = { Icon(Icons.Default.Add, null) }, text = { Text(stringResource(R.string.g6_certs_import)) })
@@ -75,12 +81,14 @@ fun TrustedCertsScreen(nav: NavHostController) {
                                 IconButton(onClick = { confirmDelete = e }) { Icon(Icons.Default.DeleteOutline, stringResource(R.string.delete)) }
                             }
                             CertDetailsBlock(d)
+                            TrustLevelChips(e)
                         }
                     }
                 }
             }
         }
     }
+    if (exporting) CertExportDialog(entries, onDismiss = { exporting = false })
     confirmDelete?.let { e ->
         AlertDialog(onDismissRequest = { confirmDelete = null }, title = { Text(stringResource(R.string.delete)) },
             text = { Text(DigitalSignature.friendlyName(e.cert.subjectX500Principal.name)) },
@@ -120,3 +128,19 @@ private fun keyUsageLabel(b: com.smartdocs.editor.core.sign.CertFormat.KeyUsageB
     com.smartdocs.editor.core.sign.CertFormat.KeyUsageBit.ENCIPHER_ONLY -> R.string.g6_ku_encipher_only
     com.smartdocs.editor.core.sign.CertFormat.KeyUsageBit.DECIPHER_ONLY -> R.string.g6_ku_decipher_only
 })
+
+/** Foxit/Acrobat trust levels: use this certificate as a root for signatures and/or for certified documents. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun TrustLevelChips(e: com.smartdocs.editor.core.sign.TrustedCerts.Entry) {
+    var levels by remember(e.sha256) { mutableStateOf(com.smartdocs.editor.core.sign.TrustedCerts.levels(e)) }
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        listOf(com.smartdocs.editor.core.sign.TrustedCerts.Level.SIGNATURES to R.string.ns2_trust_signatures,
+            com.smartdocs.editor.core.sign.TrustedCerts.Level.CERTIFIED to R.string.ns2_trust_certified).forEach { (l, label) ->
+            FilterChip(l in levels, {
+                levels = if (l in levels) levels - l else levels + l
+                runCatching { com.smartdocs.editor.core.sign.TrustedCerts.setLevels(e, levels) }
+            }, label = { Text(stringResource(label)) })
+        }
+    }
+}

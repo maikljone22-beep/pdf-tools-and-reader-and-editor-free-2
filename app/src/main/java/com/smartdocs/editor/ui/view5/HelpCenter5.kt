@@ -67,9 +67,12 @@ fun HelpCenterScreen(nav: NavHostController) {
         Column(Modifier.fillMaxSize().padding(pad).padding(horizontal = 16.dp)) {
             OutlinedTextField(q, { q = it }, Modifier.fillMaxWidth(), singleLine = true, leadingIcon = { Icon(Icons.Default.Search, null) },
                 placeholder = { Text(stringResource(R.string.v5_help_search)) })
-            Row(Modifier.padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.padding(vertical = 8.dp).horizontalScroll(androidx.compose.foundation.rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 AssistChip(onClick = { nav.navigate(V5Routes.WHATS_NEW) }, label = { Text(stringResource(R.string.v5_whats_new)) }, leadingIcon = { Icon(Icons.Default.NewReleases, null) })
                 AssistChip(onClick = { runCatching { nav.navigate("help") } }, label = { Text(stringResource(R.string.v5_faq_contact)) }, leadingIcon = { Icon(Icons.Default.SupportAgent, null) })
+                // ai6 (§41 support chatbot): ask the assistant about the app
+                if (com.smartdocs.editor.LocalSettings.current.aiEnabled) AssistChip(onClick = { nav.navigate(com.smartdocs.editor.ui.Routes.tool("ai_help")) },
+                    label = { Text(stringResource(R.string.ai6h_help_chat)) }, leadingIcon = { Icon(Icons.Default.AutoAwesome, null) })
             }
             // NVE-shell: feature guides, help assistant (chatbot), feedback survey
             Row(Modifier.horizontalScroll(androidx.compose.foundation.rememberScrollState()).padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {

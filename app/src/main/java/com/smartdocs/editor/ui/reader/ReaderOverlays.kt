@@ -92,6 +92,7 @@ fun SelectionMenu(
     onCopy: (String) -> Unit, onTranslate: (String) -> Unit, onAskAi: (String) -> Unit, onReadFrom: (TextSelection) -> Unit,
     onWebSearch: (String) -> Unit, onShare: (String) -> Unit,
     onRedact: ((TextSelection) -> Unit)? = null,
+    onRewrite: ((TextSelection) -> Unit)? = null,   // ai6: AI rewrite / tone, replaces the text in the document
 ) {
     Surface(shape = RoundedCornerShape(20.dp), tonalElevation = 6.dp, shadowElevation = 8.dp, modifier = Modifier.padding(12.dp)) {
         Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 6.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -101,6 +102,7 @@ fun SelectionMenu(
             ToolChip(Icons.Default.FormatStrikethrough, stringResource(R.string.annot_strikeout)) { state.markupFromSelection(AnnotKind.STRIKEOUT) }
             if (com.smartdocs.editor.LocalSettings.current.aiEnabled) ToolChip(Icons.Default.Translate, stringResource(R.string.ai_translate)) { onTranslate(sel.text) }
             if (com.smartdocs.editor.LocalSettings.current.aiEnabled) ToolChip(Icons.Default.AutoAwesome, stringResource(R.string.ai_explain)) { onAskAi(sel.text) }
+            if (onRewrite != null && com.smartdocs.editor.LocalSettings.current.aiEnabled) ToolChip(Icons.Default.EditNote, stringResource(R.string.ai6r_rewrite_chip)) { onRewrite(sel) }   // ai6
             ToolChip(Icons.AutoMirrored.Filled.VolumeUp, stringResource(R.string.tts_from_here)) { onReadFrom(sel) }
             ToolChip(Icons.Default.TravelExplore, stringResource(R.string.rd_web_search)) { onWebSearch(sel.text) }
             ToolChip(Icons.Default.Share, stringResource(R.string.share_text)) { onShare(sel.text) }
@@ -109,6 +111,11 @@ fun SelectionMenu(
             if (e5Link) com.smartdocs.editor.ui.edit5.ReaderLinkFromSelection(state) { e5Link = false }
             if (onRedact != null) ToolChip(Icons.Default.Block, stringResource(R.string.s5_rd_chip)) { onRedact(sel) }   // MODULE_search5b
             com.smartdocs.editor.ui.nve.NveSelectionChips(sel, state)   // NVE: squiggly, note, bookmark, word count, copy formatted / table, export, rewrite, edit
+            var wordCount by remember { mutableStateOf(false) }
+            ToolChip(Icons.Default.Numbers, stringResource(R.string.nt_wc_title)) { wordCount = true }   // Foxit "Word Count" of the selection
+            if (wordCount) AlertDialog(onDismissRequest = { wordCount = false }, title = { Text(stringResource(R.string.nt_wc_selection)) },
+                text = { com.smartdocs.editor.ui.tools5.WordCountTable(com.smartdocs.editor.core.tools5.WordCount.count(sel.text)) },
+                confirmButton = { TextButton(onClick = { wordCount = false }) { Text(stringResource(R.string.ok)) } })
         }
     }
 }

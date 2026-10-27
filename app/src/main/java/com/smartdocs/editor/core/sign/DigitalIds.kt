@@ -38,6 +38,8 @@ object DigitalIds {
     enum class KeyType(val algorithm: String, val size: Int, val curve: String? = null) {
         RSA_2048("RSA", 2048), RSA_3072("RSA", 3072), RSA_4096("RSA", 4096),
         EC_P256("EC", 256, "secp256r1"), EC_P384("EC", 384, "secp384r1"),
+        /** EdDSA (ISO/TS 32002); signing only, and only newer readers validate it. */
+        ED25519("Ed25519", 256),
     }
 
     /** Self-signed ID creation options (Nitro "Create a self-signed digital ID"). */
@@ -157,8 +159,9 @@ object DigitalIds {
     fun selfSigned(spec: Spec, now: Date = Date()): Pair<PrivateKey, X509Certificate> {
         DigitalSignature.ensureProvider()
         val ec = spec.key.algorithm == "EC"
-        val kpg = KeyPairGenerator.getInstance(spec.key.algorithm)
-        if (ec) kpg.initialize(ECGenParameterSpec(spec.key.curve)) else kpg.initialize(spec.key.size)
+        val ed = spec.key == KeyType.ED25519
+        val kpg = if (ed) KeyPairGenerator.getInstance("Ed25519", "BC") else KeyPairGenerator.getInstance(spec.key.algorithm)
+        if (ec) kpg.initialize(ECGenParameterSpec(spec.key.curve)) else if (!ed) kpg.initialize(spec.key.size)
         val kp = kpg.generateKeyPair()
         val nb = X500NameBuilder(BCStyle.INSTANCE)
         nb.addRDN(BCStyle.CN, spec.commonName.ifBlank { "SmartDocs User" })
@@ -173,8 +176,9 @@ object DigitalIds {
         val name = nb.build()
         val until = Calendar.getInstance().apply { time = now; add(Calendar.YEAR, spec.validYears.coerceIn(1, 50)) }.time
         val builder = JcaX509v3CertificateBuilder(name, BigInteger.valueOf(now.time).shiftLeft(16).or(BigInteger.valueOf(java.security.SecureRandom().nextInt(65536).toLong())), now, until, name, kp.public)
-        builder.addExtension(Extension.keyUsage, true, KeyUsage(keyUsage(spec.usage, ec)))
-        val cert = JcaX509CertificateConverter().getCertificate(builder.build(JcaContentSignerBuilder(if (ec) "SHA256withECDSA" else "SHA256withRSA").build(kp.private)))
+        builder.addExtension(Extension.keyUsage, true, KeyUsage(if (ed) keyUsage(Usage.SIGNING, false) else keyUsage(spec.usage, ec)))
+        val algo = when { ed -> "Ed25519"; ec -> "SHA256withECDSA"; else -> "SHA256withRSA" }
+        val cert = JcaX509CertificateConverter().getCertificate(builder.build(JcaContentSignerBuilder(algo).build(kp.private)))
         return kp.private to cert
     }
 

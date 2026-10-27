@@ -196,7 +196,7 @@ object NveKeys {
             NveKey.ROTATE_CW -> s.rotation = (s.rotation + 90) % 360
             NveKey.ROTATE_CCW -> s.rotation = (s.rotation + 270) % 360
             NveKey.SELECT_ALL -> s.scope.launch { NveSelectionOps.selectAll(s, s.currentPage) }
-            NveKey.COPY -> { val sel = s.selection ?: return false; com.smartdocs.editor.ui.reader.ReaderIntents.copy(ctx, sel.text) }
+            NveKey.COPY -> { val sel = s.selection ?: return false; if (s.guard.check(com.smartdocs.editor.core.security.DocAction.COPY)) com.smartdocs.editor.ui.reader.ReaderIntents.copy(ctx, sel.text) }
             NveKey.PASTE -> NveClipboard.paste(ctx, s)
             NveKey.ADD_BOOKMARK -> a?.panels?.invoke(com.smartdocs.editor.ui.reader.ReaderPanel.BOOKMARKS)
             NveKey.FIND_REPLACE -> a?.navigateTool?.invoke("find_replace")

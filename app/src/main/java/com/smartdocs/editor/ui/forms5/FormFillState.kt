@@ -27,6 +27,7 @@ import com.smartdocs.editor.core.forms5.XfaGenerated
 import com.smartdocs.editor.core.forms5.XfaRepeat
 import com.smartdocs.editor.ui.reader.ReaderState
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -204,7 +205,10 @@ class FormFillState internal constructor(val reader: ReaderState) {
     suspend fun ensureLoaded() {
         val f = reader.file ?: return
         val s = reader.session ?: return
-        val key = f.path + "|" + System.identityHashCode(s) + "|" + reader.renderVersion
+        // the JavaScript switch is read before the model: it decides which scripts the model keeps (and a change reloads)
+        // nitro-protect2: the document's own decision (run level, Safe Reading Mode, trusted / "Keep blocked")
+        com.smartdocs.editor.core.security.JsPolicy.enabled = reader.guard.jsAllowed(runCatching { reader.app.settings.settings.first().runJavaScript }.getOrDefault(com.smartdocs.editor.core.security.JsPolicy.enabled))
+        val key = f.path + "|" + System.identityHashCode(s) + "|" + reader.renderVersion + "|" + com.smartdocs.editor.core.security.JsPolicy.enabled
         if (key == loadedKey) return
         loadMutex.withLock {
             if (key == loadedKey) return
@@ -302,6 +306,8 @@ class FormFillState internal constructor(val reader: ReaderState) {
     /** Tap on a widget. */
     fun tap(w: FWidget) {
         if (!enabled || isHidden(w)) return
+        // nitro-protect2: the author's form-filling permission and Protected View (buttons still work)
+        if (w.kind != WKind.BUTTON && !reader.guard.check(com.smartdocs.editor.core.security.DocAction.FILL_FORMS)) return
         if (w.id != activeId && !commitActive()) return
         when (w.kind) {
             WKind.CHECK, WKind.RADIO -> { toggle(w); activeId = w.id; typingField = null }
@@ -443,6 +449,7 @@ class FormFillState internal constructor(val reader: ReaderState) {
     fun addRow(r: XfaRepeat) {
         val f = reader.file ?: return
         if (busy || !r.canAdd) return
+        if (!reader.guard.check(com.smartdocs.editor.core.security.DocAction.FILL_FORMS)) return      // nitro-protect2
         reader.scope.launch {
             busy = true
             try {

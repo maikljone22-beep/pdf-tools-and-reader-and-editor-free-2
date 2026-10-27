@@ -84,9 +84,13 @@ fun GoToPageDialog(current: Int, count: Int, onGo: (Int) -> Unit, onDismiss: () 
 fun TextPromptDialog(state: ReaderState, prompt: TextPrompt, onDismiss: () -> Unit) {
     var text by remember(prompt) { mutableStateOf("") }
     val isLink = prompt.tool == ReaderTool.LINK
+    // nitro-fillsign2: comb text: number of cells (empty = one per character) and cell width in points
+    val isComb = prompt.tool == ReaderTool.FS_COMB
+    var cellsText by remember(prompt) { mutableStateOf("") }
+    var cellWText by remember(prompt) { mutableStateOf(String.format(java.util.Locale.US, "%.0f", com.smartdocs.editor.core.fillsign2.CombLayout.defaultCellWidth(state.fontSize))) }
     val title = when (prompt.tool) {
         ReaderTool.NOTE -> R.string.annot_note; ReaderTool.LINK -> R.string.rd_link_url
-        ReaderTool.FS_TEXT -> R.string.fill_sign_text; else -> R.string.annot_text
+        ReaderTool.FS_TEXT -> R.string.fill_sign_text; ReaderTool.FS_COMB -> R.string.nf2_comb; else -> R.string.annot_text
     }
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -94,6 +98,17 @@ fun TextPromptDialog(state: ReaderState, prompt: TextPrompt, onDismiss: () -> Un
         text = {
             // NVE: live spell check (underlines) + spell-check button; Arabic-Indic digits option applied on OK
             val nveIssues = if (isLink) emptyList() else com.smartdocs.editor.ui.nve.rememberSpellIssues(text)
+            if (isComb) Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                OutlinedTextField(text, { text = it.replace("\n", "") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(cellsText, { cellsText = it.filter { c -> c.isDigit() }.take(2) }, Modifier.weight(1f), singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), label = { Text(stringResource(R.string.nf2_comb_cells)) },
+                        placeholder = { Text(com.smartdocs.editor.core.fillsign2.CombLayout.defaultCells(text).toString()) })
+                    OutlinedTextField(cellWText, { cellWText = it.filter { c -> c.isDigit() || c == '.' }.take(5) }, Modifier.weight(1f), singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), label = { Text(stringResource(R.string.nf2_comb_cell_width)) })
+                }
+                Text(stringResource(R.string.nf2_comb_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else
             OutlinedTextField(text, { text = it }, modifier = Modifier.fillMaxWidth(), minLines = if (isLink) 1 else 3, singleLine = isLink,
                 placeholder = { Text(if (isLink) "https://" else "") },
                 visualTransformation = com.smartdocs.editor.ui.nve.spellTransformation(nveIssues),
@@ -110,6 +125,14 @@ fun TextPromptDialog(state: ReaderState, prompt: TextPrompt, onDismiss: () -> Un
                     ReaderTool.LINK -> prompt.rect?.let { r ->
                         val url = if (text.contains("://")) text.trim() else "https://" + text.trim()
                         state.addAnnot(state.newAnnot(AnnotKind.NOTE, prompt.page, rects = listOf(r), text = url, color = 0x2196F3))
+                    }
+                    ReaderTool.FS_COMB -> {
+                        val cl = com.smartdocs.editor.core.fillsign2.CombLayout
+                        val cells = (cellsText.toIntOrNull() ?: cl.defaultCells(text)).coerceIn(1, cl.MAX_CELLS)
+                        val cellW = (cellWText.toFloatOrNull() ?: cl.defaultCellWidth(state.fontSize)).coerceIn(4f, 200f)
+                        val (w, h) = cl.boxSize(cells, cellW, state.fontSize)
+                        val left = prompt.x.coerceAtMost(pageW - w).coerceAtLeast(0f)
+                        state.addAnnot(state.newAnnot(AnnotKind.FREETEXT, prompt.page, rects = listOf(RectF(left, prompt.y + h / 2, left + w, prompt.y - h / 2)), text = text).copy(comb = cells))
                     }
                     else -> state.addAnnot(state.newAnnot(AnnotKind.FREETEXT, prompt.page, rects = listOf(textRectAt(prompt.x, prompt.y, text, state.fontSize, pageW, rtl)), text = text))
                 }
@@ -186,7 +209,7 @@ fun DocInfoContent(state: ReaderState) {
             InfoRow(stringResource(R.string.info_creator), m.creator); InfoRow(stringResource(R.string.info_producer), m.producer)
             InfoRow(stringResource(R.string.info_created), m.creationDate); InfoRow(stringResource(R.string.info_modified), m.modDate)
         }
-        InfoRow(stringResource(R.string.info_encrypted), stringResource(if (state.password != null) R.string.yes else R.string.no))
+        SecurityPropertiesSection(state.guard.info, state.password != null)   // nitro-protect2: method, algorithm, permissions
     }
 }
 
@@ -227,7 +250,7 @@ fun ReflowView(state: ReaderState, modifier: Modifier = Modifier) {
             IconButton(onClick = { if (page < state.pageCount - 1) state.jumpTo(page + 1) }) { Icon(Icons.Default.KeyboardArrowDown, stringResource(R.string.next)) }
             IconButton(onClick = { state.reflow = false }) { Icon(Icons.Default.Close, stringResource(R.string.close)) }
         }
-        androidx.compose.foundation.text.selection.SelectionContainer {
+        CopyableIf(state.guard.allows(com.smartdocs.editor.core.security.DocAction.COPY)) {   // nitro-protect2
             Text(
                 text.ifBlank { stringResource(R.string.ocr_no_text) },
                 Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),

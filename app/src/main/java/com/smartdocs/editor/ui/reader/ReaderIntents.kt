@@ -24,7 +24,8 @@ object ReaderIntents {
         link.destPage?.let { if (it >= 0) { jumpTo(it); return } }
         val uri = link.uri?.trim().orEmpty()
         if (uri.isEmpty()) return
-        openUri(context, uri)
+        // a document's web link follows "Manage Internet Access" (allow / block / ask, trusted sites)
+        com.smartdocs.editor.ui.security.DocSecurityGate.web(context, uri) { openUri(context, uri) }
     }
 
     fun openUri(context: Context, raw: String) {

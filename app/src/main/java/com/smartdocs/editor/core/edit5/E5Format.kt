@@ -37,12 +37,16 @@ object Digits {
 data class BatesSpec(
     val prefix: String = "", val suffix: String = "", val digits: Int = 6, val start: Long = 1,
     val mode: BatesMode = BatesMode.CONTINUE, val countSkipped: Boolean = false,
+    /** Foxit "increment": the step between numbers; a negative step counts down. */
+    val increment: Long = 1,
 )
 
 enum class BatesMode { CONTINUE, PER_DOCUMENT, RESTART }
 
+enum class BatesNaming { KEEP, ADD_RANGE, REPLACE_WITH_RANGE }
+
 object Bates {
-    fun format(spec: BatesSpec, n: Long): String = spec.prefix + n.toString().padStart(spec.digits.coerceIn(1, 15), '0') + spec.suffix
+    fun format(spec: BatesSpec, n: Long): String = spec.prefix + (if (n < 0) "-" + (-n).toString().padStart(spec.digits.coerceIn(1, 15), '0') else n.toString().padStart(spec.digits.coerceIn(1, 15), '0')) + spec.suffix
 
     /** Number of the [index]-th (zero-based) stamped page. */
     fun numberAt(spec: BatesSpec, index: Int): Long = spec.start + index
@@ -62,21 +66,37 @@ object Bates {
      * [BatesSpec.mode] and [BatesSpec.countSkipped].
      */
     fun plan(spec: BatesSpec, stamped: List<Pair<Int, List<Int>>>): List<Map<Int, Long>> {
+        val step = if (spec.increment == 0L) 1L else spec.increment
         var next = spec.start
         return stamped.map { (count, pages) ->
             if (spec.mode == BatesMode.RESTART) next = spec.start
             val m = LinkedHashMap<Int, Long>()
             when {
-                spec.mode == BatesMode.PER_DOCUMENT -> { pages.forEach { m[it] = next }; if (pages.isNotEmpty()) next++ }
-                spec.countSkipped -> { val first = next; pages.forEach { m[it] = first + it }; next = first + count }
-                else -> pages.forEach { m[it] = next++ }
+                spec.mode == BatesMode.PER_DOCUMENT -> { pages.forEach { m[it] = next }; if (pages.isNotEmpty()) next += step }
+                spec.countSkipped -> { val first = next; pages.forEach { m[it] = first + it * step }; next = first + count * step }
+                else -> pages.forEach { m[it] = next; next += step }
             }
             m
         }
     }
 
+    /** Output file name (Foxit Bates output options): keep the name, add the Bates range, or replace the name with it. */
+    fun outputName(base: String, first: String, last: String, naming: BatesNaming): String = when (naming) {
+        BatesNaming.KEEP -> base + "_bates"
+        BatesNaming.ADD_RANGE -> "${base}_$first-$last"
+        BatesNaming.REPLACE_WITH_RANGE -> "$first-$last"
+    }.replace(Regex("[\\\\/:*?\"<>|]"), "_")
+
     /** Total of numbers the set uses (the `{batestotal}` token): one per document or one per numbered page. */
     fun total(plan: List<Map<Int, Long>>): Long = plan.flatMap { it.values }.distinct().size.toLong()
+
+    /** A plain-text log of a Bates run (Foxit "log file"): one line per file with its range. */
+    fun log(spec: BatesSpec, rows: List<Triple<String, String, String>>): String = buildString {
+        append("Bates numbering ").append(java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.US).format(java.util.Date())).append('\n')
+        append("prefix=").append(spec.prefix).append(" suffix=").append(spec.suffix).append(" digits=").append(spec.digits)
+            .append(" start=").append(spec.start).append(" increment=").append(spec.increment).append('\n')
+        rows.forEach { (file, first, last) -> append(file).append('\t').append(first).append(" – ").append(last).append('\n') }
+    }
 }
 
 /** Measurement units offered for margins (Nitro "units"); values are stored in points. */

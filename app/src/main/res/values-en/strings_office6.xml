@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- office6: print, read aloud, find and replace in Excel / PowerPoint, AI commands -->
+    <string name="of6_print">Print</string>
+    <string name="of6_preparing_print">Preparing to print…</string>
+    <string name="of6_print_failed">Could not print: %1$s</string>
+    <string name="of6_read_aloud">Read aloud</string>
+    <string name="of6_stop_reading">Stop reading</string>
+    <string name="of6_reading_item">%1$d/%2$d</string>
+    <string name="of6_nothing_to_read">There is no text to read</string>
+    <string name="of6_match_case">Match case</string>
+    <string name="of6_whole_word">Whole word</string>
+    <string name="of6_whole_cell">Entire cell content</string>
+    <string name="of6_replaced">Replaced: %1$d</string>
+    <string name="of6_ai_command">AI command</string>
+    <string name="of6_ai_hint">Example: make the title bold and centered</string>
+    <string name="of6_ai_rewrite_hint">Example: rewrite the paragraph in a formal tone</string>
+    <string name="of6_ai_formula_hint">Example: sum of column B where column C is over 100</string>
+    <string name="of6_ai_mode_commands">Commands</string>
+    <string name="of6_ai_mode_rewrite">Rewrite paragraph</string>
+    <string name="of6_ai_mode_formula">Formula</string>
+    <string name="of6_ai_run">Run</string>
+    <string name="of6_ai_apply">Apply</string>
+    <string name="of6_ai_none">The assistant found no matching command. Try other words.</string>
+    <string name="of6_ai_applied">Ran %1$d of %2$d (you can undo)</string>
+    <string name="of6_ai_rewrite_need_para">Tap a paragraph first.</string>
+    <string name="of6_ai_will_run">Will run:</string>
+    <string name="of6_ai_result">Result:</string>
+</resources>

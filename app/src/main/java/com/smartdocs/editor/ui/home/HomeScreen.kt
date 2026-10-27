@@ -148,6 +148,7 @@ fun HomeScreen(nav: NavHostController) {
                 recents.firstOrNull()?.let { last ->
                     item(key = "continue") { ContinueCard(last) { openDoc(last) } }
                 }
+                item(key = "ai_chats") { com.smartdocs.editor.ui.ai6.HomeConversationsCard(nav) }   // ai6 (AI-5): latest AI conversations
 
                 // ---- favorites ----
                 if (favorites.isNotEmpty()) {

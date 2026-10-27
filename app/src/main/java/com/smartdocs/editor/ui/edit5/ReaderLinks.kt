@@ -117,13 +117,15 @@ fun ReaderPageLinksSheet(state: ReaderState, page: Int, initial: PageLinkInfo? =
 
 /**
  * Follow a link PDFium does not report (GoToR to another PDF, Launch of another file) at ([x], [y]).
- * Returns true when handled. [openPdf] opens a PDF in the reader at a page.
+ * Returns true when handled. [openPdf] opens a PDF in the reader at a page. The target is named in an explicit
+ * warning first; executable-like files, and every launch when the setting blocks them, are refused.
  */
 suspend fun followFileLinkAt(state: ReaderState, page: Int, x: Float, y: Float, openPdf: (File, Int) -> Unit): Boolean {
     val l = linkAt(state, page, x, y) ?: return false
     if (l.spec.kind != LinkKind.REMOTE && l.spec.kind != LinkKind.LAUNCH) return false
     val base = state.file?.parentFile
     val target = File(l.spec.file).let { if (it.isAbsolute) it else File(base, l.spec.file) }
+    if (!com.smartdocs.editor.ui.security.DocSecurityGate.confirmLaunch(state.context, l.spec.file.ifBlank { target.name })) return true
     if (!target.exists()) { Toast.makeText(state.context, state.context.getString(R.string.e5_link_file_missing, l.spec.file), Toast.LENGTH_LONG).show(); return true }
     if (l.spec.kind == LinkKind.REMOTE || target.extension.equals("pdf", true)) { openPdf(target, l.spec.page); return true }
     runCatching {

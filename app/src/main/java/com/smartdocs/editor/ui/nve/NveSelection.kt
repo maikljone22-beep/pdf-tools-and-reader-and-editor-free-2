@@ -69,6 +69,7 @@ object NveSelectionOps {
 
     /** "Copy as table": rows by baseline, cells by wide gaps; HTML table + tab-separated text on the clipboard. */
     suspend fun copyAsTable(ctx: Context, s: ReaderState, sel: TextSelection): Int {
+        if (!s.guard.check(com.smartdocs.editor.core.security.DocAction.COPY)) return -1      // nitro-protect2: author restrictions / Protected View
         val cs = chars(s, sel)
         val rtl = cs.count { TextStats.isArabic(it.c) } > cs.count { it.c.isLetter() } / 2
         val cells = TableCopy.cells(cs, rtl = rtl)
@@ -93,6 +94,7 @@ object NveSelectionOps {
 
     /** "Copy with formatting": HTML with font size / bold / italic / colour / family of the text blocks under the selection. */
     suspend fun copyWithFormatting(ctx: Context, s: ReaderState, sel: TextSelection) {
+        if (!s.guard.check(com.smartdocs.editor.core.security.DocAction.COPY)) return
         val blocks = blocksOf(s, sel).sortedWith(compareByDescending<TextBlock> { it.rect.top }.thenBy { it.rect.left })
         val rtl = sel.text.count { TextStats.isArabic(it) } > sel.text.count { it.isLetter() } / 2
         val runs = if (blocks.size <= 1) {
@@ -116,6 +118,7 @@ object NveSelectionOps {
      * or its text is not found in the block (the caller then offers a note instead).
      */
     suspend fun replaceInContent(ctx: Context, s: ReaderState, sel: TextSelection, replacement: String): Boolean {
+        if (!s.guard.check(com.smartdocs.editor.core.security.DocAction.MODIFY)) return true      // refused: the guard already said why
         val blocks = blocksOf(s, sel)
         val b = blocks.singleOrNull() ?: return false
         val norm = { x: String -> x.replace(Regex("\\s+"), " ").trim() }
@@ -128,9 +131,9 @@ object NveSelectionOps {
         val newText = source.substring(0, at) + replacement + source.substring(at + key.length)
         val st = EditTextStyle(size = b.size, color = b.color, bold = b.bold, italic = b.italic, align = b.align, family = b.family)
         val page = sel.page
-        s.applyInPlace(label = { ctx.getString(R.string.hi_content_edit, page + 1) }) { src, out, pw ->
+        runCatching { s.applyInPlace(label = { ctx.getString(R.string.hi_content_edit, page + 1) }) { src, out, pw ->
             ContentEdit.replaceText(ctx, src, out, pw, page, b.ops, newText, st)
-        } ?: return false
+        } }.getOrNull() ?: return false
         s.selection = null
         return true
     }
@@ -169,14 +172,13 @@ fun NveSelectionChips(sel: TextSelection, s: ReaderState) {
         scope.launch { app.db.bookmarks().insert(ReadingBookmark(uri = s.fileUri, page = sel.page, title = sel.text.replace('\n', ' ').take(80))); NveSelectionOps.toast(ctx, ctx.getString(R.string.nv_bookmark_added)) }
         s.selection = null
     }
-    ToolChip(Icons.Default.Numbers, stringResource(R.string.nv_word_count)) { n.wordCountText = sel.text; n.open(NveSurface.WORD_COUNT) }
     ToolChip(Icons.Default.FormatPaint, stringResource(R.string.nv_copy_formatting)) { scope.launch { NveSelectionOps.copyWithFormatting(ctx, s, sel) } }
     ToolChip(Icons.Default.TableChart, stringResource(R.string.nv_copy_table)) { scope.launch { if (NveSelectionOps.copyAsTable(ctx, s, sel) == 0) NveSelectionOps.toast(ctx, ctx.getString(R.string.nv_failed)) } }
     ToolChip(Icons.Default.SelectAll, stringResource(R.string.nv_select_all)) { scope.launch { NveSelectionOps.selectAll(s, sel.page) } }
     ToolChip(Icons.Default.ViewColumn, stringResource(R.string.nv_column_select)) { s.selection = null; n.dragMode = NveDrag.COLUMN_SELECT }
-    ToolChip(Icons.Default.Output, stringResource(R.string.nv_export_selection)) { export.launch((s.file?.nameWithoutExtension ?: "selection") + "_p${sel.page + 1}.txt") }
-    ToolChip(Icons.Default.EditNote, stringResource(R.string.nv_edit_text)) { n.requestEdit = sel.page to sel.rects.firstOrNull()?.let { PageGeometry.normPdf(it) } }
-    if (LocalSettings.current.aiEnabled) ToolChip(Icons.Default.AutoFixHigh, stringResource(R.string.nv_rewrite)) { rewrite = true }
+    ToolChip(Icons.Default.Output, stringResource(R.string.nv_export_selection)) { if (s.guard.check(com.smartdocs.editor.core.security.DocAction.COPY)) export.launch((s.file?.nameWithoutExtension ?: "selection") + "_p${sel.page + 1}.txt") }
+    ToolChip(Icons.Default.EditNote, stringResource(R.string.nv_edit_text)) { if (s.guard.check(com.smartdocs.editor.core.security.DocAction.MODIFY)) n.requestEdit = sel.page to sel.rects.firstOrNull()?.let { PageGeometry.normPdf(it) } }
+    if (LocalSettings.current.aiEnabled) ToolChip(Icons.Default.AutoFixHigh, stringResource(R.string.nv_rewrite)) { if (s.guard.check(com.smartdocs.editor.core.security.DocAction.COPY)) rewrite = true }
     if (rewrite) com.smartdocs.editor.ui.ai5.TextToolsSheet(sel.text, com.smartdocs.editor.core.ai5.TextAction.REWRITE, docContext = null,
         onReplace = { t -> scope.launch { if (!NveSelectionOps.replaceInContent(ctx, s, sel, t)) NveSelectionOps.toast(ctx, ctx.getString(R.string.nv_replace_failed)) } },
         onAddNote = { t -> sel.rects.firstOrNull()?.let { r -> val top = maxOf(r.top, r.bottom); s.addAnnot(s.newAnnot(AnnotKind.NOTE, sel.page, rects = listOf(RectF(r.left, top, r.left + 20f, top - 20f)), text = t)) } },

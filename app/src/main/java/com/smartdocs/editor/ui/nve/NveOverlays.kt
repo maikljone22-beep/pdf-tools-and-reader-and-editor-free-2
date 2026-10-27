@@ -218,7 +218,7 @@ internal fun SnapshotResultDialog(s: ReaderState, bmp: Bitmap, onDismiss: () -> 
         },
         confirmButton = {
             Column(horizontalAlignment = Alignment.End) {
-                TextButton(onClick = { copyImageToClipboard(ctx, s, bmp); android.widget.Toast.makeText(ctx, R.string.nv_copied, android.widget.Toast.LENGTH_SHORT).show(); onDismiss() }) {
+                TextButton(onClick = { if (!s.guard.check(com.smartdocs.editor.core.security.DocAction.COPY)) return@TextButton; copyImageToClipboard(ctx, s, bmp); android.widget.Toast.makeText(ctx, R.string.nv_copied, android.widget.Toast.LENGTH_SHORT).show(); onDismiss() }) {
                     Icon(Icons.Default.ContentCopy, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.nv_copy_image))
                 }
                 TextButton(onClick = {
@@ -226,6 +226,7 @@ internal fun SnapshotResultDialog(s: ReaderState, bmp: Bitmap, onDismiss: () -> 
                     s.pendingImage = bmp; s.tool = com.smartdocs.editor.ui.reader.ReaderTool.IMAGE; s.selection = null; onDismiss()
                 }) { Icon(Icons.Default.ContentPaste, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.nv_paste_back)) }
                 TextButton(onClick = {
+                    if (!s.guard.check(com.smartdocs.editor.core.security.DocAction.COPY)) return@TextButton
                     scope.launch {
                         val ok = saveBitmapToPictures(ctx, bmp, "SmartDocs_snapshot_" + System.currentTimeMillis())
                         android.widget.Toast.makeText(ctx, if (ok) R.string.nv_saved_pictures else R.string.nv_failed, android.widget.Toast.LENGTH_SHORT).show(); onDismiss()
@@ -428,7 +429,7 @@ fun NveContextMenu(s: ReaderState, actions: com.smartdocs.editor.ui.reader.Reade
         DropdownMenu(true, { n.contextMenuAt = null }, offset = DpOffset.Zero) {
             val close = { n.contextMenuAt = null }
             s.selection?.let { sel ->
-                CtxItem(R.string.copy_text, Icons.Default.ContentCopy, close) { com.smartdocs.editor.ui.reader.ReaderIntents.copy(ctx, sel.text) }
+                CtxItem(R.string.copy_text, Icons.Default.ContentCopy, close) { if (s.guard.check(com.smartdocs.editor.core.security.DocAction.COPY)) com.smartdocs.editor.ui.reader.ReaderIntents.copy(ctx, sel.text) }
                 CtxItem(R.string.nv_copy_formatting, Icons.Default.FormatPaint, close) { scope.launch { NveSelectionOps.copyWithFormatting(ctx, s, sel) } }
                 CtxItem(R.string.nv_copy_table, Icons.Default.TableChart, close) { scope.launch { NveSelectionOps.copyAsTable(ctx, s, sel) } }
                 HorizontalDivider()

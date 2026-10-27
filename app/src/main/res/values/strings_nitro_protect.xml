@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- nitro-protect (Protect gaps: RC4-40, security profiles, trusted-contact recipients, certificate export / request,
+     Internet access, file-launch warnings, JavaScript switch). Prefix np_. -->
+<resources>
+    <!-- 40-bit ARC4 -->
+    <string name="np_rc4_40">RC4 40</string>
+    <string name="np_rc4_40_warn_title">تشفير RC4 بطول 40 بت ليس حماية حقيقية</string>
+    <string name="np_rc4_40_warn_body">هذا التشفير من تسعينيات القرن الماضي تزيله أدوات مجانية في ثوانٍ، وتُتجاهل قيود الأذونات فيه. استخدمه فقط إذا كان قارئ قديم جدًا لا يفتح غيره، ولا تستخدمه أبدًا للملفات السرية. اختر AES 256 كلما أمكن.</string>
+
+    <!-- security profiles -->
+    <string name="np_profiles_title">ملفات الأمان</string>
+    <string name="np_profiles_empty">لا توجد ملفات أمان بعد. اضبط الخيارات في هذه الشاشة ثم احفظها كملف أمان.</string>
+    <string name="np_profiles_no_passwords">يحفظ ملف الأمان الخوارزمية وما يُشفَّر والأذونات. لا تُحفظ كلمات المرور أبدًا: اكتبها في كل مرة.</string>
+    <string name="np_profile_save_current">حفظ الإعدادات الحالية</string>
+    <string name="np_profile_apply">تطبيق</string>
+    <string name="np_profile_update">استبداله بالإعدادات الحالية</string>
+    <string name="np_profile_rename">إعادة التسمية</string>
+    <string name="np_profile_more">خيارات أخرى</string>
+    <string name="np_profile_name">اسم ملف الأمان</string>
+    <string name="np_profile_name_used">يوجد ملف أمان آخر بهذا الاسم.</string>
+    <string name="np_profile_will_replace">يوجد ملف أمان بهذا الاسم وسيُستبدل.</string>
+    <string name="np_profile_applied">طُبِّق ملف الأمان \"%1$s\". أدخل كلمات المرور.</string>
+    <string name="np_profile_updated">حُدِّث ملف الأمان \"%1$s\".</string>
+    <string name="np_profile_restricted">مقيَّد</string>
+    <string name="np_profile_unrestricted">بلا قيود</string>
+
+    <!-- certificate security: recipients from Trusted Contacts -->
+    <string name="np_recipients_from_contacts">اختيار من جهات الاتصال الموثوقة</string>
+    <string name="np_contacts_none">قائمة جهات الاتصال الموثوقة فارغة. استورد الشهادات من التوقيع الرقمي ← التحقق ← الشهادات الموثوقة.</string>
+    <string name="np_add_count">إضافة (%1$d)</string>
+
+    <!-- trusted contacts: export / request -->
+    <string name="np_export_certs">تصدير الشهادات</string>
+    <string name="np_export_format">الصيغة</string>
+    <string name="np_export_cer_hint">شهادة واحدة بصيغة ثنائية (DER). تُفتح في ويندوز وأندرويد وأكروبات.</string>
+    <string name="np_export_pem_hint">نص (Base64) لشهادة واحدة أو أكثر. شائع في لينكس والخوادم.</string>
+    <string name="np_export_p7_hint">حزمة PKCS#7 لشهادة واحدة أو أكثر (‎.p7b و‎.p7c تحملان البيانات نفسها).</string>
+    <string name="np_export_cer_one">ملف ‎.cer يحمل شهادة واحدة فقط. اختر شهادة واحدة، أو اختر ‎.pem أو ‎.p7b أو ‎.p7c.</string>
+    <string name="np_export_failed">تعذّر تصدير الشهادات.</string>
+    <string name="np_request_cert">طلب شهادة بالبريد الإلكتروني</string>
+    <string name="np_request_subject">طلب شهادتك الرقمية</string>
+    <string name="np_request_body">مرحبًا،\n\nأرجو أن ترسل إليّ شهادتك الرقمية العامة كملف ‎.cer (أو ‎.p7b / ‎.pem) بالرد على هذه الرسالة. سأضيفها إلى جهات الاتصال الموثوقة لديّ لأتحقق من توقيعاتك وأرسل إليك مستندات PDF مشفّرة.\n\nأرسل الشهادة العامة فقط، ولا ترسل أبدًا ملف ‎.p12 / ‎.pfx أو كلمة مروره.</string>
+    <string name="np_request_body_attached">أرفقتُ شهادتي العامة لتفعل الشيء نفسه.</string>
+    <string name="np_request_body_not_attached">شهادتي الخاصة غير مرفقة بهذه الرسالة.</string>
+    <string name="np_no_mail_app">لا يوجد تطبيق يرسل هذه الرسالة.</string>
+
+    <!-- Internet access / file launch -->
+    <string name="np_net_ask_title">السماح لهذا المستند بالوصول إلى الإنترنت؟</string>
+    <string name="np_net_ask_body">يريد المستند فتح العنوان التالي أو إرسال بيانات إليه:</string>
+    <string name="np_net_allow_once">السماح مرة واحدة</string>
+    <string name="np_net_always_allow">السماح دائمًا لـ %1$s</string>
+    <string name="np_net_block">حظر</string>
+    <string name="np_net_blocked">الوصول إلى الإنترنت محظور للمستندات: %1$s</string>
+    <string name="np_launch_title">فتح ملف آخر؟</string>
+    <string name="np_launch_body">يريد هذا المستند فتح ملف أو تطبيق آخر. افتحه فقط إذا كنت تثق بالمستند وبالملف:</string>
+    <string name="np_launch_open">فتح</string>
+    <string name="np_launch_blocked">فتح الملفات من المستندات معطَّل في الإعدادات: %1$s</string>
+    <string name="np_launch_exe_blocked">حُظر: %1$s برنامج أو سكربت. لا تُشغَّل البرامج من المستندات أبدًا.</string>
+
+    <!-- settings -->
+    <string name="np_set_title">أمان المستندات</string>
+    <string name="np_set_run_js">تشغيل JavaScript في مستندات PDF</string>
+    <string name="np_set_run_js_sub">حسابات النماذج والتنسيق والتحقق وإجراءات السكربت. عند الإيقاف لا يعمل أي سكربت من المستند.</string>
+    <string name="np_set_net">وصول المستندات إلى الإنترنت</string>
+    <string name="np_set_net_sub">روابط الويب وأزرار النماذج وإرسال النماذج</string>
+    <string name="np_net_mode_ask">اسأل</string>
+    <string name="np_net_mode_allow">السماح للكل</string>
+    <string name="np_net_mode_block">حظر الكل</string>
+    <string name="np_set_sites">المواقع الموثوقة</string>
+    <string name="np_set_sites_count">%1$d موقع يُفتح دون سؤال</string>
+    <string name="np_site_host">الموقع (اسم المضيف)</string>
+    <string name="np_site_add">إضافة موقع</string>
+    <string name="np_site_invalid">اسم مضيف غير صالح.</string>
+    <string name="np_sites_empty">لا توجد مواقع موثوقة.</string>
+    <string name="np_sites_hint">يشمل الموقع نطاقاته الفرعية (example.com يشمل www.example.com). يُستخدم عند ضبط الوصول على «اسأل».</string>
+    <string name="np_set_block_launch">حظر فتح الملفات من المستندات</string>
+    <string name="np_set_block_launch_sub">إجراءات التشغيل والانتقال إلى ملف آخر. البرامج والسكربتات محظورة دائمًا.</string>
+</resources>

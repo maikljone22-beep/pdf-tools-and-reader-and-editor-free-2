@@ -105,3 +105,58 @@ internal object Structure {
         return n
     }
 }
+
+/**
+ * Multimedia added with audio / video / 3D tools: Screen, Movie, Sound, RichMedia and 3D annotations and media actions.
+ * Works on the /Annots arrays directly: PdfBox has no classes for these subtypes.
+ */
+internal object Multimedia {
+    private val SUBTYPES = setOf("Screen", "Movie", "Sound", "RichMedia", "3D")
+    private val ACTIONS = setOf("Rendition", "Movie", "Sound", "RichMediaExecute", "GoTo3DView")
+
+    private fun annots(p: com.tom_roush.pdfbox.pdmodel.PDPage) = p.cosObject.getDictionaryObject(COSName.ANNOTS) as? COSArray
+
+    private fun isMedia(d: COSDictionary) = d.getCOSName(COSName.SUBTYPE)?.name in SUBTYPES
+    private fun mediaAction(d: COSDictionary) = (d.getDictionaryObject(COSName.A) as? COSDictionary)?.getCOSName(COSName.S)?.name in ACTIONS
+
+    fun find(doc: PDDocument): List<String> {
+        val out = ArrayList<String>()
+        doc.pages.forEachIndexed { i, p ->
+            val a = annots(p) ?: return@forEachIndexed
+            for (k in 0 until a.size()) {
+                val d = a.getObject(k) as? COSDictionary ?: continue
+                if (isMedia(d)) out += "p.${i + 1} ${d.getCOSName(COSName.SUBTYPE)?.name}" else if (mediaAction(d)) out += "p.${i + 1} action"
+            }
+        }
+        return out
+    }
+
+    fun remove(doc: PDDocument): Int {
+        var n = 0
+        doc.pages.forEach { p ->
+            val a = annots(p) ?: return@forEach
+            var k = 0
+            while (k < a.size()) {
+                val d = a.getObject(k) as? COSDictionary
+                when {
+                    d != null && isMedia(d) -> { a.remove(k); n++ }
+                    d != null && mediaAction(d) -> { d.removeItem(COSName.A); n++; k++ }
+                    else -> k++
+                }
+            }
+        }
+        return n
+    }
+}
+
+/** Foxit RHI "overlapping objects": text or images painted over by a later image or opaque area. */
+internal object Overlap {
+    fun has(insp: PageInspector): Boolean {
+        if (insp.failed) return false
+        val covers = insp.paints.filter { !it.nested && !it.hidden && it.opaque && (it.kind == PaintKind.IMAGE || (it.kind == PaintKind.FILL && it.rectOnly)) }
+        if (covers.isEmpty()) return false
+        if (insp.glyphs.any { g -> covers.any { c -> c.order > g.order && c.box.intersects(g.box) } }) return true
+        val images = insp.paints.filter { !it.nested && it.kind == PaintKind.IMAGE }
+        return images.any { a -> covers.any { c -> c !== a && c.order > a.order && c.box.intersects(a.box) && c.box.area > 4f } }
+    }
+}

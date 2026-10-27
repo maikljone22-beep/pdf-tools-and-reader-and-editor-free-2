@@ -87,6 +87,10 @@ fun SettingsScreen(nav: NavHostController) {
                 G6ViewRows(s) { b -> upd(b) }      // gaps6: full screen, volume action, timeout, orientation
             }
 
+            // ---- Document security (nitro-protect): JavaScript, Internet access, file launch ----
+            NpSecurityCard(s) { b -> upd(b) }
+            Np2TrustCard()      // nitro-protect2: Trust Manager (safe reading, privileged locations, Protected View, attachments, EU trusted list)
+
             // ---- Sync & transfer (gaps6) ----
             G6SyncCard(s, nav) { b -> upd(b) }
             com.smartdocs.editor.ui.cloud.SyncSettingsSection()   // share6: near-real-time, sync after save, cloud transfers over Wi-Fi only

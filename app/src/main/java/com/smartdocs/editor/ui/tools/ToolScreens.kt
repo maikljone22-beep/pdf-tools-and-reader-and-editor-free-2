@@ -99,6 +99,12 @@ private fun ToolScreensInner(nav: NavHostController, id: String, uri: String?) {
         "ai" -> AiScreen(nav, uri)
         "ai_settings" -> AiSettingsScreen(nav)
         "ai_spaces" -> com.smartdocs.editor.ui.ai5.SpacesScreen(nav)
+        "ai_side_by_side" -> com.smartdocs.editor.ui.ai6.SideBySideScreen(nav, uri)   // ai6 (B12)
+        "ai_image" -> com.smartdocs.editor.ui.ai6.ImageGenScreen(nav, uri)            // ai6 (AI-8)
+        "ai_transcribe" -> com.smartdocs.editor.ui.ai6.TranscribeScreen(nav, uri)     // ai6 (audio transcription)
+        "ai_chats" -> com.smartdocs.editor.ui.ai6.ConversationsScreen(nav)   // ai6 (AI-5)
+        "ai_skills" -> com.smartdocs.editor.ui.ai6.SkillsScreen(nav)          // ai6 (AI-6)
+        "ai_help" -> com.smartdocs.editor.ui.ai6.HelpChatScreen(nav)          // ai6 (§41 support chatbot)
 
         else -> if (id in com.smartdocs.editor.ui.edit5.EDIT5_TOOL_IDS) com.smartdocs.editor.ui.edit5.Edit5Screens(nav, id, uri) else ComingSoonScreen(nav, id)
     }

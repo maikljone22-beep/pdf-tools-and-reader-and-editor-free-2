@@ -84,7 +84,7 @@ fun NveTextViewer(s: ReaderState) {
                         IconButton(onClick = { size = (size - 1f).coerceAtLeast(8f) }) { Icon(Icons.Default.TextDecrease, null) }
                         IconButton(onClick = { size = (size + 1f).coerceAtMost(48f) }) { Icon(Icons.Default.TextIncrease, null) }
                         IconButton(onClick = { settings = true }) { Icon(Icons.Default.Tune, stringResource(R.string.nv_tv_settings)) }
-                        IconButton(onClick = { saveTxt.launch((s.file?.nameWithoutExtension ?: "document") + ".txt") }) { Icon(Icons.Default.SaveAlt, stringResource(R.string.nv_save_txt)) }
+                        IconButton(onClick = { if (s.guard.check(com.smartdocs.editor.core.security.DocAction.COPY)) saveTxt.launch((s.file?.nameWithoutExtension ?: "document") + ".txt") }) { Icon(Icons.Default.SaveAlt, stringResource(R.string.nv_save_txt)) }
                     }
                 }
                 val maxW = when (width) { TvWidth.WINDOW -> Modifier.fillMaxWidth(); TvWidth.PAGE -> Modifier.widthIn(max = pageWidthDp.dp); TvWidth.MINIMAL -> Modifier.widthIn(max = 360.dp); TvWidth.KEEP_COLUMNS -> Modifier }

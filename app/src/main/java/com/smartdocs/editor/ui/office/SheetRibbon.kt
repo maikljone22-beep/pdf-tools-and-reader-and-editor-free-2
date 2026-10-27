@@ -66,6 +66,7 @@ private fun SheetHome(s: SheetState) {
     var borders by remember { mutableStateOf(false) }
     var numbers by remember { mutableStateOf(false) }
     RibbonRow {
+        RibbonButton(Icons.Default.Search, R.string.o5_find, s.findOpen) { s.findOpen = !s.findOpen; s.bump() }   // office6
         RibbonButton(Icons.Default.ContentCut, R.string.o5_cut) { cb.setText(AnnotatedString(s.copy(true))) }
         RibbonButton(Icons.Default.ContentCopy, R.string.o5_copy) { cb.setText(AnnotatedString(s.copy(false))) }
         RibbonButton(Icons.Default.ContentPaste, R.string.o5_paste) { s.paste(false, cb.getText()?.text) }
@@ -169,6 +170,9 @@ private fun SheetFormulas(s: SheetState) {
 @Composable
 private fun SheetData(s: SheetState) {
     RibbonRow {
+        RibbonButton(Icons.Default.FindReplace, R.string.o5_find, s.findOpen) { s.findOpen = !s.findOpen; s.bump() }   // office6
+        RibbonButton(Icons.Default.RecordVoiceOver, R.string.of6_read_aloud) { OfficeCommandRegistry.run("read_aloud") }   // office6 (registry)
+        RibbonButton(Icons.Default.Print, R.string.of6_print) { OfficeCommandRegistry.run("print") }
         RibbonButton(Icons.Default.SortByAlpha, R.string.o5_sort_asc) { s.sort(true) }
         RibbonButton(Icons.AutoMirrored.Filled.Sort, R.string.o5_sort_desc) { s.sort(false) }
         RibbonDivider()
