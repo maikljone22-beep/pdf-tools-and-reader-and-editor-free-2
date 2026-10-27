@@ -68,7 +68,9 @@ fun StorageScreen(nav: NavHostController) {
                 if (cloud.isNotEmpty()) GroupCard(stringResource(R.string.sh5_sec_cloud_copies)) {
                     cloud.forEachIndexed { i, b ->
                         if (i > 0) GroupDivider()
-                        GroupRow(b.provider?.label ?: "", DocumentRepository.formatSize(b.bytes) + " · " + stringResource(R.string.sh5_n_files, b.files), icon = Icons.Default.CloudDownload,
+                        // files with edits not uploaded yet are kept by "clear" (audit DI-24): say how many
+                        val pending = if (b.unsynced > 0) " · " + stringResource(R.string.sh5_n_unsynced, b.unsynced, DocumentRepository.formatSize(b.unsyncedBytes)) else ""
+                        GroupRow(b.provider?.label ?: "", DocumentRepository.formatSize(b.bytes) + " · " + stringResource(R.string.sh5_n_files, b.files) + pending, icon = Icons.Default.CloudDownload,
                             trailing = { TextButton(onClick = { confirmClear = b }) { Text(stringResource(R.string.sh5_clear)) } })
                     }
                 }

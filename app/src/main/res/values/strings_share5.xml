@@ -243,4 +243,5 @@
     <string name="sh5_import_file_sub">دمج ملف صدّرته من جهاز آخر</string>
     <string name="sh5_appdata_note">المستندات نفسها لا تُنقل؛ تُطابق المفضلة والوسوم بالاسم والحجم.</string>
     <string name="sh5_syncing">جارٍ المزامنة…</string>
+    <string name="sh5_n_unsynced">%1$d لم تُرفع بعد (%2$s) وستبقى عند المسح</string>
 </resources>
