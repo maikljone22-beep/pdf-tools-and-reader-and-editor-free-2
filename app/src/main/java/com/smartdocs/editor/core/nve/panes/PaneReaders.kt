@@ -174,9 +174,32 @@ object PaneReaders {
         return m
     }
 
+    /**
+     * The AcroForm WITHOUT PDFBox's default fixup (that fixup builds default resources with standard-14 fonts and
+     * regenerates appearances: a read-only pane must never do that).
+     */
+    fun acroForm(doc: PDDocument): com.tom_roush.pdfbox.pdmodel.interactive.form.PDAcroForm? = doc.documentCatalog.getAcroForm(null)
+
+    /** Field value from the COS /V (inherited through /Parent), never through the value / appearance API. */
+    private fun inherited(d: COSDictionary, key: COSName): COSBase? {
+        var cur: COSDictionary? = d; var depth = 0
+        while (cur != null && depth++ < 32) {
+            cur.getDictionaryObject(key)?.let { return it }
+            cur = cur.getDictionaryObject(COSName.PARENT) as? COSDictionary
+        }
+        return null
+    }
+
+    private fun cosText(b: COSBase?): String = when (b) {
+        is com.tom_roush.pdfbox.cos.COSString -> b.string
+        is COSName -> b.name
+        is COSArray -> (0 until b.size()).mapNotNull { (b.getObject(it) as? com.tom_roush.pdfbox.cos.COSString)?.string }.joinToString(", ")
+        else -> ""
+    }
+
     /** Terminal AcroForm fields in field-tree order. */
     fun fields(doc: PDDocument): List<FieldInfo> {
-        val form = doc.documentCatalog.acroForm ?: return emptyList()
+        val form = acroForm(doc) ?: return emptyList()
         val cache = widgetPages(doc)
         val out = ArrayList<FieldInfo>()
         for (f in form.fieldTree) {
@@ -186,8 +209,11 @@ object PaneReaders {
                 else -> when (f.fieldType) { "Tx" -> "text"; "Ch" -> "choice"; "Btn" -> "button"; "Sig" -> "signature"; else -> f.fieldType ?: "" }
             }
             val value = when (f) {
-                is PDCheckBox -> if (f.isChecked) "☑" else "☐"
-                else -> runCatching { f.valueAsString }.getOrDefault("")
+                is PDCheckBox, is PDRadioButton -> {
+                    val v = inherited(f.cosObject, COSName.V) as? COSName
+                    if (f is PDCheckBox) (if (v != null && v.name != "Off") "☑" else "☐") else v?.name?.takeIf { it != "Off" } ?: ""
+                }
+                else -> cosText(inherited(f.cosObject, COSName.V))
             }
             val page = f.widgets.firstNotNullOfOrNull { widgetPage(doc, it, cache) }
             out += FieldInfo(f.fullyQualifiedName ?: "", type, value, page, f.isReadOnly, f.isRequired)
@@ -197,7 +223,7 @@ object PaneReaders {
 
     /** Signature fields with their signature dictionary values (no cryptographic check here). */
     fun signatureFields(doc: PDDocument): List<SigFieldInfo> {
-        val form = doc.documentCatalog.acroForm ?: return emptyList()
+        val form = acroForm(doc) ?: return emptyList()
         val cache = widgetPages(doc)
         return form.fieldTree.filterIsInstance<PDSignatureField>().map { f ->
             val s = f.signature
@@ -261,10 +287,15 @@ object PaneReaders {
     private fun writeNamesTree(doc: PDDocument, map: Map<String, PDPageDestination>) {
         val cat = doc.documentCatalog
         val names = cat.names ?: PDDocumentNameDictionary(cat).also { cat.names = it }
-        if (map.isEmpty()) { names.dests = null; return }
-        val node = com.tom_roush.pdfbox.pdmodel.PDDestinationNameTreeNode()
-        node.names = java.util.TreeMap(map)
-        names.dests = node
+        // PDDocumentNameDictionary.setDests clears the catalog /Dests dictionary (PDF 1.1 store): keep it
+        val legacy = cat.cosObject.getItem(COSName.DESTS)
+        if (map.isEmpty()) names.dests = null
+        else {
+            val node = com.tom_roush.pdfbox.pdmodel.PDDestinationNameTreeNode()
+            node.names = java.util.TreeMap(map)
+            names.dests = node
+        }
+        if (legacy != null) cat.cosObject.setItem(COSName.DESTS, legacy)
     }
 
     /** Rename destination [old] to [new] in whichever store holds it. False when [old] is missing or [new] exists. */

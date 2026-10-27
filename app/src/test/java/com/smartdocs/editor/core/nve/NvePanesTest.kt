@@ -16,7 +16,6 @@ import com.tom_roush.pdfbox.pdmodel.common.filespecification.PDEmbeddedFile
 import com.tom_roush.pdfbox.pdmodel.documentinterchange.logicalstructure.PDStructureElement
 import com.tom_roush.pdfbox.pdmodel.documentinterchange.logicalstructure.PDStructureTreeRoot
 import com.tom_roush.pdfbox.pdmodel.interactive.action.PDActionJavaScript
-import com.tom_roush.pdfbox.pdmodel.interactive.annotation.PDAnnotation
 import com.tom_roush.pdfbox.pdmodel.interactive.annotation.PDAnnotationFileAttachment
 import com.tom_roush.pdfbox.pdmodel.interactive.form.PDAcroForm
 import com.tom_roush.pdfbox.pdmodel.interactive.form.PDTextField
@@ -142,8 +141,8 @@ class NvePanesTest {
         doc.documentCatalog.openAction = PDActionJavaScript("app.alert(1)")
         val redact = COSDictionary().apply { setName(COSName.TYPE, "Annot"); setName(COSName.SUBTYPE, "Redact"); setItem(COSName.RECT, PDRectangle(1f, 1f, 5f, 5f).cosArray) }
         val d3 = COSDictionary().apply { setName(COSName.TYPE, "Annot"); setName(COSName.SUBTYPE, "3D"); setItem(COSName.RECT, PDRectangle(1f, 1f, 5f, 5f).cosArray) }
-        doc.getPage(0).annotations.add(PDAnnotation.createAnnotation(redact))
-        doc.getPage(0).annotations.add(PDAnnotation.createAnnotation(d3))
+        // raw COS: PDAnnotation.createAnnotation logs (android.util.Log) for subtypes PDFBox does not model
+        doc.getPage(0).cosObject.setItem(COSName.ANNOTS, com.tom_roush.pdfbox.cos.COSArray().apply { add(redact); add(d3) })
         val xmp = """<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
             <rdf:Description rdf:about="" xmlns:pdfaid="http://www.aiim.org/pdfa/ns/id/" pdfaid:part="2" pdfaid:conformance="B"/>
             <rdf:Description rdf:about="" xmlns:pdfuaid="http://www.aiim.org/pdfua/ns/id/"><pdfuaid:part>1</pdfuaid:part></rdf:Description>

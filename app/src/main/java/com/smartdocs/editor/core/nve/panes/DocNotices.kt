@@ -30,7 +30,7 @@ object DocNotices {
         val out = ArrayList<NoticeHit>()
         val cat = doc.documentCatalog
         // ---- forms
-        val fieldCount = runCatching { cat.acroForm?.fieldTree?.count { it !is com.tom_roush.pdfbox.pdmodel.interactive.form.PDNonTerminalField } ?: 0 }.getOrDefault(0)
+        val fieldCount = runCatching { PaneReaders.acroForm(doc)?.fieldTree?.count { it !is com.tom_roush.pdfbox.pdmodel.interactive.form.PDNonTerminalField } ?: 0 }.getOrDefault(0)
         if (fieldCount > 0) out += NoticeHit(DocNotice.FORMS, fieldCount)
         // ---- JavaScript
         var js = 0
@@ -38,7 +38,7 @@ object DocNotices {
         names?.getCOSDictionary(COSName.JAVA_SCRIPT)?.let { js += countNameTree(it, 0) }
         if (isJs(cat.cosObject.getDictionaryObject(COSName.getPDFName("OpenAction")))) js++
         js += countAa(cat.cosObject.getCOSDictionary(COSName.AA))
-        runCatching { cat.acroForm?.fieldTree?.forEach { f -> js += countAa(f.cosObject.getCOSDictionary(COSName.AA)) } }
+        runCatching { PaneReaders.acroForm(doc)?.fieldTree?.forEach { f -> js += countAa(f.cosObject.getCOSDictionary(COSName.AA)) } }
         // ---- per page: annotations, fonts
         var redact = 0; var threeD = 0
         val restricted = HashSet<String>()
