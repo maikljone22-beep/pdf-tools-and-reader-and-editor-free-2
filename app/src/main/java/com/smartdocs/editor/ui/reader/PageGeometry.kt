@@ -14,11 +14,22 @@ import androidx.compose.ui.geometry.Size
  * "layout" space is what the user sees after rotation; for 90/270 the width and height are swapped.
  */
 class PageGeometry(
-    val pageW: Float,          // points
-    val pageH: Float,          // points
+    val pageW: Float,          // points, as displayed (the page's /Rotate applied, like PDFium reports it)
+    val pageH: Float,          // points, as displayed
     val scale: Float,          // px per point
-    val rotation: Int = 0,     // 0, 90, 180, 270 clockwise
+    val rotation: Int = 0,     // 0, 90, 180, 270 clockwise (view rotation)
+    /**
+     * Audit AN-06: the page's own /Rotate (0, 90, 180, 270) and the lower-left corner of its crop box. Text boxes,
+     * search hits and annotation rects are in PDF user space; the rendered page is the crop box turned by /Rotate.
+     */
+    val pageRotate: Int = 0,
+    val cropX: Float = 0f,
+    val cropY: Float = 0f,
 ) {
+    /** Crop box size in user space (before /Rotate). */
+    private val cropW: Float get() = if (pageRotate % 180 == 0) pageW else pageH
+    private val cropH: Float get() = if (pageRotate % 180 == 0) pageH else pageW
+
     val bitmapW: Float get() = pageW * scale
     val bitmapH: Float get() = pageH * scale
 
@@ -27,9 +38,27 @@ class PageGeometry(
 
     // ---- PDF <-> unrotated screen ----
 
-    fun pdfToScreen(x: Float, y: Float): Offset = Offset(x * scale, (pageH - y) * scale)
+    /** PDF user space -> rendered page (crop box turned by /Rotate, y down), in px. */
+    fun pdfToScreen(x: Float, y: Float): Offset {
+        val u = x - cropX; val v = y - cropY
+        return when (pageRotate) {
+            90 -> Offset(v * scale, u * scale)
+            180 -> Offset((cropW - u) * scale, v * scale)
+            270 -> Offset((cropH - v) * scale, (cropW - u) * scale)
+            else -> Offset(u * scale, (cropH - v) * scale)
+        }
+    }
 
-    fun screenToPdf(sx: Float, sy: Float): Pair<Float, Float> = (sx / scale) to (pageH - sy / scale)
+    fun screenToPdf(sx: Float, sy: Float): Pair<Float, Float> {
+        val dx = sx / scale; val dy = sy / scale
+        val (u, v) = when (pageRotate) {
+            90 -> dy to dx
+            180 -> (cropW - dx) to dy
+            270 -> (cropW - dy) to (cropH - dx)
+            else -> dx to (cropH - dy)
+        }
+        return (u + cropX) to (v + cropY)
+    }
 
     /** PDF rect (any corner order) -> unrotated screen rect (normalised). */
     fun pdfRectToScreen(r: RectF): Rect {
