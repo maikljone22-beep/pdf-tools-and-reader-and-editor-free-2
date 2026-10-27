@@ -253,6 +253,21 @@ Paths are relative to `app/src/main/java/com/smartdocs/editor/`.
 
 ## Tests (JVM, PDFBox only)
 
-core/nve/NveViewTest (word count, table copy, styled HTML, URL finder, /Trans round trip, spell-check texts round trip),
-core/edit/NveTextTest (A), core/edit/NveImageTest (B), core/nve/NveFileTest (C), core/nve/NveSearchTest (D),
-core/nve/NveShellsTest… see "Commits and CI" for the last run.
+New: core/nve/NveViewTest (word count, table copy, styled HTML, URL finder, /Trans round trip, spell-check texts),
+core/edit/NveTextTest (A, with an asset-free test font `test/java/com/tom_roush/pdfbox/pdmodel/font/NveTestFont.java`),
+core/edit/NveImageTest (B), core/nve/NveFileTest (C), core/nve/NveSearchTest (D), core/nve/NveShapesTest (E),
+core/nve/NvePanesTest (F), core/nve/NveShellTest (G). JVM-test notes: pdfbox-android cannot initialise the standard-14
+fonts, parse TrueType fonts or log (android.util.Log) on a plain JVM, so the tests use NveTestFont and a test-only
+`android/util/Log.java` stand-in; the AcroForm is read with `getAcroForm(null)` (no standard-font fix-up).
+
+## Commits and CI
+
+Main commits (branch log `git log b3521bd..HEAD`): 7f95ed0, 096ea46, 9970e92, 7bb2b1b, 321d388 (A); b966433, 701e208, 9dca81c,
+b753c6e (B); 69d6830 (C); fad15c3, 7a10a56 (D); 6d074b1, 42af97b, 440d86a (E); bf0ccf8, 7934e03, ed300e1 (F); e9bdb7a, fda8904,
+52e1be2, 841a3af, 7c7121d (G); 7d51820, 73d1118, defc609, e2671fa, 3bb517e, 9d6eb14, e7a5b68, 9089ce5, d56db97 (parent: reader
+hooks, compile / test fixes); merges of origin/main 8f842f1 and 95b1d2f (caaf3a9: AI/Office, pdf-3c signing, ReaderGuard —
+NVE copy / export / snapshot / rewrite / edit-text / text-viewer save now ask `state.guard.check(...)`; document edits go
+through `applyInPlace`, which ReaderGuard already guards).
+
+CI (GitHub Actions "Build APK"): "Build debug APK" passes since defc609; unit tests: 40584635868 (9089ce5) 895/896 passed,
+the last failure (CMYK colour-space name) is fixed in d56db97 — see the final report for that run's result.
