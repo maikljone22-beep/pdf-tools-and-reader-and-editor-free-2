@@ -5,7 +5,7 @@
     <string name="nbt_add_open">Open files</string>
     <string name="nbt_as_image">Print as image</string>
     <string name="nbt_ask_at_run">Ask when run</string>
-    <string name="nbt_ask_at_run_sub">This step's options are shown before the recipe starts</string>
+    <string name="nbt_ask_at_run_sub">This step\'s options are shown before the recipe starts</string>
     <string name="nbt_auto_rotate">Auto-rotate to the paper</string>
     <string name="nbt_batch_print">Batch print</string>
     <string name="nbt_batch_print_note">Android opens a print dialog for each job. Password-protected files are skipped.</string>
