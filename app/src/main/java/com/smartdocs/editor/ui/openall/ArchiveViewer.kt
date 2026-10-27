@@ -171,7 +171,7 @@ fun ComicViewer(nav: NavHostController, v: ViewFile) {
         val e = list?.getOrNull(cur) ?: return@produceState
         value = withContext(Dispatchers.IO) { runCatching { ImageLoad.decode(ctx, ArchiveReader.extract(f, fmt!!, e, dir), 2560) } }
         // prefetch the next page
-        list.getOrNull(cur + 1)?.let { nx -> withContext(Dispatchers.IO) { runCatching { ArchiveReader.extract(f, fmt!!, nx, dir) } } }
+        list?.getOrNull(cur + 1)?.let { nx -> withContext(Dispatchers.IO) { runCatching { ArchiveReader.extract(f, fmt!!, nx, dir) } } }
     }
     ViewerScaffold(nav, v, v.name, actions = listOf(ViewerAction(R.string.oa_comic_rtl, Icons.Default.SwapHoriz) { rtl = !rtl }),
         convert = { out -> ViewerConvert.toPdf(ctx, v, out) },

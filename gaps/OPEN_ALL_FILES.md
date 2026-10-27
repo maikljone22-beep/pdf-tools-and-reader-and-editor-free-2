@@ -85,6 +85,56 @@ Legend for "today": **viewer** = opens in an in-app viewer, **editor** = in-app 
 | Other | FDF/XFDF | merge offer | MainActivity.kt:57 | unchanged |
 | | anything else | error (PDF reader) | ReaderState.kt:244 | "File info": name, size, type by magic bytes, hex + text preview, Open with, Share, Convert to PDF when possible |
 
-## 3. Implementation notes (filled in as the stages land)
+## 3. What was built
 
-See section 4 for the before → after table and section 5 for dependencies.
+### Routing (one dispatch for every "open")
+* `ui/openall/OpenAll.kt` — `OpenDispatch` is now the body of the reader route (`ui/Navigation.kt`): the type is found by
+  **magic bytes** (`core/openall/FileSniffer.kt`), then PDF → reader, editable DOCX/XLSX/PPTX/CSV/ODT/RTF/small TXT →
+  Office editors, **everything else → `UniversalViewer`**. Content URIs are imported first (media are streamed instead).
+  `openall/{uri}?depth=` is the direct viewer route (archive entries, e-mail attachments, previews).
+* `OfficeScreen`: old DOC/XLS/PPT and unknown kinds no longer end on an "old format" screen — they open read-only in
+  the viewer.
+* Imports without a usable extension are named after their content (`DocumentRepository.localFile`), no more `*.pdf`.
+* `MainActivity`: one shared file (SEND) opens in the viewer (Share → PDF stays for several files, text and links);
+  audio/video from other apps are played from their `content://` URI, never copied.
+* Manifest: VIEW for `text/* image/* audio/* video/* font/*`, e-books, archives, comics, e-mail, contacts, calendar,
+  XPS, CHM, DjVu, iWork, `application/octet-stream`; a second VIEW filter with ~87 extension `pathPattern`s for generic
+  MIME types; SEND accepts `*/*`.
+* Home / Files "open" pickers accept `*/*`; the Files tab lists every file (not only 15 extensions); the SAF tree scan
+  lists every known type; tiles have per-type icons/colours, and pictures (incl. GIF/HEIC/TIFF/SVG/RAW) and videos get
+  real thumbnails (`ui/openall/OpenAllThumbs.kt`); Recents get the same tiles.
+* Search: the indexer also indexes the text of TXT/code/MD/CSV/HTML/MHT/DOCX/DOC/RTF/ODT/EPUB/FB2/MOBI/EML/MSG/
+  XLSX/XLS/ODS/PPT/ODP/VCF/ICS files (`core/openall/OpenAllText.kt`, `core/search/IndexWorker.kt`).
+
+### Viewers (`ui/openall/`)
+| Viewer | Formats | Notes |
+|---|---|---|
+| `TextViewer` | TXT, LOG, INI, JSON, XML, YAML, source code, big CSV | chunked reading (3 M chars, "load more" up to 48 M), encoding detection + manual choice, syntax colours, JSON/XML pretty print, search, wrap, font size, line numbers, Edit (txt/log/md ≤ 1 MB) |
+| `CsvViewer` | delimited files the CSV editor does not take | delimiter + encoding detection |
+| `WebDocViewer` (safe WebView) | Markdown (rendered), HTML/XHTML, MHT/MHTML, EML, MSG, FB2, MOBI/AZW/AZW3/PRC, DOC/OTT/RTF/ODT (read-only), XLS/ODS, PPT/ODP, and DOCX/XLSX/PPTX the editors cannot load | JS off (per-page "Allow scripts" for HTML), no file/content access, every request answered from the document or refused; "Load remote content" banner; links go to the browser only when tapped; night mode, text size, contents for FB2/MOBI, attachments open in-app, "Edit as Word" for DOC/ODT/RTF |
+| `EpubViewer` | EPUB 2/3 | chapters served from the ZIP, TOC (nav/NCX), RTL page direction, text size, night mode, position remembered |
+| `ImageViewer` | JPEG, PNG, GIF/WebP (animated, Android 9+), BMP, ICO, HEIF (9+), AVIF (12+), DNG/RAW (where the platform decodes it), TIFF multi-page, SVG | pinch/double-tap zoom, pan, rotate + save rotated copy, details/EXIF, folder swipe + slideshow, OCR, edit in another app, Convert to PDF |
+| `ArchiveViewer` | ZIP/JAR/APK, 7z, TAR, TAR.GZ/TGZ, TAR.BZ2, TAR.XZ, GZ, BZ2, XZ | folders browsed inside the archive, one entry extracted on tap and opened in-app, "Extract all"; zip-slip, zip-bomb (size, ratio, entry count) and nesting (3) guards |
+| `ComicViewer` | CBZ, CB7 | natural page order, lazy extraction + prefetch, zoom, slider, right-to-left (manga) mode, position remembered |
+| `MediaViewer` | MP3, M4A/AAC, OGG/Opus, WAV, FLAC, AMR, MP4, MKV, WebM, 3GP, MOV, TS… | media3 ExoPlayer, own controls (seek, ±10 s, repeat, speed), cover art + tags, pauses on stop |
+| `FontViewer` | TTF, OTF, TTC, WOFF | Latin + Arabic samples at five sizes, name table |
+| `DxfViewer` | DXF (ASCII) | LINE, CIRCLE, ARC, ELLIPSE, (LW)POLYLINE, SPLINE, SOLID/3DFACE, POINT, TEXT/MTEXT, INSERT of blocks; zoom/pan; vector PDF |
+| `XpsViewer` | XPS, OXPS | FixedDocumentSequence → pages; Canvas/Path/Glyphs, solid + image brushes, render transforms, clips, resources, obfuscated fonts; vector PDF |
+| `CardsViewer` | VCF (2.1/3.0/4.0), ICS | cards with photo, "Add to contacts"; events/tasks with dates, "Add to calendar" |
+| `FileInfoScreen` | unknown types + formats that cannot be shown | name, size, detected type, MIME, date, reason, hex + text preview, Open as text, Open with, Share; iWork shows its embedded preview image / QuickLook PDF |
+
+Every viewer: errors stay in the app (`ErrorPane`), back returns, Arabic/RTL text direction by content, "Convert to
+PDF" (`ViewerConvert`: existing tools5/convert6 converters, own vector renderers for SVG/DXF/XPS, HTML print for the
+rest), Share, Open with, File info.
+
+### Security
+* XML: `core/openall/SafeXml.kt` refuses any `<!ENTITY` and external DTDs before parsing (only the W3C SVG/XHTML public
+  DTDs are tolerated and stripped), SAX/DOM factories with external entities, DTD loading and doctype declarations off,
+  entity resolver answers with nothing. Used for SVG (before AndroidSVG), FB2, XPS. EPUB/NCX/OPF are read with regexes
+  (no XML parser at all).
+* HTML: no JavaScript by default, no file/content access, no network unless the user taps "Load", scripts/iframes/event
+  handlers stripped from e-mail, MHT, EPUB and MOBI markup, `javascript:` links neutralised.
+* Archives: entry names normalised and never used as output paths (zip-slip), uncompressed size ≤ 512 MB per entry,
+  ratio > 200 refused for entries above 1 MB, ≤ 20 000 entries, nesting ≤ 3 levels; Android 14+'s own ZIP path
+  validation errors are reported.
+

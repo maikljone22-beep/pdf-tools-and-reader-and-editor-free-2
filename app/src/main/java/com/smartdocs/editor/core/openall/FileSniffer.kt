@@ -258,12 +258,15 @@ object FileSniffer {
             if ("ppt/presentation.xml" in entries) return FType.PPTX
             if ("META-INF/container.xml" in entries) return FType.EPUB
             if (entries.any { it.equals("FixedDocumentSequence.fdseq", true) || it.endsWith(".fpage", true) }) return FType.XPS
-            if (entries.any { it.startsWith("Index/") && it.endsWith(".iwa") } || "Index.zip" in entries || "QuickLook/Preview.pdf" in entries && hint == FType.IWORK) return FType.IWORK
+            if (entries.any { it.startsWith("Index/") && it.endsWith(".iwa") } || "Index.zip" in entries || "index.xml.gz" in entries || "index.apxl.gz" in entries ||
+                hint == FType.IWORK && entries.any { it.startsWith("QuickLook/") || it.startsWith("preview") }) return FType.IWORK
             if ("content.xml" in entries && hint in setOf(FType.ODT, FType.ODS, FType.ODP)) return hint
             val files = entries.filter { !it.endsWith("/") }
             if (files.size == 1 && files[0].endsWith(".fb2", true)) return FType.FB2
             if (hint == FType.CBZ) return FType.CBZ
             if (files.isNotEmpty() && files.size >= 2 && files.all { isImageName(it) || it.endsWith(".xml", true) || it.endsWith(".txt", true) } && files.count { isImageName(it) } >= 2) return FType.CBZ
+            // the directory contradicts the name (a ".docx" that is just a ZIP): browse it as an archive
+            return FType.ZIP
         }
         return if (hint in setOf(FType.DOCX, FType.XLSX, FType.PPTX, FType.ODT, FType.ODS, FType.ODP, FType.EPUB, FType.XPS, FType.IWORK, FType.CBZ, FType.FB2)) hint else FType.ZIP
     }
