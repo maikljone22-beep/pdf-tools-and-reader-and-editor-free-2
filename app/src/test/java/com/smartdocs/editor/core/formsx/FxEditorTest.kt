@@ -269,6 +269,20 @@ class FxEditorTest {
         assertEquals(5f, m[0], 0.001f); assertEquals(25f, m[5], 0.001f)
     }
 
+    @Test fun layerAndArticleActions() {
+        val d = doc()
+        val ocg1 = COSDictionary().apply { setItem(COSName.TYPE, COSName.getPDFName("OCG")); setString(COSName.NAME, "Prices") }
+        val ocg2 = COSDictionary().apply { setItem(COSName.TYPE, COSName.getPDFName("OCG")); setString(COSName.NAME, "Notes") }
+        d.documentCatalog.cosObject.setItem(COSName.getPDFName("OCProperties"), COSDictionary().apply {
+            setItem(COSName.getPDFName("OCGs"), COSArray().apply { add(ocg1); add(ocg2) })
+            setItem(COSName.D, COSDictionary())
+        })
+        d.documentCatalog.cosObject.setItem(COSName.getPDFName("Threads"), COSArray().apply { add(COSDictionary()); add(COSDictionary()) })
+        val acts = listOf(FxAction.SetLayers(listOf("Prices" to "OFF", "Notes" to "Toggle")), FxAction.ReadArticle(1))
+        FxEditor.create(d, FieldSpec("b", FxType.BUTTON, listOf(FxWidget(0, FxRect(0f, 0f, 50f, 20f))), actions = mapOf(FxTrigger.MOUSE_UP to acts)))
+        reload(d).use { r -> assertEquals(acts, FxEditor.readAll(r).single().actions[FxTrigger.MOUSE_UP]) }
+    }
+
     @Test fun multiFieldMergeOnlyCopiesChanges() {
         val a = text("a").copy(fontSize = 10f, required = false, maxLen = 4)
         val b = text("b", FxRect(1f, 1f, 9f, 9f)).copy(fontSize = 14f, required = true, maxLen = 7)

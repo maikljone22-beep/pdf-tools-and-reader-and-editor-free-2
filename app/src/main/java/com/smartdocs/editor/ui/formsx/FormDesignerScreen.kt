@@ -164,6 +164,13 @@ fun FormDesignerScreen(nav: NavHostController, uri: String?) {
                     DropdownMenuItem(text = { Text(stringResource(R.string.fx_data_import)) }, leadingIcon = { Icon(Icons.Default.Download, null) }, onClick = { menu = false; importPicker.launch(arrayOf("*/*")) })
                     DropdownMenuItem(text = { Text(stringResource(R.string.fx_data_export)) }, leadingIcon = { Icon(Icons.Default.Upload, null) }, onClick = { menu = false; dialog = "export" })
                     DropdownMenuItem(text = { Text(stringResource(R.string.fx_combine)) }, leadingIcon = { Icon(Icons.Default.TableChart, null) }, onClick = { menu = false; dialog = "combine" })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.fx_distribute)) }, leadingIcon = { Icon(Icons.Default.Share, null) }, onClick = {
+                        menu = false
+                        scope.launch {
+                            val f = st.export(app.documents.tempDir) { dir, base -> File(dir, "$base.pdf") } ?: return@launch
+                            com.smartdocs.editor.ui.share5.S5Share.shareFiles(ctx, listOf(f), "application/pdf", str(R.string.fx_distribute_subject), str(R.string.fx_distribute_text))
+                        }
+                    })
                     HorizontalDivider()
                     DropdownMenuItem(text = { Text(stringResource(R.string.fx_grid)) }, leadingIcon = { Checkbox(st.gridSnap > 0f, null) }, onClick = { menu = false; st.gridSnap = if (st.gridSnap > 0f) 0f else 6f })
                     DropdownMenuItem(text = { Text(stringResource(R.string.fx_tabs_numbers)) }, leadingIcon = { Checkbox(st.showTabNumbers, null) }, onClick = { menu = false; st.showTabNumbers = !st.showTabNumbers })
@@ -230,7 +237,7 @@ fun FormDesignerScreen(nav: NavHostController, uri: String?) {
 
     // ---------------- dialogs ----------------
     pendingNew?.let { spec ->
-        FieldPropsDialog(spec, st.specs.map { it.name }, st.pageCount, 1, onDismiss = { pendingNew = null }, onSave = { s ->
+        FieldPropsDialog(spec, st.specs.map { it.name }, st.pageCount, 1, layers = st.layers, onDismiss = { pendingNew = null }, onSave = { s ->
             pendingNew = null
             st.edit(str(R.string.fx_mode_create)) { doc ->
                 val existing = FxEditor.field(doc, s.name)
@@ -258,7 +265,7 @@ fun FormDesignerScreen(nav: NavHostController, uri: String?) {
             onIcon = if (list.size == 1 && first.type == FxType.BUTTON) { clear: Boolean ->
                 if (clear) st.edit(str(R.string.fx_icon_clear)) { doc -> FxEditor.setIcon(doc, first.name, null) }
                 else { iconTarget = first.name; iconPicker() }
-            } else null)
+            } else null, layers = st.layers)
     }
     when (dialog) {
         "copies" -> CopiesDialog(onDismiss = { dialog = null }) { rows, cols, dx, dy, same ->

@@ -20,19 +20,22 @@ private val TRIGGERS = listOf(FxTrigger.MOUSE_UP to R.string.fx_tr_up, FxTrigger
 
 private enum class AKind(val label: Int) {
     GOTO(R.string.fx_act_goto), NAMED(R.string.fx_act_named), REMOTE(R.string.fx_act_remote), URL(R.string.fx_act_url), SUBMIT(R.string.fx_act_submit),
-    RESET(R.string.fx_act_reset), SHOWHIDE(R.string.fx_act_showhide), JS(R.string.fx_act_js), MENU(R.string.fx_act_menu), IMPORT(R.string.fx_act_import)
+    RESET(R.string.fx_act_reset), SHOWHIDE(R.string.fx_act_showhide), JS(R.string.fx_act_js), MENU(R.string.fx_act_menu), IMPORT(R.string.fx_act_import),
+    LAYERS(R.string.fx_act_layers), ARTICLE(R.string.fx_act_article)
 }
 
 private fun kindOf(a: FxAction): AKind? = when (a) {
     is FxAction.GoToPage -> AKind.GOTO; is FxAction.GoToNamed -> AKind.NAMED; is FxAction.GoToRemote -> AKind.REMOTE; is FxAction.OpenUrl -> AKind.URL
     is FxAction.Submit -> AKind.SUBMIT; is FxAction.Reset -> AKind.RESET; is FxAction.ShowHide -> AKind.SHOWHIDE; is FxAction.JavaScript -> AKind.JS
-    is FxAction.Named -> AKind.MENU; is FxAction.ImportData -> AKind.IMPORT; is FxAction.Raw -> null
+    is FxAction.Named -> AKind.MENU; is FxAction.ImportData -> AKind.IMPORT; is FxAction.SetLayers -> AKind.LAYERS; is FxAction.ReadArticle -> AKind.ARTICLE
+    is FxAction.Raw -> null
 }
 
 private fun blank(k: AKind): FxAction = when (k) {
     AKind.GOTO -> FxAction.GoToPage(0); AKind.NAMED -> FxAction.GoToNamed(""); AKind.REMOTE -> FxAction.GoToRemote("", 0); AKind.URL -> FxAction.OpenUrl("https://")
     AKind.SUBMIT -> FxAction.Submit("https://"); AKind.RESET -> FxAction.Reset(); AKind.SHOWHIDE -> FxAction.ShowHide(emptyList(), true)
     AKind.JS -> FxAction.JavaScript(""); AKind.MENU -> FxAction.Named("Print"); AKind.IMPORT -> FxAction.ImportData("")
+    AKind.LAYERS -> FxAction.SetLayers(emptyList()); AKind.ARTICLE -> FxAction.ReadArticle(0)
 }
 
 /** Named actions offered as "Execute a menu item". */
@@ -50,12 +53,14 @@ private fun summary(a: FxAction): String = when (a) {
     is FxAction.JavaScript -> "JS: " + a.code.take(60)
     is FxAction.Named -> stringResource(R.string.fx_act_menu) + ": " + a.name
     is FxAction.ImportData -> stringResource(R.string.fx_act_import) + ": " + a.file
+    is FxAction.SetLayers -> stringResource(R.string.fx_act_layers) + ": " + a.states.joinToString(", ") { it.first + " " + it.second }
+    is FxAction.ReadArticle -> stringResource(R.string.fx_act_article) + " " + (a.thread + 1)
     is FxAction.Raw -> stringResource(R.string.fx_act_other) + " (" + a.subtype + ")"
 }
 
 /** Actions tab: a trigger, its ordered list (up / down / edit / delete) and "add action". */
 @Composable
-internal fun ActionsTab(s: FieldSpec, names: List<String>, pageCount: Int, set: (FieldSpec) -> Unit) {
+internal fun ActionsTab(s: FieldSpec, names: List<String>, pageCount: Int, layers: List<String>, set: (FieldSpec) -> Unit) {
     var trigger by remember { mutableStateOf(FxTrigger.MOUSE_UP) }
     var editing by remember { mutableStateOf<Pair<Int, FxAction>?>(null) }
     var adding by remember { mutableStateOf(false) }
@@ -87,7 +92,7 @@ internal fun ActionsTab(s: FieldSpec, names: List<String>, pageCount: Int, set: 
         }
     }
     editing?.let { (idx, a) ->
-        ActionDialog(a, names, pageCount, onDismiss = { editing = null }) { na ->
+        ActionDialog(a, names, pageCount, layers, onDismiss = { editing = null }) { na ->
             setList(if (idx < 0) list + na else list.toMutableList().also { it[idx] = na })
             editing = null
         }
@@ -95,7 +100,7 @@ internal fun ActionsTab(s: FieldSpec, names: List<String>, pageCount: Int, set: 
 }
 
 @Composable
-private fun ActionDialog(initial: FxAction, names: List<String>, pageCount: Int, onDismiss: () -> Unit, onOk: (FxAction) -> Unit) {
+private fun ActionDialog(initial: FxAction, names: List<String>, pageCount: Int, layers: List<String>, onDismiss: () -> Unit, onOk: (FxAction) -> Unit) {
     var a by remember { mutableStateOf(initial) }
     AlertDialog(onDismissRequest = onDismiss, title = { Text(stringResource(kindOf(initial)?.label ?: R.string.fx_act_other)) },
         text = {
@@ -144,6 +149,22 @@ private fun ActionDialog(initial: FxAction, names: List<String>, pageCount: Int,
                         FlowRowCompat(MENU_ITEMS) { m -> FilterChip(x.name == m, { a = x.copy(name = m) }, label = { Text(m) }) }
                     }
                     is FxAction.ImportData -> OutlinedTextField(x.file, { a = x.copy(file = it) }, label = { Text(stringResource(R.string.fx_file)) }, singleLine = true)
+                    is FxAction.SetLayers -> {
+                        if (layers.isEmpty()) Text(stringResource(R.string.fx_no_layers))
+                        layers.forEach { l ->
+                            val cur = x.states.firstOrNull { it.first == l }?.second
+                            Text(l, style = MaterialTheme.typography.labelLarge)
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                listOf(null to R.string.fx_none, "ON" to R.string.fx_show, "OFF" to R.string.fx_hide, "Toggle" to R.string.fx_toggle).forEach { (v, lb) ->
+                                    FilterChip(cur == v, { a = x.copy(states = x.states.filter { it.first != l } + (if (v == null) emptyList() else listOf(l to v))) }, label = { Text(stringResource(lb)) })
+                                }
+                            }
+                        }
+                    }
+                    is FxAction.ReadArticle -> {
+                        var t by remember { mutableStateOf((x.thread + 1).toString()) }
+                        NumField(R.string.fx_article_n, t) { v -> t = v; v.toIntOrNull()?.let { a = x.copy(thread = (it - 1).coerceAtLeast(0)) } }
+                    }
                     is FxAction.Raw -> {}
                 }
             }

@@ -126,6 +126,10 @@ sealed class FxAction {
     data class JavaScript(val code: String) : FxAction()
     data class Named(val name: String) : FxAction()
     data class ImportData(val file: String) : FxAction()
+    /** SetOCGState: layer name -> "ON" / "OFF" / "Toggle". */
+    data class SetLayers(val states: List<Pair<String, String>>) : FxAction()
+    /** Read an article: thread number (0-based) of the document's /Threads. */
+    data class ReadArticle(val thread: Int) : FxAction()
     /** Anything the designer cannot edit (kept as is when the list is written back). */
     data class Raw(val subtype: String, val cos: Any) : FxAction()
 }

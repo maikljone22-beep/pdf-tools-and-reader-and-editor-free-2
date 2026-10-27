@@ -284,4 +284,12 @@
     <string name="fx_unsaved">Changes are not saved. Leave anyway?</string>
     <string name="fx_leave">Leave</string>
     <string name="fx_edit_fields">Edit form fields</string>
+    <string name="fx_act_layers">Set layer visibility</string>
+    <string name="fx_act_article">Read an article</string>
+    <string name="fx_no_layers">This document has no layers</string>
+    <string name="fx_toggle">Toggle</string>
+    <string name="fx_article_n">Article number</string>
+    <string name="fx_distribute">Distribute form (share / e-mail)</string>
+    <string name="fx_distribute_subject">Please fill in this form</string>
+    <string name="fx_distribute_text">Please fill in the attached form and send it back. Returned forms can be collected into a sheet from the form designer.</string>
 </resources>

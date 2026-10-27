@@ -42,6 +42,7 @@ fun FieldPropsDialog(
     onDismiss: () -> Unit,
     onSave: (FieldSpec) -> Unit,
     onIcon: ((clear: Boolean) -> Unit)? = null,
+    layers: List<String> = emptyList(),
 ) {
     var s by remember(initial) { mutableStateOf(initial) }
     val tabs = buildList {
@@ -74,7 +75,7 @@ fun FieldPropsDialog(
                         R.string.fx_tab_appearance -> AppearanceTab(s) { s = it }
                         R.string.fx_tab_position -> PositionTab(s) { s = it }
                         R.string.fx_tab_options -> OptionsTab(s, allNames, onIcon) { s = it }
-                        R.string.fx_tab_actions -> ActionsTab(s, allNames, pageCount) { s = it }
+                        R.string.fx_tab_actions -> ActionsTab(s, allNames, pageCount, layers) { s = it }
                         R.string.fx_tab_format -> FormatTab(s) { s = it }
                         R.string.fx_tab_validate -> ValidateTab(s) { s = it }
                         R.string.fx_tab_calculate -> CalculateTab(s, allNames) { s = it }

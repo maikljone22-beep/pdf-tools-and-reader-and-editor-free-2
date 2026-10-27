@@ -76,6 +76,7 @@ class DesignerState(private val context: Context, private val scope: CoroutineSc
     var pages by mutableStateOf<List<PageInfo>>(emptyList()); private set
     var tabs by mutableStateOf<Map<Int, String?>>(emptyMap()); private set
     var calcOrder by mutableStateOf<List<String>>(emptyList()); private set
+    var layers by mutableStateOf<List<String>>(emptyList()); private set
     var version by mutableIntStateOf(0); private set
     var page by mutableIntStateOf(0)
     var mode by mutableStateOf(DesignMode.SELECT)
@@ -141,15 +142,15 @@ class DesignerState(private val context: Context, private val scope: CoroutineSc
     private suspend fun swapTo(f: File) {
         val old = session
         val fresh = PdfSession.open(context, f)
-        val (sp, pg, tb, co) = PDDocument.load(f).use { d ->
+        val (sp, pg, tb, co, ly) = PDDocument.load(f).use { d ->
             val infos = (0 until d.numberOfPages).map { i ->
                 val p = d.getPage(i); val c = p.cropBox
                 PageInfo(c.lowerLeftX, c.lowerLeftY, c.width, c.height, p.rotation)
             }
-            Quad(FxEditor.readAll(d), infos, (0 until d.numberOfPages).associateWith { FxEditor.tabsOf(d, it) }, FxEditor.calcOrder(d))
+            Quad(FxEditor.readAll(d), infos, (0 until d.numberOfPages).associateWith { FxEditor.tabsOf(d, it) }, FxEditor.calcOrder(d), com.smartdocs.editor.core.formsx.FxActions.ocgs(d).map { it.second })
         }
         withContext(Dispatchers.Main) {
-            session = fresh; work = f; specs = sp; pages = pg; tabs = tb; calcOrder = co
+            session = fresh; work = f; specs = sp; pages = pg; tabs = tb; calcOrder = co; layers = ly
             if (page >= pg.size) page = (pg.size - 1).coerceAtLeast(0)
             selection.removeAll { r -> sp.none { it.name == r.name && r.widget < it.widgets.size } }
             version++
@@ -157,7 +158,7 @@ class DesignerState(private val context: Context, private val scope: CoroutineSc
         runCatching { old?.closeAsync() }
     }
 
-    private data class Quad(val a: List<FieldSpec>, val b: List<PageInfo>, val c: Map<Int, String?>, val d: List<String>)
+    private data class Quad(val a: List<FieldSpec>, val b: List<PageInfo>, val c: Map<Int, String?>, val d: List<String>, val e: List<String>)
 
     /**
      * One designer change: [block] edits the working document (returns false to cancel), the result becomes the

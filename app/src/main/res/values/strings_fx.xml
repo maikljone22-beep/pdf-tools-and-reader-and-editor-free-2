@@ -284,4 +284,12 @@
     <string name="fx_unsaved">لم تُحفظ التغييرات. هل تريد الخروج؟</string>
     <string name="fx_leave">خروج</string>
     <string name="fx_edit_fields">تعديل حقول النموذج</string>
+    <string name="fx_act_layers">إظهار/إخفاء طبقة</string>
+    <string name="fx_act_article">قراءة مقال</string>
+    <string name="fx_no_layers">لا توجد طبقات في هذا المستند</string>
+    <string name="fx_toggle">تبديل</string>
+    <string name="fx_article_n">رقم المقال</string>
+    <string name="fx_distribute">توزيع النموذج (مشاركة/بريد)</string>
+    <string name="fx_distribute_subject">يرجى تعبئة هذا النموذج</string>
+    <string name="fx_distribute_text">يرجى تعبئة النموذج المرفق وإعادته. يمكن جمع الردود في جدول من مصمم النماذج.</string>
 </resources>

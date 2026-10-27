@@ -41,6 +41,13 @@ object FxActions {
 
     private fun fileSpec(url: String) = COSDictionary().apply { setItem(n("FS"), n("URL")); setString(COSName.F, url) }
 
+    /** Optional content groups of [doc]: (dictionary, name). */
+    fun ocgs(doc: PDDocument?): List<Pair<COSDictionary, String>> {
+        val props = doc?.documentCatalog?.cosObject?.getDictionaryObject(n("OCProperties")) as? COSDictionary ?: return emptyList()
+        val arr = props.getDictionaryObject(n("OCGs")) as? COSArray ?: return emptyList()
+        return (0 until arr.size()).mapNotNull { i -> (arr.getObject(i) as? COSDictionary)?.let { it to (it.getString(COSName.NAME) ?: "Layer ${i + 1}") } }
+    }
+
     /** One action dictionary (without /Next). */
     fun build(doc: PDDocument?, a: FxAction): COSDictionary = when (a) {
         is FxAction.GoToPage -> base("GoTo").apply {
@@ -81,6 +88,20 @@ object FxActions {
         is FxAction.JavaScript -> base("JavaScript").apply { setItem(COSName.JS, COSString(a.code)) }
         is FxAction.Named -> base("Named").apply { setItem(COSName.N, n(a.name)) }
         is FxAction.ImportData -> base("ImportData").apply { setString(COSName.F, a.file) }
+        is FxAction.SetLayers -> base("SetOCGState").apply {
+            val groups = ocgs(doc)
+            val arr = COSArray()
+            a.states.groupBy { it.second }.forEach { (state, l) ->
+                arr.add(n(if (state.equals("toggle", true)) "Toggle" else state.uppercase()))
+                l.forEach { (layer, _) -> groups.firstOrNull { it.second == layer }?.let { arr.add(it.first) } }
+            }
+            setItem(n("State"), arr)
+        }
+        is FxAction.ReadArticle -> base("Thread").apply {
+            val threads = doc?.documentCatalog?.cosObject?.getDictionaryObject(n("Threads")) as? COSArray
+            val t = threads?.getObject(a.thread) as? COSDictionary
+            if (t != null) setItem(COSName.D, t) else setInt(COSName.D, a.thread)
+        }
         is FxAction.Raw -> ((a.cos as? COSDictionary)?.let { d -> COSDictionary().also { c -> c.addAll(d); c.removeItem(NEXT) } }) ?: base(a.subtype)
     }
 
@@ -155,6 +176,27 @@ object FxActions {
             "JavaScript" -> FxAction.JavaScript(str(d.getDictionaryObject(COSName.JS)) ?: "")
             "Named" -> FxAction.Named(d.getCOSName(COSName.N)?.name ?: "")
             "ImportData" -> FxAction.ImportData(fileOf(d.getDictionaryObject(COSName.F)))
+            "SetOCGState" -> {
+                val groups = ocgs(doc)
+                val arr = d.getDictionaryObject(n("State")) as? COSArray ?: return FxAction.Raw(s, d)
+                var state = "ON"; val out = ArrayList<Pair<String, String>>()
+                for (i in 0 until arr.size()) {
+                    when (val o = arr.getObject(i)) {
+                        is COSName -> state = o.name
+                        is COSDictionary -> groups.firstOrNull { it.first === o }?.let { out += it.second to state } ?: out.add((o.getString(COSName.NAME) ?: "?") to state)
+                        else -> {}
+                    }
+                }
+                FxAction.SetLayers(out)
+            }
+            "Thread" -> {
+                val threads = doc?.documentCatalog?.cosObject?.getDictionaryObject(n("Threads")) as? COSArray
+                when (val dd = d.getDictionaryObject(COSName.D)) {
+                    is COSNumber -> FxAction.ReadArticle(dd.intValue())
+                    is COSDictionary -> FxAction.ReadArticle((0 until (threads?.size() ?: 0)).firstOrNull { threads!!.getObject(it) === dd } ?: 0)
+                    else -> FxAction.Raw(s, d)
+                }
+            }
             else -> FxAction.Raw(s, d)
         }
     }
