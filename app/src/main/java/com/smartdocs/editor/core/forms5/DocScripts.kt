@@ -120,7 +120,7 @@ object DocScripts {
                 }
             }
         }
-        doc.documentCatalog.acroForm?.fieldTree?.forEach { f ->
+        doc.documentCatalog.getAcroForm(null)?.fieldTree?.forEach { f ->
             if (f !is PDTerminalField) return@forEach
             val name = f.fullyQualifiedName ?: return@forEach
             val aa = deref(f.cosObject.getDictionaryObject(COSName.AA)) as? COSDictionary ?: return@forEach
@@ -174,7 +174,7 @@ object DocScripts {
             "field" -> {
                 val k = parts.last().takeIf { it in FIELD_EVENTS } ?: return false
                 val name = locator.removePrefix("field:").removeSuffix(":$k")
-                val f = doc.documentCatalog.acroForm?.getField(name) ?: return false
+                val f = doc.documentCatalog.getAcroForm(null)?.getField(name) ?: return false
                 setIn(aaOf(f.cosObject, true)!!, COSName.getPDFName(k), code)
             }
             "widget", "link" -> {

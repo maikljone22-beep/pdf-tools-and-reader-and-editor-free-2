@@ -82,7 +82,7 @@ class CommentOps7Test {
         AnnotStyle.addPopup(p, second)
         CommentOps7.keepOnly(d, mapOf(0 to setOf(1)))
         assertEquals(listOf("Square", "Popup"), p.annotations.map { it.subtype })
-        val x = java.io.File.createTempFile("c", ".xfdf")
+        val x = java.io.File.createTempFile("cmt", ".xfdf")
         x.writeText("<?xml version=\"1.0\"?><xfdf xmlns=\"http://ns.adobe.com/xfdf/\"><f href=\"dir/Report 1.pdf\"/></xfdf>")
         assertEquals("Report 1.pdf", CommentOps7.fdfTargetName(x))
         val dir = java.nio.file.Files.createTempDirectory("fdf").toFile()

@@ -245,7 +245,7 @@ object FormModelLoader {
 
     fun load(doc: PDDocument): FormModel {
         val xfa = runCatching { XfaSupport.detect(doc).kind }.getOrDefault(XfaSupport.Kind.NONE)
-        val acro = doc.documentCatalog.acroForm ?: return FormModel.EMPTY.copy(xfa = xfa)
+        val acro = doc.documentCatalog.getAcroForm(null) ?: return FormModel.EMPTY.copy(xfa = xfa)
         // where every annotation lives: page index and position in /Annots (one pass over the pages)
         val where = HashMap<COSDictionary, Pair<Int, Int>>()
         val geom = ArrayList<FloatArray>()

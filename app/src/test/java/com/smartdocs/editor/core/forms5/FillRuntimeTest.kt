@@ -117,7 +117,7 @@ class FillRuntimeTest {
 
     @Test fun docScriptsAddEditRemoveEverywhere() {
         var d = PDDocument().apply { addPage(PDPage()); addPage(PDPage()) }
-        val form = PDAcroForm(d); d.documentCatalog.acroForm = form
+        val form = PDAcroForm(d); d.documentCatalog.acroForm = form; com.smartdocs.editor.core.formsx.FxAppearance.ensureDr(form.cosObject, com.smartdocs.editor.core.formsx.FxFont.ZAPF)  // DR + DA: no PdfBox font fix-up in JVM tests
         val tf = PDTextField(form); tf.partialName = "total"
         val w = PDAnnotationWidget(); w.rectangle = PDRectangle(10f, 10f, 100f, 20f); w.page = d.getPage(0)
         tf.widgets = listOf(w); form.fields.add(tf); d.getPage(0).annotations.add(w)
@@ -149,7 +149,7 @@ class FillRuntimeTest {
     @Test fun fileSelectFlagAndButtonTriggersReachTheModel() {
         PDDocument().use { d ->
             d.addPage(PDPage(PDRectangle(200f, 200f)))
-            val form = PDAcroForm(d); d.documentCatalog.acroForm = form
+            val form = PDAcroForm(d); d.documentCatalog.acroForm = form; com.smartdocs.editor.core.formsx.FxAppearance.ensureDr(form.cosObject, com.smartdocs.editor.core.formsx.FxFont.ZAPF)  // DR + DA: no PdfBox font fix-up in JVM tests
             val tf = PDTextField(form); tf.partialName = "upload"
             tf.cosObject.setInt(COSName.FF, FormModelLoader.FF_FILE_SELECT)
             val w = PDAnnotationWidget(); w.rectangle = PDRectangle(10f, 10f, 100f, 20f); w.page = d.getPage(0)

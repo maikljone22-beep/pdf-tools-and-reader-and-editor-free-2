@@ -94,12 +94,21 @@ object FormSubmit {
         return "<" + bytes.joinToString("") { "%02X".format(it.toInt() and 0xFF) } + ">"
     }
 
+    /** Close a one-object FDF body with a real cross-reference table (parsers then need no repair pass). */
+    private fun withXref(body: String): ByteArray {
+        val objAt = body.indexOf("1 0 obj")
+        val xref = "xref"+NL+"0 2"+NL+"0000000000 65535 f "+NL+String.format(java.util.Locale.US, "%010d", objAt)+" 00000 n "+NL
+        val tail = "trailer"+NL+"<< /Size 2 /Root 1 0 R >>"+NL+"startxref"+NL+body.length+NL+"%%EOF"+NL
+        return (body + xref + tail).toByteArray(Charsets.ISO_8859_1)
+    }
+    private const val NL = "\n"
+
     /** A minimal FDF file (flat /Fields array with fully qualified /T names). */
     fun fdf(values: Map<String, String>, fileName: String): ByteArray {
         val sb = StringBuilder("%FDF-1.2\n1 0 obj\n<< /FDF << /F ").append(pdfString(fileName)).append(" /Fields [\n")
         values.forEach { (k, v) -> sb.append("<< /T ").append(pdfString(k)).append(" /V ").append(pdfString(v)).append(" >>\n") }
-        sb.append("] >> >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n")
-        return sb.toString().toByteArray(Charsets.ISO_8859_1)
+        sb.append("] >> >>\nendobj\n")
+        return withXref(sb.toString())
     }
 
     /**
@@ -125,8 +134,8 @@ object FormSubmit {
         values.forEach { (k, v) -> sb.append("<< /T ").append(pdfString(k)).append(" /V ").append(pdfString(v)).append(" >>\n") }
         sb.append("] /Annots [\n")
         annots.forEach { sb.append(it).append('\n') }
-        sb.append("] >> >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n")
-        return sb.toString().toByteArray(Charsets.ISO_8859_1)
+        sb.append("] >> >>\nendobj\n")
+        return withXref(sb.toString())
     }
 
     /** One annotation as an FDF /Annots entry: subtype, page, rect, contents, author, colour. */

@@ -30,7 +30,7 @@ class FillRuntimeFilesTest {
         val f = tmp("xfa.pdf")
         PDDocument().use { d ->
             d.addPage(PDPage())
-            val form = PDAcroForm(d); d.documentCatalog.acroForm = form
+            val form = PDAcroForm(d); d.documentCatalog.acroForm = form; com.smartdocs.editor.core.formsx.FxAppearance.ensureDr(form.cosObject, com.smartdocs.editor.core.formsx.FxFont.ZAPF)  // DR + DA: no PdfBox font fix-up in JVM tests
             val data = buildString {
                 append("<xfa:datasets xmlns:xfa=\"http://www.xfa.org/schema/xfa-data/1.0/\"><xfa:data><form1>")
                 for (i in 1..rows) append("<row><a>v$i</a></row>")
@@ -66,7 +66,7 @@ class FillRuntimeFilesTest {
         val f = tmp("vis.pdf")
         PDDocument().use { d ->
             d.addPage(PDPage())
-            val form = PDAcroForm(d); d.documentCatalog.acroForm = form
+            val form = PDAcroForm(d); d.documentCatalog.acroForm = form; com.smartdocs.editor.core.formsx.FxAppearance.ensureDr(form.cosObject, com.smartdocs.editor.core.formsx.FxFont.ZAPF)  // DR + DA: no PdfBox font fix-up in JVM tests
             val parent = PDNonTerminalField(form); parent.partialName = "addr"
             fun text(name: String, y: Float): PDTextField {
                 val t = PDTextField(form); t.partialName = name

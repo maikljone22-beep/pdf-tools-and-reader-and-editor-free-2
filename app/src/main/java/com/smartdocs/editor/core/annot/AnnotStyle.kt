@@ -547,15 +547,14 @@ object AnnotStyle {
         an.setInt(COSName.F, F_PRINT)
         an.setString(COSName.M, com.tom_roush.pdfbox.util.DateConverter.toString(java.util.Calendar.getInstance()))
         an.setItem(COSName.AP, COSDictionary().apply { setItem(COSName.N, form.cosObject) })
-        val list = page.annotations
-        list.add(PDAnnotation.createAnnotation(an))
-        page.annotations = list
+        val arr = (page.cosObject.getDictionaryObject(COSName.ANNOTS) as? COSArray) ?: COSArray().also { page.cosObject.setItem(COSName.ANNOTS, it) }
+        arr.add(an)
         return an
     }
 
     /** Next tickmark number on [page]: one more than the largest stored "Tickmark" number. */
     fun nextTickmark(page: PDPage): Int =
-        (runCatching { page.annotations }.getOrDefault(emptyList()).filter { it.cosObject.getString(SUBJ) == "Tickmark" }
+        (runCatching { page.annotations }.getOrDefault(emptyList()).filter { it.cosObject.getString(SUBJ) == "Tickmark" && it.cosObject.getString(COSName.getPDFName("SDTick"))?.startsWith("zd:") != true }
             .mapNotNull { it.contents?.trim()?.toIntOrNull() }.maxOrNull() ?: 0) + 1
 
     @Suppress("unused") private fun str(s: String) = COSString(s)

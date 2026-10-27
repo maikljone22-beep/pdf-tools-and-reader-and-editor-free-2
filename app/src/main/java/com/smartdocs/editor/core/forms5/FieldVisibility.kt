@@ -17,7 +17,7 @@ object FieldVisibility {
 
     /** Set (true) or clear (false) the Hidden flag of every widget of the fields in [hidden]. Returns widgets changed. */
     fun apply(doc: PDDocument, hidden: Map<String, Boolean>): Int {
-        val acro = doc.documentCatalog.acroForm ?: return 0
+        val acro = doc.documentCatalog.getAcroForm(null) ?: return 0
         var n = 0
         for ((name, hide) in hidden) {
             val f: PDField = acro.getField(name) ?: continue
