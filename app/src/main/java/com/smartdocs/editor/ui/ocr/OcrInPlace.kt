@@ -40,7 +40,8 @@ object OcrPrefs {
  * when no page in the range needs OCR. [onProgress] gets (message, fraction or null).
  */
 suspend fun runOcrToFile(
-    ctx: Context, engine: OcrEngine, src: File, out: File, password: String?, opt: OcrOptions,
+    ctx: Context, engine: OcrEngine, src0: File, out: File, password: String?, opt: OcrOptions,
+    onRepaired: (com.smartdocs.editor.core.pdf.ToUnicodeRepair.Result) -> Unit = {},
     onProgress: (String, Float?) -> Unit,
 ): Int {
     val langs = opt.langs.joinToString("+")
@@ -52,6 +53,12 @@ suspend fun runOcrToFile(
     onProgress(ctx.getString(R.string.qk_working), null)
     if (!engine.init(langs)) throw QuickInfo(ctx.getString(R.string.qk_ocr_init_failed))
 
+    // Arabic fonts with a wrong ToUnicode map are repaired first: those pages then have good text and need no OCR layer
+    // (which used to duplicate them, reversed, on copy). Everything below works on the repaired copy.
+    val input = com.smartdocs.editor.core.ocr.RepairedInput.of(ctx.cacheDir, src0, password, opt.pages)
+    try {
+    input.result?.takeIf { input.repaired }?.let(onRepaired)
+    val src = input.file
     val session = PdfSession.open(ctx, src, password)
     try {
         val range = (opt.pages ?: (0 until session.pageCount).toList()).filter { it in 0 until session.pageCount }
@@ -59,7 +66,11 @@ suspend fun runOcrToFile(
         val plan = com.smartdocs.editor.core.ocr.MixedPageOcr.plan(session, src, password, range)
         // a single page the user picked is always recognised (on a digital page only words that are new get added)
         val todo = if (opt.pages?.size == 1) range else plan.pages
-        if (todo.isEmpty()) throw QuickInfo(ctx.getString(R.string.qk_ocr_nothing))
+        if (todo.isEmpty()) {
+            // nothing to recognise, but the text layer was repaired: that is the result
+            if (input.repaired) { withContext(Dispatchers.IO) { src.copyTo(out, overwrite = true) }; return 0 }
+            throw QuickInfo(ctx.getString(R.string.qk_ocr_nothing))
+        }
         val searchable = if (!opt.editable) withContext(Dispatchers.IO) { SearchablePdfWriter(ctx, src, password) } else null
         val editable = if (opt.editable) withContext(Dispatchers.IO) { EditableTextPdfWriter(ctx, src, password) } else null
         try {
@@ -90,4 +101,5 @@ suspend fun runOcrToFile(
         } finally { searchable?.close(); editable?.close() }
         return todo.size
     } finally { session.closeAsync() }
+    } finally { input.close() }
 }

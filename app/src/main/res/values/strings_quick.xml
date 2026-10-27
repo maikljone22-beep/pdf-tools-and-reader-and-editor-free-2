@@ -131,4 +131,9 @@
     <string name="qk_lang_tur">التركية</string>
     <string name="qk_lang_fas">الفارسية</string>
     <string name="qk_lang_urd">الأردية</string>
+    <string name="tool_fix_text">إصلاح نص الملف</string>
+    <string name="qk_fix_done">أُصلح النص المنسوخ في %1$d صفحة: يُنسخ الآن كما يظهر</string>
+    <string name="qk_fix_lig">أُصلح ترتيب الحروف المركّبة في نص الملف</string>
+    <string name="qk_fix_none">نص الملف سليم ولا يحتاج إصلاحًا</string>
+    <string name="qk_fix_reocr">صفحات فيها صور ونص تعرّف ضوئي قديم، أعد التعرف الضوئي عليها: %1$s</string>
 </resources>

@@ -82,6 +82,7 @@ object V5Commands {
             V5Command("doc_info", R.string.tool_doc_info, Icons.Default.Info, "document info properties خصائص معلومات") { a.docInfo() },
             V5Command("ai", R.string.tool_ai, Icons.Default.AutoAwesome, "ai assistant ask مساعد ذكاء") { a.ai() },
             V5Command("ocr", R.string.tool_ocr, Icons.Default.DocumentScanner, "ocr recognize text تعرف ضوئي") { a.quick(QuickAction.OCR) },
+            V5Command("fix_text", R.string.tool_fix_text, Icons.Default.Spellcheck, "repair fix text copy arabic إصلاح نص نسخ") { a.quick(QuickAction.FIX_TEXT) },
             V5Command("compress", R.string.tool_compress, Icons.Default.Compress, "compress reduce size ضغط") { a.quick(QuickAction.COMPRESS) },
             V5Command("protect", R.string.tool_protect, Icons.Default.Lock, "password protect حماية كلمة مرور") { a.quick(QuickAction.PROTECT) },
             V5Command("flatten", R.string.tool_flatten, Icons.Default.Layers, "flatten تسطيح") { a.quick(QuickAction.FLATTEN) },

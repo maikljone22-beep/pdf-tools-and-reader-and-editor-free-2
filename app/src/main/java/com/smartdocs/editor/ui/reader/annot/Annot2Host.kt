@@ -162,7 +162,7 @@ class Annot2Host(val s: ReaderState) {
                 val boxes = s.charBoxes(page); val text = s.pageText(page)
                 val i = TextSelectionLogic.charAt(boxes, x, y) ?: return@launch
                 val r = TextSelectionLogic.wordAt(text, i)
-                prompt = Prompt2(AnnotKind.REPLACE, page, TextSelectionLogic.rects(boxes, r.first, r.last), TextSelectionLogic.text(text, r.first, r.last))
+                prompt = Prompt2(AnnotKind.REPLACE, page, TextSelectionLogic.rects(boxes, r.first, r.last), TextSelectionLogic.text(text, r.first, r.last, boxes))
             }
             ReaderTool.ATTACH -> { pendingTap = Tap2(ReaderTool.ATTACH, page, x, y); launchAttach() }
             ReaderTool.VIDEO -> { pendingTap = Tap2(ReaderTool.VIDEO, page, x, y); launchVideo() }
@@ -261,7 +261,7 @@ class Annot2Host(val s: ReaderState) {
                 s.scope.launch {
                     val boxes = s.charBoxes(page); val text = s.pageText(page)
                     val range = TextSelectionLogic.charsInRect(boxes, pr) ?: return@launch
-                    prompt = Prompt2(AnnotKind.REPLACE, page, TextSelectionLogic.rects(boxes, range.first, range.last), TextSelectionLogic.text(text, range.first, range.last))
+                    prompt = Prompt2(AnnotKind.REPLACE, page, TextSelectionLogic.rects(boxes, range.first, range.last), TextSelectionLogic.text(text, range.first, range.last, boxes))
                 }
             }
         }

@@ -90,12 +90,15 @@ fun OcrScreen(nav: NavHostController, uri: String?) {
                 } catch (e: CancellationException) { throw e } catch (e: Exception) { error = downloadFailed; return@launch }
                 if (!engine.init(langs)) { error = initFailed; return@launch }
                 // 2. pages
-                val session = try { PdfSession.open(ctx, src, password) } catch (e: PdfSession.Companion.PasswordRequiredException) { askPassword = true; return@launch }
-                val writer = if (mode == OcrMode.SEARCHABLE) withContext(Dispatchers.IO) { SearchablePdfWriter(ctx, src, password) } else null
+                // broken Arabic fonts are repaired first, so their pages count as having text (see RepairedInput)
+                val input = if (mode == OcrMode.SEARCHABLE) com.smartdocs.editor.core.ocr.RepairedInput.of(ctx.cacheDir, src, password, rerun = emptyList()) else null
+                val work = input?.file ?: src
+                val session = try { PdfSession.open(ctx, work, password) } catch (e: PdfSession.Companion.PasswordRequiredException) { input?.close(); askPassword = true; return@launch }
+                val writer = if (mode == OcrMode.SEARCHABLE) withContext(Dispatchers.IO) { SearchablePdfWriter(ctx, work, password) } else null
                 val collected = ArrayList<Pair<Int, OcrPage>>()
                 try {
                     val pages = PdfOps.parseRange(range, session.pageCount)
-                    val plan = if (writer != null) com.smartdocs.editor.core.ocr.MixedPageOcr.plan(session, src, password, pages) else null
+                    val plan = if (writer != null) com.smartdocs.editor.core.ocr.MixedPageOcr.plan(session, work, password, pages) else null
                     pages.forEachIndexed { n, pi ->
                         progressMsg = ctx.getString(R.string.ocr_recognizing, pi + 1); progress = n.toFloat() / pages.size
                         val (w, h) = session.pageSize(pi)
@@ -115,7 +118,7 @@ fun OcrScreen(nav: NavHostController, uri: String?) {
                         runCatching { app.documents.touchRecent(out, session.pageCount) }
                         result = out
                     }
-                } finally { session.closeAsync(); writer?.close() }
+                } finally { session.closeAsync(); writer?.close(); input?.close() }
             } catch (e: CancellationException) {
                 error = cancelledMsg
             } catch (e: Exception) { error = e.message ?: e.toString() } finally { progress = null; progressMsg = ""; running = false }

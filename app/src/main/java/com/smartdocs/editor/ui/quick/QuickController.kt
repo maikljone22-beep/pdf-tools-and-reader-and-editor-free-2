@@ -21,6 +21,7 @@ import java.io.File
 /** Every one-step document tool the reader offers. */
 enum class QuickAction {
     COMPRESS, OCR, WATERMARK, PAGE_NUMBERS, PROTECT, UNLOCK, FLATTEN, ROTATE_ALL, ADD_BLANK, DELETE_PAGE, EXTRACT, PROPERTIES, PRINT, SHARE,
+    FIX_TEXT,
 }
 
 /** A message meant for the user (not a failure): shown as is. */
@@ -70,6 +71,7 @@ class QuickController(val state: ReaderState, private val scope: CoroutineScope,
             QuickAction.SHARE -> onShare()
             QuickAction.PRINT -> onPrint()
             QuickAction.OCR -> { ocrLockedPage = null; sheet = action }
+            QuickAction.FIX_TEXT -> fixText()
             else -> sheet = action
         }
     }
@@ -223,8 +225,36 @@ class QuickController(val state: ReaderState, private val scope: CoroutineScope,
     fun ocr(opt: OcrOptions) {
         val eng = engine ?: OcrEngine(ctx.applicationContext).also { engine = it }
         var count = 0
-        apply(ctx.getString(R.string.qk_working), { ctx.getString(R.string.qk_ocr_done, count) }, "ocr", cancellable = true) { src, out, pw ->
-            count = runOcrToFile(ctx, eng, src, out, pw, opt) { text, f -> setProgress(text, f) }
+        var fixed = 0
+        val done = {
+            when {
+                fixed > 0 && count == 0 -> ctx.getString(R.string.qk_fix_done, fixed)
+                fixed > 0 -> ctx.getString(R.string.qk_ocr_done, count) + " · " + ctx.getString(R.string.qk_fix_done, fixed)
+                else -> ctx.getString(R.string.qk_ocr_done, count)
+            }
+        }
+        apply(ctx.getString(R.string.qk_working), done, "ocr", cancellable = true) { src, out, pw ->
+            count = runOcrToFile(ctx, eng, src, out, pw, opt, onRepaired = { fixed = it.pages.size }) { text, f -> setProgress(text, f) }
+        }
+    }
+
+    /**
+     * «إصلاح نص الملف»: rewrites the wrong ToUnicode maps of old Word Arabic fonts ([com.smartdocs.editor.core.pdf.ToUnicodeRepair])
+     * so copy, search, read-aloud, AI and reflow get the letters the page shows; the app's own earlier OCR words on those
+     * pages are removed (they would duplicate the now readable text). The page looks exactly the same.
+     */
+    fun fixText() {
+        var pages = 0
+        var reocr = emptyList<Int>()
+        val done = {
+            val base = if (pages > 0) ctx.getString(R.string.qk_fix_done, pages) else ctx.getString(R.string.qk_fix_lig)
+            if (reocr.isEmpty()) base else base + " · " + ctx.getString(R.string.qk_fix_reocr, reocr.take(8).joinToString("، ") { (it + 1).toString() })
+        }
+        apply(ctx.getString(R.string.qk_working), done, "textfix") { src, out, pw ->
+            val r = com.smartdocs.editor.core.pdf.ToUnicodeRepair.repairFile(src, pw, out, removeOldOcr = true)
+            if (!r.changed) { out.delete(); throw QuickInfo(ctx.getString(R.string.qk_fix_none)) }
+            pages = r.pages.size
+            reocr = r.ocrLayersKept.sorted()
         }
     }
 

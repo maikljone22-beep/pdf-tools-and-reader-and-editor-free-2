@@ -159,7 +159,7 @@ fun PageCanvas(
                             val boxes = state.charBoxes(page); val text = state.pageText(page)
                             val i = TextSelectionLogic.charAt(boxes, x, y) ?: return@launch
                             val r = TextSelectionLogic.wordAt(text, i)
-                            state.selection = TextSelection(page, r.first, r.last, TextSelectionLogic.rects(boxes, r.first, r.last), TextSelectionLogic.text(text, r.first, r.last))
+                            state.selection = TextSelection(page, r.first, r.last, TextSelectionLogic.rects(boxes, r.first, r.last), TextSelectionLogic.text(text, r.first, r.last, boxes))
                         }
                     },
                     onTap = { p -> handleTap(state, page, g, p, linksNow, layoutNow, { tp, sz -> onTapNow(tp + rootPos, sz) }, onOpenLinkNow, onPromptNow) },
@@ -359,7 +359,7 @@ private fun moveSelectionHandle(state: ReaderState, page: Int, g: PageGeometry, 
         val i = TextSelectionLogic.charAt(boxes, x, y, 40f) ?: return@launch
         val ns = if (startHandle) i else sel.start; val ne = if (startHandle) sel.end else i
         val a = min(ns, ne); val b = max(ns, ne)
-        state.selection = TextSelection(page, a, b, TextSelectionLogic.rects(boxes, a, b), TextSelectionLogic.text(text, a, b))
+        state.selection = TextSelection(page, a, b, TextSelectionLogic.rects(boxes, a, b), TextSelectionLogic.text(text, a, b, boxes))
     }
 }
 
@@ -428,7 +428,7 @@ private fun handleTap(
                 val i = TextSelectionLogic.charAt(boxes, x, y) ?: return@launch
                 val r = TextSelectionLogic.wordAt(text, i)
                 val kind = markupKind(t) ?: return@launch
-                state.addAnnot(state.newAnnot(kind, page, rects = TextSelectionLogic.rects(boxes, r.first, r.last), text = TextSelectionLogic.text(text, r.first, r.last)))
+                state.addAnnot(state.newAnnot(kind, page, rects = TextSelectionLogic.rects(boxes, r.first, r.last), text = TextSelectionLogic.text(text, r.first, r.last, boxes)))
             }
         }
     }
@@ -450,7 +450,7 @@ private fun finishDraft(state: ReaderState, draft: GestureDraft, page: Int, g: P
                 val boxes = state.charBoxes(page); val text = state.pageText(page)
                 val range = TextSelectionLogic.charsInRect(boxes, rect) ?: return@launch
                 val kind = markupKind(tool) ?: return@launch
-                state.addAnnot(state.newAnnot(kind, page, rects = TextSelectionLogic.rects(boxes, range.first, range.last), text = TextSelectionLogic.text(text, range.first, range.last).take(200)))
+                state.addAnnot(state.newAnnot(kind, page, rects = TextSelectionLogic.rects(boxes, range.first, range.last), text = TextSelectionLogic.text(text, range.first, range.last, boxes).take(200)))
             }
         }
         ReaderTool.LINK -> { val r = draft.rect; if (r.width > 4f && r.height > 4f) onPrompt(TextPrompt(tool, page, 0f, 0f, g.screenRectToPdf(r))) }

@@ -255,6 +255,7 @@ private sealed interface ReaderToolItem {
 private val readerTools: List<ReaderToolItem> = listOf(
     ReaderToolItem.Quick(QuickAction.COMPRESS, R.string.tool_compress, Icons.Default.Compress),
     ReaderToolItem.Quick(QuickAction.OCR, R.string.tool_ocr, Icons.Default.DocumentScanner),
+    ReaderToolItem.Quick(QuickAction.FIX_TEXT, R.string.tool_fix_text, Icons.Default.Spellcheck),
     ReaderToolItem.Quick(QuickAction.WATERMARK, R.string.tool_watermark, Icons.Default.BrandingWatermark),
     ReaderToolItem.Quick(QuickAction.PAGE_NUMBERS, R.string.tool_page_numbers, Icons.Default.FormatListNumbered),
     ReaderToolItem.Quick(QuickAction.PROTECT, R.string.tool_protect, Icons.Default.Lock),

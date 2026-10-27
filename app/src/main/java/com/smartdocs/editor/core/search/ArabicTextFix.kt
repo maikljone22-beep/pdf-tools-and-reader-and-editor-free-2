@@ -14,14 +14,98 @@ object ArabicTextFix {
     fun fix(text0: String): String {
         val text = demojibake(text0)
         if (text.none { isArabicChar(it) }) return text
-        return text.split('\n').joinToString("\n") { fixLine(it) }
+        return dropUnusableLines(text.split('\n').map { fixLine(it) }).joinToString("\n")
     }
 
     fun fixLine(line: String): String {
         if (line.none { isArabicChar(it) }) return line
         val reversed = isVisualOrder(line)
         val base = toBaseLetters(line)
-        return if (reversed) reverseVisualLine(base) else base
+        return allah(if (reversed) reverseVisualLine(base) else base)
+    }
+
+    /**
+     * «الله» drawn as an alef glyph + the font's «ﷲ» glyph mapped to «لله»: PDFium reverses that multi-letter value in
+     * right-to-left text and extracts «اهلل» («باهلل», «واهلل»). «اهلل» is not an Arabic word, so it is safe to put back.
+     */
+    private fun allah(s: String): String =
+        if (!s.contains("اهلل")) s else ALLAH.replace(s) { m -> m.groupValues[1] + "الله" }
+
+    private val ALLAH = Regex("""(^|[^\p{L}]|[وفبت])اهلل(?!\p{L})""")
+
+    /**
+     * Copy of a page that carries both a broken original text layer (a font with a wrong ToUnicode map) and a readable
+     * OCR layer would paste every line twice, once as gibberish. When the selection holds readable Arabic, lines that are
+     * [brokenLine] are dropped (their Latin words and numbers are kept); otherwise everything is kept as it is.
+     */
+    fun dropUnusableLines(lines: List<String>): List<String> {
+        val broken = lines.map { brokenLine(it) }
+        // readable = a clean line: 3 Arabic words or more and none impossible (a short broken line can look half right)
+        val readable = lines.any { l -> lineWords(l).let { w -> w.size >= 3 && w.none { implausibleWord(it) } } }
+        if (!readable || broken.none { it }) return lines
+        return lines.indices.mapNotNull { i ->
+            if (!broken[i]) lines[i]
+            else lines[i].split(' ').filter { w -> w.isNotEmpty() && w.none { isArabicChar(it) } && w.any { it.isLetterOrDigit() } }
+                .joinToString(" ").ifEmpty { null }
+        }
+    }
+
+    /**
+     * One line of Arabic that comes from a wrongly mapped font: at least a third of its Arabic words (and one) are
+     * [implausibleWord] («إػذاد األعزبر : حمّذ ادلغمف … ِذسط ِبدح اٌىُُّبء»: 7 of 11).
+     */
+    fun brokenLine(line: String): Boolean {
+        val words = lineWords(line)
+        if (words.isEmpty()) return false
+        val bad = words.count { implausibleWord(it) }
+        return bad >= 1 && bad * 3 >= words.size
+    }
+
+    /** Arabic words of a line (at least two letters), punctuation around them trimmed. */
+    private fun lineWords(line: String): List<String> =
+        line.split(' ', '\t').map { w -> w.trim { !isArabicChar(it) && !it.isDigit() } }.filter { w -> w.count { isArabicLetter(it) } >= 2 }
+
+    /**
+     * PDFium returns some mixed Arabic / Latin lines in left-to-right visual order («: Capacity Heat الحرارية السعة»,
+     * «Zn بعنصر تنتهي 80Hg»): it picks the line direction from its own run count. With the x position of every
+     * character ([xs], centre of its box, null for generated spaces / line breaks) such a line is put back into
+     * right-to-left reading order: words by decreasing x, runs of Latin / number words kept left to right.
+     * Lines that are not mostly Arabic, or already read right to left, are returned unchanged. Plain Kotlin.
+     */
+    fun reorderMixedLine(line: String, xs: List<Float?>): String {
+        if (xs.size != line.length) return line
+        val ar = line.count { it.code in 0x0621..0x064A || isPresentation(it) }
+        val lat = line.count { it in 'a'..'z' || it in 'A'..'Z' || it.isDigit() }
+        if (ar < 4 || lat == 0 || ar <= lat) return line
+        class Tok(val text: String, val x: Float, val ltr: Boolean)
+        val toks = ArrayList<Tok>()
+        var i = 0
+        while (i < line.length) {
+            if (line[i] == ' ') { i++; continue }
+            var j = i
+            while (j < line.length && line[j] != ' ') j++
+            val px = (i until j).mapNotNull { xs[it] }
+            if (px.isEmpty()) return line
+            val t = line.substring(i, j)
+            val strong = t.firstOrNull { it.isLetterOrDigit() }
+            toks += Tok(t, px.average().toFloat(), strong != null && !isArabicChar(strong))
+            i = j
+        }
+        if (toks.size < 2) return line
+        var inc = 0; var dec = 0
+        for (k in 1 until toks.size) { val d = toks[k].x - toks[k - 1].x; if (d > 0.5f) inc++ else if (d < -0.5f) dec++ }
+        if (inc <= dec) return line
+        val sorted = toks.sortedByDescending { it.x }
+        val out = ArrayList<String>()
+        var k = 0
+        while (k < sorted.size) {
+            if (!sorted[k].ltr) { out += sorted[k].text; k++; continue }
+            var e = k
+            while (e < sorted.size && sorted[e].ltr) e++
+            for (m in e - 1 downTo k) out += sorted[m].text
+            k = e
+        }
+        return out.joinToString(" ")
     }
 
     /**
@@ -177,6 +261,9 @@ object ArabicTextFix {
             if (w.length < 3) continue
             if (w.startsWith("ال")) logical++
             if (w.endsWith("لا")) visual++
+            // teh marbuta and alef maksura only end a word: «ةرارح», «ىلإ» are reversed words
+            if (w.last() == 'ة' || w.last() == 'ى') logical++
+            if (w.first() == 'ة' || w.first() == 'ى') visual++
         }
         return visual > logical + 1
     }

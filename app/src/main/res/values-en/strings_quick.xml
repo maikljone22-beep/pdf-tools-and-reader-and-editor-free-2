@@ -131,4 +131,9 @@
     <string name="qk_lang_tur">Turkish</string>
     <string name="qk_lang_fas">Persian</string>
     <string name="qk_lang_urd">Urdu</string>
+    <string name="tool_fix_text">Repair file text</string>
+    <string name="qk_fix_done">Copied text repaired on %1$d pages: it now copies as shown</string>
+    <string name="qk_fix_lig">Ligature order in the file text repaired</string>
+    <string name="qk_fix_none">The file text is fine, nothing to repair</string>
+    <string name="qk_fix_reocr">pages with pictures and an old OCR layer, run OCR on them again: %1$s</string>
 </resources>

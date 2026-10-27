@@ -72,6 +72,31 @@ object TextSelectionLogic {
         return com.smartdocs.editor.core.search.ArabicTextFix.fix(pageText.substring(s, e + 1).replace("\r\n", "\n").replace('\r', '\n'))
     }
 
+    /**
+     * [text] with the character boxes of the page ([boxes] index-aligned with [pageText]): mixed Arabic / Latin lines
+     * that PDFium returned in left-to-right visual order are first put back into reading order from the positions
+     * ([com.smartdocs.editor.core.search.ArabicTextFix.reorderMixedLine]).
+     */
+    fun text(pageText: String, start: Int, end: Int, boxes: List<RectF>): String {
+        if (pageText.isEmpty()) return ""
+        if (boxes.size != pageText.length) return text(pageText, start, end)
+        val s = min(start, end).coerceIn(0, pageText.length - 1); val e = max(start, end).coerceIn(0, pageText.length - 1)
+        val sb = StringBuilder()
+        var i = s
+        while (i <= e) {
+            var j = i
+            while (j <= e && pageText[j] != '\r' && pageText[j] != '\n') j++
+            val xs = (i until j).map { k -> boxes[k].takeIf { valid(it) }?.let { (it.left + it.right) / 2f } }
+            sb.append(com.smartdocs.editor.core.search.ArabicTextFix.reorderMixedLine(pageText.substring(i, j), xs))
+            if (j <= e) {
+                sb.append('\n')
+                if (pageText[j] == '\r' && j + 1 <= e && pageText[j + 1] == '\n') j++
+            }
+            i = j + 1
+        }
+        return com.smartdocs.editor.core.search.ArabicTextFix.fix(sb.toString())
+    }
+
     /** Characters whose boxes intersect a PDF rect — used by the "select by rectangle" markup gesture. */
     fun charsInRect(boxes: List<RectF>, rect: RectF): IntRange? {
         val r = PageGeometry.normPdf(rect)

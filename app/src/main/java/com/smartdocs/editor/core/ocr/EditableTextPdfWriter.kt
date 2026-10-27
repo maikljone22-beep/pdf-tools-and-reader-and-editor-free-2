@@ -108,7 +108,8 @@ class EditableTextPdfWriter(private val context: Context, src: File, password: S
             PDPageContentStream(doc, pdPage, PDPageContentStream.AppendMode.OVERWRITE, true, true).use { cs ->
                 cs.drawImage(img, 0f, 0f, dispW, dispH)
                 cs.beginText()
-                words.forEach { w -> runCatching { writeWord(cs, w, w in strong, ink[w] ?: 0x000000, s, dispH) } }
+                // visual line order (left to right), as SearchablePdfWriter writes its invisible words, so PDFium keeps lines together
+                SearchablePdfWriter.visualLines(words).flatten().forEach { w -> runCatching { writeWord(cs, w, w in strong, ink[w] ?: 0x000000, s, dispH) } }
                 cs.endText()
             }
         }
@@ -117,8 +118,15 @@ class EditableTextPdfWriter(private val context: Context, src: File, password: S
     private fun writeWord(cs: PDPageContentStream, w: OcrWord, visible: Boolean, color: Int, s: Float, dispH: Float) {
         val text = w.text
         val ar = ArabicShaper.isArabic(text)
-        val shaped = if (ar) ArabicShaper.shape(text) else text
         val font = if (ar) arabic else latin
+        // visible words are shaped for display (+ /ActualText). Invisible words are only extracted: unshaped base letters in
+        // visual order, which PDFium turns back into logical text (see SearchablePdfWriter.addLayer)
+        val shaped = when {
+            !ar -> text
+            visible -> ArabicShaper.shape(text)
+            else -> SearchablePdfWriter.encodable(font, SearchablePdfWriter.visualWord(SearchablePdfWriter.invisibleArabic(text)))
+        }
+        if (shaped.isBlank()) return
         // size + baseline from the glyph bounds of the same text in a comparable font
         val b = Rect(); measure.getTextBounds(text, 0, text.length, b)
         val ratio = (b.height() / 100f).takeIf { it > 0.05f } ?: 0.7f
@@ -135,7 +143,7 @@ class EditableTextPdfWriter(private val context: Context, src: File, password: S
         // visible words were checked to fit (fitsBox); invisible ones may stretch freely to cover their scan for selection
         cs.setHorizontalScaling(if (natural > 0.5f) (targetW / natural * 100f).coerceIn(if (visible) 75f else 10f, if (visible) 135f else 1000f) else 100f)
         cs.setTextMatrix(Matrix.getTranslateInstance(x, y))
-        cs.showArabic(text, shaped)
+        if (visible) cs.showArabic(text, shaped) else cs.showText(shaped)
     }
 
     /** Natural width of the word in our font is within 0.75..1.35 of its box (no visible stretching). */
