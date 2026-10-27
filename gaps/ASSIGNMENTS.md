@@ -22,3 +22,13 @@ Each session ends with a row-by-row table: done / already present / not feasible
 | pdf-ad | feature/inline-video, fix/ocr-quality | in progress |
 
 Memory: 16 GB PC. Gradle only with `--max-workers=2`; if a build is killed, do not loop — push and use GitHub CI. One local build per session at a time.
+
+## Foxit comparison (fcmp_*.md, 1,639 rows) — assigned 2026-10-27 16:20
+| Foxit sections | Owner |
+|---|---|
+| 1 Shell, 2 Home, 3 Open/Save, 9 View, 10 Read aloud, 12 Search, 14 Edit, 22 Spell check/Articles/Properties, 39 Keyboard, reader URL tap/preview, 3D notice | pdf-ad view-edit agent |
+| 24 Comments, 25 Measure/Calculator/TickMarks, 26 Forms, 27 JavaScript editor, 19 Multimedia (audio/image) | pdf-ad comments-forms agent |
+| 35 AI & Translation + old-plan AI + Office print/read aloud/search | pdf-ad ai-office agent (feature/old-plan-ai-office) |
+| 4 Create, 5 Scan/OCR, 6 Export, 7 Portfolio/Binder, 8 Compliance, 13 Compare, 17 Thumbnails, 20 Optimizer, 22 Layers, 23 Organize/HF/Bates, 29 Redaction (Smart Redact AI), 34 Accessibility | pdf-39 |
+| 15 Links/Destinations/Cross-ref, 16 Bookmarks, 18 Attachments, 21 Action Wizard, 28 Protect (reader honours permissions), 30 Sign (multi-page, batch, banner, doc timestamp), 31 Share (strip metadata), 36 Batch print, 37 Preferences (offline, JS off, Action Inspector), 40 Panels | pdf-3c |
+| 11 3D, 32 desktop ECM, 38 plug-ins, most of 39 command line | N/A on Android (documented in fcmp files) |
