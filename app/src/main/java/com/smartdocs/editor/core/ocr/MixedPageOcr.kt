@@ -92,7 +92,15 @@ object MixedPageOcr {
         return (covered / page.area).coerceIn(0f, 1f)
     }
 
-    /** Where the page draws its pictures (at least 64x64 px; tiny tiles and masks are decoration), in user space. */
+    /**
+     * Pixel size that decides whether a picture counts: its own, or its soft mask's when that is larger. Word exports of
+     * text with effects (OCR_QUALITY_r5, «المرشد…» page 78) draw whole Arabic words as a 2x2 solid colour image whose
+     * 1-bit soft mask (e.g. 1569x153) holds the glyphs: no text layer, and the 2x2 size hid them from the planner.
+     */
+    fun drawnSize(w: Int, h: Int, maskW: Int, maskH: Int): Pair<Int, Int> =
+        if (maskW.toLong() * maskH > w.toLong() * h) maskW to maskH else w to h
+
+    /** Where the page draws its pictures (at least 64x64 px, counting a soft mask; tiny tiles are decoration), in user space. */
     internal fun imageBoxes(page: com.tom_roush.pdfbox.pdmodel.PDPage): List<Box> {
         val out = ArrayList<Box>()
         val engine = object : com.tom_roush.pdfbox.contentstream.PDFStreamEngine() {
@@ -114,7 +122,11 @@ object MixedPageOcr {
                 if (operator.name == "Do") {
                     val name = operands.firstOrNull() as? COSName
                     val x = name?.let { n -> runCatching { resources?.getXObject(n) }.getOrNull() }
-                    if (x is PDImageXObject) { add(x.width, x.height); return }
+                    if (x is PDImageXObject) {
+                        val mask = runCatching { x.softMask }.getOrNull()
+                        val (w, h) = drawnSize(x.width, x.height, mask?.width ?: 0, mask?.height ?: 0)
+                        add(w, h); return
+                    }
                 } else if (operator.name == "BI") {
                     val p = operator.imageParameters
                     if (p != null) add(p.getInt(COSName.W, p.getInt(COSName.WIDTH, 0)), p.getInt(COSName.H, p.getInt(COSName.HEIGHT, 0)))
