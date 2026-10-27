@@ -17,7 +17,6 @@ import org.junit.Test
 
 /**
  * "Run JavaScript in PDF documents" off: neither the AF pattern emulation nor the Rhino runtime runs a script.
- * (FormModelLoader needs PdfBox's Android font resources, so its gate is not covered on the JVM.)
  */
 class JsPolicyGateTest {
 
@@ -28,6 +27,11 @@ class JsPolicyGateTest {
         val page = PDPage(); doc.addPage(page)
         val acro = PDAcroForm(doc); doc.documentCatalog.acroForm = acro
         acro.defaultAppearance = "/Helv 0 Tf 0 g"
+        // getAcroForm() runs PdfBox's default fix-up, which loads the standard 14 fonts (Android assets) when /DR lacks
+        // Helv / ZaDb: plain dictionaries keep that off the JVM
+        acro.cosObject.setItem(COSName.DR, COSDictionary().apply {
+            setItem(COSName.FONT, COSDictionary().apply { setItem(COSName.getPDFName("Helv"), COSDictionary()); setItem(COSName.getPDFName("ZaDb"), COSDictionary()) })
+        })
         fun field(name: String, y: Float, scripts: Map<String, String>) {
             val f = PDTextField(acro); f.partialName = name
             val w = f.widgets[0]; w.rectangle = PDRectangle(50f, y, 200f, 20f); w.page = page
