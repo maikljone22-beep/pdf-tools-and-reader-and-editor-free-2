@@ -183,7 +183,7 @@ object CollabStore {
     fun authorName(c: Context): String = prefs(c).getString("author", null).orEmpty()
     fun setAuthorName(c: Context, name: String) = prefs(c).edit().putString("author", name).apply()
 
-    private fun saveAtomically(doc: PDDocument, target: File, password: String?) {
+    private fun saveAtomically(doc: PDDocument, target: File, password: String? = null) {
         val tmp = File(target.parentFile, ".${target.name}.collab")
         // a signed file gets the merged comments as an incremental update, so its signatures stay valid (audit AN-28)
         if (SignedSave.isSigned(doc)) SignedSave.saveEdited(doc, tmp, password, 0 until doc.numberOfPages)

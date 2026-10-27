@@ -91,7 +91,7 @@ object SignedSave {
      * save re-protected like the source ([PdfOps.reprotect]). Used by the comment, review and stored-annotation
      * writers so they keep signatures valid like [AnnotationWriter] (audit AN-28 / DI-27).
      */
-    fun saveEdited(doc: PDDocument, out: File, password: String?, pages: Collection<Int>) {
+    fun saveEdited(doc: PDDocument, out: File, password: String?, pages: Iterable<Int>) {
         if (isSigned(doc)) {
             requireAnnotationsAllowed(doc)
             saveIncremental(doc, pages.distinct().filter { it in 0 until doc.numberOfPages }.map { doc.getPage(it) }, out)
