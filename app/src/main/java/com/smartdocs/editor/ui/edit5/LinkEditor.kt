@@ -7,6 +7,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -25,6 +26,7 @@ import com.smartdocs.editor.core.edit5.LinkSpec
 import com.smartdocs.editor.ui.tools.ChoiceChips
 import com.smartdocs.editor.ui.tools.ColorChips
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 private val LINK_COLORS = listOf(0x1565C0, 0x2E7D32, 0xC62828, 0x6A1B9A, 0xEF6C00, 0x212121)
 
@@ -35,7 +37,10 @@ private val LINK_COLORS = listOf(0x1565C0, 0x2E7D32, 0xC62828, 0x6A1B9A, 0xEF6C0
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LinkEditorSheet(initial: LinkSpec, pageCount: Int, isNew: Boolean, onDismiss: () -> Unit, onDelete: (() -> Unit)? = null, onSave: (LinkSpec) -> Unit) {
-    var s by remember(initial) { mutableStateOf(initial) }
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    // nav-bookmarks: a new link starts with the saved default appearance
+    var s by remember(initial) { mutableStateOf(if (isNew) LinkDefaults.apply(ctx, initial) else initial) }
+    val defaultSaved = stringResource(R.string.nbm_link_default_saved)
     val mail0 = remember(initial) { if (initial.kind == LinkKind.MAIL) LinkDetect.parseMailto(initial.uri) else Triple("", "", "") }
     var mailTo by remember(initial) { mutableStateOf(mail0.first) }
     var mailSubject by remember(initial) { mutableStateOf(mail0.second) }
@@ -50,13 +55,12 @@ fun LinkEditorSheet(initial: LinkSpec, pageCount: Int, isNew: Boolean, onDismiss
             if (f != null) s = s.copy(file = f.absolutePath, kind = if (f.extension.equals("pdf", true)) LinkKind.REMOTE else LinkKind.LAUNCH)
         }
     }
-    val editable = s.kind != LinkKind.OTHER
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 28.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(stringResource(if (isNew) R.string.e5_link_new else R.string.e5_link_edit), style = MaterialTheme.typography.titleLarge)
-            if (!editable) Text(stringResource(R.string.e5_link_readonly, s.uri), color = MaterialTheme.colorScheme.onSurfaceVariant)
-            else {
-                ChoiceChips(listOf(LinkKind.URI, LinkKind.PAGE, LinkKind.MAIL, LinkKind.REMOTE, LinkKind.LAUNCH, LinkKind.NAMED), s.kind, { stringResource(kindLabel(it)) }) { s = s.copy(kind = it) }
+            run {
+                ChoiceChips(listOf(LinkKind.URI, LinkKind.PAGE, LinkKind.MAIL, LinkKind.REMOTE, LinkKind.LAUNCH, LinkKind.NAMED, LinkKind.OTHER), s.kind,
+                    { if (it == LinkKind.OTHER) stringResource(R.string.nbm_action_list) else stringResource(kindLabel(it)) }) { s = s.copy(kind = it) }
                 when (s.kind) {
                     LinkKind.URI -> OutlinedTextField(s.uri, { s = s.copy(uri = it) }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.e5_link_url)) },
                         placeholder = { Text("https://") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))
@@ -70,36 +74,44 @@ fun LinkEditorSheet(initial: LinkSpec, pageCount: Int, isNew: Boolean, onDismiss
                         OutlinedTextField(pageText, { pageText = it.filter { c -> c.isDigit() }.take(6) }, Modifier.fillMaxWidth(), singleLine = true,
                             label = { Text(if (s.kind == LinkKind.PAGE) stringResource(R.string.e5_link_page_of, pageCount) else stringResource(R.string.e5_link_page)) },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
-                        ChoiceChips(DestFit.values().toList(), s.fit, { stringResource(fitLabel(it)) }) { s = s.copy(fit = it) }
-                        if (s.fit == DestFit.XYZ) OutlinedTextField(zoomText, { zoomText = it.filter { c -> c.isDigit() }.take(4) }, Modifier.fillMaxWidth(), singleLine = true,
-                            label = { Text(stringResource(R.string.e5_link_zoom)) }, placeholder = { Text(stringResource(R.string.e5_link_zoom_keep)) }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
-                        if (s.kind == LinkKind.REMOTE) SwitchRow(stringResource(R.string.e5_link_new_window), s.newWindow) { s = s.copy(newWindow = it) }
+                        DestViewFields(s.view) { v -> s = s.withView(v); zoomText = if (v.zoom > 0f) (v.zoom * 100).toInt().toString() else "" }
+                        if (s.kind == LinkKind.REMOTE) {
+                            // nav-bookmarks: a named destination of the other file (instead of a page)
+                            OutlinedTextField(s.named, { s = s.copy(named = it) }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.nbm_named_dest_opt)) })
+                            SwitchRow(stringResource(R.string.e5_link_new_window), s.newWindow) { s = s.copy(newWindow = it) }
+                        }
                     }
                     LinkKind.LAUNCH -> {
                         FileTarget(s.file) { filePicker.launch(arrayOf("*/*")) }
                         Text(stringResource(R.string.e5_link_launch_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     LinkKind.NAMED -> OutlinedTextField(s.named, { s = s.copy(named = it) }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.e5_link_named)) })
-                    LinkKind.OTHER -> Unit
+                    LinkKind.OTHER -> ActionListEditor(s.actions, pageCount) { s = s.copy(actions = it) }
                 }
             }
             HorizontalDivider()
             Text(stringResource(R.string.e5_link_look), style = MaterialTheme.typography.titleSmall)
             ChoiceChips(LinkBorder.values().toList(), s.border, { stringResource(borderLabel(it)) }) { s = s.copy(border = it) }
             if (s.border != LinkBorder.NONE) {
-                ColorChips(LINK_COLORS, s.color) { s = s.copy(color = it) }
+                NbmColorRow(LINK_COLORS, s.color) { s = s.copy(color = it) }
                 Text(stringResource(R.string.e5_link_width, s.borderWidth.toInt()))
-                Slider(s.borderWidth, { s = s.copy(borderWidth = it) }, valueRange = 1f..4f, steps = 2)
+                Slider(s.borderWidth.coerceIn(1f, 12f), { s = s.copy(borderWidth = it.roundToInt().toFloat()) }, valueRange = 1f..12f, steps = 10)
             }
             ChoiceChips(listOf("I", "O", "P", "N"), s.highlight, { stringResource(highlightLabel(it)) }) { s = s.copy(highlight = it) }
             OutlinedTextField(s.contents, { s = s.copy(contents = it) }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.e5_link_tooltip)) })
+            TextButton(onClick = { LinkDefaults.save(ctx, s); android.widget.Toast.makeText(ctx, defaultSaved, android.widget.Toast.LENGTH_SHORT).show() }) {
+                Icon(Icons.Default.Star, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.nbm_link_use_default))
+            }
+            // nav-bookmarks: move / resize (user space points; the text quads follow)
+            Text(stringResource(R.string.nbm_link_position), style = MaterialTheme.typography.titleSmall)
+            RectFields(s.rect) { s = s.copy(rect = it) }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (onDelete != null) OutlinedButton(onClick = onDelete) { Icon(Icons.Default.Delete, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.delete)) }
                 Spacer(Modifier.weight(1f))
                 TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
                 val valid = when (s.kind) {
                     LinkKind.URI -> s.uri.isNotBlank(); LinkKind.MAIL -> mailTo.contains('@'); LinkKind.PAGE -> pageText.toIntOrNull()?.let { it in 1..pageCount } == true
-                    LinkKind.REMOTE, LinkKind.LAUNCH -> s.file.isNotBlank(); LinkKind.NAMED -> s.named.isNotBlank(); LinkKind.OTHER -> true
+                    LinkKind.REMOTE, LinkKind.LAUNCH -> s.file.isNotBlank(); LinkKind.NAMED -> s.named.isNotBlank(); LinkKind.OTHER -> s.actions.isNotEmpty()
                 }
                 Button(enabled = valid, onClick = {
                     val p = (pageText.toIntOrNull() ?: 1) - 1
@@ -129,7 +141,19 @@ fun kindLabel(k: LinkKind) = when (k) {
     LinkKind.REMOTE -> R.string.e5_kind_remote; LinkKind.LAUNCH -> R.string.e5_kind_launch; LinkKind.NAMED -> R.string.e5_kind_named; LinkKind.OTHER -> R.string.e5_kind_other
 }
 
-fun fitLabel(f: DestFit) = when (f) { DestFit.XYZ -> R.string.e5_fit_xyz; DestFit.FIT -> R.string.e5_fit_page; DestFit.FITH -> R.string.e5_fit_width }
+fun fitLabel(f: DestFit) = nbmFitLabel(f)
+
+/** Left / bottom / width / height of a link rect (PDF points). */
+@Composable
+private fun RectFields(r: android.graphics.RectF, onChange: (android.graphics.RectF) -> Unit) {
+    val l = minOf(r.left, r.right); val b = minOf(r.top, r.bottom); val w = kotlin.math.abs(r.right - r.left); val h = kotlin.math.abs(r.top - r.bottom)
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        FloatField(l, stringResource(R.string.nbm_view_left), Modifier.weight(1f)) { onChange(android.graphics.RectF(it, b + h, it + w, b)) }
+        FloatField(b, stringResource(R.string.nbm_view_bottom), Modifier.weight(1f)) { onChange(android.graphics.RectF(l, it + h, l + w, it)) }
+        FloatField(w, stringResource(R.string.nbm_width), Modifier.weight(1f)) { if (it > 1f) onChange(android.graphics.RectF(l, b + h, l + it, b)) }
+        FloatField(h, stringResource(R.string.nbm_height), Modifier.weight(1f)) { if (it > 1f) onChange(android.graphics.RectF(l, b + it, l + w, b)) }
+    }
+}
 
 private fun borderLabel(b: LinkBorder) = when (b) {
     LinkBorder.NONE -> R.string.e5_border_none; LinkBorder.SOLID -> R.string.e5_border_solid; LinkBorder.DASHED -> R.string.e5_border_dashed; LinkBorder.UNDERLINE -> R.string.e5_border_underline
@@ -146,5 +170,18 @@ fun linkSummary(s: LinkSpec): String = when (s.kind) {
     LinkKind.NAMED -> s.named
     LinkKind.REMOTE -> java.io.File(s.file).name + " • " + stringResource(R.string.e5_link_to_page, s.page + 1)
     LinkKind.LAUNCH -> java.io.File(s.file).name
-    LinkKind.OTHER -> s.uri
+    LinkKind.OTHER -> s.actions.takeIf { it.isNotEmpty() }?.let { l -> actionSummary(l.first()) + (if (l.size > 1) " +${l.size - 1}" else "") } ?: s.uri
+}
+
+/** [spec] after editing an existing link at [old]: the text quads follow a moved / resized rect. */
+fun movedLink(spec: LinkSpec, old: LinkSpec): LinkSpec {
+    val o = old.rect; val n = spec.rect
+    if (o == n || old.quads.isEmpty()) return spec.copy(quads = old.quads)
+    val from = com.smartdocs.editor.core.edit5.LinkGeom.Box(minOf(o.left, o.right), minOf(o.top, o.bottom), maxOf(o.left, o.right), maxOf(o.top, o.bottom))
+    val to = com.smartdocs.editor.core.edit5.LinkGeom.Box(minOf(n.left, n.right), minOf(n.top, n.bottom), maxOf(n.left, n.right), maxOf(n.top, n.bottom))
+    val q = old.quads.map { r ->
+        val m = com.smartdocs.editor.core.edit5.LinkGeom.mapQuads(floatArrayOf(r.left, r.top, r.right, r.bottom), from, to)
+        android.graphics.RectF(m[0], m[1], m[2], m[3])
+    }
+    return spec.copy(quads = q)
 }

@@ -26,6 +26,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.smartdocs.editor.LocalApp
 import com.smartdocs.editor.R
 import com.smartdocs.editor.core.data.ReadingBookmark
@@ -80,31 +81,67 @@ private fun OutlinePanel(state: ReaderState, onJump: (Int) -> Unit, onAiOutline:
     val outline by produceState<List<OutlineItem>?>(null, state.session, state.renderVersion) { value = runCatching { state.session?.outline() }.getOrNull() ?: emptyList() }
     val flat = remember(outline) { outline?.let { flatten(it) } ?: emptyList() }
     val expanded = remember { mutableStateMapOf<String, Boolean>() }
+    // nav-bookmarks: search, find current bookmark, expand / collapse all, wrap and text size
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    var query by remember { mutableStateOf("") }
+    var wrap by remember { mutableStateOf(com.smartdocs.editor.ui.edit5.OutlinePrefs.wrap(ctx)) }
+    var size by remember { mutableIntStateOf(com.smartdocs.editor.ui.edit5.OutlinePrefs.size(ctx)) }
+    var current by remember { mutableStateOf<String?>(null) }
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val scope = rememberCoroutineScope()
+    val matches = remember(flat, query) {
+        if (query.isBlank()) null else com.smartdocs.editor.core.edit5.OutlineNav.search(flat.map { it.first.title }, flat.map { it.first.level }, query)
+    }
     Column(Modifier.fillMaxWidth()) {
         if (outline == null) LinearProgressIndicator(Modifier.fillMaxWidth())
         else if (flat.isEmpty()) EmptyState(Icons.Default.FormatListBulleted, stringResource(R.string.no_outline)) {
             if (com.smartdocs.editor.LocalSettings.current.aiEnabled) Button(onClick = onAiOutline) { Icon(Icons.Default.AutoAwesome, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.ai_bookmarks)) }
         }
-        else LazyColumn(Modifier.fillMaxWidth().heightIn(max = 520.dp)) {
-            val visible = flat.filter { (item, path) -> path.dropLast(1).all { expanded[it] != false } }
-            items(visible, key = { it.second.joinToString("/") }) { (item, path) ->
-                val key = path.joinToString("/")
-                val hasKids = item.children.isNotEmpty()
-                ListItem(
-                    headlineContent = { Text(item.title, maxLines = 2, overflow = TextOverflow.Ellipsis) },
-                    leadingContent = {
-                        if (hasKids) IconButton(onClick = { expanded[key] = !(expanded[key] ?: true) }, Modifier.size(28.dp)) {
-                            Icon(if (expanded[key] != false) Icons.Default.ExpandMore else Icons.Default.ChevronRight, null)
-                        } else Spacer(Modifier.size(28.dp))
-                    },
-                    trailingContent = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text((item.page + 1).toString(), style = MaterialTheme.typography.labelMedium)
-                            if (item.page >= 0) OutlinePrintMenu(state, flat, flat.indexOfFirst { it.second == path })
-                        }
-                    },
-                    modifier = Modifier.padding(start = (item.level * 16).dp).clickable { if (item.page >= 0) onJump(item.page) },
-                )
+        else {
+            val visible = flat.withIndex().filter { (i, e) -> if (matches != null) i in matches else e.second.dropLast(1).let { p -> p.indices.all { k -> expanded[p.subList(0, k + 1).joinToString("/")] != false } } }
+            com.smartdocs.editor.ui.edit5.OutlineToolbar(query, { query = it },
+                onFindCurrent = {
+                    val i = com.smartdocs.editor.core.edit5.OutlineNav.current(flat.map { it.first.page }, state.currentPage)
+                    if (i >= 0) {
+                        query = ""
+                        val path = flat[i].second
+                        for (k in 1 until path.size) expanded[path.subList(0, k).joinToString("/")] = true
+                        current = path.joinToString("/")
+                        val pos = flat.withIndex().filter { (_, e) -> e.second.dropLast(1).let { p -> p.indices.all { k -> expanded[p.subList(0, k + 1).joinToString("/")] != false } } }.indexOfFirst { it.index == i }
+                        if (pos >= 0) scope.launch { listState.animateScrollToItem(pos) }
+                    }
+                },
+                onExpandAll = { flat.forEach { (o, p) -> if (o.children.isNotEmpty()) expanded[p.joinToString("/")] = true } },
+                onCollapseAll = { flat.forEach { (o, p) -> if (o.children.isNotEmpty()) expanded[p.joinToString("/")] = false } },
+                wrap = wrap, onWrap = { wrap = it; com.smartdocs.editor.ui.edit5.OutlinePrefs.setWrap(ctx, it) },
+                size = size, onSize = { size = it.coerceIn(-2, 4); com.smartdocs.editor.ui.edit5.OutlinePrefs.setSize(ctx, size) })
+            if (matches != null && visible.isEmpty()) Text(stringResource(R.string.nbm_no_match), Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            val fs = (MaterialTheme.typography.bodyLarge.fontSize.value + size * 2).sp
+            LazyColumn(Modifier.fillMaxWidth().heightIn(max = 520.dp), state = listState) {
+                items(visible, key = { it.value.second.joinToString("/") }) { (idx, e) ->
+                    val (item, path) = e
+                    val key = path.joinToString("/")
+                    val hasKids = item.children.isNotEmpty()
+                    ListItem(
+                        headlineContent = { Text(item.title, maxLines = if (wrap) 6 else 1, overflow = TextOverflow.Ellipsis, fontSize = fs) },
+                        leadingContent = {
+                            if (hasKids && matches == null) IconButton(onClick = { expanded[key] = !(expanded[key] ?: true) }, Modifier.size(28.dp)) {
+                                Icon(if (expanded[key] != false) Icons.Default.ExpandMore else Icons.Default.ChevronRight, null)
+                            } else Spacer(Modifier.size(28.dp))
+                        },
+                        trailingContent = {
+                            if (item.page >= 0) Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text((item.page + 1).toString(), style = MaterialTheme.typography.labelMedium)
+                                OutlinePrintMenu(state, flat, idx)   // nav-batch: print this page / section
+                            }
+                        },
+                        colors = ListItemDefaults.colors(containerColor = if (key == current) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface),
+                        modifier = Modifier.padding(start = (item.level * 16).dp).clickable {
+                            current = key
+                            if (item.page >= 0) onJump(item.page) else com.smartdocs.editor.ui.edit5.runOutlineActions(state, idx, onJump)
+                        },
+                    )
+                }
             }
         }
     }
@@ -161,9 +198,14 @@ private fun BookmarksPanel(state: ReaderState, onJump: (Int) -> Unit) {
                 scope.launch { app.db.bookmarks().insert(ReadingBookmark(uri = uri, page = state.currentPage, title = t)); title = "" }
             }) { Icon(Icons.Default.BookmarkAdd, null); Spacer(Modifier.width(4.dp)); Text(stringResource(R.string.add_bookmark)) }
         }
+        // nav-bookmarks: search box
+        var q by remember { mutableStateOf("") }
+        if (marks.size > 3) OutlinedTextField(q, { q = it }, Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), singleLine = true,
+            leadingIcon = { Icon(Icons.Default.Search, null) }, placeholder = { Text(stringResource(R.string.nbm_search_bookmarks)) })
+        val shown = if (q.isBlank()) marks else marks.filter { com.smartdocs.editor.core.edit5.OutlineNav.fold(it.title).contains(com.smartdocs.editor.core.edit5.OutlineNav.fold(q)) }
         if (marks.isEmpty()) EmptyState(Icons.Default.BookmarkBorder, stringResource(R.string.no_bookmarks))
         else LazyColumn(Modifier.fillMaxWidth().heightIn(max = 480.dp)) {
-            items(marks, key = { it.id }) { b ->
+            items(shown, key = { it.id }) { b ->
                 ListItem(
                     headlineContent = { Text(b.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                     supportingContent = { Text(stringResource(R.string.page_of, b.page + 1, state.pageCount)) },

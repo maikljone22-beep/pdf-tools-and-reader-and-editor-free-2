@@ -26,6 +26,10 @@ data class E5Tool(val id: String, val label: Int, val icon: ImageVector, val gro
 val EDIT5_TOOLS: List<E5Tool> = listOf(
     E5Tool("e5_links", R.string.e5_links_title, Icons.Default.Link, 1, R.string.e5_links_sub),
     E5Tool("e5_bookmarks", R.string.e5_bm_title, Icons.Default.Bookmarks, 1, R.string.e5_bm_sub),
+    // nav-bookmarks: Destinations panel, Cross-Reference panel, document JavaScript (scripts, document actions, console)
+    E5Tool("e5_destinations", R.string.nbm_dest_title, Icons.Default.Place, 1, R.string.nbm_dest_sub),
+    E5Tool("e5_xref", R.string.nbm_xref_title, Icons.Default.Shortcut, 1, R.string.nbm_xref_sub),
+    E5Tool("e5_doc_js", R.string.nbm_js_title, Icons.Default.Code, 1, R.string.nbm_js_sub),
     E5Tool("e5_header_footer", R.string.e5_hf_title, Icons.Default.ViewHeadline, 1, R.string.e5_hf_sub),
     E5Tool("e5_bates", R.string.e5_bates_title, Icons.Default.Numbers, 1, R.string.e5_bates_sub),
     E5Tool("e5_watermark", R.string.e5_wm_title, Icons.Default.BrandingWatermark, 1, R.string.e5_wm_sub),
@@ -55,6 +59,9 @@ fun Edit5Screens(nav: NavHostController, id: String, uri: String?) {
         "e5_hub" -> Edit5HubScreen(nav, uri)
         "e5_links" -> LinksScreen(nav, uri)
         "e5_bookmarks" -> BookmarksScreen(nav, uri)
+        "e5_destinations" -> DestinationsScreen(nav, uri)
+        "e5_xref" -> CrossRefScreen(nav, uri)
+        "e5_doc_js" -> DocScriptsScreen(nav, uri)
         "e5_header_footer" -> HeaderFooterScreen(nav, uri)
         "e5_bates" -> BatesScreen(nav, uri)
         "e5_watermark" -> DecorScreen(nav, uri, DecorType.WATERMARK)
