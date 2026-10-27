@@ -62,7 +62,7 @@ object AiSpeech {
 
     fun client(settings: AppSettings) = AiClient(settings)
 
-    fun available(settings: AppSettings): Boolean = AiClient.available(settings)
+    fun available(settings: AppSettings): Boolean = settings.aiEnabled && AiClient.available(settings)   // ai6: AI master switch
 
     fun cacheDir(ctx: Context): File = File(ctx.cacheDir, "aivoice").apply { mkdirs() }
 

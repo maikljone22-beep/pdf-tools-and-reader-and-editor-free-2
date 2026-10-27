@@ -42,6 +42,8 @@ enum class ReaderTool {
     TEXTBOX, IMAGE, LINK,
     FS_TEXT, FS_CHECK, FS_CROSS, FS_DOT, FS_LINE, FS_DATE, FS_PROFILE,
     SIGNATURE,
+    // nitro-fillsign2: Fill & Sign rounded rectangle and comb text
+    FS_RRECT, FS_COMB,
     // MODULE_annot2 (ui/reader/annot)
     CARET, REPLACE, POLYGON, POLYLINE, CLOUD, ATTACH, SOUND, VIDEO, SNAPSHOT, SELECT,
 }
@@ -461,6 +463,7 @@ class ReaderState(
                     withContext(NonCancellable) {
                         val tmp = File(f.parentFile, ".${f.nameWithoutExtension}.saving.pdf")
                         failed = AnnotationWriter.commit(context, f, pending, tmp, password).failed
+                        flattenSignaturesOnSave(pending, tmp)
                         com.smartdocs.editor.core.collab.CollabLive.beforeSave(context, f, tmp, password)   // share6: merge other reviewers' comments
                         swapFile(tmp, record = false)
                         wrote = true
@@ -485,6 +488,21 @@ class ReaderState(
                 // annotations / values that are now in the file; replaying them would duplicate them
                 if (wrote && before == null) { history.removeOwner(OWNER_ANNOTS); history.removeOwner(com.smartdocs.editor.ui.forms5.OWNER_FORMS) }
             }
+        }
+    }
+
+    /**
+     * nitro-fillsign2 preference "Flatten signatures when saving": the signature stamps just written into [tmp] (and
+     * any placed before) become page content. Never on a digitally signed file: its signatures would break.
+     */
+    private suspend fun flattenSignaturesOnSave(pending: List<Annot>, tmp: File) {
+        if (pending.none { it.isSignature } || !com.smartdocs.editor.core.fillsign2.FillSignPrefs.flattenOnSave(context)) return
+        withContext(Dispatchers.IO) {
+            if (!tmp.exists() || com.smartdocs.editor.core.pdf.SignedSave.isSigned(tmp, password)) return@withContext
+            val flat = File(tmp.parentFile, tmp.nameWithoutExtension + ".sigflat.pdf")
+            runCatching {
+                if (com.smartdocs.editor.core.pdf.PdfOps.flattenSignatureStamps(tmp, flat, password) > 0 && !flat.renameTo(tmp)) { flat.copyTo(tmp, overwrite = true); flat.delete() }
+            }.onFailure { flat.delete() }
         }
     }
 
@@ -727,7 +745,7 @@ class ReaderState(
             ReaderTool.UNDERLINE, ReaderTool.STRIKEOUT, ReaderTool.SQUIGGLY, ReaderTool.INK, ReaderTool.LINE, ReaderTool.ARROW,
             ReaderTool.RECT, ReaderTool.OVAL -> if (color == 0xFFEB3B) color = 0xF44336
             ReaderTool.FREETEXT, ReaderTool.TEXTBOX, ReaderTool.FS_TEXT, ReaderTool.FS_PROFILE, ReaderTool.FS_DATE,
-            ReaderTool.FS_CHECK, ReaderTool.FS_CROSS, ReaderTool.FS_DOT, ReaderTool.FS_LINE -> if (color == 0xFFEB3B) color = 0x212121
+            ReaderTool.FS_CHECK, ReaderTool.FS_CROSS, ReaderTool.FS_DOT, ReaderTool.FS_LINE, ReaderTool.FS_RRECT, ReaderTool.FS_COMB -> if (color == 0xFFEB3B) color = 0x212121
             else -> {}
         }
     }
@@ -738,7 +756,9 @@ class ReaderState(
         // nitro-quicksign: Recently used (pendingText = the saved signature's path while the signature tool is active)
         if (tool == ReaderTool.SIGNATURE && pendingText.isNotBlank()) com.smartdocs.editor.core.data.SignatureMetaStore.markUsed(context, pendingText)
         val bmp = if (p.rotation != 0f) rotateBitmap(p.image, p.rotation) else p.image
-        addAnnot(newAnnot(AnnotKind.STAMP_IMAGE, p.page, rects = listOf(PageGeometry.normPdf(p.rect)), image = bmp))
+        // nitro-fillsign2: a placed signature remembers its source (default size, Apply All Signatures)
+        val sig = pendingText.takeIf { tool == ReaderTool.SIGNATURE && it.isNotBlank() }
+        addAnnot(newAnnot(AnnotKind.STAMP_IMAGE, p.page, rects = listOf(PageGeometry.normPdf(p.rect)), image = bmp).copy(sigPath = sig))
         placement = null
         if (!continueCreating) { tool = null; pendingImage = null }
     }

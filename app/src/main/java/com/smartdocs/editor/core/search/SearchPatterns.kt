@@ -5,6 +5,13 @@ enum class PatternKind {
     PHONE_YE, PHONE_SA, PHONE_GULF, PHONE_EG, PHONE_INTL,
     EMAIL, URL, CARD, IBAN, NATIONAL_ID, PASSPORT,
     DATE, DATE_HIJRI, DATE_MONTH_NAME, AMOUNT,
+    // Foxit country / region patterns (RegionPatterns)
+    US_SSN, US_PHONE, UK_NINO, UK_PHONE, UK_POSTCODE, UK_DRIVING, CA_SIN, IN_AADHAAR, IN_PAN, ES_DNI, BR_CPF, CN_ID, FR_PHONE, DE_PHONE;
+
+    companion object {
+        /** The country / region patterns (offered in their own group). */
+        val REGIONAL: Set<PatternKind> get() = values().toSet().filter { it.ordinal >= US_SSN.ordinal }.toSet()
+    }
 }
 
 /** A pattern hit: [range] in the ORIGINAL text, [value] as found. */
@@ -106,6 +113,7 @@ object SearchPatterns {
             DATE_MONTH_FIRST.findAll(t).forEach { add(PatternKind.DATE_MONTH_NAME, it.range) }
         }
         each(AMOUNT, PatternKind.AMOUNT)
+        RegionPatterns.find(t, kinds) { k, r -> add(k, r) }
         return dedupe(out)
     }
 

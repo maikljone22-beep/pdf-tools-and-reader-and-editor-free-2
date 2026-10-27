@@ -102,6 +102,12 @@ fun draftToAnnot(state: ReaderState, draft: GestureDraft, page: Int, g: PageGeom
             if (tooSmall) return null
             state.newAnnot(if (tool == ReaderTool.RECT) AnnotKind.RECT else AnnotKind.OVAL, page, rects = listOf(g.screenRectToPdf(rect)))
         }
+        ReaderTool.FS_RRECT -> {
+            // nitro-fillsign2: a /Square with rounded corners
+            if (tooSmall) return null
+            val r = g.screenRectToPdf(rect)
+            state.newAnnot(AnnotKind.RECT, page, rects = listOf(r)).copy(corner = com.smartdocs.editor.core.fillsign2.RoundRect.defaultRadius(abs(r.right - r.left), abs(r.top - r.bottom)))
+        }
         else -> null
     }
 }

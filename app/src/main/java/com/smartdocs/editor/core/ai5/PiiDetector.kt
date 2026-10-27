@@ -1,6 +1,7 @@
 package com.smartdocs.editor.core.ai5
 
-enum class PiiKind { EMAIL, PHONE, CARD, IBAN, NATIONAL_ID, PASSPORT, DATE, URL, IP }
+// NAME, ADDRESS: ai6 AI pass (AiPii); NAME, ORG, ROLE also from the offline Smart Redact patterns (PiiEntities)
+enum class PiiKind { EMAIL, PHONE, CARD, IBAN, NATIONAL_ID, PASSPORT, DATE, URL, IP, NAME, ADDRESS, ORG, ROLE }
 
 /** One finding in the text given to [PiiDetector.detect]: [start] inclusive, [end] exclusive (char indices). */
 data class PiiMatch(val kind: PiiKind, val start: Int, val end: Int, val value: String)
@@ -24,7 +25,7 @@ object PiiDetector {
     private val PASSPORT_LABEL = Regex("(?:رقم\\s+(?:ال)?جواز(?:\\s+(?:ال)?سفر)?|جواز\\s+(?:ال)?سفر|passport(?:\\s*(?:no|number))?)\\s*[:#.]?\\s*([A-Z]{0,2}[0-9]{6,9})", RegexOption.IGNORE_CASE)
     private val SAUDI_ID = Regex("(?<![0-9])[12][0-9]{9}(?![0-9])")
 
-    fun detect(text: String, kinds: Set<PiiKind> = PiiKind.entries.toSet()): List<PiiMatch> {
+    fun detect(text: String, kinds: Set<PiiKind> = PiiKind.entries.toSet() - PiiEntities.KINDS): List<PiiMatch> {
         if (text.isEmpty()) return emptyList()
         val t = AiNorm.digits(text)   // same length: one char per digit
         val found = ArrayList<PiiMatch>()
@@ -43,6 +44,7 @@ object PiiDetector {
         DATE.findAll(t).forEach { if (dateValid(it.value)) add(PiiKind.DATE, it.range.first, it.range.last + 1) }
         SAUDI_ID.findAll(t).forEach { add(PiiKind.NATIONAL_ID, it.range.first, it.range.last + 1) }
         PHONE.findAll(t).forEach { m -> if (phoneLike(m.value)) add(PiiKind.PHONE, m.range.first, m.range.last + 1) }
+        if (kinds.any { it in PiiEntities.KINDS }) PiiEntities.detectOffline(text, kinds).forEach { add(it.kind, it.start, it.end) }
         return found.sortedBy { it.start }
     }
 

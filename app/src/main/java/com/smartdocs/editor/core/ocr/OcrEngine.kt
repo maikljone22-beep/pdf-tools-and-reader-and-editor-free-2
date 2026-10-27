@@ -13,8 +13,8 @@ import java.io.File
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.coroutineContext
 
-/** One recognised word: text, box in image pixels, confidence 0..100. */
-data class OcrWord(val text: String, val box: Rect, val confidence: Float)
+/** One recognised word: text, box in image pixels, confidence 0..100, [line] index of its text line (-1 unknown). */
+data class OcrWord(val text: String, val box: Rect, val confidence: Float, val line: Int = -1)
 
 /** Result of one page. */
 data class OcrPage(val text: String, val words: List<OcrWord>, val imageWidth: Int, val imageHeight: Int)
@@ -27,6 +27,9 @@ class OcrEngine(private val context: Context) : AutoCloseable {
 
     private var api: TessBaseAPI? = null
     private var initialisedLangs: String? = null
+    // Arabic script model for the second reading of doubtful words in Arabic lines (OcrRefine); null when not installed
+    private var helper: TessBaseAPI? = null
+    private var helperTried = false
     @Volatile private var cancelled = false
 
     // high-accuracy LSTM models (tessdata_best): much better Arabic than tessdata_fast; kept apart from old fast packs
@@ -39,8 +42,16 @@ class OcrEngine(private val context: Context) : AutoCloseable {
 
     /** Make sure every language in [langs] ("ara+eng") is downloaded. [onProgress] gets (lang, fraction 0..1). */
     suspend fun ensureLanguages(langs: String, onProgress: (String, Float) -> Unit = { _, _ -> }) = withContext(Dispatchers.IO) {
-        langs.split('+').map { it.trim() }.filter { it.isNotEmpty() }.forEach { lang ->
+        val list = langs.split('+').map { it.trim() }.filter { it.isNotEmpty() }
+        list.forEach { lang ->
             if (!isLanguageInstalled(lang)) download(lang, onProgress)
+        }
+        // optional: the Arabic script model reads Arabic-Indic digits (the ara model knows only ٠ and ١). OCR works
+        // without it, so a failed download is not an error.
+        if ("ara" in list && !isLanguageInstalled(ARABIC_SCRIPT)) {
+            try { download(ARABIC_SCRIPT, onProgress) }
+            catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (_: Exception) { }
         }
     }
 
@@ -90,38 +101,86 @@ class OcrEngine(private val context: Context) : AutoCloseable {
             if (!ok) { runCatching { t.recycle() }; return@withContext false }
             t.setPageSegMode(TessBaseAPI.PageSegMode.PSM_AUTO)
             api = t; initialisedLangs = langs
+            helperTried = false
             true
         }
     }
 
-    /** Recognise one bitmap. Must be called after [init]. Runs on Dispatchers.Default. */
+    /**
+     * Recognise one bitmap. Must be called after [init]. Runs on Dispatchers.Default. With [wantWords], doubtful words of
+     * Arabic lines get a second reading ([OcrRefine]) and decoration "words" are dropped ([OcrCleanup]).
+     */
     suspend fun recognize(bitmap: Bitmap, wantWords: Boolean = true): OcrPage = withContext(Dispatchers.Default) {
         cancelled = false
         synchronized(this@OcrEngine) {
             // read the handle under the lock: close() may have recycled it meanwhile
             val t = api ?: throw IllegalStateException("engine not initialised")
+            val w0 = bitmap.width; val h0 = bitmap.height
             t.setImage(bitmap)
-            val text = t.utF8Text ?: ""
-            val words = ArrayList<OcrWord>()
+            var text = t.utF8Text ?: ""
+            var words = ArrayList<OcrWord>()
             if (wantWords && !cancelled) {
                 val level = TessBaseAPI.PageIteratorLevel.RIL_WORD
                 val it = t.resultIterator
                 if (it != null) {
                     try {
                         it.begin()
+                        var line = -1
                         do {
+                            if (line < 0 || it.isAtBeginningOf(TessBaseAPI.PageIteratorLevel.RIL_TEXTLINE)) line++
                             val w = it.getUTF8Text(level)
                             if (!w.isNullOrBlank()) {
                                 val r = it.getBoundingRect(level)
-                                words += OcrWord(w.trim(), Rect(r), it.confidence(level))
+                                words += OcrWord(w.trim(), Rect(r), it.confidence(level), line)
                             }
                         } while (it.next(level))
                     } catch (_: Exception) { } finally { runCatching { it.delete() } }
                 }
             }
             runCatching { t.clear() }
-            OcrPage(text, words, bitmap.width, bitmap.height)
+            if (words.isNotEmpty() && !cancelled) {
+                val toks = words.map { OcrRefine.Tok(it.text, it.box.left, it.box.top, it.box.right, it.box.bottom, it.confidence, it.line) }
+                var out = toks
+                val hp = if (initialisedLangs?.split('+')?.contains("ara") == true) helperLocked() else null
+                if (hp != null) {
+                    runCatching {
+                        hp.setImage(bitmap)
+                        out = OcrRefine.refine(out) { l, tp, r, b ->
+                            val x = l.coerceIn(0, w0 - 1); val y = tp.coerceIn(0, h0 - 1)
+                            val rw = r.coerceAtMost(w0) - x; val rh = b.coerceAtMost(h0) - y
+                            if (cancelled || rw < 4 || rh < 4) null
+                            else {
+                                hp.setRectangle(x, y, rw, rh)
+                                val s = hp.utF8Text?.trim().orEmpty()
+                                if (s.isEmpty()) null else s to hp.meanConfidence().toFloat()
+                            }
+                        }
+                    }
+                    runCatching { hp.clear() }
+                }
+                out = OcrCleanup.clean(out)
+                if (out != toks) {
+                    words = ArrayList(out.map { k -> OcrWord(k.text, Rect(k.left, k.top, k.right, k.bottom), k.conf, k.line) })
+                    text = OcrRefine.lines(out).joinToString("\n") { l -> l.joinToString(" ") { out[it].text } }
+                }
+            }
+            OcrPage(text, words, w0, h0)
         }
+    }
+
+    /** The Arabic script model, initialised once per [init] when its pack is installed; null otherwise. Holds the lock. */
+    private fun helperLocked(): TessBaseAPI? {
+        helper?.let { return it }
+        if (helperTried) return null
+        helperTried = true
+        if (!isLanguageInstalled(ARABIC_SCRIPT)) return null
+        val parent = tessdataDir.parentFile ?: context.filesDir
+        val h = TessBaseAPI()
+        val ok = runCatching { h.init(parent.absolutePath, ARABIC_SCRIPT, TessBaseAPI.OEM_LSTM_ONLY) }.getOrDefault(false)
+        if (!ok) { runCatching { h.recycle() }; return null }
+        h.setPageSegMode(TessBaseAPI.PageSegMode.PSM_SINGLE_LINE)
+        helper = h
+        return h
     }
 
     /** Ask Tesseract to abort the current recognition. */
@@ -132,7 +191,8 @@ class OcrEngine(private val context: Context) : AutoCloseable {
 
     private fun closeLocked() {
         runCatching { api?.recycle() }
-        api = null; initialisedLangs = null
+        runCatching { helper?.recycle() }
+        api = null; initialisedLangs = null; helper = null; helperTried = false
     }
 
     companion object {
@@ -145,7 +205,12 @@ class OcrEngine(private val context: Context) : AutoCloseable {
          */
         const val TESSDATA_COMMIT = "e12c65a915945e4c28e237a9b52bc4a8f39a0cec"
 
-        fun modelUrl(lang: String) = "https://github.com/tesseract-ocr/tessdata_best/raw/$TESSDATA_COMMIT/$lang.traineddata"
+        /** tessdata_best/script/Arabic: Arabic script model with every Arabic-Indic digit (second readings, [OcrRefine]). */
+        const val ARABIC_SCRIPT = "Arabic"
+
+        fun modelUrl(lang: String) = if (lang == ARABIC_SCRIPT)
+            "https://github.com/tesseract-ocr/tessdata_best/raw/$TESSDATA_COMMIT/script/$lang.traineddata"
+        else "https://github.com/tesseract-ocr/tessdata_best/raw/$TESSDATA_COMMIT/$lang.traineddata"
 
         /** Every language the OCR sheet offers or [com.smartdocs.editor.core.tools5.LangDetect] can return. */
         val PINNED: Map<String, Pin> = mapOf(
@@ -164,6 +229,9 @@ class OcrEngine(private val context: Context) : AutoCloseable {
             "heb" to Pin(3704077, "dbaa827aea6bc21215638447f17783a1004987c2d0bf5573d111fee397abdae5"),
             "hin" to Pin(11895564, "bd2e65a2184af08a167b0be2439e91fa5edbc4394399ca2f692b843ae26e78d6"),
             "chi_sim" to Pin(13077423, "4fef2d1306c8e87616d4d3e4c6c67faf5d44be3342290cf8f2f0f6e3aa7e735b"),
+            // script/Arabic.traineddata at the same commit (git blob 54a6fd7e612bf839169eca536c7680bd5069331a, checked with
+            // git ls-tree), fetched with Arabic as a helper model (OCR_QUALITY_r5)
+            ARABIC_SCRIPT to Pin(17095279, "a80454f72df35c6f52550551dd69b8521ea6a62d834396d1c7dce4c35493902e"),
         )
 
         /** Lower-case hex SHA-256 of [f]. */
@@ -176,7 +244,7 @@ class OcrEngine(private val context: Context) : AutoCloseable {
         /** Human label for a language code. */
         fun label(lang: String): String = when (lang) {
             "ara" -> "العربية"; "eng" -> "English"; "fra" -> "Français"; "deu" -> "Deutsch"; "spa" -> "Español"
-            "tur" -> "Türkçe"; "fas" -> "فارسی"; "urd" -> "اردو"; else -> lang
+            "tur" -> "Türkçe"; "fas" -> "فارسی"; "urd" -> "اردو"; ARABIC_SCRIPT -> "العربية ٠١٢٣"; else -> lang
         }
     }
 }

@@ -10,6 +10,9 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Headphones
+import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -67,6 +70,40 @@ fun SummaryPanel(docs: DocSet, client: AiClient, onPage: (filePath: String, page
     var error by remember { mutableStateOf<String?>(null) }
     val idx = docs.indexes.firstOrNull()
     LaunchedEffect(idx, opts) { result = idx?.let { SummaryGen.cached(ctx, it, opts) } }
+    // ai6v (§35 Summary Reading): read the summary aloud (AI voice when enabled, else the system voice)
+    val speaker = remember { com.smartdocs.editor.core.ai5.AnswerSpeaker(ctx) }
+    var speaking by remember { mutableStateOf(false) }
+    DisposableEffect(speaker) { onDispose { speaker.release() } }
+    LaunchedEffect(result) { if (result == null && speaking) { speaker.stop(); speaking = false } }
+    // ai6v: audio summary file (AI voice) of the document or the whole Space, then share it
+    val app = com.smartdocs.editor.LocalApp.current
+    var audioBusy by remember { mutableStateOf(false) }
+    fun audioFile(s: StructuredSummary) {
+        if (audioBusy) return
+        val text = s.spokenText(); if (text.isBlank()) return
+        audioBusy = true; error = null
+        scope.launch {
+            try {
+                val ac = ctx.applicationContext
+                val prefs = com.smartdocs.editor.core.voice.VoicePrefs.load(ac)
+                val voice = runCatching { com.smartdocs.editor.core.voice.AiSpeech.profile(ac).voiceOr(prefs.voice) }.getOrDefault(prefs.voice)
+                val base = docs.title.substringBeforeLast('.').ifBlank { "summary" }.replace(Regex("[\\\\/:*?\"<>|]"), "_").take(60)
+                val out = java.io.File(com.smartdocs.editor.core.voice.PodcastGenerator.audioDir(ac), base + "_summary_audio.mp3")
+                val spoken = com.smartdocs.editor.core.voice.PodcastGenerator.render(ac, com.smartdocs.editor.core.voice.PodcastGenerator.summaryLines(text), voice, voice, out, docs.title)
+                val mime = if (spoken.file.extension == "wav") "audio/wav" else "audio/mpeg"
+                runCatching { ctx.startActivity(android.content.Intent.createChooser(app.documents.shareIntent(listOf(spoken.file), mime), null)) }
+            } catch (e: CancellationException) { throw e
+            } catch (e: Exception) { error = com.smartdocs.editor.core.ai6.AiMedia.userMessage(ctx, e)
+            } finally { audioBusy = false }
+        }
+    }
+    fun toggleSpeak(s: StructuredSummary) {
+        if (speaking) { speaker.stop(); speaking = false; return }
+        val text = s.spokenText()
+        if (text.isBlank()) return
+        speaking = true
+        speaker.speak(text, opts.language.ifBlank { AiLang.detect(text).ifBlank { "ar" } }) { speaking = false }
+    }
 
     fun run(force: Boolean) {
         val i = idx ?: return
@@ -105,15 +142,21 @@ fun SummaryPanel(docs: DocSet, client: AiClient, onPage: (filePath: String, page
         }
         if (busy) LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
         error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
-        result?.let { s -> SummaryView(s, idx?.path.orEmpty(), onPage, onAsk, onShare, onExportPdf, stringResource(R.string.a5_page_short)) }
+        result?.let { s -> SummaryView(s, idx?.path.orEmpty(), onPage, onAsk, onShare, onExportPdf, stringResource(R.string.a5_page_short), speaking, onAudio = { audioFile(s) }, audioBusy = audioBusy) { toggleSpeak(s) } }
     }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun SummaryView(s: StructuredSummary, path: String, onPage: (String, Int) -> Unit, onAsk: (String) -> Unit, onShare: (String) -> Unit, onExportPdf: (String) -> Unit, pageWord: String) {
+private fun SummaryView(s: StructuredSummary, path: String, onPage: (String, Int) -> Unit, onAsk: (String) -> Unit, onShare: (String) -> Unit, onExportPdf: (String) -> Unit, pageWord: String,
+                        speaking: Boolean = false, onAudio: () -> Unit = {}, audioBusy: Boolean = false, onSpeak: () -> Unit = {}) {
     val dir = MaterialTheme.typography.bodyMedium.copy(textDirection = TextDirection.Content)
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+        if (audioBusy) CircularProgressIndicator(Modifier.size(24.dp).padding(2.dp))
+        else IconButton(onClick = onAudio) { Icon(Icons.Default.Headphones, stringResource(R.string.ai6v_audio_summary)) }   // ai6v: audio file
+        IconButton(onClick = onSpeak) {   // ai6v: read the summary aloud / stop
+            Icon(if (speaking) Icons.Default.Stop else Icons.Default.VolumeUp, stringResource(if (speaking) R.string.ai6v_stop_reading else R.string.ai6v_read_summary))
+        }
         IconButton(onClick = { onShare(s.asText(pageWord)) }) { Icon(Icons.Default.Share, stringResource(R.string.a5_share)) }
         IconButton(onClick = { onExportPdf(s.asText(pageWord)) }) { Icon(Icons.Default.Description, stringResource(R.string.a5_export_pdf)) }
     }

@@ -14,8 +14,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 
-/** A word with its page and box (display space, points, origin top-left). */
-class PWord(val page: Int, val text: String, val box: RectF)
+/** A word with its page and box (display space, points, origin top-left), and the font and size it is set in. */
+class PWord(val page: Int, val text: String, val box: RectF, val font: String = "", val size: Float = 0f)
 
 /** Words of a PDF in reading order (Arabic lines right-to-left), from PdfBox text positions. */
 class WordExtractor : PDFTextStripper() {
@@ -25,33 +25,42 @@ class WordExtractor : PDFTextStripper() {
 
     init { sortByPosition = true }
 
-    /** Visual segments (left → right) of the glyphs of one writeString call. */
-    private fun segments(tp: List<TextPosition>): List<RectF> {
-        val out = ArrayList<RectF>()
+    private class Seg(val box: RectF, val font: String, val size: Float)
+
+    /** Visual segments (left → right) of the glyphs of one writeString call, with the font of their first glyph. */
+    private fun segments(tp: List<TextPosition>): List<Seg> {
+        val out = ArrayList<Seg>()
         var box: RectF? = null; var lastRight = Float.NaN
+        var font = ""; var size = 0f
         tp.forEach { p ->
             val u = p.unicode ?: return@forEach
             val x = p.xDirAdj; val w = p.widthDirAdj; val top = p.yDirAdj - p.heightDir; val bottom = p.yDirAdj
             val gap = if (lastRight.isNaN()) 0f else x - lastRight
-            if (u.isBlank() || gap > p.fontSizeInPt * 0.25f || gap < -p.fontSizeInPt * 2f) { box?.let { out += it }; box = null }
-            if (u.isNotBlank()) box = box?.apply { union(x, top, x + w, bottom) } ?: RectF(x, top, x + w, bottom)
+            if (u.isBlank() || gap > p.fontSizeInPt * 0.25f || gap < -p.fontSizeInPt * 2f) { box?.let { out += Seg(it, font, size) }; box = null }
+            if (u.isNotBlank()) {
+                if (box == null) { font = runCatching { p.font?.name }.getOrNull().orEmpty(); size = p.fontSizeInPt }
+                box = box?.apply { union(x, top, x + w, bottom) } ?: RectF(x, top, x + w, bottom)
+            }
             lastRight = x + w
         }
-        box?.let { out += it }
-        return out.sortedBy { it.left }
+        box?.let { out += Seg(it, font, size) }
+        return out.sortedBy { it.box.left }
     }
 
     override fun writeString(text: String?, textPositions: MutableList<TextPosition>?) {
         val tokens = WordDiff.tokenize(text ?: return)
         if (tokens.isEmpty()) return
         val segs = segments(textPositions.orEmpty())
-        val all = segs.fold(null as RectF?) { acc, r -> acc?.apply { union(r) } ?: RectF(r) } ?: RectF()
+        val all = segs.fold(null as RectF?) { acc, r -> acc?.apply { union(r.box) } ?: RectF(r.box) } ?: RectF()
         val rtl = tokens.count { TextNorm.hasArabic(it) } * 2 > tokens.size
         if (segs.size == tokens.size) {
             // PdfBox gives logical text; for RTL the first token is the rightmost segment
             val ordered = if (rtl) segs.reversed() else segs
-            tokens.forEachIndexed { i, t -> lineBuf += PWord(page, t, ordered[i]) }
-        } else tokens.forEach { t -> lineBuf += PWord(page, t, RectF(all)) }
+            tokens.forEachIndexed { i, t -> lineBuf += PWord(page, t, ordered[i].box, ordered[i].font, ordered[i].size) }
+        } else {
+            val f = segs.firstOrNull()
+            tokens.forEach { t -> lineBuf += PWord(page, t, RectF(all), f?.font.orEmpty(), f?.size ?: 0f) }
+        }
     }
 
     private fun flushLine() {
@@ -80,36 +89,40 @@ class WordExtractor : PDFTextStripper() {
 }
 
 /** Highlight boxes per page of one side. */
-class SideMarks(val boxes: Map<Int, List<Pair<RectF, ChangeType>>>)
+class SideMarks(val boxes: Map<Int, List<Mark>>)
 
 class CompareResult(
     val oldWords: List<PWord>, val newWords: List<PWord>, val changes: List<WordChange>, val stats: DiffStats,
     val oldMarks: SideMarks, val newMarks: SideMarks, val oldPages: Int, val newPages: Int,
+    /** Old page ↔ new page, in new-document order (unmatched pages have a null side). */
+    val pairs: List<PagePair> = emptyList(),
+    val pageChanges: List<PageChange> = emptyList(),
+    val objectChanges: List<ObjChange> = emptyList(),
+    val formatChanges: List<FormatChange> = emptyList(),
+    val tableChanges: List<TableChange> = emptyList(),
 ) {
     val changedPages: List<Int> get() = (oldMarks.boxes.keys + newMarks.boxes.keys).toSortedSet().toList()
+
+    /** Pairs that carry a change of one of [kinds] (in new-document order). */
+    fun changedPairs(kinds: Set<ChangeKind> = ChangeKind.values().toSet()): List<PagePair> = pairs.filter { p ->
+        (p.old != null && oldMarks.boxes[p.old].orEmpty().any { it.kind in kinds }) || (p.new != null && newMarks.boxes[p.new].orEmpty().any { it.kind in kinds })
+    }
+
     fun describe(max: Int = 200) = WordDiff.describe(changes, oldWords.map { it.text }, newWords.map { it.text }, max)
 }
 
 object CompareEngine {
 
-    suspend fun compare(old: File, oldPw: String?, new: File, newPw: String?): CompareResult = withContext(Dispatchers.IO) {
+    /** Text-only compare of whole documents, pages matched in order (the earlier behaviour). */
+    suspend fun compare(old: File, oldPw: String?, new: File, newPw: String?): CompareResult =
+        compare(old, oldPw, new, newPw, CompareOptions(images = false, annotations = false, formatting = false, autoMatch = false))
+
+    suspend fun compare(old: File, oldPw: String?, new: File, newPw: String?, o: CompareOptions): CompareResult = withContext(Dispatchers.IO) {
         fun load(f: File, pw: String?) = if (pw.isNullOrEmpty()) PDDocument.load(f) else PDDocument.load(f, pw)
-        val (ow, op) = load(old, oldPw).use { WordExtractor.extract(it) to it.numberOfPages }
-        val (nw, np) = load(new, newPw).use { WordExtractor.extract(it) to it.numberOfPages }
-        val changes = WordDiff.diff(ow.map { it.text }, nw.map { it.text })
-        val om = HashMap<Int, MutableList<Pair<RectF, ChangeType>>>(); val nm = HashMap<Int, MutableList<Pair<RectF, ChangeType>>>()
-        changes.forEach { c ->
-            if (c.type == ChangeType.EQUAL) return@forEach
-            c.a.forEach { i -> ow[i].let { w -> om.getOrPut(w.page) { ArrayList() } += w.box to c.type } }
-            c.b.forEach { i -> nw[i].let { w -> nm.getOrPut(w.page) { ArrayList() } += w.box to c.type } }
-            // a pure insert / delete also marks where it happened on the other side (a thin caret at the neighbour word)
-            if (c.a.isEmpty()) neighbour(ow, c.a.first)?.let { w -> om.getOrPut(w.page) { ArrayList() } += RectF(w.box.right, w.box.top, w.box.right + 2f, w.box.bottom) to ChangeType.INSERT }
-            if (c.b.isEmpty()) neighbour(nw, c.b.first)?.let { w -> nm.getOrPut(w.page) { ArrayList() } += RectF(w.box.right, w.box.top, w.box.right + 2f, w.box.bottom) to ChangeType.DELETE }
-        }
-        CompareResult(ow, nw, changes, WordDiff.stats(changes), SideMarks(om), SideMarks(nm), op, np)
+        load(old, oldPw).use { od -> load(new, newPw).use { nd -> CompareCore.run(od, nd, o) } }
     }
 
-    private fun neighbour(words: List<PWord>, at: Int): PWord? = words.getOrNull(at - 1) ?: words.getOrNull(at)
+    internal fun neighbour(words: List<PWord>, at: Int): PWord? = words.getOrNull(at - 1) ?: words.getOrNull(at)
 
     /**
      * Visual overlay of two renders of the same size: ink in both → dark grey, only in old → red, only in new → blue.
@@ -129,6 +142,13 @@ object CompareEngine {
             }
         }
         return Bitmap.createBitmap(out, w, h, Bitmap.Config.ARGB_8888)
+    }
+
+    /** Pixel overlay of page [oldPage] of [old] against [newPage] of [new] (either may be null: the other is shown). */
+    suspend fun overlayPages(ctx: Context, old: File, oldPw: String?, oldPage: Int?, new: File, newPw: String?, newPage: Int?, widthPx: Int): Bitmap? {
+        val a = oldPage?.let { render(ctx, old, oldPw, it, widthPx) }
+        val b = newPage?.let { render(ctx, new, newPw, it, widthPx) }
+        return if (a != null && b != null) withContext(Dispatchers.Default) { overlay(a, b) } else a ?: b
     }
 
     /** Render page [i] of [f] at [widthPx] (white background, annotations on). */

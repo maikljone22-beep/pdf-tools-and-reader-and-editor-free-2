@@ -167,6 +167,7 @@ class AnnotEditor(private val s: ReaderState) {
     fun setThickness(w: Float) = edit { it.copy(strokeWidth = w.coerceIn(0.5f, 40f)) }
     fun setText(text: String) = edit { a ->
         if (a.kind != AnnotKind.FREETEXT && a.kind != AnnotKind.STAMP_TEXT) return@edit a.copy(text = text)
+        if (a.comb > 0) return@edit a.copy(text = text)      // comb: fixed cells, extra characters are not shown
         // free text: grow the box so every line stays visible
         val r = PageGeometry.normPdf(a.rects.firstOrNull() ?: return@edit a.copy(text = text))
         val lines = text.split('\n')

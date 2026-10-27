@@ -90,6 +90,40 @@ object DocIndexer {
         DocIndex(key, file.name, file.absolutePath, AiJson.int(o, "pages") ?: 0, chunks)
     }.getOrNull()
 
+    // ai6 (B9): text sources (web links / pasted text, `.sdsrc.txt`) and plain .txt files, split into pseudo pages
+    suspend fun getText(ctx: Context, file: File): DocIndex = withContext(Dispatchers.IO) {
+        val key = "t" + contentKey(file)
+        lock.withLock { mem[key] }?.let { return@withContext it.withFile(file) }
+        val src = com.smartdocs.editor.core.ai6.SpaceSources.read(file)
+        val pages = com.smartdocs.editor.core.ai6.SpaceSources.pages(src.text)
+        val idx = DocIndex(key, src.title.ifBlank { file.nameWithoutExtension }, file.absolutePath, pages.size, Chunker.chunk(pages))
+        lock.withLock { mem[key] = idx }
+        idx
+    }
+
+    /** True for files indexed as text instead of PDF. */
+    fun isText(f: File): Boolean = f.name.endsWith(".txt", true) || f.name.endsWith(".md", true)
+
+    /**
+     * ai6 (§35 chat about attachments): indexes of the files embedded in [file] (PDF and text attachments). They are
+     * extracted to `cacheDir/ai6_att/<key>/` so a citation can open the attachment itself. Failures are skipped.
+     */
+    suspend fun attachments(ctx: Context, file: File, password: String? = null): List<DocIndex> = withContext(Dispatchers.IO) {
+        val list = runCatching { com.smartdocs.editor.core.pdf.AttachmentOps.list(file, password) }.getOrDefault(emptyList())
+        if (list.isEmpty()) return@withContext emptyList()
+        val dir = File(File(ctx.cacheDir, "ai6_att"), contentKey(file))
+        list.take(20).mapNotNull { a ->
+            val ext = a.name.substringAfterLast('.', "").lowercase()
+            if (ext != "pdf" && ext != "txt" && ext != "md" && ext != "csv") return@mapNotNull null
+            runCatching {
+                val f = File(dir, a.name.replace(Regex("""[\\/:*?"<>|]"""), "_")).takeIf { it.exists() && it.length() > 0 }
+                    ?: com.smartdocs.editor.core.pdf.AttachmentOps.extract(file, a, dir, password) ?: return@runCatching null
+                val idx = if (ext == "pdf") get(ctx, f) else getText(ctx, f)
+                DocIndex(idx.key, file.nameWithoutExtension + " › " + a.name, idx.path, idx.pageCount, idx.chunks)
+            }.getOrNull()
+        }
+    }
+
     /** Indexes of several files (a Space), skipping files that fail to open. */
     suspend fun getAll(ctx: Context, files: List<File>, progress: (Int, Int) -> Unit = { _, _ -> }): List<DocIndex> =
         files.mapIndexedNotNull { i, f -> progress(i, files.size); runCatching { get(ctx, f) }.getOrNull() }
