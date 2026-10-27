@@ -116,9 +116,7 @@ object PodcastGenerator {
         val transcript = File(out.parentFile, out.nameWithoutExtension + ".txt")
         transcript.writeText(buildString {
             append(title).append("\n\n")
-            timed.forEach { l -> l.chapter?.let { append("
-## ").append(it).append('
-') }; append("[").append(fmt(l.startMs)).append("] ").append(if (l.speaker == 1) "الضيف: " else if (lines.any { it.speaker == 1 }) "المضيف: " else "").append(l.text).append('\n') }
+            timed.forEach { l -> l.chapter?.let { append("\n## ").append(it).append('\n') }; append("[").append(fmt(l.startMs)).append("] ").append(if (l.speaker == 1) "الضيف: " else if (lines.any { it.speaker == 1 }) "المضيف: " else "").append(l.text).append('\n') }
         })
         saveSidecar(out, timed)
         PodcastScript.saveScript(out, lines)   // ai6v: the editable script next to the audio
