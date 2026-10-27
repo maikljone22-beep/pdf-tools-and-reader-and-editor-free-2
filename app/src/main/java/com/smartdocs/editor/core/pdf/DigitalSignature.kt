@@ -374,9 +374,9 @@ object DigitalSignature {
             }
             val prep = SigFields.prepare(d, sig, target, options.lock)
             // the same appearance on the other pages of a multi-page signature (extra widgets, drawn here)
-            if (draw != null) for (w in prep.extraWidgets) {
+            for (w in prep.extraWidgets) {
                 val r = w.rectangle ?: continue
-                w.appearance = SigFields.appearance(d, r, w.page?.rotation ?: 0, draw)
+                w.appearance = SigFields.appearance(d, r, w.page?.rotation ?: 0, draw ?: { _, _, _, _ -> })
             }
             if (options.certifyLevel in 1..3) setMdp(d, sig, options.certifyLevel)
             val size = SignatureOptions.DEFAULT_SIGNATURE_SIZE * (if (options.tsaUrl.isNullOrBlank()) 2 else 4)

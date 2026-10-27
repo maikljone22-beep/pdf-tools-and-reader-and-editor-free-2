@@ -4,6 +4,14 @@
     <string name="ns2_add_ltv">Add verification info (LTV)</string>
     <string name="ns2_also_pages">Same signature on more pages (optional)</string>
     <string name="ns2_also_pages_hint">e.g. 1-3, 5 — leave empty for one page</string>
+    <string name="ns2_ap_dir_auto">Automatic</string>
+    <string name="ns2_ap_dir_ltr">Left to right</string>
+    <string name="ns2_ap_dir_rtl">Right to left</string>
+    <string name="ns2_ap_direction">Text direction</string>
+    <string name="ns2_ap_font">Font</string>
+    <string name="ns2_ap_font_mono">Monospace</string>
+    <string name="ns2_ap_font_sans">Sans</string>
+    <string name="ns2_ap_font_serif">Serif</string>
     <string name="ns2_bar_certified">Certified by %1$s</string>
     <string name="ns2_bar_details">Signatures</string>
     <string name="ns2_bar_problem">At least one signature has problems</string>

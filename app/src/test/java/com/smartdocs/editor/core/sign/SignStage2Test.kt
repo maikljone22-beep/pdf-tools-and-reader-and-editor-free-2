@@ -102,4 +102,15 @@ class SignStage2Test {
         assertNull(DigitalSignature.certValidAt(r.copy(validFrom = null), now))
         assertFalse(DigitalSignature.certValidAt(r, Date(6_000_000L))!!)
     }
+
+    @Test fun appearanceFontAndDirectionRoundTripAndOldSpecsDecode() {
+        val spec = SigAppearanceSpec(maxFontSize = 24, font = SigAppearanceSpec.Font.SERIF, direction = SigAppearanceSpec.Direction.RTL)
+        assertEquals(spec, SigAppearanceSpec.decode(spec.encode()))
+        assertEquals(SigAppearanceSpec(font = SigAppearanceSpec.Font.MONO), SigAppearanceSpec.decode(SigAppearanceSpec(font = SigAppearanceSpec.Font.MONO).encode()))
+        assertEquals(24, SigAppearanceSpec.decode("111100|LOGO_TOP:24|").maxFontSize)
+        assertEquals(SigAppearanceSpec.Font.SANS, SigAppearanceSpec.decode("111100|LOGO_TOP|").font)
+        val auto = SigAppearanceSpec()
+        assertTrue(auto.rtl("موقّع من Ali")); assertFalse(auto.rtl("Signed by علي"))
+        assertTrue(SigAppearanceSpec(direction = SigAppearanceSpec.Direction.RTL).rtl("abc"))
+    }
 }
