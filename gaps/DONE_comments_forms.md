@@ -307,13 +307,24 @@ Each file exists in `res/values/` (Arabic) and in `res/values-en/` (English).
 
 ## Verification
 
-All of the following were done without a device.
+Nothing was tested on a device.
 
-- **Plain-JVM check (outside gradle).**
-  - Compile: kotlinc with the Compose plugin type-checked all 203 main Kotlin files changed on the branch. It ran against the app's dependency jars, an R class regenerated from the current resources, and the last compiled app classes. There were 0 errors.
-  - Tests: the 13 new or changed test classes ran on a plain JVM with android.jar stubs (88 tests).
-- **Local gradle build.** The daemon disappeared during the run, so the build did not finish. It was not retried.
-- **GitHub CI.**
-  - Run 40519463462 (03e8a12): failed.
-  - Run 40533043022 (2cc7caa): the APK built, and the unit tests failed. After that run, fixes went into tests that hit PdfBox's AcroForm fix-up and android.util.Log, and into the FDF writer (it now has a cross-reference table).
-- The CI result of the final push is given in the session report.
+**GitHub CI: run 40546019173 on commit 61986a2 passed.** It built the debug APK and ran the full JVM unit test suite.
+
+Earlier CI runs failed, and each failure was fixed:
+
+| Run | Commit | Result | Cause |
+|---|---|---|---|
+| 40519463462 | 03e8a12 | Failed | Kotlin compile errors. |
+| 40533043022 | 2cc7caa | APK built, unit tests failed | See below. |
+| 40540143821 | 098a26b | APK built, unit tests failed | See below. |
+| 40542941146 | a3585a1 | APK built, unit tests failed | See below. |
+
+The unit-test failures had three causes:
+- PdfBox-Android logs through `android.util.Log` when the AcroForm is read a second time. This was fixed by setting `unitTests.isReturnDefaultValues = true`.
+- The AcroForm font fix-up runs in tests. This was fixed by giving the test forms default resources.
+- The pop-ups that comments now have were counted by older tests.
+
+Two other checks ran between CI runs:
+- **Plain-JVM check.** The changed sources were type-checked with kotlinc, and all 646 JVM tests were run. The remaining failures came from the check setup itself: classes compiled for the old jar.
+- **Local gradle build.** The daemon disappeared once during the build. It was not retried.
