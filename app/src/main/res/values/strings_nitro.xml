@@ -225,11 +225,8 @@
     <string name="nt_pat_uk_postcode">بريطانيا: الرمز البريدي</string>
     <string name="nt_pat_us_phone">أمريكا: هاتف</string>
     <string name="nt_pat_us_ssn">أمريكا: رقم الضمان الاجتماعي</string>
-    <string name="nt_pii_ai_off">الكشف الذكي بالذكاء الاصطناعي غير مفعّل؛ تُستخدم الأنماط المحلية</string>
     <string name="nt_pii_org">الجهات والمؤسسات</string>
-    <string name="nt_pii_person">أسماء الأشخاص</string>
     <string name="nt_pii_role">المناصب والوظائف</string>
-    <string name="nt_pii_use_ai">استخدام الذكاء الاصطناعي للأسماء والجهات والمناصب (يُرسل نص الصفحات)</string>
     <string name="nt_rd_appearance">المظهر…</string>
     <string name="nt_rd_apply_one">تطبيق هذه العلامة فقط</string>
     <string name="nt_rd_author">الكاتب</string>

@@ -225,11 +225,8 @@
     <string name="nt_pat_uk_postcode">UK: postcode</string>
     <string name="nt_pat_us_phone">US: phone</string>
     <string name="nt_pat_us_ssn">US: Social Security number</string>
-    <string name="nt_pii_ai_off">AI detection is not set up; local patterns are used</string>
     <string name="nt_pii_org">Organisations</string>
-    <string name="nt_pii_person">Person names</string>
     <string name="nt_pii_role">Roles and job titles</string>
-    <string name="nt_pii_use_ai">Use AI for names, organisations and roles (sends the page text)</string>
     <string name="nt_rd_appearance">Appearance…</string>
     <string name="nt_rd_apply_one">Apply this mark only</string>
     <string name="nt_rd_author">Author</string>

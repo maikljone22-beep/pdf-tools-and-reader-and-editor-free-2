@@ -4,6 +4,15 @@
 - `POST /chat/completions` — المحادثة ووكيل الأوامر (يمرّر `tools` و`tool_calls` كما هي، SSE أو JSON).
 - `POST /audio/speech` — تحويل النص إلى كلام (الأصوات البشرية، الملخص الصوتي، البودكاست). يعيد MP3 افتراضياً.
 - `GET /audio/voices` — قائمة الأصوات المسموحة مع النموذج والصيغة وحد الأحرف `{"voices": [...], "model": "...", "format": "mp3", "max_chars": 1500}`.
+- `GET /capabilities` — أي المسارات التالية مُعدّة (التطبيق يخفي الخطأ ويعرض رسالة "غير مُعدّ").
+- `GET /usage` — عدّادات اليوم من مساحة KV (محادثة، كلام، صور، تفريغ صوت).
+- `POST /chat/completions` مع صور (`image_url`) — يستعمل `VISION_MODEL` (اسأل عن صورة أو مخطط، ترجمة الصور).
+- `POST /images/generations` — توليد الصور (`IMAGE_URL`، `IMAGE_MODEL`، السر `IMAGE_KEY`).
+- `POST /audio/transcriptions` — تفريغ ملف صوتي إلى نص (`STT_URL`، `STT_MODEL`، السر `STT_KEY` أو `PROVIDER_KEY`).
+- `POST /embeddings` — متجهات لإعادة ترتيب المقاطع (`EMBED_URL`، `EMBED_MODEL`، السر `EMBED_KEY`).
+- `POST /web/search` — بحث ويب حيّ في المحادثة (السر `SEARCH_KEY` لـ Brave Search API).
+
+المسار الذي ينقصه مفتاحه يعيد 501 `{"error":"not configured"}`. لم يُنشر الخادم بعد (يحتاج حساب Cloudflare ومفاتيح).
 
 ## النشر (مرة واحدة، مجاناً على Cloudflare)
 1. أنشئ حساباً على cloudflare.com، ثم على جهازك: `npm install -g wrangler` ثم `wrangler login`.

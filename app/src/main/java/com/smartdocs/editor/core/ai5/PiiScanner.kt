@@ -9,27 +9,15 @@ data class PiiHit(val match: PiiMatch, val hit: SearchHit)
 /** Runs [PiiDetector] over pages of an open session; rects come from [PdfSession.searchWith]. */
 object PiiScanner {
 
-    /**
-     * [ai] (optional) finds more matches in a page's text — the Smart Redact names / organisations / roles; its
-     * matches are added where they do not overlap the on-device ones.
-     */
+    /** On-device scan; NAME / ORG / ROLE come from the offline Smart Redact patterns when asked for (AI: [com.smartdocs.editor.core.ai6.AiPii]). */
     suspend fun scan(session: PdfSession, kinds: Set<PiiKind> = PiiKind.entries.toSet() - PiiEntities.KINDS, pages: IntRange = 0 until session.pageCount,
-                     progress: (Int, Int) -> Unit = { _, _ -> }, ai: (suspend (String) -> List<PiiMatch>)? = null): List<PiiHit> {
+                     progress: (Int, Int) -> Unit = { _, _ -> }): List<PiiHit> {
         val out = ArrayList<PiiHit>()
         for (p in pages) {
             progress(p, session.pageCount)
             var found: List<PiiMatch> = emptyList()
-            val extra: List<PiiMatch> = if (ai == null) emptyList() else {
-                var pageText = ""
-                runCatching { session.searchWith(p..p) { text -> pageText = text; emptyList() } }
-                runCatching { ai(pageText) }.getOrDefault(emptyList())
-            }
             val hits = runCatching {
-                session.searchWith(p..p) { text ->
-                    val local = PiiDetector.detect(text, if (ai != null) kinds - PiiEntities.KINDS else kinds)
-                    found = (local + extra.filter { e -> e.end <= text.length && local.none { it.start < e.end && e.start < it.end } }).sortedBy { it.start }
-                    found.map { it.start until it.end }
-                }
+                session.searchWith(p..p) { text -> found = PiiDetector.detect(text, kinds); found.map { it.start until it.end } }
             }.getOrDefault(emptyList())
             hits.forEach { h -> found.firstOrNull { it.start == h.charIndex }?.let { out += PiiHit(it, h) } }
         }

@@ -26,9 +26,22 @@ jobs:
       - name: Accept SDK licenses
         run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
       - name: Build debug APK
-        run: chmod +x gradlew && ./gradlew :app:assembleDebug --no-daemon --stacktrace
+        run: |
+          chmod +x gradlew
+          set -o pipefail
+          ./gradlew :app:assembleDebug --no-daemon --stacktrace 2>&1 | tee build.log
       - name: Unit tests
-        run: ./gradlew :app:testDebugUnitTest --no-daemon
+        run: |
+          set -o pipefail
+          ./gradlew :app:testDebugUnitTest --no-daemon 2>&1 | tee test.log
+      # Job logs need admin rights to download; compiler errors and failed tests are re-emitted as annotations,
+      # which anyone can read (check-runs/<job>/annotations). Groups of 8 lines per annotation (max 10 per step).
+      - name: Error annotations
+        if: failure()
+        run: |
+          { grep -E '^e: |error:' build.log 2>/dev/null; grep -E -A3 ' FAILED$' test.log 2>/dev/null; } | sed 's#file:///home/runner/work/[^/]*/[^/]*/##' | head -80 > errs.txt || true
+          split -l 8 errs.txt part_ || true
+          for f in part_*; do [ -f "$f" ] && echo "::error::$(awk 'BEGIN{ORS="%0A"} {gsub(/%/,"%25"); print}' "$f")"; done
       - name: Artifact name
         id: name
         run: echo "n=SmartDocs-$(echo '${{ github.head_ref || github.ref_name }}' | tr '/ ' '--')-${{ github.run_number }}" >> "$GITHUB_OUTPUT"

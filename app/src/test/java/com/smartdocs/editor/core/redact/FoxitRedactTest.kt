@@ -49,22 +49,12 @@ class FoxitRedactTest {
         val t = "حضر السيد أحمد محمد علي ممثلاً عن شركة النور للتجارة بصفته المدير العام. Dr. John Smith of Acme Holdings Inc. signed as CEO."
         val m = PiiEntities.detectOffline(t, PiiEntities.KINDS)
         val by = m.groupBy({ it.kind }, { it.value })
-        assertTrue(by[PiiKind.PERSON].orEmpty().any { it.startsWith("أحمد محمد") })
-        assertTrue(by[PiiKind.PERSON].orEmpty().contains("John Smith"))
+        assertTrue(by[PiiKind.NAME].orEmpty().any { it.startsWith("أحمد محمد") })
+        assertTrue(by[PiiKind.NAME].orEmpty().contains("John Smith"))
         assertTrue(by[PiiKind.ORG].orEmpty().any { it.startsWith("شركة النور") })
         assertTrue(by[PiiKind.ORG].orEmpty().any { it.contains("Acme Holdings Inc") })
         assertTrue(by[PiiKind.ROLE].orEmpty().containsAll(listOf("المدير العام", "CEO")))
         assertTrue(PiiEntities.detectOffline(t, setOf(PiiKind.ROLE)).all { it.kind == PiiKind.ROLE })
-    }
-
-    @Test fun aiReplyIsParsedAndLocated() {
-        val reply = "```json\n[{\"type\":\"PERSON\",\"text\":\"Sara Ali\"},{\"type\":\"org\",\"text\":\"وزارة الصحة\"},{\"type\":\"x\",\"text\":\"y\"},{\"type\":\"ROLE\",\"text\":\"Not in text\"}]\n```"
-        val ents = PiiEntities.parseReply(reply)
-        assertEquals(3, ents.size)
-        val text = "Sara Ali wrote to وزارة الصحة; sara ali again."
-        val found = PiiEntities.locate(text, ents, PiiEntities.KINDS)
-        assertEquals(listOf(0, 18), found.map { it.start })        // the exact occurrence (case kept) and the ministry
-        assertTrue(PiiEntities.parseReply("no json").isEmpty())
     }
 
     @Test fun multimediaIsFoundAndRemoved() {

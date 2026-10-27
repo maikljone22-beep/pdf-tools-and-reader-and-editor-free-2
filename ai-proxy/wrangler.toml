@@ -19,6 +19,19 @@ TTS_MAX_CHARS = "1500"
 # TTS_FORMAT = "wav"
 # TTS_MAX_CHARS = "190"
 
+# Vision (images in chat). Groq: a Llama 4 vision model. Remove to disable.
+VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
+# Speech to text (audio file transcription). Groq Whisper uses PROVIDER_KEY unless `wrangler secret put STT_KEY`.
+STT_URL = "https://api.groq.com/openai/v1"
+STT_MODEL = "whisper-large-v3-turbo"
+# Image generation: needs `wrangler secret put IMAGE_KEY` (an OpenAI key)
+IMAGE_URL = "https://api.openai.com/v1"
+IMAGE_MODEL = "gpt-image-1"
+# Embeddings for re-ranking document passages: needs `wrangler secret put EMBED_KEY`
+EMBED_URL = "https://api.openai.com/v1"
+EMBED_MODEL = "text-embedding-3-small"
+# Live web search in chat: `wrangler secret put SEARCH_KEY` (Brave Search API key)
+
 # optional per-device daily limit: create a KV namespace and paste its id
 # [[kv_namespaces]]
 # binding = "RATE"

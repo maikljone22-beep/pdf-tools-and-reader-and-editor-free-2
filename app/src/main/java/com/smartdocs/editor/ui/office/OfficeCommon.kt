@@ -211,7 +211,8 @@ fun UnsavedDialog(onSave: () -> Unit, onDiscard: () -> Unit, onDismiss: () -> Un
 /** Small Find bar used by Word and text editors. */
 @Composable
 fun FindBar(query: String, onQuery: (String) -> Unit, replace: String?, onReplace: ((String) -> Unit)?, count: Int, index: Int, onPrev: () -> Unit, onNext: () -> Unit,
-            onReplaceOne: (() -> Unit)?, onReplaceAll: (() -> Unit)?, onClose: () -> Unit) {
+            onReplaceOne: (() -> Unit)?, onReplaceAll: (() -> Unit)?, onClose: () -> Unit,
+            matchCase: Boolean? = null, onMatchCase: ((Boolean) -> Unit)? = null, whole: Boolean? = null, onWhole: ((Boolean) -> Unit)? = null, wholeLabel: Int = R.string.of6_whole_word) {
     Surface(tonalElevation = 3.dp) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -220,6 +221,11 @@ fun FindBar(query: String, onQuery: (String) -> Unit, replace: String?, onReplac
                 IconButton(onClick = onPrev, enabled = count > 0) { Icon(Icons.Default.KeyboardArrowUp, stringResource(R.string.o5_prev)) }
                 IconButton(onClick = onNext, enabled = count > 0) { Icon(Icons.Default.KeyboardArrowDown, stringResource(R.string.o5_next)) }
                 IconButton(onClick = onClose) { Icon(Icons.Default.Close, stringResource(R.string.o5_close)) }
+            }
+            // office6: match case / whole word (or whole cell) options
+            if (matchCase != null || whole != null) Row(verticalAlignment = Alignment.CenterVertically) {
+                if (matchCase != null && onMatchCase != null) FilterChip(matchCase, { onMatchCase(!matchCase) }, label = { Text(stringResource(R.string.of6_match_case)) }, modifier = Modifier.padding(end = 6.dp))
+                if (whole != null && onWhole != null) FilterChip(whole, { onWhole(!whole) }, label = { Text(stringResource(wholeLabel)) })
             }
             if (replace != null && onReplace != null) Row(verticalAlignment = Alignment.CenterVertically) {
                 OutlinedTextField(replace, onReplace, singleLine = true, placeholder = { Text(stringResource(R.string.o5_replace_with)) }, modifier = Modifier.weight(1f))
