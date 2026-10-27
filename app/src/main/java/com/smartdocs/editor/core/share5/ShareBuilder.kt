@@ -5,6 +5,8 @@ import android.graphics.Bitmap
 import com.smartdocs.editor.core.annot.CommentExchange
 import com.smartdocs.editor.core.pdf.PdfOps
 import com.smartdocs.editor.core.pdf.PdfSession
+import com.smartdocs.editor.core.redact.SanitizeItem
+import com.smartdocs.editor.core.redact.Sanitizer
 import com.smartdocs.editor.core.share5.ShareChoice.Format
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import kotlinx.coroutines.Dispatchers
@@ -28,9 +30,11 @@ object ShareBuilder {
     /**
      * [pages] zero-based (null = all). [password] opens [src]. Subsets are written unencrypted (they are new documents);
      * "as is" with every page shares a plain copy of the file (still protected when the source is).
+     * [strip] (nav-attach, "remove hidden information on share"): what [Sanitizer] removes from PDF results
+     * (metadata, scripts, attachments…); the shared copy only, never the original.
      */
     suspend fun build(c: Context, src: File, password: String?, pageCount: Int, pages: List<Int>?, format: Format,
-                      onProgress: (Float) -> Unit = {}): Result = withContext(Dispatchers.IO) {
+                      onProgress: (Float) -> Unit = {}, strip: Set<SanitizeItem> = emptySet()): Result = withContext(Dispatchers.IO) {
         val dir = outDir(c)
         val sel = pages ?: (0 until pageCount).toList()
         if (sel.isEmpty()) throw BadRange()
@@ -61,7 +65,17 @@ object ShareBuilder {
                 if (sel.size > ShareChoice.MAX_IMAGE_PAGES) throw TooManyPages()
                 Result(images(c, src, password, sel, dir, name, onProgress), "image/jpeg")
             }
-        }.also { if (work != src) work.delete() }
+        }.also { r ->
+            if (work != src) work.delete()
+            if (strip.isNotEmpty() && r.mime == "application/pdf") r.files.forEach { out -> stripInPlace(out, pw, strip) }
+        }
+    }
+
+    /** Removes [items] from the shared PDF [f] (opened with [pw]; its protection is kept). */
+    private suspend fun stripInPlace(f: File, pw: String?, items: Set<SanitizeItem>) {
+        val tmp = File(f.parentFile, ".${f.name}.strip")
+        Sanitizer.cleanFile(f, tmp, pw, items)
+        if (!tmp.renameTo(f)) { tmp.copyTo(f, overwrite = true); tmp.delete() }
     }
 
     /** Removes every markup annotation (comments, highlights, drawings, stamps); links and form widgets stay. */

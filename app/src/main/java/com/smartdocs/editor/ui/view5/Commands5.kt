@@ -79,6 +79,7 @@ object V5Commands {
             V5Command("outline", R.string.rd_panels, Icons.Default.FormatListBulleted, "outline bookmarks toc فهرس") { a.panels(ReaderPanel.OUTLINE) },
             V5Command("bookmarks", R.string.panel_bookmarks, Icons.Default.Bookmark, "bookmarks علامات") { a.panels(ReaderPanel.BOOKMARKS) },
             V5Command("thumbnails", R.string.panel_thumbnails, Icons.Default.GridView, "thumbnails pages مصغرات") { a.panels(ReaderPanel.THUMBNAILS) },
+            V5Command("attachments", R.string.panel_attachments, Icons.Default.AttachFile, "attachments embedded files portfolio مرفقات") { a.panels(ReaderPanel.ATTACHMENTS) },   // nav-attach
             V5Command("doc_info", R.string.tool_doc_info, Icons.Default.Info, "document info properties خصائص معلومات") { a.docInfo() },
             V5Command("ai", R.string.tool_ai, Icons.Default.AutoAwesome, "ai assistant ask مساعد ذكاء") { a.ai() },
             V5Command("ocr", R.string.tool_ocr, Icons.Default.DocumentScanner, "ocr recognize text تعرف ضوئي") { a.quick(QuickAction.OCR) },

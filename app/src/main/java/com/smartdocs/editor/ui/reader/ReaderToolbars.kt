@@ -54,7 +54,7 @@ class ReaderActions(
     val quick: (com.smartdocs.editor.ui.quick.QuickAction) -> Unit = {},
 )
 
-enum class ReaderPanel { OUTLINE, BOOKMARKS, ANNOTATIONS, THUMBNAILS, INFO }
+enum class ReaderPanel { OUTLINE, BOOKMARKS, ANNOTATIONS, THUMBNAILS, ATTACHMENTS, INFO }
 
 @Composable
 fun ReaderTabRow(state: ReaderState, onTab: (ReaderTab) -> Unit) {
@@ -127,6 +127,7 @@ private fun ViewToolbar(state: ReaderState, a: ReaderActions) {
         ToolChip(Icons.Default.FormatListBulleted, stringResource(R.string.rd_panels)) { a.panels(ReaderPanel.OUTLINE) }
         ToolChip(Icons.Default.Bookmark, stringResource(R.string.panel_bookmarks)) { a.panels(ReaderPanel.BOOKMARKS) }
         ToolChip(Icons.Default.GridView, stringResource(R.string.panel_thumbnails)) { a.panels(ReaderPanel.THUMBNAILS) }
+        ToolChip(Icons.Default.AttachFile, stringResource(R.string.panel_attachments)) { a.panels(ReaderPanel.ATTACHMENTS) }   // nav-attach
         ToolChip(Icons.Default.RecordVoiceOver, stringResource(R.string.tool_read_aloud), onClick = a.readAloud)
         if (com.smartdocs.editor.LocalSettings.current.aiEnabled) ToolChip(Icons.Default.AutoAwesome, stringResource(R.string.tool_ai), onClick = a.ai)
         ToolChip(Icons.Default.Share, stringResource(R.string.share), onClick = a.share)
