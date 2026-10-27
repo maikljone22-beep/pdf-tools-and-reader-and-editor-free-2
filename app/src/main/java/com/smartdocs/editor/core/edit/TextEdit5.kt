@@ -138,7 +138,12 @@ object TextEdit5 {
     suspend fun replace(context: Context, src: File, out: File, password: String?, page: Int, ops: IntArray, text: String, style: EditTextStyle,
                         dx: Float = 0f, dy: Float = 0f, dw: Float? = null) = edit(src, out, password) { doc ->
         val a = PageTextModel.analyze(doc, page)
-        val b = findBlock(a, ops)
+        replaceIn(context, doc, page, a, findBlock(a, ops), text, style, dx, dy, dw)
+    }
+
+    /** [replace] inside an open document (also used by [ContentEdit.replaceText] for rotated / form text). */
+    internal fun replaceIn(context: Context, doc: PDDocument, page: Int, a: PageAnalysis, b: TextBlock, text: String, style: EditTextStyle,
+                           dx: Float = 0f, dy: Float = 0f, dw: Float? = null) {
         removeOps(doc, page, a, b.ops)
         if (text.isNotBlank()) {
             val f = frameOf(a, b)
@@ -155,6 +160,7 @@ object TextEdit5 {
     suspend fun delete(src: File, out: File, password: String?, page: Int, ops: IntArray) = edit(src, out, password) { doc ->
         val a = PageTextModel.analyze(doc, page)
         removeOps(doc, page, a, findBlock(a, ops).ops)
+        Unit
     }
 
     /** Join blocks [opsA] and [opsB] into one block (the upper one first), separated by [separator], in [style]. */

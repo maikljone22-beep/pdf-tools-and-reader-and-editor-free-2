@@ -44,6 +44,8 @@ object ContentEdit {
         edit(src, out, password) { doc ->
             val a = PageTextModel.analyze(doc, page)
             val block = findBlock(a, ops)
+            // NVE-text: rotated rows and form XObject text are rewritten in their own frame / stream
+            if (block.angle != 0f || block.inForm) { TextEdit5.replaceIn(context, doc, page, a, block, text, style); return@edit }
             val p = doc.getPage(page)
             val rw = ContentRewriter(doc, p)
             block.ops.forEach { rw.removeText(it, a.scanner.textOps[it]) }
@@ -76,6 +78,7 @@ object ContentEdit {
     suspend fun deleteText(src: File, out: File, password: String?, page: Int, ops: IntArray) = edit(src, out, password) { doc ->
         val a = PageTextModel.analyze(doc, page)
         val block = findBlock(a, ops)
+        if (block.inForm) { TextEdit5.removeOps(doc, page, a, block.ops); return@edit }      // NVE-text: form XObject text
         val rw = ContentRewriter(doc, doc.getPage(page))
         block.ops.forEach { rw.removeText(it, a.scanner.textOps[it]) }
         rw.commit()

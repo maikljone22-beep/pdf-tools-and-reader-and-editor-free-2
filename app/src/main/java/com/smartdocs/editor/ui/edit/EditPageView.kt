@@ -3,6 +3,7 @@ package com.smartdocs.editor.ui.edit
 import android.graphics.Bitmap
 import android.graphics.RectF
 import androidx.compose.foundation.Canvas
+import androidx.compose.material.icons.filled.OpenWith
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -181,27 +182,34 @@ internal fun EditPageView(c: EditController, modifier: Modifier = Modifier) {
     }
 }
 
-/** Text field laid over the block being edited (or the new text box), drawn with the block's size / colour. */
+/**
+ * Text field laid over the block being edited (or the new text box), drawn with the block's size / colour.
+ * NVE-text: rich preview (per-run styles), live spelling underlines, custom font preview, and move / width handles
+ * with smart-alignment guides for an existing block (committed as a moved / re-wrapped box).
+ */
 @Composable
 private fun InlineEditor(c: EditController, scale: Float, pageH: Float, rtlUi: Boolean) {
     val density = LocalDensity.current
+    val ctx = androidx.compose.ui.platform.LocalContext.current
     if (c.unreadable) return              // nothing readable to edit: the format bar shows the notice instead
+    val tt = TextTools5.of(c)
     val rect: RectF = c.block?.rect ?: c.newBox(rtlUi) ?: return
     val st = c.style
-    val rtl = c.block?.takeIf { !c.replaceWhole }?.rtl ?: EditController.isRtl(c.text, c.block?.rtl ?: rtlUi)
-    val x = rect.left * scale; val y = (pageH - rect.top) * scale
-    val w = ((rect.right - rect.left) * scale).coerceAtLeast(with(density) { 120.dp.toPx() })
+    val rtl = st.rtlOverride ?: c.block?.takeIf { !c.replaceWhole }?.rtl ?: EditController.isRtl(c.text, c.block?.rtl ?: rtlUi)
+    val x = (rect.left + tt.dx) * scale; val y = (pageH - rect.top - tt.dy) * scale
+    val w = ((rect.right - rect.left + (tt.dw ?: 0f)) * scale).coerceAtLeast(with(density) { 120.dp.toPx() })
     val fontPx = st.size * scale
     val focus = remember { FocusRequester() }
     LaunchedEffect(c.block, c.newAt) { runCatching { focus.requestFocus() } }
     val color = Color(0xFF000000 or st.color.toLong())
+    val custom = remember(st.fontPath) { com.smartdocs.editor.core.edit.EditFonts.typeface(ctx, st.fontPath) }
     val textStyle = TextStyle(
         color = color,
         fontSize = with(density) { fontPx.toSp() },
-        lineHeight = with(density) { ((st.lineHeight ?: c.block?.lineHeight?.takeIf { (c.block?.lineCount ?: 1) > 1 } ?: (st.size * 1.25f)) * scale).toSp() },
+        lineHeight = with(density) { ((st.lineHeight ?: c.block?.lineHeight?.takeIf { (c.block?.lineCount ?: 1) > 1 } ?: (st.size * 1.25f)) * st.lineSpacing * scale).toSp() },
         fontWeight = if (st.bold) FontWeight.Bold else FontWeight.Normal,
         fontStyle = if (st.italic) FontStyle.Italic else FontStyle.Normal,
-        fontFamily = when (st.family) {
+        fontFamily = custom?.let { androidx.compose.ui.text.font.FontFamily(it) } ?: when (st.family) {
             FontFamily.SERIF -> androidx.compose.ui.text.font.FontFamily.Serif
             FontFamily.MONO -> androidx.compose.ui.text.font.FontFamily.Monospace
             FontFamily.SANS -> androidx.compose.ui.text.font.FontFamily.SansSerif
@@ -210,14 +218,28 @@ private fun InlineEditor(c: EditController, scale: Float, pageH: Float, rtlUi: B
             TextAlign.LEFT -> androidx.compose.ui.text.style.TextAlign.Left
             TextAlign.CENTER -> androidx.compose.ui.text.style.TextAlign.Center
             TextAlign.RIGHT -> androidx.compose.ui.text.style.TextAlign.Right
+            TextAlign.JUSTIFY -> androidx.compose.ui.text.style.TextAlign.Justify
         },
+        letterSpacing = with(density) { (st.charSpacing * scale).toSp() },
         textDirection = if (rtl) TextDirection.Rtl else TextDirection.ContentOrLtr,
     )
     // the field is positioned in absolute (left-to-right) page pixels whatever the UI direction
     val lum = 0.299f * ((st.color shr 16) and 0xFF) + 0.587f * ((st.color shr 8) and 0xFF) + 0.114f * (st.color and 0xFF)
     val bg = if (lum > 200f) Color(0xFF424242) else Color.White
+    val issues = if (EditPrefs.liveSpell(ctx)) com.smartdocs.editor.ui.nve.rememberSpellIssues(c.text) else emptyList()
+    val transform = remember(st, issues, scale) { richTransformation(st, issues) { pt -> with(density) { (pt * scale).toSp() } } }
+    // the field keeps its own value (IME composition); outside changes (case, spell fixes, recovery) replace it
+    var tfv by remember(c.block, c.newAt) { mutableStateOf(androidx.compose.ui.text.input.TextFieldValue(c.text, androidx.compose.ui.text.TextRange(c.text.length))) }
+    if (tfv.text != c.text) tfv = androidx.compose.ui.text.input.TextFieldValue(c.text, androidx.compose.ui.text.TextRange(c.text.length))
     BasicTextField(
-        value = c.text, onValueChange = { c.text = it }, textStyle = textStyle,
+        value = tfv,
+        onValueChange = { v ->
+            if (v.text != c.text) { c.style = c.style.copy(runs = com.smartdocs.editor.core.edit.RichText.shiftRuns(c.style.runs, c.text, v.text)); c.text = v.text }
+            tfv = v
+            tt.sel = v.selection
+        },
+        textStyle = textStyle,
+        visualTransformation = transform,
         cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
         modifier = Modifier
             .absoluteOffset { IntOffset(x.roundToInt(), y.roundToInt()) }
@@ -227,4 +249,23 @@ private fun InlineEditor(c: EditController, scale: Float, pageH: Float, rtlUi: B
             .padding(horizontal = 2.dp)
             .focusRequester(focus),
     )
+    if (c.block == null) return
+    // move handle (top-start corner) and width handle (end edge)
+    val primary = MaterialTheme.colorScheme.primary
+    val hs = with(density) { 28.dp.toPx() }
+    Box(Modifier.absoluteOffset { IntOffset((x - hs).roundToInt(), (y - hs).roundToInt()) }.size(with(density) { hs.toDp() })
+        .background(primary, androidx.compose.foundation.shape.CircleShape)
+        .pointerInput(scale) { androidx.compose.foundation.gestures.detectDragGestures(onDragEnd = { tt.dragEnd() }) { ch, d -> ch.consume(); tt.drag(true, d.x / scale, -d.y / scale) } },
+        contentAlignment = Alignment.Center) {
+        androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.Default.OpenWith, androidx.compose.ui.res.stringResource(com.smartdocs.editor.R.string.nt_move), tint = Color.White, modifier = Modifier.size(18.dp))
+    }
+    Box(Modifier.absoluteOffset { IntOffset((x + w).roundToInt(), (y + hs * 0.2f).roundToInt()) }.size(with(density) { (hs * 0.6f).toDp() }, with(density) { hs.toDp() })
+        .background(primary.copy(alpha = 0.85f), androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
+        .pointerInput(scale) { androidx.compose.foundation.gestures.detectDragGestures(onDragEnd = { tt.dragEnd() }) { ch, d -> ch.consume(); tt.drag(false, d.x / scale, 0f) } })
+    if (tt.guides.isNotEmpty()) Canvas(Modifier.fillMaxSize()) {
+        tt.guides.forEach { (vertical, pos) ->
+            if (vertical) drawLine(Color(0xFFE91E63), Offset(pos * scale, 0f), Offset(pos * scale, size.height), 1.5.dp.toPx())
+            else drawLine(Color(0xFFE91E63), Offset(0f, (pageH - pos) * scale), Offset(size.width, (pageH - pos) * scale), 1.5.dp.toPx())
+        }
+    }
 }
