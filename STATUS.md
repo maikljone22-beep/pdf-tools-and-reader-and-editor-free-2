@@ -1,6 +1,6 @@
 # SmartDocs — release status (single source of truth)
 
-Updated by the integrator (pdf-ad) after every merge. Last update: 2026-10-27 05:45.
+Updated by the integrator (pdf-ad) after every merge. Last update: 2026-10-27 06:05.
 
 ## Version 0.5.0 = "complete" when ALL boxes below are checked
 Scope is FROZEN for 0.5.0: no new features are started until 0.5.0 is released. New requests go to "After 0.5.0".
@@ -13,15 +13,15 @@ Scope is FROZEN for 0.5.0: no new features are started until 0.5.0 is released. 
 - [x] Sharing & clouds, small gaps, unified undo/redo, page-turn effects
 - [x] OCR fixes + root-cause fixes, compression fix, safe write-back
 
-### B. Audit fixes still open (in progress)
+### B. Audit fixes — DONE
 - [x] Areas 1-3 stages 1, 2, 3, 4 (pdf-39) — merged
 - [x] Area 7 cloud/sync (pdf-3c) — merged
-- [ ] Area 5 reader parts: RD-01, RD-05, RD-04, AN-06, AN-13 + signed-file message + ConnMarker hook (pdf-39) — code written, GitHub CI running
+- [x] Area 5 reader parts: RD-01, RD-05, RD-04, AN-06, AN-13 + signed-file message + ConnMarker hook (pdf-39) — merged b440f95
 - [x] Areas 5-6: signed save, keep encryption, in-place reorder, Arabic FTS, rename updates, conn cache (pdf-3c) — merged cf15d6d
 
 ### C. Release blockers
 - [x] New release signing key created (backup in D:\pdf\signing-key-backup)
-- [ ] targetSdk raised to the current Play requirement (branch fix/part-c-targetsdk, CI running)
+- [x] targetSdk raised to 36 — merged (note: Android 16 ignores the reader orientation lock on tablets ≥ 600 dp)
 - [ ] 309 missing English strings filled (pdf-3c, branch fix/part-c-strings)
 - [ ] Release build (signed AAB + APKs) builds and installs
 
