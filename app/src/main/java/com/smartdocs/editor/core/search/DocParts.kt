@@ -67,6 +67,8 @@ object DocParts {
             val ef = (doc.documentCatalog.cosObject.getDictionaryObject(COSName.NAMES) as? COSDictionary)?.getDictionaryObject(COSName.EMBEDDED_FILES) as? COSDictionary
             if (ef != null) attachments(ef, out, 0)
         }
+        // NVE-search: contents of attached / portfolio files (PDF text, plain-text files)
+        runCatching { com.smartdocs.editor.core.nve.NveSearchCore.attachmentTexts(doc).forEach { (name, t) -> out += DocPart(PartKind.ATTACHMENT, -1, "$name: $t") } }
         return out
     }
 
