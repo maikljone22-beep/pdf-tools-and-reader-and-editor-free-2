@@ -25,7 +25,7 @@ object NveDigits {
 
     fun setMode(ctx: Context, m: Mode) {
         val P = com.smartdocs.editor.core.data.NpfPrefs
-        P.setString(P.K.DIGITS, when (m) { Mode.ARABIC_INDIC -> "arabic"; Mode.LATIN -> "latin"; else -> "keep" })
+        P.setString(com.smartdocs.editor.core.data.NpfPrefs.K.DIGITS, when (m) { Mode.ARABIC_INDIC -> "arabic"; Mode.LATIN -> "latin"; else -> "keep" })
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY, m.name).apply()
     }
 

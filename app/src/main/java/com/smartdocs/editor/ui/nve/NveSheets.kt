@@ -149,23 +149,23 @@ fun NveGridSheet(s: ReaderState) {
             SwitchLine(stringResource(R.string.v5_rulers), v.rulers) { v.rulers = it }
             Text(stringResource(R.string.nv_units), style = MaterialTheme.typography.labelLarge)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                listOf("cm", "mm", "in", "pt").forEach { u -> FilterChip(P.units == u, { P.setString(P.K.UNITS, u) }, label = { Text(u) }) }
+                listOf("cm", "mm", "in", "pt").forEach { u -> FilterChip(P.units == u, { P.setString(com.smartdocs.editor.core.data.NpfPrefs.K.UNITS, u) }, label = { Text(u) }) }
             }
             Text(stringResource(R.string.v5_grid_spacing, v.gridMm.toInt()), style = MaterialTheme.typography.labelMedium)
             Slider(v.gridMm, { v.gridMm = it }, valueRange = 2f..50f)
             Text(stringResource(R.string.nv_grid_subdiv, P.gridSubdivisions), style = MaterialTheme.typography.labelMedium)
-            Slider(P.gridSubdivisions.toFloat(), { P.setInt(P.K.GRID_SUB, it.toInt()) }, valueRange = 1f..10f, steps = 8)
+            Slider(P.gridSubdivisions.toFloat(), { P.setInt(com.smartdocs.editor.core.data.NpfPrefs.K.GRID_SUB, it.toInt()) }, valueRange = 1f..10f, steps = 8)
             Text(stringResource(R.string.nv_grid_offset, P.gridOffsetXmm.toInt(), P.gridOffsetYmm.toInt()), style = MaterialTheme.typography.labelMedium)
-            Slider(P.gridOffsetXmm, { P.setFloat(P.K.GRID_OFF_X, it) }, valueRange = 0f..50f)
-            Slider(P.gridOffsetYmm, { P.setFloat(P.K.GRID_OFF_Y, it) }, valueRange = 0f..50f)
+            Slider(P.gridOffsetXmm, { P.setFloat(com.smartdocs.editor.core.data.NpfPrefs.K.GRID_OFF_X, it) }, valueRange = 0f..50f)
+            Slider(P.gridOffsetYmm, { P.setFloat(com.smartdocs.editor.core.data.NpfPrefs.K.GRID_OFF_Y, it) }, valueRange = 0f..50f)
             Text(stringResource(R.string.nv_grid_color), style = MaterialTheme.typography.labelMedium)
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 listOf(0x2196F3, 0x9E9E9E, 0xF44336, 0x4CAF50, 0xFF9800, 0x9C27B0, 0x000000).forEach { c ->
-                    com.smartdocs.editor.ui.reader.ColorDot(c, P.gridColor == c) { P.setInt(P.K.GRID_COLOR, c) }
+                    com.smartdocs.editor.ui.reader.ColorDot(c, P.gridColor == c) { P.setInt(com.smartdocs.editor.core.data.NpfPrefs.K.GRID_COLOR, c) }
                 }
             }
             SwitchLine(stringResource(R.string.nv_snap_grid), v.snapGrid) { v.snapGrid = it }
-            SwitchLine(stringResource(R.string.nv_guides_show), P.guides) { P.setBool(P.K.GUIDES, it) }
+            SwitchLine(stringResource(R.string.nv_guides_show), P.guides) { P.setBool(com.smartdocs.editor.core.data.NpfPrefs.K.GUIDES, it) }
             if (P.guidesH.isNotEmpty() || P.guidesV.isNotEmpty()) TextButton(onClick = { P.setGuides(emptyList(), emptyList()) }) { Text(stringResource(R.string.nv_guides_clear)) }
             HorizontalDivider()
             Text(stringResource(R.string.nv_lens_size, n.lensW, n.lensH), style = MaterialTheme.typography.labelLarge)
