@@ -62,6 +62,10 @@ class QuickController(val state: ReaderState, private val scope: CoroutineScope,
     /** Entry point of every tool button: one tap, then (at most) a compact sheet or a confirmation. */
     fun open(action: QuickAction, onShare: () -> Unit = {}, onPrint: () -> Unit = {}) {
         if (running || state.session == null) return
+        // nitro-protect2: the document's restrictions / Protected View decide first
+        val need = com.smartdocs.editor.core.security.ReaderRestrictions.actionForQuick(action.name)
+        if (need != null && !state.guard.check(need)) return
+        pending = need ?: com.smartdocs.editor.core.security.DocAction.MODIFY
         when (action) {
             QuickAction.ROTATE_ALL -> rotateAll()
             QuickAction.ADD_BLANK -> addBlank()
@@ -76,7 +80,14 @@ class QuickController(val state: ReaderState, private val scope: CoroutineScope,
         }
     }
 
-    fun openOcrForPage(page: Int) { if (!running) { ocrLockedPage = page; sheet = QuickAction.OCR } }
+    fun openOcrForPage(page: Int) {
+        if (running || !state.guard.check(com.smartdocs.editor.core.security.DocAction.MODIFY)) return
+        pending = com.smartdocs.editor.core.security.DocAction.MODIFY
+        ocrLockedPage = page; sheet = QuickAction.OCR
+    }
+
+    /** What the action opened last needs from the document (passed to `applyInPlace`). */
+    private var pending: com.smartdocs.editor.core.security.DocAction? = com.smartdocs.editor.core.security.DocAction.MODIFY
 
     // ---------------- core ----------------
 
@@ -96,7 +107,7 @@ class QuickController(val state: ReaderState, private val scope: CoroutineScope,
         val prevPw = state.password
         job = scope.launch {
             try {
-                val backup = state.applyInPlace(newPassword(prevPw), label = doneText, op = op)
+                val backup = state.applyInPlace(newPassword(prevPw), label = doneText, action = pending, op = op)
                 if (backup != null) { done = QuickDone(doneText(), backup, prevPw, suffix); after() }
             } catch (e: CancellationException) {
                 message = ctx.getString(R.string.qk_cancelled)

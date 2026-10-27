@@ -158,7 +158,8 @@ fun ReflowReader(s: ReaderState) {
             IconButton(onClick = { if (hits.isNotEmpty()) hitIdx = (hitIdx + 1) % hits.size }) { Icon(Icons.Default.KeyboardArrowDown, null, tint = fg) }
         }
         val family = if (serif) FontFamily.Serif else FontFamily.Default
-        SelectionContainer {
+        // nitro-protect2: no text selection (copy) when the document forbids copying
+        com.smartdocs.editor.ui.reader.CopyableIf(s.guard.allows(com.smartdocs.editor.core.security.DocAction.COPY)) {
             LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp)) {
                 itemsIndexed(blocks) { i, b ->
                     when (b) {

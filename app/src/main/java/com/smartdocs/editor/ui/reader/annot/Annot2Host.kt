@@ -328,7 +328,8 @@ class Annot2Host(val s: ReaderState) {
             val (file, mime) = pair ?: return@launch
             val m = mime.ifBlank { MediaAnnots.mimeOf(file.name) }
             if (a.kind == AnnotKind.SOUND || m.startsWith("audio/")) playing = file
-            else MediaIntents.view(s.context, s.app, file, m)       // generic file attachments only
+            // nitro-protect2: attachment security (per-extension allow / ask / block) before another app gets it
+            else if (com.smartdocs.editor.ui.security.DocSecurityGate.confirmAttachment(s.context, file.name)) MediaIntents.view(s.context, s.app, file, m)       // generic file attachments only
         }
     }
 

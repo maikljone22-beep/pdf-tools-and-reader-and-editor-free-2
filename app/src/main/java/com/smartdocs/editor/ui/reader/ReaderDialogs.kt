@@ -181,7 +181,7 @@ fun DocInfoContent(state: ReaderState) {
             InfoRow(stringResource(R.string.info_creator), m.creator); InfoRow(stringResource(R.string.info_producer), m.producer)
             InfoRow(stringResource(R.string.info_created), m.creationDate); InfoRow(stringResource(R.string.info_modified), m.modDate)
         }
-        InfoRow(stringResource(R.string.info_encrypted), stringResource(if (state.password != null) R.string.yes else R.string.no))
+        SecurityPropertiesSection(state.guard.info, state.password != null)   // nitro-protect2: method, algorithm, permissions
     }
 }
 
@@ -222,7 +222,7 @@ fun ReflowView(state: ReaderState, modifier: Modifier = Modifier) {
             IconButton(onClick = { if (page < state.pageCount - 1) state.jumpTo(page + 1) }) { Icon(Icons.Default.KeyboardArrowDown, stringResource(R.string.next)) }
             IconButton(onClick = { state.reflow = false }) { Icon(Icons.Default.Close, stringResource(R.string.close)) }
         }
-        androidx.compose.foundation.text.selection.SelectionContainer {
+        CopyableIf(state.guard.allows(com.smartdocs.editor.core.security.DocAction.COPY)) {   // nitro-protect2
             Text(
                 text.ifBlank { stringResource(R.string.ocr_no_text) },
                 Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),

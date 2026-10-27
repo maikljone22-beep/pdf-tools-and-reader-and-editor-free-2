@@ -204,7 +204,8 @@ class FormFillState internal constructor(val reader: ReaderState) {
         val f = reader.file ?: return
         val s = reader.session ?: return
         // the JavaScript switch is read before the model: it decides which scripts the model keeps (and a change reloads)
-        com.smartdocs.editor.core.security.JsPolicy.enabled = runCatching { reader.app.settings.settings.first().runJavaScript }.getOrDefault(com.smartdocs.editor.core.security.JsPolicy.enabled)
+        // nitro-protect2: the document's own decision (run level, Safe Reading Mode, trusted / "Keep blocked")
+        com.smartdocs.editor.core.security.JsPolicy.enabled = reader.guard.jsAllowed(runCatching { reader.app.settings.settings.first().runJavaScript }.getOrDefault(com.smartdocs.editor.core.security.JsPolicy.enabled))
         val key = f.path + "|" + System.identityHashCode(s) + "|" + reader.renderVersion + "|" + com.smartdocs.editor.core.security.JsPolicy.enabled
         if (key == loadedKey) return
         loadMutex.withLock {
@@ -296,6 +297,8 @@ class FormFillState internal constructor(val reader: ReaderState) {
     /** Tap on a widget. */
     fun tap(w: FWidget) {
         if (!enabled || isHidden(w)) return
+        // nitro-protect2: the author's form-filling permission and Protected View (buttons still work)
+        if (w.kind != WKind.BUTTON && !reader.guard.check(com.smartdocs.editor.core.security.DocAction.FILL_FORMS)) return
         if (w.id != activeId && !commitActive()) return
         when (w.kind) {
             WKind.CHECK, WKind.RADIO -> { toggle(w); activeId = w.id; typingField = null }
