@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ns2_add_empty_field">Add an empty signature field here</string>
+    <string name="ns2_add_ltv">Add verification info (LTV)</string>
+    <string name="ns2_also_pages">Same signature on more pages (optional)</string>
+    <string name="ns2_also_pages_hint">e.g. 1-3, 5 — leave empty for one page</string>
+    <string name="ns2_bar_certified">Certified by %1$s</string>
+    <string name="ns2_bar_details">Signatures</string>
+    <string name="ns2_bar_problem">At least one signature has problems</string>
+    <string name="ns2_bar_signed">Signed and all signatures are valid (%1$d)</string>
+    <string name="ns2_batch_count">%1$d files selected</string>
+    <string name="ns2_batch_done">Signed %1$d of %2$d files</string>
+    <string name="ns2_batch_pick">Sign several files…</string>
+    <string name="ns2_batch_sign">Sign all selected files</string>
+    <string name="ns2_cert_invalid_at">The certificate was not valid on %1$s</string>
+    <string name="ns2_cert_valid_at">Certificate valid on %1$s</string>
+    <string name="ns2_compare_signed">Compare with current version</string>
+    <string name="ns2_digest">Hash algorithm</string>
+    <string name="ns2_digest_sha3_note">SHA-3 per ISO/TS 32001; older readers may not validate it.</string>
+    <string name="ns2_field_delete">Delete field</string>
+    <string name="ns2_field_delete_confirm">Delete the empty signature field \"%1$s\"?</string>
+    <string name="ns2_field_move">Move / resize</string>
+    <string name="ns2_id_ed_note">Ed25519 signs only (ISO/TS 32002), and only recent readers validate it.</string>
+    <string name="ns2_saved_as">Saved as %1$s</string>
+    <string name="ns2_time_now">Current time</string>
+    <string name="ns2_time_secure">Secure time (time-stamp)</string>
+    <string name="ns2_time_signing">Signing time</string>
+    <string name="ns2_timestamp_doc">Time-stamp document</string>
+    <string name="ns2_timestamp_server">Time-stamp server: %1$s</string>
+    <string name="ns2_trust_certified">Certified documents</string>
+    <string name="ns2_trust_signatures">Validating signatures</string>
+    <string name="ns2_trust_tsa">Trust time-stamp server %1$s</string>
+    <string name="ns2_verify_more">Validation options and tools</string>
+    <string name="ns2_verify_time">Verification time</string>
+</resources>

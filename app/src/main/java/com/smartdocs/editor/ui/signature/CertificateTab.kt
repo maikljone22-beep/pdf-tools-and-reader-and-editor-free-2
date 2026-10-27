@@ -232,9 +232,9 @@ internal fun CertificateTab(identity: DigitalSignature.Identity?, onIdentity: (D
         }
         Text(stringResource(R.string.ns_id_key), Modifier.padding(16.dp, 4.dp), style = MaterialTheme.typography.labelLarge)
         Row(Modifier.padding(horizontal = 16.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            DigitalIds.KeyType.entries.forEach { k -> FilterChip(genKey == k, { genKey = k }, label = { Text(if (k.curve != null) "EC P-${k.size}" else "RSA ${k.size}") }) }
+            DigitalIds.KeyType.entries.forEach { k -> FilterChip(genKey == k, { genKey = k }, label = { Text(when { k == DigitalIds.KeyType.ED25519 -> "Ed25519"; k.curve != null -> "EC P-${k.size}"; else -> "RSA ${k.size}" }) }) }
         }
-        if (genKey.curve != null) Text(stringResource(R.string.ns_id_ec_note), Modifier.padding(16.dp, 2.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (genKey.algorithm != "RSA") Text(stringResource(if (genKey == DigitalIds.KeyType.ED25519) R.string.ns2_id_ed_note else R.string.ns_id_ec_note), Modifier.padding(16.dp, 2.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(stringResource(R.string.ns_id_validity, genYears), Modifier.width(140.dp))
             Slider(genYears.toFloat(), { genYears = it.toInt().coerceIn(1, 30) }, valueRange = 1f..30f, steps = 28, modifier = Modifier.weight(1f))

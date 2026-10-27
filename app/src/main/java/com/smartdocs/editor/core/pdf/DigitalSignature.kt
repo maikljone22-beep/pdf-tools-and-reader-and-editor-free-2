@@ -70,7 +70,21 @@ object DigitalSignature {
         val docTimestamp: Boolean = false,
         /** FieldMDP lock of an approval signature (Nitro "lock document after signing"); null = the field's own /Lock, if any. */
         val lock: com.smartdocs.editor.core.sign.SigFields.Lock? = null,
+        /** Message digest of the CMS signature (ISO/TS 32001: SHA-2 and SHA-3 families); EdDSA keys use their own. */
+        val digest: Digest = Digest.SHA256,
     )
+
+    enum class Digest(val jca: String) { SHA256("SHA256"), SHA384("SHA384"), SHA512("SHA512"), SHA3_256("SHA3-256"), SHA3_512("SHA3-512") }
+
+    /** JCA signature algorithm for [key] and [digest] (RSA, ECDSA, Ed25519/Ed448). */
+    internal fun signatureAlgorithm(key: PrivateKey, digest: Digest): String {
+        val a = key.algorithm.uppercase()
+        return when {
+            a == "ED25519" || a == "ED448" || a == "EDDSA" -> if (a == "ED448") "Ed448" else "Ed25519"
+            a == "EC" || a == "ECDSA" -> "${digest.jca}withECDSA"
+            else -> "${digest.jca}withRSA"
+        }
+    }
 
     /** Seal image split across the right edge of all pages before signing (see core/sign/PagingSeal). */
     data class PagingSealOptions(val image: Bitmap, val sizePt: Float = 110f, val yFraction: Float = 0.5f)
@@ -122,6 +136,8 @@ object DigitalSignature {
         val counterSigners: List<String> = emptyList(),
         /** Names of signatures added in later revisions (they counter-sign this one at document level). */
         val signedLaterBy: List<String> = emptyList(),
+        /** Signer of the signature time-stamp (or of a document time-stamp), for "trust this time-stamp server". */
+        val timestampCert: X509Certificate? = null,
         /** OCSP/CRL revocation check of the signer certificate (see core/sign/Revocation); null = not checked. */
         val revocation: com.smartdocs.editor.core.sign.Revocation.Result? = null,
     )
@@ -200,12 +216,12 @@ object DigitalSignature {
 
     // ---------------------------------------------------------------- signing
 
-    private class CmsSigner(private val id: Identity, private val tsaUrl: String?, private val pades: Boolean) : SignatureInterface {
+    private class CmsSigner(private val id: Identity, private val tsaUrl: String?, private val pades: Boolean, private val digest: Digest = Digest.SHA256) : SignatureInterface {
         var timestamped = false
         override fun sign(content: InputStream): ByteArray {
             ensureProvider()
             val gen = CMSSignedDataGenerator()
-            val algo = if (id.privateKey.algorithm.equals("EC", true) || id.privateKey.algorithm.equals("ECDSA", true)) "SHA256withECDSA" else "SHA256withRSA"
+            val algo = signatureAlgorithm(id.privateKey, digest)
             val contentSigner = JcaContentSignerBuilder(algo).build(id.privateKey)
             val sib = JcaSignerInfoGeneratorBuilder(JcaDigestCalculatorProviderBuilder().build())
             if (pades) {
@@ -341,7 +357,7 @@ object DigitalSignature {
         draw: ((PDDocument, PDPageContentStream, Float, Float) -> Unit)? = null,
     ): Boolean {
         ensureProvider()
-        val signer = CmsSigner(identity, options.tsaUrl?.takeIf { it.isNotBlank() }, options.pades)
+        val signer = CmsSigner(identity, options.tsaUrl?.takeIf { it.isNotBlank() }, options.pades, options.digest)
         PDDocument.load(input).use { d ->
             if (options.certifyLevel in 1..3 && d.signatureDictionaries.isNotEmpty())
                 throw IllegalStateException("certification must be the first signature")
@@ -357,6 +373,11 @@ object DigitalSignature {
                 signDate = Calendar.getInstance()
             }
             val prep = SigFields.prepare(d, sig, target, options.lock)
+            // the same appearance on the other pages of a multi-page signature (extra widgets, drawn here)
+            if (draw != null) for (w in prep.extraWidgets) {
+                val r = w.rectangle ?: continue
+                w.appearance = SigFields.appearance(d, r, w.page?.rotation ?: 0, draw)
+            }
             if (options.certifyLevel in 1..3) setMdp(d, sig, options.certifyLevel)
             val size = SignatureOptions.DEFAULT_SIGNATURE_SIZE * (if (options.tsaUrl.isNullOrBlank()) 2 else 4)
             val sigOpts = SignatureOptions().apply { preferredSignatureSize = size; page = prep.page }
@@ -455,7 +476,7 @@ object DigitalSignature {
                             name = cert?.let { friendlyName(it.subjectX500Principal.name) } ?: "TSA", signDate = genTime,
                             signatureValid = ok, certSubject = cert?.subjectX500Principal?.name.orEmpty(),
                             certIssuer = cert?.issuerX500Principal?.name.orEmpty(), validFrom = cert?.notBefore, validTo = cert?.notAfter,
-                            location = "", timestampDate = genTime, timestampValid = ok, isDocTimestamp = true,
+                            location = "", timestampDate = genTime, timestampValid = ok, isDocTimestamp = true, timestampCert = cert,
                         )
                         continue
                     }
@@ -463,11 +484,13 @@ object DigitalSignature {
                     val signerInfo = cms.signerInfos.signers.firstOrNull() ?: throw IllegalStateException("no signer info")
                     val cert = signerCert(cms, signerInfo) ?: throw IllegalStateException("signer certificate not embedded")
                     val valid = runCatching { signerInfo.verify(JcaSimpleSignerInfoVerifierBuilder().build(cert)) }.getOrDefault(false)
-                    var tsDate: Date? = null; var tsOk = false
+                    var tsDate: Date? = null; var tsOk = false; var tsCert: X509Certificate? = null
                     signerInfo.unsignedAttributes?.get(org.bouncycastle.asn1.pkcs.PKCSObjectIdentifiers.id_aa_signatureTimeStampToken)?.let { attr ->
                         val v = attr.attrValues.getObjectAt(0)
-                        val r = checkToken(CMSSignedData(org.bouncycastle.asn1.cms.ContentInfo.getInstance(v)), signerInfo.signature)
+                        val tokenCms = CMSSignedData(org.bouncycastle.asn1.cms.ContentInfo.getInstance(v))
+                        val r = checkToken(tokenCms, signerInfo.signature)
                         tsDate = r.first; tsOk = r.second
+                        tsCert = runCatching { tokenCms.signerInfos.signers.firstOrNull()?.let { signerCert(tokenCms, it) } }.getOrNull()
                     }
                     val counter = signerInfo.counterSignatures.signers.map { cs ->
                         signerCert(cms, cs)?.let { friendlyName(it.subjectX500Principal.name) } ?: cs.sid.issuer?.toString().orEmpty()
@@ -481,7 +504,7 @@ object DigitalSignature {
                         certSubject = cert.subjectX500Principal.name, certIssuer = cert.issuerX500Principal.name,
                         validFrom = cert.notBefore, validTo = cert.notAfter,
                         timestampDate = tsDate, timestampValid = tsOk, certifyLevel = certifyLevelOf(doc, sig),
-                        counterSigners = counter, revocation = rev,
+                        counterSigners = counter, revocation = rev, timestampCert = tsCert,
                     )
                 } catch (e: Exception) {
                     results += common.copy(error = e.message ?: e.toString(), isDocTimestamp = isDocTs)
@@ -492,6 +515,25 @@ object DigitalSignature {
         results.map { r ->
             r.copy(signedLaterBy = results.filter { o -> o !== r && !o.isDocTimestamp && o.signedLength > r.signedLength }.map { friendlyName(it.name) })
         }
+    }
+
+    enum class VerifyTime { SIGNING_TIME, SECURE_TIME, CURRENT_TIME }
+
+    /**
+     * The time a signature is validated at (Acrobat/Foxit "verification time"): the claimed signing time, the
+     * secure (time-stamp) time when there is a valid one (falling back to the signing time), or now.
+     */
+    fun verificationTime(r: VerifyResult, mode: VerifyTime, now: Date = Date()): Date? = when (mode) {
+        VerifyTime.CURRENT_TIME -> now
+        VerifyTime.SECURE_TIME -> r.timestampDate?.takeIf { r.timestampValid } ?: r.signDate
+        VerifyTime.SIGNING_TIME -> r.signDate
+    }
+
+    /** Whether the signer certificate was within its validity period at [at] (null = unknown). */
+    fun certValidAt(r: VerifyResult, at: Date?): Boolean? {
+        val from = r.validFrom ?: return null; val to = r.validTo ?: return null
+        at ?: return null
+        return !at.before(from) && !at.after(to)
     }
 
     /** Human readable "CN=…" → "…" extraction for display. */

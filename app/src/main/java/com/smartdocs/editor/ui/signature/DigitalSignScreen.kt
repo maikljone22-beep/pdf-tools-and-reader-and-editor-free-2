@@ -65,7 +65,7 @@ fun DigitalSignScreen(nav: NavHostController, uri: String?) {
             }
             when (tab) {
                 0 -> SignTab(nav, file, identity, request?.field?.takeIf { !request.verify }, onPick = pick, onNeedCert = { tab = 2 })
-                1 -> VerifyTab(nav, file, request?.field?.takeIf { request.verify }, onPick = pick)
+                1 -> VerifyTab(nav, file, request?.field?.takeIf { request.verify }, autoVerify = request?.verify == true, onPick = pick)
                 else -> CertificateTab(identity) { identity = it }
             }
         }
@@ -119,7 +119,8 @@ private fun SignTab(nav: NavHostController, file: File?, identity: DigitalSignat
     // Nitro: signature fields (sign into an empty one), free placement, field lock
     var sigFields by remember(file) { mutableStateOf<List<SigFields.Field>>(emptyList()) }
     var formFields by remember(file) { mutableStateOf<List<String>>(emptyList()) }
-    LaunchedEffect(file) {
+    var fieldsVersion by remember { mutableIntStateOf(0) }
+    LaunchedEffect(file, fieldsVersion) {
         val f = file ?: return@LaunchedEffect
         withContext(Dispatchers.IO) {
             runCatching {
@@ -138,6 +139,12 @@ private fun SignTab(nav: NavHostController, file: File?, identity: DigitalSignat
     var lockFields by remember { mutableStateOf(setOf<String>()) }
     var lockNoChanges by rememberSaveable { mutableStateOf(false) }
     var askName by remember { mutableStateOf(SignPrefs.askFileName(ctx)) }
+    var digest by rememberSaveable { mutableStateOf(DigitalSignature.Digest.SHA256) }
+    var alsoPages by rememberSaveable { mutableStateOf("") }
+    val gate = rememberSignatureGate()
+    var batchFiles by remember { mutableStateOf<List<File>>(emptyList()) }
+    var batchReport by remember { mutableStateOf<String?>(null) }
+    val pickBatch = rememberPdfPicker(multiple = true) { fs -> batchFiles = fs }
     var nameDialog by remember { mutableStateOf<String?>(null) }
 
     // named signature profiles
@@ -171,39 +178,77 @@ private fun SignTab(nav: NavHostController, file: File?, identity: DigitalSignat
         }
     }
 
+    /** The visible-signature image and where it goes on [d] (shared by single and batch signing). */
+    fun visibleFor(d: com.tom_roush.pdfbox.pdmodel.PDDocument, id: DigitalSignature.Identity, field: SigFields.Field?): Pair<DigitalSignature.VisibleSignature, SigTarget?> {
+        val label0 = name.ifBlank { DigitalSignature.friendlyName(id.subject) }
+        val designed: Bitmap? = if (appearance.enabled) runCatching {
+            SigAppearanceRenderer.render(appearance.spec, appearance.spec.lines(label0, reason, location, today, id.subject, appearance.labels()), id.subject)
+        }.getOrNull() else null
+        val label = visibleText.ifBlank { label0 }
+        val saved: Bitmap? = if (useSaved) savedPath?.let { BitmapFactory.decodeFile(it) } else null
+        val img: Bitmap = designed ?: saved?.let { withLabel(it, label) } ?: labelBitmap(label)
+        if (field?.rect != null) {
+            val r = field.rect
+            return DigitalSignature.VisibleSignature(field.page, r[0], r[1], r[2], r[3], image = img) to SigTarget(fieldName = field.name)
+        }
+        val pageIdx = placePage.coerceIn(0, d.numberOfPages - 1)
+        val box = placeBox ?: PlaceBox.corner(0)
+        fun rectOn(i: Int): FloatArray { val p = d.getPage(i); return SigFields.toUserSpace(box.l, box.t, box.w, box.h, p.cropBox, p.rotation) }
+        val r = rectOn(pageIdx)
+        // Foxit "page range": the same signature box on more pages (extra widgets of a new field)
+        val extra = if (field == null && alsoPages.isNotBlank()) PdfOps.parseRange(alsoPages, d.numberOfPages).filter { it != pageIdx }.map { it to rectOn(it) } else emptyList()
+        val target = if (field != null) SigTarget(fieldName = field.name, page = pageIdx, rect = r) else SigTarget(page = pageIdx, rect = r, extra = extra)
+        return DigitalSignature.VisibleSignature(pageIdx, r[0], r[1], r[2], r[3], image = img) to target
+    }
+
     fun doSign(outName: String) {
         val f = file ?: run { localError = needFile; return }
         val id = identity ?: run { onNeedCert(); return }
+        if (visible && useSaved && savedPath != null && com.smartdocs.editor.core.data.SignatureLock.isLocked(ctx, savedPath!!)) {
+            gate.request(savedPath!!) { doSignUnlocked(f, id, outName) }
+            return
+        }
+        doSignUnlocked(f, id, outName)
+    }
+
+    fun doSignUnlocked(f: File, id: DigitalSignature.Identity, outName: String) {
         localError = null
         adv.persist()
-        val opts = adv.options(DigitalSignature.SignOptions(name.trim(), location.trim(), reason.trim(), contact.trim())).copy(lock = lock())
+        val opts = adv.options(DigitalSignature.SignOptions(name.trim(), location.trim(), reason.trim(), contact.trim())).copy(lock = lock(), digest = digest)
         val seal = if (adv.seal) adv.sealOptions() ?: run { localError = sealMissing; return } else null
         val field = targetField?.let { n -> emptyFields.firstOrNull { it.name == n } }
         runner.run(signingMsg) {
             val out = app.documents.uniqueFile(app.documents.docsDir, outName.ifBlank { f.nameWithoutExtension + "_signed" })
             var target: SigTarget? = field?.let { SigTarget(fieldName = it.name) }
             val vis = if (!visible) null else withContext(Dispatchers.IO) {
-                val label0 = name.ifBlank { DigitalSignature.friendlyName(id.subject) }
-                val designed: Bitmap? = if (appearance.enabled) runCatching {
-                    SigAppearanceRenderer.render(appearance.spec, appearance.spec.lines(label0, reason, location, today, id.subject, appearance.labels()), id.subject)
-                }.getOrNull() else null
-                val label = visibleText.ifBlank { label0 }
-                val saved: Bitmap? = if (useSaved) savedPath?.let { BitmapFactory.decodeFile(it) } else null
-                val img: Bitmap = designed ?: saved?.let { withLabel(it, label) } ?: labelBitmap(label)
-                if (field?.rect != null) {
-                    val r = field.rect
-                    DigitalSignature.VisibleSignature(field.page, r[0], r[1], r[2], r[3], image = img)
-                } else PdfOps.loadRaw(f).use { d ->
-                    val pageIdx = placePage.coerceIn(0, d.numberOfPages - 1)
-                    val p = d.getPage(pageIdx)
-                    val box = placeBox ?: PlaceBox.corner(0)
-                    val r = SigFields.toUserSpace(box.l, box.t, box.w, box.h, p.cropBox, p.rotation)
-                    if (field != null) target = SigTarget(fieldName = field.name, page = pageIdx, rect = r)
-                    DigitalSignature.VisibleSignature(pageIdx, r[0], r[1], r[2], r[3], image = img)
-                }
+                PdfOps.loadRaw(f).use { d -> visibleFor(d, id, field).also { target = it.second }.first }
             }
             signReport = DigitalSignature.sign(ctx, f, out, id, opts, vis, pagingSeal = seal, target = target)
+            if (visible && useSaved) savedPath?.let { runCatching { com.smartdocs.editor.core.data.SignatureMetaStore.markUsed(ctx, it) } }
             out
+        }
+    }
+
+    /** Signs every file of [batchFiles] with the same ID, options and (relative) placement; one output each. */
+    fun signBatch() {
+        val id = identity ?: run { onNeedCert(); return }
+        val files = batchFiles.takeIf { it.isNotEmpty() } ?: return
+        adv.persist()
+        val opts = adv.options(DigitalSignature.SignOptions(name.trim(), location.trim(), reason.trim(), contact.trim())).copy(lock = lock(), digest = digest)
+        val okFmt = ctx.getString(R.string.ns2_batch_done)
+        runner.run(signingMsg) {
+            val outs = ArrayList<File>(); val failed = ArrayList<String>()
+            for (f in files) {
+                runCatching {
+                    val out = app.documents.uniqueFile(app.documents.docsDir, f.nameWithoutExtension + "_signed")
+                    val (vis, tgt) = if (!visible) null to null else withContext(Dispatchers.IO) { PdfOps.loadRaw(f).use { d -> visibleFor(d, id, null) } }
+                    DigitalSignature.sign(ctx, f, out, id, opts, vis, target = tgt)
+                    outs += out
+                }.onFailure { failed += "${f.name}: ${it.message ?: it.javaClass.simpleName}" }
+            }
+            batchReport = String.format(okFmt, outs.size, files.size) + if (failed.isEmpty()) "" else "\n" + failed.joinToString("\n")
+            batchFiles = emptyList()
+            outs.firstOrNull() ?: throw IllegalStateException(failed.joinToString("\n"))
         }
     }
 
@@ -273,6 +318,22 @@ private fun SignTab(nav: NavHostController, file: File?, identity: DigitalSignat
                 Text(stringResource(if (placeBox == null) R.string.ns_place_default else R.string.ns_place_set, placePage + 1), Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
                 OutlinedButton(onClick = { placing = true }, enabled = file != null) { Text(stringResource(R.string.ns_place_button)) }
             }
+            if (chosen == null && placeBox != null) TextButton(onClick = {
+                val f = file ?: return@TextButton
+                val box = placeBox ?: return@TextButton
+                scope.launch {
+                    val r = withContext(Dispatchers.IO) {
+                        runCatching {
+                            val tmp = File(ctx.cacheDir, "sigadd_${System.nanoTime()}.pdf")
+                            try {
+                                val rect = PdfOps.loadRaw(f).use { d -> val p = d.getPage(placePage.coerceIn(0, d.numberOfPages - 1)); SigFields.toUserSpace(box.l, box.t, box.w, box.h, p.cropBox, p.rotation) }
+                                SigFields.addEmpty(f, tmp, placePage, rect).also { tmp.copyTo(f, overwrite = true) }
+                            } finally { tmp.delete() }
+                        }
+                    }
+                    r.onSuccess { n -> fieldsVersion++; placeBox = null; localError = null; targetField = n }.onFailure { localError = it.message ?: it.toString() }
+                }
+            }) { Text(stringResource(R.string.ns2_add_empty_field)) }
             OutlinedTextField(visibleText, { visibleText = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.sa_visible_text)) }, singleLine = true)
             Row(verticalAlignment = Alignment.CenterVertically) { Switch(useSaved, { useSaved = it }); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.sa_visible_use_saved)) }
             if (useSaved) Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -296,6 +357,13 @@ private fun SignTab(nav: NavHostController, file: File?, identity: DigitalSignat
         if (adv.certify == 0) Row(verticalAlignment = Alignment.CenterVertically) {
             Checkbox(lockNoChanges, { lockNoChanges = it }); Text(stringResource(R.string.ns_lock_document), style = MaterialTheme.typography.bodyMedium)
         }
+        if (visible && targetField == null) OutlinedTextField(alsoPages, { alsoPages = it }, Modifier.fillMaxWidth(), singleLine = true,
+            label = { Text(stringResource(R.string.ns2_also_pages)) }, supportingText = { Text(stringResource(R.string.ns2_also_pages_hint)) })
+        Text(stringResource(R.string.ns2_digest), style = MaterialTheme.typography.labelLarge)
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            DigitalSignature.Digest.entries.forEach { dg -> FilterChip(digest == dg, { digest = dg }, label = { Text(dg.jca.replace("SHA", "SHA-").replace("SHA-3-", "SHA3-")) }) }
+        }
+        if (digest.name.startsWith("SHA3")) Text(stringResource(R.string.ns2_digest_sha3_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         AdvancedSignOptions(adv, signatures, canCertify = report?.canCertify ?: true)
         Row(verticalAlignment = Alignment.CenterVertically) {
             Checkbox(askName, { askName = it; SignPrefs.setAskFileName(ctx, it) }); Text(stringResource(R.string.ns_ask_file_name), style = MaterialTheme.typography.bodyMedium)
@@ -303,6 +371,13 @@ private fun SignTab(nav: NavHostController, file: File?, identity: DigitalSignat
         SignChangesCard(changes) { showChanges = true }
         (localError ?: runner.error)?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         Button(onClick = { sign() }, Modifier.fillMaxWidth(), enabled = !runner.running) { Text(stringResource(if (targetField != null) R.string.ns_sign_field_now else R.string.sa_sign_now)) }
+        // Foxit "Sign Multiple Documents": same ID, options and placement for several files
+        OutlinedButton(onClick = { pickBatch() }, Modifier.fillMaxWidth(), enabled = !runner.running) { Text(stringResource(R.string.ns2_batch_pick)) }
+        if (batchFiles.isNotEmpty()) {
+            Text(stringResource(R.string.ns2_batch_count, batchFiles.size), style = MaterialTheme.typography.bodySmall)
+            Button(onClick = { signBatch() }, Modifier.fillMaxWidth(), enabled = !runner.running && identity != null) { Text(stringResource(R.string.ns2_batch_sign)) }
+        }
+        batchReport?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
     }
     if (runner.running) ProgressDialog(runner.message)
     val tsDone = stringResource(R.string.ps_sign_result_ts)
@@ -381,7 +456,7 @@ private fun withLabel(sig: Bitmap, text: String): Bitmap {
 }
 
 @Composable
-private fun VerifyTab(nav: NavHostController, file: File?, focusField: String?, onPick: () -> Unit) {
+private fun VerifyTab(nav: NavHostController, file: File?, focusField: String?, autoVerify: Boolean = false, onPick: () -> Unit) {
     val scope = rememberCoroutineScope()
     val ctx = LocalContext.current
     var results by remember(file) { mutableStateOf<List<DigitalSignature.VerifyResult>?>(null) }
@@ -392,6 +467,25 @@ private fun VerifyTab(nav: NavHostController, file: File?, focusField: String?, 
     var systemRoots by remember { mutableStateOf(SignPrefs.trustSystemRoots(ctx)) }
     var sigIcons by remember { mutableStateOf(SignPrefs.showSignatureIcons(ctx)) }
     var clearing by remember { mutableStateOf<String?>(null) }
+    var verifyTime by rememberSaveable { mutableStateOf(DigitalSignature.VerifyTime.SECURE_TIME) }
+    var showOptions by rememberSaveable { mutableStateOf(false) }
+    var produced by remember { mutableStateOf<File?>(null) }
+    val app = LocalApp.current
+    val adv = rememberAdvancedSignState()
+    /** Writes a new file next to the documents ([tag] suffix) with [op], then offers to open it. */
+    fun produce(tag: String, op: (File, File) -> Unit) {
+        val f = file ?: return
+        scope.launch {
+            busy = true; error = null
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    val out = app.documents.uniqueFile(app.documents.docsDir, f.nameWithoutExtension + tag)
+                    op(f, out); out
+                }
+            }.onSuccess { produced = it }.onFailure { error = it.message ?: it.toString() }
+            busy = false
+        }
+    }
     fun verify() {
         val f = file ?: return
         scope.launch {
@@ -401,7 +495,7 @@ private fun VerifyTab(nav: NavHostController, file: File?, focusField: String?, 
             busy = false
         }
     }
-    LaunchedEffect(file, focusField) { if (file != null && focusField != null) verify() }
+    LaunchedEffect(file, focusField) { if (file != null && (focusField != null || autoVerify)) verify() }
     Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         FilePickRow(file, stringResource(R.string.open_file), onPick)
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -414,6 +508,26 @@ private fun VerifyTab(nav: NavHostController, file: File?, focusField: String?, 
             Checkbox(sigIcons, { sigIcons = it; SignPrefs.setShowSignatureIcons(ctx, it) }); Text(stringResource(R.string.ns_show_sig_icons), style = MaterialTheme.typography.bodySmall)
         }
         Button(onClick = { verify() }, Modifier.fillMaxWidth(), enabled = file != null && !busy) { Text(stringResource(R.string.sa_verify_now)) }
+        TextButton(onClick = { showOptions = !showOptions }) { Text(stringResource(R.string.ns2_verify_more)) }
+        if (showOptions) {
+            Text(stringResource(R.string.ns2_verify_time), style = MaterialTheme.typography.labelLarge)
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf(DigitalSignature.VerifyTime.SECURE_TIME to R.string.ns2_time_secure, DigitalSignature.VerifyTime.SIGNING_TIME to R.string.ns2_time_signing,
+                    DigitalSignature.VerifyTime.CURRENT_TIME to R.string.ns2_time_now).forEach { (t, l) -> FilterChip(verifyTime == t, { verifyTime = t }, label = { Text(stringResource(l)) }) }
+            }
+            // Foxit "Add verification information" to an already signed file, and "Time Stamp Document" without signing
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = { produce("_ltv") { a, b -> com.smartdocs.editor.core.sign.LtvSupport.addDss(a, b, online = true) } }, enabled = file != null && !busy) { Text(stringResource(R.string.ns2_add_ltv)) }
+                OutlinedButton(onClick = { val url = adv.tsaUrl; produce("_timestamped") { a, b -> com.smartdocs.editor.core.sign.LtvSupport.addDocTimestamp(a, b, url) } }, enabled = file != null && !busy) { Text(stringResource(R.string.ns2_timestamp_doc)) }
+            }
+            Text(stringResource(R.string.ns2_timestamp_server, adv.tsaUrl), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        produced?.let { out ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(stringResource(R.string.ns2_saved_as, out.name), Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                TextButton(onClick = { nav.navigate(Routes.reader(Uri.fromFile(out).toString())) }) { Text(stringResource(R.string.open)) }
+            }
+        }
         OutlinedButton(onClick = { nav.navigate(com.smartdocs.editor.ui.gaps6.G6Routes.TRUSTED_CERTS) }, Modifier.fillMaxWidth()) { Text(stringResource(R.string.g6_certs_title)) }
         if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
         error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
@@ -425,6 +539,13 @@ private fun VerifyTab(nav: NavHostController, file: File?, focusField: String?, 
             itemsIndexed(order) { _, i ->
                 val v = r[i]
                 VerifyCard(v, certs.getOrNull(i), onTrust = { c -> if (com.smartdocs.editor.core.sign.TrustedCerts.add(ctx, c)) verify() },
+                    verifyAt = DigitalSignature.verificationTime(v, verifyTime),
+                    onCompare = if (file != null && v.signedLength > 0 && !v.coversWholeDocument) ({
+                        scope.launch {
+                            val out = withContext(Dispatchers.IO) { runCatching { signedVersion(ctx.cacheDir, file, v) }.getOrNull() }
+                            if (out != null) { SignedCompare.pending = out to file; nav.navigate(Routes.tool("compare", Uri.fromFile(out).toString())) }
+                        }
+                    }) else null,
                     onSignedVersion = if (file != null && v.signedLength > 0 && !v.coversWholeDocument) ({
                         scope.launch {
                             val out = withContext(Dispatchers.IO) { runCatching { signedVersion(ctx.cacheDir, file, v) }.getOrNull() }
@@ -463,6 +584,7 @@ private fun VerifyTab(nav: NavHostController, file: File?, focusField: String?, 
 private fun VerifyCard(
     r: DigitalSignature.VerifyResult, cert: com.smartdocs.editor.core.sign.CertInspector.SigCert? = null, onTrust: (java.security.cert.X509Certificate) -> Unit = {},
     onSignedVersion: (() -> Unit)? = null, onClear: (() -> Unit)? = null,
+    verifyAt: java.util.Date? = null, onCompare: (() -> Unit)? = null,
 ) {
     val ok = r.signatureValid
     val small = MaterialTheme.typography.bodySmall
@@ -500,10 +622,17 @@ private fun VerifyCard(
             r.revocation?.let { RevocationLine(it, r.timestampDate ?: r.signDate) }
             if (r.subFilter.isNotBlank()) Text(r.subFilter, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
             r.error?.let { Text(it, style = small, color = MaterialTheme.colorScheme.error) }
+            DigitalSignature.certValidAt(r, verifyAt)?.let { ok2 ->
+                Text(stringResource(if (ok2) R.string.ns2_cert_valid_at else R.string.ns2_cert_invalid_at, DocumentRepository.formatDate(verifyAt!!.time)),
+                    style = small, color = if (ok2) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
+            }
             if (cert != null) CertTrustSection(cert, onTrust)   // gaps6: trust + certificate details
-            if (onSignedVersion != null || onClear != null) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            // Foxit "trust time-stamp server certificate"
+            r.timestampCert?.let { tc -> TextButton(onClick = { onTrust(tc) }) { Text(stringResource(R.string.ns2_trust_tsa, DigitalSignature.friendlyName(tc.subjectX500Principal.name))) } }
+            if (onSignedVersion != null || onClear != null || onCompare != null) Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 onSignedVersion?.let { TextButton(onClick = it) { Text(stringResource(R.string.ns_view_signed_version)) } }
                 onClear?.let { TextButton(onClick = it) { Text(stringResource(R.string.ns_field_clear)) } }
+                onCompare?.let { TextButton(onClick = it) { Text(stringResource(R.string.ns2_compare_signed)) } }
             }
         }
     }
@@ -528,4 +657,12 @@ private fun RevocationLine(rev: Revocation.Result, signedAt: java.util.Date?) {
         }
         Text("• ${c.subject}: ${c.status.name.lowercase()} · $src" + (c.problem?.let { " · $it" } ?: ""), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
+}
+
+/** "Compare signed version to current version": the compare tool takes the pair from here (old = signed revision). */
+object SignedCompare {
+    @Volatile var pending: Pair<File, File>? = null
+
+    /** The current version to compare with when [old] is the signed revision just handed over. */
+    fun take(old: File?): File? = pending?.takeIf { old != null && it.first.path == old.path }?.also { pending = null }?.second
 }
