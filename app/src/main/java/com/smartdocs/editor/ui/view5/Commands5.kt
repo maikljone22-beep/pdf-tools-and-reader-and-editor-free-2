@@ -129,6 +129,7 @@ fun CommandSearchSheet(e: V5Env) {
             OutlinedTextField(q, { q = it }, Modifier.fillMaxWidth().focusRequester(focus), singleLine = true,
                 leadingIcon = { Icon(Icons.Default.Bolt, null) }, placeholder = { Text(stringResource(R.string.v5_tell_me)) })
             Text(stringResource(R.string.v5_pin_hint), style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(vertical = 4.dp))
+            val nveAi = com.smartdocs.editor.LocalSettings.current.aiEnabled
             LazyColumn(Modifier.weight(1f)) {
                 items(ranked, key = { it.id }) { c ->
                     ListItem(headlineContent = { Text(stringResource(c.label)) }, leadingContent = { Icon(c.icon, null) },
@@ -144,7 +145,7 @@ fun CommandSearchSheet(e: V5Env) {
                     ListItem(headlineContent = { Text(stringResource(R.string.nv_help_on, q)) }, leadingContent = { Icon(Icons.AutoMirrored.Filled.HelpOutline, null) },
                         modifier = Modifier.combinedClickable(onClick = { v.close(); com.smartdocs.editor.ui.nve.shell.NveHelp.openWithQuery(e.nav, q) }))
                 }
-                if (q.isNotBlank() && com.smartdocs.editor.LocalSettings.current.aiEnabled) item {
+                if (q.isNotBlank() && nveAi) item {
                     ListItem(headlineContent = { Text(stringResource(R.string.nv_ask_assistant, q)) }, leadingContent = { Icon(Icons.Default.AutoAwesome, null) },
                         modifier = Modifier.combinedClickable(onClick = { v.close(); com.smartdocs.editor.ui.nve.shell.NveHelp.askAi(e.nav, q) }))
                 }
