@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- audit AN-28 / DI-27: SignedDocumentException (core/pdf/SignedSave.kt); shown by the reader when a save is refused -->
+    <string name="signed_doc_save_as_copy">This file is digitally signed and the change cannot be saved into it without breaking the signature. Save a copy instead.</string>
+    <string name="signed_doc_certified_no_changes">This file is certified, and its certification does not allow adding or removing comments. Save a copy instead.</string>
+    <string name="signed_doc_save_copy_action">Save a copy</string>
+    <string name="signed_doc_notice">Signed file: comments are appended as an incremental update, so the signature stays valid.</string>
+</resources>

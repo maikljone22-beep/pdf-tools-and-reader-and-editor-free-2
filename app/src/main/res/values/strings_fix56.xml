@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- audit AN-28 / DI-27: SignedDocumentException (core/pdf/SignedSave.kt); shown by the reader when a save is refused -->
+    <string name="signed_doc_save_as_copy">هذا الملف موقّع رقمياً، ولا يمكن حفظ التعديل فيه دون إبطال التوقيع. احفظ نسخة بدلاً من ذلك.</string>
+    <string name="signed_doc_certified_no_changes">هذا الملف مُصدَّق، والتصديق لا يسمح بإضافة تعليقات أو حذفها. احفظ نسخة بدلاً من ذلك.</string>
+    <string name="signed_doc_save_copy_action">حفظ نسخة</string>
+    <string name="signed_doc_notice">ملف موقّع: تُضاف التعليقات كتحديث تزايدي فيبقى التوقيع صالحاً.</string>
+</resources>
