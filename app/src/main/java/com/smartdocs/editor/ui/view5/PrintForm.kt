@@ -76,6 +76,7 @@ fun PrintOptionsForm(s: PrintSettings, onChange: (PrintSettings) -> Unit) {
         FilterChip(s.subset == PrintLayout.Subset.ODD, { onChange(s.copy(subset = PrintLayout.Subset.ODD)) }, label = { Text(stringResource(R.string.v5_odd)) })
         FilterChip(s.subset == PrintLayout.Subset.EVEN, { onChange(s.copy(subset = PrintLayout.Subset.EVEN)) }, label = { Text(stringResource(R.string.v5_even)) })
         FilterChip(s.reverse, { onChange(s.copy(reverse = !s.reverse)) }, label = { Text(stringResource(R.string.v5_reverse)) })
+        FilterChip(s.markedOnly, { onChange(s.copy(markedOnly = !s.markedOnly)) }, label = { Text(stringResource(R.string.nf_markups_only)) })   // NVE-file
     }
     Text(stringResource(R.string.nbt_print_what), style = MaterialTheme.typography.labelLarge)
     Chips {

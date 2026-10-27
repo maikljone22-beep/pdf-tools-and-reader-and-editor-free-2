@@ -34,6 +34,7 @@ fun SmartDocsTheme(
     mode: ThemeMode = ThemeMode.SYSTEM,
     rtl: Boolean = true,
     dynamicColor: Boolean = false, // off: brand consistency
+    accent: Long = AccentColors.DEFAULT,   // NVE-shell: AccentColors.DYNAMIC = Android 12+ dynamic colour; the accent colour itself is NpfPrefs.accent
     content: @Composable () -> Unit,
 ) {
     val dark = when (mode) {
@@ -42,12 +43,13 @@ fun SmartDocsTheme(
         ThemeMode.DARK -> true
     }
     val ctx = LocalContext.current
+    // nav-prefs accent (NpfPrefs.accent) is the colour; NVE-shell adds the Android 12+ dynamic colour option
     val base = when {
-        dynamicColor && Build.VERSION.SDK_INT >= 31 -> if (dark) dynamicDarkColorScheme(ctx) else dynamicLightColorScheme(ctx)
+        (dynamicColor || accent == AccentColors.DYNAMIC) && Build.VERSION.SDK_INT >= 31 -> if (dark) dynamicDarkColorScheme(ctx) else dynamicLightColorScheme(ctx)
         dark -> DarkColors
         else -> LightColors
     }
-    val scheme = npfAccent(base, dark, com.smartdocs.editor.core.data.NpfPrefs.accent)   // nav-prefs (SHL-13): accent colour
+    val scheme = if (accent == AccentColors.DYNAMIC) base else npfAccent(base, dark, com.smartdocs.editor.core.data.NpfPrefs.accent)   // nav-prefs (SHL-13): accent colour
     // status/navigation bar icons follow the app theme (not only the system one)
     val view = LocalView.current
     if (!view.isInEditMode) {

@@ -58,6 +58,7 @@ fun View5PageOverlays(s: ReaderState) {
     }
 }
 
+@Suppress("unused")
 @Composable
 private fun GridAndRulers(v: V5State, pxPerPt: Float, w: Float, h: Float) {
     val mmPx = pxPerPt * 72f / 25.4f
@@ -131,8 +132,8 @@ private fun ReadingRuler(v: V5State, hPx: Float) {
 private fun LensOverlay(v: V5State) {
     val view = LocalView.current
     var origin by remember { mutableStateOf(Offset.Zero) }
-    val magnifier = remember(view, v.lensZoom) {
-        if (Build.VERSION.SDK_INT >= 29) Magnifier.Builder(view).setInitialZoom(v.lensZoom).setSize(420, 260).setCornerRadius(40f).build()
+    val magnifier = remember(view, v.lensZoom, com.smartdocs.editor.ui.nve.NveState.of(v.s).lensW, com.smartdocs.editor.ui.nve.NveState.of(v.s).lensH) {
+        if (Build.VERSION.SDK_INT >= 29) Magnifier.Builder(view).setInitialZoom(v.lensZoom).setSize(com.smartdocs.editor.ui.nve.NveState.of(v.s).lensW, com.smartdocs.editor.ui.nve.NveState.of(v.s).lensH)   /* NVE: window size */.setCornerRadius(40f).build()
         else if (Build.VERSION.SDK_INT >= 28) @Suppress("DEPRECATION") Magnifier(view) else null
     }
     DisposableEffect(magnifier) { onDispose { if (Build.VERSION.SDK_INT >= 28) magnifier?.dismiss() } }
@@ -161,6 +162,11 @@ private fun AutoScrollBar(v: V5State, modifier: Modifier) {
             Text(stringResource(R.string.v5_speed_n, v.autoSpeed), style = MaterialTheme.typography.labelLarge)
             IconButton(onClick = { v.autoSpeed = (v.autoSpeed + 1).coerceAtMost(10); v.saveOverlays() }) { Icon(Icons.Default.Add, stringResource(R.string.v5_faster)) }
             IconButton(onClick = { v.autoPaused = !v.autoPaused }) { Icon(if (v.autoPaused) Icons.Default.PlayArrow else Icons.Default.Pause, null) }
+            // NVE: reverse direction, previous / next page while scrolling
+            val nve = com.smartdocs.editor.ui.nve.NveState.of(v.s)
+            IconButton(onClick = { nve.autoReverse = !nve.autoReverse }) { Icon(if (nve.autoReverse) Icons.Default.ArrowUpward else Icons.Default.ArrowDownward, stringResource(R.string.nv_auto_reverse)) }
+            IconButton(onClick = { v.s.jumpTo(v.s.currentPage - 1) }) { Icon(Icons.Default.SkipPrevious, stringResource(R.string.previous)) }
+            IconButton(onClick = { v.s.jumpTo(v.s.currentPage + 1) }) { Icon(Icons.Default.SkipNext, stringResource(R.string.next)) }
             IconButton(onClick = { v.autoScroll = false; v.autoPaused = false }) { Icon(Icons.Default.Stop, stringResource(R.string.v5_stop)) }
         }
     }
@@ -194,8 +200,9 @@ fun V5AutoScrollEffect(s: ReaderState, list: LazyListState) {
         while (isActive) {
             val now = withFrameNanos { it }
             val dt = ((now - last) / 1_000_000_000f).coerceAtMost(0.1f); last = now
-            list.dispatchRawDelta(pxPerSec * dt)
-            if (!list.canScrollForward) { v.autoScroll = false; break }
+            val rev = com.smartdocs.editor.ui.nve.NveState.of(s).autoReverse      // NVE: reverse direction
+            list.dispatchRawDelta(if (rev) -pxPerSec * dt else pxPerSec * dt)
+            if (if (rev) !list.canScrollBackward else !list.canScrollForward) { v.autoScroll = false; break }
         }
     }
 }

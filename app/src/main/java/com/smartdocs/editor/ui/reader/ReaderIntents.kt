@@ -29,6 +29,11 @@ object ReaderIntents {
     }
 
     fun openUri(context: Context, raw: String) {
+        // NVE: safe reading - links to untrusted hosts ask first (NveTrust, Settings)
+        com.smartdocs.editor.ui.nve.shell.NveTrust.guardLink(context, raw) { openUriNow(context, raw) }
+    }
+
+    private fun openUriNow(context: Context, raw: String) {
         val uri = runCatching { Uri.parse(if (raw.contains("://") || raw.startsWith("mailto:") || raw.startsWith("tel:")) raw else "https://$raw") }.getOrNull() ?: return
         val scheme = uri.scheme?.lowercase()
         if (scheme == "http" || scheme == "https") {

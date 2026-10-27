@@ -24,6 +24,47 @@ data class EditTextStyle(
     val family: FontFamily = FontFamily.SANS,
     /** Baseline-to-baseline distance; null = 1.25 × size. */
     val lineHeight: Float? = null,
+    // NVE-text: rich text and advanced formatting (any non-default value goes through RichWriter)
+    val underline: Boolean = false,
+    val strike: Boolean = false,
+    val script: Script = Script.NONE,
+    /** Extra space after every glyph (Tc), points. */
+    val charSpacing: Float = 0f,
+    /** Extra space after every space character, points (TJ adjustments: Tw is ignored by multi-byte fonts). */
+    val wordSpacing: Float = 0f,
+    /** Line height multiplier. */
+    val lineSpacing: Float = 1f,
+    /** Horizontal scaling (Tz), percent. */
+    val hScale: Float = 100f,
+    /** Baseline offset (Ts), points. */
+    val rise: Float = 0f,
+    /** Outline the glyphs with [strokeColor] / [strokeWidth] (0 = automatic). */
+    val stroke: Boolean = false,
+    val strokeColor: Int = 0x000000,
+    val strokeWidth: Float = 0f,
+    /** False with [stroke]: outline only (no fill). */
+    val fillText: Boolean = true,
+    /** Custom font face (see EditFonts ids: "asset:\u2026", "res:\u2026", "file:\u2026"); null = family / original font. */
+    val fontPath: String? = null,
+    val embed: FontEmbed = FontEmbed.SUBSET,
+    val list: ListKind = ListKind.NONE,
+    /** Per-range styles of the text (rich text). */
+    val runs: List<RunStyle> = emptyList(),
+    /** Bullet character for [ListKind.BULLET]. */
+    val bullet: String = "\u2022",
+    val numbering: NumberFormat = NumberFormat.DECIMAL,
+    /** Start-side indent of every line, points. */
+    val indent: Float = 0f,
+    /** Extra space after each paragraph, points. */
+    val paraSpacing: Float = 0f,
+    /** Counter-clockwise rotation of the whole box around its top-start corner, degrees. */
+    val rotation: Float = 0f,
+    /** Paragraph direction override: null = from the text, true = right-to-left, false = left-to-right. */
+    val rtlOverride: Boolean? = null,
+    /** Vertical text: glyphs stacked top to bottom, columns right to left. */
+    val vertical: Boolean = false,
+    /** Text mode "invisible" (rendering mode 3, e.g. a searchable layer). */
+    val invisible: Boolean = false,
 )
 
 /**
@@ -143,6 +184,7 @@ internal class TextLayout(private val fonts: FontSet, private val style: EditTex
                 TextAlign.LEFT -> left
                 TextAlign.RIGHT -> right - line.width
                 TextAlign.CENTER -> left + (right - left - line.width) / 2f
+                TextAlign.JUSTIFY -> if (line.rtl) right - line.width else left      // NVE-text: justified text uses RichWriter
             }
             val tagged = ArabicShaper.isArabic(line.logical)
             if (tagged) {

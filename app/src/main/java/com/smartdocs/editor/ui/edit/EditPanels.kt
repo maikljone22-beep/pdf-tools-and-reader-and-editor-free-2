@@ -66,7 +66,7 @@ internal fun TextFormatBar(c: EditController) {
                 Text(uiText(UiMsg.RECOVERED), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary,
                     modifier = Modifier.padding(horizontal = 12.dp))
             }
-            if (b != null && !c.unreadable) {
+            if (b != null && !c.unreadable && EditPrefs.warnFonts(LocalContext.current)) {      // NVE-text: preference
                 val substituted = !b.fontReusable || ArabicShaper.isArabic(c.text) || st.bold != b.bold || st.italic != b.italic || st.family != b.family
                 val note = when {
                     c.replaceWhole -> stringResource(R.string.ed_font_substituted, b.fontName.ifBlank { "?" })
@@ -87,24 +87,23 @@ internal fun TextFormatBar(c: EditController) {
                 }
                 IconButton(onClick = { c.style = st.copy(size = (st.size + 1f).coerceAtMost(200f)) }) { Icon(Icons.Default.TextIncrease, stringResource(R.string.ed_bigger)) }
                 VerticalDivider(Modifier.height(28.dp).padding(horizontal = 2.dp))
-                BarIcon(Icons.Default.FormatBold, stringResource(R.string.ed_bold), st.bold) { c.style = st.copy(bold = !st.bold) }
-                BarIcon(Icons.Default.FormatItalic, stringResource(R.string.ed_italic), st.italic) { c.style = st.copy(italic = !st.italic) }
-                TextButton(onClick = {
-                    c.style = st.copy(family = FontFamily.entries[(st.family.ordinal + 1) % FontFamily.entries.size])
-                }) {
-                    Text(stringResource(when (st.family) { FontFamily.SANS -> R.string.ed_family_sans; FontFamily.SERIF -> R.string.ed_family_serif; FontFamily.MONO -> R.string.ed_family_mono }))
-                }
+                // NVE-text: bold / italic apply to the selected characters when there is a selection
+                val tt = TextTools5.of(c)
+                BarIcon(Icons.Default.FormatBold, stringResource(R.string.ed_bold), tt.isOn(RunAttr.BOLD)) { tt.toggle(RunAttr.BOLD) }
+                BarIcon(Icons.Default.FormatItalic, stringResource(R.string.ed_italic), tt.isOn(RunAttr.ITALIC)) { tt.toggle(RunAttr.ITALIC) }
+                TextBarExtras5(c)      // NVE-text: underline, strike, super/sub, font picker, spell check, colour, more
                 VerticalDivider(Modifier.height(28.dp).padding(horizontal = 2.dp))
                 BarIcon(Icons.Default.FormatAlignLeft, stringResource(R.string.ed_align_left), st.align == TextAlign.LEFT) { c.style = st.copy(align = TextAlign.LEFT); c.alignTouched = true }
                 BarIcon(Icons.Default.FormatAlignCenter, stringResource(R.string.ed_align_center), st.align == TextAlign.CENTER) { c.style = st.copy(align = TextAlign.CENTER); c.alignTouched = true }
                 BarIcon(Icons.Default.FormatAlignRight, stringResource(R.string.ed_align_right), st.align == TextAlign.RIGHT) { c.style = st.copy(align = TextAlign.RIGHT); c.alignTouched = true }
+                JustifyButton5(c)      // NVE-text
                 VerticalDivider(Modifier.height(28.dp).padding(horizontal = 2.dp))
                 EDIT_COLORS.forEach { col ->
                     val sel = (st.color and 0xFFFFFF) == col
                     Box(
                         Modifier.padding(3.dp).size(if (sel) 30.dp else 26.dp).clip(CircleShape).background(Color(0xFF000000 or col.toLong()))
                             .border(if (sel) 3.dp else 1.dp, if (sel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline, CircleShape)
-                            .clickable { c.style = st.copy(color = col) },
+                            .clickable { TextTools5.of(c).color(col) },      // NVE-text: selection aware
                     )
                 }
             }
@@ -112,6 +111,7 @@ internal fun TextFormatBar(c: EditController) {
                 if (c.block != null) TextButton(onClick = { c.deleteBlock() }, enabled = !c.busy) {
                     Icon(Icons.Default.Delete, null, Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text(stringResource(R.string.ed_delete_block))
                 }
+                CopyTextObject5(c)      // NVE-img: copy the block as a page object
                 Spacer(Modifier.weight(1f))
                 TextButton(onClick = { c.clearSelection() }, enabled = !c.busy) { Text(stringResource(R.string.cancel)) }
                 Button(onClick = { c.commitText(rtlUi) }, enabled = !c.busy) { Text(stringResource(R.string.done), fontWeight = FontWeight.Bold) }
@@ -198,6 +198,7 @@ internal fun ImageActionBar(c: EditController) {
                 ActionChip(Icons.AutoMirrored.Filled.RotateLeft, stringResource(R.string.ed_img_rotate_left), !c.busy) { c.rotateImage(clockwise = false) }
                 ActionChip(Icons.AutoMirrored.Filled.RotateRight, stringResource(R.string.ed_img_rotate_right), !c.busy) { c.rotateImage(clockwise = true) }
                 ActionChip(Icons.Default.Delete, stringResource(R.string.delete), !c.busy) { confirmDelete = true }
+                ImageTools5Chips(c)      // NVE-img: more image tools
             }
             Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(R.string.ed_img_drag_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
@@ -230,6 +231,7 @@ internal fun InsertImageBar(c: EditController) {
     Surface(tonalElevation = 3.dp, shadowElevation = 6.dp) {
         Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(stringResource(R.string.ed_img_insert_here), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+            InsertExtras5(c)      // NVE-img: clipboard / camera / paste object
             TextButton(onClick = { c.insertAt = null }) { Text(stringResource(R.string.cancel)) }
             Button(onClick = { pick() }, enabled = !c.busy) { Icon(Icons.Default.AddPhotoAlternate, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.ed_img_pick)) }
         }

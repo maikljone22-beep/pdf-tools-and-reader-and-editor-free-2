@@ -99,6 +99,8 @@ fun TextPromptDialog(state: ReaderState, prompt: TextPrompt, onDismiss: () -> Un
         onDismissRequest = onDismiss,
         title = { Text(stringResource(title)) },
         text = {
+            // NVE: live spell check (underlines) + spell-check button; Arabic-Indic digits option applied on OK
+            val nveIssues = if (isLink) emptyList() else com.smartdocs.editor.ui.nve.rememberSpellIssues(text)
             if (isComb) Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 OutlinedTextField(text, { text = it.replace("\n", "") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

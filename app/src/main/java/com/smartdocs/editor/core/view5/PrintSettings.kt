@@ -21,6 +21,8 @@ import java.io.File
 data class PrintSettings(
     val subset: PrintLayout.Subset = PrintLayout.Subset.ALL,
     val reverse: Boolean = false,
+    /** NVE-file: only pages that carry comments / markups. */
+    val markedOnly: Boolean = false,
     val content: PrintContent = PrintContent.DOC_AND_MARKUPS,
     val notes: Boolean = false,
     val summary: Boolean = false,
@@ -49,7 +51,7 @@ data class PrintSettings(
     val dpi: Int = 150,
 ) {
     fun toOptions(range: String): PrintOptions = PrintOptions(
-        range = range, subset = subset, reverse = reverse, perSheet = perSheet, booklet = booklet, rightBinding = rightBinding,
+        range = range, subset = subset, reverse = reverse, markedOnly = markedOnly, perSheet = perSheet, booklet = booklet, rightBinding = rightBinding,
         paper = paperRect(paper), landscape = landscape, borders = borders, annotations = true, rtlOrder = rtlOrder,
         scale = scale, scalePct = scalePct, autoRotate = autoRotate, margin = margin, cols = cols, rows = rows, vertical = vertical,
         sides = sides, sheets = sheets, content = content, poster = poster, posterZoom = posterZoom, overlap = overlap,
@@ -59,7 +61,7 @@ data class PrintSettings(
     fun extras(): PrintExtras = PrintExtras(grayscale = grayscale, asImage = asImage, dpi = dpi, summary = summary)
 
     fun toJson(): String = JSONObject().apply {
-        put("subset", subset.name); put("reverse", reverse); put("content", content.name); put("notes", notes); put("summary", summary)
+        put("subset", subset.name); put("reverse", reverse); put("markedOnly", markedOnly); put("content", content.name); put("notes", notes); put("summary", summary)
         put("perSheet", perSheet); put("cols", cols); put("rows", rows); put("vertical", vertical); put("rtl", rtlOrder)
         put("booklet", booklet); put("rightBinding", rightBinding); put("sides", sides.name); put("sheets", sheets)
         put("paper", paper); put("landscape", landscape); put("borders", borders); put("scale", scale.name); put("pct", scalePct)
@@ -80,7 +82,7 @@ data class PrintSettings(
             runCatching {
                 val o = JSONObject(it); val d = PrintSettings()
                 PrintSettings(
-                    subset = enumOf(o.optString("subset"), d.subset), reverse = o.optBoolean("reverse"), content = enumOf(o.optString("content"), d.content),
+                    subset = enumOf(o.optString("subset"), d.subset), reverse = o.optBoolean("reverse"), markedOnly = o.optBoolean("markedOnly"), content = enumOf(o.optString("content"), d.content),
                     notes = o.optBoolean("notes"), summary = o.optBoolean("summary"), perSheet = o.optInt("perSheet", 1), cols = o.optInt("cols"), rows = o.optInt("rows"),
                     vertical = o.optBoolean("vertical"), rtlOrder = o.optBoolean("rtl", true), booklet = o.optBoolean("booklet"), rightBinding = o.optBoolean("rightBinding", true),
                     sides = enumOf(o.optString("sides"), d.sides), sheets = o.optString("sheets"), paper = o.optString("paper", "A4"), landscape = o.optBoolean("landscape"),

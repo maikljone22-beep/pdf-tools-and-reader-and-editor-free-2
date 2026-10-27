@@ -5,6 +5,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -31,7 +32,40 @@ fun DocPropsScreen(nav: NavHostController, uri: String?) {
     var p by remember { mutableStateOf<DocProps?>(null) }
     var syncXmp by remember { mutableStateOf(true) }
     var resetCreated by remember { mutableStateOf(false) }
+    // NVE-file: facts, security, fonts, XMP, PDF/UA
+    var facts by remember { mutableStateOf<com.smartdocs.editor.core.nve.DocInspect.Facts?>(null) }
+    var fonts by remember { mutableStateOf<List<com.smartdocs.editor.core.nve.DocInspect.FontEntry>?>(null) }
+    var markUa by remember { mutableStateOf(false) }
+    var uaLang by remember { mutableStateOf("") }
+    val nveScope = rememberCoroutineScope()
+    val nveCtx = androidx.compose.ui.platform.LocalContext.current
+    LaunchedEffect(doc.work, doc.version) {
+        val w = doc.work ?: return@LaunchedEffect
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            facts = runCatching { com.smartdocs.editor.core.nve.DocInspect.read(w, doc.password) }.getOrNull()
+            fonts = runCatching { com.smartdocs.editor.core.nve.DocInspect.readFonts(w, doc.password) }.getOrNull()
+        }
+    }
+    val exportXmp = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/rdf+xml")) { u ->
+        val w = doc.work; if (u == null || w == null) return@rememberLauncherForActivityResult
+        nveScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching { val b = com.smartdocs.editor.core.nve.XmpOps.exportFile(w, doc.password) ?: error(nveCtx.getString(R.string.nf_xmp_none)); nveCtx.contentResolver.openOutputStream(u)?.use { it.write(b) } }
+                .onFailure { runner.error = it.message }
+        }
+    }
+    var xmpMode by remember { mutableStateOf(com.smartdocs.editor.core.nve.XmpOps.Mode.MERGE) }
     val processing = stringResource(R.string.processing)
+    val importXmp = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { u ->
+        if (u == null) return@rememberLauncherForActivityResult
+        val mode = xmpMode
+        runner.run(processing) {
+            val bytes = nveCtx.contentResolver.openInputStream(u)?.use { it.readBytes() } ?: error("read")
+            if (!com.smartdocs.editor.core.nve.XmpOps.isXmp(bytes)) error(nveCtx.getString(R.string.nf_xmp_invalid))
+            doc.apply(app.documents.tempDir) { s, o, pw -> com.smartdocs.editor.core.nve.XmpOps.importFile(s, o, pw, bytes, mode) }
+            p = runCatching { DocPropsOps.read(doc.work!!, doc.password) }.getOrNull()
+            null
+        }
+    }
     LaunchedEffect(doc.work) { val w = doc.work ?: return@LaunchedEffect; p = runCatching { DocPropsOps.read(w, doc.password) }.getOrNull() }
     ToolScaffold(stringResource(R.string.e5_props_title), nav, runner) {
         E5FileRow(doc)
@@ -51,6 +85,29 @@ fun DocPropsScreen(nav: NavHostController, uri: String?) {
                 Text(stringResource(R.string.e5_p_created, cur.created?.let { df.format(it.time) } ?: "—"), style = MaterialTheme.typography.bodySmall)
                 Text(stringResource(R.string.e5_p_modified, cur.modified?.let { df.format(it.time) } ?: "—"), style = MaterialTheme.typography.bodySmall)
                 SwitchRow(stringResource(R.string.e5_p_reset_created), resetCreated) { resetCreated = it }
+            }
+            // NVE-file: base URL of relative links (/URI /Base)
+            E5Section(stringResource(R.string.nf_tab_advanced)) {
+                OutlinedTextField(cur.baseUrl, { v -> set { it.copy(baseUrl = v) } }, Modifier.fillMaxWidth(), singleLine = true,
+                    label = { Text(stringResource(R.string.nf_base_url)) }, placeholder = { Text("https://example.com/docs/") })
+                facts?.let { f -> com.smartdocs.editor.ui.nve.file.NveAdvancedPanel(f, runner.running, onBaseUrl = null, onMarkUa = null) }
+                SwitchRow(stringResource(R.string.nf_ua_mark), markUa) { markUa = it }
+                if (markUa) {
+                    Text(stringResource(R.string.nf_ua_hint), style = MaterialTheme.typography.bodySmall)
+                    if (facts?.hasStructTree == false) Text(stringResource(R.string.nf_ua_untagged), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                    if (cur.view.language.isBlank()) OutlinedTextField(uaLang, { uaLang = it }, singleLine = true, label = { Text(stringResource(R.string.nf_lang)) }, placeholder = { Text("ar") })
+                }
+            }
+            E5Section(stringResource(R.string.nf_tab_security)) { facts?.let { com.smartdocs.editor.ui.nve.file.NveSecurityPanel(it.security) } }
+            E5Section(stringResource(R.string.nf_tab_fonts)) { fonts?.let { com.smartdocs.editor.ui.nve.file.NveFontsPanel(it) } ?: CircularProgressIndicator() }
+            E5Section(stringResource(R.string.nf_tab_xmp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    OutlinedButton(onClick = { exportXmp.launch((doc.source?.nameWithoutExtension ?: "metadata") + ".xmp") }) { Text(stringResource(R.string.nf_xmp_export)) }
+                    OutlinedButton(onClick = { xmpMode = com.smartdocs.editor.core.nve.XmpOps.Mode.MERGE; importXmp.launch(arrayOf("*/*")) }) { Text(stringResource(R.string.nf_xmp_append)) }
+                    OutlinedButton(onClick = { xmpMode = com.smartdocs.editor.core.nve.XmpOps.Mode.REPLACE; importXmp.launch(arrayOf("*/*")) }) { Text(stringResource(R.string.nf_xmp_replace)) }
+                }
+                Text(stringResource(R.string.nf_xmp_hint), style = MaterialTheme.typography.bodySmall)
+                facts?.xmp?.let { x -> androidx.compose.foundation.text.selection.SelectionContainer { Text(x, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace, style = MaterialTheme.typography.bodySmall) } }
             }
             E5Section(stringResource(R.string.e5_props_custom)) {
                 cur.custom.forEachIndexed { i, (k, v) ->
@@ -88,6 +145,11 @@ fun DocPropsScreen(nav: NavHostController, uri: String?) {
                 ChoiceChips(listOf("", "None", "AppDefault"), v.printScaling, { if (it.isEmpty()) stringResource(R.string.e5_default) else it }) { s -> setV { it.copy(printScaling = s) } }
                 Text(stringResource(R.string.e5_p_duplex))
                 ChoiceChips(listOf("", "Simplex", "DuplexFlipShortEdge", "DuplexFlipLongEdge"), v.duplex, { if (it.isEmpty()) stringResource(R.string.e5_default) else it }) { s -> setV { it.copy(duplex = s) } }
+                // NVE-file: rest of the document print preset (read by the reader's print sheet)
+                SwitchRow(stringResource(R.string.nf_pick_tray), v.pickTrayByPdfSize) { b -> setV { it.copy(pickTrayByPdfSize = b) } }
+                OutlinedTextField(v.printPageRange, { r -> setV { it.copy(printPageRange = r) } }, Modifier.fillMaxWidth(), singleLine = true,
+                    label = { Text(stringResource(R.string.nf_print_range)) }, placeholder = { Text("1-3, 7") })
+                FloatField(v.numCopies.coerceAtLeast(1).toFloat(), stringResource(R.string.nf_num_copies)) { c -> setV { it.copy(numCopies = c.toInt().coerceIn(1, 99)) } }
             }
             E5Section(stringResource(R.string.e5_props_facts)) {
                 Text(stringResource(R.string.e5_p_facts, cur.version, cur.pages, yesNo(cur.encrypted), yesNo(cur.tagged), yesNo(cur.hasXmp)), style = MaterialTheme.typography.bodySmall)
@@ -97,8 +159,10 @@ fun DocPropsScreen(nav: NavHostController, uri: String?) {
         PrimaryButton(stringResource(R.string.save), icon = Icons.Default.Save) {
             val np = if (resetCreated) cur.copy(created = Calendar.getInstance()) else cur
             val sx = syncXmp
+            val ua = markUa; val lang = uaLang.trim().takeIf { it.isNotEmpty() }
             runner.run(processing) {
                 doc.apply(app.documents.tempDir) { s, o, pw -> DocPropsOps.write(s, o, pw, np, sx) }
+                if (ua) doc.apply(app.documents.tempDir) { s, o, pw -> com.smartdocs.editor.core.nve.XmpOps.markPdfUaFile(s, o, pw, lang) }   // NVE-file
                 doc.export(app.documents.docsDir, { d, b -> app.documents.uniqueFile(d, b) }, "props")
             }
         }

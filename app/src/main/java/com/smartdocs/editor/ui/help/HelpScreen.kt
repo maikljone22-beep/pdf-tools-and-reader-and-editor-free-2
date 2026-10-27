@@ -101,6 +101,7 @@ fun HelpScreen(nav: NavHostController) {
     if (feedbackDialog) {
         val hasCrash = remember { CrashLog.pending(ctx) != null || CrashLog.file(ctx).exists() }
         var attach by remember { mutableStateOf(hasCrash) }
+        var attachDoc by remember { mutableStateOf(false) }   // NVE-shell: attach the crashing PDF
         AlertDialog(
             onDismissRequest = { feedbackDialog = false },
             icon = { Icon(Icons.Default.Feedback, null) },
@@ -111,9 +112,14 @@ fun HelpScreen(nav: NavHostController) {
                     if (hasCrash) Row(Modifier.fillMaxWidth().clickable { attach = !attach }.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(attach, { attach = it }); Text(stringResource(R.string.ac_feedback_crash))
                     }
+                    if (hasCrash) com.smartdocs.editor.ui.nve.shell.NveCrashAttachRow(attachDoc) { attachDoc = it }   // NVE-shell
                 }
             },
-            confirmButton = { TextButton(onClick = { feedbackDialog = false; sendFeedback(ctx, attach) }) { Text(stringResource(R.string.ac_send)) } },
+            confirmButton = { TextButton(onClick = {
+                feedbackDialog = false
+                if (attachDoc) runCatching { ctx.startActivity(com.smartdocs.editor.ui.nve.shell.NveCrash.shareIntent(ctx, (CrashLog.pending(ctx)?.take(20_000) ?: "") + "\n" + deviceInfo(ctx), true)) }   // NVE-shell
+                else sendFeedback(ctx, attach)
+            }) { Text(stringResource(R.string.ac_send)) } },
             dismissButton = { TextButton(onClick = { feedbackDialog = false }) { Text(stringResource(R.string.cancel)) } },
         )
     }
