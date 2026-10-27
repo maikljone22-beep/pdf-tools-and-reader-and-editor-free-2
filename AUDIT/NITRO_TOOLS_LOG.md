@@ -124,3 +124,27 @@ Test: `NitroCompareTest`.
 | Fast Web View | not feasible | PdfBox 2 cannot linearize (unchanged) |
 
 Test: `FoxitOptimizeTest` (adds `org.apache.pdfbox:jbig2-imageio` as a test-only dependency to decode the JBIG2 output).
+
+## Foxit §29 Redaction, Smart Redact, hidden data
+
+| Row | Result | Where |
+|---|---|---|
+| RHI: overlapping objects (page converted to image) | done | Sanitize item `OVERLAPPING` (opt-in): pages where text or images are covered by a later opaque image / area (`Overlap.has`) are rendered as images (`Sanitizer.cleanFile` + `RedactApplier.rasterize`) |
+| RHI / Sanitize: multimedia | done | Sanitize item `MULTIMEDIA` (`Multimedia`: Screen, Movie, Sound, RichMedia, 3D annotations and media actions) |
+| Mark: double-click an image to mark the whole image | done | double tap in the manual view → `RedactState.markImageAt` (image boxes from `PageInspector`) |
+| Marks: move and resize before applying | done | `RedactManualView`: drag inside a mark moves it, drag a corner handle resizes it (one-rectangle marks); locked marks do not move |
+| Properties: overlay font | done (Nitro §10) | |
+| Properties: code sets, edit codes, import / export | done | named sets (Nitro §10) + import / export of code sets as JSON (`RedactPrefs.exportCodeSets/importCodeSets`) |
+| Properties: General tab (author, subject) | done | `RedactMark.author/subject` → /T and /Subj; `MarkPropertiesDialog` |
+| Properties: Review History | done | `RedactMark.reviews` written as hidden review-state replies (/IRT, /StateModel Review, /State) and read back; "set status" in the properties |
+| Properties: Locked; set current properties as default | done | `RedactMark.locked` (/F Locked; cannot be moved, resized, removed or cleared) + "Set as default" in the appearance dialog |
+| Apply a single selected mark | done | "Apply this mark only": `RedactApplier.Options.keepPending` writes the other active marks back as /Redact |
+| Redaction file name: prefix, suffix | done | prefix / suffix fields in the apply dialog (`RedactPrefs.outPrefix/outSuffix`) |
+| Search & Redact: import / export word list (.txt) | done | import (appends, de-duplicated) and export of the word list |
+| Search & Redact: country / region | done | `core/search/RegionPatterns.kt`: US SSN and phone, UK NI number, phone, postcode, driving licence, Canada SIN (Luhn), India Aadhaar (Verhoeff) and PAN, Spain DNI/NIE (check letter), Brazil CPF, China resident ID (MOD 11-2), France and Germany phones — in their own chip group. US driving licences: not added (every state has its own format; no reliable pattern) |
+| Profiles: overlay text per word / phrase group | done | word list lines "phrase \| overlay" (`PhraseList`), stored in the profile (`RedactProfile.overlays`) and used when marking hits |
+| Profiles: import / export | done | `RedactPrefs.exportProfiles/importProfiles` in the profile menu |
+| Protect Redactions (AIP) | not feasible | needs Microsoft AIP / RMS (unchanged N/A-ANDROID) |
+| Smart Redact: AI detection of person names, organisations, roles | done | `core/ai5/PiiEntities.kt`: AI path through the app's AI client (page text → JSON entities → located in the text, only real text is marked), offline fallback patterns (Arabic / English titles before names, organisation words, job-title list); new `PiiKind` PERSON / ORG / ROLE in the PII scan with a "use AI" switch |
+
+Test: `FoxitRedactTest`.

@@ -24,6 +24,7 @@ fun piiLabel(k: PiiKind): String = stringResource(when (k) {
     PiiKind.EMAIL -> R.string.a5_pii_email; PiiKind.PHONE -> R.string.a5_pii_phone; PiiKind.CARD -> R.string.a5_pii_card; PiiKind.IBAN -> R.string.a5_pii_iban
     PiiKind.NATIONAL_ID -> R.string.a5_pii_id; PiiKind.PASSPORT -> R.string.a5_pii_passport; PiiKind.DATE -> R.string.a5_pii_date
     PiiKind.URL -> R.string.a5_pii_url; PiiKind.IP -> R.string.a5_pii_ip
+    PiiKind.PERSON -> R.string.nt_pii_person; PiiKind.ORG -> R.string.nt_pii_org; PiiKind.ROLE -> R.string.nt_pii_role
 })
 
 /**
@@ -35,7 +36,10 @@ fun piiLabel(k: PiiKind): String = stringResource(when (k) {
 @Composable
 fun PiiScanSheet(file: File?, password: String?, session: PdfSession? = null, onApply: (List<SearchHit>) -> Unit, onDismiss: () -> Unit) {
     val ctx = LocalContext.current
-    var kinds by remember { mutableStateOf(PiiKind.entries.toSet() - PiiKind.DATE) }
+    var kinds by remember { mutableStateOf(PiiKind.entries.toSet() - PiiKind.DATE - com.smartdocs.editor.core.ai5.PiiEntities.KINDS) }
+    val settings = com.smartdocs.editor.LocalSettings.current
+    val aiReady = com.smartdocs.editor.core.ai.AiClient.available(settings)
+    var useAi by remember { mutableStateOf(false) }
     var hits by remember { mutableStateOf<List<PiiHit>?>(null) }
     var selected by remember { mutableStateOf(setOf<Int>()) }
     var progress by remember { mutableStateOf(0f) }
@@ -46,7 +50,11 @@ fun PiiScanSheet(file: File?, password: String?, session: PdfSession? = null, on
         scanning = true; error = null
         runCatching {
             val s = session ?: PdfSession.open(ctx, file ?: return@runCatching emptyList<PiiHit>(), password)
-            try { PiiScanner.scan(s, kinds) { p, n -> progress = (p + 1f) / n.coerceAtLeast(1) } } finally { if (session == null) s.closeAsync() }
+            val ai: (suspend (String) -> List<com.smartdocs.editor.core.ai5.PiiMatch>)? =
+                if (useAi && aiReady && kinds.any { it in com.smartdocs.editor.core.ai5.PiiEntities.KINDS }) {
+                    com.smartdocs.editor.core.ai5.PiiEntities.finder(ctx, com.smartdocs.editor.core.ai.AiClient(settings), kinds)
+                } else null
+            try { PiiScanner.scan(s, kinds, progress = { p, n -> progress = (p + 1f) / n.coerceAtLeast(1) }, ai = ai) } finally { if (session == null) s.closeAsync() }
         }.onSuccess { list -> hits = list; selected = list.indices.toSet() }.onFailure { error = it.message }
         scanning = false
     }
@@ -56,6 +64,11 @@ fun PiiScanSheet(file: File?, password: String?, session: PdfSession? = null, on
             Text(stringResource(R.string.a5_pii_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 PiiKind.entries.forEach { k -> FilterChip(selected = k in kinds, onClick = { kinds = if (k in kinds) kinds - k else kinds + k }, label = { Text(piiLabel(k)) }) }
+            }
+            if (kinds.any { it in com.smartdocs.editor.core.ai5.PiiEntities.KINDS }) Row(verticalAlignment = Alignment.CenterVertically) {
+                Switch(useAi && aiReady, { useAi = it }, enabled = aiReady)
+                Spacer(Modifier.width(8.dp))
+                Text(stringResource(if (aiReady) R.string.nt_pii_use_ai else R.string.nt_pii_ai_off), style = MaterialTheme.typography.bodySmall)
             }
             OutlinedButton(onClick = { runKey++ }, enabled = !scanning) { Text(stringResource(R.string.a5_scan_again)) }
             if (scanning) LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())

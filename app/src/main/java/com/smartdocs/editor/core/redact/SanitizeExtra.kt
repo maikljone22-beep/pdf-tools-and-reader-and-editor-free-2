@@ -105,3 +105,41 @@ internal object Structure {
         return n
     }
 }
+
+/** Multimedia added with audio / video / 3D tools: Screen, Movie, Sound, RichMedia and 3D annotations and media actions. */
+internal object Multimedia {
+    private val SUBTYPES = setOf("Screen", "Movie", "Sound", "RichMedia", "3D")
+    private val ACTIONS = setOf("Rendition", "Movie", "Sound", "RichMediaExecute", "GoTo3DView")
+
+    fun find(doc: PDDocument): List<String> {
+        val out = ArrayList<String>()
+        doc.pages.forEachIndexed { i, p -> runCatching { p.annotations }.getOrNull()?.forEach { a ->
+            if (a.subtype in SUBTYPES) out += "p.${i + 1} ${a.subtype}"
+            else if ((a.cosObject.getDictionaryObject(COSName.A) as? COSDictionary)?.getCOSName(COSName.S)?.name in ACTIONS) out += "p.${i + 1} action"
+        } }
+        return out
+    }
+
+    fun remove(doc: PDDocument): Int {
+        var n = 0
+        doc.pages.forEach { p ->
+            val list = runCatching { p.annotations }.getOrNull() ?: return@forEach
+            val keep = list.filterNot { it.subtype in SUBTYPES }
+            if (keep.size != list.size) { n += list.size - keep.size; p.annotations = keep }
+            keep.forEach { a -> (a.cosObject.getDictionaryObject(COSName.A) as? COSDictionary)?.let { act -> if (act.getCOSName(COSName.S)?.name in ACTIONS) { a.cosObject.removeItem(COSName.A); n++ } } }
+        }
+        return n
+    }
+}
+
+/** Foxit RHI "overlapping objects": text or images painted over by a later image or opaque area. */
+internal object Overlap {
+    fun has(insp: PageInspector): Boolean {
+        if (insp.failed) return false
+        val covers = insp.paints.filter { !it.nested && !it.hidden && it.opaque && (it.kind == PaintKind.IMAGE || (it.kind == PaintKind.FILL && it.rectOnly)) }
+        if (covers.isEmpty()) return false
+        if (insp.glyphs.any { g -> covers.any { c -> c.order > g.order && c.box.intersects(g.box) } }) return true
+        val images = insp.paints.filter { !it.nested && it.kind == PaintKind.IMAGE }
+        return images.any { a -> covers.any { c -> c !== a && c.order > a.order && c.box.intersects(a.box) && c.box.area > 4f } }
+    }
+}

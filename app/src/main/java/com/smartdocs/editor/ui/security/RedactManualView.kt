@@ -34,7 +34,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /** A mark as drawn on the page view: display space (origin bottom-left, top > bottom) with its fill colour. */
-data class ManualBox(val id: String, val rect: RectF, val fill: Int, val outline: Int?, val wholePage: Boolean = false)
+data class ManualBox(val id: String, val rect: RectF, val fill: Int, val outline: Int?, val wholePage: Boolean = false, val locked: Boolean = false, val single: Boolean = true)
 
 /**
  * Single-page viewer where the user drags rectangles. Existing regions of the page are drawn as black
@@ -48,6 +48,9 @@ fun RedactManualView(
     boxes: List<ManualBox>,
     onAdd: (RectF) -> Unit,
     modifier: Modifier = Modifier,
+    onMove: (String, Float, Float) -> Unit = { _, _, _ -> },
+    onResize: (String, RectF) -> Unit = { _, _ -> },
+    onDoubleTap: (Float, Float) -> Unit = { _, _ -> },
 ) {
     var drawMode by remember { mutableStateOf(true) }
     var size by remember(page) { mutableStateOf(595f to 842f) }
@@ -74,23 +77,53 @@ fun RedactManualView(
             }
             var dragStart by remember { mutableStateOf<Offset?>(null) }
             var dragNow by remember { mutableStateOf<Offset?>(null) }
+            // Foxit: an existing mark is moved by dragging inside it and resized by dragging a corner
+            var editing by remember { mutableStateOf<Pair<ManualBox, Int>?>(null) }   // box, -1 = move, 0..3 = corner
+            val current by rememberUpdatedState(boxes)
+            fun toPt(o: Offset) = (o.x / scale) to (ph - o.y / scale)
+            fun hit(o: Offset): Pair<ManualBox, Int>? {
+                val (x, y) = toPt(o)
+                val slop = 18f / scale
+                for (b in current.reversed()) {
+                    if (b.wholePage || b.locked) continue
+                    val r = b.rect
+                    if (b.single) {
+                        val corners = listOf(r.left to r.top, r.right to r.top, r.left to r.bottom, r.right to r.bottom)
+                        corners.forEachIndexed { k, (cx, cy) -> if (kotlin.math.abs(cx - x) <= slop && kotlin.math.abs(cy - y) <= slop) return b to k }
+                    }
+                    if (x >= r.left && x <= r.right && y <= r.top && y >= r.bottom) return b to -1
+                }
+                return null
+            }
 
             Box(
                 Modifier.fillMaxWidth().aspectRatio(pw / ph).background(Color.White)
+                    .pointerInput(page, scale) { androidx.compose.foundation.gestures.detectTapGestures(onDoubleTap = { o -> val (x, y) = toPt(o); onDoubleTap(x, y) }) }
                     .then(if (drawMode) Modifier.pointerInput(page, scale) {
                         detectDragGestures(
-                            onDragStart = { dragStart = it; dragNow = it },
+                            onDragStart = { dragStart = it; dragNow = it; editing = hit(it) },
                             onDrag = { change, _ -> change.consume(); dragNow = change.position },
                             onDragEnd = {
-                                val a = dragStart; val b = dragNow
-                                if (a != null && b != null) {
+                                val a = dragStart; val b = dragNow; val e = editing
+                                if (a != null && b != null && e != null) {
+                                    val (box, corner) = e
+                                    val dx = (b.x - a.x) / scale; val dy = -(b.y - a.y) / scale
+                                    if (corner < 0) onMove(box.id, dx, dy)
+                                    else {
+                                        val r = box.rect
+                                        var l = r.left; var t = r.top; var rr = r.right; var bt = r.bottom
+                                        when (corner) { 0 -> { l += dx; t += dy }; 1 -> { rr += dx; t += dy }; 2 -> { l += dx; bt += dy }; else -> { rr += dx; bt += dy } }
+                                        val n = RectF(minOf(l, rr), maxOf(t, bt), maxOf(l, rr), minOf(t, bt))
+                                        if (n.right - n.left > 2f && n.top - n.bottom > 2f) onResize(box.id, n)
+                                    }
+                                } else if (a != null && b != null) {
                                     val l = minOf(a.x, b.x) / scale; val r = maxOf(a.x, b.x) / scale
                                     val top = ph - minOf(a.y, b.y) / scale; val bottom = ph - maxOf(a.y, b.y) / scale
                                     if (r - l > 2f && top - bottom > 2f) onAdd(RectF(l.coerceIn(0f, pw), top.coerceIn(0f, ph), r.coerceIn(0f, pw), bottom.coerceIn(0f, ph)))
                                 }
-                                dragStart = null; dragNow = null
+                                dragStart = null; dragNow = null; editing = null
                             },
-                            onDragCancel = { dragStart = null; dragNow = null },
+                            onDragCancel = { dragStart = null; dragNow = null; editing = null },
                         )
                     } else Modifier)
             ) {
@@ -106,10 +139,26 @@ fun RedactManualView(
                         drawRect(Color(0xFF000000 or (reg.outline ?: 0xE53935).toLong()), tl, sz, style = Stroke(width = 2f))
                     }
                     val a = dragStart; val b = dragNow
-                    if (a != null && b != null) {
+                    val e = editing
+                    if (a != null && b != null && e != null) {
+                        // the moved / resized mark as it will land
+                        val r = e.first.rect; val dx = b.x - a.x; val dy = b.y - a.y
+                        var l = r.left * s; var t = (ph - r.top) * s; var rr = r.right * s; var bt = (ph - r.bottom) * s
+                        when (e.second) { -1 -> { l += dx; rr += dx; t += dy; bt += dy }; 0 -> { l += dx; t += dy }; 1 -> { rr += dx; t += dy }; 2 -> { l += dx; bt += dy }; else -> { rr += dx; bt += dy } }
+                        val tl = Offset(minOf(l, rr), minOf(t, bt)); val sz = Size(kotlin.math.abs(rr - l), kotlin.math.abs(bt - t))
+                        drawRect(Color(0xFF1E88E5).copy(alpha = 0.25f), tl, sz)
+                        drawRect(Color(0xFF1E88E5), tl, sz, style = Stroke(width = 3f))
+                    } else if (a != null && b != null) {
                         val tl = Offset(minOf(a.x, b.x), minOf(a.y, b.y)); val sz = Size(kotlin.math.abs(a.x - b.x), kotlin.math.abs(a.y - b.y))
                         drawRect(Color.Red.copy(alpha = 0.3f), tl, sz)
                         drawRect(Color.Red, tl, sz, style = Stroke(width = 3f))
+                    }
+                    // corner handles of the marks that can be resized
+                    boxes.filter { !it.wholePage && !it.locked && it.single }.forEach { reg ->
+                        val r = reg.rect
+                        listOf(r.left to r.top, r.right to r.top, r.left to r.bottom, r.right to r.bottom).forEach { (cx, cy) ->
+                            drawCircle(Color.White, 5f, Offset(cx * s, (ph - cy) * s)); drawCircle(Color(0xFF1E88E5), 5f, Offset(cx * s, (ph - cy) * s), style = Stroke(2f))
+                        }
                     }
                 }
             }

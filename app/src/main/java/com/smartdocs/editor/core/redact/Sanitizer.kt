@@ -18,17 +18,19 @@ import java.io.File
 /** Categories of hidden information that [Sanitizer] finds and removes. */
 enum class SanitizeItem {
     METADATA, ATTACHMENTS, COMMENTS, FORMS, JAVASCRIPT, LINKS, BOOKMARKS, PRIVATE_DATA, THUMBNAILS,
-    HIDDEN_LAYERS, INVISIBLE_TEXT, HIDDEN_TEXT, CROPPED, REVISIONS, SEARCH_INDEX, STRUCTURE;
+    HIDDEN_LAYERS, INVISIBLE_TEXT, HIDDEN_TEXT, CROPPED, REVISIONS, SEARCH_INDEX, STRUCTURE, MULTIMEDIA,
+    /** Foxit RHI "overlapping objects": pages where objects lie over each other are turned into images (the screen does it). */
+    OVERLAPPING;
 
     companion object {
         /**
          * Offered by default with redaction: everything except forms, links, the (searchable) OCR layer and the
          * tag structure (it makes the document accessible; the tags of redacted content are removed anyway).
          */
-        val DEFAULTS: Set<SanitizeItem> = values().toSet() - setOf(FORMS, LINKS, INVISIBLE_TEXT, STRUCTURE)
+        val DEFAULTS: Set<SanitizeItem> = values().toSet() - setOf(FORMS, LINKS, INVISIBLE_TEXT, STRUCTURE, OVERLAPPING)
 
         /** Found items that the sanitize screen does not check by itself. */
-        val OPT_IN: Set<SanitizeItem> = setOf(STRUCTURE)
+        val OPT_IN: Set<SanitizeItem> = setOf(STRUCTURE, OVERLAPPING)
     }
 }
 
@@ -139,6 +141,7 @@ object Sanitizer {
             }
             put(SanitizeItem.THUMBNAILS, doc.pages.count { it.cosObject.containsKey(N_THUMB) }, emptyList())
             SearchIndex.find(doc).let { put(SanitizeItem.SEARCH_INDEX, it.size, it) }
+            Multimedia.find(doc).let { put(SanitizeItem.MULTIMEDIA, it.size, it) }
             Structure.count(doc).let { (n, d) -> put(SanitizeItem.STRUCTURE, n, d) }
             // content-level
             var ocr = false
@@ -146,6 +149,7 @@ object Sanitizer {
             val layers = ArrayList<String>()
             runCatching { oc?.optionalContentGroups?.forEach { g -> if (!oc.isGroupEnabled(g)) layers += g.name ?: "?" } }
             var hiddenLayer = 0; var invisible = 0; var hiddenText = 0; var cropped = 0
+            val overlapPages = ArrayList<Int>()
             val hd = ArrayList<String>(); val cd = ArrayList<String>(); val id = ArrayList<String>()
             doc.pages.forEachIndexed { pi, page ->
                 val insp = PageInspector(page, oc).run(page)
@@ -161,11 +165,13 @@ object Sanitizer {
                 if (invisible > 0 && id.size < 30 && id.lastOrNull()?.startsWith("p.${pi + 1}") != true) id += "p.${pi + 1}"
                 val mb = page.mediaBox
                 if (mb.width > crop.w + 1f || mb.height > crop.h + 1f) cd += "p.${pi + 1}"
+                if (Overlap.has(insp)) overlapPages += pi
             }
             put(SanitizeItem.HIDDEN_LAYERS, layers.size + hiddenLayer, layers)
             put(SanitizeItem.INVISIBLE_TEXT, invisible, id)
             put(SanitizeItem.HIDDEN_TEXT, hiddenText, mergeChars(hd))
             put(SanitizeItem.CROPPED, cropped + cd.size, cd)
+            put(SanitizeItem.OVERLAPPING, overlapPages.size, overlapPages.map { "p.${it + 1}" })
             if (revisions > 1) f[SanitizeItem.REVISIONS] = Finding(revisions - 1, emptyList())
             ScanResult(f, ocr, revisions)
         }
@@ -187,9 +193,18 @@ object Sanitizer {
 
     // ---------------- clean ----------------
 
-    suspend fun cleanFile(src: File, out: File, password: String?, items: Set<SanitizeItem>): Map<SanitizeItem, Int> = withContext(Dispatchers.IO) {
+    suspend fun cleanFile(src: File, out: File, password: String?, items: Set<SanitizeItem>, context: android.content.Context? = null): Map<SanitizeItem, Int> = withContext(Dispatchers.IO) {
         require(out.canonicalPath != src.canonicalPath) { "out must differ from src" }
-        PdfOps.load(src, password).use { doc -> val r = clean(doc, items); doc.save(out); r }
+        var pages: List<Int> = emptyList()
+        val r = PdfOps.load(src, password).use { doc ->
+            if (SanitizeItem.OVERLAPPING in items && context != null)
+                pages = doc.pages.mapIndexedNotNull { i, p -> i.takeIf { runCatching { Overlap.has(PageInspector(p, doc.documentCatalog.ocProperties).run(p)) }.getOrDefault(false) } }
+            val r = clean(doc, items); doc.save(out); r
+        }
+        if (pages.isEmpty() || context == null) return@withContext r
+        val tmp = File(out.absoluteFile.parentFile, ".${out.nameWithoutExtension}.${System.nanoTime()}.ovl.pdf")
+        try { out.copyTo(tmp, overwrite = true); RedactApplier.rasterize(context, tmp, out, password, pages, 200) } finally { tmp.delete() }
+        r + (SanitizeItem.OVERLAPPING to pages.size)
     }
 
     /** Cleans [doc] in memory. Returns the number of things removed per item. */
@@ -300,6 +315,7 @@ object Sanitizer {
             cat.documentOutline?.let { o -> val d = ArrayList<String>(); walkOutline(o, d, 0); cat.documentOutline = null; add(SanitizeItem.BOOKMARKS, d.size.coerceAtLeast(1)) }
         }
         if (SanitizeItem.SEARCH_INDEX in items) add(SanitizeItem.SEARCH_INDEX, SearchIndex.remove(doc))
+        if (SanitizeItem.MULTIMEDIA in items) add(SanitizeItem.MULTIMEDIA, Multimedia.remove(doc))
         if (SanitizeItem.STRUCTURE in items) add(SanitizeItem.STRUCTURE, Structure.remove(doc))
         if (SanitizeItem.PRIVATE_DATA in items) {
             var n = 0

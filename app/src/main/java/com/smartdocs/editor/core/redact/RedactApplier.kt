@@ -33,6 +33,9 @@ object RedactApplier {
         val sanitizeItems: Set<SanitizeItem> = SanitizeItem.DEFAULTS,
         val maxSecurity: Boolean = false,
         val rasterDpi: Int = 150,
+        /** Marks written back as /Redact annotations after applying (Foxit "apply the selected mark" keeps the others pending). */
+        val keepPending: List<RedactMark> = emptyList(),
+        val author: String = "",
     )
 
     data class Report(
@@ -73,6 +76,8 @@ object RedactApplier {
                     list.forEach { m -> runCatching { drawMark(doc, page, frame, m, fontFor, chosen) } }
                 }
                 if (options.sanitize) sanitized = Sanitizer.clean(doc, options.sanitizeItems)
+                // after sanitising, which would drop the review replies of the marks kept pending
+                if (options.keepPending.isNotEmpty()) RedactMarks.writeAll(doc, options.keepPending, options.author)
                 // audit AN-07: removed / blanked images and forms must not stay in /Resources (and so in the file)
                 RedactCleanup.pruneUnusedXObjects(doc)
                 doc.save(tmp)
