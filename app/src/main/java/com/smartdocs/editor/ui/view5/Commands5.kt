@@ -94,7 +94,7 @@ object V5Commands {
             V5Command("help", R.string.v5_help_center, Icons.AutoMirrored.Filled.HelpOutline, "help faq مساعدة") { e.nav.navigate(V5Routes.HELP) },
             V5Command("whats_new", R.string.v5_whats_new, Icons.Default.NewReleases, "what's new changes الجديد") { e.nav.navigate(V5Routes.WHATS_NEW) },
             V5Command("settings", R.string.settings, Icons.Default.Settings, "settings preferences إعدادات") { e.nav.navigate(Routes.SETTINGS) },
-        ).filter { it.id != "ai" || com.smartdocs.editor.core.gaps6.AiGate.on() }   // nav-prefs (PREF-8): no AI command when AI is off
+        ).filter { it.id != "ai" || com.smartdocs.editor.core.gaps6.AiGate.on() } + com.smartdocs.editor.ui.nve.NveCommands.all(e)   // nav-prefs (PREF-8); NVE commands: no AI command when AI is off
     }
 
     fun defs(ctx: Context, list: List<V5Command>) = list.map { CommandDef(it.id, ctx.getString(it.label), it.keywords.split(' ')) }
@@ -130,6 +130,7 @@ fun CommandSearchSheet(e: V5Env) {
             OutlinedTextField(q, { q = it }, Modifier.fillMaxWidth().focusRequester(focus), singleLine = true,
                 leadingIcon = { Icon(Icons.Default.Bolt, null) }, placeholder = { Text(stringResource(R.string.v5_tell_me)) })
             Text(stringResource(R.string.v5_pin_hint), style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(vertical = 4.dp))
+            val nveAi = com.smartdocs.editor.LocalSettings.current.aiEnabled
             LazyColumn(Modifier.weight(1f)) {
                 items(ranked, key = { it.id }) { c ->
                     ListItem(headlineContent = { Text(stringResource(c.label)) }, leadingContent = { Icon(c.icon, null) },
@@ -139,6 +140,15 @@ fun CommandSearchSheet(e: V5Env) {
                 if (q.isNotBlank()) item {
                     ListItem(headlineContent = { Text(stringResource(R.string.v5_search_in_doc, q)) }, leadingContent = { Icon(Icons.Default.FindInPage, null) },
                         modifier = Modifier.combinedClickable(onClick = { v.close(); e.s.searchOpen = true; e.s.runSearch(q) }))
+                }
+                // NVE-shell: "Get help on <keywords>" and the help assistant (AI) for the same query
+                if (q.isNotBlank()) item {
+                    ListItem(headlineContent = { Text(stringResource(R.string.nv_help_on, q)) }, leadingContent = { Icon(Icons.AutoMirrored.Filled.HelpOutline, null) },
+                        modifier = Modifier.combinedClickable(onClick = { v.close(); com.smartdocs.editor.ui.nve.shell.NveHelp.openWithQuery(e.nav, q) }))
+                }
+                if (q.isNotBlank() && nveAi) item {
+                    ListItem(headlineContent = { Text(stringResource(R.string.nv_ask_assistant, q)) }, leadingContent = { Icon(Icons.Default.AutoAwesome, null) },
+                        modifier = Modifier.combinedClickable(onClick = { v.close(); com.smartdocs.editor.ui.nve.shell.NveHelp.askAi(e.nav, q) }))
                 }
             }
         }

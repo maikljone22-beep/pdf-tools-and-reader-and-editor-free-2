@@ -27,6 +27,7 @@ data class FileResult(val path: String, val name: String, val pages: Int, val hi
  * [search] takes FTS stem-prefix candidates and verifies them with [TextMatcher] using the user's options.
  */
 class FullTextIndex private constructor(context: Context) : SQLiteOpenHelper(context.applicationContext, DB_NAME, null, 1) {
+    private val appCtx: Context = context.applicationContext   // NVE-search
 
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("CREATE TABLE docs(id INTEGER PRIMARY KEY AUTOINCREMENT, path TEXT NOT NULL UNIQUE, name TEXT, size INTEGER, mtime INTEGER, pages INTEGER, locked INTEGER NOT NULL DEFAULT 0, indexed INTEGER)")
@@ -48,6 +49,7 @@ class FullTextIndex private constructor(context: Context) : SQLiteOpenHelper(con
     /** Replaces the index entry of [file]. [locked] files (password) are recorded without content. */
     fun put(file: File, pages: Int, parts: List<DocPart>, locked: Boolean) {
         val db = writableDatabase
+        val opts = com.smartdocs.editor.ui.nve.search.NveIndexPrefs.load(appCtx)   // NVE-search: stop words / numbers
         db.beginTransaction()
         try {
             deleteLocked(db, file.absolutePath)
@@ -58,7 +60,7 @@ class FullTextIndex private constructor(context: Context) : SQLiteOpenHelper(con
             for (p in parts) {
                 if (p.text.isBlank()) continue
                 val pid = db.insert("parts", null, ContentValues().apply { put("doc", id); put("page", p.page); put("kind", p.kind.ordinal); put("raw", p.text) })
-                db.insert("parts_fts", null, ContentValues().apply { put("rowid", pid); put("body", IndexText.body(p.text)) })
+                db.insert("parts_fts", null, ContentValues().apply { put("rowid", pid); put("body", com.smartdocs.editor.core.nve.NveSearchCore.filterBody(IndexText.body(p.text), opts)) })
             }
             db.setTransactionSuccessful()
         } finally { db.endTransaction() }
@@ -116,7 +118,7 @@ class FullTextIndex private constructor(context: Context) : SQLiteOpenHelper(con
     suspend fun search(query: String, options: SearchOptions, kinds: Set<PartKind> = PartKind.values().toSet(), perFile: Int = 20, maxFiles: Int = 200, scanLimit: Int = 30_000): List<FileResult> = withContext(Dispatchers.IO) {
         if (query.isBlank() || kinds.isEmpty()) return@withContext emptyList()
         // forward terms plus the reversed terms of visual-order Arabic, united (audit AN-15)
-        val fts = IndexText.ftsQueries(query, options.mode)
+        val fts = IndexText.ftsQueries(com.smartdocs.editor.core.nve.NveSearchCore.stripQuery(query, com.smartdocs.editor.ui.nve.search.NveIndexPrefs.load(appCtx)), options.mode)   // NVE-search
         val kindList = kinds.joinToString(",") { it.ordinal.toString() }
         val sql = if (fts.isNotEmpty()) {
             val match = fts.joinToString(" UNION ") { "SELECT rowid FROM parts_fts WHERE parts_fts MATCH ?" }

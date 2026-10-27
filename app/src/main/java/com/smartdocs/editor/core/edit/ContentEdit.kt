@@ -44,6 +44,8 @@ object ContentEdit {
         edit(src, out, password) { doc ->
             val a = PageTextModel.analyze(doc, page)
             val block = findBlock(a, ops)
+            // NVE-text: rotated rows and form XObject text are rewritten in their own frame / stream
+            if (block.angle != 0f || block.inForm) { TextEdit5.replaceIn(context, doc, page, a, block, text, style); return@edit }
             val p = doc.getPage(page)
             val rw = ContentRewriter(doc, p)
             block.ops.forEach { rw.removeText(it, a.scanner.textOps[it]) }
@@ -55,7 +57,7 @@ object ContentEdit {
                     else when (style.align) {
                         TextAlign.LEFT -> block.rect.left to (a.frame.width - MARGIN).coerceAtLeast(block.rect.right)
                         TextAlign.RIGHT -> MARGIN.coerceAtMost(block.rect.left) to block.rect.right
-                        TextAlign.CENTER -> block.rect.left to block.rect.right
+                        TextAlign.CENTER, TextAlign.JUSTIFY -> block.rect.left to block.rect.right   // NVE-text: justify
                     }
                 // keep the baseline of the first line
                 writeText(context, doc, p, a.frame, original, text, st, left, right, block.firstBaseline, block.rtl)
@@ -76,6 +78,7 @@ object ContentEdit {
     suspend fun deleteText(src: File, out: File, password: String?, page: Int, ops: IntArray) = edit(src, out, password) { doc ->
         val a = PageTextModel.analyze(doc, page)
         val block = findBlock(a, ops)
+        if (block.inForm) { TextEdit5.removeOps(doc, page, a, block.ops); return@edit }      // NVE-text: form XObject text
         val rw = ContentRewriter(doc, doc.getPage(page))
         block.ops.forEach { rw.removeText(it, a.scanner.textOps[it]) }
         rw.commit()
@@ -83,6 +86,8 @@ object ContentEdit {
 
     private fun writeText(context: Context, doc: PDDocument, page: PDPage, frame: PageFrame, original: com.tom_roush.pdfbox.pdmodel.font.PDFont?,
                           text: String, style: EditTextStyle, left: Float, right: Float, baseline: Float, defaultRtl: Boolean) {
+        // NVE-text: rich text / advanced formatting / custom fonts / embedding choice
+        if (RichText.isRich(style)) { TextEdit5.writeRich(context, doc, page, frame, original, text, style, left, right, baseline, defaultRtl); return }
         val fonts = FontSet(context, doc, original, style)
         val layout = TextLayout(fonts, style)
         val lines = layout.layout(text, (right - left).coerceAtLeast(style.size * 2), defaultRtl)

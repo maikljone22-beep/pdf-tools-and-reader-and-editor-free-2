@@ -83,6 +83,7 @@ class EditController(val state: ReaderState, private val scope: CoroutineScope, 
         loadJob = scope.launch {
             loading = true
             try {
+                EditPrefs.apply(ctx)      // NVE-text: line / paragraph mode, word distance
                 val m = PageTextModel.load(f, state.password, p)
                 if (p == page) {
                     model = m
@@ -107,6 +108,7 @@ class EditController(val state: ReaderState, private val scope: CoroutineScope, 
     fun clearSelection() {
         block = null; newAt = null; image = null; affine = identity(); text = ""; insertAt = null
         unreadable = false; replaceWhole = false; recovered = false; shownText = ""; recoverJob?.cancel(); recoverJob = null
+        TextTools5.peek(this)?.reset()      // NVE-text
     }
 
     // ================= taps =================
@@ -118,11 +120,13 @@ class EditController(val state: ReaderState, private val scope: CoroutineScope, 
         when (mode) {
             EditMode.TEXT -> {
                 if (editingText) { clearSelection(); return }       // tap outside closes the editor without saving
+                if (TextTools5.of(this).onTap(m, x, y)) return       // NVE-text: join / link pick
                 val hit = m.blocks.filter { inflate(it.rect, 2f).let { r -> x in r.left..r.right && y in r.bottom..r.top } }
                     .minByOrNull { it.rect.width() * (it.rect.top - it.rect.bottom) }
                 if (hit != null) selectBlock(hit) else startNew(x, y)
             }
             EditMode.IMAGE -> {
+                if (tools5.onTap(m, x, y)) return      // NVE-img: multi-select
                 val hit = m.images.lastOrNull { x in it.rect.left..it.rect.right && y in it.rect.bottom..it.rect.top }
                 if (hit != null) { image = hit; affine = identity(); insertAt = null }
                 else if (image != null) { image = null; affine = identity() }
@@ -235,22 +239,31 @@ class EditController(val state: ReaderState, private val scope: CoroutineScope, 
         val b = block
         if (b != null) {
             if (unreadable) { clearSelection(); return }       // nothing was shown, nothing to save
-            if (!replaceWhole && t == shownText.trimEnd() && style == EditTextStyle(b.size, b.color, b.bold, b.italic, b.align, b.family)) { clearSelection(); return }
+            val tt = TextTools5.of(this)      // NVE-text
+            if (!replaceWhole && !tt.movePending && t == shownText.trimEnd() && style == EditTextStyle(b.size, b.color, b.bold, b.italic, b.align, b.family)) { clearSelection(); return }
             if (replaceWhole && t.isBlank()) { clearSelection(); return }
-            val st = if (replaceWhole && !alignTouched) style.copy(align = if (isRtl(t, rtlDefault)) TextAlign.RIGHT else TextAlign.LEFT) else style
-            run(if (t.isBlank()) R.string.ed_deleted else R.string.ed_saved) { src, out -> ContentEdit.replaceText(ctx, src, out, state.password, p, b.ops, t, st) }
+            val st0 = if (replaceWhole && !alignTouched) style.copy(align = if (isRtl(t, rtlDefault)) TextAlign.RIGHT else TextAlign.LEFT) else style
+            // NVE-text: typed digits in the chosen shapes; runs clipped to the text; rotated / form / moved / linked boxes
+            val tw = if (t == shownText.trimEnd()) t else com.smartdocs.editor.ui.nve.NveDigits.apply(ctx, t)
+            val st = st0.copy(runs = com.smartdocs.editor.core.edit.RichText.normalize(st0.runs, tw.length))
+            if (tt.commitBlock(b, tw, st, if (tw.isBlank()) R.string.ed_deleted else R.string.ed_saved)) return
+            run(if (tw.isBlank()) R.string.ed_deleted else R.string.ed_saved) { src, out -> ContentEdit.replaceText(ctx, src, out, state.password, p, b.ops, tw, st) }
             return
         }
         val box = newBox(rtlDefault) ?: return
         if (t.isBlank()) { clearSelection(); return }
         val rtl = isRtl(t, rtlDefault)
         val st = if (alignTouched) style else style.copy(align = if (rtl) TextAlign.RIGHT else TextAlign.LEFT)
-        run(R.string.ed_added) { src, out -> ContentEdit.addText(ctx, src, out, state.password, p, t, st, box) }
+        // NVE-text: digit shapes, runs clipped to the text
+        val tn = com.smartdocs.editor.ui.nve.NveDigits.apply(ctx, t)
+        val stn = st.copy(runs = com.smartdocs.editor.core.edit.RichText.normalize(st.runs, tn.length))
+        run(R.string.ed_added) { src, out -> ContentEdit.addText(ctx, src, out, state.password, p, tn, stn, box) }
     }
 
     fun deleteBlock() {
         val b = block ?: return
         val p = page
+        if (TextTools5.of(this).delete(b)) return      // NVE-text: text inside a form XObject
         run(R.string.ed_deleted) { src, out -> ContentEdit.deleteText(src, out, state.password, p, b.ops) }
     }
 
@@ -271,7 +284,8 @@ class EditController(val state: ReaderState, private val scope: CoroutineScope, 
         val a = affine
         if (isIdentity(a)) return
         val p = page
-        run(R.string.ed_saved) { src, out -> ContentEdit.transformImage(src, out, state.password, p, i.op, a) }
+        // NVE-img: group-aware (a crop / opacity set by the image tools moves with the image)
+        run(R.string.ed_saved) { src, out -> com.smartdocs.editor.core.edit.ImageEdit5.applyFile(src, out, state.password, p, listOf(com.smartdocs.editor.core.edit.ImageEdit5.Change(i.op, display = a))) }
     }
 
     fun insertImage(bmp: Bitmap) {
@@ -318,6 +332,13 @@ class EditController(val state: ReaderState, private val scope: CoroutineScope, 
     }
 
     fun resetTransform() { affine = identity() }
+
+    /** NVE-img: image / page-object tools of this editor (multi-select, smart alignment, sheets). */
+    internal val tools5: ImageTools5 by lazy { ImageTools5(this) }
+    // NVE-img: the image tools (ImageTools5.kt) edit through the same undoable path and set the pending affine
+    internal fun runNve(done: Int, op: suspend (src: File, out: File) -> Unit) = run(done, op)
+    internal fun setAffineNve(a: FloatArray) { affine = a }
+    internal fun selectImageNve(i: ImageItem?) { image = i; affine = identity(); insertAt = null }
     val transformPending: Boolean get() = !isIdentity(affine)
 
     // ================= undo =================

@@ -23,6 +23,7 @@ data class PrintOptions(
     val range: String = "",
     val subset: PrintLayout.Subset = PrintLayout.Subset.ALL,
     val reverse: Boolean = false,
+    val markedOnly: Boolean = false,      // NVE-file: only pages with markups
     val perSheet: Int = 1,               // 1, 2, 4, 6, 9, 16
     val booklet: Boolean = false,
     val rightBinding: Boolean = true,    // Arabic books bind on the right
@@ -59,13 +60,15 @@ data class PrintOptions(
 object PrintPrep {
 
     /** True when the options need no re-imposition (the original file can be printed as-is). */
-    fun isPlain(o: PrintOptions, pageCount: Int) = o.range.isBlank() && o.subset == PrintLayout.Subset.ALL && !o.reverse && o.perSheet == 1 && !o.booklet &&
+    fun isPlain(o: PrintOptions, pageCount: Int) = o.range.isBlank() && o.subset == PrintLayout.Subset.ALL && !o.reverse && !o.markedOnly && o.perSheet == 1 && !o.booklet &&
         o.what == PrintContent.DOC_AND_MARKUPS && pageCount > 0 && o.scale == PrintLayout.Scale.AUTO && !o.nUp && !o.poster && !o.notes && o.appendix == null && !o.cutMarks
 
     /** [note] renders a sticky note's text as an image (width in points → bitmap), for [PrintOptions.notes]. */
     suspend fun build(src: File, pw: String?, o: PrintOptions, out: File, note: ((String, Float) -> Bitmap?)? = null): Int = withContext(Dispatchers.IO) {
         com.smartdocs.editor.core.pdf.PdfOps.load(src, pw).use { doc ->
             if (o.notes && note != null) drawNotes(doc, note)
+            // NVE-file: pages with markups, taken before the content filter removes annotations
+            val nveMarked = if (o.markedOnly) com.smartdocs.editor.core.nve.PrintExtras.markupPages(doc) else null
             when (o.what) {
                 PrintContent.DOCUMENT -> keepAnnots(doc) { it == "Widget" || it == "Link" }
                 PrintContent.DOC_AND_STAMPS -> { keepAnnots(doc) { it == "Widget" || it == "Link" || it == "Stamp" }; flattenAppearances(doc) }
@@ -74,6 +77,7 @@ object PrintPrep {
                 PrintContent.DOC_AND_MARKUPS -> flattenAppearances(doc)
             }
             var pages = PrintLayout.subset(PrintLayout.parseRange(o.range, doc.numberOfPages), o.subset)
+            if (nveMarked != null) pages = pages.filter { it in nveMarked }
             if (o.reverse) pages = pages.reversed()
             if (pages.isEmpty()) throw IllegalArgumentException("empty range")
             val extra = o.appendix?.takeIf { it.exists() }?.let { runCatching { PDDocument.load(it) }.getOrNull() }

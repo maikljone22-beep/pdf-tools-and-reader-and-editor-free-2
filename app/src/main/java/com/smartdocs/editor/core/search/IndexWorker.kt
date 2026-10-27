@@ -29,8 +29,12 @@ class Indexer(private val context: Context) {
     suspend fun sources(): List<File> {
         val app = context.applicationContext as? SmartDocsApp
         val out = LinkedHashMap<String, File>()
+        val nveOpts = com.smartdocs.editor.ui.nve.search.NveIndexPrefs.load(context)   // NVE-search: excluded folders
         // open-all: text of Word / e-book / e-mail / text / sheet files is searchable too
-        fun add(f: File) { if (f.isFile && f.canRead() && f.length() > 0 && (f.extension.equals("pdf", true) || com.smartdocs.editor.core.openall.OpenAllText.isIndexable(f))) out.putIfAbsent(f.absolutePath, f) }
+        fun add(f: File) {
+            if (f.isFile && f.canRead() && f.length() > 0 && (f.extension.equals("pdf", true) || com.smartdocs.editor.core.openall.OpenAllText.isIndexable(f)) &&
+                !com.smartdocs.editor.core.nve.NveSearchCore.excluded(f.absolutePath, nveOpts)) out.putIfAbsent(f.absolutePath, f)
+        }
         app?.documents?.docsDir?.walkTopDown()?.maxDepth(6)?.forEach { if (it.isFile) add(it) }
         runCatching {
             withTimeoutOrNull(5_000) { app?.db?.docs()?.recents()?.first() }?.forEach { r ->

@@ -51,7 +51,9 @@ internal fun ScriptedTextField(value: String, onChange: (String) -> Unit, script
     OutlinedTextField(
         value, onChange, Modifier.fillMaxWidth(), readOnly = readOnly, singleLine = !multiline, minLines = if (multiline) 3 else 1,
         keyboardOptions = KeyboardOptions(keyboardType = keyboard),
-        trailingIcon = if (isDate && !readOnly) ({ IconButton(onClick = { pickDate = true }) { Icon(Icons.Default.CalendarMonth, stringResource(R.string.ps_pick_date)) } }) else null,
+        trailingIcon = if (isDate && !readOnly) ({ IconButton(onClick = { pickDate = true }) { Icon(Icons.Default.CalendarMonth, stringResource(R.string.ps_pick_date)) } })
+            else if (!readOnly && kind == KeystrokeKind.NONE) ({ com.smartdocs.editor.ui.nve.SpellCheckButton(value, onChange) }) else null,   // NVE: spell check
+        visualTransformation = if (!readOnly && kind == KeystrokeKind.NONE) com.smartdocs.editor.ui.nve.spellTransformation(com.smartdocs.editor.ui.nve.rememberSpellIssues(value)) else androidx.compose.ui.text.input.VisualTransformation.None,
         supportingText = if (display != null && display.text.isNotBlank() && display.text != value) ({
             Text(stringResource(R.string.ps_shown_as, display.text), color = if (display.red) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
         }) else null,

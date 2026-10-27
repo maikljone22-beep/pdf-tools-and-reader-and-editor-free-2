@@ -49,6 +49,8 @@ data class AppSettings(
     val aiEnabled: Boolean = true,
     /** Reader keeps the locked screen orientation between documents (false = reset on close). */
     val rememberOrientation: Boolean = true,
+    // NVE-shell: accent colour 0xRRGGBB (0 = app default, 1 = Android 12+ dynamic colour)
+    val accentColor: Long = 0L,
     /** nitro-protect: run document JavaScript (form scripts, JavaScript actions); off = no document script runs. */
     val runJavaScript: Boolean = true,
 )
@@ -85,6 +87,7 @@ class SettingsStore(private val context: Context) {
         val G6_TRANSFER_NET = stringPreferencesKey("g6_transfer_net")
         val G6_AI = booleanPreferencesKey("g6_ai_enabled")
         val G6_REMEMBER_ORIENT = booleanPreferencesKey("g6_remember_orientation")
+        val NVE_ACCENT = longPreferencesKey("nve_accent")   // NVE-shell
         val NP_RUN_JS = booleanPreferencesKey("np_run_js")
     }
 
@@ -116,7 +119,7 @@ class SettingsStore(private val context: Context) {
             fullScreenReader = p[K.G6_FULLSCREEN] ?: false, volumeKeysAction = p[K.G6_VOLUME_ACTION] ?: "flip",
             layoutDirection = p[K.G6_LAYOUT_DIR] ?: "auto", autoSync = p[K.G6_AUTO_SYNC] ?: true,
             transferNetwork = p[K.G6_TRANSFER_NET] ?: "wifi", aiEnabled = p[K.G6_AI] ?: true,
-            rememberOrientation = p[K.G6_REMEMBER_ORIENT] ?: true,
+            rememberOrientation = p[K.G6_REMEMBER_ORIENT] ?: true, accentColor = p[K.NVE_ACCENT] ?: 0L,   // NVE-shell
             runJavaScript = p[K.NP_RUN_JS] ?: true,
         )
     }
@@ -139,7 +142,7 @@ class SettingsStore(private val context: Context) {
                 fullScreenReader = p[K.G6_FULLSCREEN] ?: false, volumeKeysAction = p[K.G6_VOLUME_ACTION] ?: "flip",
                 layoutDirection = p[K.G6_LAYOUT_DIR] ?: "auto", autoSync = p[K.G6_AUTO_SYNC] ?: true,
                 transferNetwork = p[K.G6_TRANSFER_NET] ?: "wifi", aiEnabled = p[K.G6_AI] ?: true,
-                rememberOrientation = p[K.G6_REMEMBER_ORIENT] ?: true,
+                rememberOrientation = p[K.G6_REMEMBER_ORIENT] ?: true, accentColor = p[K.NVE_ACCENT] ?: 0L,   // NVE-shell
                 runJavaScript = p[K.NP_RUN_JS] ?: true,
             )
             val n = block(cur)
@@ -154,6 +157,7 @@ class SettingsStore(private val context: Context) {
             p[K.G6_FULLSCREEN] = n.fullScreenReader; p[K.G6_VOLUME_ACTION] = n.volumeKeysAction; p[K.G6_LAYOUT_DIR] = n.layoutDirection
             p[K.G6_AUTO_SYNC] = n.autoSync; p[K.G6_TRANSFER_NET] = n.transferNetwork; p[K.G6_AI] = n.aiEnabled
             p[K.G6_REMEMBER_ORIENT] = n.rememberOrientation
+            p[K.NVE_ACCENT] = n.accentColor   // NVE-shell
             p[K.NP_RUN_JS] = n.runJavaScript
         }
     }
