@@ -235,3 +235,11 @@ The text layer before it now starts «المرشد في الكيمياء - لل�
 - Tests:
   - `app/src/test/.../core/ocr/OcrQualityTest.kt` (9): the user's copied text as a fixture (junk lines dropped, real lines kept), real page-78 word boxes for the cleanup, real script-model readings for the acceptance rules, `drawnSize`;
   - `ToUnicodeRepairTest.mathDigitsMappedToSpaceAreRestored`.
+
+## 6. Tests and CI
+- **Harness JVM** (`runtests.sh`, final sources): 44/44 OK. That covers OcrQualityTest 9, ToUnicodeRepairTest 9, OcrTextLayerTest 5, ArabicCopyTest 6, ArabicTextFixTest 10 and ArabicTextQualityTest 5.
+- **Local Gradle** in `D:\pdf\ocrq-wt` (`compileDebugKotlin testDebugUnitTest --max-workers=2`):
+  - The first run was stopped by another agent's `--stop`.
+  - The second run finished with 568 tests, 1 failed. The third, targeted run had 89 tests, 2 failed.
+  - All three failures are from sources edited while the build ran: main classes were compiled before the edit, test classes after it. Each failing assertion is satisfied by the final sources (harness and CI).
+- **GitHub CI** run 40531518250 (`Build APK`: assembleDebug + testDebugUnitTest) on commit 8d25647: **success**.
