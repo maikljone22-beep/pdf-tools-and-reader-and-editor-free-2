@@ -281,7 +281,8 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                     },
                 ) {
                     when {
-                        state.session == null && state.error != null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text(stringResource(R.string.error_generic)) }
+                        state.session == null && state.openError != null -> OpenErrorView(state.openError!!, onRetry = { state.retryOpen() }, onBack = { leave() },
+                            onOpenWith = state.file?.takeIf { it.exists() }?.let { f -> { runCatching { ctx.startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_VIEW).setDataAndType(app.documents.shareUri(f), "application/pdf").addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION), null)) } } })
                         state.session == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { if (!state.needPassword) CircularProgressIndicator() }
                         else -> {
                             val openLink: (com.smartdocs.editor.core.pdf.PageLink) -> Unit = { l -> if (l.destPage == null && l.uri.isNullOrBlank()) scope.launch { runCatching { com.smartdocs.editor.ui.edit5.followFileLinkAt(state, state.currentPage, l.bounds.centerX(), l.bounds.centerY()) { f, p -> nav.navigate(Routes.reader(android.net.Uri.fromFile(f).toString(), p)) } } } else ReaderIntents.openLink(ctx, l) { p -> state.jumpTo(p) } }

@@ -88,6 +88,8 @@ class ReaderState(
     var enterpriseInfo by mutableStateOf<com.smartdocs.editor.core.connected.EnterpriseProtection.Info?>(null)
     var pageCount by mutableIntStateOf(0); private set
     val pageSizes = mutableStateMapOf<Int, Pair<Float, Float>>()
+    /** /Rotate + crop-box origin of the pages that have one (audit AN-06); absent = 0° at (0, 0). */
+    val pageFrames = mutableStateMapOf<Int, PageUserFrame>()
     var initialPage by mutableIntStateOf(0); private set
     var currentPage by mutableIntStateOf(0)
     var renderVersion by mutableIntStateOf(0); private set
@@ -167,6 +169,17 @@ class ReaderState(
 
     // ================= document lifecycle =================
 
+    /** Why the document could not be opened; stays until [retryOpen] (the snackbar clears [error], not this). */
+    var openError by mutableStateOf<OpenError?>(null)
+
+    /** Error screen "Retry": import / open again from scratch. */
+    fun retryOpen() {
+        if (session != null) return
+        openError = null; error = null
+        if (file?.exists() == false) file = null
+        open(null)
+    }
+
     fun open(pw: String? = null) {
         scope.launch {
             try {
@@ -203,8 +216,11 @@ class ReaderState(
                 loadExisting()
             } catch (e: PdfSession.Companion.PasswordRequiredException) {
                 needPassword = true; wrongPassword = pw != null
+            } catch (e: CancellationException) { throw e
             } catch (e: Exception) {
-                error = e.message ?: e.toString()
+                // audit RD-01: a lasting, localized error screen (Retry / Open with / Back), not a snackbar + spinner
+                openError = OpenError.of(e, file?.exists())
+                android.util.Log.w("ReaderState", "open failed", e)
             }
         }
     }
@@ -272,7 +288,16 @@ class ReaderState(
         }
     }
 
+    private fun loadPageFrames() {
+        val f = file ?: return; val pw = password
+        scope.launch {
+            val frames = withContext(Dispatchers.IO) { runCatching { PageUserFrame.read(f, pw) }.getOrNull() } ?: return@launch
+            androidx.compose.runtime.snapshots.Snapshot.withMutableSnapshot { pageFrames.clear(); pageFrames.putAll(frames) }
+        }
+    }
+
     private fun loadExisting() {
+        loadPageFrames()
         val f = file ?: return
         scope.launch { existing = runCatching { AnnotationWriter.list(f, password) }.getOrDefault(emptyList()) }
     }
@@ -460,6 +485,34 @@ class ReaderState(
             if (annots.isEmpty()) withContext(Dispatchers.IO) { f.copyTo(out, overwrite = true) }
             else AnnotationWriter.commit(context, f, annots.toList(), out, password)
         } finally { if (f != f0) f.delete() }
+    }
+
+    /**
+     * Eraser on saved ink (audit AN-13): every stored Ink annotation on [page] touched by the eraser path [pts]
+     * (PDF space) is removed from the file in one write, which is one undo step.
+     */
+    fun eraseStoredInk(page: Int, pts: List<Pair<Float, Float>>, radius: Float) {
+        if (pts.isEmpty() || saving) return
+        val candidates = existing.filter { it.page == page && it.subtype == "Ink" && EraseLogic.nearRect(it.rect.left, it.rect.bottom, it.rect.right, it.rect.top, pts, radius + 4f) }
+        if (candidates.isEmpty()) return
+        scope.launch {
+            saveMutex.withLock {
+                val f = file ?: return@withLock
+                saving = true
+                try {
+                    withContext(NonCancellable) {
+                        val hit = withContext(Dispatchers.IO) {
+                            candidates.filter { e -> AnnotationWriter.extract(f, e.page, e.index, password)?.let { a -> EraseLogic.touches(a.paths, a.strokeWidth, pts, radius) } == true }.map { it.index }
+                        }
+                        if (hit.isEmpty()) return@withContext
+                        val tmp = File(f.parentFile, ".${f.nameWithoutExtension}.saving.pdf")
+                        com.smartdocs.editor.core.annot.StoredOps.removeOnly(f, tmp, password, page, hit)
+                        swapFile(tmp, str(R.string.fx_erase_stored))
+                        writeBackResult = runCatching { app.documents.writeBack(f) }.getOrNull().also { com.smartdocs.editor.core.cloud.SaveHooks.onSaved(app, f) }
+                    }
+                } catch (ex: Exception) { error = ex.message ?: ex.toString() } finally { saving = false }
+            }
+        }
     }
 
     suspend fun deleteExisting(e: AnnotationWriter.Existing) {

@@ -17,6 +17,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -76,7 +78,8 @@ fun PageCanvas(
     val size by produceState(state.pageSizes[page] ?: (595f to 842f), page, session) { value = state.pageSize(page) }
     val (pw, ph) = size
     val scale = widthPx / (if (rotation % 180 == 0) pw else ph)
-    val g = remember(pw, ph, scale, rotation) { PageGeometry(pw, ph, scale, rotation) }
+    val frame = state.pageFrames[page]
+    val g = remember(pw, ph, scale, rotation, frame) { PageGeometry(pw, ph, scale, rotation, frame?.rotate ?: 0, frame?.cropX ?: 0f, frame?.cropY ?: 0f) }
     val layout = g.layoutSize
     val factor = min(1f, MAX_RENDER_PX / max(g.bitmapW, g.bitmapH))
     val renderW = (g.bitmapW * factor).roundToInt().coerceAtLeast(1)
@@ -124,16 +127,28 @@ fun PageCanvas(
     val editBounds = editTarget?.let { state.edit.bounds() }
     val pendingEditId = (editTarget as? AnnotTarget.Pending)?.id
 
+    // audit RD-04: the tap detector below restarts only for a new page / geometry; it must still call the newest
+    // callbacks (view mode, tool, links), not the ones of its first composition
+    val onTapNow by rememberUpdatedState(onTap)
+    val onDoubleTapNow by rememberUpdatedState(onDoubleTap)
+    val onOpenLinkNow by rememberUpdatedState(onOpenLink)
+    val onPromptNow by rememberUpdatedState(onPrompt)
+    val linksNow by rememberUpdatedState(links)
+    val layoutNow by rememberUpdatedState(layout)
+    // audit RD-05: edge zones are measured on the screen, so taps are reported in root coordinates
+    var rootPos by remember { mutableStateOf(Offset.Zero) }
+
     Box(modifier.size(wDp, hDp)) {
     Canvas(
         Modifier
             .matchParentSize()
+            .onGloballyPositioned { rootPos = it.positionInRoot() }
             .pointerInput(page, g) {
                 detectTapGestures(
                     onDoubleTap = { p ->
                         // a double tap finishes a polygon / polyline / cloud (MODULE_annot2)
                         val ds = g.layoutToScreen(p); val (dx, dy) = g.screenToPdf(ds.x, ds.y)
-                        if (!state.annot2.onDoubleTap(page, dx, dy)) onDoubleTap(p)
+                        if (!state.annot2.onDoubleTap(page, dx, dy)) onDoubleTapNow(p)
                     },
                     onLongPress = { p ->
                         if (state.tool != null) return@detectTapGestures
@@ -147,7 +162,7 @@ fun PageCanvas(
                             state.selection = TextSelection(page, r.first, r.last, TextSelectionLogic.rects(boxes, r.first, r.last), TextSelectionLogic.text(text, r.first, r.last))
                         }
                     },
-                    onTap = { p -> handleTap(state, page, g, p, links, layout, onTap, onOpenLink, onPrompt) },
+                    onTap = { p -> handleTap(state, page, g, p, linksNow, layoutNow, { tp, sz -> onTapNow(tp + rootPos, sz) }, onOpenLinkNow, onPromptNow) },
                 )
             }
             .pageDrag(
@@ -398,7 +413,10 @@ private fun handleTap(
             val m = state.measure
             state.measure = if (m == null || m.b != null || m.page != page) Measure(page, x to y, null) else m.copy(b = x to y)
         }
-        ReaderTool.ERASER -> inkHits(state.annots, page, x, y, 10f / g.scale.coerceAtLeast(0.1f)).forEach { state.removeAnnot(it) }
+        ReaderTool.ERASER -> {
+            inkHits(state.annots, page, x, y, 10f / g.scale.coerceAtLeast(0.1f)).forEach { state.removeAnnot(it) }
+            state.eraseStoredInk(page, listOf(x to y), 10f / g.scale.coerceAtLeast(0.1f))   // audit AN-13: saved ink too
+        }
         ReaderTool.INK, ReaderTool.LINE, ReaderTool.ARROW, ReaderTool.RECT, ReaderTool.OVAL -> {
             // a tap with the pen makes a dot
             if (t == ReaderTool.INK) state.addAnnot(state.newAnnot(AnnotKind.INK, page, paths = listOf(listOf(x to y, x + 0.1f to y))))
@@ -436,7 +454,9 @@ private fun finishDraft(state: ReaderState, draft: GestureDraft, page: Int, g: P
             }
         }
         ReaderTool.LINK -> { val r = draft.rect; if (r.width > 4f && r.height > 4f) onPrompt(TextPrompt(tool, page, 0f, 0f, g.screenRectToPdf(r))) }
-        ReaderTool.ERASER, ReaderTool.MEASURE -> {}
+        // audit AN-13: the pending ink went while dragging; saved ink is erased in one write at the end
+        ReaderTool.ERASER -> state.eraseStoredInk(page, draft.points.map { g.screenToPdf(it.x, it.y) }, 10f / g.scale.coerceAtLeast(0.1f))
+        ReaderTool.MEASURE -> {}
         else -> draftToAnnot(state, draft, page, g, pressure)?.let { state.addAnnot(it) }
     }
     draft.end()
