@@ -243,4 +243,5 @@
     <string name="sh5_import_file_sub">Merge a file exported on another device</string>
     <string name="sh5_appdata_note">Documents themselves are not moved; favourites and tags are matched by name and size.</string>
     <string name="sh5_syncing">Syncing…</string>
+    <string name="sh5_n_unsynced">%1$d not uploaded yet (%2$s), kept when clearing</string>
 </resources>
