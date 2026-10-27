@@ -270,4 +270,4 @@ NVE copy / export / snapshot / rewrite / edit-text / text-viewer save now ask `s
 through `applyInPlace`, which ReaderGuard already guards).
 
 CI (GitHub Actions "Build APK"): "Build debug APK" passes since defc609; unit tests: 40584635868 (9089ce5) 895/896 passed,
-the last failure (CMYK colour-space name) is fixed in d56db97 — see the final report for that run's result.
+the last failure (CMYK colour-space name) is fixed in d56db97; run 40587769001 (dd4ff4c): build + all unit tests GREEN.
