@@ -91,7 +91,8 @@ fun NveRecoveryEffect(state: ReaderState) {
         }
     }
     // saved (no longer dirty): the copy is obsolete
-    LaunchedEffect(state) { snapshotFlow { state.dirty }.collect { d -> if (!d) state.file?.let { NveRecovery.discard(ctx, it) } } }
+    // (only on a dirty -> clean transition: on open the crash copy must survive until the banner was answered)
+    LaunchedEffect(state) { var was = state.dirty; snapshotFlow { state.dirty }.collect { d -> if (was && !d) state.file?.let { NveRecovery.discard(ctx, it) }; was = d } }
     DisposableEffect(state) { onDispose { if (state.discarded) state.file?.let { NveRecovery.discard(ctx, it) } } }
     // the crash reporter can offer to attach the document that was open
     DisposableEffect(state.file) {
