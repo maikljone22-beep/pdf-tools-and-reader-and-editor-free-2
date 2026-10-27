@@ -11,4 +11,13 @@
     <string name="nt_spell_replace_all">استبدال الكل</string>
     <string name="nt_spell_ignore">تجاهل</string>
     <string name="nt_spell_ignore_all">تجاهل الكل</string>
+    <string name="nt_spell_dictionary">القاموس المخصص</string>
+    <string name="nt_spell_add_word">كلمة جديدة</string>
+    <string name="nt_spell_add">إضافة</string>
+    <string name="nt_spell_dict_empty">القاموس فارغ.</string>
+    <string name="nt_spell_move_up">تحريك لأعلى</string>
+    <string name="nt_spell_move_down">تحريك لأسفل</string>
+    <string name="nt_spell_remove">حذف</string>
+    <string name="nt_spell_checking">جارٍ التدقيق…</string>
+    <string name="nt_spell_add_dict">إضافة إلى القاموس</string>
 </resources>

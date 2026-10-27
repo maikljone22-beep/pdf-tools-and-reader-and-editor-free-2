@@ -10,7 +10,11 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Spellcheck
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -56,6 +60,11 @@ object NveSpell {
 
     suspend fun check(context: Context, text: String, locale: Locale? = null): List<SpellIssue> {
         if (text.isBlank()) return emptyList()
+        val dict = SpellDictionary.words(context).map { it.lowercase() }.toHashSet()
+        return checkRaw(context, text, locale).filter { it.word.lowercase() !in dict }
+    }
+
+    private suspend fun checkRaw(context: Context, text: String, locale: Locale?): List<SpellIssue> {
         val hasAr = text.any { isArabic(it) }
         val hasLat = text.any { it.isLetter() && !isArabic(it) }
         if (locale != null) return session(context, text, locale, false) ?: emptyList()
@@ -146,6 +155,171 @@ object NveSpell {
         if (issue.end <= text.length && text.substring(issue.start, issue.end) == issue.word) text.substring(0, issue.start) + by + text.substring(issue.end) else text
 }
 
+/** The user's own words (Add to Dictionary): never reported as misspelt. SharedPreferences "nve_spell", key "words" (ordered). */
+object SpellDictionary {
+    private const val PREFS = "nve_spell"
+    private const val KEY = "words"
+    var version by mutableIntStateOf(0)
+        private set
+
+    fun words(ctx: Context): List<String> =
+        (ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY, "") ?: "").split('\n').filter { it.isNotBlank() }
+
+    fun save(ctx: Context, words: List<String>) {
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY, words.map { it.trim() }.filter { it.isNotEmpty() }.distinct().joinToString("\n")).apply()
+        version++
+    }
+
+    fun add(ctx: Context, w: String) { if (w.isNotBlank()) save(ctx, words(ctx) + w.trim()) }
+    fun remove(ctx: Context, w: String) = save(ctx, words(ctx) - w)
+}
+
+/** Live (debounced ~600 ms) spell check of a field's text, for [spellTransformation] while typing. */
+@Composable
+fun rememberSpellIssues(text: String): List<SpellIssue> {
+    val ctx = LocalContext.current
+    var issues by remember { mutableStateOf<List<SpellIssue>>(emptyList()) }
+    val dv = SpellDictionary.version
+    LaunchedEffect(text, dv) {
+        if (text.isBlank()) { issues = emptyList(); return@LaunchedEffect }
+        // offsets of the previous result no longer match the new text: keep only those that still do
+        issues = issues.filter { it.end <= text.length && text.substring(it.start, it.end) == it.word }
+        kotlinx.coroutines.delay(600)
+        issues = runCatching { NveSpell.check(ctx, text) }.getOrDefault(emptyList())
+    }
+    return issues
+}
+
+/** One text of the document to spell-check (a comment, a form field value, a free-text annotation...). */
+data class SpellTarget(val id: String, val label: String, val text: String)
+
+/** Lists, adds, removes and reorders the words of the custom dictionary. */
+@Composable
+fun SpellDictionarySheet(onDismiss: () -> Unit) {
+    val ctx = LocalContext.current
+    var words by remember { mutableStateOf(SpellDictionary.words(ctx)) }
+    var add by remember { mutableStateOf("") }
+    fun store(l: List<String>) { words = l; SpellDictionary.save(ctx, l) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.nt_spell_dictionary)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(add, { add = it }, Modifier.weight(1f), singleLine = true, label = { Text(stringResource(R.string.nt_spell_add_word)) })
+                    TextButton(onClick = { if (add.isNotBlank()) { store(words + add.trim()); add = "" } }) { Text(stringResource(R.string.nt_spell_add)) }
+                }
+                if (words.isEmpty()) Text(stringResource(R.string.nt_spell_dict_empty), style = MaterialTheme.typography.bodySmall)
+                Column(Modifier.heightIn(max = 320.dp).verticalScroll(rememberScrollState())) {
+                    words.forEachIndexed { i, w ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(w, Modifier.weight(1f))
+                            IconButton(onClick = { store(words.toMutableList().also { java.util.Collections.swap(it, i, i - 1) }) }, enabled = i > 0) {
+                                Icon(Icons.Default.KeyboardArrowUp, stringResource(R.string.nt_spell_move_up))
+                            }
+                            IconButton(onClick = { store(words.toMutableList().also { java.util.Collections.swap(it, i, i + 1) }) }, enabled = i < words.size - 1) {
+                                Icon(Icons.Default.KeyboardArrowDown, stringResource(R.string.nt_spell_move_down))
+                            }
+                            IconButton(onClick = { store(words - w) }) { Icon(Icons.Default.Delete, stringResource(R.string.nt_spell_remove)) }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.done)) } },
+    )
+}
+
+/**
+ * Whole-document spell check: walks the misspelt words of every target one by one (Ignore, Ignore All, Change,
+ * Change All, Add to Dictionary). [onApply] receives only the targets whose text changed.
+ */
+@Composable
+fun DocumentSpellCheckDialog(items: List<SpellTarget>, onApply: (List<SpellTarget>) -> Unit, onDismiss: () -> Unit) {
+    val ctx = LocalContext.current
+    // targets that have issues: (index in items, issues); null while checking
+    var checked by remember { mutableStateOf<List<Pair<Int, List<SpellIssue>>>?>(null) }
+    val texts = remember { mutableStateListOf<String>().also { l -> l += items.map { it.text } } }
+    LaunchedEffect(items) {
+        checked = items.mapIndexed { i, t -> i to runCatching { NveSpell.check(ctx, t.text) }.getOrDefault(emptyList()) }.filter { it.second.isNotEmpty() }
+    }
+    var target by remember { mutableIntStateOf(0) }
+    var run by remember { mutableStateOf<SpellRun?>(null) }
+    val ignoredAll = remember { mutableStateListOf<String>() }
+    var finished by remember { mutableStateOf(false) }
+    fun finish() {
+        if (finished) return
+        finished = true
+        val cur = run
+        val idx = checked?.getOrNull(target)?.first
+        if (cur != null && idx != null) texts[idx] = cur.text
+        onApply(items.mapIndexedNotNull { i, t -> if (texts[i] != t.text) t.copy(text = texts[i]) else null })
+    }
+    val list = checked
+    if (list == null) {
+        AlertDialog(onDismissRequest = onDismiss, confirmButton = {}, title = { Text(stringResource(R.string.nt_spell_check)) },
+            text = { Row(verticalAlignment = Alignment.CenterVertically) { CircularProgressIndicator(Modifier.size(24.dp)); Spacer(Modifier.width(12.dp)); Text(stringResource(R.string.nt_spell_checking)) } })
+        return
+    }
+    if (list.isEmpty()) {
+        AlertDialog(onDismissRequest = onDismiss, confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.ok)) } },
+            title = { Text(stringResource(R.string.nt_spell_check)) }, text = { Text(stringResource(if (NveSpell.available) R.string.nt_spell_none else R.string.nt_spell_unavailable)) })
+        return
+    }
+    // open the next target whose remaining issues are not all ignored
+    LaunchedEffect(target) {
+        val entry = list.getOrNull(target)
+        if (entry == null) { finish(); return@LaunchedEffect }
+        val left = entry.second.filter { it.word !in ignoredAll }
+        if (left.isEmpty()) { run = null; target++ } else run = SpellRun(texts[entry.first], left)
+    }
+    val r = run ?: return
+    val cur = r.current
+    if (cur == null || cur.word in ignoredAll) {
+        LaunchedEffect(r, r.index, cur) {
+            if (cur != null) { r.ignore(); return@LaunchedEffect }
+            texts[list[target].first] = r.text; run = null; target++
+        }
+        return
+    }
+    var custom by remember(cur) { mutableStateOf(cur.suggestions.firstOrNull() ?: cur.word) }
+    AlertDialog(
+        onDismissRequest = { finish() },
+        title = { Text(stringResource(R.string.nt_spell_check)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(items[list[target].first].label, style = MaterialTheme.typography.labelLarge)
+                IssueContext(r.text, cur)
+                if (cur.suggestions.isEmpty()) Text(stringResource(R.string.nt_spell_no_suggestions), style = MaterialTheme.typography.bodySmall)
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    cur.suggestions.forEach { s -> SuggestionChip(onClick = { custom = s }, label = { Text(s) }) }
+                }
+                OutlinedTextField(custom, { custom = it }, singleLine = true, label = { Text(stringResource(R.string.nt_spell_replace_with)) })
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    TextButton(onClick = { r.ignore() }) { Text(stringResource(R.string.nt_spell_ignore)) }
+                    TextButton(onClick = { ignoredAll += cur.word; r.ignoreAll() }) { Text(stringResource(R.string.nt_spell_ignore_all)) }
+                    TextButton(onClick = { r.replaceAll(custom) }) { Text(stringResource(R.string.nt_spell_replace_all)) }
+                    TextButton(onClick = { SpellDictionary.add(ctx, cur.word); ignoredAll += cur.word; r.ignoreAll() }) { Text(stringResource(R.string.nt_spell_add_dict)) }
+                }
+            }
+        },
+        confirmButton = { Button(onClick = { r.replace(custom) }) { Text(stringResource(R.string.nt_spell_replace)) } },
+        dismissButton = { TextButton(onClick = { finish() }) { Text(stringResource(R.string.done)) } },
+    )
+}
+
+/** The misspelt word in its context (30 characters each side), highlighted. */
+@Composable
+private fun IssueContext(text: String, cur: SpellIssue) {
+    val ctxStart = (cur.start - 30).coerceAtLeast(0); val ctxEnd = (cur.end + 30).coerceAtMost(text.length)
+    Text(buildAnnotatedString {
+        append(text.substring(ctxStart, cur.start.coerceAtMost(text.length)))
+        pushStyle(SpanStyle(color = Color(0xFFD32F2F), fontWeight = FontWeight.Bold, textDecoration = TextDecoration.Underline))
+        append(cur.word); pop()
+        if (cur.end <= ctxEnd) append(text.substring(cur.end, ctxEnd))
+    }, style = MaterialTheme.typography.bodyMedium)
+}
+
 /** Underlines the misspelt words (red) of a text field; offsets are unchanged. */
 fun spellTransformation(issues: List<SpellIssue>): VisualTransformation = VisualTransformation { s ->
     if (issues.isEmpty()) return@VisualTransformation TransformedText(s, OffsetMapping.Identity)
@@ -227,6 +401,7 @@ private class SpellRun(text: String, issues: List<SpellIssue>) {
 
 @Composable
 private fun SpellDialog(run: SpellRun, onDone: (String) -> Unit) {
+    val ctx = LocalContext.current
     val cur = run.current
     if (cur == null) { LaunchedEffect(Unit) { onDone(run.text) }; return }
     var custom by remember(cur) { mutableStateOf(cur.suggestions.firstOrNull() ?: cur.word) }
@@ -236,14 +411,7 @@ private fun SpellDialog(run: SpellRun, onDone: (String) -> Unit) {
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(stringResource(R.string.nt_spell_progress, run.index + 1, run.issues.size), style = MaterialTheme.typography.labelMedium)
-                // the word in its context
-                val ctxStart = (cur.start - 30).coerceAtLeast(0); val ctxEnd = (cur.end + 30).coerceAtMost(run.text.length)
-                Text(buildAnnotatedString {
-                    append(run.text.substring(ctxStart, cur.start.coerceAtMost(run.text.length)))
-                    pushStyle(SpanStyle(color = Color(0xFFD32F2F), fontWeight = FontWeight.Bold, textDecoration = TextDecoration.Underline))
-                    append(cur.word); pop()
-                    if (cur.end <= ctxEnd) append(run.text.substring(cur.end, ctxEnd))
-                }, style = MaterialTheme.typography.bodyMedium)
+                IssueContext(run.text, cur)
                 if (cur.suggestions.isEmpty()) Text(stringResource(R.string.nt_spell_no_suggestions), style = MaterialTheme.typography.bodySmall)
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     cur.suggestions.forEach { s -> SuggestionChip(onClick = { custom = s }, label = { Text(s) }) }
@@ -253,6 +421,7 @@ private fun SpellDialog(run: SpellRun, onDone: (String) -> Unit) {
                     TextButton(onClick = { run.ignore() }) { Text(stringResource(R.string.nt_spell_ignore)) }
                     TextButton(onClick = { run.ignoreAll() }) { Text(stringResource(R.string.nt_spell_ignore_all)) }
                     TextButton(onClick = { run.replaceAll(custom) }) { Text(stringResource(R.string.nt_spell_replace_all)) }
+                    TextButton(onClick = { SpellDictionary.add(ctx, cur.word); run.ignoreAll() }) { Text(stringResource(R.string.nt_spell_add_dict)) }
                 }
             }
         },

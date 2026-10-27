@@ -11,4 +11,13 @@
     <string name="nt_spell_replace_all">Replace all</string>
     <string name="nt_spell_ignore">Ignore</string>
     <string name="nt_spell_ignore_all">Ignore all</string>
+    <string name="nt_spell_dictionary">Custom dictionary</string>
+    <string name="nt_spell_add_word">New word</string>
+    <string name="nt_spell_add">Add</string>
+    <string name="nt_spell_dict_empty">The dictionary is empty.</string>
+    <string name="nt_spell_move_up">Move up</string>
+    <string name="nt_spell_move_down">Move down</string>
+    <string name="nt_spell_remove">Remove</string>
+    <string name="nt_spell_checking">Checking…</string>
+    <string name="nt_spell_add_dict">Add to dictionary</string>
 </resources>
