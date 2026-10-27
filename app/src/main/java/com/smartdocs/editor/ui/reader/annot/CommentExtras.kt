@@ -77,6 +77,9 @@ class CommentExtras(private val h: Annot2Host) {
     var pagesReq by mutableStateOf<PagesReq?>(null)
     var rotateReq by mutableStateOf<CTarget?>(null)
     var calculator by mutableStateOf(false)
+    /** The summary options dialog is open (7.70); [runSummary] builds it (installed by Annot2Dialogs). */
+    var summaryAsk by mutableStateOf(false)
+    var runSummary: (com.smartdocs.editor.core.annot.SummaryOptions) -> Unit = {}
     var tickMode by mutableStateOf(TickMode.NUMBER)
     var tickSymbol by mutableStateOf("4")
     var tickSize by mutableFloatStateOf(16f)

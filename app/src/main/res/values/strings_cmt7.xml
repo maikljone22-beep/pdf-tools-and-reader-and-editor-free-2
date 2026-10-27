@@ -154,4 +154,17 @@
     <string name="cx_reply_style">مؤلف الرد ولونه</string>
     <string name="cx_review_history">سجل المراجعة</string>
     <string name="cx_note_indicators">مؤشر الملاحظة على التظليل</string>
+    <string name="cx_print_summary">إلحاق ملخص التعليقات بالطباعة</string>
+    <string name="cx_sum_sort">ترتيب التعليقات</string>
+    <string name="cx_sum_sort_page">حسب موضعها في الصفحة</string>
+    <string name="cx_sum_sort_new">الإنشاء: الأحدث أولًا</string>
+    <string name="cx_sum_sort_old">الإنشاء: الأقدم أولًا</string>
+    <string name="cx_sum_sort_mod">آخر تعديل</string>
+    <string name="cx_sum_text_size">حجم النص والورق</string>
+    <string name="cx_sum_thumbs">صور مصغرة للصفحات (وإلا التعليقات فقط)</string>
+    <string name="cx_sum_empty_pages">تضمين الصفحات بلا تعليقات</string>
+    <string name="cx_sum_replies">تضمين الردود</string>
+    <string name="cx_sum_status">تضمين الحالة</string>
+    <string name="cx_sum_from">من صفحة</string>
+    <string name="cx_sum_to">إلى صفحة</string>
 </resources>

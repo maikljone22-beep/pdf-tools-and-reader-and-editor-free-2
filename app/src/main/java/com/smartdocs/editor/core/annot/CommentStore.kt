@@ -44,6 +44,8 @@ data class CommentItem(
     val subject: String = "",
     /** /F Locked. */
     val locked: Boolean = false,
+    /** /CreationDate (ms, 0 = unknown); [date] is the modification date. */
+    val created: Long = 0L,
 )
 
 /** Reads comment threads and changes group / delete state of stored annotations. All writes go src → out. */
@@ -136,7 +138,8 @@ object CommentStore {
                         out += CommentItem(pi, i, sub, cos.getString(COSName.T) ?: "", an.contents ?: "",
                             RectF(r.lowerLeftX, r.upperRightY, r.upperRightX, r.lowerLeftY), colorOf(cos), dateOf(cos), an.annotationName, gp,
                             replies[i]?.sortedBy { it.date } ?: emptyList(), st?.first ?: ReviewStatus.NONE, st?.second ?: "", st?.third ?: 0L,
-                            history[i]?.sortedBy { it.third } ?: emptyList(), marks[i]?.first ?: false, AnnotStyle.subjectOf(cos), AnnotStyle.isLocked(cos))
+                            history[i]?.sortedBy { it.third } ?: emptyList(), marks[i]?.first ?: false, AnnotStyle.subjectOf(cos), AnnotStyle.isLocked(cos),
+                            parseDate(cos.getString(CREATION)))
                     }
                 }
             }

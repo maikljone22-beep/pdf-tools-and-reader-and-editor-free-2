@@ -105,14 +105,16 @@ fun Annot2Dialogs(state: ReaderState, nav: NavHostController, snack: SnackbarHos
                 snack.showSnackbar(String.format(msgExported, n))
             }
         }
-        h.launchSummary = {
+        h.launchSummary = { h.cx.summaryAsk = true }       // section 7.70: options first
+        h.cx.runSummary = { opts ->
             h.launchBusy {
                 if (state.dirty && !state.save()) return@launchBusy
                 val f = state.file ?: return@launchBusy
                 val out = state.app.documents.uniqueFile(state.app.documents.docsDir, "Summarize_" + f.nameWithoutExtension)
                 val n = CommentSummary.build(ctx, f, state.password, out, summaryLabels,
                     pageSize = { state.pageSize(it) },
-                    thumb = { p, w, hh -> runCatching { state.session?.render(p, w, hh, false, true) }.getOrNull() })
+                    thumb = { p, w, hh -> runCatching { state.session?.render(p, w, hh, false, true) }.getOrNull() },
+                    opts = opts.copy(pageCount = state.pageCount))
                 if (n == 0) { out.delete(); snack.showSnackbar(msgNoComments) } else h.summaryFile = out
             }
         }
@@ -133,7 +135,7 @@ fun Annot2Dialogs(state: ReaderState, nav: NavHostController, snack: SnackbarHos
 
 /** Labels of the summary PDF, resolved from resources. */
 @Composable
-private fun summaryLabels(): SummaryLabels {
+internal fun summaryLabels(): SummaryLabels {
     val ctx = LocalContext.current
     return remember(ctx) {
         SummaryLabels(

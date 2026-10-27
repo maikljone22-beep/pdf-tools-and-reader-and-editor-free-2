@@ -214,6 +214,7 @@ fun CommentExtrasDialogs(state: ReaderState) {
     cx.rotateReq?.let { RotateDialog(onDismiss = { cx.rotateReq = null }) { deg -> cx.rotate(deg) } }
     cx.pagesReq?.let { PagesDialog(state.pageCount, onDismiss = { cx.pagesReq = null }) { spec -> cx.placeOnPages(spec) } }
     if (cx.calculator) CalculatorDialog(state) { cx.calculator = false }
+    if (cx.summaryAsk) SummaryOptionsDialog(state.pageCount, onDismiss = { cx.summaryAsk = false }) { o -> cx.summaryAsk = false; cx.runSummary(o) }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -428,4 +429,47 @@ fun PlacementBar(state: ReaderState, modifier: Modifier = Modifier) {
             }) { Text(stringResource(R.string.ok)) } },
             dismissButton = { TextButton(onClick = { sizeOpen = false }) { Text(stringResource(R.string.cancel)) } })
     }
+}
+
+/** Options of the comments summary (7.70 / 24.87); also used by print with summary (7.71 / 7.72). */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun SummaryOptionsFields(o: com.smartdocs.editor.core.annot.SummaryOptions, pageCount: Int, onChange: (com.smartdocs.editor.core.annot.SummaryOptions) -> Unit) {
+    val S = com.smartdocs.editor.core.annot.SummaryOptions.Sort
+    Text(stringResource(R.string.cx_sum_sort), style = MaterialTheme.typography.labelMedium)
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        listOf(S.PAGE to R.string.cx_sum_sort_page, S.AUTHOR to R.string.an_sort_author, S.TYPE to R.string.cx_sort_type,
+            S.CREATED_NEW to R.string.cx_sum_sort_new, S.CREATED_OLD to R.string.cx_sum_sort_old, S.MODIFIED to R.string.cx_sum_sort_mod).forEach { (s, l) ->
+            FilterChip(o.sort == s, { onChange(o.copy(sort = s)) }, label = { Text(stringResource(l)) })
+        }
+    }
+    Text(stringResource(R.string.cx_sum_text_size), style = MaterialTheme.typography.labelMedium)
+    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        listOf(0.85f to "S", 1f to "M", 1.25f to "L").forEach { (v, l) -> FilterChip(o.textScale == v, { onChange(o.copy(textScale = v)) }, label = { Text(l) }) }
+        Spacer(Modifier.width(8.dp))
+        FilterChip(!o.letter, { onChange(o.copy(letter = false)) }, label = { Text("A4") })
+        FilterChip(o.letter, { onChange(o.copy(letter = true)) }, label = { Text("Letter") })
+    }
+    SwRow(o.thumbnails, R.string.cx_sum_thumbs) { onChange(o.copy(thumbnails = it)) }
+    SwRow(o.includeEmptyPages, R.string.cx_sum_empty_pages) { onChange(o.copy(includeEmptyPages = it)) }
+    SwRow(o.replies, R.string.cx_sum_replies) { onChange(o.copy(replies = it)) }
+    SwRow(o.status, R.string.cx_sum_status) { onChange(o.copy(status = it)) }
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedTextField(o.fromPage.toString(), { v -> v.toIntOrNull()?.let { onChange(o.copy(fromPage = it.coerceIn(1, pageCount.coerceAtLeast(1)))) } },
+            Modifier.width(96.dp), label = { Text(stringResource(R.string.cx_sum_from)) }, singleLine = true)
+        OutlinedTextField(if (o.toPage == Int.MAX_VALUE) pageCount.toString() else o.toPage.toString(), { v -> v.toIntOrNull()?.let { onChange(o.copy(toPage = it.coerceAtLeast(1))) } },
+            Modifier.width(96.dp), label = { Text(stringResource(R.string.cx_sum_to)) }, singleLine = true)
+    }
+}
+
+@Composable
+private fun SwRow(v: Boolean, l: Int, f: (Boolean) -> Unit) = Row(verticalAlignment = Alignment.CenterVertically) { Switch(v, f); Spacer(Modifier.width(8.dp)); Text(stringResource(l)) }
+
+@Composable
+private fun SummaryOptionsDialog(pageCount: Int, onDismiss: () -> Unit, onOk: (com.smartdocs.editor.core.annot.SummaryOptions) -> Unit) {
+    var o by remember { mutableStateOf(com.smartdocs.editor.core.annot.SummaryOptions()) }
+    AlertDialog(onDismissRequest = onDismiss, title = { Text(stringResource(R.string.an_summary)) },
+        text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) { SummaryOptionsFields(o, pageCount) { o = it } } },
+        confirmButton = { TextButton(onClick = { onOk(o) }) { Text(stringResource(R.string.ok)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } })
 }

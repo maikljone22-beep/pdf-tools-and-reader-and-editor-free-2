@@ -154,4 +154,17 @@
     <string name="cx_reply_style">Reply author and colour</string>
     <string name="cx_review_history">Review history</string>
     <string name="cx_note_indicators">Note indicator on markups</string>
+    <string name="cx_print_summary">Append comments summary</string>
+    <string name="cx_sum_sort">Comment order</string>
+    <string name="cx_sum_sort_page">On-page order</string>
+    <string name="cx_sum_sort_new">Created: newest first</string>
+    <string name="cx_sum_sort_old">Created: oldest first</string>
+    <string name="cx_sum_sort_mod">Last modified</string>
+    <string name="cx_sum_text_size">Text and paper size</string>
+    <string name="cx_sum_thumbs">Page thumbnails (otherwise comments only)</string>
+    <string name="cx_sum_empty_pages">Include pages without comments</string>
+    <string name="cx_sum_replies">Include replies</string>
+    <string name="cx_sum_status">Include status</string>
+    <string name="cx_sum_from">From page</string>
+    <string name="cx_sum_to">To page</string>
 </resources>
