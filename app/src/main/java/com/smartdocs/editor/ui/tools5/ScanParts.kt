@@ -4,6 +4,9 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.provider.ContactsContract
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -49,16 +52,47 @@ fun ScanPageEditor(page: ScanPage, onApply: (PageEdit, Boolean) -> Unit, onDelet
         title = { Text(stringResource(R.string.t5_edit_page)) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Box(Modifier.fillMaxWidth().heightIn(max = 300.dp)) {
-                    preview?.let { Image(it.asImageBitmap(), stringResource(R.string.t5_preview), Modifier.fillMaxWidth(), contentScale = ContentScale.Fit) }
-                        ?: LinearProgressIndicator(Modifier.fillMaxWidth())
+                var erasing by remember { mutableStateOf(false) }
+                Box(Modifier.fillMaxWidth().heightIn(max = 300.dp), contentAlignment = androidx.compose.ui.Alignment.Center) {
+                    val bmp = preview
+                    if (bmp == null) LinearProgressIndicator(Modifier.fillMaxWidth())
+                    else {
+                        // eraser: drag a box on the picture; it is painted white
+                        var drag by remember { mutableStateOf<Pair<androidx.compose.ui.geometry.Offset, androidx.compose.ui.geometry.Offset>?>(null) }
+                        var size by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
+                        Box(Modifier.aspectRatio(bmp.width.toFloat() / bmp.height.coerceAtLeast(1)).onSizeChanged { size = it }
+                            .then(if (!erasing) Modifier else Modifier.pointerInput(Unit) {
+                                detectDragGestures(onDragStart = { o -> drag = o to o }, onDrag = { c, _ -> drag = drag?.let { it.first to c.position } },
+                                    onDragEnd = {
+                                        val d = drag; drag = null
+                                        if (d != null && size.width > 0 && size.height > 0) {
+                                            val r = floatArrayOf(d.first.x / size.width, d.first.y / size.height, d.second.x / size.width, d.second.y / size.height).map { it.coerceIn(0f, 1f) }.toFloatArray()
+                                            if (kotlin.math.abs(r[2] - r[0]) > 0.01f && kotlin.math.abs(r[3] - r[1]) > 0.01f) edit = edit.copy(erase = edit.erase + r)
+                                        }
+                                    }, onDragCancel = { drag = null })
+                            })) {
+                            Image(bmp.asImageBitmap(), stringResource(R.string.t5_preview), Modifier.fillMaxSize(), contentScale = ContentScale.FillBounds)
+                            drag?.let { (a, b) ->
+                                androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
+                                    drawRect(androidx.compose.ui.graphics.Color.Red, topLeft = androidx.compose.ui.geometry.Offset(minOf(a.x, b.x), minOf(a.y, b.y)),
+                                        size = androidx.compose.ui.geometry.Size(kotlin.math.abs(b.x - a.x), kotlin.math.abs(b.y - a.y)), style = androidx.compose.ui.graphics.drawscope.Stroke(3f))
+                                }
+                            }
+                        }
+                    }
                 }
+                Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    FilterChip(erasing, { erasing = !erasing }, label = { Text(stringResource(R.string.pc_eraser)) }, leadingIcon = { Icon(Icons.Default.AutoFixOff, null) })
+                    Spacer(Modifier.width(8.dp))
+                    TextButton(onClick = { edit = edit.copy(erase = edit.erase.dropLast(1)) }, enabled = edit.erase.isNotEmpty()) { Text(stringResource(R.string.pc_eraser_undo)) }
+                }
+                SwitchRow(stringResource(R.string.pc_despeckle), edit.despeckle) { edit = edit.copy(despeckle = it) }
                 ChoiceChips(ScanFilter.entries, edit.filter, { it.label() }) { edit = edit.copy(filter = it) }
                 LabeledSlider(stringResource(R.string.t5_brightness), edit.brightness, -0.5f..0.5f, { edit = edit.copy(brightness = it) }) { "%+.0f%%".format(it * 100) }
                 LabeledSlider(stringResource(R.string.t5_contrast), edit.contrast, 0.5f..2f, { edit = edit.copy(contrast = it) }) { "%.1f×".format(it) }
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    IconButton(onClick = { edit = edit.copy(rotation = (edit.rotation + 270) % 360) }) { Icon(Icons.Default.RotateLeft, stringResource(R.string.t5_rotate_left)) }
-                    IconButton(onClick = { edit = edit.copy(rotation = (edit.rotation + 90) % 360) }) { Icon(Icons.Default.RotateRight, stringResource(R.string.t5_rotate_right)) }
+                    IconButton(onClick = { edit = edit.copy(rotation = (edit.rotation + 270) % 360, erase = emptyList()) }) { Icon(Icons.Default.RotateLeft, stringResource(R.string.t5_rotate_left)) }
+                    IconButton(onClick = { edit = edit.copy(rotation = (edit.rotation + 90) % 360, erase = emptyList()) }) { Icon(Icons.Default.RotateRight, stringResource(R.string.t5_rotate_right)) }
                     IconButton(onClick = { onMove(-1) }) { Icon(Icons.Default.KeyboardArrowUp, stringResource(R.string.t5_move_up)) }
                     IconButton(onClick = { onMove(1) }) { Icon(Icons.Default.KeyboardArrowDown, stringResource(R.string.t5_move_down)) }
                     IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, stringResource(R.string.t5_remove)) }

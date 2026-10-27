@@ -52,7 +52,8 @@ object TextLayer {
 }
 
 /** Paper of a scan PDF; FIT = page sized to the picture (200 dpi). */
-enum class ScanPaper { A4, LETTER, FIT }
+/** Output page size of a scan (Foxit 5 paper sizes; CARD = ID-1). */
+enum class ScanPaper { FIT, A4, LETTER, LEGAL, A3, A5, B5, CARD }
 
 /** One finished page picture (after filters / composition) plus whether it is grey. */
 class ScanOut(val bitmap: Bitmap, val gray: Boolean)
@@ -109,11 +110,7 @@ object ScanBuilder {
                 coroutineContext.ensureActive()
                 onPage(count)
                 val bmp = p.bitmap
-                val rect = when (opt.paper) {
-                    ScanPaper.FIT -> PDRectangle(bmp.width * 72f / 200f, bmp.height * 72f / 200f)
-                    ScanPaper.A4 -> if (bmp.width > bmp.height) PDRectangle(PDRectangle.A4.height, PDRectangle.A4.width) else PDRectangle.A4
-                    ScanPaper.LETTER -> if (bmp.width > bmp.height) PDRectangle(PDRectangle.LETTER.height, PDRectangle.LETTER.width) else PDRectangle.LETTER
-                }
+                val rect = ScanExtras.pageRect(opt.paper, bmp.width, bmp.height)
                 val page = PDPage(rect); doc.addPage(page)
                 val k = minOf(rect.width / bmp.width, rect.height / bmp.height)
                 val w = bmp.width * k; val h = bmp.height * k
