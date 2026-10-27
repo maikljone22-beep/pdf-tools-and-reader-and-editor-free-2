@@ -598,8 +598,9 @@ internal object ImageEdit5 {
             is COSArray -> (0 until f.size()).mapNotNull { (f.getObject(it) as? COSName)?.name }
             else -> emptyList()
         }
-        val cs = runCatching { img.colorSpace?.name }.getOrNull()
-            ?: (d?.getDictionaryObject(COSName.COLORSPACE, COSName.CS) as? COSName)?.name
+        // the raw device name first: pdfbox-android cannot model DeviceCMYK (it would report another space or fail)
+        val cs = (d?.getDictionaryObject(COSName.COLORSPACE, COSName.CS) as? COSName)?.name
+            ?: runCatching { img.colorSpace?.name }.getOrNull()
             ?: if (img.isStencil) "Stencil" else "?"
         return ImageInfo(
             name, inline, img.width, img.height, pw * cropW, ph * cropH,
