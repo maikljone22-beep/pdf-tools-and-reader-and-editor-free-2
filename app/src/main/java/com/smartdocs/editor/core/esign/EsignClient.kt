@@ -37,11 +37,13 @@ object EsignClient {
 
     /** Step 1: metadata; step 2: the PDF (the server hashes it, then mails or returns the links). */
     fun create(file: File, title: String, sender: String, senderEmail: String, message: String, order: SignOrder,
-               signers: List<Signer>, fields: List<EsignField>, pageCount: Int, expiresDays: Int, sendMail: Boolean): CreatedRequest {
+               signers: List<Signer>, fields: List<EsignField>, pageCount: Int, expiresDays: Int, sendMail: Boolean,
+               brand: EsignBrand? = null): CreatedRequest {
         val meta = JSONObject().put("title", title).put("sender", sender).put("senderEmail", senderEmail).put("message", message)
             .put("order", order.name.lowercase()).put("pageCount", pageCount).put("expiresDays", expiresDays).put("sendMail", sendMail)
             .put("signers", JSONArray().apply { signers.forEach { put(JSONObject().put("name", it.name).put("email", it.email)) } })
             .put("fields", JSONArray().apply { fields.forEach { put(it.toJson()) } })
+        if (brand != null && !brand.isEmpty) meta.put("brand", brand.toJson())
         val c = obj(Request.Builder().url(url("/requests")).app().post(post(meta)).build())
         val id = c.getString("id"); val key = c.getString("ownerKey")
         val up = obj(Request.Builder().url(url("/requests/$id/file")).owner(key).put(file.asRequestBody(CloudHttp.OCTET)).build())
@@ -98,6 +100,44 @@ object EsignClient {
         obj(Request.Builder().url(url("/sign/$id/decline").toHttpUrl().newBuilder().addQueryParameter("t", token).build()).app().post(post(body)).build())
     }
 
+    // ---------------------------------------------------------------- online forms (one public link, many signers)
+
+    /** Creates the form and uploads its PDF; returns (id, ownerKey, public link). */
+    fun createForm(file: File, title: String, sender: String, senderEmail: String, message: String, fields: List<EsignField>, pageCount: Int,
+                   maxResponses: Int, requireEmail: Boolean, notify: Boolean, brand: EsignBrand?): Triple<String, String, String> {
+        val meta = JSONObject().put("title", title).put("sender", sender).put("senderEmail", senderEmail).put("message", message)
+            .put("pageCount", pageCount).put("maxResponses", maxResponses).put("requireEmail", requireEmail).put("notify", notify)
+            .put("fields", JSONArray().apply { fields.forEach { put(it.copy(signer = 0).toJson()) } })
+        if (brand != null && !brand.isEmpty) meta.put("brand", brand.toJson())
+        val c = obj(Request.Builder().url(url("/forms")).app().post(post(meta)).build())
+        val id = c.getString("id"); val key = c.getString("ownerKey")
+        val up = obj(Request.Builder().url(url("/forms/$id/file")).owner(key).put(file.asRequestBody(CloudHttp.OCTET)).build())
+        return Triple(id, key, up.optString("link").ifBlank { formLink(id) })
+    }
+
+    fun getForm(id: String, ownerKey: String): EsignForm = EsignForm.from(obj(Request.Builder().url(url("/forms/$id")).owner(ownerKey).build()))
+
+    fun formSubmissions(id: String, ownerKey: String): List<FormSubmission> {
+        val a = obj(Request.Builder().url(url("/forms/$id/submissions")).owner(ownerKey).build()).optJSONArray("submissions") ?: JSONArray()
+        return (0 until a.length()).map { FormSubmission.from(a.getJSONObject(it)) }
+    }
+
+    fun formSubmission(id: String, ownerKey: String, sid: String): FormSubmission =
+        FormSubmission.from(obj(Request.Builder().url(url("/forms/$id/submissions/$sid")).owner(ownerKey).build()))
+
+    /** Enables or disables the public link; returns the updated form. */
+    fun setFormEnabled(id: String, ownerKey: String, enabled: Boolean): EsignForm =
+        EsignForm.from(obj(Request.Builder().url(url("/forms/$id/" + if (enabled) "enable" else "disable")).owner(ownerKey).post(post(JSONObject())).build()))
+
+    fun deleteForm(id: String, ownerKey: String) { CloudHttp.string(Request.Builder().url(url("/forms/$id")).owner(ownerKey).delete().build()) }
+
+    /** Registers one person's completed copy for `/verify`. Returns the server's hash. */
+    fun uploadFormFinal(id: String, ownerKey: String, sid: String, file: File): String =
+        obj(Request.Builder().url(url("/forms/$id/submissions/$sid/final")).owner(ownerKey).put(file.asRequestBody(CloudHttp.OCTET)).build()).optString("sha")
+
+    fun formLink(id: String) = url("/f/$id")
+    fun logoUrl(id: String) = url("/logo/$id")
+
     fun webLink(id: String, token: String) = url("/s/$id?t=$token")
     fun verifyPage() = url("/v")
 
@@ -107,4 +147,7 @@ object EsignClient {
 
     fun isGone(e: Throwable) = e is HttpException && (e.code == 404 || e.code == 410)
     fun isNotYourTurn(e: Throwable) = e is HttpException && e.code == 409
+
+    /** Worth an immediate second attempt in a bulk send: network failures and server errors, not 4xx answers. */
+    fun isTransient(e: Throwable) = (e is HttpException && (e.code >= 500 || e.code == 429)) || e is java.io.IOException && e !is HttpException
 }
