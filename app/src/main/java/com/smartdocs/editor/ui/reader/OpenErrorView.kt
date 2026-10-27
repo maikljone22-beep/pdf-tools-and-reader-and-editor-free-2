@@ -42,3 +42,10 @@ fun OpenErrorView(error: OpenError, onRetry: () -> Unit, onBack: () -> Unit, onO
         }
     }
 }
+
+/** "Open with another app" for a document the reader could not open. */
+fun openWithOtherApp(ctx: android.content.Context, uri: android.net.Uri) {
+    val view = android.content.Intent(android.content.Intent.ACTION_VIEW).setDataAndType(uri, "application/pdf")
+        .addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    runCatching { ctx.startActivity(android.content.Intent.createChooser(view, null).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
+}
