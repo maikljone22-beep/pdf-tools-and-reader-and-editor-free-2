@@ -42,7 +42,7 @@ internal fun TsaServerPicker(state: AdvancedSignState) {
                 else -> null
             }
             FilterChip(current?.id == s.id, { state.tsaUrl = s.url }, label = { Text(s.name, style = MaterialTheme.typography.labelSmall, maxLines = 1) },
-                leadingIcon = icon?.let { { Icon(it, null, Modifier.size(16.dp)) } })
+                leadingIcon = if (icon != null) ({ Icon(icon, null, Modifier.size(16.dp)) }) else null)
         }
     }
     if (manage) TsaServersDialog(state) { manage = false }
@@ -123,7 +123,7 @@ private fun TsaServerEditDialog(server: TsaServer, isNew: Boolean, hasPassword: 
                 OutlinedTextField(password, { password = it; clearPassword = false }, Modifier.fillMaxWidth(), singleLine = true, enabled = user.isNotBlank(),
                     visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                     label = { Text(stringResource(R.string.nq_tsa_password)) },
-                    supportingText = if (hasPassword && !clearPassword && user.isNotBlank()) { { Text(stringResource(R.string.nq_tsa_password_kept)) } } else null)
+                    supportingText = if (hasPassword && !clearPassword && user.isNotBlank()) ({ Text(stringResource(R.string.nq_tsa_password_kept)) }) else null)
                 if (hasPassword && user.isNotBlank())
                     TextButton(onClick = { clearPassword = true; password = "" }, enabled = !clearPassword) { Text(stringResource(R.string.nq_tsa_password_remove)) }
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {

@@ -6,14 +6,19 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Contrast
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Draw
 import androidx.compose.material.icons.filled.HistoryEdu
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockOpen
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -30,6 +35,9 @@ import androidx.navigation.NavHostController
 import com.smartdocs.editor.LocalApp
 import com.smartdocs.editor.R
 import com.smartdocs.editor.core.data.SavedSignature
+import com.smartdocs.editor.core.data.SignatureLock
+import com.smartdocs.editor.core.data.SignatureMeta
+import com.smartdocs.editor.core.data.SignatureMetaStore
 import com.smartdocs.editor.ui.Routes
 import com.smartdocs.editor.ui.common.AppTopBar
 import com.smartdocs.editor.ui.common.EmptyState
@@ -50,10 +58,31 @@ fun SignaturesScreen(nav: NavHostController) {
     var toDelete by remember { mutableStateOf<SavedSignature?>(null) }
     val snackbar = remember { SnackbarHostState() }
     val savedMsg = stringResource(R.string.sa_signature_saved)
+    // nitro-quicksign: lock / recently used metadata, black-and-white copies
+    val meta by remember { SignatureMetaStore.flow(app) }.collectAsStateWithLifecycle()
+    val gate = rememberSignatureGate()
+    var lockFor by remember { mutableStateOf<SavedSignature?>(null) }
+    val bwMsg = stringResource(R.string.nq_bw_done)
 
     val pickPdf = rememberPdfPicker { files -> files.firstOrNull()?.let { nav.navigate(Routes.reader(Uri.fromFile(it).toString())) } }
 
     val shown = when (filter) { 1 -> all.filter { !it.isInitials }; 2 -> all.filter { it.isInitials }; else -> all }
+    val recent = SignatureMetaStore.recent(meta, shown.map { it.path }, max = 4).mapNotNull { p -> shown.firstOrNull { it.path == p } }
+
+    fun bwCopy(sig: SavedSignature) {
+        scope.launch {
+            val ok = withContext(Dispatchers.IO) {
+                runCatching {
+                    val src = BitmapFactory.decodeFile(sig.path) ?: error("decode")
+                    val f = app.documents.uniqueFile(app.documents.signaturesDir, "sig_bw_${System.currentTimeMillis()}", "png")
+                    SignatureImage.savePng(SignatureImage.toBlackAndWhite(src), f)
+                    SignatureMetaStore.copyLock(app, sig.path, f.absolutePath)
+                    app.db.signatures().insert(SavedSignature(path = f.absolutePath, isInitials = sig.isInitials))
+                }.isSuccess
+            }
+            if (ok) snackbar.showSnackbar(bwMsg)
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -83,8 +112,21 @@ fun SignaturesScreen(nav: NavHostController) {
             } else {
                 BoxWithConstraints(Modifier.fillMaxSize()) {
                     val cols = if (maxWidth > 700.dp) 4 else 2
+                    val card: @Composable (SavedSignature) -> Unit = { sig ->
+                        SignatureCard(sig, meta[sig.path] ?: SignatureMeta(),
+                            onDelete = { gate.request(sig.path) { toDelete = sig } },
+                            onBlackWhite = { gate.request(sig.path) { bwCopy(sig) } },
+                            onLock = { if (meta[sig.path]?.locked == true) gate.request(sig.path) { lockFor = sig } else lockFor = sig },
+                            onRemoveLock = { gate.request(sig.path) { SignatureLock.clear(app, sig.path) } })
+                    }
                     LazyVerticalGrid(GridCells.Fixed(cols), contentPadding = PaddingValues(16.dp, 8.dp, 16.dp, 96.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        items(shown, key = { it.id }) { sig -> SignatureCard(sig, onDelete = { toDelete = sig }) }
+                        // nitro-quicksign: Recently used first
+                        if (recent.isNotEmpty()) {
+                            item(span = { GridItemSpan(maxLineSpan) }, key = "h_recent") { SectionHeader(stringResource(R.string.nq_recent)) }
+                            items(recent, key = { "r" + it.id }) { sig -> card(sig) }
+                            item(span = { GridItemSpan(maxLineSpan) }, key = "h_all") { SectionHeader(stringResource(R.string.nq_all_signatures)) }
+                        }
+                        items(shown, key = { it.id }) { sig -> card(sig) }
                     }
                 }
             }
@@ -105,7 +147,7 @@ fun SignaturesScreen(nav: NavHostController) {
             confirmButton = {
                 TextButton(onClick = {
                     toDelete = null
-                    scope.launch { withContext(Dispatchers.IO) { runCatching { File(sig.path).delete() }; app.db.signatures().delete(sig) } }
+                    scope.launch { withContext(Dispatchers.IO) { runCatching { File(sig.path).delete() }; app.db.signatures().delete(sig) }; SignatureMetaStore.remove(app, sig.path) }
                 }) { Text(stringResource(R.string.delete)) }
             },
             dismissButton = { TextButton(onClick = { toDelete = null }) { Text(stringResource(R.string.cancel)) } },
@@ -113,8 +155,17 @@ fun SignaturesScreen(nav: NavHostController) {
     }
 }
 
+    lockFor?.let { sig -> SetSignatureLockDialog(sig.path, onDismiss = { lockFor = null }) { lockFor = null } }
+}
+
 @Composable
-private fun SignatureCard(sig: SavedSignature, onDelete: () -> Unit) {
+private fun SectionHeader(text: String) {
+    Text(text, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 4.dp))
+}
+
+@Composable
+private fun SignatureCard(sig: SavedSignature, meta: SignatureMeta, onDelete: () -> Unit, onBlackWhite: () -> Unit, onLock: () -> Unit, onRemoveLock: () -> Unit) {
+    var menu by remember { mutableStateOf(false) }
     val bmp by produceState<android.graphics.Bitmap?>(null, sig.path) {
         value = withContext(Dispatchers.IO) { runCatching { BitmapFactory.decodeFile(sig.path) }.getOrNull() }
     }
@@ -124,8 +175,20 @@ private fun SignatureCard(sig: SavedSignature, onDelete: () -> Unit) {
                 bmp?.let { Image(it.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Fit) }
             }
             Row(Modifier.padding(start = 12.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (meta.locked) Icon(Icons.Default.Lock, stringResource(R.string.nq_lock_locked), Modifier.padding(end = 4.dp).size(16.dp), tint = MaterialTheme.colorScheme.primary)
                 Text(stringResource(if (sig.isInitials) R.string.sig_initials else R.string.sa_filter_signatures), style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
-                IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, stringResource(R.string.delete), tint = MaterialTheme.colorScheme.error) }
+                Box {
+                    IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, stringResource(R.string.nq_more)) }
+                    DropdownMenu(menu, { menu = false }) {
+                        DropdownMenuItem(text = { Text(stringResource(R.string.nq_bw_copy)) }, onClick = { menu = false; onBlackWhite() }, leadingIcon = { Icon(Icons.Default.Contrast, null) })
+                        DropdownMenuItem(text = { Text(stringResource(if (meta.locked) R.string.nq_lock_change else R.string.nq_lock_set)) }, onClick = { menu = false; onLock() },
+                            leadingIcon = { Icon(Icons.Default.Lock, null) })
+                        if (meta.locked) DropdownMenuItem(text = { Text(stringResource(R.string.nq_lock_remove)) }, onClick = { menu = false; onRemoveLock() },
+                            leadingIcon = { Icon(Icons.Default.LockOpen, null) })
+                        DropdownMenuItem(text = { Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error) }, onClick = { menu = false; onDelete() },
+                            leadingIcon = { Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error) })
+                    }
+                }
             }
         }
     }

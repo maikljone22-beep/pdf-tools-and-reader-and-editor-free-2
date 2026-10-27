@@ -31,4 +31,35 @@
     <string name="nq_tsa_require_trusted">الختم من خادم موثوق فقط</string>
     <string name="nq_tsa_require_trusted_desc">يُقبل الختم الزمني فقط إذا كانت شهادة الخادم مرتبطة بشهاداتك الموثوقة أو بمخزن شهادات النظام.</string>
     <string name="nq_tsa_untrusted">رُفض الختم الزمني: شهادة الخادم «%1$s» غير موثوقة. أضف شهادته الجذرية إلى الشهادات الموثوقة أو أوقف خيار «الختم من خادم موثوق فقط».</string>
+    <!-- QuickSign: black and white, recently used, enlarge, from PDF, password lock -->
+    <string name="nq_bw_save">حفظ بالأبيض والأسود</string>
+    <string name="nq_bw_copy">نسخة بالأبيض والأسود</string>
+    <string name="nq_bw_done">حُفظت نسخة بالأبيض والأسود</string>
+    <string name="nq_recent">المستخدمة مؤخرًا</string>
+    <string name="nq_all_signatures">كل التوقيعات</string>
+    <string name="nq_more">المزيد</string>
+    <string name="nq_enlarge_canvas">تكبير لوحة الرسم</string>
+    <string name="nq_from_pdf">من صفحة PDF</string>
+    <string name="nq_pdf_title">توقيع من صفحة PDF</string>
+    <string name="nq_pdf_crop_hint">اسحب زوايا المستطيل لتحديد التوقيع، أو اسحبه من داخله لتحريكه.</string>
+    <string name="nq_pdf_page">الصفحة</string>
+    <string name="nq_pdf_of">من %1$d</string>
+    <string name="nq_pdf_use">استخدام المنطقة المحددة</string>
+    <string name="nq_pdf_password">هذا الملف محمي بكلمة مرور. افتحه وأزل الحماية أولًا.</string>
+    <string name="nq_pdf_failed">تعذّر عرض هذه الصفحة.</string>
+    <string name="nq_lock_locked">محمي بكلمة مرور</string>
+    <string name="nq_lock_set">حماية بكلمة مرور</string>
+    <string name="nq_lock_change">تغيير كلمة المرور</string>
+    <string name="nq_lock_remove">إزالة الحماية</string>
+    <string name="nq_lock_unlock_title">التوقيع محمي</string>
+    <string name="nq_lock_unlock_msg">أدخل رمز PIN أو كلمة مرور هذا التوقيع لاستخدامه.</string>
+    <string name="nq_lock_secret">رمز PIN أو كلمة المرور</string>
+    <string name="nq_lock_unlock">فتح</string>
+    <string name="nq_lock_wrong">كلمة مرور غير صحيحة</string>
+    <string name="nq_lock_wait">محاولات كثيرة. حاول بعد %1$d ثانية.</string>
+    <string name="nq_lock_set_title">حماية التوقيع</string>
+    <string name="nq_lock_set_msg">سيُطلب هذا الرمز في كل مرة يوضع فيها التوقيع. لا يمكن استرجاعه إذا نُسي.</string>
+    <string name="nq_lock_confirm">تأكيد كلمة المرور</string>
+    <string name="nq_lock_too_short">%1$d أحرف على الأقل</string>
+    <string name="nq_lock_mismatch">كلمتا المرور غير متطابقتين</string>
 </resources>

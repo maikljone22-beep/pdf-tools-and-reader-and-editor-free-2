@@ -31,4 +31,35 @@
     <string name="nq_tsa_require_trusted">Only time-stamp from a trusted server</string>
     <string name="nq_tsa_require_trusted_desc">The time-stamp is accepted only when the server certificate chains to your trusted certificates or to the system certificate store.</string>
     <string name="nq_tsa_untrusted">Time-stamp rejected: the certificate of the server “%1$s” is not trusted. Add its root certificate to the trusted certificates or turn off “Only time-stamp from a trusted server”.</string>
+    <!-- QuickSign: black and white, recently used, enlarge, from PDF, password lock -->
+    <string name="nq_bw_save">Save as black and white</string>
+    <string name="nq_bw_copy">Black and white copy</string>
+    <string name="nq_bw_done">Black and white copy saved</string>
+    <string name="nq_recent">Recently used</string>
+    <string name="nq_all_signatures">All signatures</string>
+    <string name="nq_more">More</string>
+    <string name="nq_enlarge_canvas">Enlarge canvas</string>
+    <string name="nq_from_pdf">From a PDF page</string>
+    <string name="nq_pdf_title">Signature from a PDF page</string>
+    <string name="nq_pdf_crop_hint">Drag the corners of the rectangle around the signature, or drag inside it to move it.</string>
+    <string name="nq_pdf_page">Page</string>
+    <string name="nq_pdf_of">of %1$d</string>
+    <string name="nq_pdf_use">Use selection</string>
+    <string name="nq_pdf_password">This file is password-protected. Open it and remove the protection first.</string>
+    <string name="nq_pdf_failed">Could not render this page.</string>
+    <string name="nq_lock_locked">Password-protected</string>
+    <string name="nq_lock_set">Protect with password</string>
+    <string name="nq_lock_change">Change password</string>
+    <string name="nq_lock_remove">Remove protection</string>
+    <string name="nq_lock_unlock_title">Protected signature</string>
+    <string name="nq_lock_unlock_msg">Enter the PIN or password of this signature to use it.</string>
+    <string name="nq_lock_secret">PIN or password</string>
+    <string name="nq_lock_unlock">Unlock</string>
+    <string name="nq_lock_wrong">Wrong password</string>
+    <string name="nq_lock_wait">Too many attempts. Try again in %1$d s.</string>
+    <string name="nq_lock_set_title">Protect signature</string>
+    <string name="nq_lock_set_msg">This PIN or password is asked every time the signature is placed. It cannot be recovered if you forget it.</string>
+    <string name="nq_lock_confirm">Confirm password</string>
+    <string name="nq_lock_too_short">At least %1$d characters</string>
+    <string name="nq_lock_mismatch">The passwords don\'t match</string>
 </resources>

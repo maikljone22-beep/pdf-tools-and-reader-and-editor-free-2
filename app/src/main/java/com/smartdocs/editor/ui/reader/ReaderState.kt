@@ -732,6 +732,8 @@ class ReaderState(
     /** Commit an image placement (signature / stamp / picture) as a STAMP_IMAGE annotation. */
     fun confirmPlacement() {
         val p = placement ?: return
+        // nitro-quicksign: Recently used (pendingText = the saved signature's path while the signature tool is active)
+        if (tool == ReaderTool.SIGNATURE && pendingText.isNotBlank()) com.smartdocs.editor.core.data.SignatureMetaStore.markUsed(context, pendingText)
         val bmp = if (p.rotation != 0f) rotateBitmap(p.image, p.rotation) else p.image
         addAnnot(newAnnot(AnnotKind.STAMP_IMAGE, p.page, rects = listOf(PageGeometry.normPdf(p.rect)), image = bmp))
         placement = null
