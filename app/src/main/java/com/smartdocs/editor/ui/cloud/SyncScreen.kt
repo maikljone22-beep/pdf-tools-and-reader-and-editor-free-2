@@ -185,9 +185,17 @@ private fun PairCard(p: SyncPair, queue: List<SyncQueue.QItem>, live: SyncProgre
                     SyncWorker.MSG_AUTH -> stringResource(R.string.ac_reconnect_needed)
                     SyncWorker.MSG_PERMISSION -> stringResource(R.string.ac_sync_perm_lost)
                     SyncWorker.MSG_FILES_FAILED -> pluralStringResourceCompat(R.plurals.s6_files_failed, p.failed)
+                    SyncWorker.MSG_CONFIRM_DELETES -> pluralStringResourceCompat(R.plurals.fix7_deletes_withheld, p.pendingDeletes)
                     else -> m
                 }
                 Text(text, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
+            }
+            // DI-25: the mass-deletion guard withheld this pass's deletions; the user decides
+            if (!running && p.status == SyncStatus.NEEDS_CONFIRMATION) Row(verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = { SyncWorker.syncNow(ctx, p, com.smartdocs.editor.core.sync.DeleteGuard.Policy.RESTORE) }) { Text(stringResource(R.string.fix7_deletes_keep)) }
+                TextButton(onClick = { SyncWorker.syncNow(ctx, p, com.smartdocs.editor.core.sync.DeleteGuard.Policy.ALLOW) }) {
+                    Text(stringResource(R.string.fix7_deletes_allow), color = MaterialTheme.colorScheme.error)
+                }
             }
             Spacer(Modifier.height(6.dp))
             SwitchLine(stringResource(R.string.ac_sync_wifi_only), p.wifiOnly) { v -> SyncStore.update(ctx, p.id) { it.copy(wifiOnly = v) }; SyncWorker.schedule(ctx) }
@@ -268,6 +276,7 @@ private fun StatusChip(s: SyncStatus) {
         SyncStatus.RUNNING -> stringResource(R.string.ac_st_running) to MaterialTheme.colorScheme.primary
         SyncStatus.SYNCED -> stringResource(R.string.ac_st_synced) to MaterialTheme.colorScheme.primary
         SyncStatus.FAILED -> stringResource(R.string.ac_st_failed) to MaterialTheme.colorScheme.error
+        SyncStatus.NEEDS_CONFIRMATION -> stringResource(R.string.fix7_st_confirm) to MaterialTheme.colorScheme.error
     }
     Surface(shape = PillShape, color = color.copy(alpha = 0.14f)) {
         Row(Modifier.padding(horizontal = 10.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {

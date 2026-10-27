@@ -9,7 +9,8 @@ import org.json.JSONObject
 import java.io.File
 import java.util.UUID
 
-enum class SyncStatus { IDLE, PENDING, RUNNING, SYNCED, FAILED }
+/** [NEEDS_CONFIRMATION]: the last pass withheld [SyncPair.pendingDeletes] deletions until the user decides (DI-25). */
+enum class SyncStatus { IDLE, PENDING, RUNNING, SYNCED, FAILED, NEEDS_CONFIRMATION }
 
 /** A local SAF tree folder kept in two-way sync with a folder of one cloud provider (Drive, OneDrive, Dropbox or Box). */
 data class SyncPair(
@@ -30,10 +31,12 @@ data class SyncPair(
     val provider: ProviderId = ProviderId.DRIVE,
     /** Files left failed after the last run (they are retried with back-off). */
     val failed: Int = 0,
+    /** Deletions withheld by the mass-deletion guard in the last pass. */
+    val pendingDeletes: Int = 0,
 ) {
     fun toJson(): JSONObject = JSONObject().put("id", id).put("tree", treeUri).put("ln", localName).put("rid", remoteFolderId).put("rn", remoteName)
         .put("wifi", wifiOnly).put("auto", auto).put("st", status.name).put("last", lastSync).put("msg", message ?: "")
-        .put("up", uploaded).put("down", downloaded).put("conf", conflicts).put("pv", provider.key).put("fail", failed)
+        .put("up", uploaded).put("down", downloaded).put("conf", conflicts).put("pv", provider.key).put("fail", failed).put("pdel", pendingDeletes)
 
     companion object {
         fun from(o: JSONObject) = SyncPair(
@@ -42,6 +45,7 @@ data class SyncPair(
             status = runCatching { SyncStatus.valueOf(o.optString("st")) }.getOrDefault(SyncStatus.IDLE), lastSync = o.optLong("last"),
             message = o.optString("msg").ifEmpty { null }, uploaded = o.optInt("up"), downloaded = o.optInt("down"), conflicts = o.optInt("conf"),
             provider = ProviderId.of(o.optString("pv").ifEmpty { null }) ?: ProviderId.DRIVE, failed = o.optInt("fail"),
+            pendingDeletes = o.optInt("pdel"),
         )
     }
 }

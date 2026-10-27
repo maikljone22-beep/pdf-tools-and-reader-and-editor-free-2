@@ -36,6 +36,7 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
         val only = inputData.getString(KEY_PAIR)
         val force = inputData.getBoolean(KEY_FORCE, false)
         val expedited = inputData.getBoolean(KEY_EXPEDITED, false)
+        val deletes = runCatching { DeleteGuard.Policy.valueOf(inputData.getString(KEY_DELETES) ?: "") }.getOrDefault(DeleteGuard.Policy.GUARD)
         // automatic runs honour Settings → auto sync (AppSettings.autoSync) and the sync screen's master switch; "sync now" ignores both
         if (!force) {
             val app = runCatching { (ctx as com.smartdocs.editor.SmartDocsApp).settings.settings.first() }.getOrNull()
@@ -57,7 +58,7 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
         }
         var retry = false
         for (p in targets) {
-            try { SyncRuntime.runPair(ctx, p.id, force) }
+            try { SyncRuntime.runPair(ctx, p.id, force, if (only != null) deletes else DeleteGuard.Policy.GUARD) }
             catch (e: AuthRequiredException) { /* status stored; needs the user */ }
             catch (e: SecurityException) { /* permission lost; needs the user */ }
             catch (e: kotlinx.coroutines.CancellationException) { throw e }
@@ -74,10 +75,13 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
         const val KEY_WIFI = "wifi"
         const val KEY_FORCE = "force"
         const val KEY_EXPEDITED = "exp"
+        /** [DeleteGuard.Policy] name: the user's answer to withheld deletions (only with [KEY_PAIR]). */
+        const val KEY_DELETES = "deletes"
         /** Message codes the UI translates. */
         const val MSG_AUTH = "@auth"
         const val MSG_PERMISSION = "@permission"
         const val MSG_FILES_FAILED = "@files"
+        const val MSG_CONFIRM_DELETES = "@deletes"
         const val CHANNEL = "sync"
         private const val NOTIF_ID = 0x5906
 
@@ -114,20 +118,21 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
             }
         }
 
-        private fun enqueue(context: Context, pair: SyncPair, force: Boolean, expedited: Boolean, policy: ExistingWorkPolicy) {
+        private fun enqueue(context: Context, pair: SyncPair, force: Boolean, expedited: Boolean, policy: ExistingWorkPolicy,
+                            deletes: DeleteGuard.Policy = DeleteGuard.Policy.GUARD) {
             val b = OneTimeWorkRequestBuilder<SyncWorker>()
                 .setConstraints(constraints(pair.wifiOnly, battery = !expedited && !force))
-                .setInputData(workDataOf(KEY_PAIR to pair.id, KEY_FORCE to force, KEY_EXPEDITED to expedited))
+                .setInputData(workDataOf(KEY_PAIR to pair.id, KEY_FORCE to force, KEY_EXPEDITED to expedited, KEY_DELETES to deletes.name))
             if (expedited) b.setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
             val name = if (force) "sync_now_${pair.id}" else if (expedited) "sync_req_${pair.id}" else "sync_low_${pair.id}"
             WorkManager.getInstance(context).enqueueUniqueWork(name, policy, b.build())
         }
 
         /** Manual "sync now": runs as soon as the network allows, failed files are retried immediately. */
-        fun syncNow(context: Context, pair: SyncPair) {
+        fun syncNow(context: Context, pair: SyncPair, deletes: DeleteGuard.Policy = DeleteGuard.Policy.GUARD) {
             SyncStore.update(context, pair.id) { it.copy(status = SyncStatus.PENDING) }
             SyncStore.retry(context, pair.id, null)
-            enqueue(context, pair, force = true, expedited = true, policy = ExistingWorkPolicy.REPLACE)
+            enqueue(context, pair, force = true, expedited = true, policy = ExistingWorkPolicy.REPLACE, deletes = deletes)
         }
 
         fun syncAllNow(context: Context) = SyncStore.load(context).forEach { syncNow(context, it) }
