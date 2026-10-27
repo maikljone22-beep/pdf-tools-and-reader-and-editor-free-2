@@ -1,6 +1,6 @@
 # SmartDocs — release status (single source of truth)
 
-Updated by the integrator (pdf-ad) after every merge. Last update: 2026-10-27 07:10.
+Updated by the integrator (pdf-ad) after every merge. Last update: 2026-10-27 09:40.
 
 ## Version 0.5.0 = "complete" when ALL boxes below are checked
 Scope is FROZEN for 0.5.0: no new features are started until 0.5.0 is released. New requests go to "After 0.5.0".
@@ -12,6 +12,7 @@ Scope is FROZEN for 0.5.0: no new features are started until 0.5.0 is released. 
 - [x] Word / Excel / PowerPoint editors (basic)
 - [x] Sharing & clouds, small gaps, unified undo/redo, page-turn effects
 - [x] OCR fixes + root-cause fixes, compression fix, safe write-back
+- [x] Arabic copy fix: wrong ToUnicode maps repaired, OCR layer copies in reading order, broken duplicate lines dropped — merged ea1cb42 (ARABIC_COPY_r5.md)
 
 ### B. Audit fixes — DONE
 - [x] Areas 1-3 stages 1, 2, 3, 4 (pdf-39) — merged
@@ -24,6 +25,7 @@ Scope is FROZEN for 0.5.0: no new features are started until 0.5.0 is released. 
 - [x] targetSdk raised to 36 — merged (note: Android 16 ignores the reader orientation lock on tablets ≥ 600 dp)
 - [x] Missing English strings filled (307 added, 0 missing) — merged
 - [x] Release build 0.5.0 signed with the new key (APK + AAB) — D:\pdf\SmartDocs-0.5.0-release\ (install on device still to verify)
+- [ ] Rebuild release 0.5.0 with the Arabic copy fix (ea1cb42) — local build running
 
 ### D. Device test by the user (only the user can do this)
 - [ ] Test APK installed on the tablet, the checklist in "Test checklist" passed, crashes reported and fixed
