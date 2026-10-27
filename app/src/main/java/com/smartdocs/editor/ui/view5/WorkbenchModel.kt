@@ -54,10 +54,16 @@ class WorkbenchModel(val v: V5State) {
     var markSize by mutableFloatStateOf(v.prefs.getFloat("wb_mark", 16f))
     var fillArea by mutableStateOf(v.prefs.getBoolean("wb_fill", true))
     var arabicDigits by mutableStateOf(v.prefs.getBoolean("ar_digits", false))
+    // distance leader lines (7.30) and the label of the next measurement (25.14)
+    var leader by mutableFloatStateOf(v.prefs.getFloat("wb_ll", 0f))
+    var leaderExt by mutableFloatStateOf(v.prefs.getFloat("wb_lle", 0f))
+    var leaderOffset by mutableFloatStateOf(v.prefs.getFloat("wb_llo", 0f))
+    var nextLabel by mutableStateOf("")
 
     fun persist() {
         v.prefs.edit().putInt("wb_color", color).putFloat("wb_width", width).putInt("wb_dash", dash.ordinal).putInt("wb_le0", startEnd.ordinal)
-            .putInt("wb_le1", endEnd.ordinal).putFloat("wb_mark", markSize).putBoolean("wb_fill", fillArea).putBoolean("ar_digits", arabicDigits).apply()
+            .putInt("wb_le1", endEnd.ordinal).putFloat("wb_mark", markSize).putBoolean("wb_fill", fillArea).putBoolean("ar_digits", arabicDigits)
+            .putFloat("wb_ll", leader).putFloat("wb_lle", leaderExt).putFloat("wb_llo", leaderOffset).apply()
         v.workbenchTool = tool
     }
 
@@ -105,6 +111,19 @@ class WorkbenchModel(val v: V5State) {
         if (n > 0 && pts.size >= n) finish()
     }
 
+    /** Edit the last pending measurement (25.14 label, 25.19 end points, 25.20 flip, 7.30 leader lines). */
+    fun lastMeasure(): Measurement? = (items.lastOrNull { it is WItem.Meas && it.page == page } as? WItem.Meas)?.m
+
+    fun replaceLastMeasure(m: Measurement) {
+        val i = items.indexOfLast { it is WItem.Meas && it.page == page }
+        if (i < 0) return
+        // the value follows the (possibly moved) end points
+        val t = when (m.type) { MeasureType.DISTANCE -> WTool.DISTANCE; MeasureType.PERIMETER -> WTool.PERIMETER; MeasureType.AREA -> WTool.AREA
+            MeasureType.CIRCLE -> WTool.CIRCLE; MeasureType.ANGLE -> WTool.ANGLE; MeasureType.COUNT -> WTool.COUNT }
+        val value = valueOf(t, m.pts)
+        items[i] = WItem.Meas(m.copy(value = value, label = label(t, value)))
+    }
+
     fun undoPoint() { if (pts.isNotEmpty()) pts.removeAt(pts.lastIndex) else if (items.isNotEmpty()) items.removeAt(items.lastIndex) }
 
     fun finish() {
@@ -116,8 +135,11 @@ class WorkbenchModel(val v: V5State) {
                 val min = when (tool) { WTool.AREA, WTool.ANGLE -> 3; WTool.COUNT -> 1; else -> 2 }
                 if (p.size >= min) {
                     val value = valueOf(tool, p)
+                    val dist = tool == WTool.DISTANCE
                     items += WItem.Meas(Measurement(typeOf(tool), page, p, value, label(tool, value), v.scale, color, width, v.s.authorName, v.precision, dash,
-                        if (fillArea && (tool == WTool.AREA || tool == WTool.CIRCLE)) color else null))
+                        if (fillArea && (tool == WTool.AREA || tool == WTool.CIRCLE)) color else null,
+                        leader = if (dist) leader else 0f, leaderExt = if (dist) leaderExt else 0f, leaderOffset = if (dist) leaderOffset else 0f,
+                        customLabel = nextLabel.takeIf { it.isNotBlank() }))
                 }
             }
             WTool.TICK -> items += WItem.Mark(page, MarkKind.TICK, p[0], markSize, color)

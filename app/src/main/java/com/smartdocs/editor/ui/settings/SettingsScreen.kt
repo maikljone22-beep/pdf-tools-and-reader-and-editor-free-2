@@ -101,6 +101,10 @@ fun SettingsScreen(nav: NavHostController) {
                 )
                 SwitchRow(stringResource(R.string.settings_pressure), s.pressureSensitivity, icon = Icons.Default.Gesture) { v -> upd { it.copy(pressureSensitivity = v) } }
             }
+            FormRunSettings()      // forms: auto-calculate, autocomplete, highlight colours, fillable banner
+
+            // ---- More preferences (nav-prefs): retain markup tools, offline mode, and the full preferences screen ----
+            NpfSettingsCard(nav)
 
             // ---- Read aloud ----
             GroupCard(stringResource(R.string.settings_tts)) {

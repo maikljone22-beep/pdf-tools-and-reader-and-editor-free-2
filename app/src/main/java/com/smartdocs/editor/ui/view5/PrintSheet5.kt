@@ -6,7 +6,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -14,17 +13,21 @@ import androidx.compose.ui.unit.dp
 import com.smartdocs.editor.R
 import com.smartdocs.editor.SmartDocsApp
 import com.smartdocs.editor.core.util.PdfPrint
+import com.smartdocs.editor.core.view5.DocPrintPrefs
 import com.smartdocs.editor.core.view5.PrintLayout
-import com.smartdocs.editor.core.view5.PrintOptions
-import com.smartdocs.editor.core.view5.PrintPrep
-import com.tom_roush.pdfbox.pdmodel.common.PDRectangle
+import com.smartdocs.editor.core.view5.PrintPipeline
+import com.smartdocs.editor.core.view5.PrintPresets
+import com.smartdocs.editor.core.view5.PrintSettings
+import com.smartdocs.editor.ui.edit5.rememberPageLabels
 import kotlinx.coroutines.launch
 import java.io.File
 
 /**
- * Print options before the system dialog: all / current / range, odd / even, reverse, with or without
- * comments, pages per sheet (1–16), booklet (right or left binding), paper and orientation, borders.
- * [outputFile] gives the file with pending annotations (same as the reader's share / print).
+ * Print options before the system dialog: all / current / range (page numbers or page labels), odd / even, reverse,
+ * what to print, one page per sheet with a scale, N-up / N×M, booklet (binding, fronts / backs, sheets), poster tiles,
+ * paper, orientation, margins, greyscale, print as image, comment summary, presets and a preview. The document's own
+ * print preferences (/ViewerPreferences) are applied first. [outputFile] gives the file with pending annotations
+ * (same as the reader's share / print).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -32,19 +35,30 @@ fun PrintSheet5(v: V5State, outputFile: suspend () -> File?, onMessage: (String)
     val s = v.s
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
+    val app = ctx.applicationContext as SmartDocsApp
     var which by remember { mutableIntStateOf(0) }           // 0 all, 1 current, 2 range
     var range by remember { mutableStateOf("") }
-    var subset by remember { mutableStateOf(PrintLayout.Subset.ALL) }
-    var reverse by remember { mutableStateOf(false) }
-    var comments by remember { mutableStateOf(true) }
-    var perSheet by remember { mutableIntStateOf(1) }
-    var booklet by remember { mutableStateOf(false) }
-    var rightBinding by remember { mutableStateOf(true) }
-    var paper by remember { mutableIntStateOf(0) }          // 0 A4, 1 Letter, 2 A3, 3 A5
-    var landscape by remember { mutableStateOf(false) }
-    var borders by remember { mutableStateOf(false) }
+    var settings by remember { mutableStateOf(PrintPresets.last(ctx) ?: PrintSettings()) }
+    var docPrefs by remember { mutableStateOf(DocPrintPrefs()) }
     var busy by remember { mutableStateOf(false) }
-    val papers = listOf("A4" to PDRectangle.A4, "Letter" to PDRectangle.LETTER, "A3" to PDRectangle.A3, "A5" to PDRectangle.A5)
+    var preview by remember { mutableStateOf<File?>(null) }
+    var sumOpts by remember { mutableStateOf(com.smartdocs.editor.core.annot.SummaryOptions()) }
+    val labels = rememberPageLabels(s)
+    LaunchedEffect(s.file) {
+        val f = s.file ?: return@LaunchedEffect
+        val p = DocPrintPrefs.read(f, s.password)
+        docPrefs = p
+        if (p.noScaling) settings = settings.copy(scale = PrintLayout.Scale.ACTUAL)
+        if (p.range.isNotBlank()) { which = 2; range = p.range }
+    }
+
+    /** Prepare the file to print with the current choices (null on error, reported). */
+    suspend fun prepared(): Pair<File, Int>? = runCatching {
+        val src = outputFile() ?: error("no file")
+        val spec = when (which) { 1 -> (s.currentPage + 1).toString(); 2 -> PrintLayout.labelRange(range, labels); else -> "" }
+        PrintPipeline.prepare(ctx, src, s.password, settings.toOptions(spec), settings.extras(), app.documents.tempDir, printSummaryLabels(ctx),
+            summaryOptions = sumOpts.copy(pageCount = s.pageCount))
+    }.onFailure { onMessage(it.message ?: ctx.getString(R.string.error_generic)) }.getOrNull()
 
     ModalBottomSheet(onDismissRequest = { v.close() }) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -55,53 +69,31 @@ fun PrintSheet5(v: V5State, outputFile: suspend () -> File?, onMessage: (String)
                 FilterChip(which == 1, { which = 1 }, label = { Text(stringResource(R.string.v5_current_page, s.currentPage + 1)) })
                 FilterChip(which == 2, { which = 2 }, label = { Text(stringResource(R.string.v5_range)) })
             }
-            if (which == 2) OutlinedTextField(range, { range = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.v5_range_hint)) })
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                FilterChip(subset == PrintLayout.Subset.ALL, { subset = PrintLayout.Subset.ALL }, label = { Text(stringResource(R.string.v5_odd_even_all)) })
-                FilterChip(subset == PrintLayout.Subset.ODD, { subset = PrintLayout.Subset.ODD }, label = { Text(stringResource(R.string.v5_odd)) })
-                FilterChip(subset == PrintLayout.Subset.EVEN, { subset = PrintLayout.Subset.EVEN }, label = { Text(stringResource(R.string.v5_even)) })
-                FilterChip(reverse, { reverse = !reverse }, label = { Text(stringResource(R.string.v5_reverse)) })
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) { Switch(comments, { comments = it }); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.v5_print_comments)) }
-            HorizontalDivider()
-            Text(stringResource(R.string.v5_layout), style = MaterialTheme.typography.labelLarge)
-            Row(verticalAlignment = Alignment.CenterVertically) { Switch(booklet, { booklet = it }); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.v5_booklet)) }
-            if (booklet) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                FilterChip(rightBinding, { rightBinding = true }, label = { Text(stringResource(R.string.v5_bind_right)) })
-                FilterChip(!rightBinding, { rightBinding = false }, label = { Text(stringResource(R.string.v5_bind_left)) })
-            } else {
-                Text(stringResource(R.string.v5_per_sheet), style = MaterialTheme.typography.labelMedium)
-                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    listOf(1, 2, 4, 6, 9, 16).forEach { n -> FilterChip(perSheet == n, { perSheet = n }, label = { Text(n.toString()) }) }
-                }
-                if (perSheet > 1) Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(borders, { borders = it }); Text(stringResource(R.string.v5_borders)) }
-            }
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                papers.forEachIndexed { i, (n, _) -> FilterChip(paper == i, { paper = i }, label = { Text(n) }) }
-                if (!booklet) FilterChip(landscape, { landscape = !landscape }, label = { Text(stringResource(R.string.v5_landscape)) })
-            }
-            Button(enabled = !busy, modifier = Modifier.fillMaxWidth(), onClick = {
-                busy = true
-                scope.launch {
-                    val res = runCatching {
-                        val src = outputFile() ?: error("no file")
-                        val opts = PrintOptions(
-                            range = when (which) { 1 -> (s.currentPage + 1).toString(); 2 -> range; else -> "" },
-                            subset = subset, reverse = reverse, perSheet = perSheet, booklet = booklet, rightBinding = rightBinding,
-                            paper = papers[paper].second, landscape = landscape, borders = borders, annotations = comments)
-                        if (PrintPrep.isPlain(opts, s.pageCount)) PdfPrint.print(ctx, src, src.nameWithoutExtension, s.pageCount)
-                        else {
-                            val app = ctx.applicationContext as SmartDocsApp
-                            val out = app.documents.newTemp("print")
-                            val n = PrintPrep.build(src, s.password, opts, out)
-                            PdfPrint.print(ctx, out, s.file?.nameWithoutExtension ?: "print", n)
-                        }
+            if (which == 2) OutlinedTextField(range, { range = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.v5_range_hint)) },
+                supportingText = if (labels != null) ({ Text(stringResource(R.string.nbt_range_labels)) }) else null)
+            if (docPrefs.copies > 1) Text(stringResource(R.string.nbt_doc_copies, docPrefs.copies), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            PrintOptionsForm(settings) { settings = it }
+            if (settings.summary) com.smartdocs.editor.ui.reader.annot.SummaryOptionsFields(sumOpts, s.pageCount) { sumOpts = it }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(enabled = !busy, modifier = Modifier.weight(1f), onClick = {
+                    busy = true
+                    scope.launch { prepared()?.let { preview = it.first }; busy = false }
+                }) { Text(stringResource(R.string.nbt_preview)) }
+                Button(enabled = !busy, modifier = Modifier.weight(1f), onClick = {
+                    busy = true
+                    scope.launch {
+                        val r = prepared()
+                        if (r != null) runCatching {
+                            PrintPresets.remember(ctx, settings)
+                            PdfPrint.print(ctx, r.first, s.file?.nameWithoutExtension ?: "print", r.second, mono = settings.grayscale, media = settings.paper,
+                                duplex = DocPrintPrefs.duplexMode(docPrefs.duplex))
+                        }.onSuccess { v.close() }.onFailure { onMessage(it.message ?: ctx.getString(R.string.error_generic)) }
+                        busy = false
                     }
-                    busy = false
-                    res.onSuccess { v.close() }.onFailure { onMessage(it.message ?: ctx.getString(R.string.error_generic)) }
-                }
-            }) { if (busy) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Text(stringResource(R.string.print)) }
+                }) { if (busy) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Text(stringResource(R.string.print)) }
+            }
             Spacer(Modifier.height(24.dp))
         }
     }
+    preview?.let { f -> PrintPreviewDialog(f) { preview = null } }
 }

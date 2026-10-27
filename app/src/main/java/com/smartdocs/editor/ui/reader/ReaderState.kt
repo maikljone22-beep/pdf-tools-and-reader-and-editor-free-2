@@ -30,6 +30,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
+import com.smartdocs.editor.ui.reader.annot.styleNew
 
 enum class ReaderTab { VIEW, COMMENT, EDIT, FILL_SIGN, SIGN, TOOLS, PAGES, CUSTOM }
 
@@ -46,6 +47,8 @@ enum class ReaderTool {
     FS_RRECT, FS_COMB,
     // MODULE_annot2 (ui/reader/annot)
     CARET, REPLACE, POLYGON, POLYLINE, CLOUD, ATTACH, SOUND, VIDEO, SNAPSHOT, SELECT,
+    // section 7: numbered / lettered / symbol tickmarks
+    TICKMARK,
 }
 
 /** A text selection on one page. Rects are in PDF space. */
@@ -98,9 +101,10 @@ class ReaderState(
     val fileUri: String get() = file?.let { Uri.fromFile(it).toString() } ?: uriString
 
     // ---- view options ----
-    var viewMode by mutableStateOf(if (initial.continuousScroll) ViewMode.CONTINUOUS else ViewMode.SINGLE)
-    var fitPage by mutableStateOf(false)
-    var zoom by mutableFloatStateOf(1f)
+    // nav-prefs (PREF-6): default page layout and zoom from Settings → more preferences
+    var viewMode by mutableStateOf(NpfReader.initialMode(initial.continuousScroll))
+    var fitPage by mutableStateOf(NpfReader.initialFitPage())
+    var zoom by mutableFloatStateOf(NpfReader.initialZoom())
 
     /**
      * Old plan A6 / FILE-2 / FILE-3: the document's own reading direction (/ViewerPreferences /Direction): true = right
@@ -130,7 +134,7 @@ class ReaderState(
     var opacity by mutableFloatStateOf(1f)
     var thickness by mutableFloatStateOf(3f)
     var fontSize by mutableFloatStateOf(14f)
-    var continueCreating by mutableStateOf(true)
+    var continueCreating by mutableStateOf(com.smartdocs.editor.core.data.NpfPrefs.retainTools)   // nav-prefs: persisted
     var pendingText by mutableStateOf("")
     var pendingImage by mutableStateOf<Bitmap?>(null)
     var placement by mutableStateOf<Placement?>(null)
@@ -175,8 +179,8 @@ class ReaderState(
     var searchQuery by mutableStateOf("")
     var searchHits by mutableStateOf<List<SearchHit>>(emptyList())
     var searchIndex by mutableIntStateOf(-1)
-    var matchCase by mutableStateOf(false)
-    var wholeWords by mutableStateOf(false)
+    var matchCase by mutableStateOf(com.smartdocs.editor.core.data.NpfPrefs.searchMatchCase)    // nav-prefs: search defaults
+    var wholeWords by mutableStateOf(com.smartdocs.editor.core.data.NpfPrefs.searchWholeWords)
     var searching by mutableStateOf(false)
     private var searchJob: Job? = null
 
@@ -292,12 +296,13 @@ class ReaderState(
 
     /**
      * The document's initial view (written by Document properties or other producers): direction always; on the first
-     * open also the open page and zoom (OpenAction), the page layout and the page mode. Later opens resume where the
-     * reader left off.
+     * open also the open page and zoom (OpenAction), the page layout and the page mode, over the default layout / zoom /
+     * panel of Settings → more preferences unless "use the document's initial view" is off. Later opens resume where
+     * the reader left off.
      */
     fun applyInitialView(v: com.smartdocs.editor.core.edit5.InitialView, firstOpen: Boolean) {
         docRtl = InitialViewMap.rtl(v.direction)
-        if (!firstOpen) return
+        if (!firstOpen || !com.smartdocs.editor.core.data.NpfPrefs.docViewFirstOpen) return
         InitialViewMap.viewMode(v.pageLayout)?.let { viewMode = it }
         if (v.openPage in 1 until pageCount) jumpTo(v.openPage)
         if (v.openFit == com.smartdocs.editor.core.edit5.DestFit.XYZ && v.openZoom in 0.25f..8f) zoom = v.openZoom
@@ -466,7 +471,8 @@ class ReaderState(
                  points: List<Pair<Float, Float>> = emptyList(), text: String = "", image: Bitmap? = null, fontSize: Float = this.fontSize,
                  color: Int = this.color): Annot =
         Annot(kind = kind, page = page, color = color, opacity = opacity, strokeWidth = thickness, rects = rects, paths = paths,
-            points = points, text = text, fontSize = fontSize, author = authorName, image = image)
+            points = points, text = NpfReader.typed(kind, text), fontSize = fontSize, author = authorName, image = image)
+            .let { if (tool != null) annot2.styleNew(it) else it }
 
     // ================= save =================
 
@@ -759,9 +765,10 @@ class ReaderState(
             val hits = runCatching {
                 s.searchWith { com.smartdocs.editor.core.search.TextMatcher.find(it, query, norm, wholeWords) }
             }.getOrElse { runCatching { s.search(query, matchCase, wholeWords) }.getOrDefault(emptyList()) }
-            searchHits = hits
+            val max = com.smartdocs.editor.core.data.NpfPrefs.searchMax   // nav-prefs: maximum results
+            searchHits = if (max > 0) hits.take(max) else hits
             searchIndex = if (hits.isEmpty()) -1 else {
-                val near = hits.indexOfFirst { it.page >= currentPage }.let { if (it < 0) 0 else it }
+                val near = searchHits.indexOfFirst { it.page >= currentPage }.let { if (it < 0) 0 else it }
                 near
             }
             searchHits.getOrNull(searchIndex)?.let { jumpTo(it.page) }
@@ -780,7 +787,12 @@ class ReaderState(
     // ================= tools =================
 
     fun selectTool(t: ReaderTool?) {
+        // remember the settings of the tool being left, restore those of the new one (OLD_PLAN: settings per tool)
+        val mem = com.smartdocs.editor.ui.reader.annot.ToolMemory
+        tool?.takeIf { it in mem.REMEMBERED }?.let { old -> mem.save(context, old, mem.capture(this)) }
         tool = if (tool == t) null else t
+        val restored = tool?.takeIf { it in mem.REMEMBERED }?.let { nt -> mem.load(context, nt) }?.also { mem.apply(this, it) } != null
+        if (restored) { selection = null; measure = null; edit.clear(); placement = null; pendingImage = null; pendingText = ""; return }
         selection = null; measure = null; edit.clear()
         if (tool != ReaderTool.SIGNATURE && tool != ReaderTool.STAMP && tool != ReaderTool.IMAGE) { placement = null; pendingImage = null }
         if (tool != ReaderTool.FS_PROFILE && tool != ReaderTool.FS_DATE) pendingText = ""
@@ -820,7 +832,8 @@ class ReaderState(
         val sel = selection ?: return
         if (sel.rects.isEmpty()) return
         val c = when (kind) { AnnotKind.HIGHLIGHT -> if (color == 0x212121) 0xFFEB3B else color; else -> if (color == 0xFFEB3B) 0xF44336 else color }
-        addAnnot(newAnnot(kind, sel.page, rects = sel.rects.map { PageGeometry.normPdf(it) }, text = sel.text.take(200), color = c))
+        val copied = if (com.smartdocs.editor.core.data.NpfPrefs.copySelection) sel.text.take(200) else ""   // nav-prefs (PREF-4)
+        addAnnot(newAnnot(kind, sel.page, rects = sel.rects.map { PageGeometry.normPdf(it) }, text = copied, color = c))
         selection = null
     }
 }

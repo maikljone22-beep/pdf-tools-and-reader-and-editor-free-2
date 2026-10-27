@@ -57,7 +57,7 @@ object AiMedia {
     const val MAX_IMAGE_SIDE = 1280
 
     private val http: OkHttpClient by lazy {
-        OkHttpClient.Builder().connectTimeout(30, TimeUnit.SECONDS).readTimeout(180, TimeUnit.SECONDS).writeTimeout(120, TimeUnit.SECONDS).build()
+        OkHttpClient.Builder().addInterceptor(com.smartdocs.editor.core.data.NpfNet.interceptor).connectTimeout(30, TimeUnit.SECONDS).readTimeout(180, TimeUnit.SECONDS).writeTimeout(120, TimeUnit.SECONDS).build()
     }
 
     // ---------------- pure JSON helpers (unit tested) ----------------

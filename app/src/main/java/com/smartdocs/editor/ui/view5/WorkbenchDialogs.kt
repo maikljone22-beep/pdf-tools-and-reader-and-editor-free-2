@@ -28,11 +28,15 @@ import com.smartdocs.editor.core.view5.MeasureScale
 import com.smartdocs.editor.core.view5.P
 import com.smartdocs.editor.core.view5.TextBoxSpec
 import com.smartdocs.editor.ui.reader.PALETTE
+import kotlinx.coroutines.launch
 
 /** Scale: type "1 cm = 2 m" / "1:100", choose units, or calibrate from a segment measured on the page. */
 @Composable
 fun ScaleDialog(v: V5State, calibrated: List<P>?, onCalibrate: () -> Unit, onDismiss: () -> Unit) {
     var text by remember { mutableStateOf(v.scale.label()) }
+    var desc by remember { mutableStateOf(v.scaleDescription) }
+    var store by remember { mutableIntStateOf(0) }        // 0 app only, 1 this page, 2 all pages (7.47 / 25.12)
+    val page = v.s.currentPage
     var known by remember { mutableStateOf("") }
     var knownUnit by remember { mutableStateOf(MUnit.M) }
     var precision by remember { mutableIntStateOf(v.precision) }
@@ -64,6 +68,22 @@ fun ScaleDialog(v: V5State, calibrated: List<P>?, onCalibrate: () -> Unit, onDis
                 HorizontalDivider()
                 Text(stringResource(R.string.v5_precision, precision), style = MaterialTheme.typography.labelLarge)
                 Slider(precision.toFloat(), { precision = it.toInt() }, valueRange = 0f..4f, steps = 3)
+                HorizontalDivider()
+                OutlinedTextField(desc, { desc = it }, label = { Text(stringResource(R.string.cx_scale_desc)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                Text(stringResource(R.string.cx_scale_store), style = MaterialTheme.typography.labelLarge)
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    FilterChip(store == 0, { store = 0 }, label = { Text(stringResource(R.string.cx_scale_app)) })
+                    FilterChip(store == 1, { store = 1 }, label = { Text(stringResource(R.string.v5_current_page, page + 1)) })
+                    FilterChip(store == 2, { store = 2 }, label = { Text(stringResource(R.string.v5_all_pages)) })
+                }
+                if (v.docScales.isNotEmpty()) {
+                    Text(stringResource(R.string.cx_doc_scales), style = MaterialTheme.typography.labelMedium)
+                    v.docScales.entries.sortedBy { it.key }.take(12).forEach { (p, ps) ->
+                        Text("${p + 1}: ${ps.label}" + if (ps.description.isNotBlank()) " \u00B7 ${ps.description}" else "", style = MaterialTheme.typography.bodySmall)
+                    }
+                    if (com.smartdocs.editor.core.view5.ScaleStore.hasMultiple(v.docScales))
+                        Text(stringResource(R.string.cx_multi_scale_warn), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                }
             }
         },
         confirmButton = {
@@ -71,7 +91,15 @@ fun ScaleDialog(v: V5State, calibrated: List<P>?, onCalibrate: () -> Unit, onDis
                 val k = com.smartdocs.editor.core.view5.Digits.toLatin(known).replace(',', '.').replace('٫', '.').toDoubleOrNull()
                 val cal = if (measuredPt != null && k != null) MeasureScale.calibrate(measuredPt, k, knownUnit) else null
                 (cal ?: parsed)?.let { v.scale = it }
-                v.precision = precision; v.saveMeasure(); onDismiss()
+                v.precision = precision; v.scaleDescription = desc.trim(); v.saveMeasure()
+                if (store != 0) {
+                    val sc = v.scale; val pr = precision; val d = desc.trim(); val pages = if (store == 1) listOf(page) else null
+                    v.s.scope.launch {
+                        runCatching { v.s.applyInPlace(label = { v.s.context.getString(R.string.cx_scale_saved) }) { src, out, pw -> com.smartdocs.editor.core.view5.ScaleStore.write(src, out, pw, pages, sc, pr, d) } }
+                            .onFailure { v.s.error = it.message }
+                    }
+                }
+                onDismiss()
             }, enabled = parsed != null || (measuredPt != null && known.isNotBlank())) { Text(stringResource(R.string.ok)) }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } })
@@ -206,4 +234,59 @@ fun LineStyleDialog(m: WorkbenchModel, onDismiss: () -> Unit) {
             }
         },
         confirmButton = { TextButton(onClick = { m.persist(); onDismiss() }) { Text(stringResource(R.string.ok)) } })
+}
+
+/** Leader lines of the distance tool (7.30 / 25.4): length (negative = flipped side), extension, offset. */
+@Composable
+fun LeaderDialog(m: WorkbenchModel, onDismiss: () -> Unit) {
+    AlertDialog(onDismissRequest = onDismiss, title = { Text(stringResource(R.string.cx_leader_lines)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(stringResource(R.string.cx_leader_len, "%.0f".format(java.util.Locale.US, m.leader)), style = MaterialTheme.typography.labelMedium)
+                Slider(m.leader, { m.leader = it }, valueRange = -60f..60f)
+                Text(stringResource(R.string.cx_leader_ext, "%.0f".format(java.util.Locale.US, m.leaderExt)), style = MaterialTheme.typography.labelMedium)
+                Slider(m.leaderExt, { m.leaderExt = it }, valueRange = 0f..30f)
+                Text(stringResource(R.string.cx_leader_off, "%.0f".format(java.util.Locale.US, m.leaderOffset)), style = MaterialTheme.typography.labelMedium)
+                Slider(m.leaderOffset, { m.leaderOffset = it }, valueRange = 0f..30f)
+                OutlinedTextField(m.nextLabel, { m.nextLabel = it }, label = { Text(stringResource(R.string.cx_measure_label)) }, singleLine = true)
+            }
+        },
+        confirmButton = { TextButton(onClick = { m.persist(); onDismiss() }) { Text(stringResource(R.string.ok)) } })
+}
+
+/** Edit the last measurement: custom label, flip, leader lines and exact end points (25.14 / 25.19 / 25.20). */
+@Composable
+fun EditMeasureDialog(meas: com.smartdocs.editor.core.view5.Measurement, onDismiss: () -> Unit, onOk: (com.smartdocs.editor.core.view5.Measurement) -> Unit) {
+    var label by remember { mutableStateOf(meas.customLabel ?: "") }
+    var ll by remember { mutableFloatStateOf(meas.leader) }
+    var lle by remember { mutableFloatStateOf(meas.leaderExt) }
+    val coords = remember { mutableStateListOf<String>().apply { meas.pts.forEach { p -> add("%.1f".format(java.util.Locale.US, p.x)); add("%.1f".format(java.util.Locale.US, p.y)) } } }
+    val dist = meas.type == com.smartdocs.editor.core.view5.MeasureType.DISTANCE
+    AlertDialog(onDismissRequest = onDismiss, title = { Text(stringResource(R.string.cx_edit_last_measure)) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                OutlinedTextField(label, { label = it }, label = { Text(stringResource(R.string.cx_measure_label)) }, singleLine = true, supportingText = { Text(meas.label) })
+                if (dist) {
+                    Text(stringResource(R.string.cx_leader_len, "%.0f".format(java.util.Locale.US, ll)), style = MaterialTheme.typography.labelMedium)
+                    Slider(ll, { ll = it }, valueRange = -60f..60f)
+                    Text(stringResource(R.string.cx_leader_ext, "%.0f".format(java.util.Locale.US, lle)), style = MaterialTheme.typography.labelMedium)
+                    Slider(lle, { lle = it }, valueRange = 0f..30f)
+                    OutlinedButton(onClick = {
+                        // flip: the dimension line goes to the other side and the end points swap
+                        ll = -ll
+                        if (coords.size >= 4) { val a = coords[0]; val b = coords[1]; coords[0] = coords[2]; coords[1] = coords[3]; coords[2] = a; coords[3] = b }
+                    }) { Text(stringResource(R.string.cx_flip)) }
+                }
+                Text(stringResource(R.string.cx_end_points), style = MaterialTheme.typography.labelMedium)
+                for (i in 0 until coords.size / 2) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    OutlinedTextField(coords[i * 2], { coords[i * 2] = it }, Modifier.weight(1f), label = { Text("X${i + 1}") }, singleLine = true)
+                    OutlinedTextField(coords[i * 2 + 1], { coords[i * 2 + 1] = it }, Modifier.weight(1f), label = { Text("Y${i + 1}") }, singleLine = true)
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = {
+            val pts = (0 until coords.size / 2).map { i -> P(coords[i * 2].toDoubleOrNull() ?: meas.pts[i].x, coords[i * 2 + 1].toDoubleOrNull() ?: meas.pts[i].y) }
+            onOk(meas.copy(pts = pts, customLabel = label.takeIf { it.isNotBlank() }, leader = ll, leaderExt = lle))
+        }) { Text(stringResource(R.string.ok)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } })
 }

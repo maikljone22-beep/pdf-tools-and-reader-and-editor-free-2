@@ -280,7 +280,9 @@ class XfaLayout(private val t: XTemplate, private val metrics: XfaMetrics = Appr
                 if (label.isNotBlank()) out += XItem.Text(cx, cy, cw, ch, wrap(label, cw, f), f, "center", "middle", isRtl(label))
             }
             XUi.IMAGE -> (i.image ?: n.image)?.let { out += XItem.Image(cx, cy, cw, ch, it, "fit") }
-            XUi.BARCODE -> if (i.value.isNotBlank()) out += XItem.Text(cx, cy, cw, ch, listOf(i.value), f, "center", "middle", false)
+            // nav-prefs: QR / Code 128 / Code 39 barcodes are drawn; other symbologies show their value
+            XUi.BARCODE -> if (i.value.isNotBlank()) out += (NpfBarcode.boxes(n.barcodeType, i.value, cx, cy, cw, ch)
+                ?: listOf(XItem.Text(cx, cy, cw, ch, listOf(i.value), f, "center", "middle", false)))
             else -> out += XItem.Widget(cx, cy, cw, ch, XWKind.TEXT, i.dataPath, label, i.value, multiline = n.multiline, maxChars = n.maxChars,
                 comb = n.combCells, fontSize = f.size, hAlign = hAlign, readOnly = n.readOnly, required = n.required, password = n.ui == XUi.PASSWORD, type = type)
         }

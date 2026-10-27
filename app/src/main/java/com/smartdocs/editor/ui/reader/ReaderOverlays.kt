@@ -60,6 +60,7 @@ fun SearchBar(state: ReaderState, quick: com.smartdocs.editor.ui.quick.QuickCont
                 }
             }
             if (replaceOn && quick != null) com.smartdocs.editor.ui.search.ReaderReplaceRow(state, quick)
+            com.smartdocs.editor.ui.search.NpfScopeHits(state)   // nav-prefs: hits in comments, bookmarks, fields, attachments
             if (showList && state.searchHits.isNotEmpty()) {
                 LazyColumn(Modifier.fillMaxWidth().heightIn(max = 220.dp)) {
                     itemsIndexed(state.searchHits) { i, h ->

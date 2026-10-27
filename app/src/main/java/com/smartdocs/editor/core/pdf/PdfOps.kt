@@ -147,7 +147,8 @@ object PdfOps {
     /** Delete [pages]; bookmarks and links that pointed at them are removed too (they would lead nowhere). */
     suspend fun deletePages(src: File, pages: Set<Int>, out: File, password: String? = null) = withContext(Dispatchers.IO) {
         load(src, password).use { doc ->
-            com.smartdocs.editor.core.edit5.PageOrganize.deleteIn(doc, pages)
+            // nav-prefs: Preferences → bookmarks "remove related bookmarks when deleting pages" (links to them always go)
+            com.smartdocs.editor.core.edit5.PageOrganize.deleteIn(doc, pages, removeBookmarks = com.smartdocs.editor.core.data.NpfPrefs.removeBookmarksOnDelete)
             saveTo(doc, out)
         }
     }

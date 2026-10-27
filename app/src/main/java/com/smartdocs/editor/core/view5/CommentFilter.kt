@@ -22,6 +22,8 @@ data class CRow(
     val checked: Boolean = false,
     val markedText: String = "",
     val pending: Boolean = false,
+    /** Creation date (ms, 0 unknown); [date] is the modification date. */
+    val created: Long = 0L,
 )
 
 data class CFilter(
@@ -31,11 +33,12 @@ data class CFilter(
     val statuses: Set<String> = emptySet(),
     val pages: Set<Int> = emptySet(),
     val checked: Boolean? = null,
+    val colors: Set<Int> = emptySet(),
 ) {
-    val active: Boolean get() = query.isNotBlank() || authors.isNotEmpty() || types.isNotEmpty() || statuses.isNotEmpty() || pages.isNotEmpty() || checked != null
+    val active: Boolean get() = query.isNotBlank() || authors.isNotEmpty() || types.isNotEmpty() || statuses.isNotEmpty() || pages.isNotEmpty() || checked != null || colors.isNotEmpty()
 }
 
-enum class CSort { PAGE, DATE_NEW, DATE_OLD, AUTHOR, TYPE, STATUS }
+enum class CSort { PAGE, DATE_NEW, DATE_OLD, AUTHOR, TYPE, STATUS, MODIFIED, COLOR }
 
 object CommentFilter {
 
@@ -60,6 +63,7 @@ object CommentFilter {
         if (f.statuses.isNotEmpty() && r.status !in f.statuses) return false
         if (f.pages.isNotEmpty() && r.page !in f.pages) return false
         if (f.checked != null && r.checked != f.checked) return false
+        if (f.colors.isNotEmpty() && r.color !in f.colors) return false
         if (f.query.isNotBlank()) {
             val q = fold(f.query.trim())
             val hay = fold(r.contents + "\n" + r.author + "\n" + r.markedText + "\n" + r.replies.joinToString("\n"))
@@ -72,8 +76,10 @@ object CommentFilter {
 
     fun sorted(rows: List<CRow>, sort: CSort): List<CRow> = when (sort) {
         CSort.PAGE -> rows.sortedWith(compareBy({ it.page }, { it.index }))
-        CSort.DATE_NEW -> rows.sortedByDescending { it.date }
-        CSort.DATE_OLD -> rows.sortedBy { it.date }
+        CSort.DATE_NEW -> rows.sortedByDescending { if (it.created > 0) it.created else it.date }
+        CSort.DATE_OLD -> rows.sortedBy { if (it.created > 0) it.created else it.date }
+        CSort.MODIFIED -> rows.sortedByDescending { it.date }
+        CSort.COLOR -> rows.sortedWith(compareBy({ it.color ?: -1 }, { it.page }))
         CSort.AUTHOR -> rows.sortedWith(compareBy({ it.author.lowercase(Locale.ROOT) }, { it.page }))
         CSort.TYPE -> rows.sortedWith(compareBy({ it.type }, { it.page }))
         CSort.STATUS -> rows.sortedWith(compareBy({ it.status }, { it.page }))

@@ -100,11 +100,15 @@ object PageOrganize {
         return n
     }
 
-    /** Deletes [pages] (zero-based) and the bookmarks / links that pointed only at them. */
-    fun deleteIn(doc: PDDocument, pages: Collection<Int>) {
+    /**
+     * Deletes [pages] (zero-based) and the links that pointed at them; their bookmarks too unless [removeBookmarks] is
+     * off (Preferences → bookmarks).
+     */
+    fun deleteIn(doc: PDDocument, pages: Collection<Int>, removeBookmarks: Boolean = true) {
         val gone = pages.filter { it in 0 until doc.numberOfPages }.map { doc.getPage(it).cosObject }.toSet()
         if (gone.isEmpty()) return
-        pruneOutline(doc, gone); pruneLinks(doc, gone)
+        if (removeBookmarks) pruneOutline(doc, gone)
+        pruneLinks(doc, gone)
         pages.filter { it in 0 until doc.numberOfPages }.sortedDescending().forEach { doc.removePage(it) }
     }
 
@@ -163,7 +167,7 @@ object PageOrganize {
 
     /** Delete [pages]; bookmarks and links that lead to them go too. */
     suspend fun delete(src: File, out: File, password: String?, pages: Collection<Int>) = withContext(Dispatchers.IO) {
-        E5Io.edit(src, out, password) { doc -> deleteIn(doc, pages) }
+        E5Io.edit(src, out, password) { doc -> deleteIn(doc, pages, com.smartdocs.editor.core.data.NpfPrefs.removeBookmarksOnDelete) }
     }
 
     /** Foxit "delete blank pages": pages without text and with almost no ink. Returns the pages removed. */

@@ -81,4 +81,6 @@
     <string name="pc_page_ocr">فتح للتعرف الضوئي</string>
     <string name="pc_thumbs_smaller">صور مصغرة أصغر</string>
     <string name="pc_thumbs_larger">صور مصغرة أكبر</string>
+    <string name="pc_doc_view_first">استخدام العرض الافتراضي للمستند عند فتحه أول مرة</string>
+    <string name="pc_doc_view_first_sub">التخطيط والصفحة والتكبير واللوحة المحفوظة في الملف تتقدم على الإعدادات أعلاه؛ في المرات التالية يُستأنف آخر عرض.</string>
 </resources>

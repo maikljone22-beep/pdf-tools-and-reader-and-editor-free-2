@@ -134,4 +134,37 @@ object PageTemplates {
             writeTree(doc, PAGES, vis); writeTree(doc, TEMPLATES, hid)
         }
     }
+
+    /** Rename template [old] to [new] (kept visible or hidden); an existing template called [new] is replaced. */
+    suspend fun rename(src: File, out: File, password: String?, old: String, new: String) = withContext(Dispatchers.IO) {
+        val clean = new.trim()
+        require(clean.isNotEmpty()) { "empty name" }
+        E5Io.edit(src, out, password) { doc ->
+            fun ren(l: List<Pair<String, COSDictionary>>) = l.filter { it.first != clean || clean == old }.map { if (it.first == old) clean to it.second else it }
+            writeTree(doc, PAGES, ren(leaves(tree(doc, PAGES))))
+            writeTree(doc, TEMPLATES, ren(leaves(tree(doc, TEMPLATES))))
+        }
+    }
+
+    /**
+     * Replace template [name] with page [page]: a hidden template gets a detached copy of the page, a named
+     * (visible) template now names that page.
+     */
+    suspend fun replaceWithPage(src: File, out: File, password: String?, name: String, page: Int) = withContext(Dispatchers.IO) {
+        E5Io.edit(src, out, password) { doc ->
+            val p = doc.getPage(page)
+            val vis = leaves(tree(doc, PAGES)).toMutableList(); val hid = leaves(tree(doc, TEMPLATES)).toMutableList()
+            val vi = vis.indexOfFirst { it.first == name }
+            val hi = hid.indexOfFirst { it.first == name }
+            when {
+                vi >= 0 -> vis[vi] = name to p.cosObject
+                hi >= 0 -> {
+                    val d = PageOps5.clonePage(p).cosObject; d.setItem(COSName.TYPE, TEMPLATE)
+                    hid[hi] = name to d
+                }
+                else -> throw IllegalArgumentException(name)
+            }
+            writeTree(doc, PAGES, vis); writeTree(doc, TEMPLATES, hid)
+        }
+    }
 }

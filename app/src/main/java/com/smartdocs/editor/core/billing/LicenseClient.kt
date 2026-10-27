@@ -30,7 +30,7 @@ object LicenseClient {
     val configured: Boolean get() = baseUrl.isNotEmpty() && publicKey != null
 
     private val http by lazy {
-        OkHttpClient.Builder().connectTimeout(10, TimeUnit.SECONDS).readTimeout(20, TimeUnit.SECONDS).callTimeout(30, TimeUnit.SECONDS).build()
+        OkHttpClient.Builder().addInterceptor(com.smartdocs.editor.core.data.NpfNet.interceptor).connectTimeout(10, TimeUnit.SECONDS).readTimeout(20, TimeUnit.SECONDS).callTimeout(30, TimeUnit.SECONDS).build()
     }
     private val JSON = "application/json; charset=utf-8".toMediaType()
 

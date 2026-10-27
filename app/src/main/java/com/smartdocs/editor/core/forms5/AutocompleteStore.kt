@@ -73,6 +73,30 @@ class AutocompleteStore(private val maxPerKey: Int = 40, private val maxGlobal: 
 
     fun clear() = byKey.clear()
 
+    /** Every remembered value per field key (the global pool [GLOBAL] left out), for the management list. */
+    fun entries(): Map<String, List<Entry>> = byKey.filterKeys { it != GLOBAL }.mapValues { (_, l) -> l.sortedWith(compareByDescending<Entry> { it.count }.thenByDescending { it.last }) }
+
+    /** Delete [value] remembered under the (already normalised) [key]; the global pool loses it when no key keeps it. */
+    fun removeEntry(key: String, value: String) {
+        byKey[key]?.removeAll { it.value == value }
+        if (byKey[key]?.isEmpty() == true) byKey.remove(key)
+        if (byKey.none { (k, l) -> k != GLOBAL && l.any { it.value == value } }) byKey[GLOBAL]?.removeAll { it.value == value }
+    }
+
+    /** Replace [old] by [new] under [key] (keeps its use count); a blank [new] deletes it. */
+    fun editEntry(key: String, old: String, new: String) {
+        val v = new.trim()
+        if (v.isEmpty()) { removeEntry(key, old); return }
+        val list = byKey[key] ?: return
+        val i = list.indexOfFirst { it.value == old }
+        if (i < 0) return
+        val e = list[i]
+        list.removeAt(i)
+        val j = list.indexOfFirst { it.value == v }
+        if (j >= 0) list[j] = list[j].copy(count = list[j].count + e.count, last = maxOf(list[j].last, e.last)) else list.add(i.coerceAtMost(list.size), e.copy(value = v))
+        byKey[GLOBAL]?.let { g -> val k = g.indexOfFirst { it.value == old }; if (k >= 0) g[k] = g[k].copy(value = v) }
+    }
+
     fun toJson(): String = buildJsonObject {
         byKey.forEach { (k, list) ->
             put(k, buildJsonArray { list.forEach { e -> add(buildJsonArray { add(JsonPrimitive(e.value)); add(JsonPrimitive(e.count)); add(JsonPrimitive(e.last)) }) } })
@@ -120,6 +144,12 @@ class AutocompleteStore(private val maxPerKey: Int = 40, private val maxGlobal: 
 
 /** Disk persistence of the [AutocompleteStore] (one small JSON file in the app's private files). */
 class AutocompleteFile(private val file: File) {
+    companion object {
+        private val shared = HashMap<String, AutocompleteFile>()
+        /** One instance per file, so the reader and Settings see the same memory. */
+        fun shared(file: File): AutocompleteFile = synchronized(shared) { shared.getOrPut(file.absolutePath) { AutocompleteFile(file) } }
+    }
+
     @Volatile private var cached: AutocompleteStore? = null
 
     @Synchronized fun store(): AutocompleteStore = cached ?: AutocompleteStore.fromJson(runCatching { file.takeIf { it.exists() }?.readText() }.getOrNull()).also { cached = it }

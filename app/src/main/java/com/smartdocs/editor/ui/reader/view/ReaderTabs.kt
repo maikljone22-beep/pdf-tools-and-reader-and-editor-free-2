@@ -48,7 +48,8 @@ data class DocTab(val uri: String, val name: String, val page: Int = 0, val zoom
  * opens the other with its reading state). Persisted in SharedPreferences "tabs".
  */
 object ReaderTabs {
-    const val MAX = 5
+    /** nav-prefs (SHL-7): the tab limit is a preference (5–10). */
+    val MAX: Int get() = com.smartdocs.editor.core.data.NpfPrefs.tabLimit
     private const val PREFS = "tabs"
     val tabs = mutableStateListOf<DocTab>()
     var active by mutableStateOf<String?>(null); private set
@@ -238,6 +239,11 @@ fun ReaderTabsAction(state: ReaderState, switchTo: (DocTab?) -> Unit) {
                 )
             }
             HorizontalDivider()
+            // nav-prefs (SHL-7): close the other tabs / all tabs
+            if (tabs.size > 1) DropdownMenuItem(text = { Text(stringResource(R.string.npf_tabs_close_others)) }, leadingIcon = { Icon(Icons.Default.Close, null) },
+                onClick = { open = false; tabs.toList().filter { it.uri != current }.forEach { ReaderTabs.close(ctx, it.uri) } })
+            if (tabs.isNotEmpty()) DropdownMenuItem(text = { Text(stringResource(R.string.npf_tabs_close_all)) }, leadingIcon = { Icon(Icons.Default.Close, null) },
+                onClick = { open = false; tabs.toList().filter { it.uri != current }.forEach { ReaderTabs.close(ctx, it.uri) }; tabs.firstOrNull { it.uri == current }?.let { closeTab(ctx, it, current, switchTo) } })
             DropdownMenuItem(text = { Text(stringResource(R.string.vw_open_another)) }, leadingIcon = { Icon(Icons.Default.FileOpen, null) }, onClick = { open = false; pick() })
         }
     }

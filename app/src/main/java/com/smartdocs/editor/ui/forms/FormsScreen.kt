@@ -130,7 +130,20 @@ fun FormsScreen(nav: NavHostController, uri: String?) {
     }
     fun flatten() {
         val src = file ?: return
-        if (dynamicXfa) { flattenInfo = true; return }
+        if (dynamicXfa) {
+            // the XFA layout is generated as an AcroForm (the reader's in-page XFA form) and that copy is flattened
+            runner.run(processing) {
+                val out = app.documents.uniqueFile(app.documents.docsDir, src.nameWithoutExtension + "_flat")
+                val tmp = app.documents.newTemp("xfagen")
+                try {
+                    val withValues = if (xfaEdits.isNotEmpty()) app.documents.newTemp("xfavals").also { XfaSupport.saveValues(src, xfaEdits.toMap(), it, password) } else src
+                    try { com.smartdocs.editor.core.forms5.XfaGenerated.generate(ctx, withValues, if (withValues == src) password else null, tmp) } finally { if (withValues != src) withValues.delete() }
+                    PdfOps.flattenForms(tmp, out)
+                } finally { tmp.delete() }
+                out
+            }
+            return
+        }
         val (values, display) = pending()
         val dropXfa = xfa.kind == XfaSupport.Kind.STATIC
         runner.run(processing) {
@@ -142,6 +155,15 @@ fun FormsScreen(nav: NavHostController, uri: String?) {
             out
         }
     }
+    fun dropXfa() {
+        val src = file ?: return
+        runner.run(processing) {
+            val out = app.documents.uniqueFile(app.documents.docsDir, src.nameWithoutExtension + "_acroform")
+            FormOps.fillFields(src, emptyMap(), out, password, ctx, emptyMap(), true)
+            out
+        }
+    }
+    fun openInReader() { file?.let { f -> nav.navigate(com.smartdocs.editor.ui.Routes.reader(Uri.fromFile(f).toString(), 0)) } }
     LaunchedEffect(runner.result) { runner.result?.let { result = it; runner.result = null; if (it == file) reload() } }
     LaunchedEffect(runner.error) { runner.error?.let { snack.showSnackbar(it); runner.error = null } }
 
@@ -173,12 +195,75 @@ fun FormsScreen(nav: NavHostController, uri: String?) {
         }
     }
 
+    var dataFormat by remember { mutableStateOf(com.smartdocs.editor.core.formsx.DataFormat.FDF) }
+    var dataMenu by remember { mutableStateOf(false) }
+    val dataExporter = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("*/*")) { u ->
+        val src = file
+        if (u != null && src != null) scope.launch {
+            val (values, display) = pending()
+            val ok = withContext(Dispatchers.IO) {
+                runCatching {
+                    // pending edits are applied to a temp copy first so the export carries them
+                    val tmp = if (values.isNotEmpty()) app.documents.newTemp("formdata").also { FormOps.fillFields(src, values, it, password, ctx, display, false) } else src
+                    try {
+                        PdfOps.load(tmp, if (tmp == src) password else password).use { d ->
+                            ctx.contentResolver.openOutputStream(u, "wt")?.use { o -> com.smartdocs.editor.core.formsx.FormData.export(d, dataFormat, o, src.name) }
+                        }
+                    } finally { if (tmp != src) tmp.delete() }
+                }.isSuccess
+            }
+            snack.showSnackbar(if (ok) exportedMsg else importFailed)
+        }
+    }
+    val dataImporter = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { u ->
+        if (u != null) scope.launch {
+            val parsed = withContext(Dispatchers.IO) {
+                runCatching {
+                    val bytes = ctx.contentResolver.openInputStream(u)?.use { it.readBytes() } ?: ByteArray(0)
+                    val name = com.smartdocs.editor.ui.forms5.displayName(ctx, u)
+                    val fmt = com.smartdocs.editor.core.formsx.FormData.detect(name, bytes.copyOf(minOf(bytes.size, 512))) ?: error("format")
+                    com.smartdocs.editor.core.formsx.FormData.parse(bytes, fmt)
+                }.getOrNull()
+            }
+            if (parsed == null) snack.showSnackbar(importFailed)
+            else {
+                val byName = fields.associateBy { it.name }
+                var n = 0
+                parsed.forEach { (k, v) ->
+                    val f = byName[k] ?: return@forEach
+                    val nv = when (f.type) {
+                        FieldType.CHECKBOX -> (!(v.isBlank() || v == "Off" || v.equals("false", true))).toString()
+                        FieldType.RADIO -> if (v == "Off") "" else v
+                        FieldType.BUTTON, FieldType.SIGNATURE -> return@forEach
+                        else -> v
+                    }
+                    if (nv == f.value) edits.remove(k) else edits[k] = nv
+                    n++
+                }
+                snack.showSnackbar(ctx.getString(R.string.pg_form_imported, n))
+            }
+        }
+    }
+
     Scaffold(
         snackbarHost = { SnackbarHost(snack) },
         topBar = { AppTopBar(stringResource(R.string.pg_form_title), onBack = { nav.popBackStack() }) {
             if (loaded && (fields.isNotEmpty() || xfaFields.isNotEmpty())) {
                 if (!dynamicXfa) IconButton(onClick = { importer.launch(arrayOf("application/json", "text/*", "*/*")) }) { Icon(Icons.Default.FileDownload, stringResource(R.string.form_import)) }
                 if (!dynamicXfa) IconButton(onClick = { exporter.launch((file?.nameWithoutExtension ?: "form") + ".json") }) { Icon(Icons.Default.FileUpload, stringResource(R.string.form_export)) }
+                if (!dynamicXfa) Box {
+                    IconButton(onClick = { dataMenu = true }) { Icon(Icons.Default.ImportExport, stringResource(R.string.f8_data_menu)) }
+                    DropdownMenu(dataMenu, { dataMenu = false }) {
+                        listOf(com.smartdocs.editor.core.formsx.DataFormat.FDF, com.smartdocs.editor.core.formsx.DataFormat.XFDF, com.smartdocs.editor.core.formsx.DataFormat.XML,
+                            com.smartdocs.editor.core.formsx.DataFormat.CSV).forEach { fm ->
+                            DropdownMenuItem(text = { Text(stringResource(R.string.f8_export_as, fm.ext.uppercase())) }, onClick = {
+                                dataMenu = false; dataFormat = fm; dataExporter.launch((file?.nameWithoutExtension ?: "form") + "." + fm.ext)
+                            })
+                        }
+                        HorizontalDivider()
+                        DropdownMenuItem(text = { Text(stringResource(R.string.f8_import_data)) }, onClick = { dataMenu = false; dataImporter.launch(arrayOf("*/*")) })
+                    }
+                }
                 Box {
                     IconButton(onClick = { saveMenu = true }) { Icon(Icons.Default.Save, stringResource(R.string.save)) }
                     DropdownMenu(saveMenu, { saveMenu = false }) {
@@ -208,7 +293,7 @@ fun FormsScreen(nav: NavHostController, uri: String?) {
             val tablet = maxWidth > 700.dp
             LazyColumn(if (tablet) Modifier.widthIn(max = 760.dp).fillMaxHeight().align(Alignment.TopCenter) else Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp)) {
                 item { FilePickRow(file, stringResource(R.string.open_file), pick); Spacer(Modifier.height(12.dp)) }
-                if (loaded && xfa.kind != XfaSupport.Kind.NONE) item(key = "xfa_banner") { XfaBanner(xfa) { flattenInfo = true } }
+                if (loaded && xfa.kind != XfaSupport.Kind.NONE) item(key = "xfa_banner") { XfaBanner(xfa, onFlatten = { flatten() }, onOpenReader = { openInReader() }, onDropXfa = { dropXfa() }) }
                 if (loaded && calc.hasCalculations && !dynamicXfa) item(key = "calc_note") {
                     Text(stringResource(R.string.ps_calc_note, calc.order.size), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 8.dp))
                 }

@@ -147,6 +147,16 @@ fun OrganizeScreen(nav: NavHostController, uri: String?) {
                         }
                     }
                 },
+                onPrint = {
+                    // nav-batch: Foxit "Print Pages" from the thumbnails selection
+                    requireSelection {
+                        saving = true
+                        scope.launch {
+                            try { state.selectedToTemp()?.let { com.smartdocs.editor.core.util.PdfPrint.print(ctx, it, state.original?.nameWithoutExtension ?: "pages", state.selected.size) } }
+                            catch (e: Exception) { snack = e.message } finally { saving = false }
+                        }
+                    }
+                },
                 onMessage = { snack = it },
             )
         },
@@ -299,7 +309,7 @@ private fun InsertDialog(state: OrganizeState, kind: InsertKind, onDismiss: () -
 private fun OrganizeToolbar(
     state: OrganizeState,
     onInsertBlank: () -> Unit, onInsertFile: () -> Unit, onInsertImage: () -> Unit, onInsertCamera: () -> Unit,
-    onDelete: () -> Unit, onExtract: () -> Unit, onShare: () -> Unit, onMessage: (String) -> Unit,
+    onDelete: () -> Unit, onExtract: () -> Unit, onShare: () -> Unit, onMessage: (String) -> Unit, onPrint: () -> Unit = {},
 ) {
     val noSel = stringResource(R.string.pg_no_selection)
     val single = state.selected.size == 1
@@ -321,6 +331,7 @@ private fun OrganizeToolbar(
             VerticalDivider(Modifier.height(36.dp).padding(horizontal = 2.dp))
             ToolbarButton(Icons.Default.ContentCut, stringResource(R.string.page_extract), onClick = onExtract)
             ToolbarButton(Icons.Default.Share, stringResource(R.string.page_share), onClick = onShare)
+            ToolbarButton(Icons.Default.Print, stringResource(R.string.print), onClick = onPrint)
         }
     }
 }

@@ -81,4 +81,6 @@
     <string name="pc_page_ocr">Open for OCR</string>
     <string name="pc_thumbs_smaller">Smaller thumbnails</string>
     <string name="pc_thumbs_larger">Larger thumbnails</string>
+    <string name="pc_doc_view_first">Use the document\'s initial view on first open</string>
+    <string name="pc_doc_view_first_sub">The layout, page, zoom and panel saved in the file win over the settings above; later opens resume your last view.</string>
 </resources>

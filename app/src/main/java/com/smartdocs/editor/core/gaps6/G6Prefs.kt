@@ -7,11 +7,17 @@ import com.smartdocs.editor.core.data.AppSettings
 
 /** AI master switch (Settings → AI assistant). Every AI entry point asks [enabled] / [visibleTools]. */
 object AiGate {
-    fun enabled(s: AppSettings): Boolean = s.aiEnabled
-    /** Tool ids that need AI (Tools tab, wizard, command search). */
-    val TOOL_IDS: Set<String> = ToolWizard.AI_TOOLS + "ai_settings"
-    fun allowsTool(s: AppSettings, id: String): Boolean = s.aiEnabled || id !in TOOL_IDS
-    fun <T> filter(s: AppSettings, items: List<T>, id: (T) -> String): List<T> = if (s.aiEnabled) items else items.filter { id(it) !in TOOL_IDS }
+    /** AI is on: the Settings switch, and offline mode (nav-prefs, PREF-7) is off. */
+    fun enabled(s: AppSettings): Boolean = s.aiEnabled && com.smartdocs.editor.core.data.NpfNet.allowed()
+    /** Tool ids that need AI (Tools tab, wizard, command search, tool routes). nav-prefs: every ai6 route too. */
+    val TOOL_IDS: Set<String> = ToolWizard.AI_TOOLS + setOf("ai_settings", "ai_side_by_side", "ai_image", "ai_transcribe", "ai_chats", "ai_skills", "ai_help")
+    fun allowsTool(s: AppSettings, id: String): Boolean = enabled(s) || id !in TOOL_IDS
+    fun <T> filter(s: AppSettings, items: List<T>, id: (T) -> String): List<T> = if (enabled(s)) items else items.filter { id(it) !in TOOL_IDS }
+
+    /** Mirror of [AppSettings.aiEnabled] kept by SmartDocsApp, for code without the settings at hand (command search). */
+    @Volatile var appEnabled: Boolean = true
+    /** [enabled] from the mirror. */
+    fun on(): Boolean = appEnabled && com.smartdocs.editor.core.data.NpfNet.allowed()
 }
 
 /** Layout direction override (Settings → layout direction). Replaces `settings.language == "ar"` in MainActivity. */

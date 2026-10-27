@@ -50,6 +50,8 @@ private fun ToPdfPanel(runner: com.smartdocs.editor.ui.common.ToolRunner) {
     var txt by remember { mutableStateOf<File?>(null) }
     var url by remember { mutableStateOf("") }
     var fontSize by remember { mutableFloatStateOf(12f) }
+    var attachSrc by remember { mutableStateOf(false) }   // nav-attach: "attach source file"
+    val srcDesc = stringResource(R.string.nat_source_desc)
     val pickTxt = rememberTextFilePicker { txt = it }
     val processing = stringResource(R.string.processing)
     val loadingWeb = stringResource(R.string.tl_web_loading)
@@ -61,12 +63,14 @@ private fun ToPdfPanel(runner: com.smartdocs.editor.ui.common.ToolRunner) {
             FilePickRow(txt, stringResource(R.string.tl_pick_txt), pickTxt)
             com.smartdocs.editor.ui.common.LabeledSlider(stringResource(R.string.prop_font_size), fontSize, 9f..20f, { fontSize = it })
             Text(stringResource(R.string.tl_text_to_pdf_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            com.smartdocs.editor.ui.tools5.SwitchRow(stringResource(R.string.nat_attach_source), attachSrc, stringResource(R.string.nat_attach_source_sub)) { attachSrc = it }
             PrimaryButton(stringResource(R.string.tl_convert), enabled = txt != null, icon = Icons.Default.PictureAsPdf) {
                 val src = txt ?: return@PrimaryButton
-                val fs = fontSize
+                val fs = fontSize; val attach = attachSrc
                 runner.run(processing) {
                     val out = app.documents.uniqueFile(app.documents.docsDir, src.nameWithoutExtension)
                     TextToPdf.convert(ctx, src.readText(), out, fs, title = src.nameWithoutExtension)
+                    if (attach) com.smartdocs.editor.core.pdf.AttachmentOps.attachSources(out, listOf(src), srcDesc)
                     out
                 }
             }

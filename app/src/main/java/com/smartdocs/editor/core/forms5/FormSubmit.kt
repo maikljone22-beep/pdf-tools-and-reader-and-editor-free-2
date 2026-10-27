@@ -25,7 +25,11 @@ object FormSubmit {
     const val FLAG_EXPORT_HTML = 4
     const val FLAG_GET = 8
     const val FLAG_XFDF = 32
+    /** Bit 8: FDF submissions also carry the document's comments (IncludeAnnotations). */
+    const val FLAG_INCLUDE_ANNOTS = 128
     const val FLAG_PDF = 256
+    /** Bit 10: date values are sent in the PDF date format (CanonicalFormat). */
+    const val FLAG_CANONICAL = 512
 
     fun formatOf(flags: Int): SubmitFormat = when {
         flags and FLAG_PDF != 0 -> SubmitFormat.PDF
@@ -90,12 +94,59 @@ object FormSubmit {
         return "<" + bytes.joinToString("") { "%02X".format(it.toInt() and 0xFF) } + ">"
     }
 
+    /** Close a one-object FDF body with a real cross-reference table (parsers then need no repair pass). */
+    private fun withXref(body: String): ByteArray {
+        val objAt = body.indexOf("1 0 obj")
+        val xref = "xref"+NL+"0 2"+NL+"0000000000 65535 f "+NL+String.format(java.util.Locale.US, "%010d", objAt)+" 00000 n "+NL
+        val tail = "trailer"+NL+"<< /Size 2 /Root 1 0 R >>"+NL+"startxref"+NL+body.length+NL+"%%EOF"+NL
+        return (body + xref + tail).toByteArray(Charsets.ISO_8859_1)
+    }
+    private const val NL = "\n"
+
     /** A minimal FDF file (flat /Fields array with fully qualified /T names). */
     fun fdf(values: Map<String, String>, fileName: String): ByteArray {
         val sb = StringBuilder("%FDF-1.2\n1 0 obj\n<< /FDF << /F ").append(pdfString(fileName)).append(" /Fields [\n")
         values.forEach { (k, v) -> sb.append("<< /T ").append(pdfString(k)).append(" /V ").append(pdfString(v)).append(" >>\n") }
-        sb.append("] >> >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n")
-        return sb.toString().toByteArray(Charsets.ISO_8859_1)
+        sb.append("] >> >>\nendobj\n")
+        return withXref(sb.toString())
+    }
+
+    /**
+     * CanonicalFormat: values of the date fields in [datePatterns] (field name -> Acrobat pattern) are sent as
+     * PDF dates "D:YYYYMMDDHHmmSS" (PDF 32000 7.9.4); values that do not parse are sent unchanged.
+     */
+    fun canonicalDates(values: Map<String, String>, datePatterns: Map<String, String>): Map<String, String> =
+        values.mapValues { (k, v) ->
+            val p = datePatterns[k] ?: return@mapValues v
+            if (v.isBlank() || v.startsWith("D:")) return@mapValues v
+            val ms = FieldDates.parseUtc(v, p) ?: return@mapValues v
+            val f = java.text.SimpleDateFormat("yyyyMMddHHmmss", java.util.Locale.US).apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }
+            "D:" + f.format(java.util.Date(ms))
+        }
+
+    /**
+     * FDF with the document's comments (IncludeAnnotations): the /Fields array as [fdf] plus an /Annots array of
+     * already serialised annotation dictionaries ([annots], PDF syntax, each with its zero-based /Page).
+     */
+    fun fdfWithAnnots(values: Map<String, String>, fileName: String, annots: List<String>): ByteArray {
+        if (annots.isEmpty()) return fdf(values, fileName)
+        val sb = StringBuilder("%FDF-1.2\n1 0 obj\n<< /FDF << /F ").append(pdfString(fileName)).append(" /Fields [\n")
+        values.forEach { (k, v) -> sb.append("<< /T ").append(pdfString(k)).append(" /V ").append(pdfString(v)).append(" >>\n") }
+        sb.append("] /Annots [\n")
+        annots.forEach { sb.append(it).append('\n') }
+        sb.append("] >> >>\nendobj\n")
+        return withXref(sb.toString())
+    }
+
+    /** One annotation as an FDF /Annots entry: subtype, page, rect, contents, author, colour. */
+    fun fdfAnnot(subtype: String, page: Int, rect: FloatArray, contents: String, author: String, rgb: FloatArray?): String = buildString {
+        append("<< /Type /Annot /Subtype /").append(subtype.filter { it.isLetterOrDigit() }.ifEmpty { "Text" })
+        append(" /Page ").append(page)
+        append(" /Rect [").append(rect.joinToString(" ") { String.format(java.util.Locale.US, "%.2f", it) }).append("]")
+        if (contents.isNotEmpty()) append(" /Contents ").append(pdfString(contents))
+        if (author.isNotEmpty()) append(" /T ").append(pdfString(author))
+        if (rgb != null && rgb.size == 3) append(" /C [").append(rgb.joinToString(" ") { String.format(java.util.Locale.US, "%.3f", it) }).append("]")
+        append(" >>")
     }
 
     fun mime(f: SubmitFormat) = when (f) {
