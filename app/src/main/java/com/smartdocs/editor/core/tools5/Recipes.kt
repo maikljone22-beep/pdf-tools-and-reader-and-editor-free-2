@@ -205,7 +205,7 @@ object RecipeOps {
      * The enabled steps of [r], each "run recipe" step replaced by the enabled steps of the recipe it names
      * ([lookup] by id or name). Cycles and nesting deeper than [maxDepth] are cut (the step is dropped).
      */
-    fun expand(r: Recipe, lookup: (String) -> Recipe?, maxDepth: Int = 4): List<Step> {
+    fun expand(r: Recipe, maxDepth: Int = 4, lookup: (String) -> Recipe?): List<Step> {
         fun walk(steps: List<Step>, path: Set<String>, depth: Int): List<Step> = steps.filter { it.enabled }.flatMap { s ->
             if (s.type != StepType.RUN_RECIPE) listOf(s)
             else {

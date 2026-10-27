@@ -43,7 +43,7 @@ data class BatchJob(
     val files: List<Pair<String, String?>> get() = items.map { it.path to it.pw }
 
     /** The recipe ends with a print request (after nesting): the batch screen sends the outputs to the printer. */
-    fun printRequest(lookup: (String) -> Recipe?): Step? = recipe?.let { r -> RecipeOps.expand(r, lookup).lastOrNull { it.type == StepType.PRINT } }
+    fun printRequest(lookup: (String) -> Recipe?): Step? = recipe?.let { r -> RecipeOps.expand(r, lookup = lookup).lastOrNull { it.type == StepType.PRINT } }
 }
 
 /** Job specs and per-file logs as JSON files in filesDir/t5_batch. */
