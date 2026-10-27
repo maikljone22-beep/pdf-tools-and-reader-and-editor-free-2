@@ -28,8 +28,18 @@ object Digits {
     }
 }
 
-/** Bates number format: [prefix] + zero-padded number ([digits]) + [suffix]. */
-data class BatesSpec(val prefix: String = "", val suffix: String = "", val digits: Int = 6, val start: Long = 1)
+/**
+ * Bates number format: [prefix] + zero-padded number ([digits]) + [suffix]. [mode]: one number per page carried
+ * across files (default), one number per document, or per page restarting at [start] in every document.
+ * [countSkipped]: pages left out by the page range still use up a number (Nitro "increment on every page") instead
+ * of only the numbered pages counting.
+ */
+data class BatesSpec(
+    val prefix: String = "", val suffix: String = "", val digits: Int = 6, val start: Long = 1,
+    val mode: BatesMode = BatesMode.CONTINUE, val countSkipped: Boolean = false,
+)
+
+enum class BatesMode { CONTINUE, PER_DOCUMENT, RESTART }
 
 object Bates {
     fun format(spec: BatesSpec, n: Long): String = spec.prefix + n.toString().padStart(spec.digits.coerceIn(1, 15), '0') + spec.suffix
@@ -45,6 +55,36 @@ object Bates {
         var next = spec.start
         return pageCounts.map { c -> val r = next until next + c.coerceAtLeast(0); next += c.coerceAtLeast(0); r }
     }
+
+    /**
+     * Bates number of every stamped page, per file. [stamped] lists, for each file, its page count and the
+     * (sorted, zero-based) pages that get a number. Returns page index → number for each file, honouring
+     * [BatesSpec.mode] and [BatesSpec.countSkipped].
+     */
+    fun plan(spec: BatesSpec, stamped: List<Pair<Int, List<Int>>>): List<Map<Int, Long>> {
+        var next = spec.start
+        return stamped.map { (count, pages) ->
+            if (spec.mode == BatesMode.RESTART) next = spec.start
+            val m = LinkedHashMap<Int, Long>()
+            when {
+                spec.mode == BatesMode.PER_DOCUMENT -> { pages.forEach { m[it] = next }; if (pages.isNotEmpty()) next++ }
+                spec.countSkipped -> { val first = next; pages.forEach { m[it] = first + it }; next = first + count }
+                else -> pages.forEach { m[it] = next++ }
+            }
+            m
+        }
+    }
+
+    /** Total of numbers the set uses (the `{batestotal}` token): one per document or one per numbered page. */
+    fun total(plan: List<Map<Int, Long>>): Long = plan.flatMap { it.values }.distinct().size.toLong()
+}
+
+/** Measurement units offered for margins (Nitro "units"); values are stored in points. */
+enum class E5Unit(val points: Float) {
+    PT(1f), MM(72f / 25.4f), CM(72f / 2.54f), IN(72f);
+
+    fun toPoints(v: Float) = v * points
+    fun fromPoints(pt: Float) = pt / points
 }
 
 /** PDF page label styles (ISO 32000 §12.4.2) plus [NONE] (prefix only). */
@@ -114,15 +154,24 @@ data class TokenContext(
     val label: String = "",
     val arabic: Boolean = true,
     val ummAlQura: Boolean = true,
+    val path: String = "",
+    val subject: String = "",
+    val keywords: String = "",
+    /** Page number across a batch of files (Nitro "Batch Page No.") and the batch total; default: this file's. */
+    val batchPage: Int = 0,
+    val batchPages: Int = 0,
+    val batesTotal: String = "",
 )
 
 /**
  * Token expansion for header/footer/watermark text:
  * `{page} {pages} {date} {date:yyyy/MM/dd} {time} {time:HH:mm} {datetime} {hijri} {hijri:d MMMM yyyy} {file} {title}
- * {author} {user} {bates} {label}`. Unknown tokens stay as typed. [arabicDigits] converts every digit in the result.
+ * {author} {user} {bates} {label} {path} {subject} {keywords} {batchpage} {batchpages} {batestotal}`. Unknown tokens
+ * stay as typed. [arabicDigits] converts every digit in the result.
  */
 object Tokens {
-    val ALL = listOf("{page}", "{pages}", "{date}", "{time}", "{hijri}", "{file}", "{title}", "{author}", "{user}", "{bates}", "{label}")
+    val ALL = listOf("{page}", "{pages}", "{date}", "{time}", "{hijri}", "{file}", "{path}", "{title}", "{author}", "{subject}", "{keywords}",
+        "{user}", "{bates}", "{batestotal}", "{batchpage}", "{batchpages}", "{label}")
     private val re = Regex("""\{([a-z]+)(?::([^}]*))?\}""")
 
     fun expand(template: String, ctx: TokenContext, arabicDigits: Boolean = false): String {
@@ -141,6 +190,12 @@ object Tokens {
                 "author" -> ctx.author
                 "user" -> ctx.user
                 "bates" -> ctx.bates
+                "batestotal" -> ctx.batesTotal
+                "path" -> ctx.path.ifEmpty { ctx.file }
+                "subject" -> ctx.subject
+                "keywords" -> ctx.keywords
+                "batchpage" -> (if (ctx.batchPage > 0) ctx.batchPage else ctx.page).toString()
+                "batchpages" -> (if (ctx.batchPages > 0) ctx.batchPages else ctx.pages).toString()
                 "label" -> ctx.label.ifEmpty { ctx.page.toString() }
                 else -> m.value
             }
@@ -153,6 +208,8 @@ object Tokens {
         runCatching { f(DateTimeFormatter.ofPattern(pattern, locale)) }.getOrElse { pattern }
 
     fun usesPages(template: String) = template.contains("{pages}") || template.contains("{total}")
+
+    fun usesBates(template: String) = template.contains("{bates}") || template.contains("{batestotal}")
 }
 
 /** Page subsets applied after a range. */
@@ -174,6 +231,13 @@ object PageSet {
         }
         return out.toList()
     }
+
+    /**
+     * Nitro "from page X every N pages": keep the pages from one-based [start] on, then every [every]-th.
+     * [every] <= 0 keeps [pages] as they are.
+     */
+    fun every(pages: List<Int>, start: Int, every: Int): List<Int> =
+        if (every <= 0) pages else pages.filter { it >= start - 1 && (it - (start - 1)) % every == 0 }
 
     fun filter(pages: List<Int>, subset: PageSubset, isLandscape: (Int) -> Boolean = { false }): List<Int> = when (subset) {
         PageSubset.ALL -> pages

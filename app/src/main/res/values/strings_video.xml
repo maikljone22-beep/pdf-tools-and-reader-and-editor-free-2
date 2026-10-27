@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- مشغل الفيديو داخل الصفحة (ui/reader/annot/InPageVideoLayer, VideoHost, VideoDialogs) -->
+    <string name="vid_tool_hint">اسحب مستطيلًا على الصفحة حيث سيُعرض الفيديو، أو انقر لحجم افتراضي.</string>
+    <string name="vid_error">تعذّر تشغيل هذا الفيديو (صيغة غير مدعومة أو ملف تالف).</string>
+    <string name="vid_unsupported_flash">فيديو فلاش (SWF) غير مدعوم على هذا الجهاز. افتح الملف في عارض PDF على الحاسوب لتشغيله.</string>
+    <string name="vid_no_file">هذا الفيديو غير مضمَّن في ملف PDF (يشير إلى ملف خارجي أو عنوان ويب).</string>
+    <string name="vid_maybe_unsupported">قد لا يكون هذا الملف فيديو قابلًا للتشغيل على هذا الجهاز.</string>
+    <string name="vid_desc">فيديو: %1$s. انقر للتشغيل، واضغط مطولًا للتعديل.</string>
+    <string name="vid_play">تشغيل الفيديو</string>
+    <string name="vid_pause">إيقاف الفيديو مؤقتًا</string>
+    <string name="vid_close">إيقاف الفيديو</string>
+    <string name="vid_seek">موضع التشغيل</string>
+    <string name="vid_mute">كتم الصوت</string>
+    <string name="vid_unmute">إلغاء كتم الصوت</string>
+    <string name="vid_loop">تكرار التشغيل</string>
+    <string name="vid_rotate">تدوير إلى الوضع الأفقي</string>
+    <string name="vid_fullscreen">ملء الشاشة</string>
+    <string name="vid_exit_fullscreen">الخروج من ملء الشاشة</string>
+    <string name="vid_import_failed">تعذّر استيراد الفيديو.</string>
+    <string name="vid_saved">تم حفظ الفيديو</string>
+    <string name="vid_large_title">فيديو كبير</string>
+    <string name="vid_large_msg">حجم هذا الفيديو %1$s. سيُضمَّن داخل ملف PDF فيزداد حجم الملف بالقدر نفسه ويطول الحفظ. هل تريد المتابعة؟</string>
+    <string name="vid_continue">متابعة</string>
+    <string name="vid_preparing">جارٍ تجهيز الفيديو…</string>
+    <string name="vid_options">خيارات الفيديو</string>
+    <string name="vid_opt_autoplay">تشغيل تلقائي عند ظهور الصفحة</string>
+    <string name="vid_opt_loop">تكرار التشغيل</string>
+    <string name="vid_opt_muted">البدء بصوت مكتوم</string>
+    <string name="vid_opt_controls">إظهار أزرار التحكم</string>
+    <string name="vid_share">مشاركة الفيديو</string>
+    <string name="vid_save">حفظ الفيديو على الجهاز</string>
+</resources>

@@ -211,7 +211,8 @@ object CommentExchange {
             if (parent != null) c.setItem(IRT, parent) else c.removeItem(IRT)
             val an = runCatching { PDAnnotation.createAnnotation(c) }.getOrNull() ?: return false
             var result: COSDictionary = c
-            val rebuilt = if (!c.containsKey(COSName.AP) && !an.isHidden) runCatching { AnnotationWriter.toAnnot(an, pi) }.getOrNull() else null
+            // videos keep their own (foreign) structure: never rebuilt as one of ours
+            val rebuilt = if (!c.containsKey(COSName.AP) && !an.isHidden && an.subtype != "Screen" && an.subtype != "RichMedia") runCatching { AnnotationWriter.toAnnot(an, pi) }.getOrNull() else null
             if (rebuilt != null) {
                 val list = page.annotations
                 val before = list.size

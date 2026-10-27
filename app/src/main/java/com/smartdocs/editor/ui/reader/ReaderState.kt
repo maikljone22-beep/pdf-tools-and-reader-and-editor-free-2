@@ -140,6 +140,8 @@ class ReaderState(
     val edit = AnnotEditor(this)
     /** Polygon/cloud/caret/media/snapshot tools, multi-select, comment threads & exchange (MODULE_annot2). */
     val annot2 = com.smartdocs.editor.ui.reader.annot.Annot2Host(this)
+    /** In-page video player (one video at a time; see ui/reader/annot/VideoHost). */
+    val video = com.smartdocs.editor.ui.reader.annot.VideoHost(this)
     val canUndo: Boolean get() = history.canUndo && !saving
     val canRedo: Boolean get() = history.canRedo && !saving
     var dirty by mutableStateOf(false); private set
@@ -283,6 +285,7 @@ class ReaderState(
      */
     fun close() {
         disposed = true
+        runCatching { video.release() }      // player + extracted video copies
         val saveFirst = dirty && !discarded
         val s = session
         if (!saveFirst) session = null
@@ -732,6 +735,8 @@ class ReaderState(
     /** Commit an image placement (signature / stamp / picture) as a STAMP_IMAGE annotation. */
     fun confirmPlacement() {
         val p = placement ?: return
+        // nitro-quicksign: Recently used (pendingText = the saved signature's path while the signature tool is active)
+        if (tool == ReaderTool.SIGNATURE && pendingText.isNotBlank()) com.smartdocs.editor.core.data.SignatureMetaStore.markUsed(context, pendingText)
         val bmp = if (p.rotation != 0f) rotateBitmap(p.image, p.rotation) else p.image
         addAnnot(newAnnot(AnnotKind.STAMP_IMAGE, p.page, rects = listOf(PageGeometry.normPdf(p.rect)), image = bmp))
         placement = null
