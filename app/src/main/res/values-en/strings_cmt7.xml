@@ -167,4 +167,20 @@
     <string name="cx_sum_status">Include status</string>
     <string name="cx_sum_from">From page</string>
     <string name="cx_sum_to">To page</string>
+    <string name="cx_snap_grid">Snap to grid</string>
+    <string name="cx_multi_scale">Several scales</string>
+    <string name="cx_multi_scale_warn">Warning: pages of this document use different drawing scales. Check the page scale before measuring.</string>
+    <string name="cx_leader_lines">Leader lines</string>
+    <string name="cx_leader_len">Leader length: %1$s (negative = other side)</string>
+    <string name="cx_leader_ext">Leader extension: %1$s</string>
+    <string name="cx_leader_off">Leader offset: %1$s</string>
+    <string name="cx_measure_label">Custom label (empty shows the value)</string>
+    <string name="cx_edit_last_measure">Edit last measurement</string>
+    <string name="cx_flip">Flip</string>
+    <string name="cx_end_points">Points (in pt)</string>
+    <string name="cx_scale_desc">Scale description</string>
+    <string name="cx_scale_store">Keep the scale</string>
+    <string name="cx_scale_app">In the app only</string>
+    <string name="cx_doc_scales">Scales stored in the document</string>
+    <string name="cx_scale_saved">Drawing scale</string>
 </resources>

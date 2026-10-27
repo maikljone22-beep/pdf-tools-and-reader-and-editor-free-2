@@ -31,6 +31,12 @@ data class Measurement(
     val precision: Int = 2,
     val dash: DashStyle = DashStyle.SOLID,
     val fill: Int? = null,
+    /** Distance only: leader line length (negative = other side, "flip"), extension and offset (7.30 / 25.4 / 25.20). */
+    val leader: Float = 0f,
+    val leaderExt: Float = 0f,
+    val leaderOffset: Float = 0f,
+    /** User label shown instead of the value (25.14); the value stays in /Contents and the private value key. */
+    val customLabel: String? = null,
 )
 
 /**
@@ -70,7 +76,7 @@ object MeasureWriter {
     }
 
     private fun tag(an: PDAnnotationMarkup, m: Measurement, subject: String) {
-        V5Pdf.common(an, m.color, 1f, m.author, m.label, subject)
+        V5Pdf.common(an, m.color, 1f, m.author, m.customLabel?.takeIf { it.isNotBlank() }?.let { "$it (${m.label})" } ?: m.label, subject)
         an.cosObject.setItem(V5Pdf.MEASURE, measureDict(m.scale, m.precision))
         an.cosObject.setName(V5Pdf.SD_TYPE, m.type.name)
         an.cosObject.setItem(V5Pdf.SD_VALUE, COSFloat(m.value.toFloat()))
@@ -78,7 +84,7 @@ object MeasureWriter {
 
     private fun distance(doc: PDDocument, page: PDPage, m: Measurement, font: () -> PDFont) {
         val a = m.pts.getOrNull(0) ?: return; val b = m.pts.getOrNull(1) ?: return
-        val pad = m.width * 4 + 14f
+        val pad = m.width * 4 + 14f + kotlin.math.abs(m.leader) + m.leaderExt
         val rect = V5Pdf.bounds(listOf(a, b), pad)
         val an = PDAnnotationLine()
         tag(an, m, "Distance Measurement")
@@ -88,16 +94,26 @@ object MeasureWriter {
         an.borderStyle = V5Pdf.border(m.width, m.dash)
         an.setCaption(true)
         an.cosObject.setName(V5Pdf.IT, "LineDimension")
+        com.smartdocs.editor.core.annot.AnnotStyle.setLeader(an.cosObject, m.leader, m.leaderExt, m.leaderOffset)
         val f = V5Pdf.form(doc, rect)
         val ox = rect.lowerLeftX.toDouble(); val oy = rect.lowerLeftY.toDouble()
-        val la = P(a.x - ox, a.y - oy); val lb = P(b.x - ox, b.y - oy)
+        // with leader lines the dimension line itself is drawn LL away from the measured points
+        val geo = com.smartdocs.editor.core.annot.AnnotStyle.leaderGeometry(a.x.toFloat(), a.y.toFloat(), b.x.toFloat(), b.y.toFloat(), m.leader, m.leaderExt, m.leaderOffset)
+        val la = if (m.leader != 0f) P(geo[0] - ox, geo[1] - oy) else P(a.x - ox, a.y - oy)
+        val lb = if (m.leader != 0f) P(geo[2] - ox, geo[3] - oy) else P(b.x - ox, b.y - oy)
         PDPageContentStream(doc, f).use { cs ->
             V5Pdf.stroke(cs, m.color); V5Pdf.fill(cs, m.color); cs.setLineWidth(m.width); cs.setLineCapStyle(1)
+            if (m.leader != 0f) {
+                cs.moveTo((geo[4] - ox).toFloat(), (geo[5] - oy).toFloat()); cs.lineTo((geo[6] - ox).toFloat(), (geo[7] - oy).toFloat())
+                cs.moveTo((geo[8] - ox).toFloat(), (geo[9] - oy).toFloat()); cs.lineTo((geo[10] - ox).toFloat(), (geo[11] - oy).toFloat())
+                cs.stroke()
+            }
             m.dash.scaled(m.width)?.let { cs.setLineDashPattern(it, 0f) }
             cs.moveTo(la.x.toFloat(), la.y.toFloat()); cs.lineTo(lb.x.toFloat(), lb.y.toFloat()); cs.stroke()
             V5Pdf.drawEnd(cs, LineEnd.BUTT, lb, la, m.width); V5Pdf.drawEnd(cs, LineEnd.BUTT, la, lb, m.width)
             val mid = Geom.midpoint(la, lb)
-            V5Pdf.label(cs, m.label, mid.x.toFloat(), mid.y.toFloat() + 3f, atan2(lb.y - la.y, lb.x - la.x), 9f, m.color, V5Pdf.fontFor(m.label, font))
+            val shownLabel = m.customLabel?.takeIf { it.isNotBlank() } ?: m.label
+            V5Pdf.label(cs, shownLabel, mid.x.toFloat(), mid.y.toFloat() + 3f, atan2(lb.y - la.y, lb.x - la.x), 9f, m.color, V5Pdf.fontFor(shownLabel, font))
         }
         an.appearance = V5Pdf.ap(f)
         page.annotations.add(an)

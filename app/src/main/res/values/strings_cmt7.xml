@@ -167,4 +167,20 @@
     <string name="cx_sum_status">تضمين الحالة</string>
     <string name="cx_sum_from">من صفحة</string>
     <string name="cx_sum_to">إلى صفحة</string>
+    <string name="cx_snap_grid">التقاط للشبكة</string>
+    <string name="cx_multi_scale">مقاييس متعددة</string>
+    <string name="cx_multi_scale_warn">تحذير: صفحات هذا المستند تستخدم مقاييس رسم مختلفة. تأكد من مقياس الصفحة قبل القياس.</string>
+    <string name="cx_leader_lines">خطوط الإسناد</string>
+    <string name="cx_leader_len">طول خط الإسناد: %1$s (سالب = الجهة الأخرى)</string>
+    <string name="cx_leader_ext">امتداد خط الإسناد: %1$s</string>
+    <string name="cx_leader_off">إزاحة خط الإسناد: %1$s</string>
+    <string name="cx_measure_label">تسمية مخصصة (اتركها فارغة لإظهار القيمة)</string>
+    <string name="cx_edit_last_measure">تعديل آخر قياس</string>
+    <string name="cx_flip">قلب الاتجاه</string>
+    <string name="cx_end_points">النقاط (بالنقاط الطباعية)</string>
+    <string name="cx_scale_desc">وصف المقياس</string>
+    <string name="cx_scale_store">حفظ المقياس</string>
+    <string name="cx_scale_app">في التطبيق فقط</string>
+    <string name="cx_doc_scales">المقاييس المحفوظة في المستند</string>
+    <string name="cx_scale_saved">مقياس الرسم</string>
 </resources>

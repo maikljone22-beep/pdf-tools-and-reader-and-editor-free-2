@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import com.smartdocs.editor.R
 import com.smartdocs.editor.core.annot.AnnotStyle
 import com.smartdocs.editor.core.annot.CalcTape
+import com.smartdocs.editor.core.annot.SummaryOptions.Sort as SumSort
 import com.smartdocs.editor.core.pdf.AnnotKind
 import com.smartdocs.editor.core.view5.DashStyle
 import com.smartdocs.editor.core.view5.LineEnd
@@ -435,11 +436,10 @@ fun PlacementBar(state: ReaderState, modifier: Modifier = Modifier) {
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SummaryOptionsFields(o: com.smartdocs.editor.core.annot.SummaryOptions, pageCount: Int, onChange: (com.smartdocs.editor.core.annot.SummaryOptions) -> Unit) {
-    val S = com.smartdocs.editor.core.annot.SummaryOptions.Sort
     Text(stringResource(R.string.cx_sum_sort), style = MaterialTheme.typography.labelMedium)
     FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        listOf(S.PAGE to R.string.cx_sum_sort_page, S.AUTHOR to R.string.an_sort_author, S.TYPE to R.string.cx_sort_type,
-            S.CREATED_NEW to R.string.cx_sum_sort_new, S.CREATED_OLD to R.string.cx_sum_sort_old, S.MODIFIED to R.string.cx_sum_sort_mod).forEach { (s, l) ->
+        listOf(SumSort.PAGE to R.string.cx_sum_sort_page, SumSort.AUTHOR to R.string.an_sort_author, SumSort.TYPE to R.string.cx_sort_type,
+            SumSort.CREATED_NEW to R.string.cx_sum_sort_new, SumSort.CREATED_OLD to R.string.cx_sum_sort_old, SumSort.MODIFIED to R.string.cx_sum_sort_mod).forEach { (s, l) ->
             FilterChip(o.sort == s, { onChange(o.copy(sort = s)) }, label = { Text(stringResource(l)) })
         }
     }
