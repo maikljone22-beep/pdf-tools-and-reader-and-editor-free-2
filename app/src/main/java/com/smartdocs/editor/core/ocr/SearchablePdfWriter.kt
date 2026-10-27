@@ -175,6 +175,9 @@ class SearchablePdfWriter private constructor(private val context: Context, priv
             }
             cs.endText()
         }
+        // the words stay in the file for a later review of OCR suspects (OcrStore); a second layer on the page adds to them
+        val prev = OcrStore.get(pdPage)?.takeIf { it.imageWidth == page.imageWidth && it.imageHeight == page.imageHeight }
+        runCatching { OcrStore.put(doc, pdPage, if (prev == null) page else page.copy(words = prev.words + page.words)) }
     }
 
     suspend fun save(out: File) = withContext(Dispatchers.IO) { doc.save(out) }
