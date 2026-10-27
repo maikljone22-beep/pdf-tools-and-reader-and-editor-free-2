@@ -55,7 +55,8 @@ object ToPdf {
     suspend fun url(ctx: Context, url: String, out: File): File {
         com.smartdocs.editor.core.data.NpfNet.check()   // nav-prefs: offline mode
         var u = url.trim(); if (!u.startsWith("http://", true) && !u.startsWith("https://", true)) u = "https://$u"
-        withContext(Dispatchers.Main) { WebPdfWriter.convertUrl(ctx, u, out) }
+        try { withContext(Dispatchers.Main) { WebPdfWriter.convertUrl(ctx, u, out) } }
+        catch (e: WebPdfWriter.TimeoutException) { throw java.io.IOException(ctx.getString(com.smartdocs.editor.R.string.cv6_err_web_timeout)) }
         if (!out.exists() || out.length() == 0L) throw IllegalStateException("empty PDF")
         return out
     }
