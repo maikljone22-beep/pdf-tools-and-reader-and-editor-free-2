@@ -132,7 +132,14 @@ class T5PrintService : PrintService() {
                     val base = TextNorm.safeFileName(label.removeSuffix(".pdf"), 80).ifBlank { "print" } + "_" + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
                     val out = File(dir, "$base.pdf")
                     android.os.ParcelFileDescriptor.AutoCloseInputStream(data).use { input -> out.outputStream().use { input.copyTo(it) } }
-                    out
+                    // nav-batch: the printer's "conversion settings" are a recipe (security, watermark, header/footer, PDF/A…)
+                    val recipe = RecipeStore.printerRecipe(this@T5PrintService)
+                    if (recipe == null) out else {
+                        val tmp = File(cacheDir, "t5_print_tmp").apply { mkdirs() }
+                        val runner = RecipeRunner(this@T5PrintService, tmp)
+                        val e = try { runner.run(out, null, recipe.copy(output = recipe.output.copy(pattern = "{name}", sameFolder = false, conflict = Conflict.RENAME)), recipe.name, dir, 0) } finally { runner.close() }
+                        e.output?.let(::File)?.takeIf { e.ok && it.exists() }?.also { out.delete() } ?: out
+                    }
                 }
             }
             result.onSuccess { f -> printJob.complete(); notifySaved(f) }.onFailure { e -> printJob.fail(e.message ?: "error") }

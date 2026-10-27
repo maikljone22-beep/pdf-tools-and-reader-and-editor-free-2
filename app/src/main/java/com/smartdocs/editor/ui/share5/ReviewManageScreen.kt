@@ -55,6 +55,7 @@ fun ReviewManageScreen(nav: NavHostController, id: String) {
     var inviteDialog by remember { mutableStateOf(false) }
     var confirmRevoke by remember { mutableStateOf(false) }
     var privacy by remember { mutableStateOf(false) }
+    var leaveDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(ref?.id, ref?.code, reload) {
         val r = ref ?: return@LaunchedEffect
@@ -109,6 +110,16 @@ fun ReviewManageScreen(nav: NavHostController, id: String) {
                             else OutlinedButton(onClick = { privacy = true }) { Icon(Icons.Default.PrivacyTip, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.sh5_my_privacy)) }
                         }
                     }
+                }
+            }
+            // nav-attach (Foxit §31): archive copy, send the PDF itself with the invitation, leave the review
+            item {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    AssistChip(onClick = { saveArchiveCopy(ctx, ref) }, label = { Text(stringResource(R.string.nat_rv_archive)) }, leadingIcon = { Icon(Icons.Default.Archive, null) })
+                    if (ref.isOwner) AssistChip(onClick = {
+                        S5Share.shareFiles(ctx, listOf(File(ref.localPath)), "application/pdf", extra.subject.ifBlank { ref.title }, inviteText(ctx, ref.title, ref.id, ref.code, webUrl, deadline, extra.message))
+                    }, label = { Text(stringResource(R.string.nat_rv_send_pdf)) }, leadingIcon = { Icon(Icons.Default.AttachFile, null) })
+                    else AssistChip(onClick = { leaveDialog = true }, label = { Text(stringResource(R.string.nat_rv_leave)) }, leadingIcon = { Icon(Icons.Default.Logout, null) })
                 }
             }
             if (ref.isOwner) item {
@@ -192,6 +203,9 @@ fun ReviewManageScreen(nav: NavHostController, id: String) {
         }) { Text(stringResource(R.string.sh5_revoke)) } },
         dismissButton = { TextButton(onClick = { confirmRevoke = false }) { Text(stringResource(R.string.cancel)) } })
     if (privacy) ConsentDialog(ref, onDone = { privacy = false })
+    if (leaveDialog) AlertDialog(onDismissRequest = { leaveDialog = false }, title = { Text(stringResource(R.string.nat_rv_leave)) }, text = { Text(stringResource(R.string.nat_rv_leave_q)) },
+        confirmButton = { TextButton(onClick = { leaveDialog = false; leaveReview(ctx, ref); nav.popBackStack() }) { Text(stringResource(R.string.nat_rv_leave)) } },
+        dismissButton = { TextButton(onClick = { leaveDialog = false }) { Text(stringResource(R.string.cancel)) } })
 }
 
 private fun activityText(ctx: android.content.Context, kind: String, name: String, count: Int, web: Boolean): String {

@@ -70,6 +70,7 @@ private fun ToolScreensInner(nav: NavHostController, id: String, uri: String?) {
         "compare_plus" -> com.smartdocs.editor.ui.tools5.Compare2Screen(nav, uri)
         "accessibility" -> com.smartdocs.editor.ui.tools5.AccessibilityScreen(nav, uri)
         "print" -> PrintScreen(nav, uri)
+        "batch_print" -> com.smartdocs.editor.ui.tools5.BatchPrintScreen(nav, uri)     // nav-batch
         "read_aloud" -> ReadAloudScreen(nav, uri)
         "wifi" -> com.smartdocs.editor.ui.cloud.WifiScreen(nav)
         "help" -> com.smartdocs.editor.ui.help.HelpScreen(nav)
