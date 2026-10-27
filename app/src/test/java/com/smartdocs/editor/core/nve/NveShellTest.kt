@@ -56,16 +56,20 @@ class NveShellTest {
     }
 
     /** The bundled TTF (has Latin + Arabic): JVM tests must not touch the standard-14 fonts (PDType1Font static init fails). */
-    private val ttf = File("src/main/assets/fonts/NotoNaskhArabic-Regular.ttf")
-    private fun font(d: PDDocument) = PDType0Font.load(d, ttf)
+    // TrueType parsing also needs Android (Log, CMap assets) in JVM tests: an asset-free test font that writes any
+    // character (outside Latin-1 as '?'); sample pages are told apart by a /NveLabel entry instead of their text
+    private class AnyFont : com.tom_roush.pdfbox.pdmodel.font.NveTestFont() {
+        override fun encode(unicode: Int): ByteArray = byteArrayOf((if (unicode in 32..255) unicode else '?'.code).toByte())
+    }
+    private fun font(@Suppress("UNUSED_PARAMETER") d: PDDocument): com.tom_roush.pdfbox.pdmodel.font.PDFont = AnyFont()
 
     private fun sample(pages: Int): File {
         val f = tmp("src")
         PDDocument().use { d ->
-            val font = font(d)
             repeat(pages) { i ->
                 val p = PDPage(PDRectangle.A4); d.addPage(p)
-                PDPageContentStream(d, p).use { cs -> cs.beginText(); cs.setFont(font, 12f); cs.newLineAtOffset(50f, 700f); cs.showText("Page ${i + 1}"); cs.endText() }
+                p.cosObject.setString(com.tom_roush.pdfbox.cos.COSName.getPDFName("NveLabel"), "Page ${i + 1}")
+                PDPageContentStream(d, p).use { cs -> cs.addRect(50f, 700f, 10f, 10f); cs.fill() }
             }
             d.save(f)
         }
@@ -84,7 +88,7 @@ class NveShellTest {
         assertEquals(3, r.pages)
         PDDocument.load(out).use { d ->
             assertEquals(3, d.numberOfPages)
-            assertTrue(PDFTextStripper().getText(d).contains("Page 2"))
+            assertEquals("Page 2", d.getPage(1).cosObject.getString(com.tom_roush.pdfbox.cos.COSName.getPDFName("NveLabel")))
         }
         assertEquals("a (repaired).pdf", PdfRepair.repairedName("a.pdf"))
     }
@@ -134,7 +138,7 @@ class NveShellTest {
     }
 
     private fun pageTexts(f: File): List<String> = PDDocument.load(f).use { d ->
-        (1..d.numberOfPages).map { i -> PDFTextStripper().apply { startPage = i; endPage = i }.getText(d).trim() }
+        (0 until d.numberOfPages).map { i -> d.getPage(i).cosObject.getString(com.tom_roush.pdfbox.cos.COSName.getPDFName("NveLabel")) ?: "" }
     }
 
     @Test fun insertMergeAndInto() {
