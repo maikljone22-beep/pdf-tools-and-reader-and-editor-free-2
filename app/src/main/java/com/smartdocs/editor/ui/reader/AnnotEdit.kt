@@ -223,7 +223,7 @@ fun annotBounds(a: Annot): RectF {
         AnnotKind.INK -> ofPoints(a.paths.flatten(), a.strokeWidth / 2 + 2f)
         AnnotKind.LINE, AnnotKind.ARROW -> ofPoints(a.points, a.strokeWidth / 2 + 4f)
         AnnotKind.POLYGON, AnnotKind.POLYLINE -> ofPoints(a.points, a.strokeWidth / 2 + 2f)
-        AnnotKind.CLOUD -> ofPoints(a.points, com.smartdocs.editor.core.annot.CloudPath.margin(a.cloud.coerceIn(1, 2), a.strokeWidth))
+        AnnotKind.CLOUD -> ofPoints(a.points, com.smartdocs.editor.core.annot.CloudPath.margin(a.cloud.coerceIn(1, 3), a.strokeWidth))
         AnnotKind.NOTE -> a.rects.firstOrNull()?.let { r -> val n = PageGeometry.normPdf(r); RectF(n.left, n.top, n.left + 20f, n.top - 20f) } ?: RectF()
         else -> {
             if (a.rects.isEmpty()) return RectF()

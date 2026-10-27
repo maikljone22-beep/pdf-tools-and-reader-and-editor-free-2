@@ -40,6 +40,10 @@ object Annot2Writer {
     private val IT = COSName.getPDFName("IT")
     private val MEDIA = COSName.getPDFName("SDMedia")      // private key: Audio / Video, so we know how to play it
 
+    /** Subtypes that get a (closed) pop-up annotation when written (ISO 32000 12.5.6.14). */
+    val POPUP_KINDS = setOf("Text", "Highlight", "Underline", "StrikeOut", "Squiggly", "Ink", "Line", "Square", "Circle",
+        "Polygon", "PolyLine", "Caret", "Stamp", "FileAttachment")
+
     // ---------------- small helpers ----------------
 
     private fun rgb(c: Int) = PDColor(floatArrayOf(((c shr 16) and 0xFF) / 255f, ((c shr 8) and 0xFF) / 255f, (c and 0xFF) / 255f), PDDeviceRGB.INSTANCE)
@@ -89,7 +93,7 @@ object Annot2Writer {
         val closed = a.kind != AnnotKind.POLYLINE
         val pts = a.points
         if (pts.size < (if (closed) 3 else 2)) return
-        val cloud = if (a.kind == AnnotKind.CLOUD) a.cloud.coerceIn(1, 2) else 0
+        val cloud = if (a.kind == AnnotKind.CLOUD) a.cloud.coerceIn(1, 3) else 0
         val pad = if (cloud > 0) CloudPath.margin(cloud, a.strokeWidth) else a.strokeWidth + 2f
         val b = CloudPath.bounds(pts, pad)
         val rect = PDRectangle(b[0], b[1], b[2] - b[0], b[3] - b[1])
@@ -97,16 +101,20 @@ object Annot2Writer {
         common(m, a)
         m.rectangle = rect
         m.vertices = FloatArray(pts.size * 2) { i -> if (i % 2 == 0) pts[i / 2].first else pts[i / 2].second }
-        m.borderStyle = PDBorderStyleDictionary().apply { width = a.strokeWidth }
+        val noBorder = a.noBorder && closed && a.fillColor != null
+        AnnotStyle.applyBorder(m.cosObject, a.strokeWidth, a.dash, noBorder)
         if (closed && a.fillColor != null) m.interiorColor = rgb(a.fillColor)
         if (cloud > 0) {
-            m.borderEffect = PDBorderEffectDictionary().apply { style = PDBorderEffectDictionary.STYLE_CLOUDY; intensity = cloud.toFloat() }
+            // /I is 0..2 (ISO 32000): cloud levels 1..3 of the picker
+            m.borderEffect = PDBorderEffectDictionary().apply { style = PDBorderEffectDictionary.STYLE_CLOUDY; intensity = (cloud - 1).toFloat() }
             m.intent = "PolygonCloud"
         }
         val f = form(doc, rect)
         PDPageContentStream(doc, f).use { cs ->
             alpha(cs, a.opacity); stroke(cs, a.color); a.fillColor?.let { fill(cs, it) }
             cs.setLineWidth(a.strokeWidth); cs.setLineJoinStyle(1); cs.setLineCapStyle(1)
+            com.smartdocs.editor.core.view5.DashStyle.entries.getOrElse(a.dash) { com.smartdocs.editor.core.view5.DashStyle.SOLID }.scaled(a.strokeWidth)
+                ?.let { if (!noBorder) cs.setLineDashPattern(it, 0f) }
             val ox = rect.lowerLeftX; val oy = rect.lowerLeftY
             if (cloud > 0) {
                 val segs = CloudPath.build(pts, cloud, a.strokeWidth)
@@ -119,7 +127,11 @@ object Annot2Writer {
                 pts.forEachIndexed { i, (x, y) -> if (i == 0) cs.moveTo(x - ox, y - oy) else cs.lineTo(x - ox, y - oy) }
                 if (closed) cs.closePath()
             }
-            if (closed && a.fillColor != null) cs.fillAndStroke() else cs.stroke()
+            when {
+                noBorder -> cs.fill()
+                closed && a.fillColor != null -> cs.fillAndStroke()
+                else -> cs.stroke()
+            }
         }
         m.appearance = ap(f)
         page.annotations.add(m)
@@ -266,9 +278,14 @@ object Annot2Writer {
             val an = list[i]
             if (an.annotationName.isNullOrBlank()) an.annotationName = if (i == before) (a.nm ?: "sd-${a.id}") else "sd-${a.id}-${i - before}"
         }
+        // section 7: subject, lock flags and a closed pop-up for markup comments
+        val first = list[before].cosObject
+        if (a.subject.isNotBlank()) first.setString(COSName.getPDFName("Subj"), a.subject)
+        if (a.locked) AnnotStyle.setLocked(first, true)
+        if (list[before].subtype in POPUP_KINDS) runCatching { AnnotStyle.addPopup(page, first, false) }
+        if (list.size <= before) return
         val gid = a.groupId ?: return
         if (a.kind == AnnotKind.REPLACE) return          // already a group of its own
-        val first = list[before].cosObject
         val parent = groups[gid]
         if (parent == null) groups[gid] = first
         else if (parent !== first) { first.setItem(IRT, parent); first.setName(RT, "Group") }
@@ -302,7 +319,7 @@ object Annot2Writer {
                 val pts = (0 until v.size / 2).map { v[it * 2] to v[it * 2 + 1] }
                 val be = cos.getDictionaryObject(COSName.getPDFName("BE")) as? COSDictionary
                 val cloudy = be?.getNameAsString(COSName.S) == "C"
-                val intensity = if (cloudy) be!!.getFloat(COSName.getPDFName("I"), 1f).toInt().coerceIn(1, 2) else 0
+                val intensity = if (cloudy) (be!!.getFloat(COSName.getPDFName("I"), 0f).toInt() + 1).coerceIn(1, 3) else 0
                 val kind = when { an.subtype == "PolyLine" -> AnnotKind.POLYLINE; cloudy -> AnnotKind.CLOUD; else -> AnnotKind.POLYGON }
                 base.copy(kind = kind, points = pts, cloud = intensity, fillColor = colorOf(floats(cos, "IC")))
             }

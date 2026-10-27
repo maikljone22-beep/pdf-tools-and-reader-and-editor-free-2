@@ -53,7 +53,21 @@ data class Annot(
     val mime: String = "",
     val groupId: Long? = null,                  // pending annotations grouped together (/IRT + /RT /Group on commit)
     val nm: String? = null,                     // /NM unique name, kept across edit round trips
+    // ---- section 7 (core/annot/AnnotStyle) ----
+    val subject: String = "",                   // /Subj
+    val dash: Int = 0,                          // border dash: core.view5.DashStyle ordinal (0 solid)
+    val noBorder: Boolean = false,              // rect / oval / polygon drawn by their fill only (/BS /W 0)
+    val lineStart: String = "None",             // LINE / ARROW: /LE start ending (PDF name)
+    val lineEnd: String = "",                   // LINE / ARROW: /LE end ending ("" = default of the kind)
+    val locked: Boolean = false,                // /F Locked + LockedContents
+    val icon: String = "",                      // NOTE: /Name icon ("" = Comment)
+    val bold: Boolean = false,                  // FREETEXT rich text (/RC /DS)
+    val italic: Boolean = false,
+    val underline: Boolean = false,
 )
+
+/** /LE end ending of a line annotation: explicit [Annot.lineEnd] or the default of the kind. */
+fun Annot.endStyle(): String = lineEnd.ifBlank { if (kind == AnnotKind.ARROW) "OpenArrow" else "None" }
 
 object AnnotationWriter {
 
@@ -173,6 +187,7 @@ object AnnotationWriter {
                 ink.rectangle = bounds
                 ink.color = rgb(a.color); ink.constantOpacity = a.opacity
                 ink.borderStyle = PDBorderStyleDictionary().apply { width = a.strokeWidth }
+                if (a.dash > 0) com.smartdocs.editor.core.annot.AnnotStyle.applyBorder(ink.cosObject, a.strokeWidth, a.dash)
                 ink.contents = a.text; ink.titlePopup = a.author; ink.setCreationDate(now); ink.setModifiedDate(now)
                 ink.appearance = apDict(inkAppearance(doc, bounds, a))
                 annotations.add(ink)
@@ -182,7 +197,7 @@ object AnnotationWriter {
                 val n = PDAnnotationText()
                 // the icon hangs below the anchor (the larger y), like the on-screen preview
                 n.rectangle = PDRectangle(r.left, maxOf(r.top, r.bottom) - 20f, 20f, 20f)
-                n.name = PDAnnotationText.NAME_COMMENT
+                n.name = a.icon.ifBlank { PDAnnotationText.NAME_COMMENT }
                 n.contents = a.text; n.titlePopup = a.author; n.color = rgb(a.color)
                 n.setCreationDate(now); n.setModifiedDate(now)
                 n.appearance = apDict(noteAppearance(doc, n.rectangle, a))
@@ -199,6 +214,8 @@ object AnnotationWriter {
                 ft.cosObject.setString(COSName.DA, String.format(java.util.Locale.US, "/Helv %.1f Tf %.3f %.3f %.3f rg",
                     a.fontSize, ((a.color shr 16) and 0xFF) / 255f, ((a.color shr 8) and 0xFF) / 255f, (a.color and 0xFF) / 255f))
                 if (a.kind == AnnotKind.STAMP_TEXT) ft.cosObject.setName(name("IT"), "FreeTextStamp")
+                else com.smartdocs.editor.core.annot.AnnotStyle.applyRich(ft.cosObject, a.text,
+                    com.smartdocs.editor.core.annot.AnnotStyle.Rich(a.fontSize, a.color, a.bold, a.italic, a.underline), ArabicShaper.isArabic(a.text))
                 ft.appearance = apDict(textAppearance(context, doc, rect, a))
                 annotations.add(ft)
             }
@@ -207,12 +224,14 @@ object AnnotationWriter {
                 val (p1, p2) = a.points
                 val line = PDAnnotationLine()
                 line.line = floatArrayOf(p1.first, p1.second, p2.first, p2.second)
-                val r = norm(RectF(p1.first, p1.second, p2.first, p2.second)).apply { inset(-8f - a.strokeWidth, -8f - a.strokeWidth) }
+                val pad = maxOf(8f + a.strokeWidth, a.strokeWidth * 4f + 8f)
+                val r = norm(RectF(p1.first, p1.second, p2.first, p2.second)).apply { inset(-pad, -pad) }
                 val rect = PDRectangle(r.left, r.top, r.width(), r.height())
                 line.rectangle = rect
                 line.color = rgb(a.color); line.constantOpacity = a.opacity
                 line.borderStyle = PDBorderStyleDictionary().apply { width = a.strokeWidth }
-                if (a.kind == AnnotKind.ARROW) line.endPointEndingStyle = PDAnnotationLine.LE_OPEN_ARROW
+                com.smartdocs.editor.core.annot.AnnotStyle.applyBorder(line.cosObject, a.strokeWidth, a.dash)
+                com.smartdocs.editor.core.annot.AnnotStyle.setLineEnds(line.cosObject, a.lineStart, a.endStyle())
                 line.contents = a.text; line.titlePopup = a.author; line.setCreationDate(now); line.setModifiedDate(now)
                 line.appearance = apDict(lineAppearance(doc, rect, a))
                 annotations.add(line)
@@ -223,9 +242,12 @@ object AnnotationWriter {
                 val rect = PDRectangle(r.left, r.top, r.width(), r.height())
                 sq.rectangle = rect
                 sq.color = rgb(a.color); sq.constantOpacity = a.opacity
-                sq.borderStyle = PDBorderStyleDictionary().apply { width = a.strokeWidth }
+                com.smartdocs.editor.core.annot.AnnotStyle.applyBorder(sq.cosObject, a.strokeWidth, a.dash, a.noBorder)
+                com.smartdocs.editor.core.annot.AnnotStyle.setInterior(sq.cosObject, a.fillColor)
+                if (a.kind == AnnotKind.RECT && a.cloud > 0) com.smartdocs.editor.core.annot.AnnotStyle.setCloudy(sq.cosObject, a.cloud)
                 sq.contents = a.text; sq.titlePopup = a.author; sq.setCreationDate(now); sq.setModifiedDate(now)
-                sq.appearance = apDict(shapeAppearance(doc, rect, a))
+                sq.appearance = apDict(com.smartdocs.editor.core.annot.AnnotStyle.shapeStream(doc, rect.lowerLeftX, rect.lowerLeftY, rect.width, rect.height,
+                    a.kind == AnnotKind.OVAL, a.color, a.fillColor, a.strokeWidth, a.dash, a.noBorder, a.opacity, if (a.kind == AnnotKind.RECT) a.cloud else 0))
                 annotations.add(sq)
             }
             AnnotKind.STAMP_IMAGE -> {
@@ -291,6 +313,7 @@ object AnnotationWriter {
         PDPageContentStream(doc, form).use { cs ->
             alpha(cs, a); setColors(cs, a.color)
             cs.setLineWidth(a.strokeWidth); cs.setLineCapStyle(1); cs.setLineJoinStyle(1)
+            dashOf(a)?.let { cs.setLineDashPattern(it, 0f) }
             a.paths.forEach { stroke ->
                 stroke.forEachIndexed { i, (x, y) ->
                     val px = x - bounds.lowerLeftX; val py = y - bounds.lowerLeftY
@@ -340,6 +363,8 @@ object AnnotationWriter {
         return form
     }
 
+    private fun dashOf(a: Annot): FloatArray? = com.smartdocs.editor.core.view5.DashStyle.entries.getOrElse(a.dash) { com.smartdocs.editor.core.view5.DashStyle.SOLID }.scaled(a.strokeWidth)
+
     private fun lineAppearance(doc: PDDocument, rect: PDRectangle, a: Annot): PDAppearanceStream {
         val form = newForm(doc, rect)
         val (p1, p2) = a.points
@@ -347,35 +372,11 @@ object AnnotationWriter {
             alpha(cs, a); setColors(cs, a.color); cs.setLineWidth(a.strokeWidth); cs.setLineCapStyle(1)
             val x1 = p1.first - rect.lowerLeftX; val y1 = p1.second - rect.lowerLeftY
             val x2 = p2.first - rect.lowerLeftX; val y2 = p2.second - rect.lowerLeftY
+            dashOf(a)?.let { cs.setLineDashPattern(it, 0f) }
             cs.moveTo(x1, y1); cs.lineTo(x2, y2); cs.stroke()
-            if (a.kind == AnnotKind.ARROW) {
-                val ang = Math.atan2((y2 - y1).toDouble(), (x2 - x1).toDouble())
-                val len = 10f + a.strokeWidth * 2
-                for (s in listOf(-1, 1)) {
-                    val t = ang + s * Math.PI / 7
-                    cs.moveTo(x2, y2); cs.lineTo(x2 - (len * Math.cos(t)).toFloat(), y2 - (len * Math.sin(t)).toFloat())
-                }
-                cs.stroke()
-            }
-        }
-        return form
-    }
-
-    private fun shapeAppearance(doc: PDDocument, rect: PDRectangle, a: Annot): PDAppearanceStream {
-        val form = newForm(doc, rect)
-        PDPageContentStream(doc, form).use { cs ->
-            alpha(cs, a); setColors(cs, a.color); cs.setLineWidth(a.strokeWidth)
-            val w = rect.width; val h = rect.height; val i = a.strokeWidth / 2
-            if (a.kind == AnnotKind.RECT) { cs.addRect(i, i, w - 2 * i, h - 2 * i); cs.stroke() }
-            else {
-                val k = 0.5523f; val rx = (w - 2 * i) / 2; val ry = (h - 2 * i) / 2; val cx = w / 2; val cy = h / 2
-                cs.moveTo(cx + rx, cy)
-                cs.curveTo(cx + rx, cy + ry * k, cx + rx * k, cy + ry, cx, cy + ry)
-                cs.curveTo(cx - rx * k, cy + ry, cx - rx, cy + ry * k, cx - rx, cy)
-                cs.curveTo(cx - rx, cy - ry * k, cx - rx * k, cy - ry, cx, cy - ry)
-                cs.curveTo(cx + rx * k, cy - ry, cx + rx, cy - ry * k, cx + rx, cy)
-                cs.closePath(); cs.stroke()
-            }
+            val q1 = com.smartdocs.editor.core.view5.P(x1.toDouble(), y1.toDouble()); val q2 = com.smartdocs.editor.core.view5.P(x2.toDouble(), y2.toDouble())
+            com.smartdocs.editor.core.view5.V5Pdf.drawEnd(cs, com.smartdocs.editor.core.view5.LineEnd.of(a.endStyle()), q1, q2, a.strokeWidth)
+            com.smartdocs.editor.core.view5.V5Pdf.drawEnd(cs, com.smartdocs.editor.core.view5.LineEnd.of(a.lineStart), q2, q1, a.strokeWidth)
         }
         return form
     }
@@ -448,8 +449,10 @@ object AnnotationWriter {
         val contents = an.contents ?: ""
         val width = (cos.getDictionaryObject(name("BS")) as? com.tom_roush.pdfbox.cos.COSDictionary)?.getFloat(name("W"), 1f)
             ?: floats(cos, "Border")?.getOrNull(2) ?: 1f
+        val st = com.smartdocs.editor.core.annot.AnnotStyle
         val base = Annot(kind = AnnotKind.RECT, page = page, color = color ?: 0xF44336, opacity = opacity, strokeWidth = width.coerceAtLeast(0.5f),
-            author = author, text = contents)
+            author = author, text = contents, subject = st.subjectOf(cos), dash = st.dashIndexOf(cos), noBorder = st.isNoBorder(cos),
+            locked = st.isLocked(cos))
         return when (sub) {
             "Highlight", "Underline", "StrikeOut", "Squiggly" -> {
                 val kind = when (sub) { "Highlight" -> AnnotKind.HIGHLIGHT; "Underline" -> AnnotKind.UNDERLINE; "StrikeOut" -> AnnotKind.STRIKEOUT; else -> AnnotKind.SQUIGGLY }
@@ -475,13 +478,18 @@ object AnnotationWriter {
                 fun arrow(s: String?) = s == "OpenArrow" || s == "ClosedArrow"
                 var p1 = l[0] to l[1]; var p2 = l[2] to l[3]
                 val endArrow = arrow(le.getOrNull(1)); val startArrow = arrow(le.getOrNull(0))
-                if (startArrow && !endArrow) { val t = p1; p1 = p2; p2 = t }
-                base.copy(kind = if (startArrow || endArrow) AnnotKind.ARROW else AnnotKind.LINE, points = listOf(p1, p2))
+                // the legacy arrow-at-start case is normalised to an end arrow; any other pair of endings is kept as is
+                val simple = le.all { it == "None" || it == "OpenArrow" || it == "ClosedArrow" || it.isBlank() }
+                val swap = simple && startArrow && !endArrow
+                if (swap) { val t = p1; p1 = p2; p2 = t }
+                val ends = if (swap) "None" to (le.getOrNull(0) ?: "OpenArrow") else (le.getOrNull(0) ?: "None") to (le.getOrNull(1) ?: "None")
+                base.copy(kind = if (startArrow || endArrow) AnnotKind.ARROW else AnnotKind.LINE, points = listOf(p1, p2), lineStart = ends.first, lineEnd = ends.second)
             }
             "Square", "Circle" -> {
                 val rd = floats(cos, "RD")
                 val box = if (rd != null && rd.size >= 4) RectF(rect.left + rd[0], rect.top - rd[1], rect.right - rd[2], rect.bottom + rd[3]) else rect
-                base.copy(kind = if (sub == "Square") AnnotKind.RECT else AnnotKind.OVAL, rects = listOf(box))
+                base.copy(kind = if (sub == "Square") AnnotKind.RECT else AnnotKind.OVAL, rects = listOf(box), fillColor = st.interiorOf(cos),
+                    cloud = if (sub == "Square") st.cloudyOf(cos) else 0)
             }
             "FreeText" -> {
                 val da = cos.getString(COSName.DA) ?: ""
@@ -490,9 +498,12 @@ object AnnotationWriter {
                     colorOf(PDColor(floatArrayOf(g[1].toFloat(), g[2].toFloat(), g[3].toFloat()), PDDeviceRGB.INSTANCE))
                 } ?: Regex("""([0-9.]+)\s+g(\s|$)""").find(da)?.groupValues?.get(1)?.toFloatOrNull()?.let { v -> colorOf(PDColor(floatArrayOf(v), com.tom_roush.pdfbox.pdmodel.graphics.color.PDDeviceGray.INSTANCE)) }
                 val stamp = cos.getNameAsString(name("IT")) == "FreeTextStamp"
-                base.copy(kind = if (stamp) AnnotKind.STAMP_TEXT else AnnotKind.FREETEXT, rects = listOf(rect), fontSize = size, color = rgb ?: 0x212121)
+                val rich = if (stamp) null else st.readRich(cos)
+                base.copy(kind = if (stamp) AnnotKind.STAMP_TEXT else AnnotKind.FREETEXT, rects = listOf(rect), fontSize = size, color = rgb ?: 0x212121,
+                    bold = rich?.bold ?: false, italic = rich?.italic ?: false, underline = rich?.underline ?: false)
             }
-            "Text" -> base.copy(kind = AnnotKind.NOTE, rects = listOf(RectF(rect.left, rect.top, rect.left + 20f, rect.top - 20f)), color = color ?: 0xFFEB3B)
+            "Text" -> base.copy(kind = AnnotKind.NOTE, rects = listOf(RectF(rect.left, rect.top, rect.left + 20f, rect.top - 20f)), color = color ?: 0xFFEB3B,
+                icon = st.noteIconOf(cos).takeIf { it != "Comment" } ?: "")
             else -> com.smartdocs.editor.core.annot.Annot2Writer.read(an, page, base, rect)
         }
     }
@@ -501,8 +512,8 @@ object AnnotationWriter {
         require(out.canonicalPath != src.canonicalPath) { "delete: out must differ from src" }
         saveChanged(src, out, password) { d ->
             if (page in 0 until d.numberOfPages) {
-                val p = d.getPage(page); val list = p.annotations
-                if (index in list.indices) { list.removeAt(index); p.annotations = list }
+                val p = d.getPage(page)
+                if (index in p.annotations.indices) com.smartdocs.editor.core.annot.AnnotStyle.removeWithPopups(p, listOf(index))
             }
             Unit to listOf(page)
         }

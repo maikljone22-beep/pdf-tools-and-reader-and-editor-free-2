@@ -1,0 +1,485 @@
+package com.smartdocs.editor.core.annot
+
+import com.smartdocs.editor.core.view5.DashStyle
+import com.tom_roush.pdfbox.cos.COSArray
+import com.tom_roush.pdfbox.cos.COSBase
+import com.tom_roush.pdfbox.cos.COSDictionary
+import com.tom_roush.pdfbox.cos.COSFloat
+import com.tom_roush.pdfbox.cos.COSName
+import com.tom_roush.pdfbox.cos.COSNumber
+import com.tom_roush.pdfbox.cos.COSStream
+import com.tom_roush.pdfbox.cos.COSString
+import com.tom_roush.pdfbox.pdmodel.PDDocument
+import com.tom_roush.pdfbox.pdmodel.PDPage
+import com.tom_roush.pdfbox.pdmodel.PDPageContentStream
+import com.tom_roush.pdfbox.pdmodel.PDResources
+import com.tom_roush.pdfbox.pdmodel.common.PDRectangle
+import com.tom_roush.pdfbox.pdmodel.graphics.form.PDFormXObject
+import com.tom_roush.pdfbox.pdmodel.graphics.state.PDExtendedGraphicsState
+import com.tom_roush.pdfbox.pdmodel.interactive.annotation.PDAnnotation
+import com.tom_roush.pdfbox.pdmodel.interactive.annotation.PDAppearanceStream
+import com.tom_roush.pdfbox.util.Matrix
+import java.util.Locale
+
+/**
+ * Small, testable (plain floats, no android.*) PDF helpers for the comment features of section 7: border
+ * style / dash / no border (/BS), interior colour (/IC), cloudy border (/BE), line endings (/LE), dimension
+ * leader lines (/LL /LLE /LLO), lock flags (/F), author / subject / name, pop-up annotations (/Popup), rich
+ * text (/RC /DS), flattening chosen annotations into the page content and numbered tickmarks.
+ */
+object AnnotStyle {
+
+    const val F_HIDDEN = 2
+    const val F_PRINT = 4
+    const val F_LOCKED = 128
+    const val F_LOCKED_CONTENTS = 512
+
+    private val BS = COSName.getPDFName("BS")
+    private val BE = COSName.getPDFName("BE")
+    private val IC = COSName.getPDFName("IC")
+    private val LE = COSName.getPDFName("LE")
+    private val LL = COSName.getPDFName("LL")
+    private val LLE = COSName.getPDFName("LLE")
+    private val LLO = COSName.getPDFName("LLO")
+    private val SUBJ = COSName.getPDFName("Subj")
+    private val NM = COSName.getPDFName("NM")
+    private val T = COSName.getPDFName("T")
+    private val POPUP = COSName.getPDFName("Popup")
+    private val OPEN = COSName.getPDFName("Open")
+    private val RC = COSName.getPDFName("RC")
+    private val DS = COSName.getPDFName("DS")
+    private val NAME = COSName.getPDFName("Name")
+    private val D = COSName.getPDFName("D")
+    private val W = COSName.getPDFName("W")
+    private val I = COSName.getPDFName("I")
+
+    /** Note icon names of PDF text annotations (ISO 32000 12.5.6.4) offered by the picker. */
+    val NOTE_ICONS = listOf("Comment", "Key", "Note", "Help", "NewParagraph", "Paragraph", "Insert")
+
+    // ================= flags =================
+
+    fun flags(cos: COSDictionary): Int = cos.getInt(COSName.F, 0)
+
+    /** Set or clear Locked (128) and LockedContents (512); the other flags are kept. */
+    fun setLocked(cos: COSDictionary, locked: Boolean, contents: Boolean = locked) {
+        var f = flags(cos)
+        f = if (locked) f or F_LOCKED else f and F_LOCKED.inv()
+        f = if (contents) f or F_LOCKED_CONTENTS else f and F_LOCKED_CONTENTS.inv()
+        cos.setInt(COSName.F, f)
+    }
+
+    fun isLocked(cos: COSDictionary): Boolean = flags(cos) and F_LOCKED != 0
+    fun isLockedContents(cos: COSDictionary): Boolean = flags(cos) and F_LOCKED_CONTENTS != 0
+
+    // ================= border / fill / cloud =================
+
+    /**
+     * /BS of a shape: [width] points, [dash] = [DashStyle] ordinal (0 solid), [noBorder] writes /W 0 (the
+     * shape is drawn by its fill only).
+     */
+    fun applyBorder(cos: COSDictionary, width: Float, dash: Int, noBorder: Boolean = false) {
+        val bs = COSDictionary()
+        bs.setName(COSName.TYPE, "Border")
+        if (noBorder) { bs.setItem(W, COSFloat(0f)); bs.setName(COSName.S, "S"); cos.setItem(BS, bs); return }
+        bs.setItem(W, COSFloat(width))
+        val style = DashStyle.entries.getOrElse(dash) { DashStyle.SOLID }
+        val p = style.scaled(width)
+        if (p != null) {
+            bs.setName(COSName.S, "D")
+            bs.setItem(D, COSArray().apply { p.forEach { add(COSFloat(it)) } })
+        } else bs.setName(COSName.S, "S")
+        cos.setItem(BS, bs)
+    }
+
+    fun borderWidth(cos: COSDictionary): Float? = (cos.getDictionaryObject(BS) as? COSDictionary)?.let { (it.getDictionaryObject(W) as? COSNumber)?.floatValue() }
+
+    fun isNoBorder(cos: COSDictionary): Boolean = borderWidth(cos)?.let { it <= 0f } ?: false
+
+    /** [DashStyle] ordinal matching the /BS /D array of [cos] (0 when solid or unknown). */
+    fun dashIndexOf(cos: COSDictionary): Int {
+        val bs = cos.getDictionaryObject(BS) as? COSDictionary ?: return 0
+        if (bs.getNameAsString(COSName.S) != "D") return 0
+        val w = (bs.getDictionaryObject(W) as? COSNumber)?.floatValue()?.coerceAtLeast(0.5f) ?: 1f
+        val arr = bs.getDictionaryObject(D) as? COSArray ?: return 1
+        val v = FloatArray(arr.size()) { (arr.getObject(it) as? COSNumber)?.floatValue() ?: 0f }
+        DashStyle.entries.forEach { d ->
+            val p = d.scaled(w) ?: return@forEach
+            if (p.size == v.size && p.indices.all { kotlin.math.abs(p[it] - v[it]) < 0.05f }) return d.ordinal
+        }
+        return 1
+    }
+
+    fun setInterior(cos: COSDictionary, rgb: Int?) {
+        if (rgb == null) { cos.removeItem(IC); return }
+        cos.setItem(IC, COSArray().apply { comps(rgb).forEach { add(COSFloat(it)) } })
+    }
+
+    fun interiorOf(cos: COSDictionary): Int? {
+        val arr = cos.getDictionaryObject(IC) as? COSArray ?: return null
+        if (arr.size() != 3) return null
+        fun b(i: Int) = (((arr.getObject(i) as? COSNumber)?.floatValue() ?: 0f).coerceIn(0f, 1f) * 255f + 0.5f).toInt()
+        return (b(0) shl 16) or (b(1) shl 8) or b(2)
+    }
+
+    /** Cloudy border effect (/BE /S /C /I intensity 0..2; Nitro's "cloudy 1-3" = intensities 0, 1, 2). */
+    fun setCloudy(cos: COSDictionary, intensity: Int) {
+        if (intensity <= 0) { cos.removeItem(BE); return }
+        cos.setItem(BE, COSDictionary().apply { setName(COSName.S, "C"); setItem(I, COSFloat((intensity - 1).coerceIn(0, 2).toFloat())) })
+    }
+
+    /** Cloud level 1..3 written by [setCloudy] (0 = not cloudy). */
+    fun cloudyOf(cos: COSDictionary): Int {
+        val be = cos.getDictionaryObject(BE) as? COSDictionary ?: return 0
+        if (be.getNameAsString(COSName.S) != "C") return 0
+        return (be.getFloat(I, 0f).toInt() + 1).coerceIn(1, 3)
+    }
+
+    // ================= lines =================
+
+    fun setLineEnds(cos: COSDictionary, start: String, end: String) {
+        cos.setItem(LE, COSArray().apply { add(COSName.getPDFName(start.ifBlank { "None" })); add(COSName.getPDFName(end.ifBlank { "None" })) })
+    }
+
+    fun lineEndsOf(cos: COSDictionary): Pair<String, String> {
+        val a = cos.getDictionaryObject(LE) as? COSArray ?: return "None" to "None"
+        fun at(i: Int) = (runCatching { a.getObject(i) }.getOrNull() as? COSName)?.name ?: "None"
+        return at(0) to at(1)
+    }
+
+    /** Leader lines of a dimension line (ISO 32000 12.5.6.7): length, extension and offset in points. */
+    fun setLeader(cos: COSDictionary, length: Float, extension: Float, offset: Float) {
+        if (length == 0f) cos.removeItem(LL) else cos.setItem(LL, COSFloat(length))
+        if (extension <= 0f) cos.removeItem(LLE) else cos.setItem(LLE, COSFloat(extension))
+        if (offset <= 0f) cos.removeItem(LLO) else cos.setItem(LLO, COSFloat(offset))
+    }
+
+    fun leaderOf(cos: COSDictionary): Triple<Float, Float, Float> =
+        Triple(cos.getFloat(LL, 0f), cos.getFloat(LLE, 0f), cos.getFloat(LLO, 0f))
+
+    /**
+     * End points (a', b') of the dimension line drawn with leader lines: the line [a]-[b] moved perpendicular by
+     * [ll] + sign(ll) * [llo]... the leader lines run from (a + llo*n) to (a' + lle*n). Returned as
+     * [ax', ay', bx', by', leaderAx0, leaderAy0, leaderAx1, leaderAy1, leaderBx0, leaderBy0, leaderBx1, leaderBy1].
+     */
+    fun leaderGeometry(ax: Float, ay: Float, bx: Float, by: Float, ll: Float, lle: Float, llo: Float): FloatArray {
+        val dx = bx - ax; val dy = by - ay
+        val len = kotlin.math.hypot(dx, dy).coerceAtLeast(1e-3f)
+        // perpendicular to the left of a→b (PDF: positive LL goes "up" for a left-to-right line)
+        val nx = -dy / len; val ny = dx / len
+        val sgn = if (ll < 0) -1f else 1f
+        val off = ll
+        val a1x = ax + nx * off; val a1y = ay + ny * off
+        val b1x = bx + nx * off; val b1y = by + ny * off
+        val s0 = llo * sgn; val s1 = off + lle * sgn
+        return floatArrayOf(a1x, a1y, b1x, b1y,
+            ax + nx * s0, ay + ny * s0, ax + nx * s1, ay + ny * s1,
+            bx + nx * s0, by + ny * s0, bx + nx * s1, by + ny * s1)
+    }
+
+    // ================= author / subject / name =================
+
+    /** Author (/T), subject (/Subj) and unique name (/NM); null leaves a value unchanged, blank removes it. */
+    fun setMeta(cos: COSDictionary, author: String? = null, subject: String? = null, name: String? = null) {
+        fun put(k: COSName, v: String?) { if (v == null) return; if (v.isBlank()) cos.removeItem(k) else cos.setString(k, v) }
+        put(T, author); put(SUBJ, subject); put(NM, name)
+        cos.setString(COSName.M, com.tom_roush.pdfbox.util.DateConverter.toString(java.util.Calendar.getInstance()))
+    }
+
+    fun authorOf(cos: COSDictionary): String = cos.getString(T) ?: ""
+    fun subjectOf(cos: COSDictionary): String = cos.getString(SUBJ) ?: ""
+    fun nameOf(cos: COSDictionary): String = cos.getString(NM) ?: ""
+
+    fun setNoteIcon(cos: COSDictionary, icon: String) { if (icon.isNotBlank()) cos.setName(NAME, icon) }
+    fun noteIconOf(cos: COSDictionary): String = cos.getNameAsString(NAME) ?: "Comment"
+
+    // ================= pop-up annotations =================
+
+    /** Default pop-up box for a parent at [rect] (llx, lly, urx, ury) on a page [pageW] wide: to its right, or left. */
+    fun popupRect(rect: FloatArray, pageW: Float, pageH: Float): FloatArray {
+        val w = 180f; val h = 120f
+        val top = rect[3].coerceIn(h, pageH.coerceAtLeast(h))
+        val left = if (rect[2] + 8f + w <= pageW) rect[2] + 8f else (rect[0] - 8f - w).coerceAtLeast(0f)
+        return floatArrayOf(left, top - h, left + w, top)
+    }
+
+    private fun rectOf(cos: COSDictionary): FloatArray? {
+        val a = cos.getDictionaryObject(COSName.RECT) as? COSArray ?: return null
+        if (a.size() < 4) return null
+        val v = FloatArray(4) { (a.getObject(it) as? COSNumber)?.floatValue() ?: 0f }
+        return floatArrayOf(minOf(v[0], v[2]), minOf(v[1], v[3]), maxOf(v[0], v[2]), maxOf(v[1], v[3]))
+    }
+
+    private fun rectArray(r: FloatArray) = COSArray().apply { r.forEach { add(COSFloat(it)) } }
+
+    /**
+     * Add a /Popup annotation for the markup annotation [parent] on [page] (closed unless [open]), linked both
+     * ways (/Parent, /Popup). Returns the pop-up dictionary; an existing pop-up is reused.
+     */
+    fun addPopup(page: PDPage, parent: COSDictionary, open: Boolean = false): COSDictionary {
+        (parent.getDictionaryObject(POPUP) as? COSDictionary)?.let { return it }
+        val r = rectOf(parent) ?: floatArrayOf(0f, 0f, 20f, 20f)
+        val box = page.mediaBox
+        val p = COSDictionary()
+        p.setName(COSName.TYPE, "Annot"); p.setName(COSName.SUBTYPE, "Popup")
+        p.setItem(COSName.RECT, rectArray(popupRect(r, box.width, box.height)))
+        p.setItem(COSName.PARENT, parent)
+        p.setBoolean(OPEN, open)
+        p.setInt(COSName.F, F_PRINT or 16 /* NoRotate */ or 8 /* NoZoom */)
+        parent.setItem(POPUP, p)
+        val list = page.annotations
+        list.add(PDAnnotation.createAnnotation(p))
+        page.annotations = list
+        return p
+    }
+
+    /** Put the pop-up of [parent] back next to it, closed. Returns false when it has none. */
+    fun resetPopup(page: PDPage, parent: COSDictionary): Boolean {
+        val p = parent.getDictionaryObject(POPUP) as? COSDictionary ?: return false
+        val r = rectOf(parent) ?: return false
+        val box = page.mediaBox
+        p.setItem(COSName.RECT, rectArray(popupRect(r, box.width, box.height)))
+        p.setBoolean(OPEN, false)
+        return true
+    }
+
+    fun popupOpen(parent: COSDictionary): Boolean? = (parent.getDictionaryObject(POPUP) as? COSDictionary)?.getBoolean(OPEN, false)
+
+    /** Remove annotations [indices] of [page] together with their pop-ups. */
+    fun removeWithPopups(page: PDPage, indices: Collection<Int>) {
+        val list = page.annotations
+        val drop = HashSet<COSDictionary>()
+        indices.forEach { i -> list.getOrNull(i)?.cosObject?.let { c -> drop += c; (c.getDictionaryObject(POPUP) as? COSDictionary)?.let { drop += it } } }
+        page.annotations = list.filter { an -> an.cosObject !in drop && (an.cosObject.getDictionaryObject(COSName.PARENT) as? COSDictionary)?.let { it in drop } != true }.toMutableList()
+    }
+
+    // ================= rich text =================
+
+    data class Rich(val fontSize: Float, val color: Int, val bold: Boolean, val italic: Boolean, val underline: Boolean = false)
+
+    private fun hex(c: Int) = String.format(Locale.US, "#%06X", c and 0xFFFFFF)
+
+    private fun esc(s: String) = buildString { s.forEach { ch ->
+        when (ch) { '&' -> append("&amp;"); '<' -> append("&lt;"); '>' -> append("&gt;"); '"' -> append("&quot;"); else -> append(ch) }
+    } }
+
+    /** Default style string (/DS) for a FreeText annotation. */
+    fun defaultStyle(r: Rich): String = buildString {
+        append("font: ")
+        if (r.italic) append("italic ")
+        if (r.bold) append("bold ")
+        append(String.format(Locale.US, "%.1fpt Helvetica,sans-serif; color:%s", r.fontSize, hex(r.color)))
+        if (r.underline) append("; text-decoration:underline")
+    }
+
+    /** XHTML rich-text body (/RC) of [text] in style [r]; [rtl] sets the direction. */
+    fun richBody(text: String, r: Rich, rtl: Boolean): String {
+        val style = buildString {
+            append(String.format(Locale.US, "font-size:%.1fpt;color:%s", r.fontSize, hex(r.color)))
+            if (r.bold) append(";font-weight:bold")
+            if (r.italic) append(";font-style:italic")
+            if (r.underline) append(";text-decoration:underline")
+            append(";text-align:").append(if (rtl) "right" else "left")
+        }
+        return buildString {
+            append("<?xml version=\"1.0\"?><body xmlns=\"http://www.w3.org/1999/xhtml\" xmlns:xfa=\"http://www.xfa.org/schema/xfa-data/1.0/\" xfa:APIVersion=\"Acrobat:11.0.0\" xfa:spec=\"2.0.2\"")
+            if (rtl) append(" dir=\"rtl\"")
+            append(" style=\"").append(style).append("\">")
+            text.split('\n').forEach { line -> append("<p>").append(esc(line)).append("</p>") }
+            append("</body>")
+        }
+    }
+
+    fun applyRich(cos: COSDictionary, text: String, r: Rich, rtl: Boolean) {
+        cos.setString(RC, richBody(text, r, rtl))
+        cos.setString(DS, defaultStyle(r))
+    }
+
+    /** Style read back from /DS (or /RC). Null when the annotation has no rich text. */
+    fun readRich(cos: COSDictionary): Rich? {
+        val s = (cos.getString(DS) ?: "") + ";" + (cos.getString(RC) ?: "")
+        if (s.length <= 1) return null
+        val size = Regex("""([0-9.]+)pt""").find(s)?.groupValues?.get(1)?.toFloatOrNull() ?: 12f
+        val color = Regex("""color:\s*#([0-9A-Fa-f]{6})""").find(s)?.groupValues?.get(1)?.toIntOrNull(16) ?: 0
+        val bold = Regex("""\bbold\b""").containsMatchIn(s)
+        val italic = Regex("""\bitalic\b""").containsMatchIn(s)
+        val underline = s.contains("underline")
+        return Rich(size, color, bold, italic, underline)
+    }
+
+    /** Plain text of an /RC body (paragraphs become lines). */
+    fun richPlain(rc: String): String =
+        rc.replace(Regex("""</p>\s*<p[^>]*>"""), "\n").replace(Regex("""<[^>]+>"""), "")
+            .replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\"").replace("&amp;", "&").trim()
+
+    // ================= shape appearance =================
+
+    fun comps(c: Int) = floatArrayOf(((c shr 16) and 0xFF) / 255f, ((c shr 8) and 0xFF) / 255f, (c and 0xFF) / 255f)
+
+    /**
+     * Appearance stream of a Square / Circle annotation of size [w]×[h] placed at ([x], [y]): optional [fill],
+     * border [width] with [dash] (or no border), opacity.
+     */
+    fun shapeStream(doc: PDDocument, x: Float, y: Float, w: Float, h: Float, oval: Boolean, stroke: Int, fill: Int?, width: Float,
+                    dash: Int, noBorder: Boolean, opacity: Float, cloudy: Int = 0): PDAppearanceStream {
+        val form = PDAppearanceStream(doc)
+        form.bBox = PDRectangle(0f, 0f, w, h)
+        form.resources = PDResources()
+        form.setMatrix(com.tom_roush.harmony.awt.geom.AffineTransform.getTranslateInstance(x.toDouble(), y.toDouble()))
+        PDPageContentStream(doc, form).use { cs ->
+            if (opacity < 0.999f) cs.setGraphicsStateParameters(PDExtendedGraphicsState().apply { strokingAlphaConstant = opacity; nonStrokingAlphaConstant = opacity })
+            val sc = comps(stroke); cs.setStrokingColor(sc[0], sc[1], sc[2])
+            fill?.let { val fc = comps(it); cs.setNonStrokingColor(fc[0], fc[1], fc[2]) }
+            val lw = if (noBorder) 0f else width
+            cs.setLineWidth(lw.coerceAtLeast(0.01f))
+            DashStyle.entries.getOrElse(dash) { DashStyle.SOLID }.scaled(width)?.let { if (!noBorder) cs.setLineDashPattern(it, 0f) }
+            val i = lw / 2 + if (cloudy > 0) cloudPad(cloudy, width) else 0f
+            val iw = (w - 2 * i).coerceAtLeast(1f); val ih = (h - 2 * i).coerceAtLeast(1f)
+            if (cloudy > 0 && !oval) {
+                val pts = listOf(i to i, i + iw to i, i + iw to i + ih, i to i + ih)
+                val segs = CloudPath.build(pts, cloudy.coerceIn(1, 3), width)
+                segs.forEachIndexed { k, c -> if (k == 0) cs.moveTo(c.x0, c.y0); cs.curveTo(c.x1, c.y1, c.x2, c.y2, c.x3, c.y3) }
+                cs.closePath()
+            } else if (!oval) cs.addRect(i, i, iw, ih)
+            else {
+                val k = 0.5523f; val rx = iw / 2; val ry = ih / 2; val cx = w / 2; val cy = h / 2
+                cs.moveTo(cx + rx, cy)
+                cs.curveTo(cx + rx, cy + ry * k, cx + rx * k, cy + ry, cx, cy + ry)
+                cs.curveTo(cx - rx * k, cy + ry, cx - rx, cy + ry * k, cx - rx, cy)
+                cs.curveTo(cx - rx, cy - ry * k, cx - rx * k, cy - ry, cx, cy - ry)
+                cs.curveTo(cx + rx * k, cy - ry, cx + rx, cy - ry * k, cx + rx, cy)
+                cs.closePath()
+            }
+            when {
+                fill != null && !noBorder -> cs.fillAndStroke()
+                fill != null -> cs.fill()
+                noBorder -> {}
+                else -> cs.stroke()
+            }
+        }
+        return form
+    }
+
+    /** Extra margin a cloudy border needs outside the shape (level 1..3). */
+    fun cloudPad(level: Int, width: Float): Float = if (level <= 0) 0f else CloudPath.margin(level.coerceIn(1, 3), width)
+
+    // ================= flatten chosen annotations =================
+
+    private fun normalAppearance(cos: COSDictionary): COSStream? {
+        val ap = cos.getDictionaryObject(COSName.AP) as? COSDictionary ?: return null
+        return when (val n = ap.getDictionaryObject(COSName.N)) {
+            is COSStream -> n
+            is COSDictionary -> cos.getCOSName(COSName.AS)?.let { n.getDictionaryObject(it) as? COSStream }
+            else -> null
+        }
+    }
+
+    private fun floatsOf(b: COSBase?): FloatArray? = (b as? COSArray)?.let { a -> FloatArray(a.size()) { (a.getObject(it) as? COSNumber)?.floatValue() ?: 0f } }
+
+    /**
+     * Matrix (a b c d e f) that maps the appearance [bbox] transformed by its form [matrix] onto [rect]
+     * (ISO 32000 12.5.5 algorithm), to be concatenated before drawing the form XObject.
+     */
+    fun flattenMatrix(bbox: FloatArray, matrix: FloatArray?, rect: FloatArray): FloatArray {
+        val m = matrix?.takeIf { it.size >= 6 } ?: floatArrayOf(1f, 0f, 0f, 1f, 0f, 0f)
+        val xs = FloatArray(4); val ys = FloatArray(4)
+        val corners = listOf(bbox[0] to bbox[1], bbox[2] to bbox[1], bbox[2] to bbox[3], bbox[0] to bbox[3])
+        corners.forEachIndexed { i, (x, y) -> xs[i] = m[0] * x + m[2] * y + m[4]; ys[i] = m[1] * x + m[3] * y + m[5] }
+        val bx0 = xs.min(); val by0 = ys.min(); val bw = (xs.max() - bx0).coerceAtLeast(1e-3f); val bh = (ys.max() - by0).coerceAtLeast(1e-3f)
+        val rx0 = minOf(rect[0], rect[2]); val ry0 = minOf(rect[1], rect[3])
+        val sx = (maxOf(rect[0], rect[2]) - rx0) / bw; val sy = (maxOf(rect[1], rect[3]) - ry0) / bh
+        return floatArrayOf(sx, 0f, 0f, sy, rx0 - bx0 * sx, ry0 - by0 * sy)
+    }
+
+    /**
+     * Draw the normal appearance of annotations [indices] of [page] into the page content and remove them
+     * (with their pop-ups and replies). Hidden annotations and ones without an appearance are only removed when
+     * [dropWithoutAppearance]. Returns how many were flattened.
+     */
+    fun flatten(doc: PDDocument, page: PDPage, indices: Collection<Int>, dropWithoutAppearance: Boolean = false): Int {
+        val list = page.annotations
+        val chosen = indices.distinct().mapNotNull { list.getOrNull(it) }
+        if (chosen.isEmpty()) return 0
+        var n = 0
+        val remove = ArrayList<Int>()
+        PDPageContentStream(doc, page, PDPageContentStream.AppendMode.APPEND, true, true).use { cs ->
+            chosen.forEach { an ->
+                val cos = an.cosObject
+                val idx = list.indexOf(an)
+                val hidden = flags(cos) and F_HIDDEN != 0
+                val ap = normalAppearance(cos)
+                val rect = rectOf(cos)
+                if (ap == null || rect == null || hidden) { if (dropWithoutAppearance) remove += idx; return@forEach }
+                val form = PDFormXObject(ap)
+                val bbox = floatsOf(ap.getDictionaryObject(COSName.BBOX))?.takeIf { it.size >= 4 } ?: floatArrayOf(0f, 0f, rect[2] - rect[0], rect[3] - rect[1])
+                val m = flattenMatrix(bbox, floatsOf(ap.getDictionaryObject(COSName.MATRIX)), rect)
+                cs.saveGraphicsState()
+                cs.transform(Matrix(m[0], m[1], m[2], m[3], m[4], m[5]))
+                cs.drawForm(form)
+                cs.restoreGraphicsState()
+                remove += idx; n++
+            }
+        }
+        // replies (/IRT) of flattened annotations go too: they would point at nothing
+        val gone = remove.mapNotNull { list.getOrNull(it)?.cosObject }.toSet()
+        val replies = list.indices.filter { i -> (list[i].cosObject.getDictionaryObject(COSName.getPDFName("IRT")) as? COSDictionary)?.let { it in gone && list[i].cosObject.getNameAsString(COSName.getPDFName("RT")) != "Group" } == true }
+        removeWithPopups(page, remove + replies)
+        return n
+    }
+
+    // ================= numbered tickmarks =================
+
+    /**
+     * A numbered tickmark (Nitro / Bluebeam "count" mark): a filled circle with the number [n] in white, as a
+     * /Circle annotation with /Subj "Tickmark" and /Contents n. Text is drawn with a raw Helvetica resource
+     * (no font program needed). Returns the annotation dictionary (already added to [page]).
+     */
+    fun writeTickmark(doc: PDDocument, page: PDPage, cx: Float, cy: Float, n: Int, color: Int, size: Float = 16f, author: String = ""): COSDictionary {
+        val label = n.toString()
+        val w = maxOf(size, size * 0.42f * label.length + 6f); val h = size
+        val x = cx - w / 2; val y = cy - h / 2
+        val form = PDAppearanceStream(doc)
+        form.bBox = PDRectangle(0f, 0f, w, h)
+        val res = PDResources()
+        val helv = COSDictionary().apply { setName(COSName.TYPE, "Font"); setName(COSName.SUBTYPE, "Type1"); setName(COSName.BASE_FONT, "Helvetica-Bold"); setName(COSName.ENCODING, "WinAnsiEncoding") }
+        res.cosObject.setItem(COSName.FONT, COSDictionary().apply { setItem(COSName.getPDFName("TkH"), helv) })
+        form.resources = res
+        form.setMatrix(com.tom_roush.harmony.awt.geom.AffineTransform.getTranslateInstance(x.toDouble(), y.toDouble()))
+        val c = comps(color)
+        val fs = size * 0.62f
+        val tw = label.length * 0.556f * fs
+        val k = 0.5523f; val rx = w / 2 - 0.5f; val ry = h / 2 - 0.5f; val ox = w / 2; val oy = h / 2
+        val content = buildString {
+            append(String.format(Locale.US, "%.3f %.3f %.3f rg %.3f %.3f %.3f RG 1 w\n", c[0], c[1], c[2], c[0], c[1], c[2]))
+            append(String.format(Locale.US, "%.2f %.2f m ", ox + rx, oy))
+            append(String.format(Locale.US, "%.2f %.2f %.2f %.2f %.2f %.2f c ", ox + rx, oy + ry * k, ox + rx * k, oy + ry, ox, oy + ry))
+            append(String.format(Locale.US, "%.2f %.2f %.2f %.2f %.2f %.2f c ", ox - rx * k, oy + ry, ox - rx, oy + ry * k, ox - rx, oy))
+            append(String.format(Locale.US, "%.2f %.2f %.2f %.2f %.2f %.2f c ", ox - rx, oy - ry * k, ox - rx * k, oy - ry, ox, oy - ry))
+            append(String.format(Locale.US, "%.2f %.2f %.2f %.2f %.2f %.2f c h B\n", ox + rx * k, oy - ry, ox + rx, oy - ry * k, ox + rx, oy))
+            append(String.format(Locale.US, "BT 1 1 1 rg /TkH %.2f Tf %.2f %.2f Td (%s) Tj ET\n", fs, (w - tw) / 2, (h - fs * 0.7f) / 2, label))
+        }
+        form.cosObject.createOutputStream().use { it.write(content.toByteArray(Charsets.ISO_8859_1)) }
+        val an = COSDictionary()
+        an.setName(COSName.TYPE, "Annot"); an.setName(COSName.SUBTYPE, "Circle")
+        an.setItem(COSName.RECT, rectArray(floatArrayOf(x, y, x + w, y + h)))
+        an.setItem(COSName.C, COSArray().apply { c.forEach { add(COSFloat(it)) } })
+        an.setItem(IC, COSArray().apply { c.forEach { add(COSFloat(it)) } })
+        an.setString(COSName.CONTENTS, label)
+        an.setString(SUBJ, "Tickmark")
+        an.setString(NM, "sd-tick-" + System.nanoTime().toString(36))
+        if (author.isNotBlank()) an.setString(T, author)
+        an.setInt(COSName.F, F_PRINT)
+        an.setString(COSName.M, com.tom_roush.pdfbox.util.DateConverter.toString(java.util.Calendar.getInstance()))
+        an.setItem(COSName.AP, COSDictionary().apply { setItem(COSName.N, form.cosObject) })
+        val list = page.annotations
+        list.add(PDAnnotation.createAnnotation(an))
+        page.annotations = list
+        return an
+    }
+
+    /** Next tickmark number on [page]: one more than the largest stored "Tickmark" number. */
+    fun nextTickmark(page: PDPage): Int =
+        (runCatching { page.annotations }.getOrDefault(emptyList()).filter { it.cosObject.getString(SUBJ) == "Tickmark" }
+            .mapNotNull { it.contents?.trim()?.toIntOrNull() }.maxOrNull() ?: 0) + 1
+
+    @Suppress("unused") private fun str(s: String) = COSString(s)
+}
