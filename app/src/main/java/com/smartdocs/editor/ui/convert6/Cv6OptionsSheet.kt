@@ -46,6 +46,8 @@ fun defaultsFor(c: Conv): Cv6Opts = when (c.id) {
     "pdf_odp", "pptx_odp" -> Cv6Opts(dpi = 150)
     "pdf_svg" -> Cv6Opts(dpi = 150, zip = true)
     "pdf_long_image" -> Cv6Opts(imgFormat = ImgFmt.JPG, dpi = 110, quality = 85)
+    "pdf_tiff", "pdf_ps", "pdf_eps", "pdf_xps" -> Cv6Opts(dpi = 200)
+    "pdf_bmp" -> Cv6Opts(dpi = 150, zip = true)
     "images_pdf", "tiff_pdf" -> Cv6Opts(quality = 88)
     "ocr_pdf_docx" -> Cv6Opts(keepLayout = true)
     else -> Cv6Opts()
@@ -148,7 +150,9 @@ private fun OptionsBody(conv: Conv, inputCount: Int, o: Cv6Opts, onChange: (Cv6O
         FieldLabel(stringResource(R.string.cv_img_output))
         ChoiceChips(listOf(true, false), o.zip, { if (it) stringResource(R.string.cv_img_zip) else stringResource(R.string.cv_img_separate) }) { onChange(o.copy(zip = it)) }
     }
-    if (Opt.GRAY in opts) SwitchRow(stringResource(R.string.cv6_gray), o.gray) { onChange(o.copy(gray = it)) }
+    if (Opt.GRAY in opts && !o.bw) SwitchRow(stringResource(R.string.cv6_gray), o.gray) { onChange(o.copy(gray = it)) }
+    if (Opt.BW in opts) SwitchRow(stringResource(R.string.pc_bw), o.bw, stringResource(R.string.pc_bw_sub)) { onChange(o.copy(bw = it)) }
+    if (Opt.SHEET_PER_TABLE in opts) SwitchRow(stringResource(R.string.pc_sheet_per_table), o.perTable) { onChange(o.copy(perTable = it)) }
     if (Opt.PAGE_SETUP in opts) PageSetupOptions(o, onChange)
     if (Opt.NUP in opts) {
         FieldLabel(stringResource(R.string.cv6_nup))
@@ -157,6 +161,9 @@ private fun OptionsBody(conv: Conv, inputCount: Int, o: Cv6Opts, onChange: (Cv6O
     if (Opt.CSV_SHEETS in opts) SwitchRow(stringResource(R.string.cv6_csv_all), o.csvAllSheets, stringResource(R.string.cv6_csv_all_sub)) { onChange(o.copy(csvAllSheets = it)) }
     if (Opt.PDFA_STRICT in opts) SwitchRow(stringResource(R.string.cv6_pdfa_strict), o.pdfaStrict, stringResource(R.string.cv6_pdfa_strict_sub)) { onChange(o.copy(pdfaStrict = it)) }
     if (Opt.RANGE in opts) PageRangeField(o.range) { onChange(o.copy(range = it)) }
+    // Foxit "Restore defaults" (keeps the page range)
+    if (opts.any { it != Opt.RANGE } && o != defaultsFor(conv).copy(range = o.range))
+        TextButton(onClick = { onChange(defaultsFor(conv).copy(range = o.range)) }) { Text(stringResource(R.string.pc_restore_defaults)) }
     // nav-attach: Create-PDF "attach source file"
     if (conv.to == com.smartdocs.editor.core.convert6.Fmt.PDF && conv.inputs.isNotEmpty())
         SwitchRow(stringResource(R.string.nat_attach_source), o.attachSource, stringResource(R.string.nat_attach_source_sub)) { onChange(o.copy(attachSource = it)) }

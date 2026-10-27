@@ -133,4 +133,19 @@
     <string name="pc_saved_scans">Saved scans</string>
     <string name="pc_saved_scan_row">%1$s (%2$d pages)</string>
     <string name="pc_saved_scan_open">Open to edit</string>
+    <string name="pc_f_bmp">BMP</string>
+    <string name="pc_f_ps">PostScript</string>
+    <string name="pc_f_eps">EPS</string>
+    <string name="pc_f_xps">XPS</string>
+    <string name="pc_f_xml">XML</string>
+    <string name="pc_f_access_txt">Accessible text</string>
+    <string name="pc_f_html_set">HTML pages</string>
+    <string name="pc_f_xml2003">Excel XML 2003</string>
+    <string name="pc_figure">Figure</string>
+    <string name="pc_page_heading">— Page %1$d —</string>
+    <string name="pc_sheets_n">%1$d worksheets</string>
+    <string name="pc_bw">Black and white (1 bit)</string>
+    <string name="pc_bw_sub">Smallest; good for fax and scanned text.</string>
+    <string name="pc_sheet_per_table">One worksheet per table</string>
+    <string name="pc_restore_defaults">Restore defaults</string>
 </resources>

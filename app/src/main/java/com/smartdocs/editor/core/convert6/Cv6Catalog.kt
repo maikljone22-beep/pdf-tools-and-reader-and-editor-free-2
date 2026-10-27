@@ -5,11 +5,12 @@ enum class Cv6Group { FROM_PDF, TO_PDF, IMAGES, OFFICE, TEXT_BOOKS, OCR, OTHER }
 
 /** Formats shown on the cards (icon + short label). */
 enum class Fmt { PDF, WORD, EXCEL, PPT, IMAGE, JPG, PNG, WEBP, HEIC, TIFF, ZIP, LONG_IMAGE, TXT, HTML, RTF, MD, EPUB, CSV, ODT, ODS, ODP, SVG,
-    PDFA, GRAY, SMALL, SEARCHABLE, FLAT, WEB, EMAIL, CAMERA, CLIPBOARD, ANY, OCR, HANDOUT, RESIZE, IMAGES_OUT }
+    PDFA, GRAY, SMALL, SEARCHABLE, FLAT, WEB, EMAIL, CAMERA, CLIPBOARD, ANY, OCR, HANDOUT, RESIZE, IMAGES_OUT,
+    BMP, PS, EPS, XPS, XML, ACCESS_TXT, HTML_SET, XML_2003 }
 
 /** Options a conversion shows in its sheet. */
 enum class Opt { RANGE, AUTO_OCR, TABLES, INCLUDE_IMAGES, SINGLE_SHEET, PPT_MODE, LAYOUT, IMG_FORMAT, DPI, QUALITY, IMG_OUTPUT, GRAY,
-    PAGE_SETUP, MERGE, NUP, RESIZE, CSV_SHEETS, OCR_LANG, URL, TEXT, PDFA_STRICT }
+    PAGE_SETUP, MERGE, NUP, RESIZE, CSV_SHEETS, OCR_LANG, URL, TEXT, PDFA_STRICT, BW, SHEET_PER_TABLE }
 
 /**
  * One hub conversion. [inputs] = accepted kinds (empty = no file: URL / clipboard / camera); [multi] = several inputs at once
@@ -55,6 +56,16 @@ object Cv6Catalog {
         Conv("pdf_ods", listOf(Cv6Group.FROM_PDF, Cv6Group.OFFICE), Fmt.PDF, Fmt.ODS, PDF, opts = setOf(Opt.RANGE, Opt.AUTO_OCR), outExt = "ods", keywords = "ods libreoffice calc"),
         Conv("pdf_odp", listOf(Cv6Group.FROM_PDF, Cv6Group.OFFICE), Fmt.PDF, Fmt.ODP, PDF, opts = setOf(Opt.RANGE, Opt.DPI), outExt = "odp", keywords = "odp impress"),
         Conv("pdf_svg", listOf(Cv6Group.FROM_PDF, Cv6Group.IMAGES), Fmt.PDF, Fmt.SVG, PDF, opts = setOf(Opt.RANGE, Opt.DPI, Opt.IMG_OUTPUT), outExt = "svg", keywords = "svg vector"),
+        // Nitro 6 / Foxit 6 export formats (core/convert6/Export7.kt)
+        Conv("pdf_tiff", listOf(Cv6Group.FROM_PDF, Cv6Group.IMAGES), Fmt.PDF, Fmt.TIFF, PDF, opts = setOf(Opt.RANGE, Opt.DPI, Opt.GRAY, Opt.BW), outExt = "tif", keywords = "tiff tif multipage fax"),
+        Conv("pdf_bmp", listOf(Cv6Group.FROM_PDF, Cv6Group.IMAGES), Fmt.PDF, Fmt.BMP, PDF, opts = setOf(Opt.RANGE, Opt.DPI, Opt.IMG_OUTPUT), outExt = "bmp", keywords = "bmp bitmap"),
+        Conv("pdf_ps", listOf(Cv6Group.FROM_PDF, Cv6Group.OTHER), Fmt.PDF, Fmt.PS, PDF, opts = setOf(Opt.RANGE, Opt.DPI), outExt = "ps", keywords = "postscript ps print"),
+        Conv("pdf_eps", listOf(Cv6Group.FROM_PDF, Cv6Group.IMAGES), Fmt.PDF, Fmt.EPS, PDF, opts = setOf(Opt.RANGE, Opt.DPI, Opt.IMG_OUTPUT), outExt = "eps", keywords = "eps encapsulated postscript"),
+        Conv("pdf_xps", listOf(Cv6Group.FROM_PDF, Cv6Group.OTHER), Fmt.PDF, Fmt.XPS, PDF, opts = setOf(Opt.RANGE, Opt.DPI), outExt = "xps", keywords = "xps oxps"),
+        Conv("pdf_xml", listOf(Cv6Group.FROM_PDF, Cv6Group.TEXT_BOOKS), Fmt.PDF, Fmt.XML, PDF, opts = setOf(Opt.RANGE, Opt.AUTO_OCR), outExt = "xml", keywords = "xml data"),
+        Conv("pdf_access_txt", listOf(Cv6Group.FROM_PDF, Cv6Group.TEXT_BOOKS), Fmt.PDF, Fmt.ACCESS_TXT, PDF, opts = setOf(Opt.RANGE, Opt.AUTO_OCR), outExt = "txt", keywords = "accessible text braille alt"),
+        Conv("pdf_html_set", listOf(Cv6Group.FROM_PDF), Fmt.PDF, Fmt.HTML_SET, PDF, opts = setOf(Opt.RANGE, Opt.AUTO_OCR, Opt.INCLUDE_IMAGES), outExt = "zip", keywords = "html multiple pages navigation"),
+        Conv("pdf_xml2003", listOf(Cv6Group.FROM_PDF, Cv6Group.OFFICE), Fmt.PDF, Fmt.XML_2003, PDF, opts = setOf(Opt.RANGE, Opt.AUTO_OCR, Opt.SHEET_PER_TABLE), outExt = "xml", keywords = "excel 2003 xml spreadsheet"),
         Conv("pdf_pdfa", listOf(Cv6Group.FROM_PDF, Cv6Group.OTHER), Fmt.PDF, Fmt.PDFA, PDF, opts = setOf(Opt.PDFA_STRICT), keywords = "pdf/a archive"),
         Conv("pdf_gray", listOf(Cv6Group.FROM_PDF, Cv6Group.OTHER), Fmt.PDF, Fmt.GRAY, PDF, keywords = "grayscale black white"),
         Conv("pdf_compress", listOf(Cv6Group.FROM_PDF, Cv6Group.OTHER), Fmt.PDF, Fmt.SMALL, PDF, opts = setOf(Opt.QUALITY, Opt.DPI, Opt.GRAY), keywords = "compress reduce size"),

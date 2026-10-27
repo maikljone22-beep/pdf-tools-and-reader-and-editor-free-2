@@ -68,3 +68,24 @@ Strings: `strings_pc.xml` (prefix `pc_`). Tests: `PageOrganizeTest`.
 | Web: crawl N levels / whole site | OPEN | |
 | Printer-time PDF settings (version, security, metadata, append) | OPEN | Android print dialog owns the job |
 | Auto-detect form fields | OPEN | |
+
+## Stage C — export
+
+| Row | Status | Where |
+|---|---|---|
+| Export to TIFF / multi-page TIFF (colour, grey, black & white) | DONE | `pdf_tiff` → `TiffWriter` (PackBits), `Export7Run.tiff` |
+| Export to BMP | DONE | `pdf_bmp` → `BmpWriter` |
+| Export to PostScript / EPS | DONE | `pdf_ps` / `pdf_eps` → `PsWriter` (page pictures, DCT + ASCII85) |
+| Export to XPS | DONE | `pdf_xps` → `XpsWriter` (page pictures) |
+| Export to XML 1.0 | DONE | `pdf_xml` → `PdfXml` (info, bookmarks, lines with position / size / font) |
+| Export to accessible text (alt text) | DONE | `pdf_access_txt` → `Export7Run.accessibleText` (figure / formula alt text from the tags) |
+| HTML: multiple pages split at chapters with a navigation page | DONE | `pdf_html_set` → `HtmlSet` (zip) |
+| Excel XML Spreadsheet 2003; worksheet per table | DONE | `pdf_xml2003` → `Xml2003`, `Opt.SHEET_PER_TABLE` |
+| Image settings: monochrome | DONE | `Opt.BW` (TIFF 1-bit, Otsu) |
+| Options sheet: restore defaults | DONE | `Cv6OptionsSheet` |
+| Word 97-2003 .doc | NOT-FEASIBLE | binary format, no writer; RTF export exists (Word opens it) |
+| JPEG 2000 export | NOT-FEASIBLE | no JPEG 2000 encoder on Android / in PdfBox |
+| DOCX include comments; Word text-box layout; anchoring; character spacing | OPEN | converter internals (core/convert) |
+| Text: line width / discard headers & footers | OPEN | |
+| Export a selected area as Word / Excel | OPEN | |
+| Per-file page range / output folder in batch | OPEN | |
