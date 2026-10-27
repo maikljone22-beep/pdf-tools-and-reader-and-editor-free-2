@@ -5,6 +5,57 @@ object PrintLayout {
 
     enum class Subset { ALL, ODD, EVEN }
 
+    // NVE-file: booklet sides, page scaling, custom N x M grid
+    /** Which sides of a booklet are printed (manual duplex: fronts first, then the backs). */
+    enum class BookletSides { BOTH, FRONT, BACK }
+
+    /** Page scaling of one page per sheet: NONE = as-is (the system dialog decides), FIT, ACTUAL (100 %), SHRINK (only oversized), CUSTOM %. */
+    enum class Scaling { NONE, FIT, ACTUAL, SHRINK, CUSTOM }
+
+    /** [perSheet] value meaning "custom grid" (columns x rows given separately). */
+    const val CUSTOM_GRID = -1
+
+    /** Booklet sides filtered by [which] (sides alternate front, back, front, back...). */
+    fun bookletSides(sides: List<Pair<Int, Int>>, which: BookletSides): List<Pair<Int, Int>> = when (which) {
+        BookletSides.BOTH -> sides
+        BookletSides.FRONT -> sides.filterIndexed { i, _ -> i % 2 == 0 }
+        BookletSides.BACK -> sides.filterIndexed { i, _ -> i % 2 == 1 }
+    }
+
+    /** Pages per sheet of a grid. */
+    fun cellsOf(perSheet: Int, cols: Int, rows: Int): Int = if (perSheet == CUSTOM_GRID) cols.coerceIn(1, 10) * rows.coerceIn(1, 10) else perSheet.coerceAtLeast(1)
+
+    /** Grid (columns, rows): the fixed choices or the custom one. */
+    fun gridOf(perSheet: Int, cols: Int, rows: Int, landscape: Boolean): Pair<Int, Int> =
+        if (perSheet == CUSTOM_GRID) cols.coerceIn(1, 10) to rows.coerceIn(1, 10) else grid(perSheet, landscape)
+
+    /** Scale of a [pw] x [ph] page on a [sw] x [sh] sheet (with [margin]). */
+    fun scaleFor(pw: Float, ph: Float, sw: Float, sh: Float, scaling: Scaling, customPercent: Int, margin: Float = 0f): Float {
+        val fit = minOf((sw - 2 * margin) / pw.coerceAtLeast(1f), (sh - 2 * margin) / ph.coerceAtLeast(1f))
+        return when (scaling) {
+            Scaling.NONE, Scaling.FIT -> fit
+            Scaling.ACTUAL -> 1f
+            Scaling.SHRINK -> minOf(1f, fit)
+            Scaling.CUSTOM -> customPercent.coerceIn(5, 800) / 100f
+        }
+    }
+
+    /** Sheet (w, h) for a page: portrait / landscape paper, turned to the page's orientation when [autoRotate]. */
+    fun sheetFor(pw: Float, ph: Float, paperW: Float, paperH: Float, landscape: Boolean, autoRotate: Boolean): Pair<Float, Float> {
+        val long = maxOf(paperW, paperH); val short = minOf(paperW, paperH)
+        val land = if (autoRotate) pw > ph else landscape
+        return if (land) long to short else short to long
+    }
+
+    /** One page placed on its own sheet: origin and scale; centred when [center], else top-left (top-right when [rtl]). */
+    fun single(pw: Float, ph: Float, sw: Float, sh: Float, scaling: Scaling, customPercent: Int, center: Boolean, margin: Float = 0f, rtl: Boolean = false): Cell {
+        val s = scaleFor(pw, ph, sw, sh, scaling, customPercent, margin)
+        val w = pw * s; val h = ph * s
+        val x = if (center) (sw - w) / 2f else if (rtl) sw - margin - w else margin
+        val y = if (center) (sh - h) / 2f else sh - margin - h
+        return Cell(-1, x, y, w, h, s)
+    }
+
     /**
      * "1-3, 5, 8-" → zero-based indexes within [count] (an open end means "to the last page", "-4" from the first).
      * Blank means all pages. Invalid parts are ignored; order is kept, duplicates are dropped.
@@ -71,6 +122,11 @@ object PrintLayout {
      */
     fun place(chunk: List<Int>, sizes: (Int) -> Pair<Float, Float>, perSheet: Int, sheetW: Float, sheetH: Float, margin: Float = 18f, gap: Float = 8f, rtl: Boolean = false): List<Cell> {
         val (cols, rows) = grid(perSheet, sheetW > sheetH)
+        return placeGrid(chunk, sizes, cols, rows, sheetW, sheetH, margin, gap, rtl)
+    }
+
+    /** [place] for any grid of [cols] x [rows] (NVE-file: custom N x M). */
+    fun placeGrid(chunk: List<Int>, sizes: (Int) -> Pair<Float, Float>, cols: Int, rows: Int, sheetW: Float, sheetH: Float, margin: Float = 18f, gap: Float = 8f, rtl: Boolean = false): List<Cell> {
         val cw = (sheetW - margin * 2 - gap * (cols - 1)) / cols
         val ch = (sheetH - margin * 2 - gap * (rows - 1)) / rows
         return chunk.mapIndexedNotNull { i, p ->

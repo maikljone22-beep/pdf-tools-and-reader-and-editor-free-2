@@ -34,21 +34,25 @@ fun PrintSheet5(v: V5State, outputFile: suspend () -> File?, onMessage: (String)
     val scope = rememberCoroutineScope()
     var which by remember { mutableIntStateOf(0) }           // 0 all, 1 current, 2 range
     var range by remember { mutableStateOf("") }
-    var subset by remember { mutableStateOf(PrintLayout.Subset.ALL) }
-    var reverse by remember { mutableStateOf(false) }
-    var comments by remember { mutableStateOf(true) }
-    var perSheet by remember { mutableIntStateOf(1) }
-    var booklet by remember { mutableStateOf(false) }
-    var rightBinding by remember { mutableStateOf(true) }
-    var paper by remember { mutableIntStateOf(0) }          // 0 A4, 1 Letter, 2 A3, 3 A5
-    var landscape by remember { mutableStateOf(false) }
-    var borders by remember { mutableStateOf(false) }
+    // NVE-file: one options object (custom N x M, booklet sides, scaling, markups only, grey, summary, duplex),
+    // defaults from the document's /ViewerPreferences print preset, user presets
+    var opts by remember { mutableStateOf(PrintOptions()) }
+    var docPreset by remember { mutableStateOf<com.smartdocs.editor.core.nve.PrintPresets.DocPreset?>(null) }
+    LaunchedEffect(s.file) {
+        val f = s.file ?: return@LaunchedEffect
+        val p = com.smartdocs.editor.ui.nve.file.NvePrint.docPreset(f, s.password) ?: return@LaunchedEffect
+        if (p.isEmpty) return@LaunchedEffect
+        docPreset = p
+        opts = com.smartdocs.editor.core.nve.PrintPresets.applyDocPreset(opts, p)
+        if (!p.range.isNullOrBlank()) { which = 2; range = p.range }
+    }
     var busy by remember { mutableStateOf(false) }
-    val papers = listOf("A4" to PDRectangle.A4, "Letter" to PDRectangle.LETTER, "A3" to PDRectangle.A3, "A5" to PDRectangle.A5)
 
     ModalBottomSheet(onDismissRequest = { v.close() }) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(stringResource(R.string.v5_print_options), style = MaterialTheme.typography.titleLarge)
+            if (docPreset != null) Text(stringResource(R.string.nf_doc_preset_applied), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+            com.smartdocs.editor.ui.nve.file.NvePresetRow(opts) { o -> opts = o }
             Text(stringResource(R.string.v5_pages), style = MaterialTheme.typography.labelLarge)
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 FilterChip(which == 0, { which = 0 }, label = { Text(stringResource(R.string.v5_all_pages)) })
@@ -56,51 +60,21 @@ fun PrintSheet5(v: V5State, outputFile: suspend () -> File?, onMessage: (String)
                 FilterChip(which == 2, { which = 2 }, label = { Text(stringResource(R.string.v5_range)) })
             }
             if (which == 2) OutlinedTextField(range, { range = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.v5_range_hint)) })
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                FilterChip(subset == PrintLayout.Subset.ALL, { subset = PrintLayout.Subset.ALL }, label = { Text(stringResource(R.string.v5_odd_even_all)) })
-                FilterChip(subset == PrintLayout.Subset.ODD, { subset = PrintLayout.Subset.ODD }, label = { Text(stringResource(R.string.v5_odd)) })
-                FilterChip(subset == PrintLayout.Subset.EVEN, { subset = PrintLayout.Subset.EVEN }, label = { Text(stringResource(R.string.v5_even)) })
-                FilterChip(reverse, { reverse = !reverse }, label = { Text(stringResource(R.string.v5_reverse)) })
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) { Switch(comments, { comments = it }); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.v5_print_comments)) }
-            HorizontalDivider()
-            Text(stringResource(R.string.v5_layout), style = MaterialTheme.typography.labelLarge)
-            Row(verticalAlignment = Alignment.CenterVertically) { Switch(booklet, { booklet = it }); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.v5_booklet)) }
-            if (booklet) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                FilterChip(rightBinding, { rightBinding = true }, label = { Text(stringResource(R.string.v5_bind_right)) })
-                FilterChip(!rightBinding, { rightBinding = false }, label = { Text(stringResource(R.string.v5_bind_left)) })
-            } else {
-                Text(stringResource(R.string.v5_per_sheet), style = MaterialTheme.typography.labelMedium)
-                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    listOf(1, 2, 4, 6, 9, 16).forEach { n -> FilterChip(perSheet == n, { perSheet = n }, label = { Text(n.toString()) }) }
-                }
-                if (perSheet > 1) Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(borders, { borders = it }); Text(stringResource(R.string.v5_borders)) }
-            }
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                papers.forEachIndexed { i, (n, _) -> FilterChip(paper == i, { paper = i }, label = { Text(n) }) }
-                if (!booklet) FilterChip(landscape, { landscape = !landscape }, label = { Text(stringResource(R.string.v5_landscape)) })
-            }
+            com.smartdocs.editor.ui.nve.file.NvePrintOptionsEditor(opts) { opts = it }
             Button(enabled = !busy, modifier = Modifier.fillMaxWidth(), onClick = {
                 busy = true
                 scope.launch {
                     val res = runCatching {
                         val src = outputFile() ?: error("no file")
-                        val opts = PrintOptions(
-                            range = when (which) { 1 -> (s.currentPage + 1).toString(); 2 -> range; else -> "" },
-                            subset = subset, reverse = reverse, perSheet = perSheet, booklet = booklet, rightBinding = rightBinding,
-                            paper = papers[paper].second, landscape = landscape, borders = borders, annotations = comments)
-                        if (PrintPrep.isPlain(opts, s.pageCount)) PdfPrint.print(ctx, src, src.nameWithoutExtension, s.pageCount)
-                        else {
-                            val app = ctx.applicationContext as SmartDocsApp
-                            val out = app.documents.newTemp("print")
-                            val n = PrintPrep.build(src, s.password, opts, out)
-                            PdfPrint.print(ctx, out, s.file?.nameWithoutExtension ?: "print", n)
-                        }
+                        val o = opts.copy(range = when (which) { 1 -> (s.currentPage + 1).toString(); 2 -> range; else -> "" })
+                        com.smartdocs.editor.ui.nve.file.NvePrint.print(ctx, src, s.password, o, s.pageCount, s.file?.nameWithoutExtension ?: "print")
                     }
                     busy = false
                     res.onSuccess { v.close() }.onFailure { onMessage(it.message ?: ctx.getString(R.string.error_generic)) }
                 }
             }) { if (busy) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Text(stringResource(R.string.print)) }
+            // NVE-file (PRN-3): print several files with these options
+            OutlinedButton(modifier = Modifier.fillMaxWidth(), onClick = { v.close(); v.env?.nav?.navigate(com.smartdocs.editor.ui.Routes.tool("print_batch")) }) { Text(stringResource(R.string.nf_print_other_files)) }
             Spacer(Modifier.height(24.dp))
         }
     }

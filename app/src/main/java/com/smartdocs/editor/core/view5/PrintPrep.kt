@@ -24,6 +24,27 @@ data class PrintOptions(
     val borders: Boolean = false,
     val annotations: Boolean = true,
     val rtlOrder: Boolean = true,
+    // NVE-file: custom grid, booklet sides, scaling, markups subset, grey, comment summary
+    /** Columns x rows when [perSheet] is [PrintLayout.CUSTOM_GRID]. */
+    val cols: Int = 2,
+    val rows: Int = 2,
+    val bookletSides: PrintLayout.BookletSides = PrintLayout.BookletSides.BOTH,
+    val scaling: PrintLayout.Scaling = PrintLayout.Scaling.NONE,
+    val customScale: Int = 100,
+    val autoRotate: Boolean = true,
+    val center: Boolean = true,
+    /** Only pages that carry markup annotations (comments, highlights, drawings, stamps). */
+    val markupsOnly: Boolean = false,
+    /** Grey-scale output (vector, blend-mode overlay) and a monochrome default in the system dialog. */
+    val grayscale: Boolean = false,
+    /** Append summary pages listing the comments of the printed pages. */
+    val commentSummary: Boolean = false,
+    /** Copies requested by the document (/ViewerPreferences /NumCopies); 1 = not set. */
+    val copies: Int = 1,
+    /** Duplex wanted by the document or the user: "" / Simplex / DuplexFlipShortEdge / DuplexFlipLongEdge (system dialog default). */
+    val duplex: String = "",
+    /** /PickTrayByPDFSize: the paper follows the page size (system dialog default). */
+    val paperFromPage: Boolean = false,
 )
 
 /**
@@ -34,15 +55,25 @@ data class PrintOptions(
 object PrintPrep {
 
     /** True when the options need no re-imposition (the original file can be printed as-is). */
-    fun isPlain(o: PrintOptions, pageCount: Int) = o.range.isBlank() && o.subset == PrintLayout.Subset.ALL && !o.reverse && o.perSheet == 1 && !o.booklet && o.annotations && pageCount > 0
+    fun isPlain(o: PrintOptions, pageCount: Int) = o.range.isBlank() && o.subset == PrintLayout.Subset.ALL && !o.reverse && o.perSheet == 1 && !o.booklet && o.annotations && pageCount > 0 &&
+        o.scaling == PrintLayout.Scaling.NONE && !o.markupsOnly && !o.grayscale && !o.commentSummary && o.copies <= 1   // NVE-file
 
-    suspend fun build(src: File, pw: String?, o: PrintOptions, out: File): Int = withContext(Dispatchers.IO) {
+    /**
+     * [summaryLabels] / [arabicFont]: comment summary texts and the font for Arabic text (NVE-file; the UI passes
+     * PdfOps.arabicFont, tests leave it null).
+     */
+    suspend fun build(src: File, pw: String?, o: PrintOptions, out: File,
+                      summaryLabels: com.smartdocs.editor.core.nve.PrintExtras.Labels = com.smartdocs.editor.core.nve.PrintExtras.Labels(),
+                      arabicFont: ((PDDocument) -> com.tom_roush.pdfbox.pdmodel.font.PDFont)? = null): Int = withContext(Dispatchers.IO) {
         com.smartdocs.editor.core.pdf.PdfOps.load(src, pw).use { doc ->
-            if (!o.annotations) doc.pages.forEach { p -> runCatching { p.annotations = p.annotations.filter { it.subtype == "Widget" || it.subtype == "Link" } } }
-            else flattenAppearances(doc)
+            val markups = if (o.markupsOnly) com.smartdocs.editor.core.nve.PrintExtras.markupPages(doc) else emptySet()
             var pages = PrintLayout.subset(PrintLayout.parseRange(o.range, doc.numberOfPages), o.subset)
+            if (o.markupsOnly) pages = pages.filter { it in markups }
             if (o.reverse) pages = pages.reversed()
             if (pages.isEmpty()) throw IllegalArgumentException("empty range")
+            val summary = if (o.commentSummary) com.smartdocs.editor.core.nve.PrintExtras.comments(doc, pages.sorted()) else emptyList()
+            if (!o.annotations) doc.pages.forEach { p -> runCatching { p.annotations = p.annotations.filter { it.subtype == "Widget" || it.subtype == "Link" } } }
+            else flattenAppearances(doc)
             PDDocument().use { dst ->
                 val lu = LayerUtility(dst)
                 val forms = HashMap<Int, PDFormXObject>()
@@ -56,7 +87,7 @@ object PrintPrep {
                 if (o.booklet) {
                     // each side: two pages on a landscape sheet
                     val sw = maxOf(base.width, base.height); val sh = minOf(base.width, base.height)
-                    PrintLayout.booklet(pages, o.rightBinding).forEach { (l, r) ->
+                    PrintLayout.bookletSides(PrintLayout.booklet(pages, o.rightBinding), o.bookletSides).forEach { (l, r) ->
                         val sheet = PDPage(PDRectangle(sw, sh)); dst.addPage(sheet)
                         PDPageContentStream(dst, sheet).use { cs ->
                             listOf(l, r).forEachIndexed { k, p ->
@@ -68,21 +99,36 @@ object PrintPrep {
                             }
                         }
                     }
-                } else if (o.perSheet <= 1) {
+                } else if (o.perSheet == 1 && o.scaling == PrintLayout.Scaling.NONE) {
                     pages.forEach { p -> dst.importPage(doc.getPage(p)) }
+                } else if (o.perSheet == 1) {
+                    // NVE-file: one page per sheet on the chosen paper: fit / actual size / shrink / custom %, auto-rotate, centre
+                    pages.forEach { p ->
+                        val (pw0, ph0) = size(p)
+                        val (sw, sh) = PrintLayout.sheetFor(pw0, ph0, base.width, base.height, o.landscape, o.autoRotate)
+                        val c = PrintLayout.single(pw0, ph0, sw, sh, o.scaling, o.customScale, o.center, rtl = o.rtlOrder)
+                        val sheet = PDPage(PDRectangle(sw, sh)); dst.addPage(sheet)
+                        PDPageContentStream(dst, sheet).use { cs -> place(cs, form(p), doc.getPage(p), c.x, c.y, c.scale, o.borders, c.w, c.h) }
+                    }
                 } else {
-                    val land = o.landscape || o.perSheet == 2 || o.perSheet == 6
+                    val custom = o.perSheet == PrintLayout.CUSTOM_GRID
+                    val land = o.landscape || (!custom && (o.perSheet == 2 || o.perSheet == 6))
                     val sw = if (land) maxOf(base.width, base.height) else minOf(base.width, base.height)
                     val sh = if (land) minOf(base.width, base.height) else maxOf(base.width, base.height)
-                    pages.chunked(o.perSheet).forEach { chunk ->
+                    val (cols, rows) = PrintLayout.gridOf(o.perSheet, o.cols, o.rows, sw > sh)
+                    pages.chunked(cols * rows).forEach { chunk ->
                         val sheet = PDPage(PDRectangle(sw, sh)); dst.addPage(sheet)
                         PDPageContentStream(dst, sheet).use { cs ->
-                            PrintLayout.place(chunk, ::size, o.perSheet, sw, sh, rtl = o.rtlOrder).forEach { c ->
+                            PrintLayout.placeGrid(chunk, ::size, cols, rows, sw, sh, rtl = o.rtlOrder).forEach { c ->
                                 place(cs, form(c.page), doc.getPage(c.page), c.x, c.y, c.scale, o.borders, c.w, c.h)
                             }
                         }
                     }
                 }
+                if (o.grayscale) dst.pages.forEach { com.smartdocs.editor.core.nve.PrintExtras.greyOverlay(dst, it) }
+                if (o.copies > 1) { val n0 = dst.numberOfPages; repeat((o.copies - 1).coerceAtMost(98)) { for (i in 0 until n0) dst.addPage(PDPage(dst.getPage(i).cosObject.let { c -> com.tom_roush.pdfbox.cos.COSDictionary(c) })) } }
+                if (o.commentSummary) com.smartdocs.editor.core.nve.PrintExtras.appendSummary(dst, summary, summaryLabels,
+                    PDRectangle(minOf(base.width, base.height), maxOf(base.width, base.height)), arabicFont?.let { f -> runCatching { f(dst) }.getOrNull() })
                 dst.save(out)
                 dst.numberOfPages
             }

@@ -29,6 +29,12 @@ data class InitialView(
     val printScaling: String = "",       // "" / None / AppDefault
     val duplex: String = "",             // "" / Simplex / DuplexFlipShortEdge / DuplexFlipLongEdge
     val language: String = "",          // /Lang, e.g. ar-SA
+    // NVE-file: print presets of /ViewerPreferences (read by the print sheet as defaults)
+    val pickTrayByPdfSize: Boolean = false,
+    /** /PrintPageRange as "1-3, 7" (1-based, "" = not set). */
+    val printPageRange: String = "",
+    /** /NumCopies (0 or 1 = not set). */
+    val numCopies: Int = 0,
 )
 
 /** Every /Info field plus custom keys, the initial view and read-only facts. */
@@ -39,6 +45,8 @@ data class DocProps(
     val trapped: String = "",            // "" / True / False / Unknown
     val custom: List<Pair<String, String>> = emptyList(),
     val view: InitialView = InitialView(),
+    /** NVE-file: /URI /Base of the catalog (base URL of relative links), "" = none. */
+    val baseUrl: String = "",
     // read-only
     val version: String = "", val pages: Int = 0, val encrypted: Boolean = false, val tagged: Boolean = false, val hasXmp: Boolean = false,
 )
@@ -71,7 +79,11 @@ object DocPropsOps {
                     vp?.getBoolean(COSName.getPDFName("HideToolbar"), false) ?: false, vp?.getBoolean(COSName.getPDFName("HideMenubar"), false) ?: false,
                     vp?.getBoolean(COSName.getPDFName("HideWindowUI"), false) ?: false, vp?.getBoolean(COSName.getPDFName("FitWindow"), false) ?: false,
                     vp?.getBoolean(COSName.getPDFName("CenterWindow"), false) ?: false, vp?.getBoolean(COSName.getPDFName("DisplayDocTitle"), false) ?: false,
-                    vp?.getNameAsString(COSName.getPDFName("PrintScaling")) ?: "", vp?.getNameAsString(COSName.getPDFName("Duplex")) ?: "", cat.language.orEmpty()),
+                    vp?.getNameAsString(COSName.getPDFName("PrintScaling")) ?: "", vp?.getNameAsString(COSName.getPDFName("Duplex")) ?: "", cat.language.orEmpty(),
+                    vp?.getBoolean(COSName.getPDFName("PickTrayByPDFSize"), false) ?: false,
+                    rangeText(deref(vp?.getDictionaryObject(COSName.getPDFName("PrintPageRange"))) as? COSArray),
+                    (deref(vp?.getDictionaryObject(COSName.getPDFName("NumCopies"))) as? COSNumber)?.intValue() ?: 0),
+                baseUrl = ((deref(cd.getDictionaryObject(COSName.getPDFName("URI"))) as? COSDictionary)?.getString(COSName.getPDFName("Base"))).orEmpty(),
                 version = runCatching { doc.version.toString() }.getOrDefault(""), pages = doc.numberOfPages, encrypted = doc.isEncrypted,
                 tagged = cat.markInfo?.isMarked == true, hasXmp = cat.metadata != null,
             )
@@ -93,6 +105,7 @@ object DocPropsOps {
             p.custom.filter { it.first.isNotBlank() && it.first !in STANDARD }.forEach { (k, v) -> d.setString(COSName.getPDFName(k.trim().replace(' ', '_')), v) }
             doc.documentInformation = info
             applyView(doc, p.view)
+            setBaseUrl(doc, p.baseUrl)
             if (syncXmp) doc.documentCatalog.metadata = PDMetadata(doc).also { m -> m.importXMPMetadata(xmp(p, info.creationDate, info.modificationDate).toByteArray(Charsets.UTF_8)) }
         }
     }
@@ -118,8 +131,41 @@ object DocPropsOps {
         flag("HideToolbar", v.hideToolbar); flag("HideMenubar", v.hideMenubar); flag("HideWindowUI", v.hideWindowUI)
         flag("FitWindow", v.fitWindow); flag("CenterWindow", v.centerWindow); flag("DisplayDocTitle", v.displayDocTitle)
         vname("Direction", v.direction); vname("PrintScaling", v.printScaling); vname("Duplex", v.duplex)
+        flag("PickTrayByPDFSize", v.pickTrayByPdfSize)
+        val ranges = rangePairs(v.printPageRange, doc.numberOfPages)
+        if (ranges.isEmpty()) vp.removeItem(COSName.getPDFName("PrintPageRange"))
+        else vp.setItem(COSName.getPDFName("PrintPageRange"), COSArray().apply { ranges.forEach { (a, b) -> add(COSInteger.get(a.toLong())); add(COSInteger.get(b.toLong())) } })
+        if (v.numCopies in 2..99) vp.setInt(COSName.getPDFName("NumCopies"), v.numCopies) else vp.removeItem(COSName.getPDFName("NumCopies"))
         if (vp.size() == 0) cd.removeItem(COSName.VIEWER_PREFERENCES) else cd.setItem(COSName.VIEWER_PREFERENCES, vp)
         if (v.language.isBlank()) cd.removeItem(COSName.LANG) else doc.documentCatalog.language = v.language.trim()
+    }
+
+    /** NVE-file: write / remove the catalog's /URI << /Base (url) >>. */
+    fun setBaseUrl(doc: PDDocument, url: String) {
+        val cd = doc.documentCatalog.cosObject
+        val u = (deref(cd.getDictionaryObject(COSName.getPDFName("URI"))) as? COSDictionary)
+        if (url.isBlank()) {
+            if (u != null) { u.removeItem(COSName.getPDFName("Base")); if (u.size() == 0) cd.removeItem(COSName.getPDFName("URI")) }
+            return
+        }
+        val d = u ?: COSDictionary().also { cd.setItem(COSName.getPDFName("URI"), it) }
+        d.setString(COSName.getPDFName("Base"), url.trim())
+    }
+
+    /** /PrintPageRange array (1-based pairs) as "1-3, 7". */
+    fun rangeText(a: COSArray?): String {
+        if (a == null) return ""
+        val n = (0 until a.size()).mapNotNull { (deref(a.getObject(it)) as? COSNumber)?.intValue() }
+        return n.chunked(2).filter { it.size == 2 }.joinToString(", ") { (x, y) -> if (x == y) "$x" else "$x-$y" }
+    }
+
+    /** "1-3, 7" -> [(1,3), (7,7)] within 1..[pages]; invalid parts are dropped. */
+    fun rangePairs(spec: String, pages: Int): List<Pair<Int, Int>> = Digits.toWestern(spec).split(',', ';', ' ').map { it.trim() }.filter { it.isNotEmpty() }.mapNotNull { part ->
+        val d = part.indexOf('-')
+        val a = (if (d < 0) part else part.substring(0, d)).trim().toIntOrNull() ?: return@mapNotNull null
+        val b = (if (d < 0) part else part.substring(d + 1)).trim().toIntOrNull() ?: return@mapNotNull null
+        val lo = minOf(a, b).coerceIn(1, pages.coerceAtLeast(1)); val hi = maxOf(a, b).coerceIn(1, pages.coerceAtLeast(1))
+        lo to hi
     }
 
     private fun esc(s: String) = s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;")

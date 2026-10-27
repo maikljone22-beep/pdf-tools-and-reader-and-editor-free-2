@@ -19,10 +19,18 @@ import java.io.FileOutputStream
  */
 object PdfPrint {
 
-    fun print(context: Context, file: File, jobName: String = file.nameWithoutExtension, pageCount: Int = PrintDocumentInfo.PAGE_COUNT_UNKNOWN) {
+    fun print(context: Context, file: File, jobName: String = file.nameWithoutExtension, pageCount: Int = PrintDocumentInfo.PAGE_COUNT_UNKNOWN,
+              monochrome: Boolean = false, duplex: String = "", media: PrintAttributes.MediaSize? = PrintAttributes.MediaSize.ISO_A4) {
         val pm = context.getSystemService(Context.PRINT_SERVICE) as PrintManager
-        val attrs = PrintAttributes.Builder().setMediaSize(PrintAttributes.MediaSize.ISO_A4).setColorMode(PrintAttributes.COLOR_MODE_COLOR).build()
-        pm.print(jobName, StreamAdapter(file, jobName, pageCount), attrs)
+        // NVE-file: grey-scale default, duplex from the document's /ViewerPreferences or the print sheet, paper choice
+        val b = PrintAttributes.Builder().setColorMode(if (monochrome) PrintAttributes.COLOR_MODE_MONOCHROME else PrintAttributes.COLOR_MODE_COLOR)
+        if (media != null) b.setMediaSize(media)
+        when (duplex) {
+            "DuplexFlipLongEdge" -> b.setDuplexMode(PrintAttributes.DUPLEX_MODE_LONG_EDGE)
+            "DuplexFlipShortEdge" -> b.setDuplexMode(PrintAttributes.DUPLEX_MODE_SHORT_EDGE)
+            "Simplex" -> b.setDuplexMode(PrintAttributes.DUPLEX_MODE_NONE)
+        }
+        pm.print(jobName, StreamAdapter(file, jobName, pageCount), b.build())
     }
 
     private class StreamAdapter(private val file: File, private val name: String, private val pageCount: Int) : PrintDocumentAdapter() {
