@@ -146,6 +146,9 @@ object PdfOps {
 
     suspend fun deletePages(src: File, pages: Set<Int>, out: File, password: String? = null) = withContext(Dispatchers.IO) {
         load(src, password).use { doc ->
+            // nav-prefs: Preferences → bookmarks "remove related bookmarks when deleting pages"
+            if (com.smartdocs.editor.core.data.NpfPrefs.removeBookmarksOnDelete)
+                runCatching { NpfOutline.removeFor(doc, pages.filter { it in 0 until doc.numberOfPages }.map { doc.getPage(it).cosObject }.toSet()) }
             pages.sortedDescending().forEach { doc.removePage(it) }
             saveTo(doc, out)
         }

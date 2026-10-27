@@ -84,7 +84,6 @@ import kotlinx.coroutines.withContext
 import kotlin.math.max
 import kotlin.math.roundToInt
 
-private val HIGHLIGHT = Color(0x3D7C9CFF)
 private val REQUIRED = Color(0xCCE53935)
 
 /**
@@ -103,6 +102,8 @@ fun InPageFormLayer(reader: ReaderState, pageIndex: Int, g: PageGeometry) {
     val density = LocalDensity.current
     val accent = MaterialTheme.colorScheme.primary
     val highlight = LocalSettings.current.highlightFields
+    // nav-prefs: field highlight and required-field colours (Settings → more preferences → forms)
+    val hlColor = Color(com.smartdocs.editor.core.data.NpfPrefs.formHighlight); val reqColor = Color(com.smartdocs.editor.core.data.NpfPrefs.formRequired)
     val night = reader.nightMode
     val enabled = fs.enabled
     val rects = remember(widgets, g) { widgets.associate { w -> w.id to g.pdfRectToLayout(RectF(w.box.left, w.box.top, w.box.right, w.box.bottom)) } }
@@ -138,8 +139,8 @@ fun InPageFormLayer(reader: ReaderState, pageIndex: Int, g: PageGeometry) {
                 val r = rects[w.id] ?: return@forEach
                 if (w.kind == WKind.SIGNATURE && sigIcons) fs.sigStatus[w.name]?.let { ok -> sigBadge(r.topLeft, ok) }
                 val interactive = !fs.isReadOnly(w) && w.kind != WKind.BUTTON && !fs.isCalculated(w.name)
-                if (highlight && interactive && w.id != editing?.id) drawRect(HIGHLIGHT, r.topLeft, r.size)
-                if (highlight && w.required && interactive) drawRect(REQUIRED, r.topLeft, r.size, style = Stroke(1.5f))
+                if (highlight && interactive && w.id != editing?.id) drawRect(hlColor, r.topLeft, r.size)
+                if (highlight && w.required && interactive) drawRect(reqColor, r.topLeft, r.size, style = Stroke(1.5f))
                 if (w.id == editing?.id) return@forEach
                 if (fs.isPendingValue(w.name)) {
                     val p = fs.props(w.name)

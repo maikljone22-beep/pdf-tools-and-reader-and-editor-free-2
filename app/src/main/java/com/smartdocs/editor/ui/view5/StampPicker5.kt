@@ -57,10 +57,11 @@ enum class SignHere(val ar: Int, val en: String, val color: Int) {
 object StampIdentity {
     fun load(ctx: Context, fallbackName: String): StampTokens.Identity {
         val p = ctx.getSharedPreferences(V5State.PREFS, Context.MODE_PRIVATE)
-        return StampTokens.Identity(p.getString("id_name", null)?.takeIf { it.isNotBlank() } ?: fallbackName, p.getString("id_title", "") ?: "", p.getString("id_org", "") ?: "")
+        return StampTokens.Identity(p.getString("id_name", null)?.takeIf { it.isNotBlank() } ?: fallbackName, p.getString("id_title", "") ?: "", p.getString("id_org", "") ?: "",
+            p.getString("id_unit", "") ?: "", p.getString("id_email", "") ?: "")
     }
     fun save(ctx: Context, id: StampTokens.Identity) {
-        ctx.getSharedPreferences(V5State.PREFS, Context.MODE_PRIVATE).edit().putString("id_name", id.name).putString("id_title", id.title).putString("id_org", id.org).apply()
+        ctx.getSharedPreferences(V5State.PREFS, Context.MODE_PRIVATE).edit().putString("id_name", id.name).putString("id_title", id.title).putString("id_org", id.org).putString("id_unit", id.unit).putString("id_email", id.email).apply()
     }
     fun templates(ctx: Context): List<String> {
         val saved = ctx.getSharedPreferences(V5State.PREFS, Context.MODE_PRIVATE).getString("stamp_tpl", null)
@@ -163,7 +164,7 @@ fun V5StampPicker(onPicked: (Bitmap) -> Unit, onDismiss: () -> Unit) {
                 OutlinedTextField(t, { t = it }, label = { Text(stringResource(R.string.v5_id_title)) }, singleLine = true)
                 OutlinedTextField(o, { o = it }, label = { Text(stringResource(R.string.v5_id_org)) }, singleLine = true)
             } },
-            confirmButton = { TextButton(onClick = { identity = StampTokens.Identity(n, t, o); StampIdentity.save(ctx, identity); editId = false }) { Text(stringResource(R.string.ok)) } },
+            confirmButton = { TextButton(onClick = { identity = identity.copy(name = n, title = t, org = o); StampIdentity.save(ctx, identity); editId = false }) { Text(stringResource(R.string.ok)) } },
             dismissButton = { TextButton(onClick = { editId = false }) { Text(stringResource(R.string.cancel)) } })
     }
     newTpl?.let { cur ->
@@ -173,7 +174,7 @@ fun V5StampPicker(onPicked: (Bitmap) -> Unit, onDismiss: () -> Unit) {
                 OutlinedTextField(txt, { txt = it }, minLines = 2, label = { Text(stringResource(R.string.v5_template)) }, modifier = Modifier.fillMaxWidth())
                 Text(stringResource(R.string.v5_template_tokens), style = MaterialTheme.typography.bodySmall)
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
-                    listOf("{name}", "{title}", "{org}", "{date}", "{time}", "{hijri}").forEach { tk -> AssistChip(onClick = { txt += tk }, label = { Text(tk) }) }
+                    listOf("{name}", "{title}", "{org}", "{unit}", "{email}", "{date}", "{time}", "{hijri}").forEach { tk -> AssistChip(onClick = { txt += tk }, label = { Text(tk) }) }
                 }
                 Text(StampTokens.fill(txt, identity, now, hijriAdjust = adj), style = MaterialTheme.typography.bodyMedium)
             } },

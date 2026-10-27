@@ -15,7 +15,7 @@ object FormSubmitter {
     data class Result(val code: Int, val message: String)
 
     private val http: OkHttpClient by lazy {
-        OkHttpClient.Builder().connectTimeout(20, TimeUnit.SECONDS).readTimeout(40, TimeUnit.SECONDS).writeTimeout(60, TimeUnit.SECONDS).build()
+        OkHttpClient.Builder().addInterceptor(com.smartdocs.editor.core.data.NpfNet.interceptor).connectTimeout(20, TimeUnit.SECONDS).readTimeout(40, TimeUnit.SECONDS).writeTimeout(60, TimeUnit.SECONDS).build()
     }
 
     /** Body bytes for [a] from the selected [values]; [pdf] is the filled document (used for SubmitPDF). */

@@ -90,10 +90,13 @@ object CommentSummary {
     ): Int {
         val items = CommentStore.load(src, pw)
         if (items.isEmpty()) return 0
-        val byPage = items.groupBy { it.page }.toSortedMap()
+        // nav-prefs: Settings → more preferences → comment summary (thumbnails, dates, replies, order on the page)
+        val P = com.smartdocs.editor.core.data.NpfPrefs
+        val byDate = P.summaryOrder == "date"
+        val byPage = items.groupBy { it.page }.mapValues { (_, l) -> if (byDate) l.sortedBy { it.date } else l }.toSortedMap()
         // thumbnails are rendered before the PDF is assembled (rendering is suspend, PdfBox writing is blocking)
         val thumbs = HashMap<Int, Pair<Bitmap, Pair<Float, Float>>>()
-        byPage.keys.forEach { p ->
+        if (P.summaryThumbs) byPage.keys.forEach { p ->
             val sz = pageSize(p)
             val w = 520; val h = (w * sz.second / sz.first).toInt().coerceIn(1, 1400)
             thumb(p, w, h)?.let { thumbs[p] = it to sz }
@@ -103,7 +106,7 @@ object CommentSummary {
                 val wr = Writer(doc, PdfOps.arabicFont(context, doc))
                 val fmt = SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.US)
                 val thumbW = 230f; val gap = 14f
-                val listLeft = M; val listRight = PW - M - thumbW - gap   // list on the left, thumbnail on the right (RTL reading)
+                val listLeft = M; val listRight = if (P.summaryThumbs) PW - M - thumbW - gap else PW - M   // list on the left, thumbnail on the right (RTL reading)
                 var number = 0
                 var cs: PDPageContentStream? = null
                 var y = 0f
@@ -141,13 +144,13 @@ object CommentSummary {
                         val head = buildString {
                             append(number).append(". ").append(labels.typeLabel(c.subtype))
                             if (c.author.isNotBlank()) append(" — ").append(c.author)
-                            if (c.date > 0) append(" — ").append(fmt.format(Date(c.date)))
+                            if (c.date > 0 && P.summaryDates) append(" — ").append(fmt.format(Date(c.date)))
                             if (c.status != ReviewStatus.NONE) append(" — ").append(labels.statusLabel(c.status))
                         }
                         val lines = ArrayList<Pair<String, Float>>()          // text, size
                         wr.wrap(head, 10f, maxW).forEach { lines += it to 10f }
                         if (c.contents.isNotBlank()) wr.wrap(c.contents, 9.5f, maxW - 8f).forEach { lines += it to 9.5f }
-                        c.replies.forEach { r ->
+                        if (P.summaryReplies) c.replies.forEach { r ->
                             val t = "↳ ${labels.repliesLabel} ${r.author}: ${r.text}"
                             wr.wrap(t, 9f, maxW - 16f).forEach { lines += it to 9f }
                         }

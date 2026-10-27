@@ -199,6 +199,7 @@ fun OverlaySettingsSheet(v: V5State) {
             SwitchRow(stringResource(R.string.v5_grid), v.grid) { v.grid = it }
             Text(stringResource(R.string.v5_grid_spacing, v.gridMm.toInt()), style = MaterialTheme.typography.labelMedium)
             Slider(v.gridMm, { v.gridMm = it }, valueRange = 2f..50f)
+            NpfGridSettings()   // nav-prefs: snap, subdivisions, offsets, colour, guides
             HorizontalDivider()
             SwitchRow(stringResource(R.string.v5_reading_ruler), v.readingRuler) { v.readingRuler = it }
             SwitchRow(stringResource(R.string.v5_dim_outside), v.rulerDim) { v.rulerDim = it }

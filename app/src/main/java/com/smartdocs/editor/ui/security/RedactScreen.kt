@@ -80,7 +80,7 @@ fun RedactScreen(nav: NavHostController, uri: String?) {
         val src = doc.file ?: return
         val marks = st.activeMarks()
         runner.run(applying) {
-            val out = app.documents.uniqueFile(app.documents.docsDir, src.nameWithoutExtension + "_redacted")
+            val out = app.documents.uniqueFile(app.documents.docsDir, src.nameWithoutExtension + com.smartdocs.editor.core.data.NpfPrefs.redactSuffix.ifBlank { "_redacted" })   // nav-prefs: redaction file suffix
             val r = RedactApplier.apply(ctx, src, out, doc.password, marks, RedactApplier.Options(sanitize = sanitize, maxSecurity = maxSecurity))
             report = reportFmt.format(r.marks, r.pages, r.glyphs, r.objects + r.images, r.annots) +
                 (if (r.rasterPages.isNotEmpty()) "\n" + rasterFmt.format(r.rasterPages.joinToString(", ") { (it + 1).toString() }) else "")
@@ -228,7 +228,7 @@ private fun runBatch(files: List<File>, st: RedactState, runner: ToolRunner, app
             val found = try { TextSearch.search(session, req) } finally { session.closeAsync() }
             if (found.isEmpty()) continue
             val marks = found.filter { it.hit.rects.isNotEmpty() }.mapIndexed { k, h -> RedactMark("b$k-${System.nanoTime()}", h.hit.page, h.hit.rects.map { RectF(it) }, style, h.hit.snippet.trim()) }
-            val out = app.documents.uniqueFile(app.documents.docsDir, f.nameWithoutExtension + "_redacted")
+            val out = app.documents.uniqueFile(app.documents.docsDir, f.nameWithoutExtension + com.smartdocs.editor.core.data.NpfPrefs.redactSuffix.ifBlank { "_redacted" })   // nav-prefs: redaction file suffix
             runCatching {
                 RedactApplier.apply(ctx, f, out, null, marks, RedactApplier.Options(sanitize = sanitize, sanitizeItems = SanitizeItem.DEFAULTS, maxSecurity = maxSecurity))
                 runCatching { app.documents.touchRecent(out) }

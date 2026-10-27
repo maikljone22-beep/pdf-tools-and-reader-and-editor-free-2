@@ -73,7 +73,8 @@ object HijriDate {
  * tokens stay as typed. Pure, so templates can be tested.
  */
 object StampTokens {
-    data class Identity(val name: String = "", val title: String = "", val org: String = "")
+    /** nav-prefs: [unit] (department) and [email] complete the identity (Settings → identity; tokens {unit} {email}). */
+    data class Identity(val name: String = "", val title: String = "", val org: String = "", val unit: String = "", val email: String = "")
 
     fun fill(template: String, who: Identity, ms: Long, arabicDigits: Boolean = false, tz: TimeZone = TimeZone.getDefault(), hijriAdjust: Int = 0): String {
         val c = Calendar.getInstance(tz).apply { timeInMillis = ms }
@@ -83,7 +84,7 @@ object StampTokens {
         val h = HijriDate.fromMillis(ms, tz, hijriAdjust)
         fun dg(s: String) = if (arabicDigits) Digits.toArabic(s) else s
         val map = mapOf(
-            "name" to who.name, "title" to who.title, "org" to who.org,
+            "name" to who.name, "title" to who.title, "org" to who.org, "unit" to who.unit, "email" to who.email,
             "date" to dg(date), "time" to dg(time), "datetime" to dg("$date $time"),
             "hijri" to h.format(arabic = true, arabicDigits = arabicDigits), "hijri_num" to h.numeric(arabicDigits),
         )

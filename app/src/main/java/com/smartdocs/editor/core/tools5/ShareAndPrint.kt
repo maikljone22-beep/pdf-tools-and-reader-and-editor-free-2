@@ -145,6 +145,7 @@ class T5PrintService : PrintService() {
 
     private fun notifySaved(f: File) = runCatching {
         val nm = getSystemService(NotificationManager::class.java) ?: return@runCatching
+        if (!com.smartdocs.editor.core.data.NpfPrefs.notifyTasks) return@runCatching   // nav-prefs: notification toggle
         if (Build.VERSION.SDK_INT >= 26) nm.createNotificationChannel(NotificationChannel(CHANNEL, "SmartDocs PDF", NotificationManager.IMPORTANCE_DEFAULT))
         // a content:// URI (file:// in an intent trips FileUriExposedException); MainActivity copies it like any shared PDF
         val uri = androidx.core.content.FileProvider.getUriForFile(this, "$packageName.fileprovider", f)

@@ -72,7 +72,7 @@ object CompareReport {
             }
             w.y -= 6f; w.line(labels.changes, 14f)
             r.describe(400).lines().filter { it.isNotBlank() }.forEach { l ->
-                val color = when (l.firstOrNull()) { '+' -> 0x1E88E5; '-' -> 0xE53935; else -> 0xF57C00 }
+                val color = when (l.firstOrNull()) { '+' -> com.smartdocs.editor.core.data.NpfPrefs.compareInserted; '-' -> com.smartdocs.editor.core.data.NpfPrefs.compareDeleted; else -> com.smartdocs.editor.core.data.NpfPrefs.compareChanged }   // nav-prefs
                 w.line(l, 9f, color)
             }
             w.close()

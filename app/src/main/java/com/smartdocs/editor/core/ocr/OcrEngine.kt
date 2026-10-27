@@ -60,7 +60,7 @@ class OcrEngine(private val context: Context) : AutoCloseable {
         val tmp = File(tessdataDir, "$lang.traineddata.part")
         val pin = PINNED[lang] ?: throw IllegalStateException("no verified language pack for $lang")
         val url = modelUrl(lang)
-        val client = OkHttpClient.Builder().connectTimeout(30, TimeUnit.SECONDS).readTimeout(120, TimeUnit.SECONDS).followRedirects(true).build()
+        val client = OkHttpClient.Builder().addInterceptor(com.smartdocs.editor.core.data.NpfNet.interceptor).connectTimeout(30, TimeUnit.SECONDS).readTimeout(120, TimeUnit.SECONDS).followRedirects(true).build()
         val ctx = coroutineContext
         onProgress(lang, 0f)
         client.newCall(Request.Builder().url(url).build()).execute().use { resp ->

@@ -37,9 +37,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 
-private val InsColor = Color(0x661E88E5)
-private val DelColor = Color(0x66E53935)
-private val RepColor = Color(0x66FB8C00)
+// nav-prefs: mark colours from Settings → more preferences → compare
+private val InsColor: Color get() = Color(0x66000000 or com.smartdocs.editor.core.data.NpfPrefs.compareInserted)
+private val DelColor: Color get() = Color(0x66000000 or com.smartdocs.editor.core.data.NpfPrefs.compareDeleted)
+private val RepColor: Color get() = Color(0x66000000 or com.smartdocs.editor.core.data.NpfPrefs.compareChanged)
 
 /** Page picture + page width in points (to place the word boxes). */
 private suspend fun renderPage(ctx: Context, f: File, page: Int, widthPx: Int): Pair<Bitmap, Float>? = withContext(Dispatchers.IO) {

@@ -75,6 +75,12 @@ fun WorkbenchCanvas(m: WorkbenchModel, bitmap: Bitmap?, view: WbView, snapTo: (P
     fun resolve(o: Offset): P {
         val raw = view.toPdf(o)
         var p = if (m.v.snap) snapTo(raw, 14f / view.scale) ?: raw else raw
+        // nav-prefs: snap to the layout grid (grid spacing / offsets of Settings, anchored at the page corner)
+        if (com.smartdocs.editor.core.data.NpfPrefs.gridSnap && m.v.grid) {
+            val stepPt = m.v.gridMm * 72f / 25.4f
+            val ox = com.smartdocs.editor.core.data.NpfPrefs.gridOffsetXmm * 72f / 25.4f; val oy = com.smartdocs.editor.core.data.NpfPrefs.gridOffsetYmm * 72f / 25.4f
+            p = P(com.smartdocs.editor.core.data.NpfText.snap(p.x.toFloat(), stepPt, ox).toDouble(), com.smartdocs.editor.core.data.NpfText.snap(p.y.toFloat(), stepPt, oy).toDouble())
+        }
         if (m.v.ortho && m.pts.isNotEmpty() && (m.tool == WTool.DISTANCE || m.tool == WTool.PERIMETER || m.tool == WTool.AREA || m.tool == WTool.LINE || m.calibrating)) p = Geom.constrain45(m.pts.last(), p)
         return p
     }

@@ -277,6 +277,7 @@ class DocumentRepository(private val context: Context, private val db: AppDataba
             if (!tmp.renameTo(target)) tmp.copyTo(target, overwrite = true)
         } finally { tmp.delete() }
         if (result.absolutePath != target.absolutePath && result.parentFile == docsDir) runCatching { result.delete() }
+        runCatching { com.smartdocs.editor.core.search.IndexWorker.indexSoon(context, target) }   // nav-prefs: index the new version
         backup
     }
 

@@ -28,7 +28,7 @@ class AuthRequiredException(message: String = "auth required") : IOException(mes
 
 object CloudHttp {
     val client: OkHttpClient by lazy {
-        OkHttpClient.Builder()
+        OkHttpClient.Builder().addInterceptor(com.smartdocs.editor.core.data.NpfNet.interceptor)
             .connectTimeout(20, TimeUnit.SECONDS)
             .readTimeout(120, TimeUnit.SECONDS)
             .writeTimeout(300, TimeUnit.SECONDS)

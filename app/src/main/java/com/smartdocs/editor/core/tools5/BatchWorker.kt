@@ -121,7 +121,7 @@ class BatchWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
             }
         } finally { runner.close(); temp.listFiles()?.forEach { runCatching { it.delete() } } }
         setProgress(workDataOf(KEY_DONE to job.files.size, KEY_TOTAL to job.files.size))
-        notifyDone(job, log)
+        if (com.smartdocs.editor.core.data.NpfPrefs.notifyTasks) notifyDone(job, log)   // nav-prefs: notification toggle
         return Result.success(workDataOf(KEY_DONE to job.files.size, KEY_TOTAL to job.files.size, KEY_FAILED to log.count { !it.ok }))
     }
 
