@@ -17,7 +17,9 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.IntOffset
@@ -66,6 +68,7 @@ fun PageView(
     val pairGapPx = if (vx.facingSeparator) gapPx else 0f
     val pairGapDp = if (vx.facingSeparator) 8.dp else 0.dp
     var viewport by remember { mutableStateOf(Size.Zero) }
+    var viewportOrigin by remember { mutableStateOf(Offset.Zero) }
     var panX by remember { mutableFloatStateOf(0f) }
     var panY by remember { mutableFloatStateOf(0f) }     // only used by the pager modes
     val mode = state.viewMode
@@ -210,15 +213,13 @@ fun PageView(
     // a new page in the pager starts at its top
     LaunchedEffect(pagerState.currentPage, mode) { if (mode != ViewMode.CONTINUOUS) { panY = Float.MAX_VALUE; clampPan() } }
 
-    val onTap: (Offset, Size) -> Unit = { p, size ->
+    // audit RD-05: [p] is in root coordinates (PageCanvas adds its position); the zones are the screen's edges
+    val onTap: (Offset, Size) -> Unit = { p, _ ->
         if (settings.tapEdgesFlip && state.tool == null) {
-            val frac = p.x / size.width
-            val toPrev = if (rtl) frac > 0.82f else frac < 0.18f
-            val toNext = if (rtl) frac < 0.18f else frac > 0.82f
-            when {
-                toPrev && vx.canFlip(-1) -> vx.flip(-1)
-                toNext && vx.canFlip(1) -> vx.flip(1)
-                else -> onTapCenter()
+            when (TapZones.zone(p.x - viewportOrigin.x, viewport.width, rtl, zoomed = state.zoom > 1.01f)) {
+                TapZones.Zone.PREV -> if (vx.canFlip(-1)) vx.flip(-1) else onTapCenter()
+                TapZones.Zone.NEXT -> if (vx.canFlip(1)) vx.flip(1) else onTapCenter()
+                TapZones.Zone.CENTER -> onTapCenter()
             }
         } else onTapCenter()
     }
@@ -306,6 +307,7 @@ fun PageView(
         Box(
             Modifier.fillMaxSize()
                 .onSizeChanged { viewport = Size(it.width.toFloat(), it.height.toFloat()) }
+                .onGloballyPositioned { viewportOrigin = it.positionInRoot() }
                 .clipToBounds().then(gestureModifier),
         ) {
             if (viewport == Size.Zero || state.pageCount == 0) return@Box

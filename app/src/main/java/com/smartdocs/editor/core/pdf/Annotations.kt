@@ -80,9 +80,9 @@ object AnnotationWriter {
      * signatures stay valid (audit AN-28 / DI-27; [SignedSave]); throws [SignedDocumentException] when that is not
      * possible (certified without annotation rights, or the update failed) — the caller should offer a copy.
      */
-    suspend fun commit(context: Context, src: File, annots: List<Annot>, out: File, password: String? = null): CommitResult = withContext(Dispatchers.IO) {
+    suspend fun commit(context: Context, src: File, annots: List<Annot>, out: File, password: String? = null, fullSave: Boolean = false): CommitResult = withContext(Dispatchers.IO) {
         require(out.canonicalPath != src.canonicalPath) { "commit: out must differ from src" }
-        saveChanged(src, out, password) { d -> writeAll(d, annots) { page, a -> write(context, d, page, a) } to annots.map { it.page } }
+        saveChanged(src, out, password, fullSave) { d -> writeAll(d, annots) { page, a -> write(context, d, page, a) } to annots.map { it.page } }
     }
 
     /**
@@ -90,9 +90,11 @@ object AnnotationWriter {
      * save (encrypted files re-protected like the source, [PdfOps.reprotect]) or, for a signed file, an incremental
      * update that leaves the signed bytes unchanged. Never writes into [src].
      */
-    internal fun <T> saveChanged(src: File, out: File, password: String?, change: (PDDocument) -> Pair<T, List<Int>>): T =
+    internal fun <T> saveChanged(src: File, out: File, password: String?, fullSave: Boolean = false, change: (PDDocument) -> Pair<T, List<Int>>): T =
         PdfOps.loadRaw(src, password).use { d ->
-            val signed = SignedSave.isSigned(d)
+            // [fullSave]: a separate copy ("save a copy" of a signed file) — an ordinary save, the signatures of the copy
+            // become invalid but the signed original is left untouched
+            val signed = !fullSave && SignedSave.isSigned(d)
             if (signed) SignedSave.requireAnnotationsAllowed(d) else PdfOps.reprotect(d, password)
             val (r, pages) = change(d)
             if (signed) SignedSave.saveIncremental(d, pages.distinct().filter { it in 0 until d.numberOfPages }.map { d.getPage(it) }, out)

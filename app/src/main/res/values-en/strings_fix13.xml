@@ -19,4 +19,15 @@
     <string name="fx_annots_not_saved">%1$d annotation(s) could not be saved — they are still pending, nothing was lost</string>
     <string name="fx_undo_newer">Not undone: %1$d later change(s) would be undone too. Use the edit history to go back that far.</string>
     <string name="fx_undo_save_first">Save the annotations you are editing first, then undo file changes.</string>
+    <string name="fx_open_missing_title">File not found</string>
+    <string name="fx_open_missing_text">The file may have been deleted or moved, or the memory card was removed. Open it from its new location.</string>
+    <string name="fx_open_permission_title">No permission to read the file</string>
+    <string name="fx_open_permission_text">The app that shared this file no longer allows reading it. Open it again from that app or from a file manager.</string>
+    <string name="fx_open_damaged_title">Could not open the file</string>
+    <string name="fx_open_damaged_text">The file does not look like a PDF, is damaged, or its download did not finish. Download it again and retry, or open it with another app.</string>
+    <string name="fx_open_other_title">Something went wrong opening the file</string>
+    <string name="fx_open_other_text">Try again. If it keeps failing, open the file with another app.</string>
+    <string name="fx_open_retry">Retry</string>
+    <string name="fx_open_with">Open with another app</string>
+    <string name="fx_erase_stored">Erase saved ink</string>
 </resources>

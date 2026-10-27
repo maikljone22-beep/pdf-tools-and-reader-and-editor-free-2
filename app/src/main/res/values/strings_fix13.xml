@@ -19,4 +19,15 @@
     <string name="fx_annots_not_saved">تعذّر حفظ %1$d تعليق توضيحي — ما زالت معلّقة ولم تُفقد</string>
     <string name="fx_undo_newer">لم يتم التراجع: أُجريت %1$d تغييرات بعده وكانت ستُلغى أيضًا. استخدم سجل التعديلات للتراجع إليها.</string>
     <string name="fx_undo_save_first">احفظ التعليقات التي تعدّلها أولًا، ثم تراجع عن تغييرات الملف.</string>
+    <string name="fx_open_missing_title">الملف غير موجود</string>
+    <string name="fx_open_missing_text">ربما حُذف الملف أو نُقل، أو أُزيلت بطاقة الذاكرة. افتحه من مكانه الجديد.</string>
+    <string name="fx_open_permission_title">لا توجد صلاحية لقراءة الملف</string>
+    <string name="fx_open_permission_text">التطبيق الذي شارك الملف لم يعد يسمح بقراءته. افتحه مرة أخرى من ذلك التطبيق أو من مدير الملفات.</string>
+    <string name="fx_open_damaged_title">تعذّر فتح الملف</string>
+    <string name="fx_open_damaged_text">يبدو أن الملف ليس PDF أو أنه تالف أو لم يكتمل تنزيله. أعد تنزيله ثم حاول مرة أخرى، أو افتحه بتطبيق آخر.</string>
+    <string name="fx_open_other_title">حدث خطأ أثناء فتح الملف</string>
+    <string name="fx_open_other_text">حاول مرة أخرى. إن تكرر الخطأ فافتح الملف بتطبيق آخر.</string>
+    <string name="fx_open_retry">إعادة المحاولة</string>
+    <string name="fx_open_with">فتح بتطبيق آخر</string>
+    <string name="fx_erase_stored">مسح حبر محفوظ</string>
 </resources>
