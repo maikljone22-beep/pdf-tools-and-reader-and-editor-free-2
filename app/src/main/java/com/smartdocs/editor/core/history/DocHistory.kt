@@ -112,10 +112,34 @@ class DocHistory internal constructor(val dir: File, maxSteps: Int, maxBytes: Lo
         last
     }
 
-    /** Undo through the file step whose snapshot is [before] (used by "تراجع" buttons that kept the returned copy). */
-    suspend fun undoThrough(before: File): HistoryStep? {
+    /**
+     * Undo through the file step whose snapshot is [before] (used by "تراجع" buttons that kept the returned copy).
+     * Audit AN-08: when newer changes were made since, they would be undone too, so this refuses (returns null)
+     * unless [allowNewer]; check [newerStepsThan] to tell the user why.
+     */
+    suspend fun undoThrough(before: File, allowNewer: Boolean = false): HistoryStep? {
         val id = synchronized(lock) { stack.undoList().lastOrNull { it is HistoryStep.FileSnapshot && it.before == before }?.id } ?: return null
+        if (!allowNewer && newerStepsThan(before) > 0) return null
         return undoTo(id)
+    }
+
+    /** The steps [undoTo] ([id]) would undo, newest first. */
+    fun undoStepsTo(id: Long): List<HistoryStep> = synchronized(lock) {
+        val l = stack.undoList(); val i = l.indexOfLast { it.id == id }
+        if (i < 0) emptyList() else l.subList(i, l.size).asReversed().toList()
+    }
+
+    /** The steps [redoTo] ([id]) would redo, in redo order. */
+    fun redoStepsTo(id: Long): List<HistoryStep> = synchronized(lock) {
+        val l = stack.redoList(); val i = l.indexOfFirst { it.id == id }
+        if (i < 0) emptyList() else l.subList(0, i + 1).toList()
+    }
+
+    /** How many undo steps were made after the file step that saved [before]; -1 when it is no longer in the history. */
+    fun newerStepsThan(before: File): Int = synchronized(lock) {
+        val l = stack.undoList()
+        val i = l.indexOfLast { it is HistoryStep.FileSnapshot && it.before == before }
+        if (i < 0) -1 else l.size - 1 - i
     }
 
     /** Whether the file step that saved [before] can still be undone. */
