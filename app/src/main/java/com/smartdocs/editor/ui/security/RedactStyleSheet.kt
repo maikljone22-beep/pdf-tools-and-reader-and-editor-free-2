@@ -92,7 +92,13 @@ fun RedactStyleDialog(initial: RedactStyle, title: String, onDismiss: () -> Unit
             }
         },
         confirmButton = { TextButton(onClick = { onApply(st) }) { Text(stringResource(R.string.apply)) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
+        dismissButton = {
+            Row {
+                // Foxit "Set current properties as default"
+                TextButton(onClick = { RedactPrefs.saveStyle(ctx, st) }) { Text(stringResource(R.string.nt_cmp_set_default)) }
+                TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+            }
+        },
     )
     if (editCodes) CodesEditor(onDismiss = { editCodes = false }) { codes = it; editCodes = false }
 }
@@ -121,6 +127,14 @@ fun CodesEditor(onDismiss: () -> Unit, onSave: (List<String>) -> Unit) {
         sets = CodeSets.update(sets, current, lines())
         current = name; text = sets.first { it.name == name }.codes.joinToString("\n")
     }
+    var codeMsg by remember { mutableStateOf<String?>(null) }
+    val importedFmt = stringResource(R.string.nt_profiles_imported)
+    val badFile = stringResource(R.string.nt_profiles_bad_file)
+    val importCodes = rememberTextImport { t ->
+        codeMsg = runCatching { importedFmt.format(RedactPrefs.importCodeSets(ctx, t)) }.getOrElse { badFile }
+        sets = RedactPrefs.codeSets(ctx)
+    }
+    val exportCodes = rememberTextExport("application/json", { RedactPrefs.saveCodeSets(ctx, CodeSets.update(sets, current, lines())); RedactPrefs.exportCodeSets(ctx) })
     AlertDialog(onDismissRequest = onDismiss, title = { Text(stringResource(R.string.s5_edit_codes)) },
         text = {
             Column {
@@ -143,7 +157,12 @@ fun CodesEditor(onDismiss: () -> Unit, onSave: (List<String>) -> Unit) {
                 }
                 Text(stringResource(R.string.s5_one_per_line), Modifier.padding(top = 6.dp), style = MaterialTheme.typography.bodySmall)
                 OutlinedTextField(text, { text = it }, Modifier.fillMaxWidth().heightIn(min = 160.dp), minLines = 6)
-                TextButton(onClick = { text = RedactPrefs.DEFAULT_CODES.joinToString("\n") }) { Text(stringResource(R.string.s5_reset)) }
+                Row {
+                    TextButton(onClick = { text = RedactPrefs.DEFAULT_CODES.joinToString("\n") }) { Text(stringResource(R.string.s5_reset)) }
+                    TextButton(onClick = importCodes) { Text(stringResource(R.string.nt_profiles_import)) }
+                    TextButton(onClick = { exportCodes("redaction_codes.json") }) { Text(stringResource(R.string.nt_profiles_export)) }
+                }
+                codeMsg?.let { Text(it, style = MaterialTheme.typography.labelSmall) }
             }
         },
         confirmButton = { TextButton(onClick = {

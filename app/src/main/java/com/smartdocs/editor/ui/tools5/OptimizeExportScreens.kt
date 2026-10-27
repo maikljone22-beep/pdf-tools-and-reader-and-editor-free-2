@@ -26,6 +26,7 @@ import com.smartdocs.editor.ui.tools.FieldLabel
 import com.smartdocs.editor.ui.tools.PrimaryButton
 import com.smartdocs.editor.ui.tools.ResultsList
 import com.smartdocs.editor.ui.tools.ToolScaffold
+import java.io.File
 
 @Composable
 private fun SpaceCat.label(): String = stringResource(
@@ -60,27 +61,63 @@ fun SpaceReport(before: SpaceAudit, after: SpaceAudit?) {
     }
 }
 
-/** Advanced optimizer with a space audit; "fast web view" is shown as not available (PdfBox 2.0). */
+/**
+ * Advanced optimizer with a space audit; "fast web view" is shown as not available (PdfBox 2.0). Nitro additions:
+ * settings per image class (colour / grey / 1-bit with CCITT G4 / G3), JPEG or ZIP, unembedding fonts, removing
+ * annotations / forms / links / bookmarks / named destinations, troubleshooting tips, and protected inputs.
+ */
 @Composable
 fun OptimizeScreen(nav: NavHostController, uri: String?) {
     val app = LocalApp.current
     val snackbar = remember { SnackbarHostState() }
     var file by remember { mutableStateOf(fileOf(uri)) }
+    var password by remember { mutableStateOf<String?>(null) }
+    var askPassword by remember { mutableStateOf(false) }
     var audit by remember { mutableStateOf<SpaceAudit?>(null) }
     var after by remember { mutableStateOf<SpaceAudit?>(null) }
+    var tips by remember { mutableStateOf<List<OptimizeTip>>(emptyList()) }
     var o by remember { mutableStateOf(OptimizeOptions()) }
+    var estimate by remember { mutableStateOf<Long?>(null) }
+    val batch = remember { OptimizeBatch() }
+    val ctx = LocalContext.current
     val job = rememberT5Job()
-    val pick = rememberPdfPicker { file = it.firstOrNull(); audit = null; after = null }
+    val pick = rememberPdfPicker { file = it.firstOrNull(); password = null; audit = null; after = null; tips = emptyList() }
     val analysing = stringResource(R.string.t5_space_analysing)
     val optimizing = stringResource(R.string.t5_optimizing)
-    LaunchedEffect(file) { val f = file ?: return@LaunchedEffect; job.launch(analysing) { audit = Optimizer.auditFile(f, null) } }
+    LaunchedEffect(file, password) {
+        val f = file ?: return@LaunchedEffect
+        val pw = password
+        job.launch(analysing) {
+            try { audit = Optimizer.auditFile(f, pw) }
+            catch (e: com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException) { askPassword = true }
+        }
+    }
+    if (askPassword) com.smartdocs.editor.ui.search.PasswordDialog(onDismiss = { askPassword = false }) { password = it; askPassword = false }
 
     ToolScaffold(stringResource(R.string.t5_opt_title), nav, snackbar = snackbar) {
         FilePickRow(file, stringResource(R.string.t5_input_pdf), pick)
         audit?.let { SpaceReport(it, after) }
+        com.smartdocs.editor.ui.edit5.E5ProfileBar("opt", current = { OptimizePresets.toJson(o) }, onLoad = { j -> OptimizePresets.fromJson(j)?.let { o = it; estimate = null } },
+            onMessage = { job.error = it })
         T5Card(stringResource(R.string.t5_options), Icons.Default.Tune) {
+            if (o.separateClasses) FieldLabel(stringResource(R.string.nt_opt_color_images))
             LabeledSlider(stringResource(R.string.t5_opt_dpi), o.imageDpi.toFloat(), 72f..300f, { o = o.copy(imageDpi = it.toInt()) })
             LabeledSlider(stringResource(R.string.t5_opt_quality), o.jpegQuality.toFloat(), 30f..95f, { o = o.copy(jpegQuality = it.toInt()) })
+            CompressionChips(o.colorMode) { o = o.copy(colorMode = it) }
+            SwitchRow(stringResource(R.string.nt_opt_separate), o.separateClasses) { o = o.copy(separateClasses = it) }
+            if (o.separateClasses) {
+                FieldLabel(stringResource(R.string.nt_opt_gray_images))
+                LabeledSlider(stringResource(R.string.t5_opt_dpi), o.grayDpi.toFloat(), 72f..300f, { o = o.copy(grayDpi = it.toInt()) })
+                LabeledSlider(stringResource(R.string.t5_opt_quality), o.grayQuality.toFloat(), 30f..95f, { o = o.copy(grayQuality = it.toInt()) })
+                CompressionChips(o.grayMode) { o = o.copy(grayMode = it) }
+                FieldLabel(stringResource(R.string.nt_opt_mono_images))
+                LabeledSlider(stringResource(R.string.t5_opt_dpi), o.monoDpi.toFloat(), 150f..600f, { o = o.copy(monoDpi = it.toInt()) })
+            }
+            if (o.separateClasses) FieldLabel(stringResource(R.string.nt_opt_mono_compression))
+            else Text(stringResource(R.string.nt_opt_mono_compression), style = MaterialTheme.typography.labelLarge)
+            ChoiceChips(MonoCompression.entries, o.monoMode, { stringResource(when (it) {
+                MonoCompression.KEEP -> R.string.nt_opt_keep; MonoCompression.CCITT_G4 -> R.string.nt_opt_g4; MonoCompression.CCITT_G3 -> R.string.nt_opt_g3
+                MonoCompression.JBIG2 -> R.string.nt_opt_jbig2; MonoCompression.RUN_LENGTH -> R.string.nt_opt_rle; MonoCompression.ZIP -> R.string.nt_opt_zip }) }) { o = o.copy(monoMode = it) }
             SwitchRow(stringResource(R.string.t5_opt_gray), o.grayImages) { o = o.copy(grayImages = it) }
             SwitchRow(stringResource(R.string.t5_opt_dedup), o.dedupImages) { o = o.copy(dedupImages = it) }
             SwitchRow(stringResource(R.string.t5_opt_meta), o.stripMetadata) { o = o.copy(stripMetadata = it) }
@@ -89,21 +126,67 @@ fun OptimizeScreen(nav: NavHostController, uri: String?) {
             SwitchRow(stringResource(R.string.t5_opt_attach), o.stripAttachments) { o = o.copy(stripAttachments = it) }
             SwitchRow(stringResource(R.string.t5_opt_flate), o.flateUncompressed) { o = o.copy(flateUncompressed = it) }
             SwitchRow(stringResource(R.string.t5_opt_smaller), o.onlyIfSmaller) { o = o.copy(onlyIfSmaller = it) }
+            FieldLabel(stringResource(R.string.nt_opt_fonts))
+            ChoiceChips(FontUnembed.entries, o.unembedFonts, { stringResource(when (it) {
+                FontUnembed.NONE -> R.string.nt_opt_fonts_keep; FontUnembed.STANDARD -> R.string.nt_opt_fonts_standard; FontUnembed.ALL -> R.string.nt_opt_fonts_all }) }) { o = o.copy(unembedFonts = it) }
+            if (o.unembedFonts == FontUnembed.ALL) Text(stringResource(R.string.nt_opt_fonts_all_warn), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+            FieldLabel(stringResource(R.string.nt_opt_remove))
+            SwitchRow(stringResource(R.string.nt_opt_rm_annots), o.removeAnnotations) { o = o.copy(removeAnnotations = it) }
+            SwitchRow(stringResource(R.string.nt_opt_rm_forms), o.removeForms) { o = o.copy(removeForms = it) }
+            SwitchRow(stringResource(R.string.nt_opt_rm_links), o.removeLinks) { o = o.copy(removeLinks = it) }
+            SwitchRow(stringResource(R.string.nt_opt_rm_bookmarks), o.removeBookmarks) { o = o.copy(removeBookmarks = it) }
+            SwitchRow(stringResource(R.string.nt_opt_rm_dests), o.removeNamedDests) { o = o.copy(removeNamedDests = it) }
+            if (password != null) SwitchRow(stringResource(R.string.nt_opt_keep_protection), o.keepProtection) { o = o.copy(keepProtection = it) }
             SwitchRow(stringResource(R.string.t5_opt_fastweb), false, stringResource(R.string.t5_opt_fastweb_na), enabled = false) {}
         }
-        PrimaryButton(stringResource(R.string.t5_optimize), enabled = file != null && !job.running, icon = Icons.Default.Compress) {
-            val f = file ?: return@PrimaryButton
-            val opts = o
+        FoxitOptimizeOptions(o) { o = it; estimate = null }
+        OptimizeBatchSection(batch)
+        OutlinedButton(onClick = {
+            val f = file ?: return@OutlinedButton
+            val opts = o; val pw = password
+            job.launch(optimizing) { estimate = OptimizePresets.estimate(f, pw, opts, app.documents.tempDir) }
+        }, enabled = file != null && !job.running) { Icon(Icons.Default.Calculate, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.nt_opt_estimate)) }
+        estimate?.let { e -> file?.let { f -> Text(stringResource(R.string.nt_opt_estimate_result, DocumentRepository.formatSize(f.length()), DocumentRepository.formatSize(e)), style = MaterialTheme.typography.bodyMedium) } }
+        if (tips.isNotEmpty()) T5Card(stringResource(R.string.nt_opt_tips), Icons.Default.Lightbulb) {
+            tips.forEach { t -> Text("• " + stringResource(tipText(t)), style = MaterialTheme.typography.bodySmall) }
+        }
+        PrimaryButton(stringResource(R.string.t5_optimize), enabled = (file != null || batch.files.isNotEmpty()) && !job.running, icon = Icons.Default.Compress) {
+            val opts = o; val pw = password
+            val inputs = listOfNotNull(file) + batch.files.filter { it.absolutePath != file?.absolutePath }
+            val suffix = batch.suffix.ifBlank { "_optimized" }; val folder = batch.folder; val replace = batch.replaceSameName
             job.launch(optimizing) {
-                val out = app.documents.uniqueFile(app.documents.docsDir, f.nameWithoutExtension + "_optimized")
-                val r = Optimizer.optimize(f, null, out, opts) { d, t -> step(d, t) }
-                audit = r.before; after = r.after
-                info = if (r.keptOriginal) app.getString(R.string.t5_opt_kept) else app.getString(R.string.t5_opt_images_changed, r.imagesChanged)
-                result = out
+                val outs = ArrayList<File>()
+                inputs.forEachIndexed { k, f ->
+                    val out = app.documents.uniqueFile(app.documents.docsDir, f.nameWithoutExtension + suffix)
+                    val r = Optimizer.optimize(f, if (f == file) pw else null, out, opts, { d, t -> step(k * 100 + d * 100 / t.coerceAtLeast(1), inputs.size * 100) }, ctx)
+                    if (f == file) {
+                        audit = r.before; after = r.after; tips = r.tips
+                        info = (if (r.keptOriginal) app.getString(R.string.t5_opt_kept) else app.getString(R.string.t5_opt_images_changed, r.imagesChanged)) +
+                            (if (r.fontsUnembedded > 0) "\n" + app.getString(R.string.nt_opt_fonts_done, r.fontsUnembedded) else "") +
+                            (if (r.fontsSubset > 0) "\n" + app.getString(R.string.nt_opt_subset_done, r.fontsSubset) else "") +
+                            (if (r.fragmentsMerged > 0) "\n" + app.getString(R.string.nt_opt_merged_done, r.fragmentsMerged) else "") +
+                            (if (r.flattenedPages > 0) "\n" + app.getString(R.string.nt_opt_flattened_done, r.flattenedPages) else "")
+                    }
+                    outs += out
+                }
+                folder?.let { saveToTree(ctx, it, outs, replace) }
+                if (outs.size == 1) result = outs[0] else results = outs
             }
         }
+        if (job.results.isNotEmpty()) ResultsList(job.results, nav, "application/pdf")
     }
     T5JobUi(job, nav, snackbar)
+}
+
+@Composable
+private fun CompressionChips(mode: ImgCompression, onMode: (ImgCompression) -> Unit) =
+    ChoiceChips(ImgCompression.entries, mode, { stringResource(when (it) { ImgCompression.AUTO -> R.string.nt_opt_auto; ImgCompression.JPEG -> R.string.nt_opt_jpeg; ImgCompression.ZIP -> R.string.nt_opt_zip }) }, onMode)
+
+private fun tipText(t: OptimizeTip) = when (t) {
+    OptimizeTip.LOWER_DPI -> R.string.nt_tip_dpi; OptimizeTip.LOWER_QUALITY -> R.string.nt_tip_quality; OptimizeTip.GRAY_IMAGES -> R.string.nt_tip_gray
+    OptimizeTip.MONO_CCITT -> R.string.nt_tip_ccitt; OptimizeTip.FONTS -> R.string.nt_tip_fonts; OptimizeTip.ATTACHMENTS -> R.string.nt_tip_attach
+    OptimizeTip.THUMBNAILS -> R.string.nt_tip_thumbs; OptimizeTip.ANNOTATIONS -> R.string.nt_tip_annots; OptimizeTip.FORMS -> R.string.nt_tip_forms
+    OptimizeTip.CONTENT -> R.string.nt_tip_content; OptimizeTip.ALREADY_SMALL -> R.string.nt_tip_small
 }
 
 /** Export pages to PNG / JPG / WebP at any dpi (colour or grey, optional ZIP) and to RTF. */

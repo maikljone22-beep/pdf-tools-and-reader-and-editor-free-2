@@ -63,6 +63,24 @@ fun ProtectAdvancedScreen(nav: NavHostController, uri: String?) {
         encrypted = needPassword || runCatching { PdfOps.isEncrypted(f) }.getOrDefault(false)
         if (needPassword && current == null) askCurrent = true
     }
+    // nitro-protect2 "Change Settings": the current algorithm, permissions and metadata option (passwords stay empty)
+    var needsOwner by remember { mutableStateOf(false) }
+    var prefilled by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(file, current, encrypted) {
+        val f = file ?: return@LaunchedEffect
+        if (!encrypted) { needsOwner = false; return@LaunchedEffect }
+        val pw = current
+        val info = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching { PdfOps.loadRaw(f, pw).use { com.smartdocs.editor.core.security.SecurityInfoReader.of(it) } }.getOrNull()
+        } ?: return@LaunchedEffect
+        // opened without the permissions password: the author's restrictions may not be changed (or dropped) here
+        needsOwner = com.smartdocs.editor.core.security.ReaderRestrictions.restricted(info)
+        val key = f.absolutePath + "|" + pw
+        if (prefilled == key) return@LaunchedEffect
+        com.smartdocs.editor.core.redact.ProtectPrefills.from(info)?.let { p ->
+            algo = p.algo; perms = p.permissions; restrict = p.restrict; scope = p.scope; prefilled = key
+        }
+    }
     val mismatch = openPw.isNotEmpty() && openPw != openPw2
     val effective = if (restrict) perms else Permissions()
     val nothing = (openPw.isEmpty() && !restrict) || (scope == EncScope.ATTACHMENTS_ONLY && openPw.isEmpty())
@@ -91,7 +109,7 @@ fun ProtectAdvancedScreen(nav: NavHostController, uri: String?) {
         },
         bottomBar = {
             Surface(tonalElevation = 3.dp) {
-                Button(onClick = ::protect, enabled = file != null && !mismatch && !nothing && !runner.running, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)) {
+                Button(onClick = ::protect, enabled = file != null && !mismatch && !nothing && !runner.running && !needsOwner, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)) {
                     Icon(Icons.Default.EnhancedEncryption, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.s5_protect_apply))
                 }
             }
@@ -100,6 +118,9 @@ fun ProtectAdvancedScreen(nav: NavHostController, uri: String?) {
         Column(Modifier.padding(pad).fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp)) {
             FilePickRow(file, stringResource(R.string.open_file), pick)
             if (encrypted) Text(stringResource(R.string.s5_already_encrypted), Modifier.padding(top = 6.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (prefilled != null) Text(stringResource(R.string.np2_change_prefilled), Modifier.padding(top = 4.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+            if (needsOwner) Text(stringResource(R.string.np2_change_needs_owner), Modifier.padding(top = 4.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            if (needsOwner) TextButton(onClick = { askCurrent = true }) { Text(stringResource(R.string.np2_change_enter_owner)) }
             Section(stringResource(R.string.s5_algorithm))
             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                 val all = EncAlgo.values()

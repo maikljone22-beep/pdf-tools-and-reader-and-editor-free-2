@@ -33,6 +33,9 @@ object RedactApplier {
         val sanitizeItems: Set<SanitizeItem> = SanitizeItem.DEFAULTS,
         val maxSecurity: Boolean = false,
         val rasterDpi: Int = 150,
+        /** Marks written back as /Redact annotations after applying (Foxit "apply the selected mark" keeps the others pending). */
+        val keepPending: List<RedactMark> = emptyList(),
+        val author: String = "",
     )
 
     data class Report(
@@ -73,6 +76,8 @@ object RedactApplier {
                     list.forEach { m -> runCatching { drawMark(doc, page, frame, m, fontFor, chosen) } }
                 }
                 if (options.sanitize) sanitized = Sanitizer.clean(doc, options.sanitizeItems)
+                // after sanitising, which would drop the review replies of the marks kept pending
+                if (options.keepPending.isNotEmpty()) RedactMarks.writeAll(doc, options.keepPending, options.author)
                 // audit AN-07: removed / blanked images and forms must not stay in /Resources (and so in the file)
                 RedactCleanup.pruneUnusedXObjects(doc)
                 doc.save(tmp)
@@ -159,7 +164,7 @@ object RedactApplier {
     }
 
     /** Replaces [pages] of [src] by images rendered with PDFium (boxes already drawn), then saves to [out]. */
-    private suspend fun rasterize(context: Context, src: File, out: File, password: String?, pages: List<Int>, dpi: Int) {
+    internal suspend fun rasterize(context: Context, src: File, out: File, password: String?, pages: List<Int>, dpi: Int) {
         val scale = dpi / 72f
         // one page at a time: render → JPEG-encode → recycle. Keeping every page bitmap in memory (up to 6000² px each)
         // ran out of memory on multi-page documents (OutOfMemoryError is not caught by the tool runner → app crash).

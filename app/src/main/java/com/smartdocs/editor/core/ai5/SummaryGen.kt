@@ -34,6 +34,20 @@ data class StructuredSummary(val overview: String, val points: List<String>, val
             append('\n').append(s.text).append("\n\n")
         }
     }.trim()
+
+    /** ai6v: text for reading the summary aloud (no bullets, page numbers or markup; one sentence break per item). */
+    fun spokenText(): String = buildString {
+        fun add(t: String) {
+            val c = t.replace(Regex("[*#`_>•]+"), " ").replace(Regex("\\s+"), " ").trim()
+            if (c.isEmpty()) return
+            append(c)
+            if (!c.endsWith('.') && !c.endsWith('؟') && !c.endsWith('?') && !c.endsWith('!') && !c.endsWith('。')) append('.')
+            append('\n')
+        }
+        add(overview)
+        points.forEach { add(it) }
+        sections.forEach { s -> add(s.title); add(s.text) }
+    }.trim()
 }
 
 /**

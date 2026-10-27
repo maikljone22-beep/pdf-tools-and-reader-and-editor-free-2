@@ -102,21 +102,44 @@ object CertEncryption {
 
     /**
      * Encrypt [src] for [recipients] into [out]. [currentPassword] opens a password-protected source (its
-     * password security is replaced). [keyLength] 256 = AES-256 (default), 128 = AES-128.
+     * password security is replaced). [keyLength] 256 = AES-256 (default), 128 = AES-128. [encryptMetadata] false
+     * leaves the XMP metadata in clear ([PubSecMetaHandler]). [unlock]: the source is itself certificate encrypted
+     * and is opened with this digital ID first ("change settings": new recipient list, written to a new file).
      */
-    suspend fun encrypt(src: File, out: File, recipients: List<Recipient>, keyLength: Int = 256, currentPassword: String? = null) = withContext(Dispatchers.IO) {
+    suspend fun encrypt(src: File, out: File, recipients: List<Recipient>, keyLength: Int = 256, currentPassword: String? = null,
+                        encryptMetadata: Boolean = true, unlock: DigitalSignature.Identity? = null) = withContext(Dispatchers.IO) {
         require(recipients.isNotEmpty()) { "no recipients" }
         DigitalSignature.ensureProvider()
-        PdfOps.load(src, currentPassword).use { doc ->
-            val policy = PublicKeyProtectionPolicy()
-            recipients.forEach { r ->
-                policy.addRecipient(PublicKeyRecipient().apply { x509 = r.certificate; permission = r.perms.toAccessPermission() })
+        val write: (PDDocument) -> Unit = { doc ->
+            if (encryptMetadata) {
+                val policy = PublicKeyProtectionPolicy()
+                recipients.forEach { r ->
+                    policy.addRecipient(PublicKeyRecipient().apply { x509 = r.certificate; permission = r.perms.toAccessPermission() })
+                }
+                policy.encryptionKeyLength = keyLength
+                doc.protect(policy)
+            } else {
+                PubSecCrypto.register()
+                doc.protect(PubSecMetaPolicy(recipients.map { it.certificate to it.perms.toAccessPermission() }, keyLength))
             }
-            policy.encryptionKeyLength = keyLength
-            doc.protect(policy)
             val tmp = File(out.parentFile, ".${out.name}.${System.nanoTime()}.tmp")
             try { doc.save(tmp); if (!tmp.renameTo(out)) { tmp.copyTo(out, true); tmp.delete() } } finally { if (tmp.exists()) tmp.delete() }
         }
+        if (unlock != null) PubSecCrypto.withDocument(src, unlock, write) else PdfOps.load(src, currentPassword).use(write)
+    }
+
+    /** Remove certificate protection with a digital ID (file or KeyChain): an unprotected copy in [out]. */
+    suspend fun decryptToFile(src: File, out: File, identity: DigitalSignature.Identity) = withContext(Dispatchers.IO) {
+        PubSecCrypto.withDocument(src, identity) { doc ->
+            doc.isAllSecurityToBeRemoved = true
+            val tmp = File(out.parentFile, ".${out.name}.${System.nanoTime()}.tmp")
+            try { doc.save(tmp); if (!tmp.renameTo(out)) { tmp.copyTo(out, true); tmp.delete() } } finally { if (tmp.exists()) tmp.delete() }
+        }
+    }
+
+    /** Permissions [identity] has in a certificate-encrypted [file] (throws when it is not a recipient). */
+    suspend fun permissionsFor(file: File, identity: DigitalSignature.Identity): AccessPermission = withContext(Dispatchers.IO) {
+        PubSecCrypto.withDocument(file, identity) { it.currentAccessPermission }
     }
 
     /** First alias of [p12] that holds a private key (PdfBox needs the alias when the keystore has several entries). */

@@ -1,5 +1,6 @@
 package com.smartdocs.editor.ui.reader
 
+import com.smartdocs.editor.ui.signature.SigFieldSheet
 import android.Manifest
 import android.net.Uri
 import android.os.Build
@@ -77,6 +78,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
     var menu by remember { mutableStateOf(false) }
     var showHistory by remember { mutableStateOf(false) }           // MODULE_history: unified undo / redo sheet
     val tts by ReadAloudController.status.collectAsState()
+    SideEffect { com.smartdocs.editor.core.voice.AiVoiceEngine.aiSwitchOn = settings.aiEnabled }   // ai6: AI switch off -> no AI voice in read aloud
     val tablet = LocalConfiguration.current.screenWidthDp > 700
 
     // ---- platform glue ----
@@ -90,7 +92,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
     DisposableEffect(lifecycleOwner, settings.autoSave) {
         val obs = LifecycleEventObserver { _, e ->
             if (e == Lifecycle.Event.ON_PAUSE && settings.autoSave && state.dirty) state.saveInBackground()
-            if (e == Lifecycle.Event.ON_RESUME) state.reloadIfChanged()
+            if (e == Lifecycle.Event.ON_RESUME) { state.reloadIfChanged(); state.guard.publish() }   // nitro-protect2: this document's link / launch decisions
         }
         lifecycleOwner.lifecycle.addObserver(obs); onDispose { lifecycleOwner.lifecycle.removeObserver(obs) }
     }
@@ -102,7 +104,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
         if (r !is com.smartdocs.editor.core.files.DocumentRepository.WriteBack.Done && r !is com.smartdocs.editor.core.files.DocumentRepository.WriteBack.NotNeeded) state.file?.let { writeBack(it) }
     }
     LaunchedEffect(state.error) { state.error?.let { snack.showSnackbar(it); state.error = null } }
-    com.smartdocs.editor.ui.cloud.CollabLiveHost(state.file, snack) { op -> state.applyInPlace(state.password, label = { ctx.getString(R.string.hi_collab) }, op = op) }   // share6: live review comments
+    com.smartdocs.editor.ui.cloud.CollabLiveHost(state.file, snack) { op -> state.applyInPlace(state.password, label = { ctx.getString(R.string.hi_collab) }, action = com.smartdocs.editor.core.security.DocAction.ANNOTATE, op = op) }   // share6: live review comments
     HistorySnackbar(state, snack)                                                                                   // MODULE_history
     state.file?.let { com.smartdocs.editor.ui.share5.ReturnedCommentsHost(it, nav) }                               // share6: returned e-mail-review comments
     val connUri = state.file?.let { android.net.Uri.fromFile(it).toString() }
@@ -142,7 +144,12 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
     }
     fun doStartReadAloud(fromChar: Int, page: Int) {
         if (state.pageCount == 0 || state.session == null) return
-        ReadAloudController.start(ctx, state.file?.name ?: "", page.coerceIn(0, state.pageCount - 1), state.pageCount, settings.ttsRate, settings.ttsPitch, { state.pageText(it) }, fromChar)
+        // ai6 (C1): column-aware reading order + form fields; "read from here" offsets mapped into that order
+        val p0 = page.coerceIn(0, state.pageCount - 1)
+        scope.launch {
+            val from = ReaderAi6.toReadingOffset(state, p0, fromChar)
+            ReadAloudController.start(ctx, state.file?.name ?: "", p0, state.pageCount, settings.ttsRate, settings.ttsPitch, { ReaderAi6.readingText(state, it) }, from)
+        }
     }
     // API 33+: ask for POST_NOTIFICATIONS first, start reading once the user answered (granted or not —
     // the foreground service is allowed either way, only the notification would be hidden).
@@ -173,13 +180,17 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
             viewModeSheet = { showViewMode = true }, pageColor = { showPageColor = true }, autoFlip = { showAutoFlip = true }, goToPage = { showGoTo = true },
             panels = { panel = it }, docInfo = { panel = ReaderPanel.INFO }, search = { state.searchOpen = !state.searchOpen; if (!state.searchOpen) state.closeSearch() },
             readAloud = { if (ReadAloudController.isActive) ReadAloudController.stop() else startReadAloud() },
-            share = { showShare5 = true },   // share6: Share5Sheet
+            // nitro-protect2: a restricted document is shared as it is (the share sheet's copies would drop its protection)
+            share = { if (state.guard.allows(com.smartdocs.editor.core.security.DocAction.SAVE_UNPROTECTED)) showShare5 = true else state.file?.let { f -> runCatching { ctx.startActivity(android.content.Intent.createChooser(app.documents.shareIntent(listOf(f), "application/pdf"), null)) } } },
             print = { com.smartdocs.editor.ui.view5.V5State.of(state).open(com.smartdocs.editor.ui.view5.V5Surface.PRINT) },
             save = { scope.launch { if (state.save()) snack.showSnackbar(ctx.getString(R.string.saved_to, state.file?.name ?: "")) } },
             saveAs = { saveAs.launch(state.file?.name ?: "document.pdf") },
             pickImage = { pickImage() }, pickStamp = { showStamps = true },
             pickSignature = { path -> scope.launch { ReaderIntents.decode(File(path))?.let { state.pendingImage = it; state.tool = ReaderTool.SIGNATURE; state.pendingText = path; state.selection = null } } },
             navigateTool = { id ->
+                // nitro-protect2: what the tool needs from the document (restrictions / Protected View)
+                val need = com.smartdocs.editor.core.security.ReaderRestrictions.actionForTool(id)
+                if (need != null && !state.guard.check(need)) { } else
                 if (id == "content_edit") { state.selectTool(null); contentEdit = true } else {
                 val go = {
                     when (id) {
@@ -195,7 +206,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                 if (state.dirty) saveThen(go) else go()      // tools read the file: pending edits go in first
                 }
             },
-            ai = { aiText = null; showAi = true },
+            ai = { if (state.guard.check(com.smartdocs.editor.core.security.DocAction.COPY)) { aiText = null; showAi = true } },
             quick = { qa ->
                 quick.open(qa,
                     onShare = { showShare5 = true },   // share6: Share5Sheet
@@ -255,6 +266,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                         else { state.tab = t; state.selectTool(null); state.selection = null }
                     }
                     state.connected?.let { com.smartdocs.editor.ui.connected.ConnectedBanner(it, nav, connUri) }   // share6: above the pages
+                    if (state.session != null) ReaderSecurityBanners(state)   // nitro-protect2: Protected View, action inspector, restrictions
                 }
             },
             bottomBar = {
@@ -262,11 +274,13 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                     if (tts.state != ReadAloudController.State.IDLE) TtsBar(tts) { r -> ReadAloudController.setRate(r); scope.launch { app.settings.update { it.copy(ttsRate = r) } } }
                     state.selection?.let { sel ->
                         SelectionMenu(sel, state,
-                            onCopy = { ReaderIntents.copy(ctx, it); state.selection = null; scope.launch { snack.showSnackbar(ctx.getString(R.string.copy_text)) } },
-                            onTranslate = { textTools = sel to com.smartdocs.editor.core.ai5.TextAction.TRANSLATE }, onAskAi = { textTools = sel to com.smartdocs.editor.core.ai5.TextAction.EXPLAIN },
+                            // nitro-protect2: copying / sending the text out follows the document's copy permission
+                            onCopy = { if (state.guard.check(com.smartdocs.editor.core.security.DocAction.COPY)) { ReaderIntents.copy(ctx, it); state.selection = null; scope.launch { snack.showSnackbar(ctx.getString(R.string.copy_text)) } } },
+                            onTranslate = { if (state.guard.check(com.smartdocs.editor.core.security.DocAction.COPY)) textTools = sel to com.smartdocs.editor.core.ai5.TextAction.TRANSLATE }, onAskAi = { if (state.guard.check(com.smartdocs.editor.core.security.DocAction.COPY)) textTools = sel to com.smartdocs.editor.core.ai5.TextAction.EXPLAIN },
                             onReadFrom = { s -> startReadAloud(s.start, s.page); state.selection = null },
-                            onWebSearch = { ReaderIntents.webSearch(ctx, it) }, onShare = { ReaderIntents.shareText(ctx, it) },
-                            onRedact = { s -> com.smartdocs.editor.ui.search.ReaderRedact.markSelection(ctx, state, quick, s) })   // MODULE_search5b
+                            onWebSearch = { if (state.guard.check(com.smartdocs.editor.core.security.DocAction.COPY)) ReaderIntents.webSearch(ctx, it) }, onShare = { if (state.guard.check(com.smartdocs.editor.core.security.DocAction.COPY)) ReaderIntents.shareText(ctx, it) },
+                            onRedact = { s -> com.smartdocs.editor.ui.search.ReaderRedact.markSelection(ctx, state, quick, s) },   // MODULE_search5b
+                            onRewrite = { s -> if (state.guard.check(com.smartdocs.editor.core.security.DocAction.COPY)) textTools = s to com.smartdocs.editor.core.ai5.TextAction.REWRITE })   // ai6 (B11)
                     }
                     if (state.session != null) BottomToolbar(state, actions)
                 }
@@ -319,8 +333,12 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                 onOpenPdf = { f -> panel = null; nav.navigate(Routes.reader(android.net.Uri.fromFile(f).toString())) })
         } }
         com.smartdocs.editor.ui.forms5.InPageFormBar(state, Modifier.align(Alignment.BottomCenter))   // MODULE_forms5
+<<<<<<< HEAD
         com.smartdocs.editor.ui.signature.SigFieldSheet(state, nav)   // Nitro signature-field actions
         com.smartdocs.editor.ui.attachments.PortfolioPrompt(state) { nav.navigate(Routes.tool("portfolio", state.fileUri)) }   // nav-attach: portfolio detection
+=======
+        SigFieldSheet(state, nav)   // Nitro signature-field actions + signed/certified bar
+>>>>>>> origin/main
     }
 
     // ---- dialogs & sheets ----
@@ -363,11 +381,12 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
         )
     }
     if (showAi) state.file?.let { f -> com.smartdocs.editor.ui.ai5.DocAssistantSheet(agentHost, f, state.password, state.pageCount, { state.pageText(it) },
-        onCitation = { c -> showAi = false; if (c.filePath == f.absolutePath) state.jumpTo(c.page) else nav.navigate(com.smartdocs.editor.ui.ai5.citationRoute(c)) },
+        onCitation = { c -> showAi = false; if (c.filePath == f.absolutePath) ReaderAi6.highlightQuote(scope, state, c.page, c.quote) else nav.navigate(com.smartdocs.editor.ui.ai5.citationRoute(c)) },   // ai6 (B1): highlight the passage
         onDismiss = { showAi = false },
         initialQuestion = aiText?.let { "اشرح هذا النص:\n$it" },
-        onPodcast = { showAi = false; nav.navigate(Routes.tool("podcast", state.fileUri)) }) }
-    textTools?.let { (sel, act) -> com.smartdocs.editor.ui.ai5.TextToolsSheet(sel.text, act, docContext = null, onReplace = null,
+        onPodcast = { showAi = false; nav.navigate(Routes.tool("podcast", state.fileUri)) }, currentPage = state.currentPage) }   // ai6: snapshot page
+    textTools?.let { (sel, act) -> com.smartdocs.editor.ui.ai5.TextToolsSheet(sel.text, act, docContext = null,
+        onReplace = if (sel.rects.isNotEmpty() && state.session != null) ({ t: String -> ReaderAi6.replaceSelection(ctx, state, quick, sel, t) }) else null,   // ai6 (B11): replace in the document, undoable
         onAddNote = { t -> sel.rects.firstOrNull()?.let { r -> val top = maxOf(r.top, r.bottom)
             state.addAnnot(com.smartdocs.editor.core.pdf.Annot(kind = com.smartdocs.editor.core.pdf.AnnotKind.NOTE, page = sel.page,
                 rects = listOf(android.graphics.RectF(r.left, top, r.left + 20f, top - 20f)), text = t, author = state.authorName)) } },
@@ -382,6 +401,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
     if (showShare5) { var f by remember { mutableStateOf<java.io.File?>(null) }; LaunchedEffect(Unit) { f = outputFile() }
         f?.let { com.smartdocs.editor.ui.share5.Share5Sheet(it, if (it == state.file) state.password else null, state.currentPage, nav) { showShare5 = false } } }
     com.smartdocs.editor.ui.view5.View5ReaderHost(state, nav, snack, actions) { outputFile() }
+    ReaderAi6.ReadAloudHighlight(state)   // ai6 (C1): sentence highlight while reading aloud
 }
 
 /** Suffix of the token path handed to the AI chat for its undo (see agentHost). */
@@ -393,7 +413,7 @@ private fun ToolHint(tool: ReaderTool, modifier: Modifier = Modifier) {
     val text = stringResource(
         when (tool) {
             ReaderTool.HIGHLIGHT, ReaderTool.UNDERLINE, ReaderTool.STRIKEOUT, ReaderTool.SQUIGGLY -> R.string.rd_hint_markup
-            ReaderTool.INK, ReaderTool.LINE, ReaderTool.ARROW, ReaderTool.RECT, ReaderTool.OVAL -> R.string.rd_hint_draw
+            ReaderTool.INK, ReaderTool.LINE, ReaderTool.ARROW, ReaderTool.RECT, ReaderTool.OVAL, ReaderTool.FS_RRECT -> R.string.rd_hint_draw
             ReaderTool.ERASER -> R.string.rd_hint_eraser
             ReaderTool.MEASURE -> R.string.rd_hint_measure
             ReaderTool.LINK -> R.string.rd_hint_link

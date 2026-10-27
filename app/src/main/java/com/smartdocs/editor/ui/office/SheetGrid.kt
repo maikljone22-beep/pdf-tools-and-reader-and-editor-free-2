@@ -114,6 +114,14 @@ fun SheetGrid(s: SheetState, modifier: Modifier = Modifier) {
     val handleR = 9f * density
 
     fun clampScroll() { s.scrollX = s.scrollX.coerceIn(0f, geoNow.colX(MAX_COLS - 1)); s.scrollY = s.scrollY.coerceIn(0f, geoNow.rowY(MAX_ROWS - 1)) }
+    // office6: find moves the view to the found cell
+    LaunchedEffect(s.reveal) {
+        val (rr, cc) = s.reveal ?: return@LaunchedEffect
+        s.reveal = null
+        s.scrollX = (geoNow.colX(cc) - size.width / 3f).coerceAtLeast(0f)
+        s.scrollY = (geoNow.rowY(rr) - size.height / 3f).coerceAtLeast(0f)
+        clampScroll()
+    }
 
     Canvas(
         modifier.fillMaxSize()

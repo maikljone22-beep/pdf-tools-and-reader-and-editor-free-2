@@ -107,6 +107,7 @@ class AnnotEditor(private val s: ReaderState) {
 
     /** Apply [change] to the selection, converting a stored annotation into a pending one first. */
     fun edit(change: (Annot) -> Annot) {
+        if (!s.guard.check(com.smartdocs.editor.core.security.DocAction.ANNOTATE)) return      // nitro-protect2: restrictions / Protected View
         when (val t = target) {
             is AnnotTarget.Pending -> s.annots.firstOrNull { it.id == t.id }?.let { s.replaceAnnot(change(it)) }
             is AnnotTarget.Stored -> {
@@ -167,6 +168,7 @@ class AnnotEditor(private val s: ReaderState) {
     fun setThickness(w: Float) = edit { it.copy(strokeWidth = w.coerceIn(0.5f, 40f)) }
     fun setText(text: String) = edit { a ->
         if (a.kind != AnnotKind.FREETEXT && a.kind != AnnotKind.STAMP_TEXT) return@edit a.copy(text = text)
+        if (a.comb > 0) return@edit a.copy(text = text)      // comb: fixed cells, extra characters are not shown
         // free text: grow the box so every line stays visible
         val r = PageGeometry.normPdf(a.rects.firstOrNull() ?: return@edit a.copy(text = text))
         val lines = text.split('\n')
@@ -179,6 +181,7 @@ class AnnotEditor(private val s: ReaderState) {
     }
 
     fun delete() {
+        if (!s.guard.check(com.smartdocs.editor.core.security.DocAction.ANNOTATE)) return
         when (val t = target) {
             is AnnotTarget.Pending -> { s.removeAnnot(t.id); clear() }
             is AnnotTarget.Stored -> s.scope.launch { s.deleteExisting(t.e); clear() }

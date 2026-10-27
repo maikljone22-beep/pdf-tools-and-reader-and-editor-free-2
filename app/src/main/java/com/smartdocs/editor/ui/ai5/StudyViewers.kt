@@ -47,6 +47,7 @@ fun CreationViewer(c: Creation, filePath: String, onPage: (String, Int) -> Unit,
             Column {
                 TopAppBar(title = { Text(studyLabel(c.kind)) }, navigationIcon = { IconButton(onClick = onDismiss) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.a5_close)) } },
                     actions = {
+                        if (c.kind == StudyKind.FLASHCARDS) com.smartdocs.editor.ui.ai6.AnkiExportButton(c)   // ai6 (AI-19)
                         if (c.kind != StudyKind.MINDMAP) {
                             IconButton(onClick = { onShare(text) }) { Icon(Icons.Default.Share, stringResource(R.string.a5_share)) }
                             IconButton(onClick = { onExportPdf(text) }) { Icon(Icons.Default.Description, stringResource(R.string.a5_export_pdf)) }

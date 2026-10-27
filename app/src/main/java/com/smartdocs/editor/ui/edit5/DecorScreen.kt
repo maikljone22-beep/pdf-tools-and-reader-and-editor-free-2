@@ -23,6 +23,7 @@ import com.smartdocs.editor.core.edit5.DecorSource
 import com.smartdocs.editor.core.edit5.DecorSpec
 import com.smartdocs.editor.core.edit5.DecorType
 import com.smartdocs.editor.core.edit5.LiveWmScript
+import com.smartdocs.editor.core.edit5.SecurityWatermarkSet
 import com.smartdocs.editor.core.edit5.TokenContext
 import com.smartdocs.editor.core.edit5.Tokens
 import com.smartdocs.editor.core.edit5.WatermarkOps
@@ -55,7 +56,11 @@ fun DecorScreen(nav: NavHostController, uri: String?, type: DecorType) {
         })
     }
     var existing by remember { mutableStateOf(false) }
+    // nitro-protect2: further security watermarks of the same profile (applied after [spec], on top of it)
+    var layers by remember(type) { mutableStateOf(listOf<DecorSpec>()) }
     var page by remember { mutableIntStateOf(0) }
+    val batch = remember { com.smartdocs.editor.ui.tools5.OptimizeBatch().apply { suffix = "_" + spec.kind } }
+    var logFile by remember { mutableStateOf<java.io.File?>(null) }
     val pickImage = rememberImagePicker(multiple = false) { it.firstOrNull()?.let { f -> spec = spec.copy(source = DecorSource.IMAGE, imagePath = f.absolutePath) } }
     val pickPdf = rememberPdfPicker { it.firstOrNull()?.let { f -> spec = spec.copy(source = DecorSource.PDF, pdfPath = f.absolutePath) } }
     val processing = stringResource(R.string.processing)
@@ -68,7 +73,14 @@ fun DecorScreen(nav: NavHostController, uri: String?, type: DecorType) {
     ToolScaffold(title, nav, runner) {
         E5FileRow(doc)
         if (type == DecorType.SECURITY) Text(stringResource(R.string.e5_sec_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        E5ProfileBar(spec.kind, current = { spec.toJson() }, onLoad = { j -> DecorSpec.fromJson(j)?.let { spec = it.copy(type = type, user = spec.user) } }, onMessage = { runner.error = it })
+        if (type == DecorType.SECURITY) {
+            // a security-watermark profile holds one or more watermarks (SecurityWatermarkSet)
+            E5ProfileBar(spec.kind, current = { SecurityWatermarkSet.encode(listOf(spec) + layers) }, onLoad = { j ->
+                val l = SecurityWatermarkSet.decode(j)
+                if (l.isNotEmpty()) { val u = spec.user; spec = l[0].copy(user = u); layers = l.drop(1).map { it.copy(user = u) } }
+            }, onMessage = { runner.error = it })
+            SecurityLayers(spec, layers, onChange = { layers = it }, onEdit = { i -> val cur = spec; spec = layers[i]; layers = layers.toMutableList().also { it[i] = cur } })
+        } else E5ProfileBar(spec.kind, current = { spec.toJson() }, onLoad = { j -> DecorSpec.fromJson(j)?.let { spec = it.copy(type = type, user = spec.user) } }, onMessage = { runner.error = it })
         E5TwoPane(options = {
             E5Section(stringResource(R.string.e5_source)) {
                 val sources = if (type == DecorType.SECURITY) listOf(DecorSource.TEXT) else DecorSource.values().toList()
@@ -216,14 +228,72 @@ fun DecorScreen(nav: NavHostController, uri: String?, type: DecorType) {
                 }
             }, enabled = doc.work != null, modifier = Modifier.weight(1f)) { Icon(Icons.Default.DeleteSweep, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.e5_remove)) }
         }
+        // Foxit: the same watermark / background on more files, and Remove All over them, each with a log file
+        com.smartdocs.editor.ui.tools5.OptimizeBatchSection(batch, stringResource(R.string.nt_decor_batch, batch.files.size), stringResource(R.string.nt_decor_batch_help))
+        if (batch.files.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = {
+                val sp = spec; val files = batch.files; val title = ctx.getString(R.string.nt_decor_batch_apply)
+                runner.runMany(processing) {
+                    val (outs, log) = com.smartdocs.editor.ui.tools5.runBatchWithLog(ctx, app.documents.docsDir, { d, b, e -> app.documents.uniqueFile(d, b, e) }, files, batch, title) { s, o ->
+                        WatermarkOps.apply(ctx, s, o, null, sp, replace = true, fileName = s.name); ""
+                    }
+                    logFile = log; outs
+                }
+            }, modifier = Modifier.weight(1f)) { Icon(Icons.Default.LibraryAdd, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.nt_decor_batch_apply)) }
+            OutlinedButton(onClick = {
+                val files = batch.files; val title = ctx.getString(R.string.nt_batch_remove_all)
+                runner.runMany(processing) {
+                    val (outs, log) = com.smartdocs.editor.ui.tools5.runBatchWithLog(ctx, app.documents.docsDir, { d, b, e -> app.documents.uniqueFile(d, b, e) }, files,
+                        com.smartdocs.editor.ui.tools5.OptimizeBatch().apply { suffix = "_clean"; folder = batch.folder; replaceSameName = batch.replaceSameName }, title) { s, o ->
+                        "${WatermarkOps.remove(s, o, null, type, others = true)} p."
+                    }
+                    logFile = log; outs
+                }
+            }, modifier = Modifier.weight(1f)) { Icon(Icons.Default.LayersClear, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.nt_batch_remove_all)) }
+        }
+        if (runner.results.isNotEmpty()) com.smartdocs.editor.ui.tools.ResultsList(runner.results, nav, "application/pdf")
+        logFile?.let { Text(stringResource(R.string.nt_bates_log_saved, it.name), style = MaterialTheme.typography.bodySmall) }
         val ready = doc.work != null && when (spec.source) { DecorSource.TEXT -> spec.text.isNotBlank(); DecorSource.IMAGE -> spec.imagePath.isNotBlank(); DecorSource.COLOR -> true; DecorSource.PDF -> spec.pdfPath.isNotBlank() }
         PrimaryButton(stringResource(if (existing) R.string.e5_update else R.string.apply), enabled = ready, icon = Icons.Default.BrandingWatermark) {
             val sp = spec
+            val extra = if (type == DecorType.SECURITY) layers.map { it.copy(user = sp.user) } else emptyList()
             runner.run(processing) {
                 val name = doc.source?.name ?: "document.pdf"
-                doc.apply(app.documents.tempDir) { s, o, p -> WatermarkOps.apply(ctx, s, o, p, sp, replace = true, fileName = name) }
+                doc.apply(app.documents.tempDir) { s, o, p ->
+                    // the first watermark replaces earlier ones, the profile's further watermarks are added on top
+                    val all = listOf(sp) + extra
+                    var src = s
+                    all.forEachIndexed { i, one ->
+                        val dst = if (i == all.lastIndex) o else java.io.File(app.documents.tempDir, "e5_sec_${System.nanoTime()}_$i.pdf")
+                        WatermarkOps.apply(ctx, src, dst, p, one, replace = i == 0, fileName = name)
+                        if (src != s) src.delete()
+                        src = dst
+                    }
+                }
                 doc.export(app.documents.docsDir, { d, b -> app.documents.uniqueFile(d, b) }, sp.kind)
             }
+        }
+    }
+}
+
+/**
+ * The further security watermarks of the profile being edited: each can be edited (swapped with the one in the
+ * form) or removed; "add" keeps the current watermark in the list and starts the next one from a copy.
+ */
+@Composable
+private fun SecurityLayers(current: DecorSpec, layers: List<DecorSpec>, onChange: (List<DecorSpec>) -> Unit, onEdit: (Int) -> Unit) {
+    E5Section(stringResource(R.string.np2_wm_layers)) {
+        Text(stringResource(R.string.np2_wm_layers_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        layers.forEachIndexed { i, l ->
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.np2_wm_layer_n, i + 2, l.text.lineSequence().firstOrNull().orEmpty().take(40)), Modifier.weight(1f),
+                    style = MaterialTheme.typography.bodyMedium, maxLines = 1)
+                IconButton(onClick = { onEdit(i) }) { Icon(Icons.Default.Edit, stringResource(R.string.np2_wm_layer_edit)) }
+                IconButton(onClick = { onChange(layers.filterIndexed { j, _ -> j != i }) }) { Icon(Icons.Default.DeleteOutline, stringResource(R.string.delete)) }
+            }
+        }
+        OutlinedButton(onClick = { onChange(layers + current) }, Modifier.fillMaxWidth()) {
+            Icon(Icons.Default.Add, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.np2_wm_layer_add))
         }
     }
 }

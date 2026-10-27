@@ -204,7 +204,11 @@ private fun CertEncryptTab(fileState: MutableState<java.io.File?>, runner: com.s
     var aes256 by remember { mutableStateOf(true) }
     var localError by remember { mutableStateOf<String?>(null) }
     var pickContacts by remember { mutableStateOf(false) }
+    var noMeta by remember { mutableStateOf(false) }                       // nitro-protect2: "don't encrypt metadata"
+    val unlock = remember { com.smartdocs.editor.ui.security.IdUnlockState() }
     val pick = rememberPdfPicker { file = it.firstOrNull() }
+    // nitro-protect2: an already certificate-protected source is opened with the user's digital ID (change / remove)
+    val certSource = remember(file) { file?.let { CertEncryption.isCertificateEncrypted(it) } == true }
     val processing = stringResource(R.string.processing)
     val readFailed = stringResource(R.string.ps_cert_read_failed)
     val blocked = stringResource(R.string.ps_cert_blocked)
@@ -227,7 +231,15 @@ private fun CertEncryptTab(fileState: MutableState<java.io.File?>, runner: com.s
     val ownFile = remember { DigitalSignature.ownKeystoreFile(ctx) }
 
     FilePickRow(file, stringResource(R.string.tl_input_file), pick)
-    PasswordField(currentPwd, stringResource(R.string.ps_cert_current_password)) { currentPwd = it }
+    if (certSource) com.smartdocs.editor.ui.security.CertChangeSection(unlock, enabled = !runner.running) {
+        val src = file ?: return@CertChangeSection
+        runner.run(processing) {
+            val idn = unlock.identity(ctx)
+            val out = app.documents.uniqueFile(app.documents.docsDir, outName(src, "decrypted"))
+            try { CertEncryption.decryptToFile(src, out, idn) } catch (e: Exception) { out.delete(); throw e }
+            out
+        }
+    } else PasswordField(currentPwd, stringResource(R.string.ps_cert_current_password)) { currentPwd = it }
     FieldLabel(stringResource(R.string.ps_cert_recipients))
     if (recipients.isEmpty()) Text(stringResource(R.string.ps_cert_no_recipients), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     recipients.forEachIndexed { i, r -> RecipientRow(r, onPerms = { editing = i }, onRemove = { recipients.removeAt(i) }) }
@@ -248,14 +260,18 @@ private fun CertEncryptTab(fileState: MutableState<java.io.File?>, runner: com.s
     Text(stringResource(R.string.ps_cert_self_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     FieldLabel(stringResource(R.string.ps_cert_cipher))
     ChoiceChips(listOf(true, false), aes256, { if (it) "AES-256" else "AES-128" }) { aes256 = it }
+    SwitchRow(stringResource(R.string.np2_cert_no_meta), noMeta) { noMeta = it }
+    Text(stringResource(R.string.np2_cert_no_meta_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     localError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-    PrimaryButton(stringResource(R.string.ps_cert_encrypt), enabled = file != null && recipients.isNotEmpty(), icon = Icons.Default.EnhancedEncryption) {
+    PrimaryButton(stringResource(if (certSource) R.string.np2_cert_change else R.string.ps_cert_encrypt), enabled = file != null && recipients.isNotEmpty() && (!certSource || unlock.ready), icon = Icons.Default.EnhancedEncryption) {
         val src = file ?: return@PrimaryButton
         if (recipients.any { r -> CertEncryption.issues(r.certificate).any { CertEncryption.isBlocking(it) } }) { runner.error = blocked; return@PrimaryButton }
         val list = recipients.toList(); val pw = currentPwd.ifBlank { null }; val bits = if (aes256) 256 else 128
+        val meta = !noMeta; val change = certSource
         runner.run(processing) {
+            val idn = if (change) unlock.identity(ctx) else null
             val out = app.documents.uniqueFile(app.documents.docsDir, outName(src, "cert"))
-            CertEncryption.encrypt(src, out, list, bits, pw)
+            CertEncryption.encrypt(src, out, list, bits, if (change) null else pw, encryptMetadata = meta, unlock = idn)
             out
         }
     }

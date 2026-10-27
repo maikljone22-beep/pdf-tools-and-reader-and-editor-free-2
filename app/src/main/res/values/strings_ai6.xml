@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ai6 core: media routes (vision, images, transcription, embeddings, web search, usage) -->
+    <string name="ai6_not_configured">هذه الميزة غير مُعدّة: الخادم الوسيط لا يملك مفتاحها، أو عنوانه غير موجود في هذه النسخة. أضف مفتاحك الخاص في إعدادات المساعد، أو راجع ملف README في ai-proxy.</string>
+    <string name="ai6_usage_title">استخدام المساعد اليوم</string>
+    <string name="ai6_usage_chat">المحادثة: %1$d من %2$d</string>
+    <string name="ai6_usage_tts">الكلام: %1$d من %2$d</string>
+    <string name="ai6_usage_images">الصور: %1$d من %2$d</string>
+    <string name="ai6_usage_local">عدّاد محلي على هذا الجهاز (الخادم لا يرسل الاستخدام)</string>
+    <string name="ai6_usage_server">حسب عدّاد الخادم</string>
+    <string name="ai6_usage_unlimited">مفتاحك الخاص: بلا حد يومي من التطبيق</string>
+    <string name="ai6_off">المساعد الذكي متوقف من الإعدادات</string>
+</resources>

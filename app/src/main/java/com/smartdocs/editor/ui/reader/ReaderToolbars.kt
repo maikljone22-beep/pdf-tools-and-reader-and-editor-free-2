@@ -198,6 +198,10 @@ private fun FillSignToolbar(state: ReaderState) {
         ToolChip(Icons.Default.Close, stringResource(R.string.fill_sign_cross), selected = state.tool == ReaderTool.FS_CROSS) { state.selectTool(ReaderTool.FS_CROSS) }
         ToolChip(Icons.Default.FiberManualRecord, stringResource(R.string.fill_sign_dot), selected = state.tool == ReaderTool.FS_DOT) { state.selectTool(ReaderTool.FS_DOT) }
         ToolChip(Icons.Default.HorizontalRule, stringResource(R.string.fill_sign_line), selected = state.tool == ReaderTool.FS_LINE) { state.selectTool(ReaderTool.FS_LINE) }
+        // nitro-fillsign2: rounded rectangle (drag) and comb text for boxed forms (tap)
+        ToolChip(Icons.Default.CropDin, stringResource(R.string.nf2_rounded_rect), selected = state.tool == ReaderTool.FS_RRECT) { state.selectTool(ReaderTool.FS_RRECT) }
+        ToolChip(Icons.Default.Pin, stringResource(R.string.nf2_comb), selected = state.tool == ReaderTool.FS_COMB) { state.selectTool(ReaderTool.FS_COMB) }
+        PasteStampChip(state)      // nitro-fillsign2: a copied signature / stamp
         ToolChip(Icons.Default.Today, stringResource(R.string.fill_sign_date), selected = state.tool == ReaderTool.FS_DATE) {
             state.selectTool(ReaderTool.FS_DATE)
             if (state.tool == ReaderTool.FS_DATE) state.pendingText = java.text.SimpleDateFormat("yyyy/MM/dd", java.util.Locale.US).format(java.util.Date())
@@ -224,7 +228,9 @@ private fun SignToolbar(state: ReaderState, a: ReaderActions) {
     val gate = com.smartdocs.editor.ui.signature.rememberSignatureGate()
     val meta by remember { com.smartdocs.editor.core.data.SignatureMetaStore.flow(app) }.collectAsState()
     val recent = com.smartdocs.editor.core.data.SignatureMetaStore.recent(meta, sigs.map { it.path }, max = 3)
-    val ordered = recent.mapNotNull { p -> sigs.firstOrNull { it.path == p } } + sigs.filter { it.path !in recent }
+    // nitro-fillsign2: the rest follows the palette order of Manage Signatures (move up / down)
+    val palette = com.smartdocs.editor.core.data.SignatureMetaStore.ordered(meta, sigs.map { it.path }).mapNotNull { p -> sigs.firstOrNull { it.path == p } }
+    val ordered = recent.mapNotNull { p -> sigs.firstOrNull { it.path == p } } + palette.filter { it.path !in recent }
     ToolRow {
         if (placing) {
             FilledTonalButton(onClick = { state.confirmPlacement() }) { Icon(Icons.Default.Check, null); Spacer(Modifier.width(4.dp)); Text(stringResource(R.string.done)) }
@@ -233,6 +239,7 @@ private fun SignToolbar(state: ReaderState, a: ReaderActions) {
         }
         ToolChip(Icons.Default.Add, stringResource(R.string.sig_create)) { a.navigateTool("signatures") }
         ToolChip(Icons.Default.VerifiedUser, stringResource(R.string.sig_digital)) { a.navigateTool("digital_sign") }
+        FillSign2SignChips(state, sigs)      // nitro-fillsign2: paste, Apply All Signatures, paging seal
         VerticalDivider(Modifier.height(36.dp).padding(horizontal = 4.dp))
         if (sigs.isEmpty()) Text(stringResource(R.string.rd_no_signatures), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 8.dp))
         if (recent.isNotEmpty()) Text(stringResource(R.string.nq_recent), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(horizontal = 4.dp))
@@ -337,9 +344,9 @@ fun PropertyBar(state: ReaderState) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(hex, { v -> hex = v.take(7); v.removePrefix("#").toIntOrNull(16)?.let { if (v.removePrefix("#").length == 6) state.color = it } },
                     label = { Text(stringResource(R.string.rd_custom_color)) }, placeholder = { Text("#FF5722") }, singleLine = true, modifier = Modifier.width(140.dp))
-                val thick = t == ReaderTool.INK || t == ReaderTool.LINE || t == ReaderTool.ARROW || t == ReaderTool.RECT || t == ReaderTool.OVAL || t == ReaderTool.ERASER || t == null
+                val thick = t == ReaderTool.INK || t == ReaderTool.LINE || t == ReaderTool.ARROW || t == ReaderTool.RECT || t == ReaderTool.OVAL || t == ReaderTool.ERASER || t == null || t == ReaderTool.FS_RRECT
                 val fontT = t == ReaderTool.FREETEXT || t == ReaderTool.TEXTBOX || t == ReaderTool.FS_TEXT || t == ReaderTool.FS_PROFILE || t == ReaderTool.FS_DATE || t == ReaderTool.NOTE
-                        || t == ReaderTool.FS_CHECK || t == ReaderTool.FS_CROSS || t == ReaderTool.FS_DOT || t == ReaderTool.FS_LINE
+                        || t == ReaderTool.FS_CHECK || t == ReaderTool.FS_CROSS || t == ReaderTool.FS_DOT || t == ReaderTool.FS_LINE || t == ReaderTool.FS_COMB
                 Column(Modifier.weight(1f)) {
                     if (thick) {
                         Text("${stringResource(R.string.prop_thickness)}: ${"%.1f".format(state.thickness)}", style = MaterialTheme.typography.labelSmall)

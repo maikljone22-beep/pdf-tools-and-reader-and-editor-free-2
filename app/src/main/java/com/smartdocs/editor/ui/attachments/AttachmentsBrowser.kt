@@ -31,7 +31,6 @@ import com.smartdocs.editor.R
 import com.smartdocs.editor.core.files.DocumentRepository
 import com.smartdocs.editor.core.pdf.Attachment
 import com.smartdocs.editor.core.pdf.AttachmentOps
-import com.smartdocs.editor.core.pdf.AttachmentPolicy
 import com.smartdocs.editor.core.pdf.SignedDocumentException
 import com.smartdocs.editor.core.util.PdfPrint
 import kotlinx.coroutines.Dispatchers
@@ -53,7 +52,7 @@ private const val MAX_FOLDER_FILES = 200
  * Attachments of one document (reader panel and the Attachments tool): list / detail / tile views, open in the
  * app that handles the type (ACTION_VIEW through the FileProvider, PDFs in our reader), save, share, print (PDF),
  * edit the description, properties (with created / modified dates), delete one, add files or a whole folder, and
- * the per-type attachment security rules. [items] null = loading. [source] gives the current file and password.
+ * the attachment security of the protect settings ([DocSecurityGate.confirmAttachment]). [items] null = loading. [source] gives the current file and password.
  */
 @Composable
 fun AttachmentsBrowser(
@@ -73,8 +72,6 @@ fun AttachmentsBrowser(
     var describe by remember { mutableStateOf<Attachment?>(null) }
     var props by remember { mutableStateOf<Attachment?>(null) }
     var confirmDelete by remember { mutableStateOf<Attachment?>(null) }
-    var ask by remember { mutableStateOf<Pair<Attachment, AttachmentPolicy.Decision>?>(null) }
-    var security by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var pendingSave by remember { mutableStateOf<Attachment?>(null) }
 
@@ -101,12 +98,12 @@ fun AttachmentsBrowser(
     }
 
     fun mimeOf(a: Attachment): String = a.mime.takeIf { it.contains('/') && it != "application/octet-stream" }
-        ?: MimeTypeMap.getSingleton().getMimeTypeFromExtension(AttachmentPolicy.extOf(a.name)) ?: "*/*"
+        ?: MimeTypeMap.getSingleton().getMimeTypeFromExtension(extOf(a.name)) ?: "*/*"
 
     fun openNow(a: Attachment) {
         scope.launch {
             val x = extractTemp(a) ?: return@launch
-            if (AttachmentPolicy.extOf(a.name) == "pdf" && onOpenPdf != null) { onOpenPdf(x); return@launch }
+            if (extOf(a.name) == "pdf" && onOpenPdf != null) { onOpenPdf(x); return@launch }
             val i = Intent(Intent.ACTION_VIEW).setDataAndType(app.documents.shareUri(x), mimeOf(a))
                 .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
             runCatching { ctx.startActivity(i) }.onFailure {
@@ -118,13 +115,13 @@ fun AttachmentsBrowser(
         }
     }
 
-    fun open(a: Attachment) {
-        when (val d = AttachmentPolicy.decide(ctx, a.name)) {
-            AttachmentPolicy.Decision.OPEN_HERE, AttachmentPolicy.Decision.OPEN -> openNow(a)
-            AttachmentPolicy.Decision.BLOCK -> toast(ctx.getString(R.string.nat_blocked_type, AttachmentPolicy.extOf(a.name).ifEmpty { "?" }))
-            else -> ask = a to d
-        }
+    /** Opening / sharing with another app goes through the attachment security rules (Settings → Trust Manager); PDFs open here. */
+    fun gated(a: Attachment, block: () -> Unit) {
+        if (extOf(a.name) == "pdf" && onOpenPdf != null) { block(); return }
+        scope.launch { if (com.smartdocs.editor.ui.security.DocSecurityGate.confirmAttachment(ctx, a.name)) block() }
     }
+
+    fun open(a: Attachment) = gated(a) { openNow(a) }
 
     fun saveToDocuments(a: Attachment) {
         scope.launch {
@@ -161,7 +158,7 @@ fun AttachmentsBrowser(
         val dir = File(app.documents.tempDir, "att_add_" + System.nanoTime()).apply { mkdirs() }
         val f = File(dir, n)
         runCatching { ctx.contentResolver.openInputStream(u)?.use { i -> f.outputStream().use { i.copyTo(it) } } ?: error("cannot open") }.getOrNull() ?: return@withContext null
-        f to (mime ?: runCatching { ctx.contentResolver.getType(u) }.getOrNull() ?: MimeTypeMap.getSingleton().getMimeTypeFromExtension(AttachmentPolicy.extOf(n)) ?: "application/octet-stream")
+        f to (mime ?: runCatching { ctx.contentResolver.getType(u) }.getOrNull() ?: MimeTypeMap.getSingleton().getMimeTypeFromExtension(extOf(n)) ?: "application/octet-stream")
     }
     val pickFiles = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         if (uris.isNotEmpty()) scope.launch { busy = true; val list = uris.mapNotNull { copyIn(it, null, null) }; busy = false; addPicked(list) }
@@ -195,7 +192,6 @@ fun AttachmentsBrowser(
             IconButton(onClick = { view = next; prefs.edit().putString("view", next.name).apply() }) {
                 Icon(when (view) { AttView.LIST -> Icons.Default.ViewList; AttView.DETAIL -> Icons.Default.ViewAgenda; AttView.TILES -> Icons.Default.GridView }, stringResource(R.string.nat_view_mode))
             }
-            IconButton(onClick = { security = true }) { Icon(Icons.Default.Security, stringResource(R.string.nat_security)) }
         }
         if (busy || items == null) LinearProgressIndicator(Modifier.fillMaxWidth())
         if (items != null && items.isEmpty()) Text(stringResource(R.string.at_none), Modifier.fillMaxWidth().padding(24.dp), textAlign = TextAlign.Center,
@@ -223,7 +219,7 @@ fun AttachmentsBrowser(
                 AttAction.OPEN -> open(a)
                 AttAction.SAVE -> saveToDocuments(a)
                 AttAction.SAVE_AS -> { pendingSave = a; saveAs.launch(a.name) }
-                AttAction.SHARE -> share(a)
+                AttAction.SHARE -> gated(a) { share(a) }
                 AttAction.PRINT -> print(a)
                 AttAction.DESCRIBE -> describe = a
                 AttAction.PROPERTIES -> props = a
@@ -245,31 +241,13 @@ fun AttachmentsBrowser(
             dismissButton = { TextButton(onClick = { confirmDelete = null }) { Text(stringResource(R.string.cancel)) } })
     }
     props?.let { a -> AttPropertiesDialog(a) { props = null } }
-    ask?.let { (a, d) ->
-        val ext = AttachmentPolicy.extOf(a.name)
-        AlertDialog(onDismissRequest = { ask = null },
-            icon = { Icon(if (d == AttachmentPolicy.Decision.ASK_RISKY) Icons.Default.GppMaybe else Icons.Default.OpenInNew, null) },
-            title = { Text(stringResource(R.string.nat_open_q, a.name)) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(stringResource(if (d == AttachmentPolicy.Decision.ASK_RISKY) R.string.nat_open_risky else R.string.nat_open_note))
-                    if (ext.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        AssistChip(onClick = { ask = null; AttachmentPolicy.setRule(ctx, ext, AttachmentPolicy.Rule.ALLOW); openNow(a) }, label = { Text(stringResource(R.string.nat_always, ext)) })
-                        AssistChip(onClick = { ask = null; AttachmentPolicy.setRule(ctx, ext, AttachmentPolicy.Rule.NEVER) }, label = { Text(stringResource(R.string.nat_never, ext)) })
-                    }
-                }
-            },
-            confirmButton = { TextButton(onClick = { ask = null; openNow(a) }) { Text(stringResource(R.string.nat_open_once)) } },
-            dismissButton = { TextButton(onClick = { ask = null }) { Text(stringResource(R.string.cancel)) } })
-    }
-    if (security) AttSecurityDialog { security = false }
 }
 
 private enum class AttAction { OPEN, SAVE, SAVE_AS, SHARE, PRINT, DESCRIBE, PROPERTIES, DELETE, GO_TO_PAGE }
 
 @Composable
 private fun AttActionsDialog(a: Attachment, onDismiss: () -> Unit, onJump: ((Int) -> Unit)?, onAction: (AttAction) -> Unit) {
-    val isPdf = AttachmentPolicy.extOf(a.name) == "pdf" || a.mime == "application/pdf"
+    val isPdf = extOf(a.name) == "pdf" || a.mime == "application/pdf"
     val rows = buildList {
         add(Triple(AttAction.OPEN, Icons.Default.OpenInNew, R.string.nat_open))
         add(Triple(AttAction.SAVE, Icons.Default.Download, R.string.nat_save_docs))
@@ -298,7 +276,7 @@ private fun Modifier.combinedClickableCompat(onLong: (() -> Unit)? = null, onCli
 
 /** Material icon for an attachment type. */
 fun attIcon(a: Attachment): ImageVector {
-    val ext = AttachmentPolicy.extOf(a.name)
+    val ext = extOf(a.name)
     val mime = a.mime
     return when {
         ext == "pdf" -> Icons.Default.PictureAsPdf
@@ -379,34 +357,5 @@ private fun AttPropertiesDialog(a: Attachment, onDismiss: () -> Unit) {
         confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.ok)) } })
 }
 
-/** Attachment security: the per-type rules (always open / never open) and adding one. */
-@Composable
-fun AttSecurityDialog(onDismiss: () -> Unit) {
-    val ctx = LocalContext.current
-    var rules by remember { mutableStateOf(AttachmentPolicy.rules(ctx)) }
-    var input by remember { mutableStateOf("") }
-    fun set(ext: String, r: AttachmentPolicy.Rule?) { AttachmentPolicy.setRule(ctx, ext, r); rules = AttachmentPolicy.rules(ctx) }
-    AlertDialog(onDismissRequest = onDismiss, title = { Text(stringResource(R.string.nat_security)) },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(stringResource(R.string.nat_security_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (rules.isEmpty()) Text(stringResource(R.string.nat_no_rules), style = MaterialTheme.typography.bodyMedium)
-                rules.entries.sortedBy { it.key }.forEach { (ext, r) ->
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(".$ext", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
-                        Text(stringResource(if (r == AttachmentPolicy.Rule.ALLOW) R.string.nat_rule_allow else R.string.nat_rule_never), style = MaterialTheme.typography.labelMedium,
-                            color = if (r == AttachmentPolicy.Rule.ALLOW) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
-                        IconButton(onClick = { set(ext, null) }) { Icon(Icons.Default.Close, stringResource(R.string.delete)) }
-                    }
-                }
-                OutlinedTextField(input, { input = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.nat_type_hint)) },
-                    isError = input.isNotBlank() && AttachmentPolicy.normalize(input) == null)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    val ok = AttachmentPolicy.normalize(input) != null
-                    OutlinedButton(onClick = { set(input, AttachmentPolicy.Rule.ALLOW); input = "" }, enabled = ok) { Text(stringResource(R.string.nat_rule_allow)) }
-                    OutlinedButton(onClick = { set(input, AttachmentPolicy.Rule.NEVER); input = "" }, enabled = ok) { Text(stringResource(R.string.nat_rule_never)) }
-                }
-            }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.ok)) } })
-}
+/** Lower-case extension of a file name ("" when none). */
+internal fun extOf(name: String): String = name.substringAfterLast('.', "").trim().lowercase()

@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- nitro-fillsign2: Fill & Sign / QuickSign gaps (Arabic, default) -->
+<resources>
+    <string name="nf2_rounded_rect">مستطيل مستدير</string>
+    <string name="nf2_comb">نص بخانات</string>
+    <string name="nf2_comb_cells">عدد الخانات</string>
+    <string name="nf2_comb_cell_width">عرض الخانة (نقطة)</string>
+    <string name="nf2_comb_hint">حرف واحد في كل خانة، لنماذج الخانات الورقية. اترك عدد الخانات فارغًا ليساوي عدد الحروف.</string>
+    <string name="nf2_apply_all">اعتماد كل التواقيع</string>
+    <string name="nf2_apply_all_msg">تُدمج كل التواقيع والأحرف الأولى الموضوعة في محتوى الصفحات، فلا يمكن نقلها أو حذفها بعد ذلك. لا يمكن هذا في ملف موقّع رقميًا.</string>
+    <string name="nf2_apply">اعتماد</string>
+    <string name="nf2_flatten_on_save">دمج التواقيع دائمًا عند الحفظ</string>
+    <string name="nf2_none_to_apply">لا توجد تواقيع موضوعة لاعتمادها</string>
+    <string name="nf2_paging_seal">ختم الصفحات</string>
+    <string name="nf2_seal_msg">تُقسَّم صورة الختم على الحافة اليمنى للصفحات فتكتمل عند فرد الصفحات. لا يحتاج إلى توقيع رقمي.</string>
+    <string name="nf2_seal_image">صورة…</string>
+    <string name="nf2_seal_size">الحجم</string>
+    <string name="nf2_seal_position">الموضع الرأسي</string>
+    <string name="nf2_seal_add">إضافة ختم الصفحات</string>
+    <string name="nf2_seal_remove">إزالة أختام الصفحات</string>
+    <string name="nf2_seal_none">لم يُعثر على ختم صفحات أضافه التطبيق</string>
+    <string name="nf2_seal_no_image">تعذّرت قراءة صورة الختم</string>
+    <string name="nf2_bad_range">نطاق الصفحات غير صالح</string>
+    <string name="nf2_cut">قص</string>
+    <string name="nf2_copy_clip">نسخ إلى الحافظة</string>
+    <string name="nf2_copied">نُسخ. الصقه من تبويب التوقيع</string>
+    <string name="nf2_paste">لصق</string>
+    <string name="nf2_set_default_size">تعيين الحجم الحالي افتراضيًا</string>
+    <string name="nf2_size_saved">سيُستخدم هذا الحجم عند وضع هذا التوقيع لاحقًا</string>
+    <string name="nf2_multi_pages">وضع على صفحات متعددة</string>
+    <string name="nf2_multi_pages_msg">توضع نسخة في الموضع نفسه من كل صفحة مختارة.</string>
+    <string name="nf2_pages_all">كل الصفحات</string>
+    <string name="nf2_pages_odd">الصفحات الفردية</string>
+    <string name="nf2_pages_even">الصفحات الزوجية</string>
+    <string name="nf2_pages_custom">صفحات محددة</string>
+    <string name="nf2_pages_range">الصفحات (1–%1$d)</string>
+    <string name="nf2_paste_clip">لصق من الحافظة</string>
+    <string name="nf2_clip_no_image">لا توجد صورة صالحة في الحافظة</string>
+    <string name="nf2_keep_size">الإبقاء على الحجم الأصلي (عرض %1$s سم)</string>
+    <string name="nf2_temporary">توقيع مؤقت (يُحذف عند إغلاق التطبيق، ولا يُزامَن)</string>
+    <string name="nf2_temporary_badge">مؤقت</string>
+    <string name="nf2_edit">تعديل</string>
+    <string name="nf2_move_up">نقل لأعلى</string>
+    <string name="nf2_move_down">نقل لأسفل</string>
+    <string name="nf2_edit_signature">تعديل التوقيع</string>
+    <string name="nf2_sig_name">الاسم</string>
+    <string name="nf2_recolor">تغيير لون الحبر</string>
+    <string name="nf2_replace_image">استبدال الصورة</string>
+    <string name="nf2_edit_failed">تعذّر حفظ التوقيع</string>
+    <string name="nf2_paste_here">لصق هنا</string>
+    <plurals name="nf2_locked_not_included">
+        <item quantity="zero">لم يُضمَّن %d توقيع مقفل (افتح كلًّا منها مرة على هذا الجهاز لتضمينه)</item>
+        <item quantity="one">لم يُضمَّن توقيع مقفل واحد (افتحه مرة على هذا الجهاز لتضمينه)</item>
+        <item quantity="two">لم يُضمَّن توقيعان مقفلان (افتح كلًّا منهما مرة على هذا الجهاز لتضمينه)</item>
+        <item quantity="few">لم تُضمَّن %d توقيعات مقفلة (افتح كلًّا منها مرة على هذا الجهاز لتضمينه)</item>
+        <item quantity="many">لم يُضمَّن %d توقيعًا مقفلًا (افتح كلًّا منها مرة على هذا الجهاز لتضمينه)</item>
+        <item quantity="other">لم يُضمَّن %d توقيع مقفل (افتح كلًّا منها مرة على هذا الجهاز لتضمينه)</item>
+    </plurals>
+    <plurals name="nf2_placed_on_pages">
+        <item quantity="zero">لا توجد صفحات أخرى في هذا النطاق</item>
+        <item quantity="one">وُضع على صفحة واحدة</item>
+        <item quantity="two">وُضع على صفحتين</item>
+        <item quantity="few">وُضع على %d صفحات</item>
+        <item quantity="many">وُضع على %d صفحة</item>
+        <item quantity="other">وُضع على %d صفحة</item>
+    </plurals>
+    <plurals name="nf2_applied">
+        <item quantity="zero">اعتُمد %d توقيع</item>
+        <item quantity="one">اعتُمد توقيع واحد</item>
+        <item quantity="two">اعتُمد توقيعان</item>
+        <item quantity="few">اعتُمدت %d تواقيع</item>
+        <item quantity="many">اعتُمد %d توقيعًا</item>
+        <item quantity="other">اعتُمد %d توقيع</item>
+    </plurals>
+    <plurals name="nf2_seal_removed">
+        <item quantity="zero">أُزيل الختم من %d صفحة</item>
+        <item quantity="one">أُزيل الختم من صفحة واحدة</item>
+        <item quantity="two">أُزيل الختم من صفحتين</item>
+        <item quantity="few">أُزيل الختم من %d صفحات</item>
+        <item quantity="many">أُزيل الختم من %d صفحة</item>
+        <item quantity="other">أُزيل الختم من %d صفحة</item>
+    </plurals>
+</resources>

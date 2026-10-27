@@ -123,7 +123,7 @@ fun PropertiesSheet(c: QuickController, onDismiss: () -> Unit) {
             if (m.creationDate.isNotBlank()) InfoRow(stringResource(R.string.qk_props_created), m.creationDate)
             if (m.modDate.isNotBlank()) InfoRow(stringResource(R.string.qk_props_modified), m.modDate)
         }
-        if (state.password != null) InfoRow(stringResource(R.string.qk_props_security), stringResource(R.string.qk_props_encrypted))
+        com.smartdocs.editor.ui.reader.SecurityPropertiesSection(state.guard.info, state.password != null)   // nitro-protect2
     }
 }
 

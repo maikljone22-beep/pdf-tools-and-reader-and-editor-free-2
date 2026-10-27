@@ -98,12 +98,16 @@ object SigAppearanceRenderer {
         } else textRect = RectF(0f, 0f, W.toFloat(), h.toFloat())
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(25, 35, 60) }
         var y = textRect.top + (textRect.height() - textLines.size * lineH) / 2 + lineH * 0.78f
+        val family = when (spec.font) { SigAppearanceSpec.Font.SERIF -> Typeface.SERIF; SigAppearanceSpec.Font.MONO -> Typeface.MONOSPACE; else -> Typeface.SANS_SERIF }
         textLines.forEachIndexed { i, line ->
-            paint.typeface = if (i == 0 && spec.showName) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
+            paint.typeface = Typeface.create(family, if (i == 0 && spec.showName) Typeface.BOLD else Typeface.NORMAL)
             var size = spec.fontSize(i)
             paint.textSize = size
             while (paint.measureText(line) > textRect.width() - 16f && size > 12f) { size -= 2f; paint.textSize = size }
-            c.drawText(line, textRect.left + 8f, y, paint)
+            // right-to-left lines are right-aligned (Canvas shapes and reorders the Arabic text itself)
+            val rtl = spec.rtl(line)
+            paint.textAlign = if (rtl) Paint.Align.RIGHT else Paint.Align.LEFT
+            c.drawText(line, if (rtl) textRect.right - 8f else textRect.left + 8f, y, paint)
             y += lineH
         }
         return bmp
@@ -172,6 +176,17 @@ fun SigAppearanceDesigner(state: SigAppearanceState, name: String, reason: Strin
                             onValueChangeFinished = { set(s.copy(maxFontSize = font.toInt())) })
                         Text(stringResource(R.string.nq_ap_font_value, font.toInt()), style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(start = 8.dp))
                     }
+                }
+                // Foxit: font family and text direction
+                Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(stringResource(R.string.ns2_ap_font), style = MaterialTheme.typography.labelLarge)
+                    listOf(SigAppearanceSpec.Font.SANS to R.string.ns2_ap_font_sans, SigAppearanceSpec.Font.SERIF to R.string.ns2_ap_font_serif, SigAppearanceSpec.Font.MONO to R.string.ns2_ap_font_mono)
+                        .forEach { (f, l) -> FilterChip(s.font == f, { set(s.copy(font = f)) }, label = { Text(stringResource(l)) }) }
+                }
+                Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(stringResource(R.string.ns2_ap_direction), style = MaterialTheme.typography.labelLarge)
+                    listOf(SigAppearanceSpec.Direction.AUTO to R.string.ns2_ap_dir_auto, SigAppearanceSpec.Direction.RTL to R.string.ns2_ap_dir_rtl, SigAppearanceSpec.Direction.LTR to R.string.ns2_ap_dir_ltr)
+                        .forEach { (d, l) -> FilterChip(s.direction == d, { set(s.copy(direction = d)) }, label = { Text(stringResource(l)) }) }
                 }
                 AppearanceProfilesRow(state)
                 val lines = s.lines(name, reason, location, date, dn, state.labels())
