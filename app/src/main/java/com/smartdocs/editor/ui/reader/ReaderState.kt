@@ -169,6 +169,9 @@ class ReaderState(
 
     // ================= document lifecycle =================
 
+    /** A save into a signed / certified document was refused (audit AN-28 hook): the screen offers "Save a copy". */
+    var signedBlock by mutableStateOf<com.smartdocs.editor.core.pdf.SignedDocumentException.Reason?>(null)
+
     /** Why the document could not be opened; stays until [retryOpen] (the snackbar clears [error], not this). */
     var openError by mutableStateOf<OpenError?>(null)
 
@@ -188,16 +191,20 @@ class ReaderState(
                 // share6: rights-managed files -> explanation screen; connected documents -> status / protected key
                 withContext(Dispatchers.IO) { com.smartdocs.editor.core.connected.EnterpriseProtection.detect(f) }?.takeIf { it.blocking }?.let { enterpriseInfo = it; return@launch }
                 var openPw = pw
-                val mark = withContext(Dispatchers.IO) { com.smartdocs.editor.core.connected.ConnectedDocs.markOf(f) }
-                if (mark != null) {
-                    if (mark.protected && pw == null) {
-                        val st = com.smartdocs.editor.core.connected.ConnectedDocs.checkOnOpen(context, f)
-                        connected = st
-                        if (st == null || st.locked) { connectedLocked = true; return@launch }
-                        openPw = st.password
-                    } else scope.launch { connected = com.smartdocs.editor.core.connected.ConnectedDocs.checkOnOpen(context, f) }
+                // audit RD-03: the connected-document marker scan can read the whole file, so it no longer runs before
+                // the first page. Only a password-protected file can need it up front (its key comes from the server).
+                var markChecked = false
+                val s = try { PdfSession.open(context, f, openPw) } catch (e: PdfSession.Companion.PasswordRequiredException) {
+                    if (pw != null) throw e
+                    markChecked = true
+                    val mark = withContext(Dispatchers.IO) { com.smartdocs.editor.core.connected.ConnectedDocs.markOf(f) }
+                    if (mark?.protected != true) throw e
+                    val st = com.smartdocs.editor.core.connected.ConnectedDocs.checkOnOpen(context, f)
+                    connected = st
+                    if (st == null || st.locked) { connectedLocked = true; return@launch }
+                    openPw = st.password
+                    PdfSession.open(context, f, openPw)
                 }
-                val s = PdfSession.open(context, f, openPw)
                 if (disposed) { runCatching { s.closeAsync() }; return@launch }
                 password = openPw
                 pageCount = s.pageCount
@@ -211,6 +218,13 @@ class ReaderState(
                 session = s
                 scope.launch { runCatching { s.pageSizes() }.getOrNull()?.let { all -> androidx.compose.runtime.snapshots.Snapshot.withMutableSnapshot { all.forEach { (i, sz) -> pageSizes[i] = sz } } } }
                 needPassword = false; wrongPassword = false; error = null
+                if (!markChecked) scope.launch {
+                    // after the first render: connected status for the banner; a revoked protected copy still locks
+                    val mark = withContext(Dispatchers.IO) { com.smartdocs.editor.core.connected.ConnectedDocs.markOf(f) } ?: return@launch
+                    val st = com.smartdocs.editor.core.connected.ConnectedDocs.checkOnOpen(context, f)
+                    connected = st
+                    if (mark.protected && st?.locked == true) { runCatching { session?.closeAsync() }; session = null; connectedLocked = true }
+                }
                 app.documents.touchRecent(f, s.pageCount, initialPage)
                 app.settings.update { it.copy(lastOpenedUri = Uri.fromFile(f).toString()) }
                 loadExisting()
@@ -458,6 +472,9 @@ class ReaderState(
                     edit.committed()
                     if (failed.isNotEmpty()) { error = str(R.string.fx_annots_not_saved, failed.size); return false }
                     return true
+                } catch (e: com.smartdocs.editor.core.pdf.SignedDocumentException) {
+                    // signed / certified file: the pending annotations stay pending; the screen offers "Save a copy"
+                    signedBlock = e.reason; return false
                 } catch (e: Exception) { error = e.message ?: e.toString(); return false } finally { saving = false }
             } finally {
                 if (wrote && before != null) recordSaved(before, prevPw) else before?.let { runCatching { it.delete() } }
@@ -483,7 +500,7 @@ class ReaderState(
         val f = forms5.exportSource(f0, password)          // MODULE_forms5: temp copy with pending field values
         try {
             if (annots.isEmpty()) withContext(Dispatchers.IO) { f.copyTo(out, overwrite = true) }
-            else AnnotationWriter.commit(context, f, annots.toList(), out, password)
+            else AnnotationWriter.commit(context, f, annots.toList(), out, password, fullSave = true)   // a copy: never blocked by signatures
         } finally { if (f != f0) f.delete() }
     }
 
