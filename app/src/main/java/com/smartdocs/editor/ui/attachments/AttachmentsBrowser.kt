@@ -103,7 +103,8 @@ fun AttachmentsBrowser(
     fun openNow(a: Attachment) {
         scope.launch {
             val x = extractTemp(a) ?: return@launch
-            if (extOf(a.name) == "pdf" && onOpenPdf != null) { onOpenPdf(x); return@launch }
+            // open-all: every attachment type opens in the in-app (sandboxed) viewers; other apps only when there is no host
+            if (onOpenPdf != null) { onOpenPdf(x); return@launch }
             val i = Intent(Intent.ACTION_VIEW).setDataAndType(app.documents.shareUri(x), mimeOf(a))
                 .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
             runCatching { ctx.startActivity(i) }.onFailure {

@@ -31,10 +31,10 @@ import java.io.File
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
-/** Opens a result: PDFs and Office files in the app, anything else with the system viewer. */
+/** Opens a result in the app (open-all: every type has an in-app viewer); the system viewer only if that fails. */
 fun openResultFile(nav: NavHostController, ctx: Context, docs: DocumentRepository, f: File) {
     val uri = Uri.fromFile(f).toString()
-    if (f.extension.equals("pdf", true) || OfficeRoutes.isOffice(uri)) { nav.navigate(Routes.reader(uri)); return }
+    if (f.isFile && runCatching { nav.navigate(Routes.reader(uri)) }.isSuccess) return
     runCatching {
         ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_VIEW).apply { setDataAndType(docs.shareUri(f), mimeFor(f.extension)); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) }, null))
     }

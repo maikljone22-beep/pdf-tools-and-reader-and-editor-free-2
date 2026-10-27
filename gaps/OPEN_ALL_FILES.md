@@ -138,3 +138,91 @@ rest), Share, Open with, File info.
   ratio > 200 refused for entries above 1 MB, ≤ 20 000 entries, nesting ≤ 3 levels; Android 14+'s own ZIP path
   validation errors are reported.
 
+## 4. Every format: before → after
+
+| Format | Before (main c310818) | After (this branch) |
+|---|---|---|
+| PDF | reader | reader (also when misnamed: detected by `%PDF`) |
+| DOCX / DOCM / DOTX / DOTM | Office editor | Office editor; read-only HTML view when the editor cannot load it |
+| DOC / DOT | info screen "old format" | **in-app read-only viewer** (text via DocReader) + Edit as Word (docx) + Convert to PDF |
+| RTF | read-only (ImportState) | unchanged; also detected by `{\rtf` |
+| ODT | read-only (ImportState) | unchanged |
+| OTT / FODT | not accepted | **in-app read-only viewer** + Edit as Word |
+| TXT | editor (whole file) | editor ≤ 1 MB; **streamed viewer** above; UTF-16-without-BOM / 1252 / 1256 detection in the editor too |
+| LOG / INI / CFG / other text | log = editor; others not registered | **text viewer** (chunked, encodings, search, Edit for log) |
+| Markdown | raw text editor | **rendered** + Show source + Edit |
+| HTML / HTM / XHTML | SEND → PDF only | **safe WebView** (no JS / file access / network unless allowed) |
+| MHT / MHTML | not accepted | **safe WebView**, resources served from the archive |
+| XML / JSON / YAML / source code | SEND → PDF only | **syntax-highlighted viewer**, pretty print JSON/XML |
+| XPS / OXPS | not accepted | **in-app renderer** (own XAML parser + canvas), vector Convert to PDF |
+| DjVu | not accepted | info screen — no permissive decoder (DjVuLibre GPL) |
+| EPUB | VIEW not registered; SEND → PDF | **EPUB reader** (chapters, TOC, RTL, size, night) |
+| FB2 / FB2.ZIP | not accepted | **reader view** with contents |
+| MOBI / AZW / AZW3 / PRC | not accepted | **reader view** (own PalmDOC decoder); KF8 as reflowed text; HUFF/CDIC and DRM → info screen |
+| CHM | not accepted | info screen — no permissive LZX decoder |
+| XLSX / XLSM / XLTX | editor | unchanged (read-only HTML view as fallback) |
+| XLS / XLT | info screen "old format" | **read-only sheet view** (XlsReader) + Convert to PDF |
+| ODS / OTS | not accepted / reader error | **read-only sheet view** (OdfReader) |
+| CSV / TSV | editor (UTF-8 / 1256) | editor with shared detection (BOMs, UTF-16, 1252/1256, quoted-delimiter sniff); big / odd files in a grid viewer |
+| Numbers / Pages / Keynote | not accepted | info screen + **embedded preview image / QuickLook PDF** when present |
+| PPTX / PPTM / PPSX / PPSM / POTX | editor | unchanged |
+| PPT / PPS / POT | info screen "old format" | **read-only slide texts** (own record reader) + Convert to PDF |
+| ODP / OTP | not accepted | **read-only slide texts** |
+| JPG / PNG / WEBP | SEND → PDF; Files list jpg/png only | **image viewer** (zoom/pan, rotate, EXIF, slideshow, OCR, Convert, share, edit in other app) |
+| GIF / animated WebP | SEND → PDF | **animated** (Android 9+) |
+| BMP / ICO / WBMP | SEND → PDF | image viewer |
+| HEIC / HEIF | SEND → PDF | image viewer (Android 9+, message below) |
+| AVIF | not accepted | image viewer (Android 12+, message below) |
+| TIFF (multi-page) | not accepted | image viewer with page bar (own TiffDecoder) |
+| SVG / SVGZ | not accepted | **AndroidSVG** after XXE/DOCTYPE refusal, vector Convert to PDF |
+| DNG / RAW | not accepted | preview where the platform decoder handles it, else in-app error message |
+| CBZ | not accepted | **comic reader** (RTL option) |
+| CB7 | not accepted | **comic reader** (commons-compress) |
+| CBR | not accepted | info screen — UnRAR licence |
+| ZIP / JAR / APK | Files tab "Unzip" all | **browse inside + open any entry in-app**, guards |
+| 7Z | not accepted | browse + open entries |
+| TAR / TGZ / TAR.BZ2 / TAR.XZ / GZ / BZ2 / XZ | not accepted | browse + open entries |
+| RAR | not accepted | info screen — UnRAR licence |
+| EML | SEND → PDF | **mail view** (headers, safe HTML/text body, inline images, attachments open in-app) |
+| MSG (Outlook) | not accepted | **mail view** (own MAPI property reader over CfbReader) |
+| VCF | not accepted | **contact cards** + Add to contacts |
+| ICS | not accepted | **event list** + Add to calendar |
+| MP3 / M4A / AAC / OGG / OPUS / WAV / FLAC / AMR | not accepted | **ExoPlayer audio player** (cover art, tags) |
+| MP4 / MKV / WEBM / 3GP / MOV / TS | not accepted | **ExoPlayer video player** (streamed from the sender) |
+| TTF / OTF / TTC | not accepted | **font preview** (Latin + Arabic) |
+| WOFF | not accepted | font preview (own WOFF → sfnt) |
+| WOFF2 | not accepted | info screen — needs Brotli |
+| DXF | not accepted | **2-D drawing viewer**, vector Convert to PDF |
+| DWG | not accepted | info screen — no permissive reader |
+| FDF / XFDF | merge offer | unchanged |
+| anything else | PDF reader error screen | **File info** (type by magic bytes, hex + text preview, Open as text, Open with, Share) |
+
+## 5. Dependencies added (all permissive)
+
+| Library | Version | Licence | Used for |
+|---|---|---|---|
+| `com.caverock:androidsvg-aar` | 1.4 | Apache 2.0 | SVG rendering (viewer, thumbnails, vector PDF) |
+| `org.apache.commons:commons-compress` | 1.27.1 | Apache 2.0 | 7z, TAR, BZip2, XZ streams (brings commons-io 2.16.1, commons-lang3 3.16.0, commons-codec 1.17.1 — Apache 2.0) |
+| `org.tukaani:xz` | 1.10 | 0BSD | LZMA/LZMA2 for 7z and .xz |
+
+Already present and reused: media3-exoplayer (Apache 2.0), exifinterface, PdfBox-Android, the project's own
+CfbReader / DocReader / XlsReader / OdfReader / RtfReader / TiffDecoder / EpubReader / EmlReader.
+Not added on purpose: junrar (UnRAR licence restriction), DjVuLibre / djvu.js (GPL), any CHM/LZX library (GPL/LGPL
+ports only), Apache POI (too large; the MSG and PPT readers are small own readers instead).
+
+## 6. Not feasible / limits
+
+* DjVu, CHM, RAR/CBR, DWG, WOFF2: info screen with the reason, Open with, Share (licences / missing permissive
+  decoders, see §5).
+* MOBI with HUFF/CDIC compression or DRM: info screen. AZW3/KF8 is shown as one reflowed flow; its images are not
+  placed.
+* XPS: gradients are drawn with their first stop colour, ArcSegment as a straight line, visual brushes are ignored.
+* DXF: ASCII only (binary DXF refused), no hatches/dimensions/3-D; DWG never.
+* Old PPT: slide texts only; old DOC: text only (no formatting/pictures); XLS: values without number formats.
+* Numbers/Pages/Keynote: only the embedded preview.
+* HEIF needs Android 9, AVIF Android 12, RAW depends on the device's decoder.
+* Big files: text is read in chunks (up to 48 M characters), media are streamed, archive entries are extracted one at a
+  time (≤ 512 MB); HTML-like formats (HTML ≤ 40 MB, MOBI/FB2/EML ≤ 200 MB, MSG ≤ 100 MB) are read whole.
+* `pathPattern` matching for `content://` URIs depends on the sender (Android limitation); the MIME filters cover the
+  usual cases.
+* **Nothing was tested on a device** — only JVM unit tests and GitHub CI builds.
