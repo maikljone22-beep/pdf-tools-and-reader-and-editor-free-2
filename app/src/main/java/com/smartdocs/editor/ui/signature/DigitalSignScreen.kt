@@ -201,16 +201,6 @@ private fun SignTab(nav: NavHostController, file: File?, identity: DigitalSignat
         return DigitalSignature.VisibleSignature(pageIdx, r[0], r[1], r[2], r[3], image = img) to target
     }
 
-    fun doSign(outName: String) {
-        val f = file ?: run { localError = needFile; return }
-        val id = identity ?: run { onNeedCert(); return }
-        if (visible && useSaved && savedPath != null && com.smartdocs.editor.core.data.SignatureLock.isLocked(ctx, savedPath!!)) {
-            gate.request(savedPath!!) { doSignUnlocked(f, id, outName) }
-            return
-        }
-        doSignUnlocked(f, id, outName)
-    }
-
     fun doSignUnlocked(f: File, id: DigitalSignature.Identity, outName: String) {
         localError = null
         adv.persist()
@@ -227,6 +217,16 @@ private fun SignTab(nav: NavHostController, file: File?, identity: DigitalSignat
             if (visible && useSaved) savedPath?.let { runCatching { com.smartdocs.editor.core.data.SignatureMetaStore.markUsed(ctx, it) } }
             out
         }
+    }
+
+    fun doSign(outName: String) {
+        val f = file ?: run { localError = needFile; return }
+        val id = identity ?: run { onNeedCert(); return }
+        if (visible && useSaved && savedPath != null && com.smartdocs.editor.core.data.SignatureLock.isLocked(ctx, savedPath!!)) {
+            gate.request(savedPath!!) { doSignUnlocked(f, id, outName) }
+            return
+        }
+        doSignUnlocked(f, id, outName)
     }
 
     /** Signs every file of [batchFiles] with the same ID, options and (relative) placement; one output each. */
