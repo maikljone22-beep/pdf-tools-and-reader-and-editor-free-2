@@ -60,4 +60,25 @@
     <string name="pc_move_up">Move up</string>
     <string name="pc_move_down">Move down</string>
     <string name="pc_remove">Remove</string>
+    <string name="pc_box_media">Media box</string>
+    <string name="pc_unit_pt">pt</string>
+    <string name="pc_unit_mm">mm</string>
+    <string name="pc_unit_in">in</string>
+    <string name="pc_constrain">Constrain proportions</string>
+    <string name="pc_show_boxes">Show all page boxes</string>
+    <string name="pc_width">Width</string>
+    <string name="pc_height">Height</string>
+    <string name="pc_batch_files">More files at the same size</string>
+    <string name="pc_columns">Columns</string>
+    <string name="pc_rows">Rows</string>
+    <string name="pc_cut_v">Vertical cut %1$d: %2$d%% from the left</string>
+    <string name="pc_cut_h">Horizontal cut %1$d: %2$d%% from the top</string>
+    <string name="pc_page_menu">Page %1$d options</string>
+    <string name="pc_page_rotate">Rotate page</string>
+    <string name="pc_page_delete">Delete page</string>
+    <string name="pc_page_print">Print page</string>
+    <string name="pc_page_redact">Redact</string>
+    <string name="pc_page_ocr">Open for OCR</string>
+    <string name="pc_thumbs_smaller">Smaller thumbnails</string>
+    <string name="pc_thumbs_larger">Larger thumbnails</string>
 </resources>

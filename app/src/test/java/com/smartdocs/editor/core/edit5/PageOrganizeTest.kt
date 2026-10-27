@@ -136,4 +136,35 @@ class PageOrganizeTest {
         }
         parts.forEach { it.delete() }; dir.delete()
     }
+
+    // ---------------- crop / resize / split-page helpers ----------------
+    @Test fun unitsAndProportions() {
+        assertEquals(72f, BoxUnit.IN.toPt(1f), 1e-3f)
+        assertEquals(210f, BoxUnit.MM.fromPt(595.28f), 0.05f)
+        // 200×100 drawn, ratio 1 → 100×100 kept at the left / top corner
+        val a = BoxTools.constrain(0f, 0f, 200f, 100f, 1f)
+        assertEquals(listOf(0f, 0f, 100f, 100f), a.toList())
+        val b = BoxTools.constrain(0f, 0f, 100f, 300f, 0.5f)
+        assertEquals(listOf(0f, 100f, 100f, 300f), b.toList())
+        assertEquals(200f, BoxTools.lockedHeight(100f, 50f, 100f), 1e-3f)
+    }
+
+    @Test fun cutsStayOrdered() {
+        assertEquals(listOf(1f / 3, 2f / 3), BoxTools.evenCuts(3))
+        assertTrue(BoxTools.evenCuts(1).isEmpty())
+        val c = BoxTools.moveCut(listOf(0.3f, 0.6f), 0, 0.9f)
+        assertEquals(0.55f, c[0], 1e-4f); assertEquals(0.6f, c[1], 1e-4f)
+        assertEquals(0.05f, BoxTools.moveCut(listOf(0.5f), 0, -1f)[0], 1e-4f)
+    }
+
+    @Test fun pageBoxesListsOnlyDefinedBoxes() {
+        PDDocument().use { d ->
+            val p = PDPage(PDRectangle.A4); d.addPage(p)
+            assertEquals(listOf("MEDIA", "CROP"), BoxTools.pageBoxes(p).keys.toList())
+            p.trimBox = PDRectangle(10f, 10f, 500f, 800f)
+            val m = BoxTools.pageBoxes(p)
+            assertEquals(listOf("MEDIA", "CROP", "TRIM"), m.keys.toList())
+            assertEquals(510f, m.getValue("TRIM")[2], 1e-3f)
+        }
+    }
 }

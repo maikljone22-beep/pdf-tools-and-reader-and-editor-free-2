@@ -60,4 +60,25 @@
     <string name="pc_move_up">تحريك لأعلى</string>
     <string name="pc_move_down">تحريك لأسفل</string>
     <string name="pc_remove">إزالة</string>
+    <string name="pc_box_media">صندوق الوسائط</string>
+    <string name="pc_unit_pt">نقطة</string>
+    <string name="pc_unit_mm">مم</string>
+    <string name="pc_unit_in">بوصة</string>
+    <string name="pc_constrain">الحفاظ على التناسب</string>
+    <string name="pc_show_boxes">عرض كل صناديق الصفحة</string>
+    <string name="pc_width">العرض</string>
+    <string name="pc_height">الارتفاع</string>
+    <string name="pc_batch_files">ملفات أخرى بالحجم نفسه</string>
+    <string name="pc_columns">الأعمدة</string>
+    <string name="pc_rows">الصفوف</string>
+    <string name="pc_cut_v">خط القص العمودي %1$d: %2$d%% من اليسار</string>
+    <string name="pc_cut_h">خط القص الأفقي %1$d: %2$d%% من الأعلى</string>
+    <string name="pc_page_menu">خيارات الصفحة %1$d</string>
+    <string name="pc_page_rotate">تدوير الصفحة</string>
+    <string name="pc_page_delete">حذف الصفحة</string>
+    <string name="pc_page_print">طباعة الصفحة</string>
+    <string name="pc_page_redact">تنقيح</string>
+    <string name="pc_page_ocr">فتح للتعرف الضوئي</string>
+    <string name="pc_thumbs_smaller">صور مصغرة أصغر</string>
+    <string name="pc_thumbs_larger">صور مصغرة أكبر</string>
 </resources>

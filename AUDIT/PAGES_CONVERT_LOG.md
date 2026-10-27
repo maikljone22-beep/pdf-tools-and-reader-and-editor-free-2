@@ -30,6 +30,9 @@ Strings: `strings_pc.xml` (prefix `pc_`). Tests: `PageOrganizeTest`.
 | A5 page labels in the indicator and go-to dialog | DONE | `PageIndicator` / `GoToPageDialog` take `labels` |
 | A6 / FILE-2 / FILE-3 /Direction, OpenAction, PageLayout, PageMode on open | DONE | `ReaderState.applyInitialView`, `InitialViewMap` |
 | K13 OCR this page from the reader | DONE | reader menu → `QuickController.openOcrForPage` |
-| Organize thumbnail zoom, drag from other apps, per-thumbnail redact/OCR/print | OPEN | next push |
-| Crop: all boxes, constrain proportions, units; resize A2/A1, batch | OPEN | next push |
-| Split-page tiles with arbitrary counts and draggable lines | OPEN | next push |
+| Organize: thumbnail zoom | DONE | `OrganizeScreen` zoom buttons (`cellScale`) |
+| Organize: drop PDFs / images dragged from another app | DONE | `OrganizeScreen` `dragAndDropTarget` → insert dialog |
+| Organize: per-thumbnail menu (rotate, delete, print, redact, OCR) | DONE | `PageGrid` `pageActions` |
+| Crop: show all page boxes, constrain proportions, pt / mm / in | DONE | `CropScreen`, `BoxTools.pageBoxes` / `constrain`, `BoxUnit` |
+| Resize: A0/A1/A2, units, constrain proportions, batch files, reset (undo) | DONE | `ResizeScreen`, `PageBoxOps.PAPERS` |
+| Split page: any columns × rows, one slider per cut line | DONE | `PageOpsScreen` SPLIT_PAGE, `BoxTools.evenCuts` / `moveCut` (also fixes the old preview drawing a horizontal cut mirrored) |
