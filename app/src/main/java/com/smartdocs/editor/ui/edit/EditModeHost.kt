@@ -57,6 +57,7 @@ fun EditModeHost(state: com.smartdocs.editor.ui.reader.ReaderState, onExit: () -
                         Text(stringResource(it), Modifier.padding(horizontal = 14.dp, vertical = 6.dp), style = MaterialTheme.typography.labelMedium)
                     }
                 }
+                com.smartdocs.editor.ui.nve.shapes.ShapesFab(c, Modifier.align(Alignment.BottomEnd))   // NVE-shape: vector shapes / gradients
                 c.message?.let { msg ->
                     Snackbar(Modifier.align(Alignment.BottomCenter).padding(12.dp), action = {
                         TextButton(onClick = { c.message = null }) { Text(stringResource(R.string.ok)) }
@@ -64,13 +65,17 @@ fun EditModeHost(state: com.smartdocs.editor.ui.reader.ReaderState, onExit: () -
                 }
             }
             when {
+                c.mode == EditMode.IMAGE && c.tools5.multi -> MultiAlignBar5(c)      // NVE-img: align / distribute
                 c.mode == EditMode.TEXT && c.editingText -> TextFormatBar(c)
+                c.mode == EditMode.IMAGE && c.tools5.isVector(c.image) -> ShapeActionBar5(c)  // NVE-img: shapes / shadings
                 c.mode == EditMode.IMAGE && c.image != null -> ImageActionBar(c)
                 c.mode == EditMode.IMAGE && c.insertAt != null -> InsertImageBar(c)
+                c.mode == EditMode.IMAGE -> ImageIdleBar5(c)                        // NVE-img: select multiple / smart alignment
             }
         }
     }
     if (showOutline) OutlineEditorSheet(state) { showOutline = false }
+    ImageTools5Host(c)      // NVE-img: image sheets / dialogs + layers prompt
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
