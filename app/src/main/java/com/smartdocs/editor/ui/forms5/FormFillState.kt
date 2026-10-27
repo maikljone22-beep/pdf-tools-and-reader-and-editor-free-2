@@ -79,6 +79,10 @@ class FormFillState internal constructor(val reader: ReaderState) {
     var pendingAction by mutableStateOf<Pair<FWidget, ButtonAction>?>(null)
     /** Image field waiting for the picture picker (the layer launches it). */
     var imageTarget by mutableStateOf<String?>(null)
+    /** Signature field tapped: the reader shows its Sign / Validate / Clear sheet (ui/signature/SigFieldActions). */
+    var sigTapped by mutableStateOf<FWidget?>(null)
+    /** Validity of each signed signature field by full name (true = valid), for the status badges. */
+    var sigStatus by mutableStateOf<Map<String, Boolean>>(emptyMap())
     /** Date picker request for the active field. */
     var datePickerFor by mutableStateOf<String?>(null)
     /** Short feedback for the field bar (submit result, required fields…), cleared by the UI. */
@@ -299,7 +303,7 @@ class FormFillState internal constructor(val reader: ReaderState) {
             WKind.TEXT -> { if (isReadOnly(w) || isCalculated(w.name)) return; activeId = w.id }
             WKind.IMAGE -> if (!isReadOnly(w)) imageTarget = w.name
             WKind.BUTTON -> w.action?.let { pendingAction = w to it }
-            WKind.SIGNATURE -> {}
+            WKind.SIGNATURE -> sigTapped = w
         }
     }
 

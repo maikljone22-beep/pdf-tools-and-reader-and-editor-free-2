@@ -81,7 +81,7 @@ object LtvSupport {
     private fun isSelfSigned(c: X509Certificate): Boolean =
         c.subjectX500Principal == c.issuerX500Principal && runCatching { c.verify(c.publicKey); true }.getOrDefault(false)
 
-    private fun extensionUrls(c: X509Certificate, method: org.bouncycastle.asn1.ASN1ObjectIdentifier): List<String> = runCatching {
+    internal fun extensionUrls(c: X509Certificate, method: org.bouncycastle.asn1.ASN1ObjectIdentifier): List<String> = runCatching {
         val raw = c.getExtensionValue(Extension.authorityInfoAccess.id) ?: return emptyList()
         val octets = (ASN1Primitive.fromByteArray(raw) as org.bouncycastle.asn1.ASN1OctetString).octets
         AuthorityInformationAccess.getInstance(ASN1Primitive.fromByteArray(octets)).accessDescriptions
@@ -89,7 +89,7 @@ object LtvSupport {
             .map { it.accessLocation.name.toString() }
     }.getOrDefault(emptyList())
 
-    private fun crlUrls(c: X509Certificate): List<String> = runCatching {
+    internal fun crlUrls(c: X509Certificate): List<String> = runCatching {
         val raw = c.getExtensionValue(Extension.cRLDistributionPoints.id) ?: return emptyList()
         val octets = (ASN1Primitive.fromByteArray(raw) as org.bouncycastle.asn1.ASN1OctetString).octets
         CRLDistPoint.getInstance(ASN1Primitive.fromByteArray(octets)).distributionPoints.flatMap { dp ->

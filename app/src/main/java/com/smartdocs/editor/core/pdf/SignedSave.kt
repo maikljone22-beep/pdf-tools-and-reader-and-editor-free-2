@@ -57,7 +57,9 @@ object SignedSave {
 
     /** Throws [SignedDocumentException] when the certification of [doc] forbids adding or removing annotations. */
     fun requireAnnotationsAllowed(doc: PDDocument) {
-        val p = certifyLevel(doc) ?: return
+        // a FieldMDP lock with /P (PDF 2.0, "lock document after signing") restricts changes like a certification
+        val locked = runCatching { doc.signatureDictionaries.mapNotNull { com.smartdocs.editor.core.sign.SigFields.lockOf(doc, it)?.docPermission }.minOrNull() }.getOrNull()
+        val p = listOfNotNull(certifyLevel(doc), locked).minOrNull() ?: return
         if (p < 3) throw SignedDocumentException(SignedDocumentException.Reason.CERTIFIED_NO_CHANGES,
             "this file is certified (DocMDP P=$p) and does not allow annotation changes; save as a copy")
     }
