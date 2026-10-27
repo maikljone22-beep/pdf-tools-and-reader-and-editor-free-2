@@ -109,7 +109,7 @@ class PageOrganizeTest {
         }
     }
 
-    @Test fun insertFileKeepsBookmarksUnderHolder() = runBlocking {
+    @Test fun insertFileKeepsBookmarksUnderHolder() = runBlocking<Unit> {
         val main = tmp("main"); val other = tmp("other"); val out = tmp("out")
         PDDocument().use { d -> repeat(2) { d.addPage(PDPage()) }; E5Io.save(d, main) }
         sample().use { E5Io.save(it, other) }
@@ -123,7 +123,7 @@ class PageOrganizeTest {
         }
     }
 
-    @Test fun splitByBookmarksKeepsNavigation() = runBlocking {
+    @Test fun splitByBookmarksKeepsNavigation() = runBlocking<Unit> {
         val src = tmp("split"); sample().use { E5Io.save(it, src) }
         val dir = File(src.parentFile, "org_parts_${System.nanoTime()}").apply { mkdirs(); deleteOnExit() }
         val parts = PageOrganize.splitByBookmarks(src, null, 0, dir, "doc", PartName.NUMBER, true) { d, b -> File(d, "$b.pdf") }
