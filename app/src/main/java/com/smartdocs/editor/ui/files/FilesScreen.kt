@@ -325,11 +325,14 @@ fun FilesScreen(nav: NavHostController) {
             confirmButton = {
                 TextButton(onClick = {
                     // audit DI-04: never replace another file; tell the user why a rename did not happen
-                    when (val r = app.documents.rename(f, name)) {
-                        is com.smartdocs.editor.core.files.SafeRename.Result.Ok -> { refreshFolder(); renameTarget = null }
-                        is com.smartdocs.editor.core.files.SafeRename.Result.Exists -> renameError = existsFmt.format(r.other.name)
-                        com.smartdocs.editor.core.files.SafeRename.Result.Blank, com.smartdocs.editor.core.files.SafeRename.Result.InvalidName -> renameError = invalidMsg
-                        com.smartdocs.editor.core.files.SafeRename.Result.Failed -> renameError = failedMsg
+                    // audit DI-22: recents, tags, bookmarks, origin and index entry follow the new name
+                    scope.launch {
+                        when (val r = app.documents.renameDocument(f, name)) {
+                            is com.smartdocs.editor.core.files.SafeRename.Result.Ok -> { refreshFolder(); renameTarget = null }
+                            is com.smartdocs.editor.core.files.SafeRename.Result.Exists -> renameError = existsFmt.format(r.other.name)
+                            com.smartdocs.editor.core.files.SafeRename.Result.Blank, com.smartdocs.editor.core.files.SafeRename.Result.InvalidName -> renameError = invalidMsg
+                            com.smartdocs.editor.core.files.SafeRename.Result.Failed -> renameError = failedMsg
+                        }
                     }
                 }) { Text(stringResource(R.string.ok)) }
             },
@@ -343,9 +346,12 @@ fun FilesScreen(nav: NavHostController) {
             confirmButton = {
                 TextButton(onClick = {
                     // audit DI-06: a file that cannot go to the trash is never deleted silently — ask first
-                    val failed = list.filter { f -> if (com.smartdocs.editor.ui.view5.Trash5.moveToTrash(ctx, f)) { app.documents.forgetOrigin(f); false } else true }
-                    selected = emptySet(); refreshFolder(); deleteTargets = null
-                    if (failed.isNotEmpty()) permanentTargets = failed
+                    deleteTargets = null
+                    scope.launch {
+                        val failed = list.filter { f -> !app.documents.deleteDocument(f, toTrash = true) { com.smartdocs.editor.ui.view5.Trash5.moveToTrash(ctx, it) } }
+                        selected = emptySet(); refreshFolder()
+                        if (failed.isNotEmpty()) permanentTargets = failed
+                    }
                 },
                     colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text(stringResource(R.string.delete)) }
             },
@@ -356,21 +362,16 @@ fun FilesScreen(nav: NavHostController) {
             title = { Text(stringResource(R.string.fx_trash_failed_title)) },
             text = { Text(stringResource(R.string.fx_trash_failed_text) + "\n" + list.joinToString("، ") { it.name }.take(300)) },
             confirmButton = {
-                TextButton(onClick = { list.forEach { f -> if (f.deleteRecursively()) app.documents.forgetOrigin(f) }; refreshFolder(); permanentTargets = null },
+                TextButton(onClick = { permanentTargets = null; scope.launch { list.forEach { f -> app.documents.deleteDocument(f, toTrash = false) { it.deleteRecursively() } }; refreshFolder() } },
                     colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text(stringResource(R.string.fx_delete_permanently)) }
             },
             dismissButton = { TextButton(onClick = { permanentTargets = null }) { Text(stringResource(R.string.cancel)) } })
     }
     moveTargets?.let { list ->
         MoveDialog(app.documents.docsDir, list, onDismiss = { moveTargets = null }) { dest ->
-            list.forEach { f ->
-                if (f.parentFile != dest) {
-                    var target = File(dest, f.name)
-                    if (target.exists()) target = if (f.isDirectory) File(dest, f.name + " (2)") else app.documents.uniqueFile(dest, f.nameWithoutExtension, f.extension)
-                    if (!f.renameTo(target)) runCatching { f.copyRecursively(target); f.deleteRecursively() }
-                }
-            }
-            moveTargets = null; selected = emptySet(); refreshFolder()
+            moveTargets = null; selected = emptySet()
+            // audit DI-22: the repository moves the file and everything keyed by its path
+            scope.launch { list.forEach { f -> app.documents.moveDocument(f, dest) }; refreshFolder() }
         }
     }
     val copyDoneFmt = stringResource(R.string.g6_copy_done)
