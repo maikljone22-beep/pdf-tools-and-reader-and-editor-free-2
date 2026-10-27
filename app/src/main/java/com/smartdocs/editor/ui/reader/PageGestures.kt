@@ -90,6 +90,20 @@ fun draftToAnnot(state: ReaderState, draft: GestureDraft, page: Int, g: PageGeom
         ReaderTool.INK -> {
             val pts = simplify(draft.points).map { g.screenToPdf(it.x, it.y) }
             if (pts.isEmpty()) return null
+            // OLD_PLAN D2: a stroke that looks like a line / rectangle / ellipse becomes that shape
+            if (state.annot2.inkToShapes) {
+                val snap = com.smartdocs.editor.core.annot.ShapeSnap.classify(pts)
+                when (snap.kind) {
+                    com.smartdocs.editor.core.annot.ShapeSnap.Kind.LINE -> return state.newAnnot(AnnotKind.LINE, page, points = listOf(snap.line[0] to snap.line[1], snap.line[2] to snap.line[3]))
+                        .copy(dash = state.annot2.dash)
+                    com.smartdocs.editor.core.annot.ShapeSnap.Kind.RECT, com.smartdocs.editor.core.annot.ShapeSnap.Kind.OVAL -> {
+                        val b = snap.box
+                        val k = if (snap.kind == com.smartdocs.editor.core.annot.ShapeSnap.Kind.RECT) AnnotKind.RECT else AnnotKind.OVAL
+                        return state.newAnnot(k, page, rects = listOf(android.graphics.RectF(b[0], b[3], b[2], b[1]))).copy(dash = state.annot2.dash, fillColor = null, noBorder = false, cloud = 0)
+                    }
+                    else -> {}
+                }
+            }
             val avgP = if (pressure && draft.pressures.isNotEmpty()) draft.pressures.average().toFloat().coerceIn(0.2f, 1.5f) else 1f
             state.newAnnot(AnnotKind.INK, page, paths = listOf(pts)).copy(strokeWidth = (state.thickness * (if (pressure) 0.6f + avgP * 0.8f else 1f)))
         }
@@ -100,7 +114,14 @@ fun draftToAnnot(state: ReaderState, draft: GestureDraft, page: Int, g: PageGeom
         }
         ReaderTool.RECT, ReaderTool.OVAL -> {
             if (tooSmall) return null
-            state.newAnnot(if (tool == ReaderTool.RECT) AnnotKind.RECT else AnnotKind.OVAL, page, rects = listOf(g.screenRectToPdf(rect)))
+            // Shift constraint (24.31): square / circle from the start corner
+            val box = if (state.annot2.constrain) {
+                val side = maxOf(rect.width, rect.height)
+                val sx = draft.start.x; val sy = draft.start.y
+                val ex = if (draft.current.x >= sx) sx + side else sx - side; val ey = if (draft.current.y >= sy) sy + side else sy - side
+                androidx.compose.ui.geometry.Rect(minOf(sx, ex), minOf(sy, ey), maxOf(sx, ex), maxOf(sy, ey))
+            } else rect
+            state.newAnnot(if (tool == ReaderTool.RECT) AnnotKind.RECT else AnnotKind.OVAL, page, rects = listOf(g.screenRectToPdf(box)))
         }
         ReaderTool.FS_RRECT -> {
             // nitro-fillsign2: a /Square with rounded corners

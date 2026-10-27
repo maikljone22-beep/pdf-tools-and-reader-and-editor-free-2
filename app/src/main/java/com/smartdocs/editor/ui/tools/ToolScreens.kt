@@ -65,6 +65,8 @@ private fun ToolScreensInner(nav: NavHostController, id: String, uri: String?) {
         "mail_merge" -> com.smartdocs.editor.ui.tools5.MailMergeScreen(nav, uri)
         "portfolio" -> com.smartdocs.editor.ui.tools5.PortfolioScreen(nav, uri)
         "ocr_plus" -> com.smartdocs.editor.ui.tools5.OcrBatchScreen(nav, uri)
+        "ocr_zone" -> com.smartdocs.editor.ui.ocr.OcrZoneScreen(nav, uri)
+        "ocr_review" -> com.smartdocs.editor.ui.ocr.OcrReviewScreen(nav, uri)
         "recipes" -> com.smartdocs.editor.ui.tools5.RecipesScreen(nav, uri)
         "batch" -> com.smartdocs.editor.ui.tools5.BatchScreen(nav)
         "compare_plus" -> com.smartdocs.editor.ui.tools5.Compare2Screen(nav, uri)

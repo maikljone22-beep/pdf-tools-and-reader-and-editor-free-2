@@ -179,23 +179,18 @@ private fun sections(nav: NavHostController): List<Section> = listOf(
         Sw(R.string.npf_copy_selection, NpfPrefs.copySelection) { NpfPrefs.setBool(K.COPY_SEL, it) }
         Label(stringResource(R.string.npf_note_font))
         Chips(listOf("sans" to "Sans", "serif" to "Serif", "mono" to "Mono"), NpfPrefs.noteFont) { NpfPrefs.setString(K.NOTE_FONT, it) }
-        Slide(stringResource(R.string.npf_note_size, NpfPrefs.noteSize.toInt()), NpfPrefs.noteSize, 10f..28f) { NpfPrefs.setFloat(K.NOTE_SIZE, it) }
-        Slide(stringResource(R.string.npf_note_opacity, (NpfPrefs.noteOpacity * 100).toInt()), NpfPrefs.noteOpacity, 0.3f..1f) { NpfPrefs.setFloat(K.NOTE_OPACITY, it) }
-        GroupDivider()
-        Label(stringResource(R.string.npf_summary))
-        Sw(R.string.npf_sum_thumbs, NpfPrefs.summaryThumbs) { NpfPrefs.setBool(K.SUM_THUMBS, it) }
-        Sw(R.string.npf_sum_replies, NpfPrefs.summaryReplies) { NpfPrefs.setBool(K.SUM_REPLIES, it) }
-        Sw(R.string.npf_sum_dates, NpfPrefs.summaryDates) { NpfPrefs.setBool(K.SUM_DATES, it) }
-        Chips(listOf("page" to stringResource(R.string.npf_sum_by_page), "date" to stringResource(R.string.npf_sum_by_date)), NpfPrefs.summaryOrder) { NpfPrefs.setString(K.SUM_ORDER, it) }
+        // size / opacity are the comment tools' own preferences (CommentExtras, prefs "comment_prefs"): set here for every document
+        val ctx = LocalContext.current
+        val cp = remember { ctx.getSharedPreferences("comment_prefs", Context.MODE_PRIVATE) }
+        var size by remember { mutableFloatStateOf(cp.getFloat("note_font", 16f)) }
+        var alpha by remember { mutableFloatStateOf(cp.getFloat("note_opacity", 1f)) }
+        Slide(stringResource(R.string.npf_note_size, size.toInt()), size, 10f..28f) { size = it; cp.edit().putFloat("note_font", it).apply() }
+        Slide(stringResource(R.string.npf_note_opacity, (alpha * 100).toInt()), alpha, 0.3f..1f) { alpha = it; cp.edit().putFloat("note_opacity", it).apply() }
     },
     // ---------------- identity ----------------
     Section(R.string.npf_s_identity, "identity name title organisation unit email author هوية اسم منظمة قسم بريد مؤلف") { IdentityRows() },
     // ---------------- forms ----------------
     Section(R.string.npf_s_forms, "forms highlight required xfa barcode نماذج تمييز مطلوب باركود") {
-        Label(stringResource(R.string.npf_form_hl))
-        Column(Modifier.padding(horizontal = 16.dp)) { NpfColorRow(NpfPrefs.formHighlight, SWATCHES) { NpfPrefs.setInt(K.FORM_HL, 0x3D000000 or it) } }
-        Label(stringResource(R.string.npf_form_req))
-        Column(Modifier.padding(horizontal = 16.dp)) { NpfColorRow(NpfPrefs.formRequired, SWATCHES) { NpfPrefs.setInt(K.FORM_REQ, 0xCC000000.toInt() or it) } }
         Sw(R.string.npf_xfa_auto, NpfPrefs.xfaAutoOpen, R.string.npf_xfa_auto_sub) { NpfPrefs.setBool(K.XFA_AUTO, it) }
         Sw(R.string.npf_xfa_banner, NpfPrefs.xfaBanner) { NpfPrefs.setBool(K.XFA_BANNER, it) }
         Hint(stringResource(R.string.npf_barcode_hint))

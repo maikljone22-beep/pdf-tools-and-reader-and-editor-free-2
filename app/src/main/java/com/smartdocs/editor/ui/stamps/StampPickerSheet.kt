@@ -50,6 +50,20 @@ val presetStamps = listOf(
     PresetStamp(R.string.stamp_completed, "COMPLETED", StampRenderer.GREEN),
     PresetStamp(R.string.stamp_urgent, "URGENT", StampRenderer.RED),
     PresetStamp(R.string.stamp_sign_here, "SIGN HERE", StampRenderer.ORANGE),
+    // section 7.35 / Foxit 24.45: the remaining Nitro / Acrobat standard stamps
+    PresetStamp(R.string.cx_stamp_experimental, "EXPERIMENTAL", StampRenderer.PURPLE),
+    PresetStamp(R.string.cx_stamp_not_approved, "NOT APPROVED", StampRenderer.RED),
+    PresetStamp(R.string.cx_stamp_expired, "EXPIRED", StampRenderer.RED),
+    PresetStamp(R.string.cx_stamp_not_public, "NOT FOR PUBLIC RELEASE", StampRenderer.RED),
+    PresetStamp(R.string.cx_stamp_sold, "SOLD", StampRenderer.GREEN),
+    PresetStamp(R.string.cx_stamp_departmental, "DEPARTMENTAL", StampRenderer.BLUE),
+    PresetStamp(R.string.cx_stamp_for_comment, "FOR COMMENT", StampRenderer.BLUE),
+    PresetStamp(R.string.cx_stamp_top_secret, "TOP SECRET", StampRenderer.RED),
+    PresetStamp(R.string.cx_stamp_public, "FOR PUBLIC RELEASE", StampRenderer.GREEN),
+    PresetStamp(R.string.cx_stamp_preliminary, "PRELIMINARY RESULTS", StampRenderer.ORANGE),
+    PresetStamp(R.string.cx_stamp_info_only, "INFORMATION ONLY", StampRenderer.BLUE),
+    PresetStamp(R.string.cx_stamp_emergency, "EMERGENCY", StampRenderer.RED),
+    PresetStamp(R.string.cx_stamp_verified, "VERIFIED", StampRenderer.GREEN),
 )
 
 /** Bottom sheet to choose a stamp bitmap: predefined / dynamic (author + date) / custom. */

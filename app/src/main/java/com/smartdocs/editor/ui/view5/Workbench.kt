@@ -84,6 +84,13 @@ fun WorkbenchSheet(v: V5State, measureFirst: Boolean, onMessage: (String) -> Uni
         Geom.snapToSegments(p, segments, tol.toDouble(), own + glyphCorners)
     }
     fun close() { m.persist(); v.close() }
+    var showLeader by remember { mutableStateOf(false) }
+    var showEditLast by remember { mutableStateOf(false) }
+    // scales stored in the document (/VP or measurements): the page's own scale is used (7.47 / 25.10)
+    LaunchedEffect(s.renderVersion, s.file) { val f = s.file; if (f != null) v.docScales = com.smartdocs.editor.core.view5.ScaleStore.readAll(f, s.password) }
+    LaunchedEffect(m.page, v.docScales) {
+        v.docScales[m.page]?.let { ps -> if (ps.scale.label() != v.scale.label()) { v.scale = ps.scale; v.scaleDescription = ps.description } }
+    }
 
     Dialog(onDismissRequest = { if (m.items.isEmpty()) close() else confirmClose = true },
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
@@ -117,9 +124,16 @@ fun WorkbenchSheet(v: V5State, measureFirst: Boolean, onMessage: (String) -> Uni
                 // ---- settings of the tool ----
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 2.dp),
                     verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    // snapping works for every tool (typewriter, text box, callout, lines...) and can follow the grid (7.14)
+                    FilterChip(v.snap, { v.snap = !v.snap; v.saveMeasure() }, label = { Text(stringResource(R.string.v5_snap)) }, leadingIcon = { Icon(Icons.Default.GpsFixed, null, Modifier.size(16.dp)) })
+                    FilterChip(v.snapGrid, { v.snapGrid = !v.snapGrid; v.saveMeasure() }, label = { Text(stringResource(R.string.cx_snap_grid)) }, leadingIcon = { Icon(Icons.Default.Grid4x4, null, Modifier.size(16.dp)) })
                     if (m.isMeasure || m.calibrating) {
-                        AssistChip(onClick = { showScale = true }, label = { Text(v.scale.label()) }, leadingIcon = { Icon(Icons.Default.SquareFoot, null, Modifier.size(16.dp)) })
-                        FilterChip(v.snap, { v.snap = !v.snap; v.saveMeasure() }, label = { Text(stringResource(R.string.v5_snap)) }, leadingIcon = { Icon(Icons.Default.GpsFixed, null, Modifier.size(16.dp)) })
+                        AssistChip(onClick = { showScale = true }, label = { Text(v.scale.label() + if (v.scaleDescription.isNotBlank()) " \u00B7 " + v.scaleDescription else "") },
+                            leadingIcon = { Icon(Icons.Default.SquareFoot, null, Modifier.size(16.dp)) })
+                        if (com.smartdocs.editor.core.view5.ScaleStore.hasMultiple(v.docScales))
+                            AssistChip(onClick = { showScale = true }, label = { Text(stringResource(R.string.cx_multi_scale)) }, leadingIcon = { Icon(Icons.Default.Warning, null, Modifier.size(16.dp)) })
+                        if (m.tool == WTool.DISTANCE) AssistChip(onClick = { showLeader = true }, label = { Text(stringResource(R.string.cx_leader_lines)) }, leadingIcon = { Icon(Icons.Default.Straighten, null, Modifier.size(16.dp)) })
+                        AssistChip(onClick = { showEditLast = true }, enabled = m.lastMeasure() != null, label = { Text(stringResource(R.string.cx_edit_last_measure)) }, leadingIcon = { Icon(Icons.Default.Edit, null, Modifier.size(16.dp)) })
                         FilterChip(v.ortho, { v.ortho = !v.ortho }, label = { Text("45°") })
                         FilterChip(m.arabicDigits, { m.arabicDigits = !m.arabicDigits }, label = { Text("١٢٣") })
                         if (m.tool == WTool.AREA || m.tool == WTool.CIRCLE) FilterChip(m.fillArea, { m.fillArea = !m.fillArea }, label = { Text(stringResource(R.string.v5_fill)) })
@@ -144,6 +158,10 @@ fun WorkbenchSheet(v: V5State, measureFirst: Boolean, onMessage: (String) -> Uni
                     if (m.needed() == 0 && m.pts.isNotEmpty()) FilledTonalButton(onClick = { m.finish() }, contentPadding = PaddingValues(horizontal = 12.dp), modifier = Modifier.height(32.dp)) {
                         Text(stringResource(R.string.done))
                     }
+                    if (m.pts.isNotEmpty()) {
+                        val l = m.pts.last()
+                        Text("  X ${"%.1f".format(java.util.Locale.US, l.x)}  Y ${"%.1f".format(java.util.Locale.US, l.y)}", style = MaterialTheme.typography.labelSmall)
+                    }
                     if (m.pts.size >= 2 && m.isMeasure) {
                         val a = m.pts[m.pts.size - 2]; val b = m.pts.last()
                         val dx = v.scale.length(kotlin.math.abs(b.x - a.x)); val dy = v.scale.length(kotlin.math.abs(b.y - a.y))
@@ -163,6 +181,8 @@ fun WorkbenchSheet(v: V5State, measureFirst: Boolean, onMessage: (String) -> Uni
     if (showScale) ScaleDialog(v, m.calibrationPts, onCalibrate = { showScale = false; m.pts.clear(); m.calibrating = true }) { showScale = false; m.calibrationPts = null }
     LaunchedEffect(m.calibrationPts) { if (m.calibrationPts != null) showScale = true }
     if (showStyle) LineStyleDialog(m) { showStyle = false }
+    if (showLeader) LeaderDialog(m) { showLeader = false }
+    if (showEditLast) m.lastMeasure()?.let { last -> EditMeasureDialog(last, onDismiss = { showEditLast = false }) { m.replaceLastMeasure(it); showEditLast = false } }
     m.textRequest?.let { req ->
         TextBoxDialog(req, m.color, m.dash, s.authorName, onDone = { spec -> m.items += WItem.Text(spec); m.textRequest = null }, onDismiss = { m.textRequest = null })
     }

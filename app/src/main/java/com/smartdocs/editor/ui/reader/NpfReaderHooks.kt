@@ -167,15 +167,15 @@ fun NpfReaderEffects(state: ReaderState, settings: AppSettings, nav: NavHostCont
 
 /** Commenting preferences: the selected comment's text in a pop-up with the chosen font, size and opacity. */
 @Composable
-fun NpfNotePopup(annot: Annot?) {
+fun NpfNotePopup(state: ReaderState, annot: Annot?) {
     val a = annot ?: return
     if (a.text.isBlank() || a.kind == AnnotKind.FREETEXT || a.kind == AnnotKind.STAMP_TEXT) return
     val family = when (NpfPrefs.noteFont) { "serif" -> FontFamily.Serif; "mono" -> FontFamily.Monospace; else -> FontFamily.SansSerif }
-    Surface(Modifier.fillMaxWidth().padding(4.dp).alpha(NpfPrefs.noteOpacity.coerceIn(0.3f, 1f)), shape = RoundedCornerShape(10.dp),
+    Surface(Modifier.fillMaxWidth().padding(4.dp).alpha(state.annot2.cx.noteOpacity.coerceIn(0.3f, 1f)), shape = RoundedCornerShape(10.dp),
         color = MaterialTheme.colorScheme.secondaryContainer) {
         Column(Modifier.heightIn(max = 160.dp).verticalScroll(rememberScrollState()).padding(10.dp)) {
             if (a.author.isNotBlank()) Text(a.author, style = MaterialTheme.typography.labelSmall)
-            Text(a.text, fontFamily = family, fontSize = NpfPrefs.noteSize.sp)
+            Text(a.text, fontFamily = family, fontSize = state.annot2.cx.noteFontSize.sp)
         }
     }
 }

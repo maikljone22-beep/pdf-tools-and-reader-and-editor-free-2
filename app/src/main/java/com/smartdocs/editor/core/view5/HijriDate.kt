@@ -73,7 +73,7 @@ object HijriDate {
  * tokens stay as typed. Pure, so templates can be tested.
  */
 object StampTokens {
-    /** nav-prefs: [unit] (department) and [email] complete the identity (Settings → identity; tokens {unit} {email}). */
+    /** [unit] and [email] complete the Nitro "My Identity" (7.73). */
     data class Identity(val name: String = "", val title: String = "", val org: String = "", val unit: String = "", val email: String = "")
 
     fun fill(template: String, who: Identity, ms: Long, arabicDigits: Boolean = false, tz: TimeZone = TimeZone.getDefault(), hijriAdjust: Int = 0): String {

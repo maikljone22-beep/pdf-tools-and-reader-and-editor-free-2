@@ -91,10 +91,6 @@ private fun Handle(modifier: Modifier, size: androidx.compose.ui.unit.Dp, color:
 @Composable
 fun NpfGridSettings() {
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(stringResource(R.string.npf_grid_snap), Modifier.weight(1f))
-            Switch(NpfPrefs.gridSnap, { NpfPrefs.setBool(NpfPrefs.K.GRID_SNAP, it) })
-        }
         Text(stringResource(R.string.npf_grid_sub, NpfPrefs.gridSubdivisions), style = MaterialTheme.typography.labelMedium)
         Slider(NpfPrefs.gridSubdivisions.toFloat(), { NpfPrefs.setInt(NpfPrefs.K.GRID_SUB, it.roundToInt()) }, valueRange = 1f..10f, steps = 8)
         Text(stringResource(R.string.npf_grid_offset_x, NpfPrefs.gridOffsetXmm.roundToInt()), style = MaterialTheme.typography.labelMedium)

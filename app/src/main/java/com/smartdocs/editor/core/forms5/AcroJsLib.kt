@@ -10,7 +10,7 @@ internal object AcroJsLib {
 // SmartDocs Acrobat-JS runtime: document, fields, event, app, util, color, display.
 // The global object is the Doc ("this" in field scripts). Kotlin talks to it through __sd only.
 (function (G) {
-var S = { fields: {}, names: [], alerts: [], setv: {}, props: {}, calcNow: false, numPages: 1, fileName: "", log: [] };
+var S = { fields: {}, names: [], alerts: [], setv: {}, props: {}, calcNow: false, numPages: 1, fileName: "", log: [], req: [], page: 0, words: [] };
 G.__sd = S;
 
 function nstr(n) {
@@ -162,7 +162,13 @@ Field.prototype.getArray = function () {
 };
 Field.prototype.buttonGetCaption = function () { var s = st(this); return s && s.p.caption ? s.p.caption : ""; };
 Field.prototype.buttonSetCaption = function (c) { var s = st(this); if (s) { s.p.caption = str(c); markProp(this._n, "caption"); } };
-["setFocus", "setAction", "buttonImportIcon", "buttonSetIcon", "signatureSign", "setLock", "browseForFileToSubmit"].forEach(function (m) { Field.prototype[m] = function () { return 0; }; });
+// requests the viewer carries out after the event (Kotlin reads them from end()): focus, image picker, file picker
+function rq(o) { if (S.req.length < 40) S.req.push(o); }
+S.rq = rq;
+Field.prototype.setFocus = function () { rq({ k: "focus", n: this._n }); };
+Field.prototype.buttonImportIcon = function () { rq({ k: "image", n: this._n }); return 0; };
+Field.prototype.browseForFileToSubmit = function () { rq({ k: "file", n: this._n }); };
+["setAction", "buttonSetIcon", "signatureSign", "setLock"].forEach(function (m) { Field.prototype[m] = function () { rq({ k: "unsupported", m: "Field." + m }); return 0; }; });
 Field.prototype.buttonGetIcon = function () { return null; };
 Field.prototype.signatureInfo = function () { return { status: 0 }; };
 Field.prototype.signatureValidate = function () { return 0; };
@@ -186,7 +192,8 @@ G.getNthFieldName = function (i) { return S.names[i] || null; };
 Object.defineProperty(G, "numFields", { get: function () { return S.names.length; }, configurable: true });
 Object.defineProperty(G, "numPages", { get: function () { return S.numPages; }, configurable: true });
 Object.defineProperty(G, "documentFileName", { get: function () { return S.fileName; }, configurable: true });
-G.pageNum = 0; G.calculate = true; G.dirty = false; G.info = {}; G.title = ""; G.author = ""; G.path = "/" + S.fileName;
+Object.defineProperty(G, "pageNum", { get: function () { return S.page; }, set: function (x) { var n = Number(x); if (!isNaN(n)) { S.page = n; rq({ k: "page", p: str(Math.floor(n)) }); } }, configurable: true });
+G.calculate = true; G.dirty = false; G.info = {}; G.title = ""; G.author = ""; G.path = "/" + S.fileName;
 G.delay = false; G.zoom = 100; G.bookmarkRoot = null; G.external = false; G.filesize = 0;
 G.calculateNow = function () { S.calcNow = true; };
 G.resetForm = function (arr) {
@@ -194,10 +201,38 @@ G.resetForm = function (arr) {
   if (arr) for (var i = 0; i < arr.length; i++) { var n = String(arr[i]); if (S.fields[n]) list.push(n); else list = list.concat(kidsOf(n)); }
   for (var j = 0; j < list.length; j++) { var s = S.fields[list[j]]; if (s) setVal(list[j], s.t === "checkbox" ? "Off" : (s.dv || "")); }
 };
-["submitForm", "print", "mailDoc", "mailForm", "exportAsFDF", "exportAsXFDF", "importAnFDF", "importAnXFDF", "addScript",
- "syncAnnotScan", "gotoNamedDest", "closeDoc", "getURL", "saveAs", "scroll", "flattenPages", "removeField", "exportDataObject"].forEach(function (m) { G[m] = function () {}; });
-G.getPageNthWord = function () { return ""; };
-G.getPageNumWords = function () { return 0; };
+// Doc methods: each one is a request the viewer runs after the script (or a "not supported" note)
+function arg(a, k, i) { var o = a[0]; if (o !== null && typeof o === "object" && !(o instanceof Array)) return o[k]; return a[i]; }
+function names(x) { if (x === undefined || x === null) return ""; if (x instanceof Array) return x.map(str).join("\n"); return str(x); }
+G.submitForm = function () {
+  // positional order: cURL, bFDF, bEmpty, aFields, bGet, bAnnotations, bXML, bIncrChanges, bPDF, bCanonical, ..., cSubmitAs (15)
+  var a = arguments, fmt = arg(a, "cSubmitAs", 15);
+  if (!fmt) fmt = arg(a, "bPDF", 8) ? "PDF" : (arg(a, "bXML", 6) ? "XFDF" : (arg(a, "bFDF", 1) === false ? "HTML" : "FDF"));
+  rq({ k: "submit", u: str(arg(a, "cURL", 0)), f: str(fmt).toUpperCase(), e: arg(a, "bEmpty", 2) ? "1" : "", fl: names(arg(a, "aFields", 3)),
+       g: arg(a, "bGet", 4) ? "1" : "", an: arg(a, "bAnnotations", 5) ? "1" : "", cn: arg(a, "bCanonical", 9) ? "1" : "" });
+};
+G.print = function () { rq({ k: "print" }); };
+G.mailDoc = function () { rq({ k: "mail", to: str(arg(arguments, "cTo", 1)), su: str(arg(arguments, "cSubject", 4)), form: "" }); };
+G.mailForm = function () { rq({ k: "mail", to: str(arg(arguments, "cTo", 1)), su: str(arg(arguments, "cSubject", 4)), form: "1" }); };
+G.exportAsFDF = function () { rq({ k: "export", f: "fdf" }); };
+G.exportAsXFDF = function () { rq({ k: "export", f: "xfdf" }); };
+G.importAnFDF = function (p) { rq({ k: "import", p: str(p) }); };
+G.importAnXFDF = function (p) { rq({ k: "import", p: str(p) }); };
+G.gotoNamedDest = function (n) { rq({ k: "dest", n: str(n) }); };
+G.getURL = function (u) { rq({ k: "url", u: str(u) }); };
+G.saveAs = function () { rq({ k: "unsupported", m: "saveAs" }); };
+G.closeDoc = function () { rq({ k: "unsupported", m: "closeDoc" }); };
+G.flattenPages = function () { rq({ k: "flatten" }); };
+G.removeField = function (n) { rq({ k: "remove", n: str(n) }); };
+["addScript", "syncAnnotScan", "scroll", "exportDataObject"].forEach(function (m) { G[m] = function () { rq({ k: "unsupported", m: m }); }; });
+function wordsOf(p) { var w = S.words[p]; return w ? w : []; }
+G.getPageNthWord = function (p, n, strip) {
+  var w = wordsOf(p === undefined ? 0 : Number(p))[n === undefined ? 0 : Number(n)];
+  if (w === undefined) return "";
+  return strip === false ? w : String(w).replace(/^[^\w\u0600-\u06FF]+|[^\w\u0600-\u06FF]+$/g, "");
+};
+G.getPageNumWords = function (p) { return wordsOf(p === undefined ? 0 : Number(p)).length; };
+S.setWords = function (json) { S.words = JSON.parse(json); };
 G.getAnnots = function () { return null; };
 G.getPageRotation = function () { return 0; };
 G.addField = function () { return null; };
@@ -212,7 +247,7 @@ var app = {
     S.alerts.push({ t: str(o.cMsg) });
     return (o.nType === 2 || o.nType === 3) ? 4 : 1;     // OK / Yes
   },
-  beep: function () {}, response: function () { return null; }, launchURL: function () {}, execMenuItem: function () {},
+  beep: function () {}, response: function () { return null; }, launchURL: function (u) { rq({ k: "url", u: str(u) }); }, execMenuItem: function (m) { rq({ k: "menu", n: str(m) }); },
   setTimeOut: function () { return {}; }, clearTimeOut: function () {}, setInterval: function () { return {}; }, clearInterval: function () {},
   popUpMenu: function () { return null; }, popUpMenuEx: function () { return null; }, openDoc: function () { return null; },
   goBack: function () {}, goForward: function () {}, mailMsg: function () {}, newDoc: function () { return null; },
@@ -221,7 +256,8 @@ var app = {
 };
 app.activeDocs = [G];
 G.app = app;
-G.console = { println: function (s) { if (S.log.length < 50) S.log.push(str(s)); }, show: function () {}, hide: function () {}, clear: function () {} };
+G.console = { println: function (s) { if (S.log.length < 200) S.log.push(str(s)); }, show: function () {}, hide: function () {}, clear: function () { S.log = []; } };
+S.drainLog = function () { var l = S.log; S.log = []; return JSON.stringify(l); };
 G.global = { setPersistent: function () {} };
 G.event = { rc: true };
 
@@ -267,7 +303,7 @@ G.trans = {};
 // ------------------------------------------------------------------ event lifecycle (called from Kotlin)
 S.begin = function (kind, target, evJson) {
   var e = JSON.parse(evJson);
-  S.alerts = []; S.setv = {}; S.props = {}; S.calcNow = false;
+  S.alerts = []; S.setv = {}; S.props = {}; S.calcNow = false; S.req = [];
   var t = target ? getField(target) : null;
   G.event = {
     name: kind, type: "Field", value: e.value === undefined ? "" : e.value, change: e.change || "", changeEx: e.changeEx || "",
@@ -280,7 +316,7 @@ S.begin = function (kind, target, evJson) {
 S.end = function (err) {
   var e = G.event || {};
   if (e.name === "Calculate" && e.rc !== false && e.targetName && S.fields[e.targetName]) setVal(e.targetName, e.value);
-  var out = { rc: e.rc !== false, v: str(e.value), c: str(e.change), ss: e.selStart, se: e.selEnd, a: S.alerts, s: S.setv, p: S.props, cn: S.calcNow };
+  var out = { rc: e.rc !== false, v: str(e.value), c: str(e.change), ss: e.selStart, se: e.selEnd, a: S.alerts, s: S.setv, p: S.props, cn: S.calcNow, rq: S.req };
   if (err) out.err = String(err);
   return JSON.stringify(out);
 };

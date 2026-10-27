@@ -21,9 +21,11 @@ data class OcrPage(val text: String, val words: List<OcrWord>, val imageWidth: I
 
 /**
  * Tesseract wrapper. Language packs (`tessdata_best`, pinned commit, SHA-256 verified) are downloaded on first use into
- * `filesDir/ocr_best/tessdata/<lang>.traineddata`.
+ * `filesDir/ocr_best/tessdata/<lang>.traineddata`. Nitro additions: every language of tessdata_best / tessdata_fast
+ * ([OcrModels], pinned by size + git blob id), recognition quality [fast] (tessdata_fast in `ocr_fast/tessdata`),
+ * a numbers-only character list and a quick [score] for orientation detection.
  */
-class OcrEngine(private val context: Context) : AutoCloseable {
+class OcrEngine(private val context: Context, val fast: Boolean = false) : AutoCloseable {
 
     private var api: TessBaseAPI? = null
     private var initialisedLangs: String? = null
@@ -31,14 +33,55 @@ class OcrEngine(private val context: Context) : AutoCloseable {
     private var helper: TessBaseAPI? = null
     private var helperTried = false
     @Volatile private var cancelled = false
+    private var whitelist: String? = null
+
+    /**
+     * Nitro special recognition "numbers only": restrict the characters Tesseract may return (null = all). Applies to
+     * the next [init] of other languages and to the engine already initialised.
+     */
+    fun setCharWhitelist(chars: String?) {
+        synchronized(this) {
+            whitelist = chars
+            api?.let { runCatching { it.setVariable(TessBaseAPI.VAR_CHAR_WHITELIST, chars ?: "") } }
+        }
+    }
+
+    /**
+     * Recognition score of [bitmap] for orientation detection: mean word confidence × letters found (more readable
+     * text scores higher). Must be called after [init].
+     */
+    suspend fun score(bitmap: Bitmap): Float = withContext(Dispatchers.Default) {
+        synchronized(this@OcrEngine) {
+            val t = api ?: return@withContext 0f
+            t.setImage(bitmap)
+            val text = t.utF8Text ?: ""
+            val conf = t.meanConfidence().toFloat()
+            runCatching { t.clear() }
+            conf * text.count { it.isLetterOrDigit() }.coerceAtMost(2000) / 100f
+        }
+    }
 
     // high-accuracy LSTM models (tessdata_best): much better Arabic than tessdata_fast; kept apart from old fast packs
-    val tessdataDir: File get() = File(context.filesDir, "ocr_best/tessdata").apply { mkdirs() }
+    val tessdataDir: File get() = File(context.filesDir, if (fast) "ocr_fast/tessdata" else "ocr_best/tessdata").apply { mkdirs() }
 
-    fun isLanguageInstalled(lang: String): Boolean = File(tessdataDir, "$lang.traineddata").let { f ->
+    /** The best-quality folder: the Arabic script helper always comes from tessdata_best. */
+    private val bestDir: File get() = File(context.filesDir, "ocr_best/tessdata").apply { mkdirs() }
+
+    private fun fileOf(lang: String, dir: File = tessdataDir) = File(dir, "$lang.traineddata").also { it.parentFile?.mkdirs() }
+
+    /** Expected size of [lang] in this engine's quality, or null when the pack is unknown. */
+    private fun expectedSize(lang: String, fastPack: Boolean = fast): Long? =
+        if (!fastPack) PINNED[lang]?.size ?: OcrModels.BEST[lang]?.size else OcrModels.FAST[lang]?.size
+
+    fun isLanguageInstalled(lang: String): Boolean = isInstalledIn(lang, if (lang == ARABIC_SCRIPT) bestDir else tessdataDir, lang != ARABIC_SCRIPT && fast)
+
+    private fun isInstalledIn(lang: String, dir: File, fastPack: Boolean): Boolean = fileOf(lang, dir).let { f ->
         // a pinned pack must have its exact size (a truncated or swapped file is downloaded again)
-        f.exists() && f.length() > 100_000 && (PINNED[lang]?.let { f.length() == it.size } ?: true)
+        f.exists() && f.length() > 10_000 && (expectedSize(lang, fastPack)?.let { f.length() == it } ?: true)
     }
+
+    /** True when [lang] can be downloaded (it is pinned for this quality). */
+    fun isAvailable(lang: String): Boolean = expectedSize(lang) != null
 
     /** Make sure every language in [langs] ("ara+eng") is downloaded. [onProgress] gets (lang, fraction 0..1). */
     suspend fun ensureLanguages(langs: String, onProgress: (String, Float) -> Unit = { _, _ -> }) = withContext(Dispatchers.IO) {
@@ -56,10 +99,15 @@ class OcrEngine(private val context: Context) : AutoCloseable {
     }
 
     private suspend fun download(lang: String, onProgress: (String, Float) -> Unit) {
-        val target = File(tessdataDir, "$lang.traineddata")
-        val tmp = File(tessdataDir, "$lang.traineddata.part")
-        val pin = PINNED[lang] ?: throw IllegalStateException("no verified language pack for $lang")
-        val url = modelUrl(lang)
+        // the Arabic script helper is a best model whatever the quality
+        val fastPack = fast && lang != ARABIC_SCRIPT
+        val dir = if (lang == ARABIC_SCRIPT) bestDir else tessdataDir
+        val target = fileOf(lang, dir)
+        val tmp = File(target.parentFile, target.name + ".part")
+        val sha = if (!fastPack) PINNED[lang] else null
+        val git = when { sha != null -> null; fastPack -> OcrModels.FAST[lang]; else -> OcrModels.BEST[lang] }
+        if (sha == null && git == null) throw IllegalStateException("no verified language pack for $lang")
+        val url = if (sha != null) modelUrl(lang) else OcrModels.url(fastPack, lang)
         val client = OkHttpClient.Builder().addInterceptor(com.smartdocs.editor.core.data.NpfNet.interceptor).connectTimeout(30, TimeUnit.SECONDS).readTimeout(120, TimeUnit.SECONDS).followRedirects(true).build()
         val ctx = coroutineContext
         onProgress(lang, 0f)
@@ -80,11 +128,11 @@ class OcrEngine(private val context: Context) : AutoCloseable {
                 }
             }
         }
-        if (tmp.length() < 100_000) { tmp.delete(); throw IllegalStateException("download incomplete for $lang") }
-        // integrity: the file must be byte-for-byte the pinned one (size + SHA-256)
-        if (tmp.length() != pin.size || !sha256(tmp).equals(pin.sha256, ignoreCase = true)) {
-            tmp.delete(); throw IllegalStateException("language pack $lang failed verification")
-        }
+        if (tmp.length() < 10_000) { tmp.delete(); throw IllegalStateException("download incomplete for $lang") }
+        // integrity: the file must be byte-for-byte the pinned one (size + SHA-256, or size + git blob id)
+        val ok = if (sha != null) tmp.length() == sha.size && sha256(tmp).equals(sha.sha256, ignoreCase = true)
+            else tmp.length() == git!!.size && OcrModels.gitBlobId(tmp).equals(git.blob, ignoreCase = true)
+        if (!ok) { tmp.delete(); throw IllegalStateException("language pack $lang failed verification") }
         if (!tmp.renameTo(target)) { tmp.copyTo(target, overwrite = true); tmp.delete() }
         onProgress(lang, 1f)
     }
@@ -100,6 +148,7 @@ class OcrEngine(private val context: Context) : AutoCloseable {
             val ok = runCatching { t.init(parent.absolutePath, langs, TessBaseAPI.OEM_LSTM_ONLY) }.getOrDefault(false)
             if (!ok) { runCatching { t.recycle() }; return@withContext false }
             t.setPageSegMode(TessBaseAPI.PageSegMode.PSM_AUTO)
+            whitelist?.let { runCatching { t.setVariable(TessBaseAPI.VAR_CHAR_WHITELIST, it) } }
             api = t; initialisedLangs = langs
             helperTried = false
             true
@@ -176,7 +225,8 @@ class OcrEngine(private val context: Context) : AutoCloseable {
         if (!isLanguageInstalled(ARABIC_SCRIPT)) return null
         val parent = tessdataDir.parentFile ?: context.filesDir
         val h = TessBaseAPI()
-        val ok = runCatching { h.init(parent.absolutePath, ARABIC_SCRIPT, TessBaseAPI.OEM_LSTM_ONLY) }.getOrDefault(false)
+        // the helper lives in the best folder even when the main engine uses fast models
+        val ok = runCatching { h.init((bestDir.parentFile ?: parent).absolutePath, ARABIC_SCRIPT, TessBaseAPI.OEM_LSTM_ONLY) }.getOrDefault(false)
         if (!ok) { runCatching { h.recycle() }; return null }
         h.setPageSegMode(TessBaseAPI.PageSegMode.PSM_SINGLE_LINE)
         helper = h
@@ -244,7 +294,22 @@ class OcrEngine(private val context: Context) : AutoCloseable {
         /** Human label for a language code. */
         fun label(lang: String): String = when (lang) {
             "ara" -> "العربية"; "eng" -> "English"; "fra" -> "Français"; "deu" -> "Deutsch"; "spa" -> "Español"
-            "tur" -> "Türkçe"; "fas" -> "فارسی"; "urd" -> "اردو"; ARABIC_SCRIPT -> "العربية ٠١٢٣"; else -> lang
+            "tur" -> "Türkçe"; "fas" -> "فارسی"; "urd" -> "اردو"; ARABIC_SCRIPT -> "العربية ٠١٢٣"; else -> displayName(lang)
+        }
+
+        private val SPECIAL = mapOf("chi_sim" to "中文 (简体)", "chi_tra" to "中文 (繁體)", "chi_sim_vert" to "中文 (简体, ↓)", "chi_tra_vert" to "中文 (繁體, ↓)",
+            "jpn_vert" to "日本語 (↓)", "kor_vert" to "한국어 (↓)", "deu_latf" to "Deutsch (Fraktur)", "aze_cyrl" to "Azərbaycan (Кирил)",
+            "uzb_cyrl" to "Oʻzbek (Кирилл)", "srp_latn" to "Srpski (latinica)", "ita_old" to "Italiano (antico)", "spa_old" to "Español (antiguo)",
+            "kat_old" to "ქართული (ძველი)", "frm" to "Français (moyen)", "enm" to "Middle English", "equ" to "Math / equations", "frk" to "Fraktur")
+
+        /** The language's own name from ISO 639 (Java knows the 3-letter codes); scripts as "Script: <name>". */
+        fun displayName(lang: String): String {
+            SPECIAL[lang]?.let { return it }
+            if (lang.startsWith("script/")) return "Script: " + lang.removePrefix("script/").replace('_', ' ')
+            val base = lang.substringBefore('_')
+            val l = java.util.Locale(base)
+            val own = runCatching { l.getDisplayLanguage(l) }.getOrDefault("")
+            return if (own.isBlank() || own == base) lang else own.replaceFirstChar { it.titlecase(l) }
         }
     }
 }

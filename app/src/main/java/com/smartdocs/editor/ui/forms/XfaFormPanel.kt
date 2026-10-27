@@ -15,7 +15,7 @@ import com.smartdocs.editor.core.forms.XfaSupport
 
 /** Banner explaining how an XFA document is handled. */
 @Composable
-internal fun XfaBanner(info: XfaSupport.Info, onFlattenInfo: () -> Unit) {
+internal fun XfaBanner(info: XfaSupport.Info, onFlatten: () -> Unit, onOpenReader: () -> Unit, onDropXfa: () -> Unit) {
     if (info.kind == XfaSupport.Kind.NONE) return
     val dynamic = info.kind == XfaSupport.Kind.DYNAMIC
     Card(
@@ -27,8 +27,18 @@ internal fun XfaBanner(info: XfaSupport.Info, onFlattenInfo: () -> Unit) {
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(stringResource(if (dynamic) R.string.ps_xfa_dynamic_title else R.string.ps_xfa_static_title), style = MaterialTheme.typography.titleSmall)
-                Text(stringResource(if (dynamic) R.string.ps_xfa_dynamic_body else R.string.ps_xfa_static_body), style = MaterialTheme.typography.bodySmall)
-                if (dynamic) TextButton(onClick = onFlattenInfo, contentPadding = PaddingValues(0.dp)) { Text(stringResource(R.string.ps_xfa_flatten_q)) }
+                Text(stringResource(if (dynamic) R.string.f8_xfa_dynamic_body else R.string.ps_xfa_static_body), style = MaterialTheme.typography.bodySmall)
+                if (dynamic) {
+                    // the reader lays the XFA form out as an AcroForm in place (InPageXfaBanner): fill it there
+                    Text(stringResource(R.string.f8_xfa_reader_hint), style = MaterialTheme.typography.bodySmall)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = onOpenReader) { Text(stringResource(R.string.f8_xfa_open_reader)) }
+                        OutlinedButton(onClick = onFlatten) { Text(stringResource(R.string.f8_xfa_flatten)) }
+                    }
+                } else {
+                    Text(stringResource(R.string.f8_xfa_static_hint), style = MaterialTheme.typography.bodySmall)
+                    OutlinedButton(onClick = onDropXfa) { Text(stringResource(R.string.f8_xfa_drop)) }
+                }
             }
         }
     }

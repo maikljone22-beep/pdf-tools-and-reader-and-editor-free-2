@@ -32,8 +32,13 @@ object StoredOps {
     suspend fun translate(src: File, out: File, pw: String?, page: Int, indices: List<Int>, dx: Float, dy: Float) = withContext(Dispatchers.IO) {
         PdfOps.loadRaw(src, pw).use { doc ->
             val list = doc.getPage(page).annotations
-            indices.distinct().mapNotNull { list.getOrNull(it) }.forEach { an ->
-                val cos = an.cosObject
+            indices.distinct().mapNotNull { list.getOrNull(it) }.forEach { an -> shift(an.cosObject, dx, dy); an.setModifiedDate(java.util.Calendar.getInstance()) }
+            SignedSave.saveEdited(doc, out, pw, listOf(page))
+        }
+    }
+
+    /** Move one annotation dictionary by (dx, dy): /Rect, geometry arrays, ink and its pop-up. */
+    fun shift(cos: COSDictionary, dx: Float, dy: Float) {
                 shiftArray(cos, COSName.RECT, dx, dy)
                 listOf("QuadPoints", "L", "Vertices", "CL").forEach { shiftArray(cos, COSName.getPDFName(it), dx, dy) }
                 (cos.getDictionaryObject(COSName.INKLIST) as? COSArray)?.let { ink ->
@@ -47,18 +52,13 @@ object StoredOps {
                     cos.setItem(COSName.INKLIST, n)
                 }
                 (cos.getDictionaryObject(COSName.getPDFName("Popup")) as? COSDictionary)?.let { shiftArray(it, COSName.RECT, dx, dy) }
-                an.setModifiedDate(java.util.Calendar.getInstance())
-            }
-            SignedSave.saveEdited(doc, out, pw, listOf(page))
-        }
     }
 
     /** Remove only annotations [indices] of [page] (their replies stay, like a single delete). */
     suspend fun removeOnly(src: File, out: File, pw: String?, page: Int, indices: List<Int>) = withContext(Dispatchers.IO) {
         PdfOps.loadRaw(src, pw).use { doc ->
             val p = doc.getPage(page)
-            val drop = indices.toSet()
-            p.annotations = p.annotations.filterIndexed { i, _ -> i !in drop }
+            AnnotStyle.removeWithPopups(p, indices.toSet())
             SignedSave.saveEdited(doc, out, pw, listOf(page))
         }
     }

@@ -40,13 +40,12 @@ object NpfPrefs {
         const val RECENT_LIMIT = "recent_limit"; const val RECOVERY_MIN = "recovery_min"; const val AUTOSAVE_MIN = "autosave_min"
         const val LAYOUT = "layout"; const val ZOOM = "zoom"; const val PANEL = "panel_on_open"; const val PANEL_W = "panel_width"; const val TAB_LIMIT = "tab_limit"; const val PRESENT_BG = "present_bg"; const val DOC_TITLE = "doc_title"
         const val HF_IGNORE_ROT = "hf_ignore_rotation"
-        const val UNITS = "units"; const val GRID_SNAP = "grid_snap"; const val GRID_COLOR = "grid_color"
+        const val UNITS = "units"; const val GRID_COLOR = "grid_color"
         const val GRID_OFF_X = "grid_off_x"; const val GRID_OFF_Y = "grid_off_y"; const val GRID_SUB = "grid_sub"
         const val GUIDES = "guides"; const val GUIDES_H = "guides_h"; const val GUIDES_V = "guides_v"
-        const val NOTE_FONT = "note_font"; const val NOTE_SIZE = "note_size"; const val NOTE_OPACITY = "note_opacity"
+        const val NOTE_FONT = "note_font"
         const val RETAIN_TOOLS = "retain_tools"; const val COPY_SEL = "copy_sel_to_markup"
-        const val SUM_THUMBS = "sum_thumbs"; const val SUM_REPLIES = "sum_replies"; const val SUM_DATES = "sum_dates"; const val SUM_ORDER = "sum_order"
-        const val FORM_HL = "form_hl"; const val FORM_REQ = "form_req"; const val XFA_AUTO = "xfa_auto_open"; const val XFA_BANNER = "xfa_banner"
+        const val XFA_AUTO = "xfa_auto_open"; const val XFA_BANNER = "xfa_banner"
         const val DIGITS = "digits"
         const val BM_DELETE = "bm_remove_on_delete"; const val BM_IMPORT = "bm_import_on_replace"
         const val OCR_OUTPUT = "ocr_output"
@@ -93,7 +92,6 @@ object NpfPrefs {
     // ---- units, grid, guides ----
     /** "cm", "mm", "in", "pt". */
     val units: String get() = s(K.UNITS, "cm")
-    val gridSnap: Boolean get() = b(K.GRID_SNAP, false)
     /** RGB of the layout grid. */
     val gridColor: Int get() = i(K.GRID_COLOR, 0x2196F3)
     val gridOffsetXmm: Float get() = f(K.GRID_OFF_X, 0f)
@@ -109,22 +107,13 @@ object NpfPrefs {
     // ---- commenting ----
     /** "sans", "serif", "mono". */
     val noteFont: String get() = s(K.NOTE_FONT, "sans")
-    val noteSize: Float get() = f(K.NOTE_SIZE, 14f)
-    val noteOpacity: Float get() = f(K.NOTE_OPACITY, 1f)
+    // pop-up size and opacity: prefs "comment_prefs" (note_font / note_opacity) of the comment tools (CommentExtras)
     /** Keep the markup tool selected after a comment is made (the reader's "continue" chip). */
     val retainTools: Boolean get() = b(K.RETAIN_TOOLS, true)
     /** Highlight / underline / strikeout / squiggly from a selection get the selected text as their comment. */
     val copySelection: Boolean get() = b(K.COPY_SEL, true)
-    val summaryThumbs: Boolean get() = b(K.SUM_THUMBS, true)
-    val summaryReplies: Boolean get() = b(K.SUM_REPLIES, true)
-    val summaryDates: Boolean get() = b(K.SUM_DATES, true)
-    /** "page" or "date". */
-    val summaryOrder: String get() = s(K.SUM_ORDER, "page")
 
     // ---- forms ----
-    /** ARGB of the field highlight and of the required-field outline. */
-    val formHighlight: Int get() = i(K.FORM_HL, 0x3D7C9CFF)
-    val formRequired: Int get() = i(K.FORM_REQ, 0xCCE53935.toInt())
     /** Dynamic XFA: open the generated fillable form automatically. */
     val xfaAutoOpen: Boolean get() = b(K.XFA_AUTO, false)
     val xfaBanner: Boolean get() = b(K.XFA_BANNER, true)

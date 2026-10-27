@@ -28,17 +28,17 @@ object StampRenderer {
      * Draw a bordered stamp with a main [text] and an optional [subtitle] (smaller, second line).
      * Width is fixed to [widthPx]; height adapts to the content. Returns an ARGB bitmap with transparent background.
      */
-    fun renderTextStamp(text: String, subtitle: String?, color: Int, widthPx: Int = 600, border: Border = Border.ROUNDED): Bitmap {
+    fun renderTextStamp(text: String, subtitle: String?, color: Int, widthPx: Int = 600, border: Border = Border.ROUNDED, face: Typeface? = null): Bitmap {
         val padding = widthPx * 0.06f
         val strokeW = widthPx * 0.018f
         val titlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             this.color = color
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            typeface = Typeface.create(face ?: Typeface.DEFAULT, Typeface.BOLD)
             textAlign = Paint.Align.CENTER
         }
         val subPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             this.color = color
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+            typeface = Typeface.create(face ?: Typeface.DEFAULT, Typeface.NORMAL)
             textAlign = Paint.Align.CENTER
         }
         // Fit the title to the available width.

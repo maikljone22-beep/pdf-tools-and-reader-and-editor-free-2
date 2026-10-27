@@ -48,6 +48,10 @@ fun FoxitOptimizeOptions(o: OptimizeOptions, onChange: (OptimizeOptions) -> Unit
         FieldLabel(stringResource(R.string.nt_opt_scans))
         SwitchRow(stringResource(R.string.nt_opt_mrc), o.mrc, stringResource(R.string.nt_opt_mrc_help)) { onChange(o.copy(mrc = it)) }
         SwitchRow(stringResource(R.string.nt_opt_merge_fragments), o.mergeFragments) { onChange(o.copy(mergeFragments = it)) }
+        SwitchRow(stringResource(R.string.nt_opt_scan_bg), o.scanBackground) { onChange(o.copy(scanBackground = it)) }
+        SwitchRow(stringResource(R.string.nt_opt_descreen), o.scanDescreen) { onChange(o.copy(scanDescreen = it)) }
+        SwitchRow(stringResource(R.string.nt_opt_sharpen), o.scanSharpen) { onChange(o.copy(scanSharpen = it)) }
+        SwitchRow(stringResource(R.string.nt_opt_bw), o.bwImages, stringResource(R.string.nt_opt_bw_help)) { onChange(o.copy(bwImages = it)) }
         FieldLabel(stringResource(R.string.nt_opt_transparency))
         ChoiceChips(listOf(0, 150, 300, 600), o.flattenTransparencyDpi, { stringResource(when (it) {
             0 -> R.string.nt_opt_transp_off; 150 -> R.string.nt_opt_transp_low; 300 -> R.string.nt_opt_transp_medium; else -> R.string.nt_opt_transp_high }) }) { onChange(o.copy(flattenTransparencyDpi = it)) }

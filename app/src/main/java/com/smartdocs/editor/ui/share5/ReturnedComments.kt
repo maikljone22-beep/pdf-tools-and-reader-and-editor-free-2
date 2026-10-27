@@ -76,6 +76,14 @@ fun ReturnedScreen(nav: NavHostController, uri: String?) {
         val u = uri?.let(Uri::parse) ?: return@LaunchedEffect
         incoming = runCatching { if (u.scheme == "file") File(u.path!!) else app.documents.localFile(u) }.getOrNull()
         incoming?.let { found = runCatching { EmailReview.match(ctx, it) }.getOrNull() }
+        // Foxit 24.90: an FDF / XFDF names its PDF (/F, <f href>); when that PDF is on the device it is preselected
+        if (found == null) incoming?.let { inc ->
+            target = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                com.smartdocs.editor.core.annot.CommentOps7.fdfTargetName(inc)?.let { n ->
+                    com.smartdocs.editor.core.annot.CommentOps7.findPdf(n, listOfNotNull(inc.parentFile, app.documents.docsDir, ctx.getExternalFilesDir(null)))
+                }
+            }
+        }
         checked = true
     }
     val pickTarget = rememberPdfPicker { target = it.firstOrNull() }

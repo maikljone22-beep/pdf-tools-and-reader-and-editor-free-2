@@ -58,6 +58,7 @@ fun MultiActionBar(state: ReaderState, page: Int, g: PageGeometry) {
                 MBtn(Icons.Default.GroupWork, R.string.an_ungroup, enabled, false) { m.ungroup() }
                 if (allInk) MBtn(Icons.Default.Gesture, R.string.an_recognize, enabled, false) { h.startHandwriting() }
                 MBtn(Icons.Default.Delete, R.string.ae_delete, enabled, false, MaterialTheme.colorScheme.error) { m.delete() }
+                SelectionMoreButton(state, multi = true)      // section 7: align / distribute, lock, clipboard, flatten...
                 if (m.busy) CircularProgressIndicator(Modifier.padding(horizontal = 8.dp).size(18.dp), strokeWidth = 2.dp)
             }
             when (sub) {

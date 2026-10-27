@@ -64,7 +64,7 @@ object CommentRows {
             val ex = extras[c.page to c.index]
             val marked = if (c.subtype in markup && ex != null) textUnder(s.pageText(c.page), s.charBoxes(c.page), ex.quads) else ""
             rows += CRow(c.page, c.index, c.subtype, c.author, c.contents, c.date, c.status.state, c.replies.map { (if (it.author.isNotBlank()) it.author + ": " else "") + it.text },
-                c.color, ex?.checked ?: false, marked)
+                c.color, ex?.checked ?: false, marked, created = c.created)
         }
         s.annots.forEach { a ->
             val sub = kindSubtype(a.kind)
@@ -159,6 +159,11 @@ fun CommentManagerSheet(v: V5State, onMessage: (String) -> Unit) {
                 MultiFilter(stringResource(R.string.v5_col_type), CommentFilter.types(all), filter.types, { CommentRows.typeLabel(ctx, it) }) { filter = filter.copy(types = it) }
                 MultiFilter(stringResource(R.string.v5_col_status), CommentFilter.statuses(all), filter.statuses, { statusLabel(ctx, it) }) { filter = filter.copy(statuses = it) }
                 MultiFilter(stringResource(R.string.v5_col_page), CommentFilter.pages(all), filter.pages, { (it + 1).toString() }) { filter = filter.copy(pages = it) }
+                // filter by colour (Foxit 24.76)
+                val allColors = remember(all) { all.mapNotNull { it.color }.distinct() }
+                if (allColors.size > 1) allColors.forEach { c ->
+                    com.smartdocs.editor.ui.reader.ColorDot(c, c in filter.colors, 28.dp) { filter = filter.copy(colors = if (c in filter.colors) filter.colors - c else filter.colors + c) }
+                }
                 FilterChip(filter.checked == true, { filter = filter.copy(checked = if (filter.checked == true) null else true) }, label = { Text(stringResource(R.string.v5_checked)) })
                 FilterChip(filter.checked == false, { filter = filter.copy(checked = if (filter.checked == false) null else false) }, label = { Text(stringResource(R.string.v5_unchecked)) })
                 SortMenu(sort) { sort = it }
@@ -258,7 +263,8 @@ private fun <T> MultiFilter(label: String, values: List<T>, selected: Set<T>, na
 private fun SortMenu(sort: CSort, onSort: (CSort) -> Unit) {
     var open by remember { mutableStateOf(false) }
     val labels = mapOf(CSort.PAGE to R.string.v5_sort_page, CSort.DATE_NEW to R.string.v5_sort_new, CSort.DATE_OLD to R.string.v5_sort_old,
-        CSort.AUTHOR to R.string.v5_col_author, CSort.TYPE to R.string.v5_col_type, CSort.STATUS to R.string.v5_col_status)
+        CSort.AUTHOR to R.string.v5_col_author, CSort.TYPE to R.string.v5_col_type, CSort.STATUS to R.string.v5_col_status,
+        CSort.MODIFIED to R.string.cx_sum_sort_mod, CSort.COLOR to R.string.cx_sort_color)
     Box {
         AssistChip(onClick = { open = true }, label = { Text(stringResource(labels.getValue(sort))) }, leadingIcon = { Icon(Icons.Default.Sort, null, Modifier.size(16.dp)) })
         DropdownMenu(open, { open = false }) {

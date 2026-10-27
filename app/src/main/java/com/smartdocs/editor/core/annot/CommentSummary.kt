@@ -32,14 +32,35 @@ data class SummaryLabels(
 )
 
 /**
+ * Options of the comments summary (Nitro 7.70 / Foxit 24.87) and of "print with comments summary" (7.71 / 7.72):
+ * sort order, text size, page thumbnails (or comments only), pages without comments, replies, status, page range,
+ * paper size and comment types.
+ */
+data class SummaryOptions(
+    val sort: Sort = Sort.PAGE,
+    val textScale: Float = 1f,
+    val thumbnails: Boolean = true,
+    val includeEmptyPages: Boolean = false,
+    val replies: Boolean = true,
+    val status: Boolean = true,
+    val fromPage: Int = 1,
+    val toPage: Int = Int.MAX_VALUE,
+    val letter: Boolean = false,
+    val types: Set<String>? = null,
+    val pageCount: Int = 0,
+) {
+    enum class Sort { PAGE, AUTHOR, TYPE, CREATED_NEW, CREATED_OLD, MODIFIED }
+}
+
+/**
  * On-device "Summarize Comments": a new PDF where every page that has comments gets a thumbnail with
  * numbered markers beside a numbered list (type, author, date, status, text, replies). Arabic is shaped
  * and right-aligned with the embedded Naskh font.
  */
 object CommentSummary {
 
-    private const val PW = 595f
-    private const val PH = 842f
+    private var PW = 595f
+    private var PH = 842f
     private const val M = 36f
 
     private class Writer(val doc: PDDocument, val font: PDFont) {
@@ -81,22 +102,51 @@ object CommentSummary {
     }
 
     /**
+     * [base] (opened with [pw]) followed by the pages of [summary], written unencrypted to [out] for printing
+     * (7.71 "print document with comments summary"). Returns the page count of [out].
+     */
+    suspend fun appendSummary(base: File, pw: String?, summary: File, out: File): Int = withContext(Dispatchers.IO) {
+        (if (pw.isNullOrEmpty()) PDDocument.load(base) else PDDocument.load(base, pw)).use { d ->
+            PDDocument.load(summary).use { s ->
+                d.isAllSecurityToBeRemoved = true
+                com.tom_roush.pdfbox.multipdf.PDFMergerUtility().appendDocument(d, s)
+                d.save(out)
+                d.numberOfPages
+            }
+        }
+    }
+
+    /**
      * Build the summary of [src] into [out]. [thumb] renders a page (index, width px, height px) or null.
      * Returns the number of comments listed (0 → nothing written).
      */
     suspend fun build(
         context: Context, src: File, pw: String?, out: File, labels: SummaryLabels,
         pageSize: suspend (Int) -> Pair<Float, Float>, thumb: suspend (Int, Int, Int) -> Bitmap?,
+        opts: SummaryOptions = SummaryOptions(),
     ): Int {
-        val items = CommentStore.load(src, pw)
+        PW = if (opts.letter) 612f else 595f; PH = if (opts.letter) 792f else 842f
+        val k = opts.textScale.coerceIn(0.7f, 1.6f)
+        val items = CommentStore.load(src, pw).filter { it.page + 1 in opts.fromPage..opts.toPage && (opts.types == null || it.subtype in opts.types) }
         if (items.isEmpty()) return 0
-        // nav-prefs: Settings → more preferences → comment summary (thumbnails, dates, replies, order on the page)
-        val P = com.smartdocs.editor.core.data.NpfPrefs
-        val byDate = P.summaryOrder == "date"
-        val byPage = items.groupBy { it.page }.mapValues { (_, l) -> if (byDate) l.sortedBy { it.date } else l }.toSortedMap()
+        val order: Comparator<CommentItem> = when (opts.sort) {
+            SummaryOptions.Sort.PAGE -> compareBy<CommentItem>({ it.page }, { -maxOf(it.rect.top, it.rect.bottom) }, { it.rect.left })
+            SummaryOptions.Sort.AUTHOR -> compareBy<CommentItem>({ it.author.lowercase() }, { it.page })
+            SummaryOptions.Sort.TYPE -> compareBy<CommentItem>({ it.subtype }, { it.page })
+            SummaryOptions.Sort.CREATED_NEW -> compareByDescending<CommentItem> { if (it.created > 0) it.created else it.date }
+            SummaryOptions.Sort.CREATED_OLD -> compareBy<CommentItem> { if (it.created > 0) it.created else it.date }
+            SummaryOptions.Sort.MODIFIED -> compareByDescending<CommentItem> { it.date }
+        }
+        // page order keeps one block per page (with its thumbnail); the other orders list every comment in one block
+        val byPage: Map<Int, List<CommentItem>> = if (opts.sort == SummaryOptions.Sort.PAGE) {
+            val m = items.sortedWith(order).groupBy { it.page }.toSortedMap()
+            if (opts.includeEmptyPages && opts.pageCount > 0)
+                (opts.fromPage - 1 until minOf(opts.toPage, opts.pageCount)).associateWith { m[it] ?: emptyList() }.toSortedMap()
+            else m
+        } else sortedMapOf(-1 to items.sortedWith(order))
         // thumbnails are rendered before the PDF is assembled (rendering is suspend, PdfBox writing is blocking)
         val thumbs = HashMap<Int, Pair<Bitmap, Pair<Float, Float>>>()
-        if (P.summaryThumbs) byPage.keys.forEach { p ->
+        if (opts.thumbnails) byPage.keys.filter { it >= 0 }.forEach { p ->
             val sz = pageSize(p)
             val w = 520; val h = (w * sz.second / sz.first).toInt().coerceIn(1, 1400)
             thumb(p, w, h)?.let { thumbs[p] = it to sz }
@@ -106,7 +156,7 @@ object CommentSummary {
                 val wr = Writer(doc, PdfOps.arabicFont(context, doc))
                 val fmt = SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.US)
                 val thumbW = 230f; val gap = 14f
-                val listLeft = M; val listRight = if (P.summaryThumbs) PW - M - thumbW - gap else PW - M   // list on the left, thumbnail on the right (RTL reading)
+                val listLeft = M; val listRight = PW - M - thumbW - gap   // list on the left, thumbnail on the right (RTL reading)
                 var number = 0
                 var cs: PDPageContentStream? = null
                 var y = 0f
@@ -118,8 +168,9 @@ object CommentSummary {
                 var first = true
                 byPage.forEach { (pi, list) ->
                     var s = newPage()
-                    if (first) { wr.text(s, labels.title, M, y - 14f, 18f, PW - M, 0x1A237E); y -= 30f; first = false }
-                    wr.text(s, String.format(Locale.US, labels.pageFmt, pi + 1), M, y - 12f, 13f, PW - M, 0x37474F); y -= 22f
+                    if (first) { wr.text(s, labels.title, M, y - 14f, 18f * k, PW - M, 0x1A237E); y -= 30f * k; first = false }
+                    if (pi >= 0) { wr.text(s, String.format(Locale.US, labels.pageFmt, pi + 1), M, y - 12f, 13f * k, PW - M, 0x37474F); y -= 22f * k }
+                    if (list.isEmpty()) { wr.text(s, labels.empty, M, y - 11f, 10f * k, PW - M, 0x78909C); y -= 18f * k }
                     val top = y
                     // thumbnail with numbered markers
                     thumbs[pi]?.let { (bmp, sz) ->
@@ -138,29 +189,31 @@ object CommentSummary {
                         }
                     }
                     // numbered list
-                    val maxW = listRight - listLeft
+                    val maxW = (if (thumbs[pi] == null) PW - M - listLeft else listRight - listLeft)
+                    val rightEdge = listLeft + maxW
                     list.forEach { c ->
                         number++
                         val head = buildString {
                             append(number).append(". ").append(labels.typeLabel(c.subtype))
                             if (c.author.isNotBlank()) append(" — ").append(c.author)
-                            if (c.date > 0 && P.summaryDates) append(" — ").append(fmt.format(Date(c.date)))
-                            if (c.status != ReviewStatus.NONE) append(" — ").append(labels.statusLabel(c.status))
+                            if (c.date > 0) append(" — ").append(fmt.format(Date(c.date)))
+                            if (opts.status && c.status != ReviewStatus.NONE) append(" — ").append(labels.statusLabel(c.status))
+                            if (pi < 0) append(" — ").append(String.format(Locale.US, labels.pageFmt, c.page + 1))
                         }
                         val lines = ArrayList<Pair<String, Float>>()          // text, size
-                        wr.wrap(head, 10f, maxW).forEach { lines += it to 10f }
-                        if (c.contents.isNotBlank()) wr.wrap(c.contents, 9.5f, maxW - 8f).forEach { lines += it to 9.5f }
-                        if (P.summaryReplies) c.replies.forEach { r ->
-                            val t = "↳ ${labels.repliesLabel} ${r.author}: ${r.text}"
-                            wr.wrap(t, 9f, maxW - 16f).forEach { lines += it to 9f }
+                        wr.wrap(head, 10f * k, maxW).forEach { lines += it to 10f * k }
+                        if (c.contents.isNotBlank()) wr.wrap(c.contents, 9.5f * k, maxW - 8f).forEach { lines += it to 9.5f * k }
+                        if (opts.replies) c.replies.forEach { r ->
+                            val t = "\u21B3 ${labels.repliesLabel} ${r.author}: ${r.text}"
+                            wr.wrap(t, 9f * k, maxW - 16f).forEach { lines += it to 9f * k }
                         }
                         lines.forEachIndexed { li, (t, size) ->
                             if (y - size * 1.5f < M) {
                                 s = newPage()
-                                wr.text(s, String.format(Locale.US, labels.pageFmt, pi + 1) + " " + labels.continued, M, y - 12f, 11f, PW - M, 0x78909C); y -= 22f
+                                if (pi >= 0) wr.text(s, String.format(Locale.US, labels.pageFmt, pi + 1) + " " + labels.continued, M, y - 12f, 11f, PW - M, 0x78909C); y -= 22f
                             }
-                            val indent = when { li == 0 -> 0f; size < 9.5f -> 16f; else -> 8f }
-                            wr.text(s, t, listLeft + indent, y - size, size, listRight - indent, if (li == 0) 0x0D47A1 else 0x212121)
+                            val indent = when { li == 0 -> 0f; size < 9.5f * k -> 16f; else -> 8f }
+                            wr.text(s, t, listLeft + indent, y - size, size, rightEdge - indent, if (li == 0) 0x0D47A1 else 0x212121)
                             y -= size * 1.45f
                         }
                         y -= 6f
