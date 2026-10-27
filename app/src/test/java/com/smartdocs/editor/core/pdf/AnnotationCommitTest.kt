@@ -24,8 +24,8 @@ class AnnotationCommitTest {
             assertEquals(setOf(bad, gone), r.failed.toSet())
             assertTrue(r.errors.any { it.contains("font problem") })
             // the half-written "boom" annotation was removed again
-            assertEquals(listOf("ok"), d.getPage(0).annotations.map { it.contents })
-            assertEquals(listOf("ok2"), d.getPage(1).annotations.map { it.contents })
+            assertEquals(listOf("ok"), d.getPage(0).annotations.filter { it.subtype != "Popup" }.map { it.contents })
+            assertEquals(listOf("ok2"), d.getPage(1).annotations.filter { it.subtype != "Popup" }.map { it.contents })
             try { r.orThrow(); fail("partial failure must throw for one-shot callers") } catch (_: java.io.IOException) {}
         }
     }

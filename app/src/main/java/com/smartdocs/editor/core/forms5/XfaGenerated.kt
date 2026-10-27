@@ -143,6 +143,16 @@ object XfaGenerated {
         src
     }
 
+    /** Remove the last instance of the repeating subform [r] (at least one stays), like [addRow]. */
+    suspend fun removeRow(context: Context, generated: File, r: XfaRepeat, out: File): File = withContext(Dispatchers.IO) {
+        val (src, _) = writeBack(generated, null)
+        val tmp = File(src.parentFile, ".${src.name}.row.pdf")
+        XfaSupport.removeInstance(src, r.dataParent, r.name, -1, tmp)
+        if (!tmp.renameTo(src)) { tmp.copyTo(src, overwrite = true); tmp.delete() }
+        generate(context, src, null, out)
+        src
+    }
+
     /** The one-column fallback: one row per data-bound field. */
     private suspend fun generateList(context: Context, src: File, password: String?, out: File): Int = withContext(Dispatchers.IO) {
         val fields = XfaSupport.readFields(src, password).filter { it.bound }

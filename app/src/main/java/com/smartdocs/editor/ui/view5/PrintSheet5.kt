@@ -44,6 +44,10 @@ fun PrintSheet5(v: V5State, outputFile: suspend () -> File?, onMessage: (String)
     var landscape by remember { mutableStateOf(false) }
     var borders by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
+    // section 7.71 / 7.72: append a comments summary (with its own sort order and options)
+    var withSummary by remember { mutableStateOf(false) }
+    var sumOpts by remember { mutableStateOf(com.smartdocs.editor.core.annot.SummaryOptions()) }
+    val labels = com.smartdocs.editor.ui.reader.annot.summaryLabels()
     val papers = listOf("A4" to PDRectangle.A4, "Letter" to PDRectangle.LETTER, "A3" to PDRectangle.A3, "A5" to PDRectangle.A5)
 
     ModalBottomSheet(onDismissRequest = { v.close() }) {
@@ -63,6 +67,8 @@ fun PrintSheet5(v: V5State, outputFile: suspend () -> File?, onMessage: (String)
                 FilterChip(reverse, { reverse = !reverse }, label = { Text(stringResource(R.string.v5_reverse)) })
             }
             Row(verticalAlignment = Alignment.CenterVertically) { Switch(comments, { comments = it }); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.v5_print_comments)) }
+            Row(verticalAlignment = Alignment.CenterVertically) { Switch(withSummary, { withSummary = it }); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.cx_print_summary)) }
+            if (withSummary) com.smartdocs.editor.ui.reader.annot.SummaryOptionsFields(sumOpts, s.pageCount) { sumOpts = it }
             HorizontalDivider()
             Text(stringResource(R.string.v5_layout), style = MaterialTheme.typography.labelLarge)
             Row(verticalAlignment = Alignment.CenterVertically) { Switch(booklet, { booklet = it }); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.v5_booklet)) }
@@ -89,13 +95,23 @@ fun PrintSheet5(v: V5State, outputFile: suspend () -> File?, onMessage: (String)
                             range = when (which) { 1 -> (s.currentPage + 1).toString(); 2 -> range; else -> "" },
                             subset = subset, reverse = reverse, perSheet = perSheet, booklet = booklet, rightBinding = rightBinding,
                             paper = papers[paper].second, landscape = landscape, borders = borders, annotations = comments)
-                        if (PrintPrep.isPlain(opts, s.pageCount)) PdfPrint.print(ctx, src, src.nameWithoutExtension, s.pageCount)
-                        else {
-                            val app = ctx.applicationContext as SmartDocsApp
+                        val app = ctx.applicationContext as SmartDocsApp
+                        var file = src; var pages = s.pageCount; var pw = s.password
+                        if (!PrintPrep.isPlain(opts, s.pageCount)) {
                             val out = app.documents.newTemp("print")
-                            val n = PrintPrep.build(src, s.password, opts, out)
-                            PdfPrint.print(ctx, out, s.file?.nameWithoutExtension ?: "print", n)
+                            pages = PrintPrep.build(src, s.password, opts, out); file = out; pw = null
                         }
+                        if (withSummary) {
+                            val sum = app.documents.newTemp("summary")
+                            val n = com.smartdocs.editor.core.annot.CommentSummary.build(ctx, src, s.password, sum, labels,
+                                pageSize = { s.pageSize(it) }, thumb = { p, w, hh -> runCatching { s.session?.render(p, w, hh, false, true) }.getOrNull() },
+                                opts = sumOpts.copy(pageCount = s.pageCount))
+                            if (n > 0) {
+                                val merged = app.documents.newTemp("print_sum")
+                                pages = com.smartdocs.editor.core.annot.CommentSummary.appendSummary(file, pw, sum, merged); file = merged
+                            }
+                        }
+                        PdfPrint.print(ctx, file, s.file?.nameWithoutExtension ?: src.nameWithoutExtension, pages)
                     }
                     busy = false
                     res.onSuccess { v.close() }.onFailure { onMessage(it.message ?: ctx.getString(R.string.error_generic)) }

@@ -89,14 +89,16 @@ fun PageCanvas(
 
     var base by remember(page) { mutableStateOf<Bitmap?>(null) }
     var tile by remember(page) { mutableStateOf<Pair<Rect, Bitmap>?>(null) }
-    LaunchedEffect(page, renderKeyW, night, version, session) {
+    // section 7.65: "hide comments" renders the page without annotations (PDFium FPDF_ANNOT off)
+    val showAnnots = !state.annot2.cx.hidden
+    LaunchedEffect(page, renderKeyW, night, version, session, showAnnots) {
         if (session == null || session.isClosed || page !in 0 until session.pageCount) return@LaunchedEffect
         if (base != null) delay(140)
         val w = renderKeyW.coerceAtLeast(1); val h = (w * g.bitmapH / g.bitmapW).roundToInt().coerceAtLeast(1)
         // keep the previous bitmap when a render fails (e.g. the session is being swapped during save)
-        runCatching { session.render(page, w, h, night, true) }.getOrNull()?.let { base = it }
+        runCatching { session.render(page, w, h, night, showAnnots) }.getOrNull()?.let { base = it }
     }
-    LaunchedEffect(page, factor < 0.999f, night, version, session, renderKeyW) {
+    LaunchedEffect(page, factor < 0.999f, night, version, session, renderKeyW, showAnnots) {
         if (session == null || session.isClosed || factor >= 0.999f) { tile = null; return@LaunchedEffect }
         snapshotFlow { visibleClip() }
             .map { c -> c?.let { quantise(it) } }
@@ -105,7 +107,7 @@ fun PageCanvas(
                 if (clip == null) { tile = null; return@collectLatest }
                 delay(220)
                 val screenClip = layoutFractionToScreenFraction(clip, g)
-                val bmp = runCatching { session.renderRegion(page, g.bitmapW.roundToInt(), g.bitmapH.roundToInt(), RectF(screenClip.left, screenClip.top, screenClip.right, screenClip.bottom), night) }.getOrNull()
+                val bmp = runCatching { session.renderRegion(page, g.bitmapW.roundToInt(), g.bitmapH.roundToInt(), RectF(screenClip.left, screenClip.top, screenClip.right, screenClip.bottom), night, showAnnots) }.getOrNull()
                 tile = bmp?.let { screenClip to it }
             }
     }
@@ -266,7 +268,12 @@ fun PageCanvas(
             hits.forEachIndexed { i, h -> if (h.page == page) drawPdfRects(h.rects, g, if (i == hitIndex) Color(0x99FF9800) else Color(0x66FFEB3B), multiply = true) }
             ReaderAi6.ttsHighlight.value?.let { (p, rs) -> if (p == page) drawPdfRects(rs, g, Color(0x5542A5F5), multiply = true) }   // ai6 (C1): sentence read aloud
             val frameDrag = draft.active && draft.annotFrame != null
-            annots.forEach { a -> if (a.page == page && !(frameDrag && a.id == pendingEditId)) drawAnnot(a, g) }
+            if (showAnnots) annots.forEach { a -> if (a.page == page && !(frameDrag && a.id == pendingEditId)) drawAnnot(a, g) }
+            // sticky-note indicator on markups that carry text (Foxit 24.13, optional)
+            if (showAnnots && state.annot2.cx.noteIndicators) {
+                annots.forEach { a -> if (a.page == page && a.text.isNotBlank() && a.kind in NOTE_INDICATOR_KINDS) drawNoteIndicator(annotBounds(a), g, annotColor(a.color)) }
+                state.existing.forEach { e -> if (e.page == page && e.contents.isNotBlank() && e.subtype in NOTE_INDICATOR_SUBTYPES) drawNoteIndicator(PageGeometry.normPdf(e.rect), g, Color(0xFFFFC107)) }
+            }
             if (editBounds != null) {
                 val fr = frameRect(editBounds, g)
                 val shown = if (frameDrag) dragFrame(draft.annotFrame!!, draft.handle, draft.start, draft.current) else fr
@@ -465,7 +472,7 @@ private fun finishDraft(state: ReaderState, draft: GestureDraft, page: Int, g: P
         // audit AN-13: the pending ink went while dragging; saved ink is erased in one write at the end
         ReaderTool.ERASER -> state.eraseStoredInk(page, draft.points.map { g.screenToPdf(it.x, it.y) }, 10f / g.scale.coerceAtLeast(0.1f))
         ReaderTool.MEASURE -> {}
-        else -> draftToAnnot(state, draft, page, g, pressure)?.let { state.addAnnot(it) }
+        else -> draftToAnnot(state, draft, page, g, pressure)?.let { state.annot2.cx.addNew(it) }
     }
     draft.end()
 }

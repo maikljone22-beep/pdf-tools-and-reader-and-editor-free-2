@@ -56,6 +56,7 @@ fun CommentsMenuItems(h: Annot2Host, close: () -> Unit) {
     DropdownMenuItem(text = { Text(stringResource(R.string.an_import)) }, leadingIcon = { Icon(Icons.Default.Download, null) }, onClick = { close(); h.launchImport() })
     DropdownMenuItem(text = { Text(stringResource(R.string.an_merge)) }, leadingIcon = { Icon(Icons.Default.MergeType, null) }, onClick = { close(); h.launchMerge() })
     DropdownMenuItem(text = { Text(stringResource(R.string.an_handwriting)) }, leadingIcon = { Icon(Icons.Default.Gesture, null) }, onClick = { close(); h.startHandwriting() })
+    CommentExtrasMenuItems(h, close)
 }
 
 /**
@@ -73,6 +74,7 @@ fun Annot2PropertyRow(state: ReaderState) {
         ReaderTool.REPLACE -> R.string.an_hint_replace
         ReaderTool.ATTACH, ReaderTool.SOUND, ReaderTool.VIDEO -> R.string.an_hint_media
         ReaderTool.SNAPSHOT -> R.string.an_hint_snapshot
+        ReaderTool.TICKMARK -> R.string.cx_hint_tick
         else -> R.string.an_hint_select
     }
     Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp)) {
