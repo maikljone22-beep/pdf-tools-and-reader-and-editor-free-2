@@ -261,6 +261,16 @@ private fun SnapshotSheet(state: ReaderState, snap: Snapshot2, onDismiss: () -> 
                     Icon(Icons.Default.SaveAlt, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.an_save_png))
                 }
             }
+            // nav-batch: Foxit "Snapshot → Print" (print a portion of a page)
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(onClick = {
+                scope.launch {
+                    runCatching {
+                        val pdf = com.smartdocs.editor.core.tools5.ToPdf.convert(ctx, snap.file, state.app.documents.newTemp("snapshot"))
+                        com.smartdocs.editor.core.util.PdfPrint.print(ctx, pdf, "snapshot", 1)
+                    }.onFailure { state.error = it.message }
+                }
+            }) { Icon(Icons.Default.Print, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.print)) }
             Spacer(Modifier.height(24.dp))
         }
     }
