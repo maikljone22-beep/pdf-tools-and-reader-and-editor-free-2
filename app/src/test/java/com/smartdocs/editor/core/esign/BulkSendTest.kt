@@ -136,6 +136,26 @@ class BulkSendTest {
         assertEquals(1, n); assertEquals(BulkState.FAILED, bad[0].state)
     }
 
+    @Test fun cancelKeepsSentMarksRestCancelledAndRetryResendsThem() {
+        var stop = false
+        val calls = mutableListOf<String>()
+        val first = BulkSender.run(items(5), send = { r ->
+            calls += r.name
+            if (r.name == "P2") stop = true          // user presses cancel while P2 is in flight
+            if (r.name == "P1") throw IllegalStateException("HTTP 400")
+            BulkSender.Sent("id_" + r.name, "l")
+        }, cancelled = { stop })
+        assertEquals(listOf("P1", "P2"), calls)
+        assertEquals(listOf(BulkState.FAILED, BulkState.SENT, BulkState.CANCELLED, BulkState.CANCELLED, BulkState.CANCELLED), first.map { it.state })
+        assertEquals(1, BulkSender.sent(first)); assertEquals(1, BulkSender.failed(first))
+        assertEquals(3, BulkSender.cancelled(first)); assertEquals(4, BulkSender.retryable(first))
+
+        calls.clear()
+        val second = BulkSender.run(first, send = { r -> calls += r.name; BulkSender.Sent("id_" + r.name, "l") })
+        assertEquals(listOf("P1", "P3", "P4", "P5"), calls)
+        assertEquals(5, BulkSender.sent(second)); assertEquals(0, BulkSender.retryable(second))
+    }
+
     @Test(expected = java.util.concurrent.CancellationException::class)
     fun cancellationPropagates() {
         BulkSender.run(items(2), send = { throw java.util.concurrent.CancellationException("stop") })
