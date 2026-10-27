@@ -79,6 +79,8 @@ fun CloudBrowserScreen(nav: NavHostController, providerKey: String) {
     }
     // upload results of reader saves
     LaunchedEffect(Unit) {
+        withContext(Dispatchers.IO) { CloudLinks.resumePending(ctx) } // DI-24: dirty copies whose upload stopped
+
         SaveHooks.events.collect { e ->
             if (e is SaveHooks.Event.Uploaded && e.provider == id) { Toast.makeText(ctx, uploadedMsg, Toast.LENGTH_SHORT).show(); reload++ }
             if (e is SaveHooks.Event.UploadFailed && e.provider == id) Toast.makeText(ctx, ctx.getString(R.string.ac_upload_failed, e.error.message ?: ""), Toast.LENGTH_LONG).show()
@@ -102,8 +104,15 @@ fun CloudBrowserScreen(nav: NavHostController, providerKey: String) {
         if (item.isFolder) { stack += item.id to item.name; searching = false; query = ""; return }
         scope.launch {
             progress = busyOpen to 0f
-            val local = guard { CloudLinks.open(ctx, provider, item) { done, total -> if (total > 0) progress = busyOpen to (done.toFloat() / total) } }
+            val opened = guard { CloudLinks.open(ctx, provider, item) { done, total -> if (total > 0) progress = busyOpen to (done.toFloat() / total) } }
             progress = null
+            // DI-23: a copy with edits that are not uploaded yet was kept (not overwritten by the cloud version)
+            when (opened?.action) {
+                com.smartdocs.editor.core.cloud.CloudCopy.OpenAction.KEEP_LOCAL -> Toast.makeText(ctx, R.string.fix7_opened_local, Toast.LENGTH_LONG).show()
+                com.smartdocs.editor.core.cloud.CloudCopy.OpenAction.CONFLICT -> Toast.makeText(ctx, R.string.fix7_opened_conflict, Toast.LENGTH_LONG).show()
+                else -> Unit
+            }
+            val local = opened?.file
             if (local != null) {
                 if (local.extension.equals("pdf", true)) nav.navigate(Routes.reader(Uri.fromFile(local).toString()))
                 else Toast.makeText(ctx, downloadedMsg.format(local.parentFile?.name ?: ""), Toast.LENGTH_LONG).show()

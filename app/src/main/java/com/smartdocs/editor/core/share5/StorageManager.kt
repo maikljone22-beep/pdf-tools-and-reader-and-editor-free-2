@@ -2,6 +2,8 @@ package com.smartdocs.editor.core.share5
 
 import android.app.ActivityManager
 import android.content.Context
+import com.smartdocs.editor.core.cloud.CloudCopy
+import com.smartdocs.editor.core.cloud.CloudLinks
 import com.smartdocs.editor.core.cloud.Clouds
 import com.smartdocs.editor.core.cloud.ProviderId
 import com.smartdocs.editor.core.collab.CollabStore
@@ -15,7 +17,9 @@ object StorageManager {
     enum class Kind { THUMBS, TEMP, AI_INDEX, AI_VOICE, OTHER_CACHE, CLOUD, OCR, TRASH, REVIEWS, DOCUMENTS }
 
     /** [clearable] categories can be emptied from the storage screen (documents and reviews are user data). */
-    data class Bucket(val kind: Kind, val bytes: Long, val clearable: Boolean, val files: Int, val provider: ProviderId? = null)
+    data class Bucket(val kind: Kind, val bytes: Long, val clearable: Boolean, val files: Int, val provider: ProviderId? = null,
+                      /** CLOUD: working copies with edits not uploaded yet; "clear" keeps them (DI-24). */
+                      val unsynced: Int = 0, val unsyncedBytes: Long = 0L)
 
     private val THUMB_DIRS = setOf("thumbs", "tpl_thumbs")
     private val TEMP_DIRS = setOf("tmp", "share5", "sync_up", "annot2_open", "t5_batch_tmp")
@@ -55,7 +59,10 @@ object StorageManager {
         }
         ProviderId.entries.forEach { p ->
             val (b, n) = size(File(docsDir(c), "Cloud/${p.key}"))
-            if (n > 0) out += Bucket(Kind.CLOUD, b, true, n, p)
+            if (n > 0) {
+                val dirty = runCatching { CloudLinks.unsynced(c, p) }.getOrDefault(emptyList())
+                out += Bucket(Kind.CLOUD, b, true, n, p, unsynced = dirty.size, unsyncedBytes = dirty.sumOf { it.length() })
+            }
         }
         size(File(c.filesDir, "tessdata")).let { (b, n) -> out += Bucket(Kind.OCR, b, true, n) }
         val t = trash(c)
@@ -71,10 +78,11 @@ object StorageManager {
 
     /** Frees one category. Returns the bytes freed (approximate). */
     suspend fun clear(c: Context, b: Bucket): Long = withContext(Dispatchers.IO) {
+        if (b.kind == Kind.CLOUD) return@withContext b.provider?.let { clearCloudCopies(c, it) } ?: 0L
         when (b.kind) {
             Kind.THUMBS, Kind.TEMP, Kind.AI_INDEX, Kind.AI_VOICE -> cacheGroup(c, b.kind).forEach { it.deleteRecursively() }
             Kind.OTHER_CACHE -> { cacheGroup(c, Kind.OTHER_CACHE).forEach { if (it == c.externalCacheDir) it.listFiles()?.forEach { f -> f.deleteRecursively() } else it.deleteRecursively() } }
-            Kind.CLOUD -> b.provider?.let { p -> File(docsDir(c), "Cloud/${p.key}").listFiles()?.forEach { it.deleteRecursively() } }
+            Kind.CLOUD -> Unit
             Kind.OCR -> File(c.filesDir, "tessdata").listFiles()?.forEach { it.deleteRecursively() }
             Kind.TRASH -> trash(c).empty()
             Kind.REVIEWS, Kind.DOCUMENTS -> Unit
@@ -92,7 +100,15 @@ object StorageManager {
     /** Signs out of a cloud provider; optionally deletes its local working copies. */
     suspend fun unlink(c: Context, id: ProviderId, deleteCopies: Boolean) {
         runCatching { Clouds.provider(c, id).disconnect() }
-        if (deleteCopies) withContext(Dispatchers.IO) { File(docsDir(c), "Cloud/${id.key}").listFiles()?.forEach { it.deleteRecursively() } }
+        if (deleteCopies) withContext(Dispatchers.IO) { clearCloudCopies(c, id) }
+    }
+
+    /** Deletes a provider's working copies except those with edits that are not uploaded yet (DI-24). Returns bytes freed. */
+    private fun clearCloudCopies(c: Context, p: ProviderId): Long {
+        val dir = File(docsDir(c), "Cloud/${p.key}")
+        // when the link store cannot be read, keep everything rather than guess
+        val keep = runCatching { CloudLinks.unsynced(c, p).map { it.absolutePath }.toSet() }.getOrElse { return 0L }
+        return CloudCopy.clearExcept(dir, keep)
     }
 
     /** Wipes ALL app data (documents included) and kills the process — the system does it, like "Clear storage". */

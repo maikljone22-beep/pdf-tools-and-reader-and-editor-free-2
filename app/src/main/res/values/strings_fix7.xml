@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- audit stage 7: cloud working copies and folder sync data safety (DI-23..DI-26) -->
+<resources>
+    <string name="fix7_st_confirm">بانتظار تأكيدك</string>
+    <plurals name="fix7_deletes_withheld">
+        <item quantity="zero">لم يُحذف أي ملف</item>
+        <item quantity="one">ستحذف هذه المزامنة ملفاً واحداً. لم يُحذف شيء بعد</item>
+        <item quantity="two">ستحذف هذه المزامنة ملفين. لم يُحذف شيء بعد</item>
+        <item quantity="few">ستحذف هذه المزامنة %d ملفات. لم يُحذف شيء بعد</item>
+        <item quantity="many">ستحذف هذه المزامنة %d ملفاً. لم يُحذف شيء بعد</item>
+        <item quantity="other">ستحذف هذه المزامنة %d ملف. لم يُحذف شيء بعد</item>
+    </plurals>
+    <string name="fix7_deletes_allow">احذفها</string>
+    <string name="fix7_deletes_keep">احتفظ بها</string>
+    <string name="fix7_opened_local">لم تُرفع تعديلاتك على هذا الملف بعد، لذلك فُتحت نسختك. سيتم رفعها عند توفر الاتصال</string>
+    <string name="fix7_opened_conflict">تغيّر هذا الملف في السحابة وعلى الجهاز. فُتحت نسختك وستُرفع كنسخة متعارضة منفصلة، وتبقى نسخة السحابة كما هي</string>
+</resources>
