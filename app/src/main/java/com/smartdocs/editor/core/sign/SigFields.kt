@@ -168,6 +168,9 @@ object SigFields {
             if (field.signature != null) throw IllegalStateException("field ${target.fieldName} is already signed")
             val w = field.widgets.firstOrNull() ?: throw IllegalStateException("field ${target.fieldName} has no widget")
             pageIndex = pageOf(doc, w).takeIf { it >= 0 } ?: throw IllegalStateException("field ${target.fieldName} is not on a page")
+            // an invisible field (empty /Rect) takes the box the user placed on its page
+            val empty = w.rectangle?.let { it.width <= 0f || it.height <= 0f } ?: true
+            if (empty && target.rect != null) { w.rectangle = PDRectangle(target.rect[0], target.rect[1], target.rect[2], target.rect[3]); w.cosObject.isNeedToBeUpdated = true }
         } else {
             pageIndex = target.page.coerceIn(0, doc.numberOfPages - 1)
             val page = doc.getPage(pageIndex)
