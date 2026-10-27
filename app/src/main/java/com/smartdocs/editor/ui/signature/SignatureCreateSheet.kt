@@ -18,6 +18,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -29,6 +31,10 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -51,6 +57,7 @@ fun SignatureCreateSheet(onDismiss: () -> Unit, onSaved: () -> Unit) {
     val scope = rememberCoroutineScope()
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var initials by rememberSaveable { mutableStateOf(false) }
+    var blackWhite by rememberSaveable { mutableStateOf(false) }   // nitro-quicksign: save as black and white
     var saving by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val nothingMsg = stringResource(R.string.sa_nothing_to_save)
@@ -77,7 +84,7 @@ fun SignatureCreateSheet(onDismiss: () -> Unit, onSaved: () -> Unit) {
             runCatching {
                 withContext(Dispatchers.IO) {
                     val f = app.documents.uniqueFile(app.documents.signaturesDir, "sig_${System.currentTimeMillis()}", "png")
-                    SignatureImage.savePng(bmp, f)
+                    SignatureImage.savePng(if (blackWhite) SignatureImage.toBlackAndWhite(bmp) else bmp, f)
                     app.db.signatures().insert(SavedSignature(path = f.absolutePath, isInitials = initials))
                 }
             }.onSuccess { onSaved() }.onFailure { error = it.message ?: it.toString() }
@@ -97,11 +104,15 @@ fun SignatureCreateSheet(onDismiss: () -> Unit, onSaved: () -> Unit) {
                 when (tab) {
                     0 -> DrawTab(drawState)
                     1 -> TypeTab(onBitmap = { typedBitmap = it })
-                    2 -> ImageTab(camera = false, onBitmap = { imageBitmap = it })
-                    else -> ImageTab(camera = true, onBitmap = { cameraBitmap = it })
+                    2 -> ImageTab(camera = false, onBitmap = { imageBitmap = it }, blackWhite = blackWhite)
+                    else -> ImageTab(camera = true, onBitmap = { cameraBitmap = it }, blackWhite = blackWhite)
                 }
             }
             error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 20.dp)) }
+            Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Switch(blackWhite, { blackWhite = it }); Spacer(Modifier.width(8.dp))
+                Text(stringResource(R.string.nq_bw_save), Modifier.weight(1f))
+            }
             Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Switch(initials, { initials = it }); Spacer(Modifier.width(8.dp))
                 Text(stringResource(R.string.sa_save_as_initials), Modifier.weight(1f))
@@ -120,6 +131,73 @@ class DrawState {
     val current = mutableStateListOf<InkPoint>()
     var color by mutableIntStateOf(penColors[0])
     var width by mutableFloatStateOf(6f)
+    /** Size (px) of the inline canvas: stroke coordinates are in its units, the enlarged canvas scales them. */
+    var canvasW by mutableIntStateOf(0)
+    var canvasH by mutableIntStateOf(0)
+    var enlarged by mutableStateOf(false)
+}
+
+/**
+ * Ink surface. [scale] maps the inline-canvas units of [state] to this surface (1 inline, > 1 enlarged), so strokes
+ * drawn in either view stay in the same coordinates and the saved PNG is identical.
+ */
+@Composable
+private fun InkCanvas(state: DrawState, pressure: Boolean, scale: Float, modifier: Modifier) {
+    Canvas(
+        modifier.pointerInput(pressure, state.color, state.width, scale) {
+            awaitEachGesture {
+                val down = awaitFirstDown()
+                state.current.clear()
+                state.current += InkPoint(down.position.x / scale, down.position.y / scale, if (pressure) down.pressure.coerceIn(0.05f, 1f) else 1f)
+                down.consume()
+                drag(down.id) { ch ->
+                    state.current += InkPoint(ch.position.x / scale, ch.position.y / scale, if (pressure) ch.pressure.coerceIn(0.05f, 1f) else 1f)
+                    ch.consume()
+                }
+                if (state.current.isNotEmpty()) state.strokes += InkStroke(state.current.toList(), state.color, state.width, pressure)
+                state.current.clear()
+            }
+        }
+    ) {
+        drawIntoCanvas { c ->
+            val nc = c.nativeCanvas
+            state.strokes.forEach { InkRenderer.draw(nc, it, scale) }
+            if (state.current.isNotEmpty()) InkRenderer.draw(nc, InkStroke(state.current.toList(), state.color, state.width, pressure), scale)
+        }
+    }
+}
+
+/** "Enlarge canvas": the same drawing magnified to (nearly) full screen, with the same pen tools. */
+@Composable
+private fun EnlargedDrawDialog(state: DrawState, pressure: Boolean) {
+    Dialog(onDismissRequest = { state.enlarged = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
+            Column(Modifier.fillMaxSize().padding(12.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(stringResource(R.string.sig_draw), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                    IconButton(onClick = { if (state.strokes.isNotEmpty()) state.strokes.removeAt(state.strokes.size - 1) }) { Icon(Icons.AutoMirrored.Filled.Undo, stringResource(R.string.undo)) }
+                    IconButton(onClick = { state.strokes.clear() }) { Icon(Icons.Default.DeleteSweep, stringResource(R.string.sa_clear)) }
+                    FilledTonalButton(onClick = { state.enlarged = false }) { Icon(Icons.Default.FullscreenExit, null); Spacer(Modifier.width(4.dp)); Text(stringResource(R.string.done)) }
+                }
+                BoxWithConstraints(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    val density = LocalDensity.current
+                    val cw = state.canvasW.coerceAtLeast(1).toFloat(); val ch = state.canvasH.coerceAtLeast(1).toFloat()
+                    val availW = with(density) { maxWidth.toPx() }; val availH = with(density) { maxHeight.toPx() }
+                    val scale = minOf(availW / cw, availH / ch).coerceAtLeast(1f)
+                    Box(
+                        Modifier.size(with(density) { (cw * scale).toDp() }, with(density) { (ch * scale).toDp() })
+                            .background(Color.White, RoundedCornerShape(12.dp)).border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(12.dp))
+                    ) {
+                        InkCanvas(state, pressure, scale, Modifier.fillMaxSize())
+                    }
+                }
+                Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    penColors.forEach { c -> ColorDot(c, state.color == c) { state.color = c } }
+                    Slider(state.width, { state.width = it }, valueRange = 2f..16f, modifier = Modifier.weight(1f).padding(start = 8.dp))
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -130,32 +208,16 @@ private fun DrawTab(state: DrawState) {
         Box(
             Modifier.fillMaxWidth().height(220.dp).background(Color.White, RoundedCornerShape(12.dp))
                 .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(12.dp))
+                .onSizeChanged { state.canvasW = it.width; state.canvasH = it.height }
         ) {
             if (state.strokes.isEmpty() && state.current.isEmpty())
                 Text(stringResource(R.string.sa_draw_hint), Modifier.align(Alignment.Center), color = Color.LightGray)
-            Canvas(
-                Modifier.fillMaxSize().pointerInput(pressure, state.color, state.width) {
-                    awaitEachGesture {
-                        val down = awaitFirstDown()
-                        state.current.clear()
-                        state.current += InkPoint(down.position.x, down.position.y, if (pressure) down.pressure.coerceIn(0.05f, 1f) else 1f)
-                        down.consume()
-                        drag(down.id) { ch ->
-                            state.current += InkPoint(ch.position.x, ch.position.y, if (pressure) ch.pressure.coerceIn(0.05f, 1f) else 1f)
-                            ch.consume()
-                        }
-                        if (state.current.isNotEmpty()) state.strokes += InkStroke(state.current.toList(), state.color, state.width, pressure)
-                        state.current.clear()
-                    }
-                }
-            ) {
-                drawIntoCanvas { c ->
-                    val nc = c.nativeCanvas
-                    state.strokes.forEach { InkRenderer.draw(nc, it) }
-                    if (state.current.isNotEmpty()) InkRenderer.draw(nc, InkStroke(state.current.toList(), state.color, state.width, pressure))
-                }
+            InkCanvas(state, pressure, 1f, Modifier.fillMaxSize())
+            IconButton(onClick = { state.enlarged = true }, Modifier.align(Alignment.TopEnd)) {
+                Icon(Icons.Default.Fullscreen, stringResource(R.string.nq_enlarge_canvas), tint = Color.Gray)
             }
         }
+        if (state.enlarged && state.canvasW > 0) EnlargedDrawDialog(state, pressure)
         Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(stringResource(R.string.sa_pen_color), style = MaterialTheme.typography.labelMedium)
             Spacer(Modifier.width(8.dp))
