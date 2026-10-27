@@ -77,6 +77,7 @@ object CollabStore {
     suspend fun onDocumentSaved(c: Context, f: File) {
         val ref = forFile(c, f) ?: return
         if (!CollabConfig.enabled || ref.closed) return
+        if (com.smartdocs.editor.core.share5.ReviewLocal.offline(c)) return   // nav-attach: "work offline" keeps comments pending
         runCatching { publish(c, ref) }
     }
 

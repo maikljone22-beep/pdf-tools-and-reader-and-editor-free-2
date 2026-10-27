@@ -85,4 +85,31 @@
     <string name="nat_dav_delete_q">حذف «%1$s» من الخادم؟</string>
     <string name="nat_dav_exists_q">«%1$s» موجود بالفعل في هذا المجلد</string>
     <string name="nat_dav_overwrite">استبدال</string>
+    <!-- shared review (Foxit §31) -->
+    <string name="nat_rv_inbox">إشعارات المراجعة</string>
+    <string name="nat_rv_interval">التحقق من التعليقات الجديدة</string>
+    <string name="nat_rv_go_online">العمل متصلًا (إعادة الاتصال)</string>
+    <string name="nat_rv_go_offline">العمل دون اتصال</string>
+    <string name="nat_rv_reconnected">عدت متصلًا: نُشر %1$d من تغييرات التعليقات المعلّقة</string>
+    <string name="nat_rv_offline_on">تعمل دون اتصال: تبقى تعليقاتك على هذا الجهاز حتى تعود متصلًا</string>
+    <string name="nat_rv_report">إنشاء PDF من تفاصيل المتتبّع</string>
+    <string name="nat_rv_report_name">متتبّع المراجعات</string>
+    <string name="nat_rv_inbox_empty">لا توجد إشعارات</string>
+    <string name="nat_rv_mark_read">تعليم الكل كمقروء</string>
+    <string name="nat_rv_clear">مسح</string>
+    <string name="nat_rv_never">أبدًا (يدويًا فقط)</string>
+    <string name="nat_rv_minutes">كل %1$d دقيقة</string>
+    <string name="nat_rv_hours">كل %1$d ساعات</string>
+    <string name="nat_rv_folder_x">المجلد: %1$s</string>
+    <string name="nat_rv_all">الكل</string>
+    <string name="nat_rv_top_level">المستوى الأعلى</string>
+    <string name="nat_rv_remove_folder">إزالة المجلد</string>
+    <string name="nat_rv_move">نقل إلى مجلد</string>
+    <string name="nat_rv_new_folder">مجلد جديد</string>
+    <string name="nat_rv_archive">حفظ نسخة أرشيفية</string>
+    <string name="nat_rv_leave">مغادرة المراجعة</string>
+    <string name="nat_rv_leave_q">التوقف عن المشاركة في هذه المراجعة على هذا الجهاز؟ تبقى تعليقاتك المنشورة في المراجعة، وتبقى نسختك في المستندات/Reviews.</string>
+    <string name="nat_rv_left">غادرت المراجعة</string>
+    <string name="nat_rv_search">البحث في المراجعات</string>
+    <string name="nat_rv_send_pdf">إرسال ملف PDF مع الدعوة</string>
 </resources>

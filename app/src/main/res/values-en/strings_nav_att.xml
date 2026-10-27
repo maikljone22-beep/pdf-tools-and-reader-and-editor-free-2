@@ -85,4 +85,31 @@
     <string name="nat_dav_delete_q">Delete «%1$s» from the server?</string>
     <string name="nat_dav_exists_q">«%1$s» already exists in this folder</string>
     <string name="nat_dav_overwrite">Replace</string>
+    <!-- shared review (Foxit §31) -->
+    <string name="nat_rv_inbox">Review notifications</string>
+    <string name="nat_rv_interval">Check for new comments</string>
+    <string name="nat_rv_go_online">Work online (reconnect)</string>
+    <string name="nat_rv_go_offline">Work offline</string>
+    <string name="nat_rv_reconnected">Back online: %1$d pending comment changes published</string>
+    <string name="nat_rv_offline_on">Working offline: your comments stay on this device until you go back online</string>
+    <string name="nat_rv_report">Create PDF from tracker details</string>
+    <string name="nat_rv_report_name">Review tracker</string>
+    <string name="nat_rv_inbox_empty">No notifications</string>
+    <string name="nat_rv_mark_read">Mark all as read</string>
+    <string name="nat_rv_clear">Clear</string>
+    <string name="nat_rv_never">Never (manual only)</string>
+    <string name="nat_rv_minutes">Every %1$d minutes</string>
+    <string name="nat_rv_hours">Every %1$d hours</string>
+    <string name="nat_rv_folder_x">Folder: %1$s</string>
+    <string name="nat_rv_all">All</string>
+    <string name="nat_rv_top_level">Top level</string>
+    <string name="nat_rv_remove_folder">Remove folder</string>
+    <string name="nat_rv_move">Move to folder</string>
+    <string name="nat_rv_new_folder">New folder</string>
+    <string name="nat_rv_archive">Save archive copy</string>
+    <string name="nat_rv_leave">Leave review</string>
+    <string name="nat_rv_leave_q">Stop taking part in this review on this device? Your published comments stay in the review; your copy stays in Documents/Reviews.</string>
+    <string name="nat_rv_left">You left the review</string>
+    <string name="nat_rv_search">Search reviews</string>
+    <string name="nat_rv_send_pdf">Send the PDF with the invitation</string>
 </resources>
