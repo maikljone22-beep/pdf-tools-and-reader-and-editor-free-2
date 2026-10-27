@@ -24,6 +24,8 @@ fun Fmt.labelRes(): Int = when (this) {
     Fmt.SMALL -> R.string.cv6_f_small; Fmt.SEARCHABLE -> R.string.cv6_f_searchable; Fmt.FLAT -> R.string.cv6_f_flat; Fmt.WEB -> R.string.cv6_f_web
     Fmt.EMAIL -> R.string.cv6_f_email; Fmt.CAMERA -> R.string.cv6_f_camera; Fmt.CLIPBOARD -> R.string.cv6_f_clipboard; Fmt.ANY -> R.string.cv6_f_any
     Fmt.OCR -> R.string.cv6_f_scanned; Fmt.HANDOUT -> R.string.cv6_f_handout; Fmt.RESIZE -> R.string.cv6_f_resize; Fmt.IMAGES_OUT -> R.string.cv6_f_images
+    Fmt.BMP -> R.string.pc_f_bmp; Fmt.PS -> R.string.pc_f_ps; Fmt.EPS -> R.string.pc_f_eps; Fmt.XPS -> R.string.pc_f_xps; Fmt.XML -> R.string.pc_f_xml
+    Fmt.ACCESS_TXT -> R.string.pc_f_access_txt; Fmt.HTML_SET -> R.string.pc_f_html_set; Fmt.XML_2003 -> R.string.pc_f_xml2003
 }
 
 fun Fmt.icon(): ImageVector = when (this) {
@@ -31,7 +33,11 @@ fun Fmt.icon(): ImageVector = when (this) {
     Fmt.WORD, Fmt.ODT, Fmt.RTF -> Icons.Default.Description
     Fmt.EXCEL, Fmt.ODS, Fmt.CSV -> Icons.Default.TableChart
     Fmt.PPT, Fmt.ODP, Fmt.HANDOUT -> Icons.Default.Slideshow
-    Fmt.IMAGE, Fmt.JPG, Fmt.PNG, Fmt.WEBP, Fmt.HEIC, Fmt.TIFF -> Icons.Default.Image
+    Fmt.IMAGE, Fmt.JPG, Fmt.PNG, Fmt.WEBP, Fmt.HEIC, Fmt.TIFF, Fmt.BMP, Fmt.EPS -> Icons.Default.Image
+    Fmt.PS, Fmt.XPS -> Icons.Default.Print
+    Fmt.XML, Fmt.XML_2003 -> Icons.Default.DataObject
+    Fmt.ACCESS_TXT -> Icons.Default.Accessibility
+    Fmt.HTML_SET -> Icons.Default.Web
     Fmt.IMAGES_OUT -> Icons.Default.Collections
     Fmt.ZIP -> Icons.Default.FolderZip
     Fmt.LONG_IMAGE -> Icons.Default.ViewDay
