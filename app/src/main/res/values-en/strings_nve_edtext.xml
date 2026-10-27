@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- NVE edit-mode text features (spell check, fonts, rich text, spacing). Prefix nt_. -->
+<resources>
+    <string name="nt_spell_check">Spell check</string>
+    <string name="nt_spell_unavailable">No spell checker service is available on this device. Turn one on in the language and keyboard settings.</string>
+    <string name="nt_spell_none">No spelling mistakes found.</string>
+    <string name="nt_spell_progress">Word %1$d of %2$d</string>
+    <string name="nt_spell_no_suggestions">No suggestions</string>
+    <string name="nt_spell_replace_with">Replace with</string>
+    <string name="nt_spell_replace">Replace</string>
+    <string name="nt_spell_replace_all">Replace all</string>
+    <string name="nt_spell_ignore">Ignore</string>
+    <string name="nt_spell_ignore_all">Ignore all</string>
+</resources>
