@@ -27,6 +27,7 @@ import com.smartdocs.editor.core.forms5.XfaGenerated
 import com.smartdocs.editor.core.forms5.XfaRepeat
 import com.smartdocs.editor.ui.reader.ReaderState
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -198,7 +199,9 @@ class FormFillState internal constructor(val reader: ReaderState) {
     suspend fun ensureLoaded() {
         val f = reader.file ?: return
         val s = reader.session ?: return
-        val key = f.path + "|" + System.identityHashCode(s) + "|" + reader.renderVersion
+        // the JavaScript switch is read before the model: it decides which scripts the model keeps (and a change reloads)
+        com.smartdocs.editor.core.security.JsPolicy.enabled = runCatching { reader.app.settings.settings.first().runJavaScript }.getOrDefault(com.smartdocs.editor.core.security.JsPolicy.enabled)
+        val key = f.path + "|" + System.identityHashCode(s) + "|" + reader.renderVersion + "|" + com.smartdocs.editor.core.security.JsPolicy.enabled
         if (key == loadedKey) return
         loadMutex.withLock {
             if (key == loadedKey) return

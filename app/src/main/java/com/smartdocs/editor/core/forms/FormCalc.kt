@@ -175,6 +175,8 @@ object FormCalc {
             val name = f.fullyQualifiedName ?: continue
             byDict[f.cosObject] = name
             if (f is PDTerminalField) all += name
+            // "Run JavaScript" off: the AF helpers are document JavaScript too, so none is emulated
+            if (!com.smartdocs.editor.core.security.JsPolicy.enabled) continue
             val aa = f.cosObject.getDictionaryObject(COSName.AA) as? COSDictionary ?: continue
             val calcJs = jsOf(aa.getDictionaryObject(COSName.C))
             val fmtJs = jsOf(aa.getDictionaryObject(COSName.F))

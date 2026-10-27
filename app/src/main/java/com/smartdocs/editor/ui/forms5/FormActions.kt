@@ -8,6 +8,7 @@ import com.smartdocs.editor.core.forms5.FormSubmit
 import com.smartdocs.editor.core.forms5.FormSubmitter
 import com.smartdocs.editor.core.forms5.SubmitFormat
 import com.smartdocs.editor.core.forms5.WKind
+import com.smartdocs.editor.ui.security.DocSecurityGate
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -56,9 +57,11 @@ object FormActions {
     private fun openUri(fs: FormFillState, uri: String) {
         val u = uri.trim()
         if (!(FormSubmit.isHttp(u) || FormSubmit.isMail(u))) { fs.message = FormMessage.Failed(u); return }
-        runCatching {
-            fs.reader.context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(u)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        }.onFailure { fs.message = FormMessage.Failed(it.message ?: u) }
+        DocSecurityGate.web(fs.reader.context, u) {
+            runCatching {
+                fs.reader.context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(u)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            }.onFailure { fs.message = FormMessage.Failed(it.message ?: u) }
+        }
     }
 
     private suspend fun submit(fs: FormFillState, a: ButtonAction.Submit) {
@@ -69,6 +72,8 @@ object FormActions {
             fs.focus(missing.first().id)
             return
         }
+        // an HTTP submission sends the form data to a server: "Manage Internet Access" decides first
+        if (FormSubmit.isHttp(a.url) && !DocSecurityGate.allowWeb(fs.reader.context, a.url.trim())) return
         val values = FormSubmit.select(exportValues(fs), a)
         val file = fs.reader.file ?: return
         val name = file.name
