@@ -48,6 +48,7 @@ fun ToPdfPlusScreen(nav: NavHostController, uri: String?) {
     var attachSrc by remember { mutableStateOf(false) }   // nav-attach: "attach source file"
     val srcDesc = stringResource(R.string.nat_source_desc)
     val job = rememberT5Job()
+    val web = remember { WebOpts() }
     val pick = rememberAnyFilePicker(true, ToPdf.pickerMimes) { picked -> files = files + picked.filter { f -> files.none { it.absolutePath == f.absolutePath } } }
     val unsupported = files.filter { ToPdf.kindOf(it.name) == SourceKind.UNKNOWN }
     val combining = stringResource(R.string.t5_combining)
@@ -62,7 +63,12 @@ fun ToPdfPlusScreen(nav: NavHostController, uri: String?) {
             Tab(tab == 2, { tab = 2 }, text = { Text(stringResource(R.string.t5_tab_web)) })
         }
         when (tab) {
-            0, 1 -> {
+            // Nitro 5 / Foxit 4: the combiner with sources, page ranges, titles, sort, headings and TOC
+            0 -> {
+                SwitchRow(stringResource(R.string.nat_attach_source), attachSrc, stringResource(R.string.nat_attach_source_sub)) { attachSrc = it }
+                CombineTab(files, job, attachSrc, srcDesc)
+            }
+            1 -> {
                 Text(stringResource(R.string.t5_topdf_formats), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 OutlinedButton(onClick = pick, Modifier.fillMaxWidth()) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.t5_add_files)) }
                 if (files.isNotEmpty()) T5Card { FileListEditor(files, { files = it }) }
@@ -109,8 +115,14 @@ fun ToPdfPlusScreen(nav: NavHostController, uri: String?) {
                 PrimaryButton(stringResource(R.string.t5_web_to_pdf), enabled = url.isNotBlank() && !job.running, icon = Icons.Default.Language) {
                     val u = url.trim()
                     val host = runCatching { android.net.Uri.parse(if (u.contains("://")) u else "https://$u").host }.getOrNull()?.ifBlank { null } ?: "webpage"
-                    job.launch(converting) { val out = app.documents.uniqueFile(app.documents.docsDir, host); result = ToPdf.url(ctx, u, out) }
+                    val setup = web.setup(); val nl = web.noLinks
+                    job.launch(converting) {
+                        val out = app.documents.uniqueFile(app.documents.docsDir, host)
+                        ToPdf.url(ctx, u, out, setup, nl)
+                        result = appendIfAsked(web, out) { app.documents.uniqueFile(app.documents.docsDir, it) }
+                    }
                 }
+                WebOptionsCard(web)
                 HorizontalDivider()
                 OutlinedTextField(html, { html = it }, Modifier.fillMaxWidth().heightIn(min = 120.dp), label = { Text(stringResource(R.string.t5_paste_html)) })
                 PrimaryButton(stringResource(R.string.t5_html_to_pdf), enabled = html.isNotBlank() && !job.running, icon = Icons.Default.Code) {
@@ -118,7 +130,7 @@ fun ToPdfPlusScreen(nav: NavHostController, uri: String?) {
                     job.launch(converting) {
                         val out = app.documents.uniqueFile(app.documents.docsDir, "html_" + t5Today())
                         val page = if (h.contains("<html", true) || h.contains("<body", true)) h else HtmlBits.page("", h, HtmlBits.rtlDominant(h))
-                        result = ToPdf.html(ctx, page, out)
+                        result = ToPdf.html(ctx, page, out, web.setup())
                     }
                 }
             }
