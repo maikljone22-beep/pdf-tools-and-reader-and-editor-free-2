@@ -38,6 +38,7 @@ object AttachmentOps {
     private val FILE_ATTACHMENT = COSName.getPDFName("FileAttachment")
     private val EMBEDDED_FILES = COSName.getPDFName("EmbeddedFiles")
     private val POPUP = COSName.getPDFName("Popup")
+    private val FS_KEY = COSName.getPDFName("FS")
 
     private fun load(src: File, password: String?): PDDocument = PdfOps.loadRaw(src, password)
 
@@ -241,8 +242,8 @@ object AttachmentOps {
                 val annot = annotationOf(doc, att) ?: error("attachment not found")
                 if (text.isBlank()) annot.removeItem(COSName.CONTENTS) else annot.setString(COSName.CONTENTS, text)
                 annot.setString(COSName.M, com.tom_roush.pdfbox.util.DateConverter.toString(Calendar.getInstance()))
-                (annot.getDictionaryObject(COSName.FS) as? COSDictionary)?.let { fs -> if (text.isBlank()) fs.removeItem(COSName.DESC) else fs.setString(COSName.DESC, text) }
-                save(doc, out, password, listOf(att.page), listOfNotNull(annot, annot.getDictionaryObject(COSName.FS)), documentLevel = false)
+                (annot.getDictionaryObject(FS_KEY) as? COSDictionary)?.let { fs -> if (text.isBlank()) fs.removeItem(COSName.DESC) else fs.setString(COSName.DESC, text) }
+                save(doc, out, password, listOf(att.page), listOfNotNull(annot, annot.getDictionaryObject(FS_KEY)), documentLevel = false)
             }
         }
     }
