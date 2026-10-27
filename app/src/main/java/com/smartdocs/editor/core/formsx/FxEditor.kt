@@ -409,7 +409,7 @@ object FxEditor {
                     val sel = if (created) dvName == on else cur == on
                     w.cosObject.setItem(COSName.AS, if (sel) n(on) else COSName.Off)
                 }
-                is PDPushButton -> w.cosObject.setItem(COSName.AP, FxAppearance.buttonAp(doc, s, r))
+                is PDPushButton -> w.cosObject.setItem(COSName.AP, FxAppearance.buttonAp(doc, s, r, iconOf(w.cosObject)))
                 is PDTextField -> if (s.type == FxType.BARCODE) {
                     FxBarcodes.render(doc, f, s)
                 } else if (created || w.cosObject.getDictionaryObject(COSName.AP) == null) {
@@ -442,6 +442,47 @@ object FxEditor {
         if (co.size() > 0) form.cosObject.setItem(CO, co) else form.cosObject.removeItem(CO)
     }
 
+    /**
+     * Add one more button to the radio group [name] (Foxit "place radio buttons one by one"): same look, its own
+     * export value. Returns false when [name] is not a radio group.
+     */
+    fun addRadioWidget(doc: PDDocument, name: String, page: Int, r: FxRect, export: String): Boolean {
+        val f = field(doc, name) as? PDRadioButton ?: return false
+        val spec = read(doc, f)
+        val template = f.widgets.firstOrNull()?.cosObject
+        val w = addWidget(doc, f, page, r, template)
+        w.cosObject.removeItem(COSName.AP)
+        val on = export.ifBlank { "Choice${f.widgets.size}" }.replace(' ', '_')
+        w.cosObject.setItem(COSName.AP, FxAppearance.checkAp(doc, spec, r.norm(), on))
+        w.cosObject.setItem(COSName.AS, COSName.Off)
+        return true
+    }
+
+    // ================= push button icons =================
+
+    fun iconOf(widget: COSDictionary): COSStream? = (widget.getDictionaryObject(FxAppearance.MK) as? COSDictionary)?.getDictionaryObject(n("I")) as? COSStream
+
+    /** A form XObject that draws [image] at its pixel size (the /MK /I icon of a button). */
+    fun iconFromImage(doc: PDDocument, image: com.tom_roush.pdfbox.pdmodel.graphics.image.PDImageXObject): COSStream {
+        val w = image.width.toFloat().coerceAtLeast(1f); val h = image.height.toFloat().coerceAtLeast(1f)
+        val st = FxAppearance.stream(doc, w, h, "q ${FxAppearance.f(w)} 0 0 ${FxAppearance.f(h)} 0 0 cm /Im0 Do Q
+")
+        (st.getDictionaryObject(COSName.RESOURCES) as COSDictionary).setItem(COSName.XOBJECT, COSDictionary().apply { setItem(n("Im0"), image.cosObject) })
+        return st
+    }
+
+    /** Set (or with null clear) the icon of every widget of push button [name] and redraw it. */
+    fun setIcon(doc: PDDocument, name: String, icon: COSStream?): Boolean {
+        val f = field(doc, name) as? PDPushButton ?: return false
+        val spec = read(doc, f)
+        f.widgets.forEach { w ->
+            val mk = (w.cosObject.getDictionaryObject(FxAppearance.MK) as? COSDictionary) ?: COSDictionary().also { w.cosObject.setItem(FxAppearance.MK, it) }
+            if (icon != null) mk.setItem(n("I"), icon) else mk.removeItem(n("I"))
+            w.cosObject.setItem(COSName.AP, FxAppearance.buttonAp(doc, spec, rectOf(w), icon))
+        }
+        return true
+    }
+
     // ================= geometry =================
 
     /** Move / resize widget [ref]. Returns false when the field is locked or missing. */
@@ -458,8 +499,7 @@ object FxEditor {
                     val on = onState(w) ?: "Yes"
                     w.cosObject.setItem(COSName.AP, FxAppearance.checkAp(doc, spec, rectOf(w), on))
                 }
-                is PDPushButton -> if ((w.cosObject.getDictionaryObject(FxAppearance.MK) as? COSDictionary)?.getDictionaryObject(n("I")) == null)
-                    w.cosObject.setItem(COSName.AP, FxAppearance.buttonAp(doc, spec, rectOf(w))) else {}
+                is PDPushButton -> w.cosObject.setItem(COSName.AP, FxAppearance.buttonAp(doc, spec, rectOf(w), iconOf(w.cosObject)))
                 is PDTextField -> if (spec.type == FxType.BARCODE) FxBarcodes.render(doc, f, spec)
                     else try { f.constructAppearancesPublic() } catch (_: Throwable) { acroForm(doc).needAppearances = true }
                 is PDChoice -> try { f.constructAppearancesPublic() } catch (_: Throwable) { acroForm(doc).needAppearances = true }

@@ -248,6 +248,37 @@ class FxEditorTest {
         }
     }
 
+    @Test fun buttonIconAndRadioPlacedOneByOne() {
+        val d = doc()
+        FxEditor.create(d, FieldSpec("pic", FxType.BUTTON, listOf(FxWidget(0, FxRect(50f, 50f, 150f, 150f))), layout = FxButtonLayout.ICON_ONLY))
+        val icon = FxAppearance.stream(d, 20f, 10f, "0 0 20 10 re f")
+        assertTrue(FxEditor.setIcon(d, "pic", icon))
+        FxEditor.create(d, FieldSpec("g", FxType.RADIO, listOf(FxWidget(0, FxRect(50f, 300f, 62f, 312f), "A"))))
+        assertTrue(FxEditor.addRadioWidget(d, "g", 0, FxRect(80f, 300f, 92f, 312f), "B"))
+        reload(d).use { r ->
+            val w = r.documentCatalog.acroForm.getField("pic").widgets[0].cosObject
+            val mk = w.getDictionaryObject(COSName.getPDFName("MK")) as COSDictionary
+            assertNotNull(mk.getDictionaryObject(COSName.getPDFName("I")))
+            val n = (w.getDictionaryObject(COSName.AP) as COSDictionary).getDictionaryObject(COSName.N) as com.tom_roush.pdfbox.cos.COSStream
+            val xo = (n.getDictionaryObject(COSName.RESOURCES) as COSDictionary).getDictionaryObject(COSName.XOBJECT) as COSDictionary
+            assertNotNull(xo.getDictionaryObject(COSName.getPDFName("FxIcon")))
+            assertEquals(listOf("A", "B"), FxEditor.readAll(r).first { it.name == "g" }.widgets.map { it.export })
+        }
+        // icon placement math: proportional fit centred in the box
+        val m = FxAppearance.iconMatrix(20f, 10f, floatArrayOf(0f, 0f, 100f, 100f), FxIconScale.ALWAYS, true)
+        assertEquals(5f, m[0], 0.001f); assertEquals(25f, m[5], 0.001f)
+    }
+
+    @Test fun multiFieldMergeOnlyCopiesChanges() {
+        val a = text("a").copy(fontSize = 10f, required = false, maxLen = 4)
+        val b = text("b", FxRect(1f, 1f, 9f, 9f)).copy(fontSize = 14f, required = true, maxLen = 7)
+        val edited = a.copy(fillColor = 0xFF0000, maxLen = 9)
+        val r = FxMerge.apply(a, edited, b)
+        assertEquals("b", r.name); assertEquals(14f, r.fontSize, 0f); assertTrue(r.required); assertEquals(0xFF0000, r.fillColor); assertEquals(9, r.maxLen)
+        val look = FxMerge.encodeLook(edited)
+        assertEquals(FxMerge.look(edited), FxMerge.decodeLook(FxType.TEXT, look))
+    }
+
     @Test fun inheritKeepsIdentity() {
         val src = text("src").copy(fontSize = 9f, fillColor = 0x123456, comb = true, maxLen = 5, format = FxFormat.Percent(1, 0))
         val dst = text("dst", FxRect(1f, 1f, 2f, 2f)).copy(tooltip = "keep")

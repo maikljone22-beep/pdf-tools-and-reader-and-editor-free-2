@@ -240,11 +240,41 @@ object FxAppearance {
     }
 
     /** Push button /AP: normal, rollover and down captions; the down look follows the highlight mode. */
-    fun buttonAp(doc: PDDocument, s: FieldSpec, r: FxRect): COSDictionary {
+    /** Icon placement box (x, y, w, h) inside a [w] x [h] button for the layout, leaving room for the label. */
+    fun iconBox(layout: FxButtonLayout, w: Float, h: Float, size: Float): FloatArray = when (layout) {
+        FxButtonLayout.LABEL_BELOW_ICON -> floatArrayOf(2f, size + 4f, w - 4f, (h - size - 6f).coerceAtLeast(1f))
+        FxButtonLayout.LABEL_ABOVE_ICON -> floatArrayOf(2f, 2f, w - 4f, (h - size - 6f).coerceAtLeast(1f))
+        FxButtonLayout.LABEL_RIGHT_OF_ICON -> floatArrayOf(2f, 2f, minOf(h - 4f, w / 2), h - 4f)
+        FxButtonLayout.LABEL_LEFT_OF_ICON -> floatArrayOf(w - 2f - minOf(h - 4f, w / 2), 2f, minOf(h - 4f, w / 2), h - 4f)
+        else -> floatArrayOf(2f, 2f, w - 4f, h - 4f)
+    }
+
+    /** "cm" operands that fit an icon of [iw] x [ih] into box [b] by the /IF scaling rules (centred). */
+    fun iconMatrix(iw: Float, ih: Float, b: FloatArray, scale: FxIconScale, proportional: Boolean): FloatArray {
+        val sx0 = b[2] / iw.coerceAtLeast(0.01f); val sy0 = b[3] / ih.coerceAtLeast(0.01f)
+        val doScale = when (scale) {
+            FxIconScale.ALWAYS -> true
+            FxIconScale.BIGGER -> iw > b[2] || ih > b[3]
+            FxIconScale.SMALLER -> iw < b[2] && ih < b[3]
+            FxIconScale.NEVER -> false
+        }
+        var sx = 1f; var sy = 1f
+        if (doScale) { if (proportional) { val k = minOf(sx0, sy0); sx = k; sy = k } else { sx = sx0; sy = sy0 } }
+        return floatArrayOf(sx, 0f, 0f, sy, b[0] + (b[2] - iw * sx) / 2, b[1] + (b[3] - ih * sy) / 2)
+    }
+
+    /** Push button /AP; [icon] is the /MK /I form XObject (drawn per layout and /IF). */
+    fun buttonAp(doc: PDDocument, s: FieldSpec, r: FxRect, icon: COSStream? = null): COSDictionary {
         val (w, h) = box(s, r)
         val size = if (s.fontSize > 0f) s.fontSize else (h * 0.45f).coerceIn(6f, 14f)
+        val ib = (icon?.getDictionaryObject(COSName.BBOX) as? COSArray)?.let { a -> FloatArray(4) { i -> (a.getObject(i) as? COSNumber)?.floatValue() ?: 0f } }
         fun face(caption: String, down: Boolean): COSStream {
             val sb = StringBuilder(frame(s, w, h, down))
+            if (icon != null && ib != null && s.layout != FxButtonLayout.LABEL_ONLY) {
+                val m = iconMatrix(ib[2] - ib[0], ib[3] - ib[1], iconBox(s.layout, w, h, size), s.iconScale, s.iconProportional)
+                sb.append("q 0 0 ").append(f(w)).append(' ').append(f(h)).append(" re W n ").append(m.joinToString(" ") { f(it) })
+                    .append(" cm 1 0 0 1 ").append(f(-ib[0])).append(' ').append(f(-ib[1])).append(" cm /FxIcon Do Q\n")
+            }
             if (down && s.highlight == FxHighlight.INVERT) sb.append("q 1 1 1 rg 0 0 ${f(w)} ${f(h)} re f Q\n")
             if (s.layout != FxButtonLayout.ICON_ONLY && caption.isNotEmpty()) {
                 val tw = approxWidth(caption, size)
@@ -262,7 +292,9 @@ object FxAppearance {
                 sb.append("q BT /${s.font.res} ${f(size)} Tf ${rg(s.textColor, true)} ${f(x)} ${f(y)} Td ${lit(caption)} Tj ET Q\n")
             }
             if (down && s.highlight == FxHighlight.OUTLINE) sb.append("q 2 w 0 0 0 RG 1 1 ${f(w - 2)} ${f(h - 2)} re S Q\n")
-            return stream(doc, w, h, sb.toString(), listOf(s.font), s.rotation, r.width, r.height)
+            val st = stream(doc, w, h, sb.toString(), listOf(s.font), s.rotation, r.width, r.height)
+            if (icon != null) (st.getDictionaryObject(COSName.RESOURCES) as COSDictionary).setItem(COSName.XOBJECT, COSDictionary().apply { setItem(n("FxIcon"), icon) })
+            return st
         }
         return COSDictionary().apply {
             setItem(COSName.N, face(s.caption, false))
