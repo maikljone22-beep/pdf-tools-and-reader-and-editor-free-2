@@ -33,8 +33,8 @@ import kotlin.math.abs
 /** Text to type for a caret / replace created on the page (or from a text selection). */
 data class Prompt2(val kind: AnnotKind, val page: Int, val rects: List<RectF>, val original: String = "")
 
-/** A tap that waits for a picker / recorder to produce the file of an attachment, sound or video. */
-data class Tap2(val tool: ReaderTool, val page: Int, val x: Float, val y: Float)
+/** A tap (or, for a video, a dragged box [rect] in PDF space) that waits for a picker / recorder to produce its file. */
+data class Tap2(val tool: ReaderTool, val page: Int, val x: Float, val y: Float, val rect: RectF? = null)
 
 /** Result of the snapshot tool: a PNG of the region, already on the clipboard. */
 data class Snapshot2(val file: File, val bitmap: Bitmap)
@@ -42,7 +42,7 @@ data class Snapshot2(val file: File, val bitmap: Bitmap)
 /** Ink to turn into text: pending ink ids and stored ink annotations of one page. */
 data class Handwriting2(val page: Int, val pendingIds: List<Long>, val stored: List<AnnotationWriter.Existing>)
 
-private enum class DragMode { LASSO, SNAPSHOT, REPLACE, MOVE }
+private enum class DragMode { LASSO, SNAPSHOT, REPLACE, MOVE, VIDEO_BOX }
 
 /**
  * Everything MODULE_annot2 adds to the reader: polygon / polyline / cloud by taps, caret & replace text,
@@ -122,6 +122,9 @@ class Annot2Host(val s: ReaderState) {
                 if (s.color == 0xFFEB3B || s.color == 0x212121) s.color = 0xF44336
             else -> {}
         }
+        // Video tool: pick the video first, then drag its box on the page (or tap for a default box)
+        if (s.tool == ReaderTool.VIDEO && s.video.picked == null) { pendingTap = null; launchVideo() }
+        else if (s.tool == ReaderTool.VIDEO) message = s.context.getString(com.smartdocs.editor.R.string.vid_tool_hint)
     }
 
     /** The active tool changed by any path: drop transient state that belonged to the previous one. */
@@ -165,7 +168,7 @@ class Annot2Host(val s: ReaderState) {
                 prompt = Prompt2(AnnotKind.REPLACE, page, TextSelectionLogic.rects(boxes, r.first, r.last), TextSelectionLogic.text(text, r.first, r.last, boxes))
             }
             ReaderTool.ATTACH -> { pendingTap = Tap2(ReaderTool.ATTACH, page, x, y); launchAttach() }
-            ReaderTool.VIDEO -> { pendingTap = Tap2(ReaderTool.VIDEO, page, x, y); launchVideo() }
+            ReaderTool.VIDEO -> placeVideoOrPick(Tap2(ReaderTool.VIDEO, page, x, y))
             ReaderTool.SOUND -> recordTap = Tap2(ReaderTool.SOUND, page, x, y)
             ReaderTool.SNAPSHOT -> {}
             ReaderTool.SELECT -> { if (!multi.toggleAt(page, x, y, tol)) multi.clear() }
@@ -210,7 +213,7 @@ class Annot2Host(val s: ReaderState) {
             val b = multi.bounds()
             if (b != null && g.pdfRectToScreen(b).inflate(10f).contains(p)) return true
         }
-        return t == ReaderTool.SELECT || t == ReaderTool.SNAPSHOT || t == ReaderTool.REPLACE
+        return t == ReaderTool.SELECT || t == ReaderTool.SNAPSHOT || t == ReaderTool.REPLACE || t == ReaderTool.VIDEO
     }
 
     fun dragStart(page: Int, g: PageGeometry, p: Offset) {
@@ -221,6 +224,7 @@ class Annot2Host(val s: ReaderState) {
             t == ReaderTool.SELECT -> DragMode.LASSO
             t == ReaderTool.SNAPSHOT -> DragMode.SNAPSHOT
             t == ReaderTool.REPLACE -> DragMode.REPLACE
+            t == ReaderTool.VIDEO -> DragMode.VIDEO_BOX
             else -> null
         }
         dragPts.clear(); dragPts += p; dragPage = page
@@ -256,6 +260,12 @@ class Annot2Host(val s: ReaderState) {
                 multi.moveBy(x1 - x0, y1 - y0)
             }
             DragMode.SNAPSHOT -> rect?.takeIf { it.width > 8f && it.height > 8f }?.let { takeSnapshot(page, g.screenRectToPdf(it)) }
+            DragMode.VIDEO_BOX -> rect?.let { r ->
+                val (x, y) = g.screenToPdf(r.center.x, r.center.y)
+                // a tiny drag is a tap: default box
+                val box = if (r.width > 24f && r.height > 24f) PageGeometry.normPdf(g.screenRectToPdf(r)) else null
+                placeVideoOrPick(Tap2(ReaderTool.VIDEO, page, x, y, box))
+            }
             DragMode.REPLACE -> rect?.let { r ->
                 val pr = g.screenRectToPdf(r)
                 s.scope.launch {
@@ -291,6 +301,13 @@ class Annot2Host(val s: ReaderState) {
         s.addAnnot(s.newAnnot(kind, tap.page, rects = listOf(r), text = displayName).copy(filePath = file.absolutePath, mime = MediaAnnots.mimeOf(file.name)))
     }
 
+    /** Video tool: place the already picked video, or open the picker and place it when it returns. */
+    private fun placeVideoOrPick(tap: Tap2) {
+        val pv = s.video.picked
+        if (pv != null && pv.file.isFile) s.video.place(pv, tap.page, tap.rect, tap.x, tap.y)
+        else { pendingTap = tap; launchVideo() }
+    }
+
     /** Persistent folder for media picked or recorded before the document is saved. */
     fun mediaDir(): File = File(s.context.filesDir, "annot2_media").apply { mkdirs() }
 
@@ -300,6 +317,8 @@ class Annot2Host(val s: ReaderState) {
     fun openSelected() {
         val ed = s.edit
         val a = ed.current() ?: return
+        // videos play inside the page (never in another app)
+        if (a.kind == AnnotKind.VIDEO) { s.video.playSelected(); return }
         s.scope.launch {
             val pair: Pair<File, String>? = when (val t = ed.target) {
                 is AnnotTarget.Pending -> a.filePath?.let(::File)?.takeIf { it.isFile }?.let { it to a.mime }
@@ -309,7 +328,7 @@ class Annot2Host(val s: ReaderState) {
             val (file, mime) = pair ?: return@launch
             val m = mime.ifBlank { MediaAnnots.mimeOf(file.name) }
             if (a.kind == AnnotKind.SOUND || m.startsWith("audio/")) playing = file
-            else MediaIntents.view(s.context, s.app, file, m)
+            else MediaIntents.view(s.context, s.app, file, m)       // generic file attachments only
         }
     }
 

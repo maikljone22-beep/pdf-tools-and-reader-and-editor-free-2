@@ -15,3 +15,4 @@ ads.properties
 license.properties
 .dev.vars
 ai-proxy/**/.wrangler/
+.kotlin/
