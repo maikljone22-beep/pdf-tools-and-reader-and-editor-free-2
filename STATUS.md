@@ -1,6 +1,6 @@
 # SmartDocs — release status (single source of truth)
 
-Updated by the integrator (pdf-ad) after every merge. Last update: 2026-10-27 06:30.
+Updated by the integrator (pdf-ad) after every merge. Last update: 2026-10-27 07:10.
 
 ## Version 0.5.0 = "complete" when ALL boxes below are checked
 Scope is FROZEN for 0.5.0: no new features are started until 0.5.0 is released. New requests go to "After 0.5.0".
@@ -23,7 +23,7 @@ Scope is FROZEN for 0.5.0: no new features are started until 0.5.0 is released. 
 - [x] New release signing key created (backup in D:\pdf\signing-key-backup)
 - [x] targetSdk raised to 36 — merged (note: Android 16 ignores the reader orientation lock on tablets ≥ 600 dp)
 - [x] Missing English strings filled (307 added, 0 missing) — merged
-- [ ] Release build (signed AAB + APKs) builds and installs — building now
+- [x] Release build 0.5.0 signed with the new key (APK + AAB) — D:\pdf\SmartDocs-0.5.0-release\ (install on device still to verify)
 
 ### D. Device test by the user (only the user can do this)
 - [ ] Test APK installed on the tablet, the checklist in "Test checklist" passed, crashes reported and fixed
