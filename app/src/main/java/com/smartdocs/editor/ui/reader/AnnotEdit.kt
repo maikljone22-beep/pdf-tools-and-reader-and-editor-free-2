@@ -168,7 +168,8 @@ class AnnotEditor(private val s: ReaderState) {
     fun setColor(c: Int) = edit { it.copy(color = c) }
     fun setOpacity(o: Float) = edit { it.copy(opacity = o.coerceIn(0.1f, 1f)) }
     fun setThickness(w: Float) = edit { it.copy(strokeWidth = w.coerceIn(0.5f, 40f)) }
-    fun setText(text: String) = edit { a ->
+    fun setText(typed: String) = edit { a ->
+        val text = NpfReader.typed(a.kind, typed)   // nav-prefs (PREF-2): digits when typing
         if (a.kind != AnnotKind.FREETEXT && a.kind != AnnotKind.STAMP_TEXT) return@edit a.copy(text = text)
         if (a.comb > 0) return@edit a.copy(text = text)      // comb: fixed cells, extra characters are not shown
         // free text: grow the box so every line stays visible

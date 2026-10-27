@@ -101,9 +101,10 @@ class ReaderState(
     val fileUri: String get() = file?.let { Uri.fromFile(it).toString() } ?: uriString
 
     // ---- view options ----
-    var viewMode by mutableStateOf(if (initial.continuousScroll) ViewMode.CONTINUOUS else ViewMode.SINGLE)
-    var fitPage by mutableStateOf(false)
-    var zoom by mutableFloatStateOf(1f)
+    // nav-prefs (PREF-6): default page layout and zoom from Settings → more preferences
+    var viewMode by mutableStateOf(NpfReader.initialMode(initial.continuousScroll))
+    var fitPage by mutableStateOf(NpfReader.initialFitPage())
+    var zoom by mutableFloatStateOf(NpfReader.initialZoom())
     var nightMode by mutableStateOf(initial.nightMode)
     var pageColor by mutableLongStateOf(initial.pageColor)
     var rotation by mutableIntStateOf(0)
@@ -125,7 +126,7 @@ class ReaderState(
     var opacity by mutableFloatStateOf(1f)
     var thickness by mutableFloatStateOf(3f)
     var fontSize by mutableFloatStateOf(14f)
-    var continueCreating by mutableStateOf(true)
+    var continueCreating by mutableStateOf(com.smartdocs.editor.core.data.NpfPrefs.retainTools)   // nav-prefs: persisted
     var pendingText by mutableStateOf("")
     var pendingImage by mutableStateOf<Bitmap?>(null)
     var placement by mutableStateOf<Placement?>(null)
@@ -170,8 +171,8 @@ class ReaderState(
     var searchQuery by mutableStateOf("")
     var searchHits by mutableStateOf<List<SearchHit>>(emptyList())
     var searchIndex by mutableIntStateOf(-1)
-    var matchCase by mutableStateOf(false)
-    var wholeWords by mutableStateOf(false)
+    var matchCase by mutableStateOf(com.smartdocs.editor.core.data.NpfPrefs.searchMatchCase)    // nav-prefs: search defaults
+    var wholeWords by mutableStateOf(com.smartdocs.editor.core.data.NpfPrefs.searchWholeWords)
     var searching by mutableStateOf(false)
     private var searchJob: Job? = null
 
@@ -442,7 +443,7 @@ class ReaderState(
                  points: List<Pair<Float, Float>> = emptyList(), text: String = "", image: Bitmap? = null, fontSize: Float = this.fontSize,
                  color: Int = this.color): Annot =
         Annot(kind = kind, page = page, color = color, opacity = opacity, strokeWidth = thickness, rects = rects, paths = paths,
-            points = points, text = text, fontSize = fontSize, author = authorName, image = image)
+            points = points, text = NpfReader.typed(kind, text), fontSize = fontSize, author = authorName, image = image)
             .let { if (tool != null) annot2.styleNew(it) else it }
 
     // ================= save =================
@@ -736,9 +737,10 @@ class ReaderState(
             val hits = runCatching {
                 s.searchWith { com.smartdocs.editor.core.search.TextMatcher.find(it, query, norm, wholeWords) }
             }.getOrElse { runCatching { s.search(query, matchCase, wholeWords) }.getOrDefault(emptyList()) }
-            searchHits = hits
+            val max = com.smartdocs.editor.core.data.NpfPrefs.searchMax   // nav-prefs: maximum results
+            searchHits = if (max > 0) hits.take(max) else hits
             searchIndex = if (hits.isEmpty()) -1 else {
-                val near = hits.indexOfFirst { it.page >= currentPage }.let { if (it < 0) 0 else it }
+                val near = searchHits.indexOfFirst { it.page >= currentPage }.let { if (it < 0) 0 else it }
                 near
             }
             searchHits.getOrNull(searchIndex)?.let { jumpTo(it.page) }
@@ -802,7 +804,8 @@ class ReaderState(
         val sel = selection ?: return
         if (sel.rects.isEmpty()) return
         val c = when (kind) { AnnotKind.HIGHLIGHT -> if (color == 0x212121) 0xFFEB3B else color; else -> if (color == 0xFFEB3B) 0xF44336 else color }
-        addAnnot(newAnnot(kind, sel.page, rects = sel.rects.map { PageGeometry.normPdf(it) }, text = sel.text.take(200), color = c))
+        val copied = if (com.smartdocs.editor.core.data.NpfPrefs.copySelection) sel.text.take(200) else ""   // nav-prefs (PREF-4)
+        addAnnot(newAnnot(kind, sel.page, rects = sel.rects.map { PageGeometry.normPdf(it) }, text = copied, color = c))
         selection = null
     }
 }

@@ -46,7 +46,7 @@ data class HFSpec(
     val behind: Boolean = false,
     val everyStart: Int = 1,
     val everyN: Int = 0,
-    val ignoreRotation: Boolean = false,
+    val ignoreRotation: Boolean = com.smartdocs.editor.core.data.NpfPrefs.hfIgnoreRotation,   // nav-prefs: default from Settings
     val imagePath: String = "",
     val imagePage: Int = 0,
     val imageSlot: Int = 1,

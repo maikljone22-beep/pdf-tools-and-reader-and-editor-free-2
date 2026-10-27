@@ -32,6 +32,7 @@ class ReviewCheckWorker(context: Context, params: WorkerParameters) : CoroutineW
     override suspend fun doWork(): Result {
         val c = applicationContext
         if (!CollabConfig.enabled) return Result.success()
+        if (!com.smartdocs.editor.core.data.NpfNet.allowed()) return Result.success()   // nav-prefs: offline mode
         if (com.smartdocs.editor.core.share5.ReviewLocal.offline(c)) return Result.success()   // nav-attach: "work offline"
         val me = CollabStore.participantId(c)
         for (ref in CollabStore.load(c).filter { !it.closed }) {
@@ -44,7 +45,7 @@ class ReviewCheckWorker(context: Context, params: WorkerParameters) : CoroutineW
             val fresh = remote.filter { it.nm in plan.upserts && it.participant != me && it.nm !in known && !it.deleted }.map { it.nm }.distinct()
             if (fresh.isEmpty()) continue
             setNotified(c, ref.id, known + fresh)
-            notify(c, ref, fresh.size)
+            if (com.smartdocs.editor.core.data.NpfPrefs.notifyReview) notify(c, ref, fresh.size)   // nav-prefs: notification toggle
         }
         return Result.success()
     }

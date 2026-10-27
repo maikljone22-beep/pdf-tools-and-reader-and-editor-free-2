@@ -48,7 +48,7 @@ class AiClient(private val endpoint: String, private val model: String, private 
         val json = Json { ignoreUnknownKeys = true; isLenient = true }
 
         private val http: OkHttpClient by lazy {
-            OkHttpClient.Builder()
+            OkHttpClient.Builder().addInterceptor(com.smartdocs.editor.core.data.NpfNet.interceptor)
                 .connectTimeout(30, TimeUnit.SECONDS)
                 .readTimeout(120, TimeUnit.SECONDS)
                 .writeTimeout(60, TimeUnit.SECONDS)

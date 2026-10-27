@@ -27,6 +27,8 @@ fun ToolScreens(nav: NavHostController, id: String, uri: String?) {
 
 @Composable
 private fun ToolScreensInner(nav: NavHostController, id: String, uri: String?) {
+    // nav-prefs (PREF-8): AI routes are unreachable while AI is off (Settings switch or offline mode)
+    if (!com.smartdocs.editor.core.gaps6.AiGate.allowsTool(com.smartdocs.editor.LocalSettings.current, id)) { com.smartdocs.editor.ui.settings.NpfAiOffScreen(nav); return }
     when (id) {
         // --- screens owned by the tools module ---
         "blank" -> BlankPdfScreen(nav)
@@ -80,7 +82,7 @@ private fun ToolScreensInner(nav: NavHostController, id: String, uri: String?) {
         "scan" -> ScannerScreen(nav)
         "ocr" -> OcrScreen(nav, uri)
         "redact" -> RedactScreen(nav, uri)
-        "search_all" -> com.smartdocs.editor.ui.search.GlobalSearchScreen(nav)
+        "search_all" -> com.smartdocs.editor.ui.search.GlobalSearchScreen(nav, uri?.takeIf { it.startsWith("q:") }?.drop(2).orEmpty())
         "search_highlight" -> com.smartdocs.editor.ui.search.SearchMarkScreen(nav, uri)
         "find_replace" -> com.smartdocs.editor.ui.search.FindReplaceScreen(nav, uri)
         "sanitize" -> com.smartdocs.editor.ui.security.SanitizeScreen(nav, uri)
@@ -96,6 +98,7 @@ private fun ToolScreensInner(nav: NavHostController, id: String, uri: String?) {
         "digital_sign" -> DigitalSignScreen(nav, uri)
         "fill_profile" -> FillProfileScreen(nav)
         "stamps" -> StampsScreen(nav)
+        "npf_settings" -> com.smartdocs.editor.ui.settings.NpfSettingsScreen(nav)   // nav-prefs: more preferences
         "ai" -> AiScreen(nav, uri)
         "ai_settings" -> AiSettingsScreen(nav)
         "ai_spaces" -> com.smartdocs.editor.ui.ai5.SpacesScreen(nav)

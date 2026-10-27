@@ -21,8 +21,10 @@ class SmartDocsApp : Application() {
         PDFBoxResourceLoader.init(applicationContext)
         db = AppDatabase.build(this)
         settings = SettingsStore(this)
+        com.smartdocs.editor.core.data.NpfPrefs.init(this)   // nav-prefs: "More preferences"
         documents = DocumentRepository(this, db)
         com.smartdocs.editor.core.search.IndexWorker.schedule(this)
+        runCatching { com.smartdocs.editor.core.files.NpfSaveFolder.start(this) }   // nav-prefs: default save folder + index of new outputs
         // share6
         runCatching { com.smartdocs.editor.core.sync.SyncLive.install(this) }                 // near-real-time sync, 15-min jobs, review notifications
         runCatching { com.smartdocs.editor.core.billing.LicenseCheckWorker.schedule(this) }   // licence re-check (no-op without LICENSE_URL)
@@ -37,6 +39,9 @@ class SmartDocsApp : Application() {
         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Default).launch {
             // nitro-protect2: only a change of the switch resets it (a document's own decision is made when its forms load)
             runCatching { settings.settings.map { it.runJavaScript }.distinctUntilChanged().collect { com.smartdocs.editor.core.security.JsPolicy.enabled = it } }
+        }
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Default).launch {
+            runCatching { settings.settings.collect { com.smartdocs.editor.core.gaps6.AiGate.appEnabled = it.aiEnabled } }   // nav-prefs: AI switch mirror
         }
     }
 

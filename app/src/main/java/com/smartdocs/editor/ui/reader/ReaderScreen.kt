@@ -88,6 +88,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
     com.smartdocs.editor.ui.reader.view.ReaderViewEffects(state, settings, rtl)
     val fold = com.smartdocs.editor.ui.gaps6.rememberFoldState()
     com.smartdocs.editor.ui.gaps6.G6ReaderEffects(state, settings, fold)   // MODULE_gaps6
+    NpfReaderEffects(state, settings, nav) { panel = it }                  // nav-prefs: panel on open, autosave interval, recovery copies
     @Suppress("DEPRECATION") val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner, settings.autoSave) {
         val obs = LifecycleEventObserver { _, e ->
@@ -206,7 +207,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                 if (state.dirty) saveThen(go) else go()      // tools read the file: pending edits go in first
                 }
             },
-            ai = { if (state.guard.check(com.smartdocs.editor.core.security.DocAction.COPY)) { aiText = null; showAi = true } },
+            ai = { if (com.smartdocs.editor.core.gaps6.AiGate.enabled(settings) && state.guard.check(com.smartdocs.editor.core.security.DocAction.COPY)) { aiText = null; showAi = true } },   // nav-prefs (PREF-8)
             quick = { qa ->
                 quick.open(qa,
                     onShare = { showShare5 = true },   // share6: Share5Sheet
@@ -223,7 +224,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
             topBar = {
                 if (chrome) Column {
                     TopAppBar(
-                        title = { Text(state.file?.name ?: stringResource(R.string.loading), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium) },
+                        title = { Text(NpfReader.title(state) ?: state.file?.name ?: stringResource(R.string.loading), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium) },
                         navigationIcon = { IconButton(onClick = { if (state.dirty) { if (settings.autoSave) saveThen { leave() } else showDiscard = true } else leave() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.back)) } },
                         actions = {
                             HistoryButtons(state) { showHistory = true }      // MODULE_history: always-visible undo / redo (long press: history)
@@ -321,7 +322,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                 }
                 if (tablet && panel != null) {
                     VerticalDivider()
-                    Surface(Modifier.width(340.dp).fillMaxHeight(), tonalElevation = 1.dp) {
+                    Surface(Modifier.width(com.smartdocs.editor.core.data.NpfPrefs.panelWidthDp.dp).fillMaxHeight(), tonalElevation = 1.dp) {
                         PanelsContent(state, panel!!, onPanel = { panel = it }, onJump = { state.jumpTo(it) }, onAiOutline = { nav.navigate(Routes.tool("ai", state.fileUri)) }, onClose = { panel = null },
                             onOpenPdf = { f -> nav.navigate(Routes.reader(android.net.Uri.fromFile(f).toString())) })
                     }

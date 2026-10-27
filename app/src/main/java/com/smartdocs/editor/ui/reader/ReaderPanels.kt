@@ -70,7 +70,7 @@ fun PanelsContent(state: ReaderState, panel: ReaderPanel, onPanel: (ReaderPanel)
                 ReaderPanel.ANNOTATIONS -> com.smartdocs.editor.ui.reader.annot.CommentsPanel(state, onJump)
                 ReaderPanel.THUMBNAILS -> ThumbnailsPanel(state, onJump)
                 ReaderPanel.ATTACHMENTS -> com.smartdocs.editor.ui.attachments.ReaderAttachmentsPanel(state, onJump, onOpenPdf)   // nav-attach
-                ReaderPanel.INFO -> DocInfoContent(state)
+                ReaderPanel.INFO -> NpfInfoPanels(state, onJump)   // nav-prefs: + layers, security, fields, destinations, tags, articles, standards, …
             }
         }
     }

@@ -14,6 +14,7 @@ import java.util.concurrent.TimeUnit
 class LicenseCheckWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result {
         if (!LicenseClient.configured) return Result.success()
+        if (!com.smartdocs.editor.core.data.NpfNet.allowed()) return Result.success()   // nav-prefs: offline mode (the cached licence stays)
         LicenseClient.refresh(applicationContext)
         return Result.success()
     }

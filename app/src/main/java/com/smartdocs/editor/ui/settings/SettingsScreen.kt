@@ -103,6 +103,9 @@ fun SettingsScreen(nav: NavHostController) {
             }
             FormRunSettings()      // forms: auto-calculate, autocomplete, highlight colours, fillable banner
 
+            // ---- More preferences (nav-prefs): retain markup tools, offline mode, and the full preferences screen ----
+            NpfSettingsCard(nav)
+
             // ---- Read aloud ----
             GroupCard(stringResource(R.string.settings_tts)) {
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
