@@ -170,6 +170,7 @@ fun AppNavHost(nav: NavHostController) {
                     // account / cloud / help / review screens (acct module, see MODULE_acct.md)
                     acctRoutes(nav)
                     share5Routes(nav)   // share6: share & review, storage (+ "storage" alias), app data
+                    com.smartdocs.editor.ui.webdav.webDavRoutes(nav)   // nav-attach: WebDAV places
                     connRoutes(nav)     // share6: signature requests, connected / protected documents
                     view5Routes(nav)
                 }

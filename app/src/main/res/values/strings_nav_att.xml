@@ -58,4 +58,31 @@
     <string name="nat_strip_note">تُنظَّف النسخة المشارَكة فقط، ولا يتغير مستندك.</string>
     <string name="nat_email_tabs">إرسال كل الألسنة المفتوحة بالبريد (%1$d)</string>
     <string name="nat_email_tabs_sub">إرفاق كل مستند مفتوح في ألسنة القارئ برسالة بريد واحدة</string>
+    <!-- WebDAV places -->
+    <string name="nat_dav_places">أماكن WebDAV</string>
+    <string name="nat_dav_add">إضافة مكان</string>
+    <string name="nat_dav_add_sub">خادم WebDAV: ‏Nextcloud أو ownCloud أو جهاز NAS أو خادم شركة…</string>
+    <string name="nat_dav_edit">تعديل المكان</string>
+    <string name="nat_dav_label">الاسم</string>
+    <string name="nat_dav_url">رابط مجلد الخادم</string>
+    <string name="nat_dav_user">اسم المستخدم</string>
+    <string name="nat_dav_password">كلمة المرور</string>
+    <string name="nat_dav_password_keep">اتركها فارغة للإبقاء على كلمة المرور المحفوظة</string>
+    <string name="nat_dav_http_warn">هذا العنوان غير مشفَّر (http): تنتقل كلمة المرور والملفات نصًا واضحًا. استخدم https إن كان الخادم يدعمه.</string>
+    <string name="nat_dav_secure_note">تُحفظ كلمة المرور مشفَّرة بمفتاح محفوظ في العتاد الآمن لهذا الجهاز.</string>
+    <string name="nat_dav_test">اختبار الاتصال</string>
+    <string name="nat_dav_test_ok">تم الاتصال: %1$d عنصرًا في هذا المجلد</string>
+    <string name="nat_dav_test_locks">الخادم يدعم القفل (السحب والإرجاع).</string>
+    <string name="nat_dav_auth_failed">رفض الخادم اسم المستخدم أو كلمة المرور</string>
+    <string name="nat_dav_remove_q">إزالة المكان «%1$s»؟ لن تُحذف الملفات من الخادم.</string>
+    <string name="nat_dav_locked_other">مقفل من مستخدم آخر</string>
+    <string name="nat_dav_checked_out">مسحوب لديك</string>
+    <string name="nat_dav_pending">لم يُرفع بعد</string>
+    <string name="nat_dav_checkout">سحب (قفل) وفتح</string>
+    <string name="nat_dav_checkin">إرجاع (رفع وتحرير القفل)</string>
+    <string name="nat_dav_retry_upload">الرفع الآن</string>
+    <string name="nat_dav_download">تنزيل إلى المستندات</string>
+    <string name="nat_dav_delete_q">حذف «%1$s» من الخادم؟</string>
+    <string name="nat_dav_exists_q">«%1$s» موجود بالفعل في هذا المجلد</string>
+    <string name="nat_dav_overwrite">استبدال</string>
 </resources>

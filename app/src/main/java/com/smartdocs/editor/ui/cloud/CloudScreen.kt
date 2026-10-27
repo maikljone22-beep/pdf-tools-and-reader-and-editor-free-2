@@ -118,6 +118,7 @@ fun CloudScreen(nav: NavHostController) {
                     }
                 }
             }
+            com.smartdocs.editor.ui.webdav.WebDavPlacesCard(nav)   // nav-attach: WebDAV places ("Add Place")
             GroupCard(stringResource(R.string.ds_cloud_open_section)) {
                 GroupRow(stringResource(R.string.cloud_saf), stringResource(R.string.ac_saf_sub), icon = Icons.Default.FolderOpen, tile = tiles.blue, onClick = pick)
                 GroupDivider()

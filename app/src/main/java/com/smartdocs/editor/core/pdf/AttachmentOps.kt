@@ -264,6 +264,8 @@ object AttachmentOps {
                 (t as? COSDictionary)?.let { d -> listOf(COSName.NAMES, COSName.KIDS, COSName.LIMITS).forEach { k -> (d.getDictionaryObject(k) as? COSUpdateInfo)?.isNeedToBeUpdated = true } }
             }
             doc.documentCatalog.cosObject.isNeedToBeUpdated = true
+            // the writer only descends through flagged objects: catalog → /Names → /EmbeddedFiles → … → the changed spec
+            if (documentLevel) (doc.documentCatalog.cosObject.getDictionaryObject(COSName.NAMES) as? COSUpdateInfo)?.isNeedToBeUpdated = true
             SignedSave.saveIncremental(doc, pages.distinct().map { doc.getPage(it) }, out)
         } else {
             PdfOps.reprotect(doc, password)

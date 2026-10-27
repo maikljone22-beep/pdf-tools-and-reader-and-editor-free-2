@@ -58,4 +58,31 @@
     <string name="nat_strip_note">Only the shared copy is cleaned; your document is not changed.</string>
     <string name="nat_email_tabs">E-mail all open tabs (%1$d)</string>
     <string name="nat_email_tabs_sub">Attach every document open in the reader tabs to one e-mail</string>
+    <!-- WebDAV places -->
+    <string name="nat_dav_places">WebDAV places</string>
+    <string name="nat_dav_add">Add place</string>
+    <string name="nat_dav_add_sub">A WebDAV server: Nextcloud, ownCloud, a NAS, a company server…</string>
+    <string name="nat_dav_edit">Edit place</string>
+    <string name="nat_dav_label">Name</string>
+    <string name="nat_dav_url">Server folder URL</string>
+    <string name="nat_dav_user">User name</string>
+    <string name="nat_dav_password">Password</string>
+    <string name="nat_dav_password_keep">Leave empty to keep the saved password</string>
+    <string name="nat_dav_http_warn">This address is not encrypted (http): the password and files travel in clear text. Use https when the server supports it.</string>
+    <string name="nat_dav_secure_note">The password is stored encrypted with a key kept in this device\'s secure hardware.</string>
+    <string name="nat_dav_test">Test connection</string>
+    <string name="nat_dav_test_ok">Connected: %1$d items in this folder</string>
+    <string name="nat_dav_test_locks">The server supports locking (check out / check in).</string>
+    <string name="nat_dav_auth_failed">The server refused the user name or password</string>
+    <string name="nat_dav_remove_q">Remove the place «%1$s»? Files on the server are not deleted.</string>
+    <string name="nat_dav_locked_other">Locked by another user</string>
+    <string name="nat_dav_checked_out">Checked out by you</string>
+    <string name="nat_dav_pending">Not uploaded yet</string>
+    <string name="nat_dav_checkout">Check out (lock) and open</string>
+    <string name="nat_dav_checkin">Check in (upload and release the lock)</string>
+    <string name="nat_dav_retry_upload">Upload now</string>
+    <string name="nat_dav_download">Download to Documents</string>
+    <string name="nat_dav_delete_q">Delete «%1$s» from the server?</string>
+    <string name="nat_dav_exists_q">«%1$s» already exists in this folder</string>
+    <string name="nat_dav_overwrite">Replace</string>
 </resources>
