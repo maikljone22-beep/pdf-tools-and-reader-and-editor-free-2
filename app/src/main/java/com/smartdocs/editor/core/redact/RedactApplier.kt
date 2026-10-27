@@ -51,6 +51,7 @@ object RedactApplier {
                 val byPage = marks.filter { it.page in 0 until doc.numberOfPages }.groupBy { it.page }
                 var font: PDFont? = null
                 val fontFor: () -> PDFont = { font ?: PdfOps.arabicFont(context, doc).also { font = it } }
+                val chosen = com.smartdocs.editor.core.edit5.E5Fonts(context, doc)
                 for ((pi, list) in byPage) {
                     val page = doc.getPage(pi)
                     if (list.any { it.wholePage }) {
@@ -69,7 +70,7 @@ object RedactApplier {
                 for ((pi, list) in byPage) {
                     val page = doc.getPage(pi)
                     val frame = PageFrame.of(page)
-                    list.forEach { m -> runCatching { drawMark(doc, page, frame, m, fontFor) } }
+                    list.forEach { m -> runCatching { drawMark(doc, page, frame, m, fontFor, chosen) } }
                 }
                 if (options.sanitize) sanitized = Sanitizer.clean(doc, options.sanitizeItems)
                 // audit AN-07: removed / blanked images and forms must not stay in /Resources (and so in the file)
@@ -92,16 +93,16 @@ object RedactApplier {
 
     private fun rgb(c: Int) = floatArrayOf(((c shr 16) and 0xFF) / 255f, ((c shr 8) and 0xFF) / 255f, (c and 0xFF) / 255f)
 
-    private fun drawMark(doc: PDDocument, page: PDPage, frame: PageFrame, m: RedactMark, arabic: () -> PDFont) {
+    private fun drawMark(doc: PDDocument, page: PDPage, frame: PageFrame, m: RedactMark, arabic: () -> PDFont, chosen: com.smartdocs.editor.core.edit5.E5Fonts) {
         val boxes = if (m.wholePage || m.rects.isEmpty()) page.cropBox.let { listOf(Box(it.lowerLeftX, it.lowerLeftY, it.upperRightX, it.upperRightY)) } else m.boxes()
         PDPageContentStream(doc, page, PDPageContentStream.AppendMode.APPEND, true, true).use { cs ->
             val f = rgb(m.style.fill)
             cs.setNonStrokingColor(f[0], f[1], f[2])
             boxes.forEach { b -> cs.addRect(b.l, b.b, b.w, b.h) }
             cs.fill()
-            val text = m.style.overlay.trim()
+            val text = m.style.shownOverlay()
             if (text.isEmpty()) return@use
-            val (font, shown) = fontAndText(text, arabic)
+            val (font, shown) = fontAndText(text, arabic, chosenFont(m.style.font), chosen)
             val w1 = runCatching { font.getStringWidth(shown) / 1000f }.getOrDefault(0f)
             if (w1 <= 0f) return@use
             val toDisplay = Affine.values(frame.toDisplay)
@@ -132,8 +133,20 @@ object RedactApplier {
         }
     }
 
-    /** Helvetica-Bold for text it can encode, otherwise the bundled Arabic font with shaped text. */
-    private fun fontAndText(text: String, arabic: () -> PDFont): Pair<PDFont, String> {
+    private fun chosenFont(name: String) = com.smartdocs.editor.core.edit5.E5Font.values().firstOrNull { it.name == name && it.available() }
+
+    /**
+     * The chosen font ([pick]: its Arabic face for Arabic text, its Latin face otherwise) or, automatic,
+     * Helvetica-Bold for text it can encode, otherwise the bundled Arabic font with shaped text.
+     */
+    private fun fontAndText(text: String, arabic: () -> PDFont, pick: com.smartdocs.editor.core.edit5.E5Font?, fonts: com.smartdocs.editor.core.edit5.E5Fonts): Pair<PDFont, String> {
+        if (pick != null) {
+            val isAr = ArabicNormalizer.hasArabic(text)
+            val f = if (isAr) fonts.arabic(pick, true) else fonts.latin(pick, true)
+            val shaped = if (isAr) ArabicShaper.shape(text) else text
+            val safe = shaped.filter { ch -> runCatching { f.encode(ch.toString()); true }.getOrDefault(false) }
+            if (safe.isNotBlank()) return f to safe
+        }
         if (!ArabicNormalizer.hasArabic(text)) {
             val ok = runCatching { PDType1Font.HELVETICA_BOLD.encode(text); true }.getOrDefault(false)
             if (ok) return PDType1Font.HELVETICA_BOLD to text

@@ -18,6 +18,7 @@ import androidx.navigation.NavHostController
 import com.smartdocs.editor.LocalApp
 import com.smartdocs.editor.LocalSettings
 import com.smartdocs.editor.R
+import com.smartdocs.editor.core.edit5.ClickAction
 import com.smartdocs.editor.core.edit5.DecorSource
 import com.smartdocs.editor.core.edit5.DecorSpec
 import com.smartdocs.editor.core.edit5.DecorType
@@ -26,6 +27,7 @@ import com.smartdocs.editor.core.edit5.TokenContext
 import com.smartdocs.editor.core.edit5.Tokens
 import com.smartdocs.editor.core.edit5.WatermarkOps
 import com.smartdocs.editor.ui.common.rememberImagePicker
+import com.smartdocs.editor.ui.common.rememberPdfPicker
 import com.smartdocs.editor.ui.common.rememberToolRunner
 import com.smartdocs.editor.ui.tools.ChoiceChips
 import com.smartdocs.editor.ui.tools.ColorChips
@@ -55,6 +57,7 @@ fun DecorScreen(nav: NavHostController, uri: String?, type: DecorType) {
     var existing by remember { mutableStateOf(false) }
     var page by remember { mutableIntStateOf(0) }
     val pickImage = rememberImagePicker(multiple = false) { it.firstOrNull()?.let { f -> spec = spec.copy(source = DecorSource.IMAGE, imagePath = f.absolutePath) } }
+    val pickPdf = rememberPdfPicker { it.firstOrNull()?.let { f -> spec = spec.copy(source = DecorSource.PDF, pdfPath = f.absolutePath) } }
     val processing = stringResource(R.string.processing)
     LaunchedEffect(doc.work) {
         val w = doc.work ?: return@LaunchedEffect
@@ -65,10 +68,11 @@ fun DecorScreen(nav: NavHostController, uri: String?, type: DecorType) {
     ToolScaffold(title, nav, runner) {
         E5FileRow(doc)
         if (type == DecorType.SECURITY) Text(stringResource(R.string.e5_sec_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        E5ProfileBar(spec.kind, current = { spec.toJson() }, onLoad = { j -> DecorSpec.fromJson(j)?.let { spec = it.copy(type = type, user = spec.user) } }, onMessage = { runner.error = it })
         E5TwoPane(options = {
             E5Section(stringResource(R.string.e5_source)) {
                 val sources = if (type == DecorType.SECURITY) listOf(DecorSource.TEXT) else DecorSource.values().toList()
-                ChoiceChips(sources, spec.source, { stringResource(when (it) { DecorSource.TEXT -> R.string.e5_src_text; DecorSource.IMAGE -> R.string.e5_src_image; DecorSource.COLOR -> R.string.e5_src_color }) }) { spec = spec.copy(source = it) }
+                ChoiceChips(sources, spec.source, { stringResource(when (it) { DecorSource.TEXT -> R.string.e5_src_text; DecorSource.IMAGE -> R.string.e5_src_image; DecorSource.COLOR -> R.string.e5_src_color; DecorSource.PDF -> R.string.nt_src_pdf }) }) { spec = spec.copy(source = it) }
                 when (spec.source) {
                     DecorSource.TEXT -> {
                         if (type == DecorType.WATERMARK) {
@@ -85,7 +89,27 @@ fun DecorScreen(nav: NavHostController, uri: String?, type: DecorType) {
                         Slider(spec.style.size, { spec = spec.copy(style = spec.style.copy(size = it)) }, valueRange = 6f..150f)
                         ColorChips(WM_COLORS, spec.style.color) { spec = spec.copy(style = spec.style.copy(color = it)) }
                         SwitchRow(stringResource(R.string.e5_bold), spec.style.bold) { spec = spec.copy(style = spec.style.copy(bold = it)) }
+                        if (!live) {
+                            SwitchRow(stringResource(R.string.nt_italic), spec.style.italic) { spec = spec.copy(style = spec.style.copy(italic = it)) }
+                            SwitchRow(stringResource(R.string.e5_underline), spec.style.underline) { spec = spec.copy(style = spec.style.copy(underline = it)) }
+                            SwitchRow(stringResource(R.string.nt_outline_font), spec.style.outline != null) { on -> spec = spec.copy(style = spec.style.copy(outline = if (on) 0x212121 else null, hollow = false)) }
+                            spec.style.outline?.let { oc ->
+                                ColorChips(WM_COLORS, oc) { spec = spec.copy(style = spec.style.copy(outline = it)) }
+                                SwitchRow(stringResource(R.string.nt_outline_hollow), spec.style.hollow) { spec = spec.copy(style = spec.style.copy(hollow = it)) }
+                            }
+                            Text(stringResource(R.string.nt_line_spacing))
+                            ChoiceChips(listOf(1f, 1.5f, 2f), spec.lineSpacing, { stringResource(when (it) { 1.5f -> R.string.nt_spacing_15; 2f -> R.string.nt_spacing_2; else -> R.string.nt_spacing_1 }) }) { spec = spec.copy(lineSpacing = it) }
+                            Text(if (spec.wrapWidth <= 0f) stringResource(R.string.nt_wrap_off) else stringResource(R.string.nt_wrap_width, (spec.wrapWidth * 100).toInt()))
+                            Slider(spec.wrapWidth, { spec = spec.copy(wrapWidth = if (it < 0.1f) 0f else it) }, valueRange = 0f..1f)
+                        }
                         SwitchRow(stringResource(R.string.e5_arabic_digits), spec.arabicDigits) { spec = spec.copy(arabicDigits = it) }
+                    }
+                    DecorSource.PDF -> {
+                        OutlinedButton(onClick = pickPdf, Modifier.fillMaxWidth()) {
+                            Icon(Icons.Default.PictureAsPdf, null); Spacer(Modifier.width(8.dp))
+                            Text(if (spec.pdfPath.isBlank()) stringResource(R.string.nt_pick_pdf_page) else java.io.File(spec.pdfPath).name, maxLines = 1)
+                        }
+                        FloatField((spec.pdfPage + 1).toFloat(), stringResource(R.string.nt_pdf_page_no)) { spec = spec.copy(pdfPage = (it.toInt() - 1).coerceAtLeast(0)) }
                     }
                     DecorSource.IMAGE -> OutlinedButton(onClick = pickImage, Modifier.fillMaxWidth()) {
                         Icon(Icons.Default.Image, null); Spacer(Modifier.width(8.dp))
@@ -124,10 +148,30 @@ fun DecorScreen(nav: NavHostController, uri: String?, type: DecorType) {
                     }
                 }
                 if (type != DecorType.BACKGROUND && !live) SwitchRow(stringResource(R.string.e5_behind), spec.behind) { spec = spec.copy(behind = it) }
+                if (!live && spec.source != DecorSource.COLOR) {
+                    SwitchRow(stringResource(R.string.nt_border), spec.border != null) { on -> spec = spec.copy(border = if (on) 0x212121 else null) }
+                    spec.border?.let { bc ->
+                        ColorChips(WM_COLORS, bc) { spec = spec.copy(border = it) }
+                        Text(stringResource(R.string.nt_border_width, spec.borderWidth))
+                        Slider(spec.borderWidth, { spec = spec.copy(borderWidth = (it * 2).toInt() / 2f) }, valueRange = 0.5f..8f)
+                        SwitchRow(stringResource(R.string.nt_border_dashed), spec.borderDashed) { spec = spec.copy(borderDashed = it) }
+                    }
+                }
+                SwitchRow(stringResource(R.string.nt_ignore_rotation), spec.ignoreRotation) { spec = spec.copy(ignoreRotation = it) }
                 SwitchRow(stringResource(R.string.e5_on_screen), spec.onScreen) { spec = spec.copy(onScreen = it) }
                 SwitchRow(stringResource(R.string.e5_on_print), spec.onPrint) { spec = spec.copy(onPrint = it) }
                 if (type == DecorType.SECURITY) SwitchRow(stringResource(R.string.e5_microtext), spec.microtext) { spec = spec.copy(microtext = it) }
                 RangeSubset(spec.range, { spec = spec.copy(range = it) }, spec.subset) { spec = spec.copy(subset = it) }
+                EveryNPages(spec.everyStart, spec.everyN) { st, n -> spec = spec.copy(everyStart = st, everyN = n) }
+            }
+            if (!live && !spec.tile && spec.source != DecorSource.COLOR) E5Section(stringResource(R.string.nt_click_action)) {
+                ChoiceChips(ClickAction.values().toList(), spec.click, { stringResource(when (it) {
+                    ClickAction.NONE -> R.string.nt_click_none; ClickAction.PAGE -> R.string.nt_click_page; ClickAction.URL -> R.string.nt_click_url; ClickAction.FILE -> R.string.nt_click_file }) }) { spec = spec.copy(click = it) }
+                if (spec.click == ClickAction.URL || spec.click == ClickAction.FILE)
+                    OutlinedTextField(spec.clickTarget, { spec = spec.copy(clickTarget = it) }, Modifier.fillMaxWidth(), singleLine = true,
+                        label = { Text(stringResource(if (spec.click == ClickAction.URL) R.string.nt_click_url_hint else R.string.nt_click_file_hint)) })
+                if (spec.click == ClickAction.PAGE || spec.click == ClickAction.FILE)
+                    FloatField(spec.clickPage.toFloat(), stringResource(R.string.nt_click_page_no)) { spec = spec.copy(clickPage = it.toInt().coerceAtLeast(1)) }
             }
         }, preview = {
             val info = doc.infos.getOrNull(page)
@@ -144,7 +188,7 @@ fun DecorScreen(nav: NavHostController, uri: String?, type: DecorType) {
                         when (spec.source) {
                             DecorSource.COLOR -> drawRect(0f, 0f, size.width, size.height, android.graphics.Paint().apply { color = 0xFF000000.toInt() or spec.fill; alpha = (spec.opacity * 255).toInt() })
                             else -> {
-                                val label = if (spec.source == DecorSource.IMAGE) "▣" else sample.lineSequence().firstOrNull().orEmpty()
+                                val label = if (spec.source == DecorSource.IMAGE || spec.source == DecorSource.PDF) "▣" else sample.lineSequence().firstOrNull().orEmpty()
                                 if (spec.scale > 0f && !live && label.isNotEmpty()) { val tw = paint.measureText(label).coerceAtLeast(1f); paint.textSize *= size.width * spec.scale / tw }
                                 val rot = if (live) LiveWmScript.snapRotation(spec.rotation).toFloat() else spec.rotation
                                 if (live) paint.color = 0xFF000000.toInt() or LiveWmScript.fadedColor(spec.style.color, spec.opacity)
@@ -172,7 +216,7 @@ fun DecorScreen(nav: NavHostController, uri: String?, type: DecorType) {
                 }
             }, enabled = doc.work != null, modifier = Modifier.weight(1f)) { Icon(Icons.Default.DeleteSweep, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.e5_remove)) }
         }
-        val ready = doc.work != null && when (spec.source) { DecorSource.TEXT -> spec.text.isNotBlank(); DecorSource.IMAGE -> spec.imagePath.isNotBlank(); DecorSource.COLOR -> true }
+        val ready = doc.work != null && when (spec.source) { DecorSource.TEXT -> spec.text.isNotBlank(); DecorSource.IMAGE -> spec.imagePath.isNotBlank(); DecorSource.COLOR -> true; DecorSource.PDF -> spec.pdfPath.isNotBlank() }
         PrimaryButton(stringResource(if (existing) R.string.e5_update else R.string.apply), enabled = ready, icon = Icons.Default.BrandingWatermark) {
             val sp = spec
             runner.run(processing) {
@@ -196,4 +240,14 @@ private fun AlignGrid(h: Int, v: Int, onPick: (Int, Int) -> Unit) {
             }
         }
     }
+}
+
+/** Nitro page range "from page X every N pages" (N = 0: off). */
+@Composable
+internal fun EveryNPages(start: Int, every: Int, onChange: (Int, Int) -> Unit) {
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FloatField(start.toFloat(), stringResource(R.string.nt_every_from), Modifier.weight(1f)) { onChange(it.toInt().coerceAtLeast(1), every) }
+        FloatField(every.toFloat(), stringResource(R.string.nt_every_n), Modifier.weight(1f)) { onChange(start, it.toInt().coerceAtLeast(0)) }
+    }
+    if (every > 0) Text(stringResource(R.string.nt_every_help, start, every), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
