@@ -61,6 +61,7 @@ fun AnnotActionBar(state: ReaderState, annot: Annot?, frame: Rect) {
         shape = RoundedCornerShape(14.dp), tonalElevation = 3.dp, shadowElevation = 6.dp,
     ) {
         Column(Modifier.padding(4.dp)) {
+            NpfNotePopup(state, annot)   // nav-prefs: comment pop-up with the note font, size and opacity
             Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
                 val video = annot?.kind == AnnotKind.VIDEO
                 if (annot?.kind != AnnotKind.STAMP_IMAGE && !video) AeButton(Icons.Default.Palette, R.string.ae_color, enabled, sub == AeSub.COLOR) { sub = if (sub == AeSub.COLOR) AeSub.NONE else AeSub.COLOR }

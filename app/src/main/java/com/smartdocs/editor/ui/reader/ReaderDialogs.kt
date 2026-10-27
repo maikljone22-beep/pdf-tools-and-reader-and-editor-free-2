@@ -64,14 +64,17 @@ fun DiscardDialog(onSave: () -> Unit, onDiscard: () -> Unit, onCancel: () -> Uni
 }
 
 @Composable
-fun GoToPageDialog(current: Int, count: Int, onGo: (Int) -> Unit, onDismiss: () -> Unit) {
-    var v by remember { mutableStateOf((current + 1).toString()) }
-    val n = v.toIntOrNull()
+fun GoToPageDialog(current: Int, count: Int, onGo: (Int) -> Unit, onDismiss: () -> Unit, labels: List<String>? = null) {
+    var v by remember { mutableStateOf(labels?.getOrNull(current) ?: (current + 1).toString()) }
+    // old plan A5: a page label ("iv", "A-3") or a page number
+    val target = if (labels != null) com.smartdocs.editor.ui.edit5.resolvePageInput(labels, v, count) else v.toIntOrNull()?.minus(1)
+    val n = target?.plus(1)
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.go_to_page)) },
         text = {
-            OutlinedTextField(v, { v = it.filter { c -> c.isDigit() }.take(6) }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            OutlinedTextField(v, { v = if (labels != null) it.take(20) else it.filter { c -> c.isDigit() }.take(6) }, singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = if (labels != null) KeyboardType.Text else KeyboardType.Number),
                 label = { Text(stringResource(R.string.page_of, current + 1, count)) }, modifier = Modifier.fillMaxWidth())
         },
         confirmButton = { Button(onClick = { n?.let { onGo(it - 1) } }, enabled = n != null && n in 1..count) { Text(stringResource(R.string.ok)) } },

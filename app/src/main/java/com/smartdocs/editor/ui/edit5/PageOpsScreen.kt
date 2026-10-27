@@ -9,6 +9,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import com.smartdocs.editor.LocalApp
 import com.smartdocs.editor.R
@@ -53,7 +54,9 @@ fun PageOpsScreen(nav: NavHostController, uri: String?, initial: PageOp = PageOp
     var cols by remember { mutableIntStateOf(2) }
     var rows by remember { mutableIntStateOf(1) }
     var rtl by remember { mutableStateOf(true) }
-    var cut by remember { mutableFloatStateOf(0.5f) }
+    // cut lines as fractions: columns from the left, rows from the top (any number of tiles)
+    var xCuts by remember { mutableStateOf(listOf(0.5f)) }
+    var yCuts by remember { mutableStateOf(emptyList<Float>()) }
     var reverseB by remember { mutableStateOf(false) }
     var splitBy by remember { mutableStateOf(SplitBy.BLANK) }
     var marker by remember { mutableStateOf("") }
@@ -94,8 +97,20 @@ fun PageOpsScreen(nav: NavHostController, uri: String?, initial: PageOp = PageOp
                 if (op == PageOp.INTERLEAVE) Text(stringResource(R.string.e5_interleave_help), style = MaterialTheme.typography.bodySmall)
             }
             PageOp.SPLIT_PAGE -> E5Section(stringResource(R.string.e5_op_split_page)) {
-                ChoiceChips(listOf(2 to 1, 1 to 2, 2 to 2, 3 to 1), cols to rows, { stringResource(when (it) { 2 to 1 -> R.string.e5_split_halves_v; 1 to 2 -> R.string.e5_split_halves_h; 2 to 2 -> R.string.e5_split_quarters; else -> R.string.e5_split_thirds }) }) { cols = it.first; rows = it.second }
-                if (cols * rows == 2) { Text(stringResource(R.string.e5_cut_at, (cut * 100).toInt())); Slider(cut, { cut = it }, valueRange = 0.2f..0.8f) }
+                fun grid(c: Int, r: Int) { cols = c; rows = r; xCuts = com.smartdocs.editor.core.edit5.BoxTools.evenCuts(c); yCuts = com.smartdocs.editor.core.edit5.BoxTools.evenCuts(r) }
+                ChoiceChips(listOf(2 to 1, 1 to 2, 2 to 2, 3 to 1), cols to rows, { stringResource(when (it) { 2 to 1 -> R.string.e5_split_halves_v; 1 to 2 -> R.string.e5_split_halves_h; 2 to 2 -> R.string.e5_split_quarters; else -> R.string.e5_split_thirds }) }) { grid(it.first, it.second) }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FloatField(cols.toFloat(), stringResource(R.string.pc_columns), Modifier.weight(1f)) { v -> v.toInt().coerceIn(1, 8).let { if (it != cols) grid(it, rows) } }
+                    FloatField(rows.toFloat(), stringResource(R.string.pc_rows), Modifier.weight(1f)) { v -> v.toInt().coerceIn(1, 8).let { if (it != rows) grid(cols, it) } }
+                }
+                xCuts.forEachIndexed { i, f ->
+                    Text(stringResource(R.string.pc_cut_v, i + 1, (f * 100).toInt()), style = MaterialTheme.typography.bodySmall)
+                    Slider(f, { xCuts = com.smartdocs.editor.core.edit5.BoxTools.moveCut(xCuts, i, it) })
+                }
+                yCuts.forEachIndexed { i, f ->
+                    Text(stringResource(R.string.pc_cut_h, i + 1, (f * 100).toInt()), style = MaterialTheme.typography.bodySmall)
+                    Slider(f, { yCuts = com.smartdocs.editor.core.edit5.BoxTools.moveCut(yCuts, i, it) })
+                }
                 SwitchRow(stringResource(R.string.e5_rtl_order), rtl) { rtl = it }
                 OutlinedTextField(range, { range = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.page_range)) }, placeholder = { Text(stringResource(R.string.e5_all_pages)) })
                 val info = doc.infos.getOrNull(page)
@@ -103,8 +118,7 @@ fun PageOpsScreen(nav: NavHostController, uri: String?, initial: PageOp = PageOp
                     PageStepper(page, n) { page = it }
                     E5PageView(doc.work, doc.password, page, info, doc.version, Modifier.fillMaxWidth(0.7f)) { map ->
                         val full = map(android.graphics.RectF(0f, info.displayH, info.displayW, 0f))
-                        val xs = if (cols == 2 && rows == 1) listOf(cut) else (1 until cols).map { it / cols.toFloat() }
-                        val ys = if (rows == 2 && cols == 1) listOf(1f - cut) else (1 until rows).map { it / rows.toFloat() }
+                        val xs = xCuts; val ys = yCuts
                         xs.forEach { f -> drawLine(Color.Red, androidx.compose.ui.geometry.Offset(full.left + full.width * f, 0f), androidx.compose.ui.geometry.Offset(full.left + full.width * f, size.height), 3f) }
                         ys.forEach { f -> drawLine(Color.Red, androidx.compose.ui.geometry.Offset(0f, full.top + full.height * f), androidx.compose.ui.geometry.Offset(size.width, full.top + full.height * f), 3f) }
                     }
@@ -121,7 +135,7 @@ fun PageOpsScreen(nav: NavHostController, uri: String?, initial: PageOp = PageOp
         val ready = w != null && when (op) { PageOp.REPLACE -> otherReady && range.isNotBlank(); PageOp.COPY_PAGES, PageOp.INTERLEAVE -> otherReady; PageOp.SMART_SPLIT -> splitBy == SplitBy.BLANK || marker.isNotBlank(); PageOp.DUPLICATE -> range.isNotBlank(); else -> true }
         PrimaryButton(stringResource(R.string.e5_run), enabled = ready, icon = Icons.Default.PlayArrow) {
             val o = op; val rg = range; val tm = times.toInt(); val ae = atEnd; val of = other; val orr = otherRange; val a = at.toInt() - 1
-            val c = cols; val r = rows; val rt = rtl; val ct = cut; val rb = reverseB; val sb = splitBy; val mk = marker; val dr = drop
+            val c = cols; val r = rows; val rt = rtl; val xcs = xCuts; val ycs = yCuts; val rb = reverseB; val sb = splitBy; val mk = marker; val dr = drop
             val opw = of?.let { unlocker.password(it) }
             val sel = PageSet.parse(rg, n)
             if (o == PageOp.SMART_SPLIT) runner.runMany(processing) {
@@ -137,9 +151,8 @@ fun PageOpsScreen(nav: NavHostController, uri: String?, initial: PageOp = PageOp
                         PageOp.COPY_PAGES -> { val oc = PdfOps.pageCount(of!!, opw); PageOps5.copyPages(s, out, p, of, opw, PageSet.parse(orr, oc), a) }
                         PageOp.INTERLEAVE -> PageOps5.interleave(s, of!!, out, p, opw, rb)
                         PageOp.SPLIT_PAGE -> {
-                            val xc = if (c == 2 && r == 1) listOf(ct) else null
-                            val yc = if (c == 1 && r == 2) listOf(1f - ct) else null
-                            PageOps5.splitPages(s, out, p, sel, c, r, rt, xc, yc)
+                            // splitParts takes row cuts from the bottom of the page
+                            PageOps5.splitPages(s, out, p, sel, c, r, rt, xcs, ycs.map { 1f - it })
                         }
                         PageOp.SMART_SPLIT -> Unit
                     }

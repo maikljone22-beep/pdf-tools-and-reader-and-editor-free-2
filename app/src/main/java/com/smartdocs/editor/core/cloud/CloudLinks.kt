@@ -164,6 +164,8 @@ object SaveHooks {
             runCatching { com.smartdocs.editor.core.collab.CollabLive.confirm(app, file) }
             runCatching { CollabStore.onDocumentSaved(app, file) }
             runCatching { com.smartdocs.editor.core.sync.SyncLive.onFileSaved(app, file) }   // sync-after-save
+            runCatching { com.smartdocs.editor.core.search.IndexWorker.indexSoon(app, file) }   // nav-prefs: full-text index follows saves
+            runCatching { com.smartdocs.editor.core.files.NpfSaveFolder.copySoon(app, file) }  // nav-prefs: default save folder
             listeners.forEach { l -> runCatching { l(file) } }
         }
     }

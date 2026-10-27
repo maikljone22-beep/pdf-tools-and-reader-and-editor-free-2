@@ -100,7 +100,7 @@ object GoogleAccount {
         _profile.value = null; loaded = true
     }
 
-    private val http by lazy { OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(20, TimeUnit.SECONDS).build() }
+    private val http by lazy { OkHttpClient.Builder().addInterceptor(com.smartdocs.editor.core.data.NpfNet.interceptor).connectTimeout(15, TimeUnit.SECONDS).readTimeout(20, TimeUnit.SECONDS).build() }
 
     private suspend fun userInfo(token: String): JSONObject = withContext(Dispatchers.IO) {
         val req = Request.Builder().url("https://openidconnect.googleapis.com/v1/userinfo").header("Authorization", "Bearer $token").build()

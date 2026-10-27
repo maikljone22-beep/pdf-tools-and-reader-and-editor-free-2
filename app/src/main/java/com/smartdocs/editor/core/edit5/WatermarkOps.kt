@@ -78,7 +78,7 @@ data class DecorSpec(
     val clickPage: Int = 1,
     val everyStart: Int = 1,
     val everyN: Int = 0,
-    val ignoreRotation: Boolean = false,
+    val ignoreRotation: Boolean = com.smartdocs.editor.core.data.NpfPrefs.hfIgnoreRotation,   // nav-prefs: default from Settings
 ) {
     /** True when this spec is written as a live (JavaScript-updated) watermark. */
     val isLive: Boolean get() = live && type == DecorType.WATERMARK && source == DecorSource.TEXT
