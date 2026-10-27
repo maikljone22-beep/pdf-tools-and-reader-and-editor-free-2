@@ -56,7 +56,7 @@ object NveSpell {
     private const val TIMEOUT_MS = 3000L
     private val WORD = Regex("[\\p{L}\\p{M}']+")
 
-    private fun isArabic(c: Char) = c in '؀'..'ۿ' || c in 'ݐ'..'ݿ' || c in 'ﭐ'..'﷿' || c in 'ﹰ'..'﻿'
+    private fun isArabic(c: Char) = c in '\u0600'..'\u06FF' || c in '\u0750'..'\u077F' || c in '\uFB50'..'\uFDFF' || c in '\uFE70'..'\uFEFF'
 
     suspend fun check(context: Context, text: String, locale: Locale? = null): List<SpellIssue> {
         if (text.isBlank()) return emptyList()

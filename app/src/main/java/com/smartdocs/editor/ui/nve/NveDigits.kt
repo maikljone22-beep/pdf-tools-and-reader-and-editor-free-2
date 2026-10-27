@@ -24,17 +24,17 @@ object NveDigits {
     fun convert(text: String, mode: Mode): String {
         val target = when (mode) {
             Mode.LATIN -> '0'
-            Mode.ARABIC_INDIC -> '٠'
-            Mode.EASTERN_ARABIC_INDIC -> '۰'
+            Mode.ARABIC_INDIC -> '\u0660'
+            Mode.EASTERN_ARABIC_INDIC -> '\u06F0'
             Mode.AUTO -> {
-                val arabic = text.any { it in '؀'..'ۿ' && it.isLetter() }
+                val arabic = text.any { it in '\u0600'..'\u06FF' && it.isLetter() }
                 val latin = text.any { it.isLetter() && it.code < 0x0250 }
-                if (arabic && !latin) '٠' else return text
+                if (arabic && !latin) '\u0660' else return text
             }
         }
         val sb = StringBuilder(text.length)
         for (c in text) {
-            val d = when (c) { in '0'..'9' -> c - '0'; in '٠'..'٩' -> c - '٠'; in '۰'..'۹' -> c - '۰'; else -> -1 }
+            val d = when (c) { in '0'..'9' -> c - '0'; in '\u0660'..'\u0669' -> c - '\u0660'; in '\u06F0'..'\u06F9' -> c - '\u06F0'; else -> -1 }
             sb.append(if (d >= 0) target + d else c)
         }
         return sb.toString()

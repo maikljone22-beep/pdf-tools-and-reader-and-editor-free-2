@@ -55,7 +55,7 @@ object ContentEdit {
                     else when (style.align) {
                         TextAlign.LEFT -> block.rect.left to (a.frame.width - MARGIN).coerceAtLeast(block.rect.right)
                         TextAlign.RIGHT -> MARGIN.coerceAtMost(block.rect.left) to block.rect.right
-                        TextAlign.CENTER -> block.rect.left to block.rect.right
+                        TextAlign.CENTER, TextAlign.JUSTIFY -> block.rect.left to block.rect.right   // NVE-text: justify
                     }
                 // keep the baseline of the first line
                 writeText(context, doc, p, a.frame, original, text, st, left, right, block.firstBaseline, block.rtl)
@@ -83,6 +83,8 @@ object ContentEdit {
 
     private fun writeText(context: Context, doc: PDDocument, page: PDPage, frame: PageFrame, original: com.tom_roush.pdfbox.pdmodel.font.PDFont?,
                           text: String, style: EditTextStyle, left: Float, right: Float, baseline: Float, defaultRtl: Boolean) {
+        // NVE-text: rich text / advanced formatting / custom fonts / embedding choice
+        if (RichText.isRich(style)) { TextEdit5.writeRich(context, doc, page, frame, original, text, style, left, right, baseline, defaultRtl); return }
         val fonts = FontSet(context, doc, original, style)
         val layout = TextLayout(fonts, style)
         val lines = layout.layout(text, (right - left).coerceAtLeast(style.size * 2), defaultRtl)

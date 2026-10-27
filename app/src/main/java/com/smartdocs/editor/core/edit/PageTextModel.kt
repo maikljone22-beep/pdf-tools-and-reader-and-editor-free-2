@@ -11,7 +11,7 @@ import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 
-enum class TextAlign { LEFT, CENTER, RIGHT }
+enum class TextAlign { LEFT, CENTER, RIGHT, JUSTIFY }
 enum class FontFamily { SANS, SERIF, MONO }
 
 /**
@@ -43,7 +43,13 @@ data class TextBlock(
      * editor must not show [text] as editable; offer OCR or replacing the whole block instead.
      */
     val unreadable: Boolean = false,
+    /** NVE-text: rotation of the text row (degrees, ccw); 0 for upright text. [rect] is then the display bounding box. */
+    val angle: Float = 0f,
+    /** NVE-text: for rotated blocks, the block rect in its own upright frame (rotate by [angle] to get display space). */
+    val frameRect: RectF? = null,
 ) {
+    /** NVE-text: drawn (partly) inside a form XObject. */
+    val inForm: Boolean get() = ops.any { FormOps.isForm(it) }
     override fun equals(other: Any?) = other is TextBlock && other.id == id && other.ops.contentEquals(ops) && other.text == text
     override fun hashCode() = id * 31 + ops.contentHashCode()
 }
@@ -74,6 +80,12 @@ internal class PageAnalysis(val model: PageModel, val fonts: Map<Int, PDFont?>, 
 
 /** Builds [PageModel]s: glyph runs → lines → paragraphs, by baseline and proximity. */
 object PageTextModel {
+    /**
+     * NVE-text: grouping options (edit preferences). [lineMode]: every line is its own block (no paragraphs);
+     * [wordGap]: gap between glyphs, in font sizes, read as a word space; [columnGap]: gap that splits a line in two blocks.
+     */
+    class Options(val lineMode: Boolean = false, val wordGap: Float = 0.22f, val columnGap: Float = 1.8f)
+    @Volatile var options = Options()
 
     /** Analyse page [page] of [file] (read only). */
     suspend fun load(file: File, password: String?, page: Int): PageModel = withContext(Dispatchers.IO) {
@@ -86,7 +98,14 @@ object PageTextModel {
         val scanner = PageScanner(page, frame)
         runCatching { scanner.processPage(page) }
         val fonts = HashMap<Int, PDFont?>()
-        val blocks = buildBlocks(scanner.glyphs, fonts)
+        val blocks = ArrayList(buildBlocks(scanner.glyphs, fonts, 0))
+        // NVE-text: rotated rows, grouped in their own upright frame, reported with their display bounding box
+        for ((angle, gl) in scanner.rotated) {
+            val rot = Affine.rotateAround(angle, 0f, 0f)
+            buildBlocks(gl, fonts, blocks.size).forEach { b ->
+                blocks += b.copy(rect = Affine.box(rot, b.rect.left, b.rect.bottom, b.rect.right, b.rect.top), angle = angle, frameRect = b.rect)
+            }
+        }
         val images = scanner.images.mapIndexed { i, im ->
             ImageItem(i, im.op, im.name, im.inline, im.boxDisplay, Affine.values(im.ctm), im.pixelW, im.pixelH)
         }
@@ -142,7 +161,7 @@ object PageTextModel {
                 // one glyph for several Arabic letters (lam-alef, ﷲ): its text is logical, the line is visual → reverse it
                 val arabicGlyph = u.text.any { isArabicChar(it) } && u.text.none { it.isLetterOrDigit() && !isArabicChar(it) }
                 val t = if (arabicGlyph) u.marks.toString() + u.text.reversed() else u.text + u.marks
-                if (!prevEnd.isNaN() && g.x - prevEnd > 0.22f * g.size && sb.isNotEmpty() && sb.last() != ' ' && !t.startsWith(" ")) sb.append(' ')
+                if (!prevEnd.isNaN() && g.x - prevEnd > options.wordGap * g.size && sb.isNotEmpty() && sb.last() != ' ' && !t.startsWith(" ")) sb.append(' ')
                 sb.append(t)
                 prevEnd = max(if (prevEnd.isNaN()) g.x + g.w else prevEnd, g.x + g.w)
             }
@@ -161,7 +180,8 @@ object PageTextModel {
         return if (parts.size == texts.size) parts else texts
     }
 
-    private fun buildBlocks(all: List<RawGlyph>, fontsOut: MutableMap<Int, PDFont?>): List<TextBlock> {
+    private fun buildBlocks(all: List<RawGlyph>, fontsOut: MutableMap<Int, PDFont?>, idBase: Int): List<TextBlock> {
+        val opt = options
         val glyphs = all.filter { it.text.isNotBlank() || it.text.isEmpty() }
         if (glyphs.isEmpty()) return emptyList()
         // 1. lines by baseline
@@ -177,7 +197,7 @@ object PageTextModel {
             var cur = ArrayList<RawGlyph>()
             var end = Float.NaN
             for (g in sorted) {
-                if (cur.isNotEmpty() && g.x - end > 1.8f * max(g.size, l.size)) { segments += Segment(cur); cur = ArrayList() }
+                if (cur.isNotEmpty() && g.x - end > opt.columnGap * max(g.size, l.size)) { segments += Segment(cur); cur = ArrayList() }
                 cur += g
                 end = if (end.isNaN() || cur.size == 1) g.x + g.w else max(end, g.x + g.w)
             }
@@ -186,7 +206,7 @@ object PageTextModel {
         // 3. paragraphs: consecutive lines with regular spacing, similar size, overlapping horizontally
         val paragraphs = ArrayList<MutableList<Segment>>()
         for (s in segments.sortedByDescending { it.baseline }) {
-            val p = paragraphs.lastOrNull { para ->
+            val p = if (opt.lineMode) null else paragraphs.lastOrNull { para ->
                 val last = para.last()
                 val gap = last.baseline - s.baseline
                 val overlap = min(last.right, s.right) - max(last.left, s.left)
@@ -207,7 +227,7 @@ object PageTextModel {
             else compareByDescending<List<Segment>> { it.first().baseline }.thenBy { s -> s.minOf { it.left } }
         return groups.map { idx -> idx.flatMap { paragraphs[it] }.sortedByDescending { it.baseline } }
             .sortedWith(order)
-            .mapIndexed { id, segs -> toBlock(id, segs, fontsOut) }
+            .mapIndexed { id, segs -> toBlock(idBase + id, segs, fontsOut) }
     }
 
     private fun toBlock(id: Int, segs: List<Segment>, fontsOut: MutableMap<Int, PDFont?>): TextBlock {
