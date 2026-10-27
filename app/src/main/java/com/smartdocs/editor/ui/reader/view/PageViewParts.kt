@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.abs
+import androidx.compose.ui.composed
 import kotlin.math.roundToInt
 
 // Gesture detector and fast scroller of the page view (moved out of PageView.kt to keep it small).
@@ -37,7 +38,15 @@ fun Modifier.readerGestures(
     onPinch: (zoom: Float, centroid: Offset, pan: Offset) -> Unit,
     onPan: (Offset) -> Unit,
     onFling: (androidx.compose.ui.unit.Velocity) -> Unit,
-): Modifier = pointerInput(Unit) {
+): Modifier = composed {
+    // audit RD-04: the detector runs for the whole life of the page view, while the callbacks close over the current
+    // view mode, list / pager state and zoom rules: always call the newest ones (they change with the view mode)
+    val canTake by androidx.compose.runtime.rememberUpdatedState(canTake)
+    val onDown by androidx.compose.runtime.rememberUpdatedState(onDown)
+    val onPinch by androidx.compose.runtime.rememberUpdatedState(onPinch)
+    val onPan by androidx.compose.runtime.rememberUpdatedState(onPan)
+    val onFling by androidx.compose.runtime.rememberUpdatedState(onFling)
+    pointerInput(Unit) {
     val slop = viewConfiguration.touchSlop
     awaitEachGesture {
         awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
@@ -67,6 +76,7 @@ fun Modifier.readerGestures(
             }
         } while (event.changes.any { it.pressed })
         if (taking) onFling(tracker.calculateVelocity())
+    }
     }
 }
 
