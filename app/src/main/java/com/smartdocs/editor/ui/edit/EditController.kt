@@ -123,6 +123,7 @@ class EditController(val state: ReaderState, private val scope: CoroutineScope, 
                 if (hit != null) selectBlock(hit) else startNew(x, y)
             }
             EditMode.IMAGE -> {
+                if (ImageTools5.of(this).onTap(m, x, y)) return      // NVE-img: multi-select
                 val hit = m.images.lastOrNull { x in it.rect.left..it.rect.right && y in it.rect.bottom..it.rect.top }
                 if (hit != null) { image = hit; affine = identity(); insertAt = null }
                 else if (image != null) { image = null; affine = identity() }
@@ -271,7 +272,8 @@ class EditController(val state: ReaderState, private val scope: CoroutineScope, 
         val a = affine
         if (isIdentity(a)) return
         val p = page
-        run(R.string.ed_saved) { src, out -> ContentEdit.transformImage(src, out, state.password, p, i.op, a) }
+        // NVE-img: group-aware (a crop / opacity set by the image tools moves with the image)
+        run(R.string.ed_saved) { src, out -> com.smartdocs.editor.core.edit.ImageEdit5.applyFile(src, out, state.password, p, listOf(com.smartdocs.editor.core.edit.ImageEdit5.Change(i.op, display = a))) }
     }
 
     fun insertImage(bmp: Bitmap) {
@@ -318,6 +320,13 @@ class EditController(val state: ReaderState, private val scope: CoroutineScope, 
     }
 
     fun resetTransform() { affine = identity() }
+
+    /** NVE-img: image / page-object tools of this editor (multi-select, smart alignment, sheets). */
+    internal val tools5: ImageTools5 by lazy { ImageTools5(this) }
+    // NVE-img: the image tools (ImageTools5.kt) edit through the same undoable path and set the pending affine
+    internal fun runNve(done: Int, op: suspend (src: File, out: File) -> Unit) = run(done, op)
+    internal fun setAffineNve(a: FloatArray) { affine = a }
+    internal fun selectImageNve(i: ImageItem?) { image = i; affine = identity(); insertAt = null }
     val transformPending: Boolean get() = !isIdentity(affine)
 
     // ================= undo =================

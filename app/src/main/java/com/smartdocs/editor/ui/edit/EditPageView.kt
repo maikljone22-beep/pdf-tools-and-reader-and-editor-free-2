@@ -88,6 +88,23 @@ internal fun EditPageView(c: EditController, modifier: Modifier = Modifier) {
                 .pointerInput(c.mode, scale, pageH, c.model, c.busy) {
                     detectTapGestures { o -> c.onTap(o.x / scale, pageH - o.y / scale) }
                 }
+                .pointerInput(c.tools5.multi, scale, pageH) {
+                    // NVE-img: marquee selection in multi-select
+                    if (!c.tools5.multi) return@pointerInput
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        val x0 = down.position.x / scale; val y0 = pageH - down.position.y / scale
+                        var moved = false
+                        drag(down.id) { ch ->
+                            val p = ch.position
+                            ch.consume()      // the page does not scroll while a marquee can start
+                            if (!moved && (p - down.position).getDistance() < 6.dp.toPx()) return@drag
+                            moved = true
+                            c.tools5.marquee = RectF(x0, y0, p.x / scale, pageH - p.y / scale)
+                        }
+                        if (moved) c.tools5.marqueeEnd()
+                    }
+                }
                 .pointerInput(c.image, scale, pageH) {
                     if (c.image == null) return@pointerInput
                     val handle = 28.dp.toPx()
@@ -101,11 +118,13 @@ internal fun EditPageView(c: EditController, modifier: Modifier = Modifier) {
                         val inside = p.x in (left - handle / 2)..(right + handle / 2) && p.y in (top - handle / 2)..(bottom + handle / 2)
                         if (!resize && !inside) return@awaitEachGesture
                         down.consume()
+                        c.tools5.dragStart(8.dp.toPx() / scale)      // NVE-img: smart alignment
                         drag(down.id) { ch ->
                             val d = ch.positionChange()
                             ch.consume()
-                            if (resize) c.resizeImage(d.x / scale, -d.y / scale) else c.moveImage(d.x / scale, -d.y / scale)
+                            c.tools5.drag(resize, d.x / scale, -d.y / scale)
                         }
+                        c.tools5.dragEnd()
                     }
                 },
             ) {
@@ -136,6 +155,21 @@ internal fun EditPageView(c: EditController, modifier: Modifier = Modifier) {
                                 }
                             }
                             c.insertAt?.let { (x, y) -> drawCircle(primary, 8.dp.toPx(), Offset(px(x), py(y))) }
+                            // NVE-img: shapes / shadings, multi-selection, marquee and smart-alignment guides
+                            val t5 = c.tools5
+                            t5.visibleObjects().forEach { o -> if (o.kind != com.smartdocs.editor.core.edit.ImageEdit5.Kind.IMAGE && o.op != c.image?.op)
+                                box(RectF(o.box[0], o.box[3], o.box[2], o.box[1]), Color(0xFF00897B).copy(alpha = 0.6f), 1.5f, true) }
+                            if (c.image != null && t5.isVector(c.image)) c.previewRect()?.let { r ->
+                                box(r, primary, 3f, false, primary.copy(alpha = 0.10f))
+                                drawCircle(primary, 11.dp.toPx(), Offset(px(r.right), py(r.bottom)))
+                                drawCircle(Color.White, 5.dp.toPx(), Offset(px(r.right), py(r.bottom)))
+                            }
+                            t5.marquee?.let { mq -> box(RectF(minOf(mq.left, mq.right), maxOf(mq.top, mq.bottom), maxOf(mq.left, mq.right), minOf(mq.top, mq.bottom)), primary, 1.5f, true, primary.copy(alpha = 0.08f)) }
+                            c.tools5.selected.forEach { im -> box(im.rect, primary, 3f, false, primary.copy(alpha = 0.16f)) }
+                            c.tools5.guides.forEach { g ->
+                                if (g.vertical) drawLine(Color(0xFFE91E63), Offset(px(g.pos), 0f), Offset(px(g.pos), this.size.height), 1.5.dp.toPx(), pathEffect = dash)
+                                else drawLine(Color(0xFFE91E63), Offset(0f, py(g.pos)), Offset(this.size.width, py(g.pos)), 1.5.dp.toPx(), pathEffect = dash)
+                            }
                         }
                     }
                 }

@@ -112,6 +112,7 @@ internal fun TextFormatBar(c: EditController) {
                 if (c.block != null) TextButton(onClick = { c.deleteBlock() }, enabled = !c.busy) {
                     Icon(Icons.Default.Delete, null, Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text(stringResource(R.string.ed_delete_block))
                 }
+                CopyTextObject5(c)      // NVE-img: copy the block as a page object
                 Spacer(Modifier.weight(1f))
                 TextButton(onClick = { c.clearSelection() }, enabled = !c.busy) { Text(stringResource(R.string.cancel)) }
                 Button(onClick = { c.commitText(rtlUi) }, enabled = !c.busy) { Text(stringResource(R.string.done), fontWeight = FontWeight.Bold) }
@@ -198,6 +199,7 @@ internal fun ImageActionBar(c: EditController) {
                 ActionChip(Icons.AutoMirrored.Filled.RotateLeft, stringResource(R.string.ed_img_rotate_left), !c.busy) { c.rotateImage(clockwise = false) }
                 ActionChip(Icons.AutoMirrored.Filled.RotateRight, stringResource(R.string.ed_img_rotate_right), !c.busy) { c.rotateImage(clockwise = true) }
                 ActionChip(Icons.Default.Delete, stringResource(R.string.delete), !c.busy) { confirmDelete = true }
+                ImageTools5Chips(c)      // NVE-img: more image tools
             }
             Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(R.string.ed_img_drag_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
@@ -230,6 +232,7 @@ internal fun InsertImageBar(c: EditController) {
     Surface(tonalElevation = 3.dp, shadowElevation = 6.dp) {
         Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(stringResource(R.string.ed_img_insert_here), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+            InsertExtras5(c)      // NVE-img: clipboard / camera / paste object
             TextButton(onClick = { c.insertAt = null }) { Text(stringResource(R.string.cancel)) }
             Button(onClick = { pick() }, enabled = !c.busy) { Icon(Icons.Default.AddPhotoAlternate, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.ed_img_pick)) }
         }
