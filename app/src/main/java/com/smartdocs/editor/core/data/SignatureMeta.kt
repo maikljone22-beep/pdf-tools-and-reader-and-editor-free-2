@@ -228,7 +228,11 @@ object SignatureLock {
             if (ok) failures = 0 else if (++failures >= MAX_TRIES) { failures = 0; blockedUntil = System.currentTimeMillis() + LOCKOUT_MS }
         }
         // nitro-fillsign2: decrypt an imported locked signature / refresh its encrypted copy for the data bundle
-        if (ok) withContext(Dispatchers.IO) { runCatching { LockedSignatureFiles.sync(File(path), secret) } }
+        if (ok) withContext(Dispatchers.IO) {
+            val had = File(path).exists()
+            runCatching { LockedSignatureFiles.sync(File(path), secret) }
+            if (!had && File(path).exists()) SignatureMetaStore.bumpRev(context, path)      // the card shows the decrypted image
+        }
         return ok
     }
 

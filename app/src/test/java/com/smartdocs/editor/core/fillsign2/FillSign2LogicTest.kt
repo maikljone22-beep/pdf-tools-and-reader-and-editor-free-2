@@ -27,9 +27,9 @@ class FillSign2LogicTest {
     }
 
     @Test fun combCentresGlyphsInCells() {
-        // 4 cells over 100 pt starting at x = 10: cell 2 starts at 60, a 5 pt glyph is centred at 70
+        // 4 cells of 25 pt starting at x = 10: cell 2 spans 60..85, a 5 pt glyph centred in it starts at 70
         assertEquals(60f, CombLayout.cellLeft(10f, 100f, 4, 2), eps)
-        assertEquals(70f - 2.5f, CombLayout.glyphX(10f, 100f, 4, 2, 5f), eps)
+        assertEquals(70f, CombLayout.glyphX(10f, 100f, 4, 2, 5f), eps)
         assertEquals(15f, CombLayout.charSpacing(20f, 5f), eps)
         assertEquals(0f, CombLayout.charSpacing(4f, 5f), eps)
         val (w, h) = CombLayout.boxSize(6, 18f, 12f)

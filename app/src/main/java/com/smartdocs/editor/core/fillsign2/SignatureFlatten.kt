@@ -39,9 +39,9 @@ object SignatureFlatten {
                         val m = ap.matrix
                         // transformed bbox corners
                         val pts = listOf(bbox.lowerLeftX to bbox.lowerLeftY, bbox.upperRightX to bbox.lowerLeftY, bbox.lowerLeftX to bbox.upperRightY, bbox.upperRightX to bbox.upperRightY)
-                            .map { (x, y) -> m.transformPoint(x, y) }
-                        val minX = pts.minOf { it.x }; val maxX = pts.maxOf { it.x }
-                        val minY = pts.minOf { it.y }; val maxY = pts.maxOf { it.y }
+                            .map { (x, y) -> transform(m, x, y) }
+                        val minX = pts.minOf { it.first }; val maxX = pts.maxOf { it.first }
+                        val minY = pts.minOf { it.second }; val maxY = pts.maxOf { it.second }
                         val tw = maxX - minX; val th = maxY - minY
                         if (tw <= 0f || th <= 0f) return@runCatching
                         val sx = rect.width / tw; val sy = rect.height / th
@@ -57,6 +57,10 @@ object SignatureFlatten {
         }
         return n
     }
+
+    /** [m] applied to (x, y), computed here (PdfBox-Android's transformPoint returns an android.graphics.PointF). */
+    internal fun transform(m: Matrix, x: Float, y: Float): Pair<Float, Float> =
+        (m.scaleX * x + m.shearX * y + m.translateX) to (m.shearY * x + m.scaleY * y + m.translateY)
 
     /** "Apply All Signatures": bakes every placed signature / initials stamp of [doc] into its pages. */
     fun flattenSignatures(doc: PDDocument): Int = flattenIn(doc, ::isSignatureStamp)

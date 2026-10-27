@@ -42,6 +42,7 @@ import com.smartdocs.editor.LocalApp
 import com.smartdocs.editor.LocalSettings
 import com.smartdocs.editor.R
 import com.smartdocs.editor.core.data.SavedSignature
+import com.smartdocs.editor.core.data.SignatureMetaStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -58,6 +59,10 @@ fun SignatureCreateSheet(onDismiss: () -> Unit, onSaved: () -> Unit) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var initials by rememberSaveable { mutableStateOf(false) }
     var blackWhite by rememberSaveable { mutableStateOf(false) }   // nitro-quicksign: save as black and white
+    // nitro-fillsign2: temporary signature, keep the imported image's natural size
+    var temporary by rememberSaveable { mutableStateOf(false) }
+    var keepSize by rememberSaveable { mutableStateOf(false) }
+    var naturalWidth by remember { mutableStateOf<Float?>(null) }
     var saving by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val nothingMsg = stringResource(R.string.sa_nothing_to_save)
@@ -85,6 +90,9 @@ fun SignatureCreateSheet(onDismiss: () -> Unit, onSaved: () -> Unit) {
                 withContext(Dispatchers.IO) {
                     val f = app.documents.uniqueFile(app.documents.signaturesDir, "sig_${System.currentTimeMillis()}", "png")
                     SignatureImage.savePng(if (blackWhite) SignatureImage.toBlackAndWhite(bmp) else bmp, f)
+                    // sidecar first, so a sync running meanwhile never sees a temporary signature as a normal one
+                    if (temporary) SignatureMetaStore.setTemporary(app, f.absolutePath, true)
+                    naturalWidth?.takeIf { keepSize && tab == 2 && it > 0f }?.let { SignatureMetaStore.setWidth(app, f.absolutePath, it) }
                     app.db.signatures().insert(SavedSignature(path = f.absolutePath, isInitials = initials))
                 }
             }.onSuccess { onSaved() }.onFailure { error = it.message ?: it.toString() }
@@ -104,7 +112,7 @@ fun SignatureCreateSheet(onDismiss: () -> Unit, onSaved: () -> Unit) {
                 when (tab) {
                     0 -> DrawTab(drawState)
                     1 -> TypeTab(onBitmap = { typedBitmap = it })
-                    2 -> ImageTab(camera = false, onBitmap = { imageBitmap = it }, blackWhite = blackWhite)
+                    2 -> ImageTab(camera = false, onBitmap = { imageBitmap = it }, blackWhite = blackWhite, onNaturalWidth = { naturalWidth = it })
                     else -> ImageTab(camera = true, onBitmap = { cameraBitmap = it }, blackWhite = blackWhite)
                 }
             }
@@ -112,6 +120,15 @@ fun SignatureCreateSheet(onDismiss: () -> Unit, onSaved: () -> Unit) {
             Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Switch(blackWhite, { blackWhite = it }); Spacer(Modifier.width(8.dp))
                 Text(stringResource(R.string.nq_bw_save), Modifier.weight(1f))
+            }
+            val natural = naturalWidth
+            if (tab == 2 && natural != null) Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Switch(keepSize, { keepSize = it }); Spacer(Modifier.width(8.dp))
+                Text(stringResource(R.string.nf2_keep_size, String.format(java.util.Locale.US, "%.1f", natural / 72f * 2.54f)), Modifier.weight(1f))
+            }
+            Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Switch(temporary, { temporary = it }); Spacer(Modifier.width(8.dp))
+                Text(stringResource(R.string.nf2_temporary), Modifier.weight(1f))
             }
             Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Switch(initials, { initials = it }); Spacer(Modifier.width(8.dp))
