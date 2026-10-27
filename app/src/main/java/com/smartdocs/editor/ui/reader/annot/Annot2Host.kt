@@ -102,6 +102,8 @@ class Annot2Host(val s: ReaderState) {
     // ---- launchers installed by Annot2Dialogs (they need the composition) ----
     var launchAttach: () -> Unit = {}
     var launchVideo: () -> Unit = {}
+    /** Pick an audio file (.mp3 / .wav / .m4a ...) for the Sound tool instead of recording (Foxit 19.x). */
+    var launchAudio: () -> Unit = {}
     var launchImport: () -> Unit = {}
     var launchMerge: () -> Unit = {}
     var launchExport: (xfdf: Boolean) -> Unit = {}
@@ -339,6 +341,15 @@ class Annot2Host(val s: ReaderState) {
     /** Open the selected attachment / sound / video annotation (pending: its file, stored: extracted). */
     fun openSelected() {
         val ed = s.edit
+        // a native /Sound or a Screen audio clip of another PDF has no editable model: play it directly
+        (ed.target as? AnnotTarget.Stored)?.e?.takeIf { it.subtype == "Sound" || (it.subtype == "Screen" && it.video == null) }?.let { e ->
+            val f = s.file ?: return
+            s.scope.launch {
+                val r = runCatching { MediaAnnots.extractAt(f, s.password, e.page, e.index, File(s.context.cacheDir, "annot2_open")) }.getOrNull()
+                if (r != null) playing = r.first else message = s.context.getString(com.smartdocs.editor.R.string.cx_no_audio)
+            }
+            return
+        }
         val a = ed.current() ?: return
         // videos play inside the page (never in another app)
         if (a.kind == AnnotKind.VIDEO) { s.video.playSelected(); return }

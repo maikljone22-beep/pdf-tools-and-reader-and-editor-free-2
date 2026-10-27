@@ -15,6 +15,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import com.smartdocs.editor.ui.reader.ReaderTool
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -58,6 +59,10 @@ fun Annot2Dialogs(state: ReaderState, nav: NavHostController, snack: SnackbarHos
         val tap = h.pendingTap; h.pendingTap = null
         if (uri != null && tap != null) scope.launch { MediaIntents.importUri(ctx, uri, h.mediaDir())?.let { (f, name) -> h.addMedia(tap, f, name) } }
     }
+    val audioPick = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        val tap = h.pendingTap; h.pendingTap = null
+        if (uri != null && tap != null) scope.launch { MediaIntents.importUri(ctx, uri, h.mediaDir())?.let { (f, name) -> h.addMedia(tap, f, name) } }
+    }
     val msgImported = stringResource(R.string.an_imported); val msgNone = stringResource(R.string.an_nothing_imported)
     val msgMerged = stringResource(R.string.an_merged); val msgExported = stringResource(R.string.an_exported)
     val msgNoComments = stringResource(R.string.an_no_comments)
@@ -90,6 +95,7 @@ fun Annot2Dialogs(state: ReaderState, nav: NavHostController, snack: SnackbarHos
 
     SideEffect {
         h.launchAttach = { attach.launch(arrayOf("*/*")) }
+        h.launchAudio = { audioPick.launch(arrayOf("audio/*")) }
         h.launchImport = { importer.launch(arrayOf("application/vnd.fdf", "application/vnd.adobe.xfdf", "application/xml", "text/xml", "application/octet-stream", "*/*")) }
         h.launchMerge = { merge() }
         h.launchExport = { xfdf ->
@@ -211,7 +217,15 @@ private fun RecordDialog(h: Annot2Host, tap: Tap2) {
             }, enabled = !denied) { Icon(Icons.Default.FiberManualRecord, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.an_record_start)) }
             else Button(onClick = { finish() }) { Icon(Icons.Default.Stop, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.an_record_stop)) }
         },
-        dismissButton = { TextButton(onClick = { recorder.stop(discard = true); h.recordTap = null }) { Text(stringResource(R.string.cancel)) } },
+        dismissButton = {
+            Row {
+                // Foxit 19.x: add an existing sound file instead of recording
+                if (!recording) TextButton(onClick = { recorder.stop(discard = true); h.recordTap = null; h.pendingTap = Tap2(ReaderTool.SOUND, tap.page, tap.x, tap.y); h.launchAudio() }) {
+                    Text(stringResource(R.string.cx_pick_audio))
+                }
+                TextButton(onClick = { recorder.stop(discard = true); h.recordTap = null }) { Text(stringResource(R.string.cancel)) }
+            }
+        },
     )
 }
 

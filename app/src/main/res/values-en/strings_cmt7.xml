@@ -199,4 +199,6 @@
     <string name="cx_spell_check">Check spelling</string>
     <string name="cx_spell_none">No spell checker on this device</string>
     <string name="cx_spell_ok">No spelling mistakes</string>
+    <string name="cx_no_audio">This comment has no playable audio</string>
+    <string name="cx_pick_audio">Choose a sound file</string>
 </resources>

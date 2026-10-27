@@ -19,7 +19,10 @@ object MediaAnnots {
         val doc = if (pw.isNullOrEmpty()) PDDocument.load(src) else PDDocument.load(src, pw)
         doc.use { d ->
             if (page !in 0 until d.numberOfPages) return@use null
-            val an = d.getPage(page).annotations.getOrNull(index) as? PDAnnotationFileAttachment ?: return@use null
+            val any = d.getPage(page).annotations.getOrNull(index) ?: return@use null
+            // native /Sound and Screen audio clips of other PDFs (decoded / extracted by SoundPdf)
+            if (any.subtype == "Sound" || any.subtype == "Screen") return@withContext SoundPdf.extractAt(src, pw, page, index, dir)
+            val an = any as? PDAnnotationFileAttachment ?: return@use null
             val spec = runCatching { an.file as? PDComplexFileSpecification }.getOrNull() ?: return@use null
             val ef = spec.embeddedFileUnicode ?: spec.embeddedFile ?: return@use null
             val name = (spec.filename ?: "attachment").replace(Regex("""[\\/:*?"<>|]"""), "_")
