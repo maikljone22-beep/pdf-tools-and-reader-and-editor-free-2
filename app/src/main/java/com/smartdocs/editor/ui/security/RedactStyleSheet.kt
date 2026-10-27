@@ -14,9 +14,13 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.smartdocs.editor.R
+import com.smartdocs.editor.core.edit5.E5Font
+import com.smartdocs.editor.core.redact.CodeSets
 import com.smartdocs.editor.core.redact.RedactPrefs
 import com.smartdocs.editor.core.redact.RedactStyle
+import com.smartdocs.editor.ui.edit5.fontLabel
 import com.smartdocs.editor.ui.search.ColorRow
+import com.smartdocs.editor.ui.tools.ChoiceChips
 
 private val FILLS = listOf(0x000000, 0xFFFFFF, 0x424242, 0x9E9E9E, 0xB71C1C, 0x0D47A1, 0x1B5E20)
 private val OUTLINES = listOf(0xE53935, 0xFF9800, 0x1E88E5, 0x43A047, 0x000000)
@@ -52,6 +56,7 @@ fun RedactStyleDialog(initial: RedactStyle, title: String, onDismiss: () -> Unit
                         Box {
                             IconButton(onClick = { codeMenu = true }) { Icon(Icons.Default.ArrowDropDown, stringResource(R.string.s5_codes)) }
                             DropdownMenu(codeMenu, { codeMenu = false }) {
+                                Text(codeSetLabel(RedactPrefs.activeSet(ctx)), Modifier.padding(horizontal = 12.dp, vertical = 4.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                                 codes.forEach { c -> DropdownMenuItem(text = { Text(c) }, onClick = { st = st.copy(overlay = c); codeMenu = false }) }
                                 HorizontalDivider()
                                 DropdownMenuItem(text = { Text(stringResource(R.string.s5_edit_codes)) }, leadingIcon = { Icon(Icons.Default.Edit, null) }, onClick = { codeMenu = false; editCodes = true })
@@ -74,32 +79,92 @@ fun RedactStyleDialog(initial: RedactStyle, title: String, onDismiss: () -> Unit
                         val labels = listOf(R.string.s5_align_left, R.string.s5_align_center, R.string.s5_align_right)
                         labels.forEachIndexed { i, l -> SegmentedButton(st.align == i, { st = st.copy(align = i) }, SegmentedButtonDefaults.itemShape(i, 3)) { Text(stringResource(l)) } }
                     }
+                    Label(stringResource(R.string.nt_redact_font))
+                    val fonts = remember { listOf<E5Font?>(null) + E5Font.values().filter { it.available() } }
+                    ChoiceChips(fonts, E5Font.values().firstOrNull { it.name == st.font },
+                        { f -> if (f == null) stringResource(R.string.s5_auto) else stringResource(fontLabel(f)) }) { st = st.copy(font = it?.name ?: "") }
+                    Label(stringResource(R.string.nt_redact_case))
+                    val cases = listOf(RedactStyle.CASE_AS_TYPED to R.string.nt_case_as_typed, RedactStyle.CASE_UPPER to R.string.nt_case_upper,
+                        RedactStyle.CASE_LOWER to R.string.nt_case_lower, RedactStyle.CASE_TITLE to R.string.nt_case_title)
+                    ChoiceChips(cases.map { it.first }, st.textCase, { c -> stringResource(cases.first { it.first == c }.second) }) { st = st.copy(textCase = it) }
+                    if (st.textCase != RedactStyle.CASE_AS_TYPED) Text(st.shownOverlay(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         },
         confirmButton = { TextButton(onClick = { onApply(st) }) { Text(stringResource(R.string.apply)) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
     )
-    if (editCodes) CodesEditor(codes, onDismiss = { editCodes = false }) { codes = it; RedactPrefs.saveCodes(ctx, it); editCodes = false }
+    if (editCodes) CodesEditor(onDismiss = { editCodes = false }) { codes = it; editCodes = false }
 }
 
 @Composable
 private fun Label(t: String) = Text(t, Modifier.padding(top = 10.dp, bottom = 4.dp), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelLarge)
 
-/** Edits the redaction code set (one code per line); "reset" restores the Arabic defaults. */
 @Composable
-fun CodesEditor(codes: List<String>, onDismiss: () -> Unit, onSave: (List<String>) -> Unit) {
-    var text by remember { mutableStateOf(codes.joinToString("\n")) }
+fun codeSetLabel(name: String) = if (name == CodeSets.DEFAULT_NAME) stringResource(R.string.nt_codeset_default) else name
+
+/**
+ * The Codes Editor (Nitro): pick a code set, create, rename or remove sets, and edit the codes of the selected set
+ * (one per line; "reset" restores the Arabic defaults). Saving stores every set and makes the selected one active;
+ * [onSave] receives its codes.
+ */
+@Composable
+fun CodesEditor(onDismiss: () -> Unit, onSave: (List<String>) -> Unit) {
+    val ctx = LocalContext.current
+    var sets by remember { mutableStateOf(RedactPrefs.codeSets(ctx)) }
+    var current by remember { mutableStateOf(RedactPrefs.activeSet(ctx).takeIf { n -> sets.any { it.name == n } } ?: sets.first().name) }
+    var text by remember { mutableStateOf(sets.first { it.name == current }.codes.joinToString("\n")) }
+    var menu by remember { mutableStateOf(false) }
+    var naming by remember { mutableStateOf<Boolean?>(null) }   // true = new set, false = rename
+    fun lines() = text.lines().map { it.trim() }.filter { it.isNotEmpty() }
+    fun select(name: String) {
+        sets = CodeSets.update(sets, current, lines())
+        current = name; text = sets.first { it.name == name }.codes.joinToString("\n")
+    }
     AlertDialog(onDismissRequest = onDismiss, title = { Text(stringResource(R.string.s5_edit_codes)) },
         text = {
             Column {
-                Text(stringResource(R.string.s5_one_per_line), style = MaterialTheme.typography.bodySmall)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.weight(1f)) {
+                        OutlinedButton(onClick = { menu = true }, Modifier.fillMaxWidth()) {
+                            Text(codeSetLabel(current), Modifier.weight(1f), maxLines = 1); Icon(Icons.Default.ArrowDropDown, null)
+                        }
+                        DropdownMenu(menu, { menu = false }) {
+                            sets.forEach { cs -> DropdownMenuItem(text = { Text(codeSetLabel(cs.name)) }, onClick = { menu = false; select(cs.name) },
+                                leadingIcon = if (cs.name == current) ({ Icon(Icons.Default.Check, null) }) else null) }
+                        }
+                    }
+                    IconButton(onClick = { naming = true }) { Icon(Icons.Default.Add, stringResource(R.string.nt_codeset_new)) }
+                    IconButton(onClick = { naming = false }) { Icon(Icons.Default.DriveFileRenameOutline, stringResource(R.string.nt_codeset_rename)) }
+                    IconButton(onClick = {
+                        val next = CodeSets.remove(sets, current)
+                        if (next.size != sets.size) { sets = next; current = next.first().name; text = next.first().codes.joinToString("\n") }
+                    }, enabled = sets.size > 1) { Icon(Icons.Default.Delete, stringResource(R.string.nt_codeset_remove)) }
+                }
+                Text(stringResource(R.string.s5_one_per_line), Modifier.padding(top = 6.dp), style = MaterialTheme.typography.bodySmall)
                 OutlinedTextField(text, { text = it }, Modifier.fillMaxWidth().heightIn(min = 160.dp), minLines = 6)
                 TextButton(onClick = { text = RedactPrefs.DEFAULT_CODES.joinToString("\n") }) { Text(stringResource(R.string.s5_reset)) }
             }
         },
-        confirmButton = { TextButton(onClick = { onSave(text.lines().map { it.trim() }.filter { it.isNotEmpty() }) }) { Text(stringResource(R.string.save)) } },
+        confirmButton = { TextButton(onClick = {
+            val all = CodeSets.update(sets, current, lines())
+            RedactPrefs.saveCodeSets(ctx, all); RedactPrefs.setActiveSet(ctx, current)
+            onSave(all.first { it.name == current }.codes)
+        }) { Text(stringResource(R.string.save)) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } })
+    naming?.let { isNew ->
+        var name by remember(isNew) { mutableStateOf(if (isNew) "" else if (current == CodeSets.DEFAULT_NAME) "" else current) }
+        AlertDialog(onDismissRequest = { naming = null }, title = { Text(stringResource(if (isNew) R.string.nt_codeset_new else R.string.nt_codeset_rename)) },
+            text = { OutlinedTextField(name, { name = it }, singleLine = true, label = { Text(stringResource(R.string.nt_codeset_name)) }) },
+            confirmButton = { TextButton(enabled = name.isNotBlank() && sets.none { it.name == name.trim() }, onClick = {
+                if (isNew) {
+                    sets = CodeSets.update(sets, current, lines())
+                    val (next, used) = CodeSets.add(sets, name); sets = next; current = used; text = ""
+                } else { sets = CodeSets.rename(CodeSets.update(sets, current, lines()), current, name); current = name.trim() }
+                naming = null
+            }) { Text(stringResource(R.string.save)) } },
+            dismissButton = { TextButton(onClick = { naming = null }) { Text(stringResource(R.string.cancel)) } })
+    }
 }
 
 /** Picks pages for "repeat on pages": a range plus all / odd / even. Returns zero-based pages. */

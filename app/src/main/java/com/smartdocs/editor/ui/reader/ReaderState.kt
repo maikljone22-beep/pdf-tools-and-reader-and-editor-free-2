@@ -140,6 +140,8 @@ class ReaderState(
     val edit = AnnotEditor(this)
     /** Polygon/cloud/caret/media/snapshot tools, multi-select, comment threads & exchange (MODULE_annot2). */
     val annot2 = com.smartdocs.editor.ui.reader.annot.Annot2Host(this)
+    /** In-page video player (one video at a time; see ui/reader/annot/VideoHost). */
+    val video = com.smartdocs.editor.ui.reader.annot.VideoHost(this)
     val canUndo: Boolean get() = history.canUndo && !saving
     val canRedo: Boolean get() = history.canRedo && !saving
     var dirty by mutableStateOf(false); private set
@@ -283,6 +285,7 @@ class ReaderState(
      */
     fun close() {
         disposed = true
+        runCatching { video.release() }      // player + extracted video copies
         val saveFirst = dirty && !discarded
         val s = session
         if (!saveFirst) session = null

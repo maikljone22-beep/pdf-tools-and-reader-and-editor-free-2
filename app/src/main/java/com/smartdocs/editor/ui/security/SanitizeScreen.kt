@@ -50,8 +50,8 @@ fun SanitizeScreen(nav: NavHostController, uri: String?) {
         try {
             val r = Sanitizer.scan(f, password)
             scan = r
-            // everything found is checked, except the OCR layer (it keeps a scan searchable)
-            selected = r.findings.keys.filter { !(it == SanitizeItem.INVISIBLE_TEXT && r.ocrLayer) }.toSet()
+            // everything found is checked, except the OCR layer (it keeps a scan searchable) and the opt-in items (tags)
+            selected = r.findings.keys.filter { !(it == SanitizeItem.INVISIBLE_TEXT && r.ocrLayer) && it !in SanitizeItem.OPT_IN }.toSet()
         } catch (e: Exception) {
             val m = e.message.orEmpty().lowercase()
             if ("password" in m || e is com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException) askPassword = true else snack.showSnackbar(e.message ?: e.toString())
@@ -108,6 +108,7 @@ fun SanitizeScreen(nav: NavHostController, uri: String?) {
                                         Text(stringResource(R.string.s5_found_n, f.count), style = MaterialTheme.typography.labelSmall)
                                         if (k == SanitizeItem.INVISIBLE_TEXT && r.ocrLayer) Text(stringResource(R.string.s5_ocr_warning), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
                                         if (k == SanitizeItem.FORMS) Text(stringResource(R.string.s5_forms_note), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        if (k == SanitizeItem.STRUCTURE) Text(stringResource(R.string.nt_san_structure_note), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     }
                                 },
                                 trailingContent = { if (f.details.isNotEmpty()) Icon(if (expanded == k) Icons.Default.ExpandLess else Icons.Default.ExpandMore, null) },
@@ -142,4 +143,6 @@ fun sanitizeLabel(k: SanitizeItem): String = stringResource(when (k) {
     SanitizeItem.HIDDEN_TEXT -> R.string.s5_san_hidden_text
     SanitizeItem.CROPPED -> R.string.s5_san_cropped
     SanitizeItem.REVISIONS -> R.string.s5_san_revisions
+    SanitizeItem.SEARCH_INDEX -> R.string.nt_san_search_index
+    SanitizeItem.STRUCTURE -> R.string.nt_san_structure
 })

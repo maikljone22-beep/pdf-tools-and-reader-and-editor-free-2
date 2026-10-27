@@ -60,8 +60,24 @@ class E5Fonts(private val context: Context, private val doc: PDDocument) {
     }
 }
 
-/** Style of one line of text. [color] 0xRRGGBB. */
-data class E5TextStyle(val font: E5Font = E5Font.NASKH, val size: Float = 10f, val color: Int = 0x333333, val bold: Boolean = false, val underline: Boolean = false)
+/**
+ * Style of one line of text. [color] 0xRRGGBB. [italic] slants the glyphs (12°, the faces have no italic file);
+ * [outline] draws a border around each glyph in that colour (Nitro "outline font"), [hollow] leaves the glyph unfilled.
+ */
+data class E5TextStyle(
+    val font: E5Font = E5Font.NASKH, val size: Float = 10f, val color: Int = 0x333333, val bold: Boolean = false, val underline: Boolean = false,
+    val italic: Boolean = false, val outline: Int? = null, val hollow: Boolean = false,
+) {
+    /** The JSON fields added for Nitro (italic, outline font); older settings simply lack them. */
+    fun putExtras(o: org.json.JSONObject) { o.put("italic", italic); o.put("outline", outline ?: -1); o.put("hollow", hollow) }
+
+    fun withExtras(o: org.json.JSONObject) = copy(italic = o.optBoolean("italic"), outline = o.optInt("outline", -1).takeIf { it >= 0 }, hollow = o.optBoolean("hollow"))
+
+    companion object {
+        /** Horizontal shear of the slanted (italic) text: tan 12°. */
+        const val SLANT = 0.2126f
+    }
+}
 
 /**
  * One line of mixed Arabic/Latin text, shaped and split into font runs in visual order. Drawn as real page
@@ -117,11 +133,26 @@ class E5Line(fonts: E5Fonts, val logical: String, val style: E5TextStyle) {
             val props = COSDictionary(); props.setItem(COSName.getPDFName("ActualText"), COSString(logical))
             cs.beginMarkedContent(COSName.getPDFName("Span"), PDPropertyList.create(props))
         }
+        val stroke = style.outline
+        if (stroke != null) {
+            val o = E5Io.rgb(stroke)
+            cs.setStrokingColor(o[0], o[1], o[2]); cs.setLineWidth((style.size / 30f).coerceIn(0.3f, 4f))
+        }
+        val mode = when {
+            stroke != null && style.hollow -> com.tom_roush.pdfbox.pdmodel.graphics.state.RenderingMode.STROKE
+            stroke != null -> com.tom_roush.pdfbox.pdmodel.graphics.state.RenderingMode.FILL_STROKE
+            else -> null
+        }
+        val shear = if (style.italic) E5TextStyle.SLANT else 0f
         var cx = x
         for (r in runs) {
-            cs.beginText(); cs.setFont(r.font, style.size); cs.setTextMatrix(Matrix(1f, 0f, 0f, 1f, cx, y)); cs.showText(r.text); cs.endText()
+            cs.beginText()
+            if (mode != null) cs.setRenderingMode(mode)
+            cs.setFont(r.font, style.size); cs.setTextMatrix(Matrix(1f, 0f, shear, 1f, cx, y)); cs.showText(r.text); cs.endText()
             cx += r.width
         }
+        // Tr is graphics state: it would still stroke the text drawn after this line
+        if (mode != null) { cs.beginText(); cs.setRenderingMode(com.tom_roush.pdfbox.pdmodel.graphics.state.RenderingMode.FILL); cs.endText() }
         if (tagged) cs.endMarkedContent()
         if (style.underline) {
             cs.setStrokingColor(c[0], c[1], c[2]); cs.setLineWidth((style.size / 18f).coerceAtLeast(0.4f))

@@ -121,6 +121,8 @@ dependencies {
     implementation("androidx.work:work-runtime-ktx:2.10.0")
     implementation("androidx.browser:browser:1.8.0")
     implementation("androidx.exifinterface:exifinterface:1.4.0")
+    // in-page video player (Screen / RichMedia videos on PDF pages): ExoPlayer only, our own Compose controls
+    implementation("androidx.media3:media3-exoplayer:1.9.2")
 
     implementation("androidx.room:room-runtime:2.7.1")
     implementation("androidx.room:room-ktx:2.7.1")

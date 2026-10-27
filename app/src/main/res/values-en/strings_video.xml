@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- in-page video player (ui/reader/annot/InPageVideoLayer, VideoHost, VideoDialogs) -->
+    <string name="vid_tool_hint">Drag a rectangle on the page where the video will play, or tap for a default size.</string>
+    <string name="vid_error">This video cannot be played (unsupported format or damaged file).</string>
+    <string name="vid_unsupported_flash">Flash (SWF) video is not supported on this device. Open the PDF in a desktop viewer to play it.</string>
+    <string name="vid_no_file">This video is not embedded in the PDF (it points to an external file or web address).</string>
+    <string name="vid_maybe_unsupported">This file may not be a playable video on this device.</string>
+    <string name="vid_desc">Video: %1$s. Tap to play, long-press to edit.</string>
+    <string name="vid_play">Play video</string>
+    <string name="vid_pause">Pause video</string>
+    <string name="vid_close">Stop video</string>
+    <string name="vid_seek">Playback position</string>
+    <string name="vid_mute">Mute</string>
+    <string name="vid_unmute">Unmute</string>
+    <string name="vid_loop">Repeat (loop)</string>
+    <string name="vid_rotate">Rotate to landscape</string>
+    <string name="vid_fullscreen">Full screen</string>
+    <string name="vid_exit_fullscreen">Exit full screen</string>
+    <string name="vid_import_failed">The video could not be imported.</string>
+    <string name="vid_saved">Video saved</string>
+    <string name="vid_large_title">Large video</string>
+    <string name="vid_large_msg">This video is %1$s. It will be embedded in the PDF, so the file becomes that much larger and saving takes longer. Continue?</string>
+    <string name="vid_continue">Continue</string>
+    <string name="vid_preparing">Preparing video…</string>
+    <string name="vid_options">Video options</string>
+    <string name="vid_opt_autoplay">Play automatically when the page is shown</string>
+    <string name="vid_opt_loop">Repeat (loop)</string>
+    <string name="vid_opt_muted">Start muted</string>
+    <string name="vid_opt_controls">Show player controls</string>
+    <string name="vid_share">Share video</string>
+    <string name="vid_save">Save video to device</string>
+</resources>
