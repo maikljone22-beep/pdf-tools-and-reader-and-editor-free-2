@@ -184,6 +184,7 @@ private fun EditToolbar(state: ReaderState, a: ReaderActions) {
         ToolChip(Icons.Default.FormatListNumbered, stringResource(R.string.tool_page_numbers)) { a.quick(QuickAction.PAGE_NUMBERS) }
         ToolChip(Icons.Default.Info, stringResource(R.string.tool_doc_info)) { a.quick(QuickAction.PROPERTIES) }
         ToolChip(Icons.Default.AutoAwesomeMotion, stringResource(R.string.tool_organize)) { a.navigateTool("organize") }
+        ToolChip(Icons.Default.AddBox, stringResource(R.string.fx_edit_fields)) { a.navigateTool("form_builder") }   // formsx: form designer
     }
 }
 
