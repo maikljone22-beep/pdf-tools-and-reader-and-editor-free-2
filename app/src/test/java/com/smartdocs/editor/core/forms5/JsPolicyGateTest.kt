@@ -12,12 +12,13 @@ import com.tom_roush.pdfbox.pdmodel.interactive.form.PDAcroForm
 import com.tom_roush.pdfbox.pdmodel.interactive.form.PDTextField
 import org.junit.After
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** "Run JavaScript in PDF documents" off: no field script, AF emulation, validation or document script reaches a runtime. */
+/**
+ * "Run JavaScript in PDF documents" off: neither the AF pattern emulation nor the Rhino runtime runs a script.
+ * (FormModelLoader needs PdfBox's Android font resources, so its gate is not covered on the JVM.)
+ */
 class JsPolicyGateTest {
 
     @After fun restore() { JsPolicy.enabled = true }
@@ -45,21 +46,18 @@ class JsPolicyGateTest {
         JsPolicy.enabled = true
         formDoc().use { doc ->
             assertTrue(FormCalc.load(doc).scripts.containsKey("total"))
-            val m = FormModelLoader.load(doc)
-            assertTrue(m.js.hasScripts)
-            assertNotNull(m.widgets.first { it.name == "a" }.validate)
         }
+        val s = FormScripts(FormJs(listOf(JsField("x", "text", "")), mapOf("x" to FieldJs(validate = "event.rc = false;"))))
+        assertTrue(s.available())
+        assertTrue(s.commit("x", "1", emptyMap()).ran)
     }
 
     @Test fun nothingRunsWhenDisabled() {
         JsPolicy.enabled = false
         formDoc().use { doc ->
-            assertTrue(FormCalc.load(doc).scripts.isEmpty())
-            val m = FormModelLoader.load(doc)
-            assertFalse(m.js.hasScripts)
-            assertTrue(m.calc.scripts.isEmpty())
-            assertNull(m.widgets.first { it.name == "a" }.validate)
-            assertTrue(m.values.containsKey("total"))       // the fields themselves stay fillable
+            val calc = FormCalc.load(doc)
+            assertTrue(calc.scripts.isEmpty())
+            assertTrue(calc.order.isEmpty())
         }
         // the runtime refuses to start even when handed scripts directly
         val s = FormScripts(FormJs(listOf(JsField("x", "text", "")), mapOf("x" to FieldJs(validate = "event.rc = false;"))))
