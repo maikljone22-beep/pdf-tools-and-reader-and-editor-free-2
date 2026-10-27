@@ -84,28 +84,59 @@ class OptimizeBatch {
     var replaceSameName by mutableStateOf(false)
 }
 
+/** Sort keys of a file list (Foxit: name, location, size, date). */
+enum class FileSort { NAME, LOCATION, SIZE, DATE }
+
+fun sortFiles(files: List<File>, by: FileSort): List<File> = when (by) {
+    FileSort.NAME -> files.sortedBy { it.name.lowercase() }
+    FileSort.LOCATION -> files.sortedWith(compareBy({ it.parent ?: "" }, { it.name.lowercase() }))
+    FileSort.SIZE -> files.sortedBy { it.length() }
+    FileSort.DATE -> files.sortedBy { it.lastModified() }
+}
+
+/**
+ * Buttons that add PDFs to a batch: pick files, a whole folder (SAF tree) or the documents open in the reader tabs;
+ * plus a sort menu. [onAdd] receives local files.
+ */
 @Composable
-fun OptimizeBatchSection(batch: OptimizeBatch) {
+fun BatchSources(files: List<File>, onFiles: (List<File>) -> Unit) {
     val app = LocalApp.current
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
-    val pick = rememberPdfPicker(multiple = true) { picked -> batch.files = (batch.files + picked).distinctBy { it.absolutePath } }
+    var sortMenu by remember { mutableStateOf(false) }
+    fun add(more: List<File>) = onFiles((files + more).distinctBy { it.absolutePath })
+    val pick = rememberPdfPicker(multiple = true) { add(it) }
     val pickFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { tree ->
         if (tree != null) scope.launch {
             val dir = androidx.documentfile.provider.DocumentFile.fromTreeUri(ctx, tree) ?: return@launch
             val pdfs = dir.listFiles().filter { it.isFile && (it.name ?: "").endsWith(".pdf", true) }.sortedBy { it.name?.lowercase() }
-            val local = pdfs.mapNotNull { runCatching { app.documents.localFile(it.uri) }.getOrNull() }
-            batch.files = (batch.files + local).distinctBy { it.absolutePath }
+            add(pdfs.mapNotNull { runCatching { app.documents.localFile(it.uri) }.getOrNull() })
         }
     }
-    val outFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { tree ->
-        if (tree != null) {
-            runCatching { ctx.contentResolver.takePersistableUriPermission(tree, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION) }
-            batch.folder = tree
+    @OptIn(ExperimentalLayoutApi::class)
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedButton(onClick = pick) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(4.dp)); Text(stringResource(R.string.e5_add_files)) }
+        OutlinedButton(onClick = { pickFolder.launch(null) }) { Icon(Icons.Default.CreateNewFolder, null); Spacer(Modifier.width(4.dp)); Text(stringResource(R.string.nt_opt_add_folder)) }
+        OutlinedButton(onClick = {
+            com.smartdocs.editor.ui.reader.view.ReaderTabs.load(ctx)
+            val uris = com.smartdocs.editor.ui.reader.view.ReaderTabs.tabs.map { it.uri }
+            scope.launch { add(uris.mapNotNull { u -> runCatching { app.documents.localFile(Uri.parse(u)) }.getOrNull() }.filter { it.extension.equals("pdf", true) }) }
+        }) { Icon(Icons.Default.Tab, null); Spacer(Modifier.width(4.dp)); Text(stringResource(R.string.nt_add_open_files)) }
+        Box {
+            OutlinedButton(onClick = { sortMenu = true }, enabled = files.size > 1) { Icon(Icons.Default.Sort, null); Spacer(Modifier.width(4.dp)); Text(stringResource(R.string.nt_sort)) }
+            DropdownMenu(sortMenu, { sortMenu = false }) {
+                FileSort.entries.forEach { k -> DropdownMenuItem(text = { Text(stringResource(when (k) {
+                    FileSort.NAME -> R.string.nt_sort_name; FileSort.LOCATION -> R.string.nt_sort_location; FileSort.SIZE -> R.string.nt_sort_size; FileSort.DATE -> R.string.nt_sort_date })) },
+                    onClick = { sortMenu = false; onFiles(sortFiles(files, k)) }) }
+            }
         }
     }
-    T5Card(stringResource(R.string.nt_opt_batch, batch.files.size), Icons.Default.LibraryBooks) {
-        Text(stringResource(R.string.nt_opt_batch_help), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+}
+
+@Composable
+fun OptimizeBatchSection(batch: OptimizeBatch, title: String? = null, help: String? = null) {
+    T5Card(title ?: stringResource(R.string.nt_opt_batch, batch.files.size), Icons.Default.LibraryBooks) {
+        Text(help ?: stringResource(R.string.nt_opt_batch_help), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         batch.files.forEachIndexed { i, f ->
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("${i + 1}. ${f.name}", Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -113,10 +144,22 @@ fun OptimizeBatchSection(batch: OptimizeBatch) {
                 IconButton(onClick = { batch.files = batch.files - f }) { Icon(Icons.Default.Close, null) }
             }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = pick) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(4.dp)); Text(stringResource(R.string.e5_add_files)) }
-            OutlinedButton(onClick = { pickFolder.launch(null) }) { Icon(Icons.Default.CreateNewFolder, null); Spacer(Modifier.width(4.dp)); Text(stringResource(R.string.nt_opt_add_folder)) }
+        BatchSources(batch.files) { batch.files = it }
+        BatchOutputOptions(batch)
+    }
+}
+
+/** Output options of a batch: file name suffix, an output folder and replacing files of the same name there. */
+@Composable
+fun BatchOutputOptions(batch: OptimizeBatch) {
+    val ctx = LocalContext.current
+    val outFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { tree ->
+        if (tree != null) {
+            runCatching { ctx.contentResolver.takePersistableUriPermission(tree, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION) }
+            batch.folder = tree
         }
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         FieldLabel(stringResource(R.string.nt_opt_output))
         OutlinedTextField(batch.suffix, { batch.suffix = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.nt_opt_suffix)) })
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -129,6 +172,26 @@ fun OptimizeBatchSection(batch: OptimizeBatch) {
     }
 }
 
+/**
+ * Runs [op] (source → output) on every file of a batch, names outputs `<name><suffix>`, keeps going after a failure,
+ * writes a log (Foxit batch "log file") and copies outputs and log to the batch's output folder when one is set.
+ * Returns the outputs and the log file.
+ */
+suspend fun runBatchWithLog(ctx: android.content.Context, docsDir: File, unique: (File, String, String) -> File, files: List<File>, batch: OptimizeBatch,
+                            title: String, op: suspend (src: File, out: File) -> String): Pair<List<File>, File> {
+    val outs = ArrayList<File>(); val lines = StringBuilder()
+    lines.append(title).append(" — ").append(java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.US).format(java.util.Date())).append('\n')
+    for (f in files) {
+        val out = unique(docsDir, f.nameWithoutExtension + batch.suffix.ifBlank { "_out" }, "pdf")
+        runCatching { op(f, out) }
+            .onSuccess { msg -> outs += out; lines.append("OK\t").append(f.name).append(" → ").append(out.name).append(if (msg.isNotBlank()) "\t$msg" else "").append('\n') }
+            .onFailure { e -> out.delete(); lines.append("FAILED\t").append(f.name).append('\t').append(e.message ?: e.toString()).append('\n') }
+    }
+    val log = unique(docsDir, "batch_log", "txt").also { it.writeText(lines.toString()) }
+    batch.folder?.let { saveToTree(ctx, it, outs + log, batch.replaceSameName) }
+    return outs to log
+}
+
 /** Copies [files] into the tree [folder]; with [replace] a file of the same name there is overwritten. Returns how many. */
 suspend fun saveToTree(ctx: android.content.Context, folder: Uri, files: List<File>, replace: Boolean): Int = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
     val dir = androidx.documentfile.provider.DocumentFile.fromTreeUri(ctx, folder) ?: return@withContext 0
@@ -136,7 +199,8 @@ suspend fun saveToTree(ctx: android.content.Context, folder: Uri, files: List<Fi
     files.forEach { f ->
         runCatching {
             val existing = dir.findFile(f.name)
-            val target = if (existing != null && replace) existing else dir.createFile("application/pdf", if (existing != null) f.nameWithoutExtension + "_" + System.currentTimeMillis() % 100000 else f.nameWithoutExtension)
+            val mime = if (f.extension.equals("pdf", true)) "application/pdf" else "text/plain"
+            val target = if (existing != null && replace) existing else dir.createFile(mime, if (existing != null) f.nameWithoutExtension + "_" + System.currentTimeMillis() % 100000 else f.nameWithoutExtension)
             target?.uri?.let { u -> ctx.contentResolver.openOutputStream(u, "wt")?.use { os -> f.inputStream().use { it.copyTo(os) } }; n++ }
         }
     }

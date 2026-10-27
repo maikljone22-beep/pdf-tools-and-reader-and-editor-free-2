@@ -254,4 +254,21 @@
     <string name="nt_san_multimedia">الوسائط المتعددة (صوت وفيديو وثلاثي الأبعاد)</string>
     <string name="nt_san_overlapping">الكائنات المتداخلة</string>
     <string name="nt_san_overlapping_note">الصفحات التي تتغطى فيها الكائنات تُحوَّل إلى صور (لا يبقى نص قابل للبحث فيها)</string>
+    <string name="nt_add_open_files">الملفات المفتوحة</string>
+    <string name="nt_batch_remove_all">إزالة من كل الملفات</string>
+    <string name="nt_bates_increment">الزيادة</string>
+    <string name="nt_bates_increment_down">زيادة سالبة: الأرقام تتناقص</string>
+    <string name="nt_bates_log">حفظ ملف سجل</string>
+    <string name="nt_bates_log_saved">السجل: %1$s</string>
+    <string name="nt_bates_name_add">إضافة نطاق بيتس للاسم</string>
+    <string name="nt_bates_name_keep">الإبقاء على الاسم</string>
+    <string name="nt_bates_name_replace">الاسم = نطاق بيتس</string>
+    <string name="nt_decor_batch">ملفات أخرى (%1$d)</string>
+    <string name="nt_decor_batch_apply">تطبيق على كل الملفات</string>
+    <string name="nt_decor_batch_help">تُضاف العلامة نفسها إلى كل الملفات أو تُزال منها، مع ملف سجل.</string>
+    <string name="nt_sort">ترتيب</string>
+    <string name="nt_sort_date">حسب التاريخ</string>
+    <string name="nt_sort_location">حسب المكان</string>
+    <string name="nt_sort_name">حسب الاسم</string>
+    <string name="nt_sort_size">حسب الحجم</string>
 </resources>

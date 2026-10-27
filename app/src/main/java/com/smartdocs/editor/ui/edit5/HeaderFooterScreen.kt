@@ -56,10 +56,9 @@ fun HeaderFooterScreen(nav: NavHostController, uri: String?) {
     var batch by remember { mutableStateOf<List<java.io.File>>(emptyList()) }
     val unlocker = rememberE5Unlocker()
     val scope = rememberCoroutineScope()
-    val pickBatch = rememberPdfPicker(multiple = true) { picked ->
-        batch = (batch + picked).distinctBy { it.absolutePath }
-        scope.launch { val skipped = runCatching { unlocker.unlockAll(batch) }.getOrDefault(emptyList()); if (skipped.isNotEmpty()) batch = batch - skipped.toSet() }
-    }
+    fun unlockBatch() = scope.launch { val skipped = runCatching { unlocker.unlockAll(batch) }.getOrDefault(emptyList()); if (skipped.isNotEmpty()) batch = batch - skipped.toSet() }
+    val output = remember { com.smartdocs.editor.ui.tools5.OptimizeBatch().apply { suffix = "_header" } }
+    var logFile by remember { mutableStateOf<java.io.File?>(null) }
     val pickImage = rememberImagePicker(multiple = false) { it.firstOrNull()?.let { f -> spec = spec.copy(imagePath = f.absolutePath, imagePage = 0) } }
     val pickPdf = rememberPdfPicker { it.firstOrNull()?.let { f -> spec = spec.copy(imagePath = f.absolutePath, imagePage = 0) } }
     val processing = stringResource(R.string.processing)
@@ -150,7 +149,8 @@ fun HeaderFooterScreen(nav: NavHostController, uri: String?) {
                         IconButton(onClick = { batch = batch - f; unlocker.forget(f) }) { Icon(Icons.Default.Close, null) }
                     }
                 }
-                OutlinedButton(onClick = pickBatch) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.e5_add_files)) }
+                com.smartdocs.editor.ui.tools5.BatchSources(batch) { batch = it; unlockBatch() }
+                if (batch.isNotEmpty()) com.smartdocs.editor.ui.tools5.BatchOutputOptions(output)
             }
         }, preview = {
             val info = doc.infos.getOrNull(page)
@@ -180,6 +180,18 @@ fun HeaderFooterScreen(nav: NavHostController, uri: String?) {
                     doc.export(app.documents.docsDir, { d, b -> app.documents.uniqueFile(d, b) }, "no_header")
                 }
             }, enabled = w != null && existing.isNotEmpty(), modifier = Modifier.weight(1f)) { Icon(Icons.Default.DeleteSweep, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.e5_remove)) }
+            // Foxit batch "Remove All" with a log file
+            if (batch.isNotEmpty()) OutlinedButton(onClick = {
+                val extra = batch; val title = ctx.getString(R.string.nt_batch_remove_all)
+                runner.runMany(processing) {
+                    val book = unlocker.book.lookup()
+                    val (outs, log) = com.smartdocs.editor.ui.tools5.runBatchWithLog(ctx, app.documents.docsDir, { d, b, e -> app.documents.uniqueFile(d, b, e) }, extra,
+                        com.smartdocs.editor.ui.tools5.OptimizeBatch().apply { suffix = "_no_header"; folder = output.folder; replaceSameName = output.replaceSameName }, title) { s, o ->
+                        "${HeaderFooterOps.remove(s, o, book(s), others = true)} p."
+                    }
+                    logFile = log; outs
+                }
+            }, modifier = Modifier.weight(1f)) { Icon(Icons.Default.LayersClear, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.nt_batch_remove_all)) }
         }
         PrimaryButton(stringResource(if ("hf" in existing) R.string.e5_update else R.string.apply), enabled = w != null, icon = Icons.Default.ViewHeadline) {
             val sp = spec
@@ -189,15 +201,19 @@ fun HeaderFooterScreen(nav: NavHostController, uri: String?) {
                 doc.export(app.documents.docsDir, { d, b -> app.documents.uniqueFile(d, b) }, "header")
             } else {
                 val work = w!!; val extra = batch; val pw = doc.password
+                val suffix = output.suffix.ifBlank { "_header" }
                 runner.runMany(processing) {
                     val book = unlocker.book.lookup()
-                    HeaderFooterOps.applyBatch(ctx, listOf(work) + extra,
-                        { f -> app.documents.uniqueFile(app.documents.docsDir, (if (f == work) src?.nameWithoutExtension ?: "document" else f.nameWithoutExtension) + "_header") },
+                    val outs = HeaderFooterOps.applyBatch(ctx, listOf(work) + extra,
+                        { f -> app.documents.uniqueFile(app.documents.docsDir, (if (f == work) src?.nameWithoutExtension ?: "document" else f.nameWithoutExtension) + suffix) },
                         sp, passwords = { f -> if (f == work) pw else book(f) }, sourceOf = { f -> if (f == work) src ?: f else f })
+                    output.folder?.let { com.smartdocs.editor.ui.tools5.saveToTree(ctx, it, outs, output.replaceSameName) }
+                    outs
                 }
             }
         }
         ResultsList(runner.results, nav, "application/pdf")
+        logFile?.let { Text(stringResource(R.string.nt_bates_log_saved, it.name), style = MaterialTheme.typography.bodySmall) }
     }
 }
 

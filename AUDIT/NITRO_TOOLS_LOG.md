@@ -148,3 +148,22 @@ Test: `FoxitOptimizeTest` (adds `org.apache.pdfbox:jbig2-imageio` as a test-only
 | Smart Redact: AI detection of person names, organisations, roles | done | `core/ai5/PiiEntities.kt`: AI path through the app's AI client (page text → JSON entities → located in the text, only real text is marked), offline fallback patterns (Arabic / English titles before names, organisation words, job-title list); new `PiiKind` PERSON / ORG / ROLE in the PII scan with a "use AI" switch |
 
 Test: `FoxitRedactTest`.
+
+## Foxit §23b Page marks and page numbers (§23a page operations go to feature/nitro-pages-convert)
+
+| Row | Result | Where |
+|---|---|---|
+| Header & Footer templates: save, delete, import / export | done | profile bar (Nitro §12). "Administrator templates" — not feasible: no managed-configuration channel in the app; built-in presets stay |
+| Header & Footer batch add (files, folders, open files, output options) | done | header/footer screen: `BatchSources` (files, folder, reader tabs, sort) + `BatchOutputOptions` (suffix, output folder, replace same name) |
+| Header & Footer / Watermark / Background: batch Remove All with a log file | done | "Remove from all files" → `runBatchWithLog` (one OK / FAILED line per file, log saved and copied with the outputs) |
+| Background / Watermark from a PDF page | done (Nitro §12) | |
+| Background / Watermark templates | done (Nitro §12 profiles) | |
+| Background / Watermark batch add | done | decor screen batch section + "Apply to all files" (new engine, all options, with a log) |
+| Bates: add folders / open files / sort by name, location, size, date | done | `BatchSources` in the Bates screen |
+| Bates: output options (folder, keep / add / replace name with the Bates range, overwrite, log file) | done | `BatesNaming` + `Bates.outputName`, output folder with "replace same name", `Bates.log` |
+| Bates: digits 3–15 | done | digits up to 15 |
+| Bates: increment (negative counts down) | done | `BatesSpec.increment` in `Bates.plan` |
+| Bates: rotate angle, {bates} in a header/footer, Remove All | done (Nitro §12) | |
+| Page labels shown in the reader | moved | part of feature/nitro-pages-convert (old plan A5), as agreed |
+
+Test: `FoxitBatesTest`.

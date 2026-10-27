@@ -26,6 +26,7 @@ import com.smartdocs.editor.ui.tools.FieldLabel
 import com.smartdocs.editor.ui.tools.PrimaryButton
 import com.smartdocs.editor.ui.tools.ResultsList
 import com.smartdocs.editor.ui.tools.ToolScaffold
+import java.io.File
 
 @Composable
 private fun SpaceCat.label(): String = stringResource(

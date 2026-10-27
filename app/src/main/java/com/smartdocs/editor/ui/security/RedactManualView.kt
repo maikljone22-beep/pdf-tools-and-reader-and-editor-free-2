@@ -6,6 +6,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -98,7 +99,7 @@ fun RedactManualView(
 
             Box(
                 Modifier.fillMaxWidth().aspectRatio(pw / ph).background(Color.White)
-                    .pointerInput(page, scale) { androidx.compose.foundation.gestures.detectTapGestures(onDoubleTap = { o -> val (x, y) = toPt(o); onDoubleTap(x, y) }) }
+                    .pointerInput(page, scale) { detectTapGestures(onDoubleTap = { o -> val (x, y) = toPt(o); onDoubleTap(x, y) }) }
                     .then(if (drawMode) Modifier.pointerInput(page, scale) {
                         detectDragGestures(
                             onDragStart = { dragStart = it; dragNow = it; editing = hit(it) },
