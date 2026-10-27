@@ -277,7 +277,7 @@ internal object ImageEdit5 {
     private fun rgb(c: Int, o: String): List<Any> =
         listOf(COSFloat(((c shr 16) and 0xFF) / 255f), COSFloat(((c shr 8) and 0xFF) / 255f), COSFloat((c and 0xFF) / 255f), op(o))
 
-    private fun opName(t: List<Any>) = (t.lastOrNull() as? Operator)?.name
+    private fun opName(t: List<Any>): String = (t.lastOrNull() as? Operator)?.name ?: ""
 
     private fun bodyTokens(ops: List<OpInfo>, g: Group): List<Any> = (g.bodyStart..g.body).flatMap { ops[it].tokens() }
 
@@ -445,6 +445,8 @@ internal object ImageEdit5 {
             out += t
             prev = t as? COSName
         }
+        // our group's marker names its own ExtGState: keep it pointing at the renamed copy
+        out.filterIsInstance<COSDictionary>().forEach { d -> (d.getDictionaryObject(K_GS) as? COSName)?.let { n -> rename[n]?.let { d.setItem(K_GS, it) } } }
         return out
     }
 
@@ -466,8 +468,8 @@ internal object ImageEdit5 {
             val res = page.resources ?: PDResources().also { page.resources = it }
             val ts = scan(page)
             val m = Affine.mul(Affine.mul(toDisplay, PageFrame.of(page).toUser), Affine.inverse(ts.endCtm))
-            val own = g.ownGs?.let { n -> runCatching { src.resources?.getExtGState(n) }.getOrNull()?.let { res.add(it) } }
-            val tokens = groupTokens(m, inner, own, g.opacity, g.blend, g.crop, g.ellipse, o.localBox ?: floatArrayOf(0f, 0f, 1f, 1f), body)
+            // resource names (image, ExtGState incl. the group's own, shading) are copied and renamed by carryResources
+            val tokens = groupTokens(m, inner, g.ownGs, g.opacity, g.blend, g.crop, g.ellipse, o.localBox ?: floatArrayOf(0f, 0f, 1f, 1f), body)
             append(doc, page, carryResources(tokens, src.resources, res))
         }
     }
