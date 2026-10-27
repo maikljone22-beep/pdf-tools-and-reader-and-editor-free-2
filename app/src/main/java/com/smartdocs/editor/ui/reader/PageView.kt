@@ -60,7 +60,8 @@ fun PageView(
     modifier: Modifier = Modifier,
 ) {
     val settings = LocalSettings.current
-    val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
+    // the document's own direction (/ViewerPreferences /Direction) wins over the app language
+    val rtl = state.docRtl ?: (LocalLayoutDirection.current == LayoutDirection.Rtl)
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
     val vx = state.vx
