@@ -86,6 +86,8 @@ fun EsignCreateScreen(nav: NavHostController, uri: String?, mode: EsignCreateMod
     var bulkProgress by remember { mutableStateOf<Pair<Int, Int>?>(null) }
     var bulkResult by remember { mutableStateOf(false) }
     var bulkCopy by remember { mutableStateOf<File?>(null) }
+    val bulkCancel = remember { java.util.concurrent.atomic.AtomicBoolean(false) }
+    var bulkCancelling by remember { mutableStateOf(false) }
     // form
     var maxResponses by remember { mutableStateOf("1000") }
     var requireEmail by remember { mutableStateOf(false) }
@@ -143,6 +145,7 @@ fun EsignCreateScreen(nav: NavHostController, uri: String?, mode: EsignCreateMod
         val f = file ?: return@launch
         error = null
         val items = bulkItems.ifEmpty { parsed.rows.map { BulkItem(it) } }
+        bulkCancel.set(false); bulkCancelling = false
         bulkProgress = 0 to items.count { it.state != BulkState.SENT }
         runCatching {
             withContext(Dispatchers.IO) {
@@ -159,11 +162,11 @@ fun EsignCreateScreen(nav: NavHostController, uri: String?, mode: EsignCreateMod
                         listOf(Signer(r.name, r.email)), fields.map { it.copy(signer = 0) }, pages, expiry, mail && r.email.isNotBlank(), brand)
                     EsignStore.upsert(ctx, EsignRef(c.id, t, true, c.ownerKey, System.currentTimeMillis(), keep.absolutePath, "out", counts = "0/1"))
                     BulkSender.Sent(c.id, c.links.firstOrNull().orEmpty())
-                }, progress = { d, t -> bulkProgress = d to t }, retryable = EsignClient::isTransient)
+                }, progress = { d, t -> bulkProgress = d to t }, retryable = EsignClient::isTransient, cancelled = { bulkCancel.get() })
             }
         }.onSuccess { bulkItems = it; bulkResult = true }
             .onFailure { error = if (it is PdfSession.Companion.PasswordRequiredException) encrypted else (it.message ?: it.toString()) }
-        bulkProgress = null
+        bulkProgress = null; bulkCancelling = false
     }
 
     fun sendForm() = scope.launch {
@@ -317,7 +320,7 @@ fun EsignCreateScreen(nav: NavHostController, uri: String?, mode: EsignCreateMod
     }
 
     if (busy) ProgressDialog(stringResource(if (mode == EsignCreateMode.FORM) R.string.ne2_form_creating else R.string.cn_sending))
-    bulkProgress?.let { (d, t) -> ProgressDialog(stringResource(R.string.ne2_bulk_sending, (d + 1).coerceAtMost(t), t), if (t > 0) d.toFloat() / t else null) }
+    bulkProgress?.let { (d, t) -> BulkProgressDialog(d, t, bulkCancelling) { bulkCancel.set(true); bulkCancelling = true } }
     if (bulkResult) BulkResultDialog(bulkItems, onRetry = { bulkResult = false; sendBulk() }, onDone = { bulkResult = false; nav.popBackStack() })
     created?.let { (id, links) ->
         AlertDialog(
