@@ -76,7 +76,8 @@ class FoxitRedactTest {
             assertEquals(2, Multimedia.find(doc).size)
             val r = Sanitizer.clean(doc, setOf(SanitizeItem.MULTIMEDIA))
             assertEquals(2, r[SanitizeItem.MULTIMEDIA])
-            assertEquals(1, p.annotations.size); assertFalse(p.annotations[0].cosObject.containsKey(COSName.A))
+            val left = p.cosObject.getDictionaryObject(COSName.ANNOTS) as com.tom_roush.pdfbox.cos.COSArray
+            assertEquals(1, left.size()); assertFalse((left.getObject(0) as COSDictionary).containsKey(COSName.A))
             assertTrue(SanitizeItem.OVERLAPPING in SanitizeItem.OPT_IN && SanitizeItem.OVERLAPPING !in SanitizeItem.DEFAULTS)
         }
     }

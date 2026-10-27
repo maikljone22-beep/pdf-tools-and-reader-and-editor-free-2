@@ -106,27 +106,44 @@ internal object Structure {
     }
 }
 
-/** Multimedia added with audio / video / 3D tools: Screen, Movie, Sound, RichMedia and 3D annotations and media actions. */
+/**
+ * Multimedia added with audio / video / 3D tools: Screen, Movie, Sound, RichMedia and 3D annotations and media actions.
+ * Works on the /Annots arrays directly: PdfBox has no classes for these subtypes.
+ */
 internal object Multimedia {
     private val SUBTYPES = setOf("Screen", "Movie", "Sound", "RichMedia", "3D")
     private val ACTIONS = setOf("Rendition", "Movie", "Sound", "RichMediaExecute", "GoTo3DView")
 
+    private fun annots(p: com.tom_roush.pdfbox.pdmodel.PDPage) = p.cosObject.getDictionaryObject(COSName.ANNOTS) as? COSArray
+
+    private fun isMedia(d: COSDictionary) = d.getCOSName(COSName.SUBTYPE)?.name in SUBTYPES
+    private fun mediaAction(d: COSDictionary) = (d.getDictionaryObject(COSName.A) as? COSDictionary)?.getCOSName(COSName.S)?.name in ACTIONS
+
     fun find(doc: PDDocument): List<String> {
         val out = ArrayList<String>()
-        doc.pages.forEachIndexed { i, p -> runCatching { p.annotations }.getOrNull()?.forEach { a ->
-            if (a.subtype in SUBTYPES) out += "p.${i + 1} ${a.subtype}"
-            else if ((a.cosObject.getDictionaryObject(COSName.A) as? COSDictionary)?.getCOSName(COSName.S)?.name in ACTIONS) out += "p.${i + 1} action"
-        } }
+        doc.pages.forEachIndexed { i, p ->
+            val a = annots(p) ?: return@forEachIndexed
+            for (k in 0 until a.size()) {
+                val d = a.getObject(k) as? COSDictionary ?: continue
+                if (isMedia(d)) out += "p.${i + 1} ${d.getCOSName(COSName.SUBTYPE)?.name}" else if (mediaAction(d)) out += "p.${i + 1} action"
+            }
+        }
         return out
     }
 
     fun remove(doc: PDDocument): Int {
         var n = 0
         doc.pages.forEach { p ->
-            val list = runCatching { p.annotations }.getOrNull() ?: return@forEach
-            val keep = list.filterNot { it.subtype in SUBTYPES }
-            if (keep.size != list.size) { n += list.size - keep.size; p.annotations = keep }
-            keep.forEach { a -> (a.cosObject.getDictionaryObject(COSName.A) as? COSDictionary)?.let { act -> if (act.getCOSName(COSName.S)?.name in ACTIONS) { a.cosObject.removeItem(COSName.A); n++ } } }
+            val a = annots(p) ?: return@forEach
+            var k = 0
+            while (k < a.size()) {
+                val d = a.getObject(k) as? COSDictionary
+                when {
+                    d != null && isMedia(d) -> { a.remove(k); n++ }
+                    d != null && mediaAction(d) -> { d.removeItem(COSName.A); n++; k++ }
+                    else -> k++
+                }
+            }
         }
         return n
     }

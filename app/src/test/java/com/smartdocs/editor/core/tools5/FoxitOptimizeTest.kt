@@ -99,12 +99,12 @@ class FoxitOptimizeTest {
 
     @Test fun ttfStripKeepsUsedGlyphsAndIds() {
         val font = File("src/main/assets/fonts/NotoNaskhArabic-Regular.ttf").readBytes()
-        val before = TTFParser().parse(ByteArrayInputStream(font))
+        val before = TTFParser(false, true).parse(ByteArrayInputStream(font))   // on demand: GSUB parsing logs through android.util.Log
         val n = before.numberOfGlyphs
         val keep = setOf(0, 5, 40, 200)
         val out = TtfStrip.keep(font, keep)
         assertTrue(out.size < font.size / 2)
-        val after = TTFParser().parse(ByteArrayInputStream(out))
+        val after = TTFParser(false, true).parse(ByteArrayInputStream(out))
         assertEquals(n, after.numberOfGlyphs)
         for (g in keep) assertEquals(before.glyph.getGlyph(g)?.boundingBox?.width ?: 0f, after.glyph.getGlyph(g)?.boundingBox?.width ?: 0f, 0.001f)
         val dropped = (1 until n).first { it !in keep && (before.glyph.getGlyph(it)?.description?.pointCount ?: 0) > 0 }
