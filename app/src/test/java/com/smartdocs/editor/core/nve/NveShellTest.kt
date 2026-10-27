@@ -179,7 +179,7 @@ class NveShellTest {
                 assertEquals(n, d.numberOfPages)
                 when (g) {
                     FeatureGuides.Guide.ORGANIZE -> assertEquals(4, n)
-                    FeatureGuides.Guide.FORM -> { val f = d.documentCatalog.acroForm; assertNotNull(f); assertEquals(setOf("name", "agree"), f.fields.map { it.partialName }.toSet()) }
+                    FeatureGuides.Guide.FORM -> { val f = d.documentCatalog.getAcroForm(null); assertNotNull(f); assertEquals(setOf("name", "agree"), f.fields.map { it.partialName }.toSet()) }
                     FeatureGuides.Guide.COMMENT -> assertEquals(2, d.getPage(0).annotations.size)
                     else -> assertTrue(n >= 1)
                 }
