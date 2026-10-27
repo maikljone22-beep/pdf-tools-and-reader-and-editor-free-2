@@ -147,12 +147,14 @@ class AnnotStyleTest {
     @Test fun numberedTickmarks() {
         val d = PDDocument(); val p = PDPage(); d.addPage(p)
         assertEquals(1, AnnotStyle.nextTickmark(p))
-        AnnotStyle.writeTickmark(d, p, 100f, 100f, 1, 0x1565C0, author = "Me")
-        AnnotStyle.writeTickmark(d, p, 150f, 100f, AnnotStyle.nextTickmark(p), 0x1565C0)
+        AnnotStyle.writeTickmark(d, p, 100f, 100f, "1", 0x1565C0, author = "Me")
+        AnnotStyle.writeTickmark(d, p, 150f, 100f, AnnotStyle.nextTickmark(p).toString(), 0x1565C0)
+        AnnotStyle.writeTickmark(d, p, 200f, 100f, "zd:4", 0x1565C0)
         roundTrip(d).use { r ->
             val page = r.getPage(0)
-            assertEquals(2, page.annotations.size)
+            assertEquals(3, page.annotations.size)
             assertEquals("2", page.annotations[1].contents)
+            assertEquals("4", page.annotations[2].contents)
             assertEquals("Tickmark", AnnotStyle.subjectOf(page.annotations[0].cosObject))
             assertNotNull(page.annotations[0].normalAppearanceStream)
             assertEquals(3, AnnotStyle.nextTickmark(page))

@@ -29,6 +29,9 @@ import java.util.Locale
  */
 object AnnotStyle {
 
+    /** /Subj of numbered / lettered / symbol tickmarks. */
+    const val TICKMARK = "Tickmark"
+
     const val F_HIDDEN = 2
     const val F_PRINT = 4
     const val F_LOCKED = 128
@@ -53,8 +56,51 @@ object AnnotStyle {
     private val W = COSName.getPDFName("W")
     private val I = COSName.getPDFName("I")
 
-    /** Note icon names of PDF text annotations (ISO 32000 12.5.6.4) offered by the picker. */
-    val NOTE_ICONS = listOf("Comment", "Key", "Note", "Help", "NewParagraph", "Paragraph", "Insert")
+    /** Note icon names of PDF text annotations (ISO 32000 12.5.6.4 + the Acrobat / PDFium set) offered by the picker. */
+    val NOTE_ICONS = listOf("Comment", "Key", "Note", "Help", "NewParagraph", "Paragraph", "Insert", "Check", "Circle", "Cross",
+        "CrossHairs", "RightArrow", "RightPointer", "Star", "UpArrow", "UpLeftArrow")
+
+    /** File attachment icon names (ISO 32000 12.5.6.15). */
+    val ATTACH_ICONS = listOf("PushPin", "Paperclip", "Graph", "Tag")
+
+    /**
+     * Glyph of a note icon drawn in a 20x20 box with the current stroke colour (the box itself is drawn by the
+     * caller). Simple vector shapes so every viewer shows the chosen icon the same way.
+     */
+    fun noteGlyph(cs: PDPageContentStream, icon: String) {
+        cs.setLineWidth(1.4f); cs.setLineCapStyle(1); cs.setLineJoinStyle(1)
+        fun l(x0: Float, y0: Float, x1: Float, y1: Float) { cs.moveTo(x0, y0); cs.lineTo(x1, y1) }
+        fun circle(cx: Float, cy: Float, r: Float) {
+            val k = 0.5523f * r
+            cs.moveTo(cx + r, cy); cs.curveTo(cx + r, cy + k, cx + k, cy + r, cx, cy + r); cs.curveTo(cx - k, cy + r, cx - r, cy + k, cx - r, cy)
+            cs.curveTo(cx - r, cy - k, cx - k, cy - r, cx, cy - r); cs.curveTo(cx + k, cy - r, cx + r, cy - k, cx + r, cy); cs.closePath()
+        }
+        when (icon) {
+            "Key" -> { circle(7f, 12f, 3.5f); l(10f, 10f, 16f, 4f); l(13.5f, 6.5f, 15.5f, 8.5f) }
+            "Help" -> { circle(10f, 10f, 7f); cs.moveTo(7.5f, 12.5f); cs.curveTo(7.5f, 16f, 12.5f, 16f, 12.5f, 12.5f); cs.curveTo(12.5f, 10.5f, 10f, 10.5f, 10f, 8f); l(10f, 5.5f, 10f, 5f) }
+            "NewParagraph" -> { l(4f, 4f, 4f, 16f); l(4f, 16f, 10f, 4f); l(10f, 4f, 10f, 16f); l(13f, 10f, 17f, 10f); l(15f, 8f, 15f, 12f) }
+            "Paragraph" -> { l(11f, 4f, 11f, 16f); l(14f, 4f, 14f, 16f); l(8f, 16f, 15f, 16f); circle(8.5f, 12.5f, 3.2f) }
+            "Insert" -> { l(4f, 5f, 10f, 15f); l(10f, 15f, 16f, 5f) }
+            "Check" -> { l(4f, 10f, 8f, 5f); l(8f, 5f, 16f, 15f) }
+            "Circle" -> circle(10f, 10f, 6f)
+            "Cross" -> { l(5f, 5f, 15f, 15f); l(5f, 15f, 15f, 5f) }
+            "CrossHairs" -> { circle(10f, 10f, 5.5f); l(10f, 3f, 10f, 17f); l(3f, 10f, 17f, 10f) }
+            "RightArrow" -> { l(4f, 10f, 16f, 10f); l(11f, 15f, 16f, 10f); l(11f, 5f, 16f, 10f) }
+            "RightPointer" -> { cs.moveTo(5f, 15f); cs.lineTo(16f, 10f); cs.lineTo(5f, 5f); cs.lineTo(8f, 10f); cs.closePath() }
+            "Star" -> {
+                for (i in 0..5) {
+                    val a = Math.toRadians(90.0 + i * 144.0); val x = 10f + 6.5f * kotlin.math.cos(a).toFloat(); val y = 10f + 6.5f * kotlin.math.sin(a).toFloat()
+                    if (i == 0) cs.moveTo(x, y) else cs.lineTo(x, y)
+                }
+                cs.closePath()
+            }
+            "UpArrow" -> { l(10f, 4f, 10f, 16f); l(5f, 11f, 10f, 16f); l(15f, 11f, 10f, 16f) }
+            "UpLeftArrow" -> { l(15f, 5f, 5f, 15f); l(5f, 15f, 5f, 9f); l(5f, 15f, 11f, 15f) }
+            "Note" -> { l(5f, 15f, 15f, 15f); l(5f, 12f, 15f, 12f); l(5f, 9f, 15f, 9f); l(5f, 6f, 11f, 6f) }
+            else -> { l(5f, 13f, 15f, 13f); l(5f, 9f, 15f, 9f); l(5f, 5f, 11f, 5f) }
+        }
+        cs.stroke()
+    }
 
     // ================= flags =================
 
@@ -433,20 +479,26 @@ object AnnotStyle {
      * /Circle annotation with /Subj "Tickmark" and /Contents n. Text is drawn with a raw Helvetica resource
      * (no font program needed). Returns the annotation dictionary (already added to [page]).
      */
-    fun writeTickmark(doc: PDDocument, page: PDPage, cx: Float, cy: Float, n: Int, color: Int, size: Float = 16f, author: String = ""): COSDictionary {
-        val label = n.toString()
-        val w = maxOf(size, size * 0.42f * label.length + 6f); val h = size
+    fun writeTickmark(doc: PDDocument, page: PDPage, cx: Float, cy: Float, label: String, color: Int, size: Float = 16f, author: String = ""): COSDictionary {
+        // a ZapfDingbats symbol (palette) is passed as "zd:" + its code character
+        val symbol = label.startsWith("zd:")
+        val shown = (if (symbol) label.removePrefix("zd:") else label).filter { it.code in 0x20..0x7E }.ifEmpty { "?" }
+        val w = maxOf(size, size * 0.42f * label.removePrefix("zd:").length + 6f); val h = size
         val x = cx - w / 2; val y = cy - h / 2
         val form = PDAppearanceStream(doc)
         form.bBox = PDRectangle(0f, 0f, w, h)
         val res = PDResources()
-        val helv = COSDictionary().apply { setName(COSName.TYPE, "Font"); setName(COSName.SUBTYPE, "Type1"); setName(COSName.BASE_FONT, "Helvetica-Bold"); setName(COSName.ENCODING, "WinAnsiEncoding") }
+        val helv = COSDictionary().apply {
+            setName(COSName.TYPE, "Font"); setName(COSName.SUBTYPE, "Type1")
+            setName(COSName.BASE_FONT, if (symbol) "ZapfDingbats" else "Helvetica-Bold")
+            if (!symbol) setName(COSName.ENCODING, "WinAnsiEncoding")
+        }
         res.cosObject.setItem(COSName.FONT, COSDictionary().apply { setItem(COSName.getPDFName("TkH"), helv) })
         form.resources = res
         form.setMatrix(com.tom_roush.harmony.awt.geom.AffineTransform.getTranslateInstance(x.toDouble(), y.toDouble()))
         val c = comps(color)
         val fs = size * 0.62f
-        val tw = label.length * 0.556f * fs
+        val tw = shown.length * (if (symbol) 0.8f else 0.556f) * fs
         val k = 0.5523f; val rx = w / 2 - 0.5f; val ry = h / 2 - 0.5f; val ox = w / 2; val oy = h / 2
         val content = buildString {
             append(String.format(Locale.US, "%.3f %.3f %.3f rg %.3f %.3f %.3f RG 1 w\n", c[0], c[1], c[2], c[0], c[1], c[2]))
@@ -455,7 +507,7 @@ object AnnotStyle {
             append(String.format(Locale.US, "%.2f %.2f %.2f %.2f %.2f %.2f c ", ox - rx * k, oy + ry, ox - rx, oy + ry * k, ox - rx, oy))
             append(String.format(Locale.US, "%.2f %.2f %.2f %.2f %.2f %.2f c ", ox - rx, oy - ry * k, ox - rx * k, oy - ry, ox, oy - ry))
             append(String.format(Locale.US, "%.2f %.2f %.2f %.2f %.2f %.2f c h B\n", ox + rx * k, oy - ry, ox + rx, oy - ry * k, ox + rx, oy))
-            append(String.format(Locale.US, "BT 1 1 1 rg /TkH %.2f Tf %.2f %.2f Td (%s) Tj ET\n", fs, (w - tw) / 2, (h - fs * 0.7f) / 2, label))
+            append(String.format(Locale.US, "BT 1 1 1 rg /TkH %.2f Tf %.2f %.2f Td (%s) Tj ET\n", fs, (w - tw) / 2, (h - fs * 0.7f) / 2, shown.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")))
         }
         form.cosObject.createOutputStream().use { it.write(content.toByteArray(Charsets.ISO_8859_1)) }
         val an = COSDictionary()
@@ -463,8 +515,9 @@ object AnnotStyle {
         an.setItem(COSName.RECT, rectArray(floatArrayOf(x, y, x + w, y + h)))
         an.setItem(COSName.C, COSArray().apply { c.forEach { add(COSFloat(it)) } })
         an.setItem(IC, COSArray().apply { c.forEach { add(COSFloat(it)) } })
-        an.setString(COSName.CONTENTS, label)
-        an.setString(SUBJ, "Tickmark")
+        an.setString(COSName.CONTENTS, label.removePrefix("zd:"))
+        an.setString(SUBJ, TICKMARK)
+        an.setString(COSName.getPDFName("SDTick"), label)
         an.setString(NM, "sd-tick-" + System.nanoTime().toString(36))
         if (author.isNotBlank()) an.setString(T, author)
         an.setInt(COSName.F, F_PRINT)

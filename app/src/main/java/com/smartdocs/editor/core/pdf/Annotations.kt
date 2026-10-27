@@ -240,6 +240,12 @@ object AnnotationWriter {
             }
             AnnotKind.RECT, AnnotKind.OVAL -> {
                 val r = a.rects.firstOrNull()?.let(::norm) ?: return
+                if (a.kind == AnnotKind.OVAL && a.subject == com.smartdocs.editor.core.annot.AnnotStyle.TICKMARK) {
+                    // numbered / lettered / symbol tickmark (CMT-19): its own appearance with the label
+                    com.smartdocs.editor.core.annot.AnnotStyle.writeTickmark(doc, page, (r.left + r.right) / 2, (r.top + r.bottom) / 2, a.text, a.color,
+                        size = kotlin.math.abs(r.height()).coerceAtLeast(8f), author = a.author)
+                    return
+                }
                 val sq = PDAnnotationSquareCircle(if (a.kind == AnnotKind.RECT) PDAnnotationSquareCircle.SUB_TYPE_SQUARE else PDAnnotationSquareCircle.SUB_TYPE_CIRCLE)
                 val rect = PDRectangle(r.left, r.top, r.width(), r.height())
                 sq.rectangle = rect
@@ -334,7 +340,7 @@ object AnnotationWriter {
             cs.addRect(1f, 1f, rect.width - 2, rect.height - 2); cs.fill()
             cs.setStrokingColor(60, 60, 60); cs.setLineWidth(1f)
             cs.addRect(1f, 1f, rect.width - 2, rect.height - 2); cs.stroke()
-            cs.moveTo(5f, 13f); cs.lineTo(15f, 13f); cs.moveTo(5f, 9f); cs.lineTo(15f, 9f); cs.moveTo(5f, 5f); cs.lineTo(11f, 5f); cs.stroke()
+            com.smartdocs.editor.core.annot.AnnotStyle.noteGlyph(cs, a.icon)
         }
         return form
     }
@@ -386,7 +392,11 @@ object AnnotationWriter {
     /** Read existing annotations of a file for the annotations panel (title, contents, page, kind). */
     data class Existing(val page: Int, val subtype: String, val author: String, val contents: String, val rect: RectF, val index: Int,
                         /** Non-null for a video annotation (Screen / RichMedia / video attachment): played in the page. */
-                        val video: com.smartdocs.editor.core.annot.VideoPdf.Info? = null)
+                        val video: com.smartdocs.editor.core.annot.VideoPdf.Info? = null,
+                        /** /F Locked: cannot be moved, resized or deleted until unlocked (section 7.58). */
+                        val locked: Boolean = false,
+                        /** /Subj, for tickmarks and the properties dialog. */
+                        val subject: String = "")
 
     suspend fun list(src: File, password: String? = null): List<Existing> = withContext(Dispatchers.IO) {
         val doc = if (password.isNullOrEmpty()) PDDocument.load(src) else PDDocument.load(src, password)
@@ -402,7 +412,8 @@ object AnnotationWriter {
                         if (com.smartdocs.editor.core.annot.Annot2Writer.isReplyOrState(an)) return@forEachIndexed
                         val r = an.rectangle ?: PDRectangle()
                         out += Existing(pi, an.subtype ?: "", (an as? PDAnnotationMarkup)?.titlePopup ?: an.cosObject.getString(COSName.T) ?: "", an.contents ?: "",
-                            RectF(r.lowerLeftX, r.upperRightY, r.upperRightX, r.lowerLeftY), ai, com.smartdocs.editor.core.annot.VideoPdf.detect(an))
+                            RectF(r.lowerLeftX, r.upperRightY, r.upperRightX, r.lowerLeftY), ai, com.smartdocs.editor.core.annot.VideoPdf.detect(an),
+                            com.smartdocs.editor.core.annot.AnnotStyle.isLocked(an.cosObject), com.smartdocs.editor.core.annot.AnnotStyle.subjectOf(an.cosObject))
                     }
                 }
             }
@@ -494,6 +505,8 @@ object AnnotationWriter {
             "Square", "Circle" -> {
                 val rd = floats(cos, "RD")
                 val box = if (rd != null && rd.size >= 4) RectF(rect.left + rd[0], rect.top - rd[1], rect.right - rd[2], rect.bottom + rd[3]) else rect
+                if (sub == "Circle" && base.subject == st.TICKMARK)
+                    return base.copy(kind = AnnotKind.OVAL, rects = listOf(rect), text = cos.getString(name("SDTick")) ?: contents, fillColor = st.interiorOf(cos))
                 base.copy(kind = if (sub == "Square") AnnotKind.RECT else AnnotKind.OVAL, rects = listOf(box), fillColor = st.interiorOf(cos),
                     cloud = if (sub == "Square") st.cloudyOf(cos) else 0)
             }

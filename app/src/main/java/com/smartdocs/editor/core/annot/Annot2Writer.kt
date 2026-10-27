@@ -222,14 +222,14 @@ object Annot2Writer {
         an.contents = a.text.ifBlank { file.name }
         an.file = spec
         an.rectangle = rect
-        an.attachmentName = PDAnnotationFileAttachment.ATTACHMENT_NAME_PAPERCLIP
+        an.attachmentName = a.icon.takeIf { it in AnnotStyle.ATTACH_ICONS } ?: PDAnnotationFileAttachment.ATTACHMENT_NAME_PAPERCLIP
         when (a.kind) {
             AnnotKind.SOUND -> { an.cosObject.setName(MEDIA, "Audio"); an.subject = "Sound" }
             AnnotKind.VIDEO -> { an.cosObject.setName(MEDIA, "Video"); an.subject = "Video" }
             else -> an.subject = "Attachment"
         }
         val f = form(doc, rect)
-        PDPageContentStream(doc, f).use { cs -> alpha(cs, a.opacity); icon(cs, a.kind, a.color, rect.width, rect.height) }
+        PDPageContentStream(doc, f).use { cs -> alpha(cs, a.opacity); icon(cs, a.kind, a.color, rect.width, rect.height, an.attachmentName ?: "Paperclip") }
         an.appearance = ap(f)
         page.annotations.add(an)
     }
@@ -254,7 +254,7 @@ object Annot2Writer {
     private fun posterOf(jpeg: ByteArray): VideoPdf.Poster? = VideoPdf.jpegSize(jpeg)?.let { (w, h) -> VideoPdf.Poster(jpeg, w, h) }
 
     /** Vector icons (paperclip / speaker / film) drawn into a w×h box. */
-    private fun icon(cs: PDPageContentStream, kind: AnnotKind, c: Int, w: Float, h: Float) {
+    private fun icon(cs: PDPageContentStream, kind: AnnotKind, c: Int, w: Float, h: Float, name: String = "Paperclip") {
         fill(cs, 0xFFFFFF); stroke(cs, c); cs.setLineWidth(1.4f); cs.setLineCapStyle(1); cs.setLineJoinStyle(1)
         cs.addRect(0.7f, 0.7f, w - 1.4f, h - 1.4f); cs.fillAndStroke()
         when (kind) {
@@ -271,7 +271,18 @@ object Annot2Writer {
                 fill(cs, c)
                 cs.moveTo(w * 0.42f, h * 0.36f); cs.lineTo(w * 0.64f, h * 0.5f); cs.lineTo(w * 0.42f, h * 0.64f); cs.closePath(); cs.fill()
             }
-            else -> {
+            else -> if (name == "PushPin") {
+                cs.moveTo(w * 0.5f, h * 0.15f); cs.lineTo(w * 0.5f, h * 0.45f)
+                cs.moveTo(w * 0.3f, h * 0.45f); cs.lineTo(w * 0.7f, h * 0.45f)
+                cs.addRect(w * 0.38f, h * 0.45f, w * 0.24f, h * 0.38f); cs.stroke()
+            } else if (name == "Graph") {
+                fill(cs, c)
+                cs.addRect(w * 0.2f, h * 0.2f, w * 0.14f, h * 0.3f); cs.addRect(w * 0.43f, h * 0.2f, w * 0.14f, h * 0.55f); cs.addRect(w * 0.66f, h * 0.2f, w * 0.14f, h * 0.42f)
+                cs.fill()
+            } else if (name == "Tag") {
+                cs.moveTo(w * 0.2f, h * 0.5f); cs.lineTo(w * 0.42f, h * 0.78f); cs.lineTo(w * 0.8f, h * 0.78f); cs.lineTo(w * 0.8f, h * 0.22f)
+                cs.lineTo(w * 0.42f, h * 0.22f); cs.closePath(); cs.stroke()
+            } else {
                 // paperclip: two nested rounded loops
                 val x1 = w * 0.36f; val x2 = w * 0.64f; val k = (x2 - x1) / 2
                 cs.moveTo(x2, h * 0.3f); cs.lineTo(x2, h * 0.72f)
@@ -360,7 +371,7 @@ object Annot2Writer {
                     media == "Video" || mime.startsWith("video/") -> AnnotKind.VIDEO
                     else -> AnnotKind.FILE_ATTACH
                 }
-                base.copy(kind = kind, rects = listOf(rect), filePath = out.absolutePath, mime = mime, text = an.contents ?: name)
+                base.copy(kind = kind, rects = listOf(rect), filePath = out.absolutePath, mime = mime, text = an.contents ?: name, icon = fa.attachmentName?.takeIf { it != "Paperclip" } ?: "")
             }
             else -> null
         }
