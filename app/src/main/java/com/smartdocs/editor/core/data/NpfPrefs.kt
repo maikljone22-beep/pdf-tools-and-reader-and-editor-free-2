@@ -38,7 +38,7 @@ object NpfPrefs {
     object K {
         const val SAVE_TREE = "save_tree"; const val SAVE_LAST = "save_last"
         const val RECENT_LIMIT = "recent_limit"; const val RECOVERY_MIN = "recovery_min"; const val AUTOSAVE_MIN = "autosave_min"
-        const val LAYOUT = "layout"; const val ZOOM = "zoom"; const val PANEL = "panel_on_open"; const val DOC_TITLE = "doc_title"
+        const val LAYOUT = "layout"; const val ZOOM = "zoom"; const val PANEL = "panel_on_open"; const val PANEL_W = "panel_width"; const val DOC_TITLE = "doc_title"
         const val HF_IGNORE_ROT = "hf_ignore_rotation"
         const val UNITS = "units"; const val GRID_SNAP = "grid_snap"; const val GRID_COLOR = "grid_color"
         const val GRID_OFF_X = "grid_off_x"; const val GRID_OFF_Y = "grid_off_y"; const val GRID_SUB = "grid_sub"
@@ -79,6 +79,8 @@ object NpfPrefs {
     val defaultZoom: String get() = s(K.ZOOM, "width")
     /** Panel shown when a document opens: "none", "outline", "thumbnails", "bookmarks". */
     val panelOnOpen: String get() = s(K.PANEL, "none")
+    /** Width of the side panel on tablets (dp). */
+    val panelWidthDp: Int get() = i(K.PANEL_W, 340).coerceIn(260, 520)
     /** Reader title: the document /Title instead of the file name (when the PDF has one). */
     val showDocTitle: Boolean get() = b(K.DOC_TITLE, false)
     /** Header / footer / watermark: place on the unrotated page (true) instead of the page as displayed. */

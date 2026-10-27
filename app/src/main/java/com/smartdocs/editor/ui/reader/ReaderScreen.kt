@@ -319,7 +319,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                 }
                 if (tablet && panel != null) {
                     VerticalDivider()
-                    Surface(Modifier.width(340.dp).fillMaxHeight(), tonalElevation = 1.dp) {
+                    Surface(Modifier.width(com.smartdocs.editor.core.data.NpfPrefs.panelWidthDp.dp).fillMaxHeight(), tonalElevation = 1.dp) {   // nav-prefs: panel width
                         PanelsContent(state, panel!!, onPanel = { panel = it }, onJump = { state.jumpTo(it) }, onAiOutline = { nav.navigate(Routes.tool("ai", state.fileUri)) }, onClose = { panel = null })
                     }
                 }

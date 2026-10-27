@@ -60,7 +60,7 @@ fun PanelsContent(state: ReaderState, panel: ReaderPanel, onPanel: (ReaderPanel)
                 // threads, review status, type + author filters, sorting, export / import (MODULE_annot2)
                 ReaderPanel.ANNOTATIONS -> com.smartdocs.editor.ui.reader.annot.CommentsPanel(state, onJump)
                 ReaderPanel.THUMBNAILS -> ThumbnailsPanel(state, onJump)
-                ReaderPanel.INFO -> DocInfoContent(state)
+                ReaderPanel.INFO -> NpfInfoPanels(state, onJump)   // nav-prefs: + layers, security, fields, destinations, tags, articles, standards, …
             }
         }
     }

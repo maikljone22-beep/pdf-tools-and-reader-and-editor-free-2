@@ -95,6 +95,7 @@ private fun ToolScreensInner(nav: NavHostController, id: String, uri: String?) {
         "digital_sign" -> DigitalSignScreen(nav, uri)
         "fill_profile" -> FillProfileScreen(nav)
         "stamps" -> StampsScreen(nav)
+        "npf_settings" -> com.smartdocs.editor.ui.settings.NpfSettingsScreen(nav)   // nav-prefs: more preferences
         "ai" -> AiScreen(nav, uri)
         "ai_settings" -> AiSettingsScreen(nav)
         "ai_spaces" -> com.smartdocs.editor.ui.ai5.SpacesScreen(nav)
