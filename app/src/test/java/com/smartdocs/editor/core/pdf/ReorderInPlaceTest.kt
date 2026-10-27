@@ -63,7 +63,7 @@ class ReorderInPlaceTest {
             val item = d.documentCatalog.documentOutline!!.firstChild
             assertEquals("Chapter 2", item.title)
             assertEquals("outline follows its page", 200, (item.destination as PDPageFitDestination).page.mediaBox.width.toInt())
-            val field = d.documentCatalog.acroForm!!.getField("name")
+            val field = d.documentCatalog.getAcroForm(null)!!.getField("name")
             assertNotNull(field)
             val widget = field.widgets[0]
             assertEquals("widget stays on its page", 300, widget.page.mediaBox.width.toInt())
@@ -79,7 +79,7 @@ class ReorderInPlaceTest {
         PDDocument.load(out).use { d ->
             assertEquals(listOf(100, 200, 300, 300, 100), widths(d))
             assertTrue(d.getPage(3).annotations.none { it is PDAnnotationWidget })
-            assertEquals(1, d.documentCatalog.acroForm!!.getField("name").widgets.size)
+            assertEquals(1, d.documentCatalog.getAcroForm(null)!!.getField("name").widgets.size)
             assertEquals(listOf("note on page 1"), d.getPage(4).annotations.map { it.contents })
             assertEquals("copied annotation points at the copy", d.getPage(4).cosObject, d.getPage(4).annotations[0].cosObject.getDictionaryObject(COSName.P))
             assertNotNull(d.documentCatalog.documentOutline?.firstChild)
