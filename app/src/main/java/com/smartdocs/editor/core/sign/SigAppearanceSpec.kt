@@ -13,6 +13,8 @@ data class SigAppearanceSpec(
     val showLabels: Boolean = true,
     val logoPath: String? = null,
     val layout: Layout = Layout.LOGO_LEFT,
+    /** Maximum text size in appearance pixels (the 900 px wide bitmap); [AUTO_FONT] = automatic layout. */
+    val maxFontSize: Int = AUTO_FONT,
 ) {
     enum class Layout { LOGO_LEFT, LOGO_RIGHT, LOGO_TOP }
 
@@ -32,10 +34,27 @@ data class SigAppearanceSpec(
         )
     }
 
+    /** Text size of line [index] (the name line is bigger): the automatic size capped by [maxFontSize]. */
+    fun fontSize(index: Int): Float {
+        val auto = if (index == 0 && showName) NAME_SIZE else LINE_SIZE
+        return if (maxFontSize <= AUTO_FONT) auto else minOf(auto, maxFontSize.toFloat())
+    }
+
+    /** Line height: follows the biggest text so small capped text gives a compact appearance. */
+    fun lineHeight(lineCount: Int): Float = ((0 until lineCount.coerceAtLeast(1)).maxOf { fontSize(it) } * 1.23f).coerceAtLeast(24f)
+
+    // The font cap rides in the layout field ("LOGO_LEFT:24") so specs saved before it still decode.
     fun encode(): String = listOf(showName, showReason, showLocation, showDate, showDn, showLabels).joinToString("") { if (it) "1" else "0" } +
-        "|" + layout.name + "|" + (logoPath ?: "")
+        "|" + layout.name + (if (maxFontSize > AUTO_FONT) ":$maxFontSize" else "") + "|" + (logoPath ?: "")
 
     companion object {
+        const val AUTO_FONT = 0
+        const val NAME_SIZE = 52f
+        const val LINE_SIZE = 40f
+        /** Slider range for the maximum font size. */
+        const val MIN_FONT = 14
+        const val MAX_FONT = 52
+
         fun decode(s: String?): SigAppearanceSpec {
             if (s.isNullOrBlank()) return SigAppearanceSpec()
             val parts = s.split('|', limit = 3)
@@ -43,11 +62,62 @@ data class SigAppearanceSpec(
             if (parts.size != 3 || b.length != 6 || b.any { it != '0' && it != '1' }) return SigAppearanceSpec()
             fun bit(i: Int, d: Boolean) = b.getOrNull(i)?.let { it == '1' } ?: d
             val d = SigAppearanceSpec()
+            val layoutPart = parts.getOrNull(1).orEmpty()
             return SigAppearanceSpec(
                 bit(0, d.showName), bit(1, d.showReason), bit(2, d.showLocation), bit(3, d.showDate), bit(4, d.showDn), bit(5, d.showLabels),
                 logoPath = parts.getOrNull(2)?.ifBlank { null },
-                layout = parts.getOrNull(1)?.let { n -> Layout.entries.firstOrNull { it.name == n } } ?: d.layout,
+                layout = layoutPart.substringBefore(':').let { n -> Layout.entries.firstOrNull { it.name == n } } ?: d.layout,
+                maxFontSize = layoutPart.substringAfter(':', "").toIntOrNull()?.takeIf { it in MIN_FONT..MAX_FONT } ?: AUTO_FONT,
             )
         }
     }
+}
+
+/**
+ * Named appearance profiles (Nitro's "appearance" list) kept beside the single last-used spec. Pure list
+ * operations + JSON (`[{"name":…,"spec":…}]`, spec in [SigAppearanceSpec.encode] form) so they are unit-tested.
+ */
+object SigAppearanceProfiles {
+    data class Profile(val name: String, val spec: SigAppearanceSpec)
+
+    fun encode(list: List<Profile>): String = org.json.JSONArray().apply {
+        list.forEach { p -> put(org.json.JSONObject().put("name", p.name).put("spec", p.spec.encode())) }
+    }.toString()
+
+    fun decode(s: String?): List<Profile> {
+        if (s.isNullOrBlank()) return emptyList()
+        val arr = runCatching { org.json.JSONArray(s) }.getOrNull() ?: return emptyList()
+        return (0 until arr.length()).mapNotNull { i ->
+            val o = arr.optJSONObject(i) ?: return@mapNotNull null
+            val name = o.optString("name").trim().ifBlank { return@mapNotNull null }
+            Profile(name, SigAppearanceSpec.decode(o.optString("spec")))
+        }.distinctBy { it.name.lowercase() }
+    }
+
+    /** Saves [spec] under [name]; an existing profile with the same name (ignoring case) is replaced in place. */
+    fun save(list: List<Profile>, name: String, spec: SigAppearanceSpec): List<Profile> {
+        val n = name.trim()
+        if (n.isEmpty()) return list
+        val i = list.indexOfFirst { it.name.equals(n, ignoreCase = true) }
+        return if (i >= 0) list.toMutableList().also { it[i] = Profile(n, spec) } else list + Profile(n, spec)
+    }
+
+    /** Renames [from] to [to]; no change when [to] is blank or already used by another profile. */
+    fun rename(list: List<Profile>, from: String, to: String): List<Profile> {
+        val n = to.trim()
+        if (n.isEmpty() || list.any { !it.name.equals(from, true) && it.name.equals(n, true) }) return list
+        return list.map { if (it.name.equals(from, true)) it.copy(name = n) else it }
+    }
+
+    /** Copies [name] as "[name] ([copySuffix])", "[name] ([copySuffix] 2)", … right after the original. */
+    fun duplicate(list: List<Profile>, name: String, copySuffix: String): List<Profile> {
+        val i = list.indexOfFirst { it.name.equals(name, true) }
+        if (i < 0) return list
+        var k = 1
+        var n: String
+        do { n = if (k == 1) "$name ($copySuffix)" else "$name ($copySuffix $k)"; k++ } while (list.any { it.name.equals(n, true) })
+        return list.toMutableList().also { it.add(i + 1, Profile(n, list[i].spec)) }
+    }
+
+    fun delete(list: List<Profile>, name: String): List<Profile> = list.filterNot { it.name.equals(name, true) }
 }

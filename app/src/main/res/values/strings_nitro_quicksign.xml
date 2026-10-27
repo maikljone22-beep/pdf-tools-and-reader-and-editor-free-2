@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- nitro-quicksign: signature appearance font/profiles, time-stamp servers, QuickSign extras (prefix nq_) -->
+<resources>
+    <!-- appearance -->
+    <string name="nq_ap_font_max">أقصى حجم للخط</string>
+    <string name="nq_ap_font_auto">تلقائي</string>
+    <string name="nq_ap_font_value">%1$d</string>
+    <string name="nq_ap_profiles">ملفات المظهر المحفوظة</string>
+    <string name="nq_ap_profile_save">حفظ باسم…</string>
+    <string name="nq_ap_profile_manage">إدارة</string>
+    <string name="nq_ap_profiles_empty">لا توجد ملفات مظهر محفوظة.</string>
+    <string name="nq_copy_suffix">نسخة</string>
+    <string name="nq_rename">إعادة تسمية</string>
+    <string name="nq_duplicate">تكرار</string>
+    <string name="nq_name">الاسم</string>
+</resources>

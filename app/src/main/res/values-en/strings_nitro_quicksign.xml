@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- nitro-quicksign: signature appearance font/profiles, time-stamp servers, QuickSign extras (prefix nq_) -->
+<resources>
+    <!-- appearance -->
+    <string name="nq_ap_font_max">Maximum font size</string>
+    <string name="nq_ap_font_auto">Auto</string>
+    <string name="nq_ap_font_value">%1$d</string>
+    <string name="nq_ap_profiles">Saved appearances</string>
+    <string name="nq_ap_profile_save">Save as…</string>
+    <string name="nq_ap_profile_manage">Manage</string>
+    <string name="nq_ap_profiles_empty">No saved appearances.</string>
+    <string name="nq_copy_suffix">copy</string>
+    <string name="nq_rename">Rename</string>
+    <string name="nq_duplicate">Duplicate</string>
+    <string name="nq_name">Name</string>
+</resources>
