@@ -21,15 +21,18 @@ object OcrLayerCleanup {
 
     private val TEXT_ONLY = setOf("q", "Q", "BT", "ET", "Tr", "Tf", "Tz", "Tm", "Td", "TD", "T*", "Tj", "TJ", "'", "\"", "Tc", "Tw", "TL", "Ts", "BDC", "BMC", "EMC")
 
-    /** Number of content streams of [page] emptied ([dryRun]: only counted). */
-    fun removeOurs(page: PDPage, dryRun: Boolean = false): Int {
+    /**
+     * Number of content streams of [page] emptied ([dryRun]: only counted). [latinOnly] also accepts a layer set only in
+     * Helvetica (a Latin-only OCR page) — for callers that know the page carries our layer (its stored OCR words).
+     */
+    fun removeOurs(page: PDPage, dryRun: Boolean = false, latinOnly: Boolean = false): Int {
         val res = page.resources ?: return 0
         val streams = page.contentStreams.asSequence().toList()
         if (streams.size < 2) return 0                       // our layer is always an appended stream
         var removed = 0
         for (st in streams) {
             val tokens = runCatching { PDFStreamParser(st).also { it.parse() }.tokens }.getOrNull() ?: continue
-            if (!isOurLayer(tokens) { name -> fontKind(runCatching { res.getFont(name) }.getOrNull()) }) continue
+            if (!isOurLayer(tokens, { name -> fontKind(runCatching { res.getFont(name) }.getOrNull()) }, latinOnly)) continue
             if (dryRun) { removed++; continue }
             val keepQ = (tokens.firstOrNull() as? Operator)?.name == "Q"
             runCatching { st.cosObject.createOutputStream().use { if (keepQ) it.write("Q\n".toByteArray(Charsets.US_ASCII)) } }
@@ -49,7 +52,7 @@ object OcrLayerCleanup {
      * True for a token list made only of text operators, with rendering mode 3 set before any text is shown, at least
      * one font of kind 1 and only fonts of kind 0 / 1 ([fontKind]: 1 ours, 0 Helvetica, -1 other). Plain Kotlin (unit-tested).
      */
-    fun isOurLayer(tokens: List<Any?>, fontKind: (COSName) -> Int): Boolean {
+    fun isOurLayer(tokens: List<Any?>, fontKind: (COSName) -> Int, latinOnly: Boolean = false): Boolean {
         var invisible = false; var ours = false; var shown = false
         val operands = ArrayList<Any?>()
         for (t in tokens) {
@@ -66,6 +69,6 @@ object OcrLayerCleanup {
             }
             operands.clear()
         }
-        return shown && ours
+        return shown && (ours || latinOnly)
     }
 }

@@ -79,6 +79,8 @@ val allTools = listOf(
     ToolDef("mail_merge", R.string.t5_mm_title, Icons.Default.MergeType, 0),
     ToolDef("portfolio", R.string.t5_portfolio_title, Icons.Default.FolderZip, 0),
     ToolDef("ocr_plus", R.string.t5_ocr_title, Icons.Default.DynamicFeed, 3),
+    ToolDef("ocr_zone", R.string.nt_ocr_zone, Icons.Default.Crop, 3),
+    ToolDef("ocr_review", R.string.nt_ocr_review, Icons.Default.Spellcheck, 3),
     ToolDef("export_plus", R.string.t5_export_title, Icons.Default.Output, 3),
     ToolDef("optimize", R.string.t5_opt_title, Icons.Default.Compress, 3),
     ToolDef("pdfa", R.string.t5_pdfa_title, Icons.Default.Inventory, 3),

@@ -94,6 +94,31 @@ object Portfolio {
         }
     }
 
+    /** Name-tree keys of the PDF parts. */
+    suspend fun pdfKeys(src: File, password: String? = null): List<String> = withContext(Dispatchers.IO) {
+        PdfOps.load(src, password).use { doc ->
+            Embed.all(doc).filter { (k, s) -> (s.embeddedFile?.subtype ?: Embed.mimeOf(k)) == "application/pdf" || k.endsWith(".pdf", true) }.keys.toList()
+        }
+    }
+
+    /** A copy of [src] in [out] whose parts named in [parts] (name-tree key → new file) carry the new bytes; the rest stays. */
+    suspend fun replaceParts(src: File, password: String?, out: File, parts: Map<String, File>) = withContext(Dispatchers.IO) {
+        PdfOps.load(src, password).use { doc ->
+            val map = LinkedHashMap(Embed.all(doc))
+            parts.forEach { (key, f) ->
+                val s = map[key] ?: return@forEach
+                val ef = f.inputStream().use { PDEmbeddedFile(doc, it) }
+                ef.subtype = "application/pdf"; ef.size = f.length().toInt()
+                ef.creationDate = s.embeddedFile?.creationDate ?: Calendar.getInstance(); ef.modDate = Calendar.getInstance()
+                s.embeddedFile = ef; s.embeddedFileUnicode = ef
+            }
+            val tree = PDEmbeddedFilesNameTreeNode(); tree.names = map
+            (doc.documentCatalog.names ?: PDDocumentNameDictionary(doc.documentCatalog).also { doc.documentCatalog.names = it }).embeddedFiles = tree
+            doc.save(out)
+        }
+        out
+    }
+
     suspend fun extract(src: File, name: String, dir: File, password: String? = null): File? = withContext(Dispatchers.IO) {
         dir.mkdirs()
         PdfOps.load(src, password).use { doc ->

@@ -14,8 +14,9 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import kotlin.coroutines.coroutineContext
 
-/** What the OCR sheet asks for. [pages] null = all pages (zero-based otherwise). */
-data class OcrOptions(val pages: List<Int>?, val langs: List<String>, val editable: Boolean)
+/** What the OCR sheet asks for. [pages] null = all pages (zero-based otherwise). [tuning]: Nitro OCR options. */
+data class OcrOptions(val pages: List<Int>?, val langs: List<String>, val editable: Boolean,
+                      val tuning: com.smartdocs.editor.core.ocr.OcrTuning = com.smartdocs.editor.core.ocr.OcrTuning())
 
 /** Languages offered in the sheet (Tesseract codes) with their label resource. */
 val OCR_LANGUAGES = listOf(
@@ -40,10 +41,14 @@ object OcrPrefs {
  * when no page in the range needs OCR. [onProgress] gets (message, fraction or null).
  */
 suspend fun runOcrToFile(
-    ctx: Context, engine: OcrEngine, src0: File, out: File, password: String?, opt: OcrOptions,
+    ctx: Context, engine0: OcrEngine, src00: File, out: File, password: String?, opt: OcrOptions,
     onRepaired: (com.smartdocs.editor.core.pdf.ToUnicodeRepair.Result) -> Unit = {},
     onProgress: (String, Float?) -> Unit,
 ): Int {
+    val t = opt.tuning
+    val engine = com.smartdocs.editor.core.ocr.OcrPipeline.engineFor(ctx, engine0, t)
+    var fixed: File? = null
+    try {
     val langs = opt.langs.joinToString("+")
     try {
         engine.ensureLanguages(langs) { lang, f ->
@@ -52,6 +57,14 @@ suspend fun runOcrToFile(
     } catch (e: CancellationException) { throw e } catch (e: Exception) { throw QuickInfo(ctx.getString(R.string.qk_ocr_download_failed)) }
     onProgress(ctx.getString(R.string.qk_working), null)
     if (!engine.init(langs)) throw QuickInfo(ctx.getString(R.string.qk_ocr_init_failed))
+    // Nitro pre-processing that changes the pages (de-skew, text orientation): done on a copy before anything else
+    fixed = if (t.changesPages) {
+        val n = com.smartdocs.editor.core.pdf.PdfOps.pageCount(src00, password)
+        com.smartdocs.editor.core.ocr.OcrPipeline.correctedCopy(ctx, src00, password, opt.pages ?: (0 until n).toList(), t, engine, ctx.cacheDir) { a, b ->
+            onProgress(ctx.getString(R.string.nt_ocr_correcting, a + 1, b), a.toFloat() / b.coerceAtLeast(1))
+        }
+    } else null
+    val src0 = fixed ?: src00
 
     // Arabic fonts with a wrong ToUnicode map are repaired first: those pages then have good text and need no OCR layer
     // (which used to duplicate them, reversed, on copy). Everything below works on the repaired copy.
@@ -82,7 +95,8 @@ suspend fun runOcrToFile(
                 if (maxOf(w, h) * scale > 3500f) scale = 3500f / maxOf(w, h)
                 val bmp = session.render(pi, (w * scale).toInt().coerceAtLeast(1), (h * scale).toInt().coerceAtLeast(1), annotations = false)
                 session.invalidateCache()            // the bitmap is ours now (the editable writer paints on it)
-                val page = engine.recognize(bmp, wantWords = true)
+                val ocrBmp = com.smartdocs.editor.core.ocr.OcrPrep.filter(bmp, t)
+                val page = try { engine.recognize(ocrBmp, wantWords = true) } finally { if (ocrBmp !== bmp) ocrBmp.recycle() }
                 coroutineContext.ensureActive()
                 searchable?.addLayer(pi, com.smartdocs.editor.core.ocr.MixedPageOcr.dropExisting(session, pi, page, plan))
                 // only a page with NO text objects (a scan / picture) is rebuilt. A page that has text — even a text layer
@@ -99,7 +113,9 @@ suspend fun runOcrToFile(
             onProgress(ctx.getString(R.string.qk_ocr_saving), 1f)
             searchable?.save(out); editable?.save(out)
         } finally { searchable?.close(); editable?.close() }
+        com.smartdocs.editor.core.ocr.OcrPipeline.shrinkOutput(out, password, t)
         return todo.size
     } finally { session.closeAsync() }
     } finally { input.close() }
+    } finally { fixed?.delete(); if (engine !== engine0) engine.close() }
 }

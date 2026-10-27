@@ -21,6 +21,7 @@ object OptimizePresets {
         put("rmAnnots", o.removeAnnotations); put("rmForms", o.removeForms); put("rmLinks", o.removeLinks); put("rmBookmarks", o.removeBookmarks)
         put("rmDests", o.removeNamedDests); put("keepProt", o.keepProtection); put("version", o.pdfVersion); put("downsample", o.downsample.name)
         put("above", o.aboveDpi); put("subset", o.subsetFonts); put("merge", o.mergeFragments); put("mrc", o.mrc); put("flatT", o.flattenTransparencyDpi)
+        put("scanBg", o.scanBackground); put("descreen", o.scanDescreen); put("sharpen", o.scanSharpen); put("bw", o.bwImages)
         val c = o.cleanup
         put("cleanup", JSONObject().apply {
             put("formActions", c.formActions); put("alternates", c.alternateImages); put("tags", c.tags); put("print", c.printSettings)
@@ -46,6 +47,7 @@ object OptimizePresets {
             removeBookmarks = o.optBoolean("rmBookmarks"), removeNamedDests = o.optBoolean("rmDests"), keepProtection = o.optBoolean("keepProt", true),
             pdfVersion = o.optString("version"), downsample = o.enum("downsample", d.downsample), aboveDpi = o.optInt("above"), subsetFonts = o.optBoolean("subset"),
             mergeFragments = o.optBoolean("merge"), mrc = o.optBoolean("mrc"), flattenTransparencyDpi = o.optInt("flatT"),
+            scanBackground = o.optBoolean("scanBg"), scanDescreen = o.optBoolean("descreen"), scanSharpen = o.optBoolean("sharpen"), bwImages = o.optBoolean("bw"),
             cleanup = CleanupOptions(c.optBoolean("formActions", dc.formActions), c.optBoolean("alternates"), c.optBoolean("tags"), c.optBoolean("print"), c.optBoolean("search"),
                 c.optBoolean("media"), c.optBoolean("external"), c.optBoolean("objData"), c.optBoolean("layers"), c.optBoolean("lzw"), c.optBoolean("invalid"),
                 c.optBoolean("unusedDests"), c.optBoolean("content"), c.optBoolean("curves")),
