@@ -26,17 +26,13 @@ class SmartDocsApp : Application() {
         // share6
         runCatching { com.smartdocs.editor.core.sync.SyncLive.install(this) }                 // near-real-time sync, 15-min jobs, review notifications
         runCatching { com.smartdocs.editor.core.billing.LicenseCheckWorker.schedule(this) }   // licence re-check (no-op without LICENSE_URL)
-<<<<<<< HEAD
         runCatching { com.smartdocs.editor.core.webdav.DavLinks.install(this) }                // nav-attach: WebDAV working copies are uploaded back on save
-        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch { runCatching { com.smartdocs.editor.core.share5.AppDataSync.autoSyncQuietly(this@SmartDocsApp) } }
-=======
         runCatching { com.smartdocs.editor.core.sign.TrustLists.schedule(this) }              // nitro-protect2: monthly EU trusted-list update (when on)
         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
             // nitro-fillsign2: temporary signatures of the previous session go first (they are never synced anyway)
             runCatching { com.smartdocs.editor.core.data.TemporarySignatures.cleanUp(this@SmartDocsApp) }
             runCatching { com.smartdocs.editor.core.share5.AppDataSync.autoSyncQuietly(this@SmartDocsApp) }
         }
->>>>>>> origin/main
         // nitro-protect: the script entry points read "Run JavaScript in PDF documents" through JsPolicy
         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Default).launch {
             // nitro-protect2: only a change of the switch resets it (a document's own decision is made when its forms load)

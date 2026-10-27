@@ -333,12 +333,8 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                 onOpenPdf = { f -> panel = null; nav.navigate(Routes.reader(android.net.Uri.fromFile(f).toString())) })
         } }
         com.smartdocs.editor.ui.forms5.InPageFormBar(state, Modifier.align(Alignment.BottomCenter))   // MODULE_forms5
-<<<<<<< HEAD
-        com.smartdocs.editor.ui.signature.SigFieldSheet(state, nav)   // Nitro signature-field actions
-        com.smartdocs.editor.ui.attachments.PortfolioPrompt(state) { nav.navigate(Routes.tool("portfolio", state.fileUri)) }   // nav-attach: portfolio detection
-=======
         SigFieldSheet(state, nav)   // Nitro signature-field actions + signed/certified bar
->>>>>>> origin/main
+        com.smartdocs.editor.ui.attachments.PortfolioPrompt(state) { nav.navigate(Routes.tool("portfolio", state.fileUri)) }   // nav-attach: portfolio detection
     }
 
     // ---- dialogs & sheets ----
