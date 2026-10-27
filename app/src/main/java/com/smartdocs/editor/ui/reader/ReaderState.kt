@@ -105,6 +105,14 @@ class ReaderState(
     var viewMode by mutableStateOf(NpfReader.initialMode(initial.continuousScroll))
     var fitPage by mutableStateOf(NpfReader.initialFitPage())
     var zoom by mutableFloatStateOf(NpfReader.initialZoom())
+
+    /**
+     * Old plan A6 / FILE-2 / FILE-3: the document's own reading direction (/ViewerPreferences /Direction): true = right
+     * to left, false = left to right, null = follow the app language.
+     */
+    var docRtl by mutableStateOf<Boolean?>(null)
+    /** Panel or full screen the document asks for on its first open (/PageMode); consumed by the screen. */
+    var initialPageMode by mutableStateOf<String?>(null)
     var nightMode by mutableStateOf(initial.nightMode)
     var pageColor by mutableLongStateOf(initial.pageColor)
     var rotation by mutableIntStateOf(0)
@@ -240,6 +248,11 @@ class ReaderState(
                     connected = st
                     if (mark.protected && st?.locked == true) { runCatching { session?.closeAsync() }; session = null; connectedLocked = true }
                 }
+                val firstOpen = recent == null && startPage < 0
+                scope.launch {
+                    val v = withContext(Dispatchers.IO) { runCatching { com.smartdocs.editor.core.edit5.DocPropsOps.read(f, openPw).view }.getOrNull() } ?: return@launch
+                    applyInitialView(v, firstOpen)
+                }
                 app.documents.touchRecent(f, s.pageCount, initialPage)
                 app.settings.update { it.copy(lastOpenedUri = Uri.fromFile(f).toString()) }
                 loadExisting()
@@ -280,6 +293,21 @@ class ReaderState(
     }
 
     fun jumpTo(page: Int) { pendingJump = page.coerceIn(0, (pageCount - 1).coerceAtLeast(0)) }
+
+    /**
+     * The document's initial view (written by Document properties or other producers): direction always; on the first
+     * open also the open page and zoom (OpenAction), the page layout and the page mode, over the default layout / zoom /
+     * panel of Settings → more preferences unless "use the document's initial view" is off. Later opens resume where
+     * the reader left off.
+     */
+    fun applyInitialView(v: com.smartdocs.editor.core.edit5.InitialView, firstOpen: Boolean) {
+        docRtl = InitialViewMap.rtl(v.direction)
+        if (!firstOpen || !com.smartdocs.editor.core.data.NpfPrefs.docViewFirstOpen) return
+        InitialViewMap.viewMode(v.pageLayout)?.let { viewMode = it }
+        if (v.openPage in 1 until pageCount) jumpTo(v.openPage)
+        if (v.openFit == com.smartdocs.editor.core.edit5.DestFit.XYZ && v.openZoom in 0.25f..8f) zoom = v.openZoom
+        initialPageMode = v.pageMode.takeIf { it.isNotBlank() && it != "UseNone" }
+    }
 
     /** Independent of the composable scope so closing still happens after the screen is disposed. */
     private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -844,5 +872,23 @@ class ReaderHolder : androidx.lifecycle.ViewModel() {
     override fun onCleared() {
         state?.close(); state = null
         scope.cancel()
+    }
+}
+
+/** PDF initial-view names → reader settings (pure, unit-tested). */
+object InitialViewMap {
+    fun rtl(direction: String): Boolean? = when (direction) { "R2L" -> true; "L2R" -> false; else -> null }
+
+    fun viewMode(pageLayout: String): ViewMode? = when (pageLayout) {
+        "SinglePage" -> ViewMode.SINGLE
+        "OneColumn" -> ViewMode.CONTINUOUS
+        "TwoColumnLeft", "TwoPageLeft" -> ViewMode.FACING
+        "TwoColumnRight", "TwoPageRight" -> ViewMode.COVER
+        else -> null
+    }
+
+    /** /PageMode → the reader panel to open, "full" for FullScreen, null for none. */
+    fun panelOf(pageMode: String?): String? = when (pageMode) {
+        "UseOutlines" -> "OUTLINE"; "UseThumbs" -> "THUMBNAILS"; "UseAttachments" -> "INFO"; "FullScreen" -> "full"; else -> null
     }
 }

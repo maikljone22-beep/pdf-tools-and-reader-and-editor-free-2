@@ -34,13 +34,13 @@ class NpfOutlineTest {
             o.addLast(item("three", d.getPage(1)))
             o.addLast(item("four", d.getPage(2)))
             val n = NpfOutline.removeFor(d, setOf(d.getPage(1).cosObject))
-            assertEquals(1, n)                                 // "three"; "two" keeps its child as a folder
-            assertEquals(listOf("one", "two", "two.child", "four"), titles(d))
-            assertFalse(two.cosObject.containsKey(COSName.DEST))
-            // unlink at both ends keeps First / Last right
-            NpfOutline.removeFor(d, setOf(d.getPage(0).cosObject, d.getPage(2).cosObject))
-            assertEquals(listOf("two"), titles(d).filter { it == "two" })
-            assertEquals("two", o.firstChild.title); assertEquals("two", o.lastChild.title)
+            assertEquals(2, n)                                 // "two" and "three"; "two.child" moves up to the top level
+            assertEquals(listOf("one", "two.child", "four"), titles(d))
+            // removing at both ends keeps First / Last right
+            NpfOutline.removeFor(d, setOf(d.getPage(0).cosObject))
+            assertEquals("two.child", o.firstChild.title); assertEquals("four", o.lastChild.title)
+            NpfOutline.removeFor(d, setOf(d.getPage(2).cosObject))
+            assertTrue(titles(d).isEmpty())
         }
     }
 

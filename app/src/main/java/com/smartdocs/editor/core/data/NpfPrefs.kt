@@ -47,6 +47,7 @@ object NpfPrefs {
         const val RETAIN_TOOLS = "retain_tools"; const val COPY_SEL = "copy_sel_to_markup"
         const val XFA_AUTO = "xfa_auto_open"; const val XFA_BANNER = "xfa_banner"
         const val DIGITS = "digits"
+        const val DOC_VIEW = "doc_view_first_open"
         const val BM_DELETE = "bm_remove_on_delete"; const val BM_IMPORT = "bm_import_on_replace"
         const val OCR_OUTPUT = "ocr_output"
         const val N_SYNC = "n_sync"; const val N_REVIEW = "n_review"; const val N_TASKS = "n_tasks"
@@ -76,6 +77,8 @@ object NpfPrefs {
     val defaultLayout: String get() = s(K.LAYOUT, "auto")
     /** "width", "page", "z150", "z200" (zoom relative to fit width). */
     val defaultZoom: String get() = s(K.ZOOM, "width")
+    /** First open of a document: its own layout / open page / zoom / panel win over the defaults above. */
+    val docViewFirstOpen: Boolean get() = b(K.DOC_VIEW, true)
     /** Panel shown when a document opens: "none", "outline", "thumbnails", "bookmarks". */
     val panelOnOpen: String get() = s(K.PANEL, "none")
     /** Open documents kept as reader tabs. */

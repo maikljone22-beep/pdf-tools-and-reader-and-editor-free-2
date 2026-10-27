@@ -64,6 +64,16 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
     // ---- ui state ----
     var chrome by remember { mutableStateOf(true) }
     var panel by remember { mutableStateOf<ReaderPanel?>(null) }
+    val pageLabels = com.smartdocs.editor.ui.edit5.rememberPageLabels(state)
+    // old plan A6: the panel / full screen the document asks for on its first open
+    LaunchedEffect(state.initialPageMode) {
+        when (val m = InitialViewMap.panelOf(state.initialPageMode)) {
+            null -> {}
+            "full" -> chrome = false
+            else -> panel = runCatching { ReaderPanel.valueOf(m) }.getOrNull()
+        }
+        state.initialPageMode = null
+    }
     var showViewMode by remember { mutableStateOf(false) }
     var showPageColor by remember { mutableStateOf(false) }
     var showAutoFlip by remember { mutableStateOf(false) }
@@ -246,6 +256,8 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                                     DropdownMenuItem(text = { Text(stringResource(R.string.tool_flatten)) }, leadingIcon = { Icon(Icons.Default.Layers, null) }, onClick = { menu = false; actions.quick(QuickAction.FLATTEN) })
                                     // MODULE_search5b: redaction marks from the reader
                                     DropdownMenuItem(text = { Text(stringResource(R.string.s5_rd_page)) }, leadingIcon = { Icon(Icons.Default.Block, null) }, onClick = { menu = false; com.smartdocs.editor.ui.search.ReaderRedact.markPage(ctx, state, quick) })
+                                    // old plan K13: OCR of the page on screen (the sheet opens locked to it)
+                                    DropdownMenuItem(text = { Text(stringResource(R.string.pc_ocr_this_page)) }, leadingIcon = { Icon(Icons.Default.TextFields, null) }, onClick = { menu = false; quick.openOcrForPage(state.currentPage) })
                                     DropdownMenuItem(text = { Text(stringResource(R.string.s5_rd_apply)) }, leadingIcon = { Icon(Icons.Default.Gavel, null) }, onClick = { menu = false; actions.navigateTool("redact") })
                                     DropdownMenuItem(text = { Text(stringResource(R.string.go_to_page)) }, leadingIcon = { Icon(Icons.Default.Numbers, null) }, onClick = { menu = false; showGoTo = true })
                                     DropdownMenuItem(text = { Text(stringResource(R.string.tool_doc_info)) }, leadingIcon = { Icon(Icons.Default.Info, null) }, onClick = { menu = false; actions.quick(QuickAction.PROPERTIES) })
@@ -309,7 +321,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                             else PageView(state, onTapCenter = { if (state.tool == null) chrome = !chrome }, onOpenLink = openLink, onPrompt = { prompt = it })
                             com.smartdocs.editor.ui.view5.View5PageOverlays(state)
                             if (state.reflow) com.smartdocs.editor.ui.view5.ReflowReader(state)
-                            PageIndicator(state.currentPage, state.pageCount, { showGoTo = true }, Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp))
+                            PageIndicator(state.currentPage, state.pageCount, { showGoTo = true }, Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp), labels = pageLabels)
                             if (state.tool != null && state.placement == null) ToolHint(state.tool!!, Modifier.align(Alignment.TopCenter).padding(top = 8.dp))
                             else if (state.placement != null) com.smartdocs.editor.ui.reader.annot.PlacementBar(state, Modifier.align(Alignment.TopCenter).padding(top = 8.dp))   // section 7.40 / 24.54
                             else OcrSuggestionBanner(state, onOcr = { actions.quick(QuickAction.OCR) }, modifier = Modifier.align(Alignment.TopCenter))
@@ -351,7 +363,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
             confirmButton = { TextButton(onClick = { state.signedBlock = null; saveAs.launch((state.file?.nameWithoutExtension ?: "document") + "_copy.pdf") }) { Text(stringResource(R.string.signed_doc_save_copy_action)) } },
             dismissButton = { TextButton(onClick = { state.signedBlock = null }) { Text(stringResource(R.string.cancel)) } })
     }
-    if (showGoTo) GoToPageDialog(state.currentPage, state.pageCount, onGo = { state.jumpTo(it); showGoTo = false }, onDismiss = { showGoTo = false })
+    if (showGoTo) GoToPageDialog(state.currentPage, state.pageCount, onGo = { state.jumpTo(it); showGoTo = false }, onDismiss = { showGoTo = false }, labels = pageLabels)
     if (showViewMode) ViewModeSheet(state, tablet = tablet) { showViewMode = false; scope.launch { app.settings.update { it.copy(continuousScroll = state.viewMode == ViewMode.CONTINUOUS, nightMode = state.nightMode) } } }
     com.smartdocs.editor.ui.pageflip.PageFlipSheetHost(state)   // MODULE_pageflip6: page turning settings + remembered reading mode
     if (showPageColor) PageColorSheet(state, onPersist = { c -> scope.launch { app.settings.update { it.copy(pageColor = c) } } }) { showPageColor = false }

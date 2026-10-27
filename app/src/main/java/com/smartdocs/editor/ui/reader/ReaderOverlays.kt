@@ -147,8 +147,11 @@ fun TtsBar(status: ReadAloudController.Status, onRateChange: (Float) -> Unit) {
 
 /** "Page X of Y" pill with a tap to open the go-to dialog. */
 @Composable
-fun PageIndicator(current: Int, count: Int, onClick: () -> Unit, modifier: Modifier = Modifier) {
+fun PageIndicator(current: Int, count: Int, onClick: () -> Unit, modifier: Modifier = Modifier, labels: List<String>? = null) {
     Surface(modifier.clickable(onClick = onClick), shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.85f), contentColor = MaterialTheme.colorScheme.inverseOnSurface) {
-        Text(stringResource(R.string.page_of, current + 1, count), Modifier.padding(horizontal = 14.dp, vertical = 6.dp), style = MaterialTheme.typography.labelMedium)
+        // old plan A5: page labels ("iv", "A-3") next to the number
+        val l = labels?.getOrNull(current)
+        val text = if (l != null && l != (current + 1).toString()) com.smartdocs.editor.ui.edit5.pageIndicator(labels, current, count) else stringResource(R.string.page_of, current + 1, count)
+        Text(text, Modifier.padding(horizontal = 14.dp, vertical = 6.dp), style = MaterialTheme.typography.labelMedium)
     }
 }
