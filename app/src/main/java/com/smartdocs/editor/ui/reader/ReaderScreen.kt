@@ -117,6 +117,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
     BackHandler {
         when {
             com.smartdocs.editor.ui.view5.V5State.of(state).onBack() -> {}
+            com.smartdocs.editor.ui.nve.NveState.of(state).onBack() -> {}      // NVE
             state.searchOpen -> state.closeSearch()
             state.selection != null -> state.selection = null
             state.edit.target != null -> state.edit.clear()
@@ -142,7 +143,8 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
     }
     fun doStartReadAloud(fromChar: Int, page: Int) {
         if (state.pageCount == 0 || state.session == null) return
-        ReadAloudController.start(ctx, state.file?.name ?: "", page.coerceIn(0, state.pageCount - 1), state.pageCount, settings.ttsRate, settings.ttsPitch, { state.pageText(it) }, fromChar)
+        ReadAloudController.start(ctx, state.file?.name ?: "", page.coerceIn(0, state.pageCount - 1), state.pageCount, settings.ttsRate, settings.ttsPitch,
+            { p -> state.file?.let { f -> com.smartdocs.editor.ui.nve.tts.NveReadText.pageText(ctx, f, state.password, p, base = state.pageText(p)) } ?: state.pageText(p) }, fromChar)   // NVE: comments / fields / alt text in reading order
     }
     // API 33+: ask for POST_NOTIFICATIONS first, start reading once the user answered (granted or not —
     // the foreground service is allowed either way, only the notification would be hidden).
@@ -242,6 +244,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                                     DropdownMenuItem(text = { Text(stringResource(R.string.cn_tool_esign)) }, leadingIcon = { Icon(Icons.Default.HistoryEdu, null) }, onClick = { menu = false; nav.navigate(com.smartdocs.editor.ui.connected.ConnRoutes.esignCreate(state.fileUri)) })
                                     DropdownMenuItem(text = { Text(stringResource(R.string.cn_register)) }, leadingIcon = { Icon(Icons.Default.Link, null) }, onClick = { menu = false; nav.navigate(com.smartdocs.editor.ui.connected.ConnRoutes.connected(state.fileUri)) })
                                     com.smartdocs.editor.ui.view5.V5MoreMenuItems(state, nav) { menu = false }
+                                    com.smartdocs.editor.ui.nve.NveMoreMenuItems(state) { menu = false }     // NVE
                                 }
                             }
                         },
@@ -272,10 +275,11 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
         ) { pad ->
             Row(Modifier.fillMaxSize().padding(pad)) {
                 Box(
-                    Modifier.weight(1f).fillMaxHeight().focusRequester(focus).focusable().onPreviewKeyEvent { e ->
+                    Modifier.weight(1f).fillMaxHeight().focusRequester(focus).focusable().then(com.smartdocs.editor.ui.nve.nveMouseModifier(state)).onPreviewKeyEvent { e ->
                         if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                         // volume (if enabled) / arrows / page keys: spread-aware screen flips (view module)
                         // MODULE_pageflip6: Space / arrows in the document's direction while the page-turn view is shown
+                        com.smartdocs.editor.ui.nve.NveKeys.onKey(state, e.nativeKeyEvent, switchTab) ||     // NVE: tabs / Ctrl+Home… / customised keys
                         com.smartdocs.editor.ui.pageflip.PageFlipKeys.onKey(state, e.nativeKeyEvent, rtl) ||
                         com.smartdocs.editor.ui.view5.V5Keys.onKey(state, e.nativeKeyEvent) || com.smartdocs.editor.ui.gaps6.G6Keys.handle(state, e.nativeKeyEvent.keyCode, settings, rtl)
                     },
@@ -285,12 +289,16 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                             onOpenWith = state.file?.takeIf { it.exists() }?.let { f -> { openWithOtherApp(ctx, app.documents.shareUri(f)) } })
                         state.session == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { if (!state.needPassword) CircularProgressIndicator() }
                         else -> {
-                            val openLink: (com.smartdocs.editor.core.pdf.PageLink) -> Unit = { l -> if (l.destPage == null && l.uri.isNullOrBlank()) scope.launch { runCatching { com.smartdocs.editor.ui.edit5.followFileLinkAt(state, state.currentPage, l.bounds.centerX(), l.bounds.centerY()) { f, p -> nav.navigate(Routes.reader(android.net.Uri.fromFile(f).toString(), p)) } } } else ReaderIntents.openLink(ctx, l) { p -> state.jumpTo(p) } }
+                            val openLink: (com.smartdocs.editor.core.pdf.PageLink) -> Unit = { l -> if (l.destPage == null && l.uri.isNullOrBlank()) scope.launch { runCatching { com.smartdocs.editor.ui.edit5.followFileLinkAt(state, state.currentPage, l.bounds.centerX(), l.bounds.centerY()) { f, p -> nav.navigate(Routes.reader(android.net.Uri.fromFile(f).toString(), p)) } } } else if (l.destPage == null && com.smartdocs.editor.ui.nve.NveLinks.openWeb(state, l.uri)) Unit /* NVE: show the URL first */ else ReaderIntents.openLink(ctx, l) { p -> state.jumpTo(p) } }
                             // MODULE_pageflip6: page-turn / horizontal-scroll view modes replace the page list when chosen
                             if (com.smartdocs.editor.ui.pageflip.PageFlipController.of(state).hosts())
                                 com.smartdocs.editor.ui.pageflip.PageFlipHost(state, chrome, onTapCenter = { if (state.tool == null) chrome = !chrome }, onOpenLink = openLink, onPrompt = { prompt = it })
                             else PageView(state, onTapCenter = { if (state.tool == null) chrome = !chrome }, onOpenLink = openLink, onPrompt = { prompt = it })
                             com.smartdocs.editor.ui.view5.View5PageOverlays(state)
+                            com.smartdocs.editor.ui.nve.NvePageOverlays(state)      // NVE: marquee zoom, column select, snapshot, paste, guides
+                            com.smartdocs.editor.ui.nve.articles.NveArticleDrawOverlay(state,      // NVE: article boxes (draw / read)
+                                pageRectsPx = { com.smartdocs.editor.ui.nve.NveState.of(state).visiblePages().map { it.page to it.rect } },
+                                onShowRect = { p, r -> com.smartdocs.editor.ui.nve.NveZoom.zoomToPageRect(state, p, r[0], r[1], r[2], r[3]) })
                             if (state.reflow) com.smartdocs.editor.ui.view5.ReflowReader(state)
                             PageIndicator(state.currentPage, state.pageCount, { showGoTo = true }, Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp))
                             if (state.tool != null && state.placement == null) ToolHint(state.tool!!, Modifier.align(Alignment.TopCenter).padding(top = 8.dp))
@@ -299,6 +307,9 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                                 modifier = Modifier.align(Alignment.TopCenter).padding(top = 48.dp))   // MODULE_forms5
                             com.smartdocs.editor.ui.search.RedactMarksBanner(state, onApply = { actions.navigateTool("redact") },
                                 modifier = Modifier.align(Alignment.BottomEnd).padding(bottom = 44.dp))   // MODULE_search5b
+                            // NVE: document notifications (forms, JavaScript, PDF/A, redactions, 3D, portfolio) + crash-recovery copy
+                            com.smartdocs.editor.ui.nve.panes.NveDocBanners(state, onOpenTool = { actions.navigateTool(it) }, modifier = Modifier.align(Alignment.TopCenter).padding(top = 96.dp))
+                            com.smartdocs.editor.ui.nve.shell.NveRecoveryBanner(state, onOpen = { f -> nav.navigate(Routes.reader(android.net.Uri.fromFile(f).toString())) }, modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 48.dp))
                         }
                     }
                 }
@@ -308,6 +319,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                         PanelsContent(state, panel!!, onPanel = { panel = it }, onJump = { state.jumpTo(it) }, onAiOutline = { nav.navigate(Routes.tool("ai", state.fileUri)) }, onClose = { panel = null })
                     }
                 }
+                com.smartdocs.editor.ui.nve.NveSidePane(state, nav)      // NVE: attachments / signatures / tags / fields / destinations / articles
             }
         }
         // captured value: the sheet's own composition can recompose after panel became null (NPE with panel!!)
@@ -361,7 +373,9 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
         onDismiss = { showAi = false },
         initialQuestion = aiText?.let { "اشرح هذا النص:\n$it" },
         onPodcast = { showAi = false; nav.navigate(Routes.tool("podcast", state.fileUri)) }) }
-    textTools?.let { (sel, act) -> com.smartdocs.editor.ui.ai5.TextToolsSheet(sel.text, act, docContext = null, onReplace = null,
+    textTools?.let { (sel, act) -> com.smartdocs.editor.ui.ai5.TextToolsSheet(sel.text, act, docContext = null,
+        // NVE: AI rewrite / translate results replace the selected text in the page content (one undo step)
+        onReplace = { t -> scope.launch { if (!com.smartdocs.editor.ui.nve.NveSelectionOps.replaceInContent(ctx, state, sel, t)) snack.showSnackbar(ctx.getString(R.string.nv_replace_failed)) } },
         onAddNote = { t -> sel.rects.firstOrNull()?.let { r -> val top = maxOf(r.top, r.bottom)
             state.addAnnot(com.smartdocs.editor.core.pdf.Annot(kind = com.smartdocs.editor.core.pdf.AnnotKind.NOTE, page = sel.page,
                 rects = listOf(android.graphics.RectF(r.left, top, r.left + 20f, top - 20f)), text = t, author = state.authorName)) } },
@@ -376,6 +390,10 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
     if (showShare5) { var f by remember { mutableStateOf<java.io.File?>(null) }; LaunchedEffect(Unit) { f = outputFile() }
         f?.let { com.smartdocs.editor.ui.share5.Share5Sheet(it, if (it == state.file) state.password else null, state.currentPage, nav) { showShare5 = false } } }
     com.smartdocs.editor.ui.view5.View5ReaderHost(state, nav, snack, actions) { outputFile() }
+    com.smartdocs.editor.ui.nve.NveReaderHost(state, nav, snack, actions)     // NVE (feature/nitro-view-edit)
+    com.smartdocs.editor.ui.nve.shell.NveRecoveryEffect(state)
+    val nveEdit = com.smartdocs.editor.ui.nve.NveState.of(state).requestEdit
+    LaunchedEffect(nveEdit) { if (nveEdit != null) { com.smartdocs.editor.ui.nve.NveEditRequest.forward(state, nveEdit); com.smartdocs.editor.ui.nve.NveState.of(state).requestEdit = null; state.selection = null; state.selectTool(null); contentEdit = true } }
 }
 
 /** Suffix of the token path handed to the AI chat for its undo (see agentHost). */

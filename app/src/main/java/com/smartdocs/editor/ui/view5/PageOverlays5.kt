@@ -49,7 +49,8 @@ fun View5PageOverlays(s: ReaderState) {
         val pageW = s.pageSizes[s.currentPage]?.first ?: 595f
         val pxPerPt = ((wPx - gap * 2) / pageW * s.zoom).coerceAtLeast(0.01f)
 
-        if (v.grid || v.rulers) GridAndRulers(v, pxPerPt, wPx, hPx)
+        // NVE: page-anchored grid / rulers with units, colour, subdivisions, offsets, guides (replaces GridAndRulers)
+        if (v.grid || v.rulers) com.smartdocs.editor.ui.nve.NveGridRulers(s, v.grid, v.rulers)
         if (v.readingRuler) ReadingRuler(v, hPx)
         if (v.lens) LensOverlay(v)
         if (v.autoScroll) AutoScrollBar(v, Modifier.align(Alignment.BottomCenter).padding(bottom = 56.dp))
@@ -57,6 +58,7 @@ fun View5PageOverlays(s: ReaderState) {
     }
 }
 
+@Suppress("unused")
 @Composable
 private fun GridAndRulers(v: V5State, pxPerPt: Float, w: Float, h: Float) {
     val mmPx = pxPerPt * 72f / 25.4f
@@ -122,8 +124,8 @@ private fun ReadingRuler(v: V5State, hPx: Float) {
 private fun LensOverlay(v: V5State) {
     val view = LocalView.current
     var origin by remember { mutableStateOf(Offset.Zero) }
-    val magnifier = remember(view, v.lensZoom) {
-        if (Build.VERSION.SDK_INT >= 29) Magnifier.Builder(view).setInitialZoom(v.lensZoom).setSize(420, 260).setCornerRadius(40f).build()
+    val magnifier = remember(view, v.lensZoom, com.smartdocs.editor.ui.nve.NveState.of(v.s).lensW, com.smartdocs.editor.ui.nve.NveState.of(v.s).lensH) {
+        if (Build.VERSION.SDK_INT >= 29) Magnifier.Builder(view).setInitialZoom(v.lensZoom).setSize(com.smartdocs.editor.ui.nve.NveState.of(v.s).lensW, com.smartdocs.editor.ui.nve.NveState.of(v.s).lensH)   /* NVE: window size */.setCornerRadius(40f).build()
         else if (Build.VERSION.SDK_INT >= 28) @Suppress("DEPRECATION") Magnifier(view) else null
     }
     DisposableEffect(magnifier) { onDispose { if (Build.VERSION.SDK_INT >= 28) magnifier?.dismiss() } }

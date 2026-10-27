@@ -117,6 +117,10 @@ fun PageCanvas(
     val placement = state.placement?.takeIf { it.page == page }
     val measure = state.measure?.takeIf { it.page == page }
     val hits = state.searchHits
+    // NVE: search hit colour / opacity (find bar settings)
+    val nveHitAlpha = remember(hits) { com.smartdocs.editor.ui.nve.search.NveHitStyle.alpha(state.context) }
+    val nveHit = remember(hits) { Color(0xFF000000 or com.smartdocs.editor.ui.nve.search.NveHitStyle.color(state.context).toLong()).copy(alpha = nveHitAlpha) }
+    val nveHitCur = remember(hits) { Color(0xFF000000 or com.smartdocs.editor.ui.nve.search.NveHitStyle.currentColor(state.context).toLong()).copy(alpha = (nveHitAlpha + 0.2f).coerceAtMost(1f)) }
     val hitIndex = state.searchIndex
     val pageColor = state.pageColor
     val pressure = settings.pressureSensitivity
@@ -261,7 +265,7 @@ fun PageCanvas(
             // page colour preset: white -> background, black -> matching text colour (view module)
             if (!night) with(com.smartdocs.editor.ui.reader.view.PageTintDraw) { drawPageTint(pageColor, bw, bh) }
             if (highlightLinks) links.forEach { l -> val r = g.pdfRectToScreen(l.bounds); drawRect(Color(0x332196F3), r.topLeft, r.size) }
-            hits.forEachIndexed { i, h -> if (h.page == page) drawPdfRects(h.rects, g, if (i == hitIndex) Color(0x99FF9800) else Color(0x66FFEB3B), multiply = true) }
+            hits.forEachIndexed { i, h -> if (h.page == page) drawPdfRects(h.rects, g, if (i == hitIndex) nveHitCur else nveHit, multiply = true) }   // NVE: hit colours from settings
             val frameDrag = draft.active && draft.annotFrame != null
             annots.forEach { a -> if (a.page == page && !(frameDrag && a.id == pendingEditId)) drawAnnot(a, g) }
             if (editBounds != null) {
@@ -391,6 +395,7 @@ private fun handleTap(
     when (val t = state.tool) {
         null -> {
             links.firstOrNull { l -> val r = PageGeometry.normPdf(l.bounds); x >= r.left && x <= r.right && y <= r.top && y >= r.bottom }?.let { onOpenLink(it); return }
+            if (com.smartdocs.editor.ui.nve.NveLinks.tapUrl(state, page, x, y)) return     // NVE: plain-text URLs are tappable
             onTap(p, layout)
         }
         ReaderTool.NOTE, ReaderTool.FREETEXT, ReaderTool.TEXTBOX, ReaderTool.FS_TEXT -> onPrompt(TextPrompt(t, page, x, y))

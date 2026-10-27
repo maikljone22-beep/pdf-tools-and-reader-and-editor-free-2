@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Build
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -56,7 +57,7 @@ val helpArticles = listOf(
 @Composable
 fun HelpCenterScreen(nav: NavHostController) {
     val ctx = LocalContext.current
-    var q by remember { mutableStateOf("") }
+    var q by remember { mutableStateOf(com.smartdocs.editor.ui.nve.shell.NveHelp.takeQuery() ?: "") }   // NVE-shell: "Get help on <keywords>"
     val shown = remember(q) {
         val f = CommentFilter.fold(q.trim())
         helpArticles.filter { (t, b) -> f.isEmpty() || f.split(' ').all { w -> CommentFilter.fold(ctx.getString(t) + " " + ctx.getString(b)).contains(w) } }
@@ -69,6 +70,10 @@ fun HelpCenterScreen(nav: NavHostController) {
             Row(Modifier.padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 AssistChip(onClick = { nav.navigate(V5Routes.WHATS_NEW) }, label = { Text(stringResource(R.string.v5_whats_new)) }, leadingIcon = { Icon(Icons.Default.NewReleases, null) })
                 AssistChip(onClick = { runCatching { nav.navigate("help") } }, label = { Text(stringResource(R.string.v5_faq_contact)) }, leadingIcon = { Icon(Icons.Default.SupportAgent, null) })
+            }
+            // NVE-shell: feature guides, help assistant (chatbot), feedback survey
+            Row(Modifier.horizontalScroll(androidx.compose.foundation.rememberScrollState()).padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                com.smartdocs.editor.ui.nve.shell.NveHelpChips(nav, q)
             }
             if (shown.isEmpty()) Text(stringResource(R.string.v5_help_none), Modifier.padding(16.dp))
             LazyColumn(Modifier.fillMaxSize()) {

@@ -90,6 +90,7 @@ val allTools = listOf(
     ToolDef("podcast", R.string.ai2_podcast_title, Icons.Default.Podcasts, 3),
     ToolDef("ai_spaces", R.string.a5_spaces, Icons.Default.Workspaces, 3),
     ToolDef("print", R.string.tool_print, Icons.Default.Print, 3),
+    ToolDef("print_batch", R.string.nf_batch_print, Icons.Default.Print, 3),       // NVE: batch print
     ToolDef("e5_hub", R.string.e5_hub_title, Icons.Default.EditNote, 1),
     ToolDef("esign", R.string.cn_tool_esign, Icons.Default.HistoryEdu, 2),           // share6
     ToolDef("connected", R.string.cn_tool_connected, Icons.Default.Link, 2),         // share6

@@ -16,6 +16,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FileOpen
 import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Tab
+import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -98,7 +99,7 @@ object ReaderTabs {
         val before = tabs.getOrNull(i)
         if (i < 0) {
             tabs += DocTab(uri, name)
-            while (tabs.size > MAX) { val drop = tabs.indexOfFirst { it.uri != uri }; if (drop < 0) break; tabs.removeAt(drop) }
+            while (tabs.size > MAX) { val drop = tabs.indexOfFirst { it.uri != uri && !com.smartdocs.editor.ui.nve.NveTabs.isPinned(ctx, it.uri) }.let { d -> if (d < 0) tabs.indexOfFirst { it.uri != uri } else d }; if (drop < 0) break; tabs.removeAt(drop) }   // NVE: pinned tabs stay
         } else if (tabs[i].name != name) tabs[i] = tabs[i].copy(name = name)
         active = uri
         save(ctx)
@@ -126,6 +127,11 @@ object ReaderTabs {
     }
 
     fun clear(ctx: Context) { load(ctx); tabs.clear(); active = null; save(ctx) }
+
+    /** NVE: keep only the tabs matching [keep] (close others / left / right / all); the active one moves to [newActive]. */
+    fun retain(ctx: Context, newActive: String?, keep: (DocTab) -> Boolean) {
+        load(ctx); tabs.retainAll(keep); active = newActive?.takeIf { a -> tabs.any { it.uri == a } } ?: tabs.firstOrNull()?.uri; save(ctx)
+    }
 
     fun setInteract(ctx: Context, open: Boolean) { prefs(ctx).edit().putBoolean("interact", open).apply() }
 
@@ -186,12 +192,13 @@ fun ReaderTabStrip(state: ReaderState, switchTo: (DocTab?) -> Unit, alwaysShow: 
                     Modifier.widthIn(max = 200.dp).height(32.dp).clip(RoundedCornerShape(10.dp))
                         .background(if (sel) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface)
                         .border(1.dp, if (sel) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(10.dp))
-                        .clickable(enabled = !sel) { switchTo(t) }
+                        .then(com.smartdocs.editor.ui.nve.NveTabs.menuModifier(t) { switchTo(t) })   // NVE: tap switches, long press / right click opens the tab menu
                         .padding(start = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(Icons.Default.PictureAsPdf, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
+                    Icon(if (com.smartdocs.editor.ui.nve.NveTabs.isPinned(ctx, t.uri)) Icons.Default.PushPin else Icons.Default.PictureAsPdf, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.width(6.dp))
+                    com.smartdocs.editor.ui.nve.NveTabMenu(t, state, switchTo)
                     Text(t.name, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
                     IconButton(onClick = { closeTab(ctx, t, current, switchTo) }, modifier = Modifier.size(30.dp)) {
                         Icon(Icons.Default.Close, stringResource(R.string.vw_close_tab), Modifier.size(16.dp))
@@ -239,6 +246,7 @@ fun ReaderTabsAction(state: ReaderState, switchTo: (DocTab?) -> Unit) {
             }
             HorizontalDivider()
             DropdownMenuItem(text = { Text(stringResource(R.string.vw_open_another)) }, leadingIcon = { Icon(Icons.Default.FileOpen, null) }, onClick = { open = false; pick() })
+            com.smartdocs.editor.ui.nve.NveTabsMenuItems(state, switchTo) { open = false }   // NVE: close others / all, pin, new window, copy path
         }
     }
 }

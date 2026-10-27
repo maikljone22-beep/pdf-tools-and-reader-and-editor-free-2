@@ -60,6 +60,11 @@ fun AnnotActionBar(state: ReaderState, annot: Annot?, frame: Rect) {
                 if (annot?.kind == AnnotKind.FILE_ATTACH || annot?.kind == AnnotKind.SOUND || annot?.kind == AnnotKind.VIDEO)
                     AeButton(if (annot?.kind == AnnotKind.FILE_ATTACH) Icons.Default.OpenInNew else Icons.Default.PlayArrow, R.string.an_open, enabled, false) { sub = AeSub.NONE; state.annot2.openSelected() }
                 if (annot?.kind == AnnotKind.INK) AeButton(Icons.Default.Gesture, R.string.an_recognize, enabled, false) { sub = AeSub.NONE; state.annot2.startHandwriting() }
+                // NVE: image annotation properties (scaling, position, border, hidden / locked) for stored image stamps
+                val nveStored = (ed.target as? AnnotTarget.Stored)?.e
+                var nveProps by remember { mutableStateOf(false) }
+                if (nveStored != null && (annot?.kind == AnnotKind.STAMP_IMAGE || nveStored.subtype == "Stamp")) AeButton(Icons.Default.Tune, R.string.ni_ia_title, enabled, false) { sub = AeSub.NONE; nveProps = true }
+                if (nveProps && nveStored != null) com.smartdocs.editor.ui.reader.annot.ImageAnnotPropsDialog5(state, nveStored) { nveProps = false }
                 AeButton(Icons.Default.Delete, R.string.ae_delete, !ed.busy, false, tint = MaterialTheme.colorScheme.error) { ed.delete() }
                 if (ed.busy || ed.storedLoading) CircularProgressIndicator(Modifier.padding(horizontal = 8.dp).size(18.dp), strokeWidth = 2.dp)
             }
@@ -108,7 +113,8 @@ private fun AnnotTextDialog(initial: String, onOk: (String) -> Unit, onDismiss: 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.ae_edit_text)) },
-        text = { OutlinedTextField(text, { text = it }, Modifier.fillMaxWidth(), minLines = 3) },
+        text = { OutlinedTextField(text, { text = it }, Modifier.fillMaxWidth(), minLines = 3,   // NVE: spell check
+            visualTransformation = com.smartdocs.editor.ui.nve.spellTransformation(com.smartdocs.editor.ui.nve.rememberSpellIssues(text)), trailingIcon = { com.smartdocs.editor.ui.nve.SpellCheckButton(text, { text = it }) }) },
         confirmButton = { Button(onClick = { onOk(text) }) { Text(stringResource(R.string.ok)) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
     )

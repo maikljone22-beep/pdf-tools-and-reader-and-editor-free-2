@@ -290,6 +290,8 @@ class ReaderState(
         // side-car states keyed by this reader hold it strongly: drop them (audit ARCH-03)
         com.smartdocs.editor.ui.forms5.FormFill.forget(this)
         com.smartdocs.editor.ui.view5.V5State.forget(this)
+        com.smartdocs.editor.ui.nve.NveState.forget(this)      // NVE
+        com.smartdocs.editor.ui.nve.articles.NveArticlesState.forget(this)
         com.smartdocs.editor.ui.pageflip.PageFlipController.forget(this)
         // PdfSession.closeAsync waits for in-flight renders, so no delay is needed
         ioScope.launch {

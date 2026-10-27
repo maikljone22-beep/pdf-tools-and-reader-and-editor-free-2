@@ -62,10 +62,16 @@ fun ReaderTabRow(state: ReaderState, onTab: (ReaderTab) -> Unit) {
         ReaderTab.VIEW to R.string.tab_view, ReaderTab.COMMENT to R.string.tab_comment, ReaderTab.CUSTOM to R.string.an_custom_tab, ReaderTab.EDIT to R.string.tab_edit,
         ReaderTab.FILL_SIGN to R.string.tab_fill_sign, ReaderTab.SIGN to R.string.tab_sign, ReaderTab.TOOLS to R.string.tab_tools, ReaderTab.PAGES to R.string.tab_pages,
     )
-    val idx = tabs.indexOfFirst { it.first == state.tab }.coerceAtLeast(0)
+    // NVE (SHL-3): tab order / hidden tabs / custom tab name from the toolbar customisation
+    val nveCtx = androidx.compose.ui.platform.LocalContext.current
+    @Suppress("UNUSED_VARIABLE") val nveVer = com.smartdocs.editor.ui.nve.shell.NveShellPrefs.version.intValue
+    val nveVisible = com.smartdocs.editor.ui.nve.shell.NveToolbarPrefs.visibleTabs(nveCtx)
+    val tabsShown = nveVisible.mapNotNull { id -> tabs.firstOrNull { it.first.name == id } }.ifEmpty { tabs }
+    val nveCustomName = com.smartdocs.editor.ui.nve.shell.NveShellPrefs.customTabName(nveCtx)
+    val idx = tabsShown.indexOfFirst { it.first == state.tab }.coerceAtLeast(0)
     ScrollableTabRow(selectedTabIndex = idx, modifier = Modifier.coachTarget(CoachIds.READER_TABS), edgePadding = 8.dp, divider = {}, containerColor = MaterialTheme.colorScheme.surface) {
-        tabs.forEach { (t, label) ->
-            Tab(selected = state.tab == t, onClick = { onTab(t) }, text = { Text(stringResource(label), maxLines = 1, overflow = TextOverflow.Ellipsis) })
+        tabsShown.forEach { (t, label) ->
+            Tab(selected = state.tab == t, onClick = { onTab(t) }, text = { Text(if (t == ReaderTab.CUSTOM && nveCustomName != null) nveCustomName else stringResource(label), maxLines = 1, overflow = TextOverflow.Ellipsis) })
         }
     }
 }
@@ -110,28 +116,32 @@ fun BottomToolbar(state: ReaderState, actions: ReaderActions) {
 
 @Composable
 private fun ViewToolbar(state: ReaderState, a: ReaderActions) {
+    // NVE (SHL-3): View chips the user hid
+    val nveCtx = androidx.compose.ui.platform.LocalContext.current
+    @Suppress("UNUSED_VARIABLE") val nveVer = com.smartdocs.editor.ui.nve.shell.NveShellPrefs.version.intValue
+    val nveHidden = com.smartdocs.editor.ui.nve.shell.NveToolbarPrefs.hiddenChips(nveCtx)
     ToolRow {
-        ToolChip(Icons.Default.ViewDay, stringResource(R.string.rd_view_mode), onClick = a.viewModeSheet)
-        ToolChip(if (state.fitPage) Icons.Default.FitScreen else Icons.Default.WidthFull, stringResource(if (state.fitPage) R.string.fit_page else R.string.fit_width), selected = state.fitPage) { state.fitPage = !state.fitPage; state.zoom = 1f }
-        ToolChip(Icons.Default.DarkMode, stringResource(R.string.night_mode), selected = state.nightMode) { state.nightMode = !state.nightMode }
-        ToolChip(Icons.Default.Palette, stringResource(R.string.page_color), onClick = a.pageColor)
-        ToolChip(Icons.Default.ViewHeadline, stringResource(R.string.reflow), selected = state.reflow) { state.reflow = !state.reflow }
-        ToolChip(Icons.Default.Timer, stringResource(R.string.auto_flip), selected = state.autoFlipSeconds > 0, onClick = a.autoFlip)
-        ToolChip(Icons.Default.RotateRight, stringResource(R.string.rotate_view)) { state.rotation = (state.rotation + 90) % 360 }
+        if ("view_mode" !in nveHidden) ToolChip(Icons.Default.ViewDay, stringResource(R.string.rd_view_mode), onClick = a.viewModeSheet)
+        if ("fit" !in nveHidden) ToolChip(if (state.fitPage) Icons.Default.FitScreen else Icons.Default.WidthFull, stringResource(if (state.fitPage) R.string.fit_page else R.string.fit_width), selected = state.fitPage) { state.fitPage = !state.fitPage; state.zoom = 1f }
+        if ("night" !in nveHidden) ToolChip(Icons.Default.DarkMode, stringResource(R.string.night_mode), selected = state.nightMode) { state.nightMode = !state.nightMode }
+        if ("page_color" !in nveHidden) ToolChip(Icons.Default.Palette, stringResource(R.string.page_color), onClick = a.pageColor)
+        if ("reflow" !in nveHidden) ToolChip(Icons.Default.ViewHeadline, stringResource(R.string.reflow), selected = state.reflow) { state.reflow = !state.reflow }
+        if ("auto_flip" !in nveHidden) ToolChip(Icons.Default.Timer, stringResource(R.string.auto_flip), selected = state.autoFlipSeconds > 0, onClick = a.autoFlip)
+        if ("rotate" !in nveHidden) ToolChip(Icons.Default.RotateRight, stringResource(R.string.rotate_view)) { state.rotation = (state.rotation + 90) % 360 }
         // view module: crop mode (auto toggle; the View sheet has the full menu) and the pan & zoom window
-        ToolChip(Icons.Default.Crop, stringResource(R.string.crop_mode), selected = state.vx.crop.enabled) {
+        if ("crop" !in nveHidden) ToolChip(Icons.Default.Crop, stringResource(R.string.crop_mode), selected = state.vx.crop.enabled) {
             if (state.vx.crop.enabled) state.vx.crop.disable() else { state.vx.crop.enableAuto(); state.reflow = false; state.vx.magnifier = false }
         }
-        ToolChip(Icons.Default.ZoomIn, stringResource(R.string.vw_magnifier), selected = state.vx.magnifier, enabled = !state.vx.crop.enabled && !state.reflow) { state.vx.magnifier = !state.vx.magnifier }
-        ToolChip(Icons.Default.Search, stringResource(R.string.search), selected = state.searchOpen, onClick = a.search)
-        ToolChip(Icons.Default.FormatListBulleted, stringResource(R.string.rd_panels)) { a.panels(ReaderPanel.OUTLINE) }
-        ToolChip(Icons.Default.Bookmark, stringResource(R.string.panel_bookmarks)) { a.panels(ReaderPanel.BOOKMARKS) }
-        ToolChip(Icons.Default.GridView, stringResource(R.string.panel_thumbnails)) { a.panels(ReaderPanel.THUMBNAILS) }
-        ToolChip(Icons.Default.RecordVoiceOver, stringResource(R.string.tool_read_aloud), onClick = a.readAloud)
-        if (com.smartdocs.editor.LocalSettings.current.aiEnabled) ToolChip(Icons.Default.AutoAwesome, stringResource(R.string.tool_ai), onClick = a.ai)
-        ToolChip(Icons.Default.Share, stringResource(R.string.share), onClick = a.share)
-        ToolChip(Icons.Default.Print, stringResource(R.string.print), onClick = a.print)
-        ToolChip(Icons.Default.Info, stringResource(R.string.tool_doc_info), onClick = a.docInfo)
+        if ("magnifier" !in nveHidden) ToolChip(Icons.Default.ZoomIn, stringResource(R.string.vw_magnifier), selected = state.vx.magnifier, enabled = !state.vx.crop.enabled && !state.reflow) { state.vx.magnifier = !state.vx.magnifier }
+        if ("search" !in nveHidden) ToolChip(Icons.Default.Search, stringResource(R.string.search), selected = state.searchOpen, onClick = a.search)
+        if ("panels" !in nveHidden) ToolChip(Icons.Default.FormatListBulleted, stringResource(R.string.rd_panels)) { a.panels(ReaderPanel.OUTLINE) }
+        if ("bookmarks" !in nveHidden) ToolChip(Icons.Default.Bookmark, stringResource(R.string.panel_bookmarks)) { a.panels(ReaderPanel.BOOKMARKS) }
+        if ("thumbnails" !in nveHidden) ToolChip(Icons.Default.GridView, stringResource(R.string.panel_thumbnails)) { a.panels(ReaderPanel.THUMBNAILS) }
+        if ("read_aloud" !in nveHidden) ToolChip(Icons.Default.RecordVoiceOver, stringResource(R.string.tool_read_aloud), onClick = a.readAloud)
+        if ("ai" !in nveHidden && com.smartdocs.editor.LocalSettings.current.aiEnabled) ToolChip(Icons.Default.AutoAwesome, stringResource(R.string.tool_ai), onClick = a.ai)
+        if ("share" !in nveHidden) ToolChip(Icons.Default.Share, stringResource(R.string.share), onClick = a.share)
+        if ("print" !in nveHidden) ToolChip(Icons.Default.Print, stringResource(R.string.print), onClick = a.print)
+        if ("doc_info" !in nveHidden) ToolChip(Icons.Default.Info, stringResource(R.string.tool_doc_info), onClick = a.docInfo)
         com.smartdocs.editor.ui.view5.View5ViewChips(state)
     }
 }
@@ -184,6 +194,7 @@ private fun EditToolbar(state: ReaderState, a: ReaderActions) {
         ToolChip(Icons.Default.FormatListNumbered, stringResource(R.string.tool_page_numbers)) { a.quick(QuickAction.PAGE_NUMBERS) }
         ToolChip(Icons.Default.Info, stringResource(R.string.tool_doc_info)) { a.quick(QuickAction.PROPERTIES) }
         ToolChip(Icons.Default.AutoAwesomeMotion, stringResource(R.string.tool_organize)) { a.navigateTool("organize") }
+        ToolChip(Icons.Default.EditNote, stringResource(R.string.nv_edit5_tools)) { com.smartdocs.editor.ui.nve.NveState.of(state).open(com.smartdocs.editor.ui.nve.NveSurface.EDIT5) }   // NVE
     }
 }
 
@@ -298,6 +309,8 @@ private fun ToolsToolbar(a: ReaderActions) {
                 }
             }
         }
+        // NVE: every edit5 tool (links, bookmarks, header/footer, Bates, watermark, background, labels, crop, resize, impose…) on the open document
+        items(com.smartdocs.editor.ui.edit5.EDIT5_TOOLS.map { it.id }) { id -> com.smartdocs.editor.ui.nve.NveEdit5Chip(id, a) }
     }
 }
 

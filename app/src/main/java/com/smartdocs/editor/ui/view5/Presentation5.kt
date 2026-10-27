@@ -80,6 +80,9 @@ fun PresentationDialog(v: V5State) {
     }
     fun save() { v.prefs.edit().putInt("pr_tr", transition.ordinal).putInt("pr_auto", auto).putBoolean("pr_loop", loop).apply() }
     LaunchedEffect(auto, page) { if (auto > 0) { delay(auto * 1000L); go(1) } }
+    // NVE: transitions / auto-advance stored in the PDF (/Trans, /Dur) win over the app's own choice
+    val nveTrans by produceState(emptyMap<Int, com.smartdocs.editor.core.nve.PageTrans>()) { value = com.smartdocs.editor.ui.nve.NvePresentation.load(s) }
+    LaunchedEffect(page, nveTrans) { val d = nveTrans[page]?.autoAdvance; if (auto == 0 && d != null && d > 0f) { delay((d * 1000).toLong()); go(1) } }
     LaunchedEffect(chrome) { if (chrome) { delay(3500); chrome = false } }
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
     DisposableEffect(Unit) { onDispose { s.jumpTo(page) } }
@@ -127,7 +130,7 @@ fun PresentationDialog(v: V5State) {
             }) {
             val density = LocalDensity.current
             val vw = with(density) { maxWidth.toPx() }; val vh = with(density) { maxHeight.toPx() }
-            AnimatedContent(page, transitionSpec = { spec(transition, forward, rtl) }, label = "present", modifier = Modifier.fillMaxSize()) { p ->
+            AnimatedContent(page, transitionSpec = { com.smartdocs.editor.ui.nve.NvePresentation.spec(nveTrans[targetState], forward, rtl) ?: spec(transition, forward, rtl) }, label = "present", modifier = Modifier.fillMaxSize()) { p ->
                 val bmp by produceState<Bitmap?>(null, p, vw, vh) {
                     val sess = s.session ?: return@produceState
                     val (pw, ph) = s.pageSize(p)

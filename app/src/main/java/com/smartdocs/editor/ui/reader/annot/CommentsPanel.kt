@@ -237,7 +237,8 @@ private fun StoredCard(state: ReaderState, c: CommentItem, expanded: Boolean, on
                     }
                 }
                 Row(Modifier.fillMaxWidth().padding(start = 16.dp, top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    OutlinedTextField(reply, { reply = it }, Modifier.weight(1f), placeholder = { Text(stringResource(R.string.an_reply_hint)) }, maxLines = 4)
+                    OutlinedTextField(reply, { reply = it }, Modifier.weight(1f), placeholder = { Text(stringResource(R.string.an_reply_hint)) }, maxLines = 4,
+                        visualTransformation = com.smartdocs.editor.ui.nve.spellTransformation(com.smartdocs.editor.ui.nve.rememberSpellIssues(reply)), trailingIcon = { com.smartdocs.editor.ui.nve.SpellCheckButton(reply, { reply = it }) })   // NVE: spell check
                     IconButton(onClick = {
                         val t = reply.trim(); if (t.isEmpty()) return@IconButton
                         reply = ""

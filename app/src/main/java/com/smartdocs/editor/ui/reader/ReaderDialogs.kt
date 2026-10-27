@@ -92,12 +92,17 @@ fun TextPromptDialog(state: ReaderState, prompt: TextPrompt, onDismiss: () -> Un
         onDismissRequest = onDismiss,
         title = { Text(stringResource(title)) },
         text = {
+            // NVE: live spell check (underlines) + spell-check button; Arabic-Indic digits option applied on OK
+            val nveIssues = if (isLink) emptyList() else com.smartdocs.editor.ui.nve.rememberSpellIssues(text)
             OutlinedTextField(text, { text = it }, modifier = Modifier.fillMaxWidth(), minLines = if (isLink) 1 else 3, singleLine = isLink,
                 placeholder = { Text(if (isLink) "https://" else "") },
+                visualTransformation = com.smartdocs.editor.ui.nve.spellTransformation(nveIssues),
+                trailingIcon = if (isLink) null else ({ com.smartdocs.editor.ui.nve.SpellCheckButton(text, { text = it }) }),
                 keyboardOptions = KeyboardOptions(keyboardType = if (isLink) KeyboardType.Uri else KeyboardType.Text))
         },
         confirmButton = {
             Button(enabled = text.isNotBlank(), onClick = {
+                if (!isLink) text = com.smartdocs.editor.ui.nve.NveDigits.apply(state.context, text)   // NVE: digit shapes setting
                 val rtl = text.any { it in '؀'..'ۿ' }
                 val pageW = state.pageSizes[prompt.page]?.first ?: 595f
                 when (prompt.tool) {

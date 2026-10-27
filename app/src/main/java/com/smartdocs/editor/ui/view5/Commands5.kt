@@ -93,7 +93,7 @@ object V5Commands {
             V5Command("help", R.string.v5_help_center, Icons.AutoMirrored.Filled.HelpOutline, "help faq مساعدة") { e.nav.navigate(V5Routes.HELP) },
             V5Command("whats_new", R.string.v5_whats_new, Icons.Default.NewReleases, "what's new changes الجديد") { e.nav.navigate(V5Routes.WHATS_NEW) },
             V5Command("settings", R.string.settings, Icons.Default.Settings, "settings preferences إعدادات") { e.nav.navigate(Routes.SETTINGS) },
-        )
+        ) + com.smartdocs.editor.ui.nve.NveCommands.all(e)      // NVE
     }
 
     fun defs(ctx: Context, list: List<V5Command>) = list.map { CommandDef(it.id, ctx.getString(it.label), it.keywords.split(' ')) }
