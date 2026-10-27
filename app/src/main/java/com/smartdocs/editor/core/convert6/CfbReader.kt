@@ -6,7 +6,8 @@ package com.smartdocs.editor.core.convert6
  */
 class CfbReader(private val b: ByteArray) {
 
-    class Entry(val name: String, val type: Int, val start: Int, val size: Long)
+    /** [left] / [right] / [child]: directory tree links (entry indexes, -1 = none), used to walk storages. */
+    class Entry(val name: String, val type: Int, val start: Int, val size: Long, val left: Int = -1, val right: Int = -1, val child: Int = -1)
 
     private val secShift: Int
     private val secSize: Int
@@ -55,7 +56,7 @@ class CfbReader(private val b: ByteArray) {
             val name = if (nameLen in 2..64) String(dirBytes, o, nameLen - 2, Charsets.UTF_16LE) else ""
             val start = le32(dirBytes, o + 116)
             val size = le32(dirBytes, o + 120).toLong() and 0xFFFFFFFFL
-            list += Entry(name, type, start, size)
+            list += Entry(name, type, start, size, le32(dirBytes, o + 68), le32(dirBytes, o + 72), le32(dirBytes, o + 76))
             o += 128
         }
         entries = list
@@ -96,6 +97,28 @@ class CfbReader(private val b: ByteArray) {
     }
 
     fun streamNames(): List<String> = entries.filter { it.type == 2 }.map { it.name }
+
+    /** Content of stream [e]. */
+    fun streamOf(e: Entry): ByteArray = if (e.size < miniCutoff) miniChain(e.start, e.size) else chain(e.start, e.size)
+
+    /** Direct children of storage [index] (0 = root), walking the red-black sibling tree. */
+    fun children(index: Int): List<Entry> {
+        val out = ArrayList<Entry>()
+        val start = entries.getOrNull(index)?.child ?: return out
+        val stack = ArrayDeque<Int>(); val seen = HashSet<Int>()
+        if (start >= 0) stack.addLast(start)
+        while (stack.isNotEmpty() && out.size < 100_000) {
+            val i = stack.removeLast()
+            if (i !in entries.indices || !seen.add(i)) continue
+            val e = entries[i]
+            out += e
+            if (e.left >= 0) stack.addLast(e.left)
+            if (e.right >= 0) stack.addLast(e.right)
+        }
+        return out
+    }
+
+    fun indexOf(e: Entry): Int = entries.indexOf(e)
 
     /** Content of the first stream called [name] (case-insensitive), or null. */
     fun stream(name: String): ByteArray? {
