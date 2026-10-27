@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="nt_san_search_index">Embedded search indexes</string>
+    <string name="nt_san_structure">Document structure (tags)</string>
+    <string name="nt_san_structure_note">Removes the accessibility tags; screen readers lose the reading order</string>
+    <string name="nt_redact_font">Text font</string>
+    <string name="nt_redact_case">Letter case (Latin)</string>
+    <string name="nt_case_as_typed">As typed</string>
+    <string name="nt_case_upper">UPPERCASE</string>
+    <string name="nt_case_lower">lowercase</string>
+    <string name="nt_case_title">Title Case</string>
+    <string name="nt_codeset_default">Default set</string>
+    <string name="nt_codeset_new">New code set</string>
+    <string name="nt_codeset_rename">Rename set</string>
+    <string name="nt_codeset_remove">Remove set</string>
+    <string name="nt_codeset_name">Set name</string>
+</resources>

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="nt_san_search_index">فهارس البحث المضمّنة</string>
+    <string name="nt_san_structure">بنية المستند (الوسوم)</string>
+    <string name="nt_san_structure_note">يزيل وسوم إمكانية الوصول؛ قارئات الشاشة لن تفهم ترتيب المحتوى</string>
+    <string name="nt_redact_font">خط النص</string>
+    <string name="nt_redact_case">حالة الأحرف (اللاتينية)</string>
+    <string name="nt_case_as_typed">كما كُتبت</string>
+    <string name="nt_case_upper">أحرف كبيرة</string>
+    <string name="nt_case_lower">أحرف صغيرة</string>
+    <string name="nt_case_title">أول حرف كبير</string>
+    <string name="nt_codeset_default">المجموعة الافتراضية</string>
+    <string name="nt_codeset_new">مجموعة رموز جديدة</string>
+    <string name="nt_codeset_rename">إعادة تسمية المجموعة</string>
+    <string name="nt_codeset_remove">حذف المجموعة</string>
+    <string name="nt_codeset_name">اسم المجموعة</string>
+</resources>
