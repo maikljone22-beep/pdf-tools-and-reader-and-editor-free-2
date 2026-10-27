@@ -113,15 +113,13 @@ fun CodesEditor(onDismiss: () -> Unit, onSave: (List<String>) -> Unit) {
     val ctx = LocalContext.current
     var sets by remember { mutableStateOf(RedactPrefs.codeSets(ctx)) }
     var current by remember { mutableStateOf(RedactPrefs.activeSet(ctx).takeIf { n -> sets.any { it.name == n } } ?: sets.first().name) }
-    var text by remember { mutableStateOf(sets.first { it.name == current }.codes.joinToString("
-")) }
+    var text by remember { mutableStateOf(sets.first { it.name == current }.codes.joinToString("\n")) }
     var menu by remember { mutableStateOf(false) }
     var naming by remember { mutableStateOf<Boolean?>(null) }   // true = new set, false = rename
     fun lines() = text.lines().map { it.trim() }.filter { it.isNotEmpty() }
     fun select(name: String) {
         sets = CodeSets.update(sets, current, lines())
-        current = name; text = sets.first { it.name == name }.codes.joinToString("
-")
+        current = name; text = sets.first { it.name == name }.codes.joinToString("\n")
     }
     AlertDialog(onDismissRequest = onDismiss, title = { Text(stringResource(R.string.s5_edit_codes)) },
         text = {
@@ -140,14 +138,12 @@ fun CodesEditor(onDismiss: () -> Unit, onSave: (List<String>) -> Unit) {
                     IconButton(onClick = { naming = false }) { Icon(Icons.Default.DriveFileRenameOutline, stringResource(R.string.nt_codeset_rename)) }
                     IconButton(onClick = {
                         val next = CodeSets.remove(sets, current)
-                        if (next.size != sets.size) { sets = next; current = next.first().name; text = next.first().codes.joinToString("
-") }
+                        if (next.size != sets.size) { sets = next; current = next.first().name; text = next.first().codes.joinToString("\n") }
                     }, enabled = sets.size > 1) { Icon(Icons.Default.Delete, stringResource(R.string.nt_codeset_remove)) }
                 }
                 Text(stringResource(R.string.s5_one_per_line), Modifier.padding(top = 6.dp), style = MaterialTheme.typography.bodySmall)
                 OutlinedTextField(text, { text = it }, Modifier.fillMaxWidth().heightIn(min = 160.dp), minLines = 6)
-                TextButton(onClick = { text = RedactPrefs.DEFAULT_CODES.joinToString("
-") }) { Text(stringResource(R.string.s5_reset)) }
+                TextButton(onClick = { text = RedactPrefs.DEFAULT_CODES.joinToString("\n") }) { Text(stringResource(R.string.s5_reset)) }
             }
         },
         confirmButton = { TextButton(onClick = {
