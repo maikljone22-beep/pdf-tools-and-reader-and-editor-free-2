@@ -184,7 +184,8 @@ object SigFields {
             (page.cosObject.getDictionaryObject(COSName.ANNOTS) as? COSArray)?.isNeedToBeUpdated = true
             form.fields.add(field)
         }
-        field.value = sig
+        // /V set directly: PDSignatureField.setValue only adds a "no appearance generation" log warning
+        field.cosObject.setItem(COSName.V, sig)
         val effective = lock ?: readLock(field.cosObject.getDictionaryObject(LOCK) as? COSDictionary)
         if (effective != null) applyLock(form, field, sig, effective)
         val w = field.widgets.first()
