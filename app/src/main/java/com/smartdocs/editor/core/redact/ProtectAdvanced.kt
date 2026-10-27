@@ -8,7 +8,8 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.security.SecureRandom
 
-enum class EncAlgo(val keyLength: Int, val aes: Boolean) { AES_256(256, true), AES_128(128, true), RC4_128(128, false) }
+/** [RC4_40] is the 40-bit ARC4 of PDF 1.1 (security handler revision 2): broken in seconds, only for very old readers. */
+enum class EncAlgo(val keyLength: Int, val aes: Boolean) { AES_256(256, true), AES_128(128, true), RC4_128(128, false), RC4_40(40, false) }
 
 enum class PrintLevel { NONE, LOW, HIGH }
 
@@ -48,7 +49,7 @@ data class ProtectOptions(
 )
 
 /**
- * Detailed encryption (J6): AES-256 / AES-128 / RC4-128 (PdfBox-Android 2.0.27 StandardProtectionPolicy), the
+ * Detailed encryption (J6): AES-256 / AES-128 / RC4-128 / RC4-40 (PdfBox-Android 2.0.27 StandardProtectionPolicy), the
  * eight permission bits with print and change presets. Without an owner password a random one is used, so the
  * permissions cannot be lifted by re-entering the open password. [ProtectOptions.scope] also offers "everything
  * except metadata" and "attachments only" ([ScopedSecurityHandler]).

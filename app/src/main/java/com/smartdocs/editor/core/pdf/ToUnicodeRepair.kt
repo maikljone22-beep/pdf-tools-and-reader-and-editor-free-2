@@ -63,6 +63,16 @@ object ToUnicodeRepair {
      * that were typed), brackets (mirrored on purpose), Latin and symbols keep the producer's choice. Plain Kotlin.
      */
     fun correction(current: String?, cmapCodes: Collection<Int>): Fix? {
+        // Word's math font (Cambria Math): the bold digits of a fraction like «5/2» (U+1D7D3, U+1D7D0, outside the BMP) are
+        // mapped to a space, so «C2H2 + 5/2 O2» copied as «C2H2 + ⁄ O2» (OCR_QUALITY_r5). The cmap names the real
+        // mathematical letter or digit; it is written folded (NFKC: 𝟓 -> 5).
+        if (current.isNullOrBlank()) {
+            val m = cmapCodes.firstOrNull { it in 0x1D400..0x1D7FF }
+            if (m != null) {
+                val v = normalized(String(Character.toChars(m)))
+                if (v.length == 1 && v[0].isLetterOrDigit()) return Fix(v, true)
+            }
+        }
         val ar = cmapCodes.filter { isArabicCp(it) && !isDigitCp(it) }
             .sortedWith(compareBy({ if (it in 0xFE70..0xFEFC || it in 0x0621..0x0652) 0 else 1 }, { it }))
         if (ar.isEmpty()) return null

@@ -210,6 +210,7 @@ class MultiSelection(private val h: Annot2Host) {
 
     /** Convert extractable stored annotations into pending ones (one file pass, backup for "discard"). */
     private suspend fun convertStored() {
+        if (!s.guard.check(com.smartdocs.editor.core.security.DocAction.ANNOTATE)) return      // nitro-protect2
         val f = s.file ?: return
         val pg = page
         val targets = stored.toList()

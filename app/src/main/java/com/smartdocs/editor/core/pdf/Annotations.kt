@@ -21,6 +21,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.Calendar
+import com.smartdocs.editor.core.fillsign2.CombLayout
+import com.smartdocs.editor.core.fillsign2.RoundRect
+import com.smartdocs.editor.core.fillsign2.StampRead
 
 /** Annotation kinds the editor supports. */
 enum class AnnotKind {
@@ -78,7 +81,25 @@ data class Annot(
     val caption: Boolean = false,
     val video: com.smartdocs.editor.core.annot.VideoPdf.Options? = null,   // VIDEO: in-page player options
     val posterPath: String? = null,             // VIDEO: poster frame JPEG (appearance in other viewers)
-)
+    // nitro-fillsign2
+    val corner: Float = 0f,                     // RECT: corner radius in points (Fill & Sign rounded rectangle)
+    val comb: Int = 0,                          // FREETEXT: number of comb cells (0 = ordinary text)
+    val sigPath: String? = null,                // STAMP_IMAGE: the QuickSign signature it was placed from (never written to the file)
+    val sigRef: String? = null,                 // STAMP_IMAGE: a saved signature stamp read back (/SDSigRef, StampRead.refOf of the image)
+) {
+    /** A placed QuickSign signature / initials (pending, or read back from the file). */
+    val isSignature: Boolean get() = kind == AnnotKind.STAMP_IMAGE && (sigPath != null || sigRef != null)
+}
+
+/** Private keys of nitro-fillsign2 annotations (second-class names, ignored by other viewers). */
+object FillSignKeys {
+    /** /Square: corner radius of a rounded rectangle. */
+    val ROUND: COSName = COSName.getPDFName("SDRound")
+    /** /FreeText: number of comb cells. */
+    val COMB: COSName = COSName.getPDFName("SDComb")
+    /** /Stamp: a placed QuickSign signature / initials (Apply All Signatures, flatten on save). */
+    val SIG: COSName = COSName.getPDFName("SDSig")
+}
 
 /** /LE end ending of a line annotation: explicit [Annot.lineEnd] or the default of the kind. */
 fun Annot.endStyle(): String = lineEnd.ifBlank { if (kind == AnnotKind.ARROW) "OpenArrow" else "None" }
@@ -106,7 +127,7 @@ object AnnotationWriter {
     /**
      * Write every annotation into a copy of [src] saved at [out]. A signed [src] is updated incrementally so its
      * signatures stay valid (audit AN-28 / DI-27; [SignedSave]); throws [SignedDocumentException] when that is not
-     * possible (certified without annotation rights, or the update failed) — the caller should offer a copy.
+     * possible (certified without annotation rights, or the update failed) \u2014 the caller should offer a copy.
      */
     suspend fun commit(context: Context, src: File, annots: List<Annot>, out: File, password: String? = null, fullSave: Boolean = false): CommitResult = withContext(Dispatchers.IO) {
         require(out.canonicalPath != src.canonicalPath) { "commit: out must differ from src" }
@@ -120,7 +141,7 @@ object AnnotationWriter {
      */
     internal fun <T> saveChanged(src: File, out: File, password: String?, fullSave: Boolean = false, change: (PDDocument) -> Pair<T, List<Int>>): T =
         PdfOps.loadRaw(src, password).use { d ->
-            // [fullSave]: a separate copy ("save a copy" of a signed file) — an ordinary save, the signatures of the copy
+            // [fullSave]: a separate copy ("save a copy" of a signed file) \u2014 an ordinary save, the signatures of the copy
             // become invalid but the signed original is left untouched
             val signed = !fullSave && SignedSave.isSigned(d)
             if (signed) SignedSave.requireAnnotationsAllowed(d) else PdfOps.reprotect(d, password)
@@ -226,12 +247,15 @@ object AnnotationWriter {
                 ft.constantOpacity = a.opacity
                 // default appearance keeps font size and colour so the annotation can be read back for editing
                 ft.cosObject.setString(COSName.DA, String.format(java.util.Locale.US, "/Helv %.1f Tf %.3f %.3f %.3f rg",
-                    a.fontSize, ((a.color shr 16) and 0xFF) / 255f, ((a.color shr 8) and 0xFF) / 255f, (a.color and 0xFF) / 255f))
+                    a.fontSize, ((a.color shr 16) and 0xFF) / 255f, ((a.color shr 8) and 0xFF) / 255f, (a.color and 0xFF) / 255f) +
+                    // comb: character spacing that advances one cell per (average) glyph, for viewers that rebuild from /DA
+                    (if (a.comb > 0) String.format(java.util.Locale.US, " %.2f Tc", CombLayout.charSpacing(rect.width / a.comb, a.fontSize * 0.55f)) else ""))
+                if (a.comb > 0) ft.cosObject.setInt(FillSignKeys.COMB, a.comb)
                 if (a.kind == AnnotKind.STAMP_TEXT) ft.cosObject.setName(name("IT"), "FreeTextStamp")
-                else com.smartdocs.editor.core.annot.AnnotStyle.applyRich(ft.cosObject, a.text,
+                else if (a.comb <= 0) com.smartdocs.editor.core.annot.AnnotStyle.applyRich(ft.cosObject, a.text,
                     com.smartdocs.editor.core.annot.AnnotStyle.Rich(a.fontSize, a.color, a.bold, a.italic, a.underline, a.strike, a.fontFamily, a.align,
                         a.lineSpacing, a.charSpacing, a.wordSpacing, a.bullets), ArabicShaper.isArabic(a.text))
-                ft.appearance = apDict(textAppearance(context, doc, rect, a))
+                ft.appearance = apDict(if (a.comb > 0) combAppearance(context, doc, rect, a) else textAppearance(context, doc, rect, a))
                 annotations.add(ft)
             }
             AnnotKind.LINE, AnnotKind.ARROW -> {
@@ -268,7 +292,11 @@ object AnnotationWriter {
                 com.smartdocs.editor.core.annot.AnnotStyle.setInterior(sq.cosObject, a.fillColor)
                 if (a.kind == AnnotKind.RECT && a.cloud > 0) com.smartdocs.editor.core.annot.AnnotStyle.setCloudy(sq.cosObject, a.cloud)
                 sq.contents = a.text; sq.titlePopup = a.author; sq.setCreationDate(now); sq.setModifiedDate(now)
-                sq.appearance = apDict(com.smartdocs.editor.core.annot.AnnotStyle.shapeStream(doc, rect.lowerLeftX, rect.lowerLeftY, rect.width, rect.height,
+                if (a.kind == AnnotKind.RECT && a.corner > 0f) {
+                    // nitro-fillsign2 rounded rectangle (its own appearance)
+                    sq.cosObject.setFloat(FillSignKeys.ROUND, a.corner)
+                    sq.appearance = apDict(roundShapeAppearance(doc, rect, a))
+                } else sq.appearance = apDict(com.smartdocs.editor.core.annot.AnnotStyle.shapeStream(doc, rect.lowerLeftX, rect.lowerLeftY, rect.width, rect.height,
                     a.kind == AnnotKind.OVAL, a.color, a.fillColor, a.strokeWidth, a.dash, a.noBorder, a.opacity, if (a.kind == AnnotKind.RECT) a.cloud else 0))
                 annotations.add(sq)
             }
@@ -278,6 +306,10 @@ object AnnotationWriter {
                 val st = PDAnnotationRubberStamp()
                 val rect = PDRectangle(r.left, r.top, r.width(), r.height())
                 st.rectangle = rect; st.name = "Image"; st.constantOpacity = a.opacity
+                if (a.isSignature) {
+                    st.cosObject.setBoolean(FillSignKeys.SIG, true)
+                    st.cosObject.setString(StampRead.SIG_REF, a.sigRef ?: StampRead.refOf(a.sigPath!!))
+                }
                 st.titlePopup = a.author; st.setCreationDate(now); st.setModifiedDate(now)
                 val form = newForm(doc, rect)
                 val img = LosslessFactory.createFromImage(doc, bmp)
@@ -452,6 +484,56 @@ object AnnotationWriter {
         return form
     }
 
+    /** Comb text (nitro-fillsign2): one glyph centred in each of [Annot.comb] equal cells ([CombLayout]). */
+    private fun combAppearance(context: Context, doc: PDDocument, rect: PDRectangle, a: Annot): PDAppearanceStream {
+        val form = newForm(doc, rect)
+        val font = PdfOps.arabicFont(context, doc)
+        val rtl = ArabicShaper.isArabic(a.text)
+        PDPageContentStream(doc, form).use { cs ->
+            alpha(cs, a)
+            cs.beginText(); cs.setFont(font, a.fontSize); setColors(cs, a.color)
+            val y = (rect.height - a.fontSize) / 2f + a.fontSize * 0.2f
+            CombLayout.place(a.text, a.comb, rtl).forEach { (cell, ch) ->
+                val shaped = ArabicShaper.shape(ch)
+                val w = runCatching { font.getStringWidth(shaped) / 1000f * a.fontSize }.getOrDefault(a.fontSize * 0.55f)
+                cs.setTextMatrix(com.tom_roush.pdfbox.util.Matrix.getTranslateInstance(CombLayout.glyphX(0f, rect.width, a.comb, cell, w), y))
+                cs.showArabic(ch, shaped)
+            }
+            cs.endText()
+        }
+        return form
+    }
+
+    /** nitro-fillsign2 rounded rectangle (the shape appearance of main). */
+    private fun roundShapeAppearance(doc: PDDocument, rect: PDRectangle, a: Annot): PDAppearanceStream {
+        val form = newForm(doc, rect)
+        PDPageContentStream(doc, form).use { cs ->
+            alpha(cs, a); setColors(cs, a.color); cs.setLineWidth(a.strokeWidth)
+            val w = rect.width; val h = rect.height; val i = a.strokeWidth / 2
+            if (a.kind == AnnotKind.RECT && a.corner > 0f) {
+                // nitro-fillsign2: rounded rectangle
+                RoundRect.path(i, i, w - 2 * i, h - 2 * i, a.corner).forEach { s ->
+                    when (s) {
+                        is RoundRect.Seg.Move -> cs.moveTo(s.x, s.y)
+                        is RoundRect.Seg.Line -> cs.lineTo(s.x, s.y)
+                        is RoundRect.Seg.Curve -> cs.curveTo(s.x1, s.y1, s.x2, s.y2, s.x3, s.y3)
+                    }
+                }
+                cs.closePath(); cs.stroke()
+            } else if (a.kind == AnnotKind.RECT) { cs.addRect(i, i, w - 2 * i, h - 2 * i); cs.stroke() }
+            else {
+                val k = 0.5523f; val rx = (w - 2 * i) / 2; val ry = (h - 2 * i) / 2; val cx = w / 2; val cy = h / 2
+                cs.moveTo(cx + rx, cy)
+                cs.curveTo(cx + rx, cy + ry * k, cx + rx * k, cy + ry, cx, cy + ry)
+                cs.curveTo(cx - rx * k, cy + ry, cx - rx, cy + ry * k, cx - rx, cy)
+                cs.curveTo(cx - rx, cy - ry * k, cx - rx * k, cy - ry, cx, cy - ry)
+                cs.curveTo(cx + rx * k, cy - ry, cx + rx, cy - ry * k, cx + rx, cy)
+                cs.closePath(); cs.stroke()
+            }
+        }
+        return form
+    }
+
     /** Read existing annotations of a file for the annotations panel (title, contents, page, kind). */
     data class Existing(val page: Int, val subtype: String, val author: String, val contents: String, val rect: RectF, val index: Int,
                         /** Non-null for a video annotation (Screen / RichMedia / video attachment): played in the page. */
@@ -572,8 +654,11 @@ object AnnotationWriter {
                 if (sub == "Circle" && base.subject == st.TICKMARK)
                     return base.copy(kind = AnnotKind.OVAL, rects = listOf(rect), text = cos.getString(name("SDTick")) ?: contents, fillColor = st.interiorOf(cos))
                 base.copy(kind = if (sub == "Square") AnnotKind.RECT else AnnotKind.OVAL, rects = listOf(box), fillColor = st.interiorOf(cos),
-                    cloud = if (sub == "Square") st.cloudyOf(cos) else 0)
+                    cloud = if (sub == "Square") st.cloudyOf(cos) else 0,
+                    corner = if (sub == "Square") cos.getFloat(FillSignKeys.ROUND, 0f).coerceAtLeast(0f) else 0f)
             }
+            // nitro-fillsign2: our image stamps (placed signatures above all) become editable again
+            "Stamp" -> readImageStamp(an, page, base, rect) ?: com.smartdocs.editor.core.annot.Annot2Writer.read(an, page, base, rect, media)
             "FreeText" -> {
                 val da = cos.getString(COSName.DA) ?: ""
                 val size = Regex("""([0-9.]+)\s+Tf""").find(da)?.groupValues?.get(1)?.toFloatOrNull()?.takeIf { it > 1f } ?: 12f
@@ -586,12 +671,25 @@ object AnnotationWriter {
                     bold = rich?.bold ?: false, italic = rich?.italic ?: false, underline = rich?.underline ?: false,
                     strike = rich?.strike ?: false, fontFamily = rich?.family ?: 0, align = rich?.align ?: -1, lineSpacing = rich?.lineHeight ?: 1.3f,
                     charSpacing = rich?.letterSpacing ?: 0f, wordSpacing = rich?.wordSpacing ?: 0f, bullets = rich?.bullets ?: false,
-                    text = rich?.takeIf { it.bullets }?.let { contents.split('\n').joinToString("\n") { l -> l.removePrefix("\u2022 ") } } ?: contents)
+                    text = rich?.takeIf { it.bullets }?.let { contents.split('\n').joinToString("\n") { l -> l.removePrefix("\u2022 ") } } ?: contents,
+                    comb = if (stamp) 0 else cos.getInt(FillSignKeys.COMB, 0).coerceIn(0, CombLayout.MAX_CELLS))
             }
             "Text" -> base.copy(kind = AnnotKind.NOTE, rects = listOf(RectF(rect.left, rect.top, rect.left + 20f, rect.top - 20f)), color = color ?: 0xFFEB3B,
                 icon = st.noteIconOf(cos).takeIf { it != "Comment" } ?: "")
             else -> com.smartdocs.editor.core.annot.Annot2Writer.read(an, page, base, rect, media)
         }
+    }
+
+    /** A saved image stamp of ours as a pending STAMP_IMAGE (image, rect; a rotated appearance is turned into the image). */
+    private fun readImageStamp(an: PDAnnotation, page: Int, base: Annot, rect: RectF): Annot? {
+        val img = StampRead.imageOf(an) ?: return null
+        var bmp = runCatching { img.image }.getOrNull() ?: return null
+        val m = runCatching { an.normalAppearanceStream.matrix }.getOrNull()
+        val rot = if (m == null) 0 else StampRead.rotationOf(m.scaleX, m.shearY)
+        if (rot != 0) bmp = Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, android.graphics.Matrix().apply { postRotate(rot.toFloat()) }, true)
+        val ref = an.cosObject.getString(StampRead.SIG_REF)?.takeIf { it.isNotBlank() }
+            ?: if (an.cosObject.getBoolean(FillSignKeys.SIG, false)) "" else null      // signature from before /SDSigRef: still a signature
+        return base.copy(kind = AnnotKind.STAMP_IMAGE, rects = listOf(rect), image = bmp, sigRef = ref, color = base.color)
     }
 
     suspend fun delete(src: File, page: Int, index: Int, out: File, password: String? = null) = withContext(Dispatchers.IO) {

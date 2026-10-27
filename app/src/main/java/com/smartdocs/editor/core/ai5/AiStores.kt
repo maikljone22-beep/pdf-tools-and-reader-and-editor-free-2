@@ -14,9 +14,12 @@ import java.io.File
 data class Space(val id: String, val name: String, val files: List<String>, val persona: String = "", val created: Long = System.currentTimeMillis())
 
 /** One stored chat turn. Assistant turns keep their citations and follow-ups. */
-data class StoredMsg(val role: String, val text: String, val citations: List<Citation> = emptyList(), val followUps: List<String> = emptyList())
+data class StoredMsg(val role: String, val text: String, val citations: List<Citation> = emptyList(), val followUps: List<String> = emptyList(),
+                     // ai6: thumbs feedback (1 / -1 / 0), web results used ([W1]…), number of images sent with a question
+                     val feedback: Int = 0, val web: List<com.smartdocs.editor.core.ai6.WebResult> = emptyList(), val images: Int = 0)
 
-data class SavedChat(val id: String, val scope: String, val title: String, val updated: Long, val messages: List<StoredMsg>)
+/** ai6: [files] = the documents the chat was about, so a chat can be reopened from Home (AI-5). */
+data class SavedChat(val id: String, val scope: String, val title: String, val updated: Long, val messages: List<StoredMsg>, val files: List<String> = emptyList())
 
 /** A saved study creation. [data] is JSON text: cards (with SRS), quiz/glossary/mind map answer, or the guide's Markdown. */
 data class Creation(val id: String, val scope: String, val kind: StudyKind, val title: String, val created: Long, val data: String)
@@ -74,12 +77,16 @@ class AiStore(ctx: Context) {
         put("r", m.role); put("t", m.text)
         if (m.citations.isNotEmpty()) put("c", CitationFormat.listToJson(m.citations))
         if (m.followUps.isNotEmpty()) put("f", buildJsonArray { m.followUps.forEach { add(JsonPrimitive(it)) } })
+        if (m.feedback != 0) put("fb", m.feedback)
+        if (m.images > 0) put("img", m.images)
+        if (m.web.isNotEmpty()) put("w", buildJsonArray { m.web.forEach { w -> add(buildJsonObject { put("t", w.title); put("u", w.url); put("s", w.snippet) }) } })
     }
 
     @Synchronized fun saveChat(c: SavedChat) {
         File(chatsDir, safe(c.id) + ".json").writeText(buildJsonObject {
             put("id", c.id); put("scope", c.scope); put("title", c.title); put("updated", c.updated)
             put("m", buildJsonArray { c.messages.forEach { add(msgJson(it)) } })
+            if (c.files.isNotEmpty()) put("files", buildJsonArray { c.files.forEach { add(JsonPrimitive(it)) } })
         }.toString())
     }
 
@@ -90,8 +97,12 @@ class AiStore(ctx: Context) {
             (o["m"] as? JsonArray)?.mapNotNull { e ->
                 val m = e as? JsonObject ?: return@mapNotNull null
                 StoredMsg(AiJson.str(m, "r") ?: "user", (m["t"] as? JsonPrimitive)?.contentOrNull.orEmpty(),
-                    CitationFormat.listFromJson(m["c"] as? JsonArray), AiJson.strings(m["f"] as? JsonArray))
-            }.orEmpty())
+                    CitationFormat.listFromJson(m["c"] as? JsonArray), AiJson.strings(m["f"] as? JsonArray),
+                    AiJson.int(m, "fb") ?: 0,
+                    (m["w"] as? JsonArray)?.mapNotNull { w -> (w as? JsonObject)?.let { o -> com.smartdocs.editor.core.ai6.WebResult(AiJson.str(o, "t").orEmpty(), AiJson.str(o, "u") ?: return@mapNotNull null, AiJson.str(o, "s").orEmpty()) } }.orEmpty(),
+                    AiJson.int(m, "img") ?: 0)
+            }.orEmpty(),
+            (o["files"] as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.contentOrNull }.orEmpty())
     }.getOrNull()
 
     /** Chats of a scope, newest first. */
@@ -100,6 +111,9 @@ class AiStore(ctx: Context) {
 
     /** Every scope that has saved chats (for a global history list). */
     @Synchronized fun chatScopes(): List<String> = chatsDir.listFiles()?.mapNotNull { readChat(it)?.scope }?.distinct().orEmpty()
+
+    /** ai6 (AI-5): every saved chat, newest first (Home "Conversations"). */
+    @Synchronized fun allChats(): List<SavedChat> = chatsDir.listFiles()?.mapNotNull { readChat(it) }?.sortedByDescending { it.updated }.orEmpty()
 
     fun chat(id: String): SavedChat? = File(chatsDir, safe(id) + ".json").takeIf { it.exists() }?.let(::readChat)
 

@@ -103,34 +103,109 @@ object DocTranslator {
     /** Requests a whole translation would cost (for the quota check before starting). */
     suspend fun estimate(ctx: Context, src: File, password: String?, pages: List<Int>?): Int = batches(readBlocks(ctx, src, password, pages)).size
 
-    suspend fun translate(
-        ctx: Context, client: AiClient, src: File, password: String?, targetLang: String, mode: TranslateMode, out: File,
-        pages: List<Int>? = null, progress: (Int, Int) -> Unit = { _, _ -> },
-    ): File = withContext(Dispatchers.IO) {
-        val blocks = readBlocks(ctx, src, password, pages)
-        if (blocks.isEmpty()) throw IllegalStateException("no text")
+    /** ai6: the prompt for one batch; [guidance] is the user's per-language instruction (terminology, tone…). */
+    fun batchPrompt(targetLang: String, payload: String, guidance: String = ""): String =
+        "ترجم قيم كائن JSON التالي إلى ${AiLang.name(targetLang)}. احتفظ بالمفاتيح كما هي، وترجم كل قيمة ترجمة دقيقة وطبيعية، " +
+            "ولا تترجم الأرقام أو الرموز أو أسماء العلم الأجنبية الشائعة. أعد JSON فقط بالمفاتيح نفسها." +
+            (if (guidance.isNotBlank()) "\nتعليمات المستخدم للترجمة: ${guidance.trim().take(500)}" else "") + "\n\n$payload"
+
+    /** ai6: translate [blocks] in batches; returns id → translation (missing ids keep the original). */
+    suspend fun translateBlocks(ctx: Context, client: AiClient, blocks: List<TextBlock>, targetLang: String, guidance: String = "",
+                                progress: (Int, Int) -> Unit = { _, _ -> }): Map<Int, String> {
         val groups = batches(blocks)
-        if (!AiCalls.fits(ctx, client, groups.size)) throw AiQuotaException("need ${groups.size}")
         val tr = HashMap<Int, String>()
         groups.forEachIndexed { gi, g ->
             progress(gi, groups.size)
             val payload = buildJsonObject { g.forEach { put(it.id.toString(), it.text) } }
-            val answer = AiCalls.complete(ctx, client, listOf(
-                ChatMessage("system", AiCalls.SYSTEM),
-                ChatMessage("user", "ترجم قيم كائن JSON التالي إلى ${AiLang.name(targetLang)}. احتفظ بالمفاتيح كما هي، وترجم كل قيمة ترجمة دقيقة وطبيعية، " +
-                    "ولا تترجم الأرقام أو الرموز أو أسماء العلم الأجنبية الشائعة. أعد JSON فقط بالمفاتيح نفسها.\n\n$payload"),
-            ))
+            val answer = AiCalls.complete(ctx, client, listOf(ChatMessage("system", AiCalls.SYSTEM), ChatMessage("user", batchPrompt(targetLang, payload.toString(), guidance))))
             (AiJson.extract(answer, '{') as? JsonObject)?.forEach { (k, v) -> k.toIntOrNull()?.let { id -> (v as? JsonPrimitive)?.contentOrNull?.let { tr[id] = it } } }
         }
         progress(groups.size, groups.size)
+        return tr
+    }
+
+    /** ai6 ("translate images"): the text inside a page picture (scan, photo, chart) read and translated by a vision model. */
+    suspend fun translateImage(client: AiClient, image: android.graphics.Bitmap, targetLang: String, guidance: String = ""): String =
+        com.smartdocs.editor.core.ai6.AiMedia.visionChat(client, listOf(
+            com.smartdocs.editor.core.ai6.MediaMessage("system", AiCalls.SYSTEM),
+            com.smartdocs.editor.core.ai6.MediaMessage("user", "اقرأ كل النص الظاهر في هذه الصورة بترتيب القراءة، وترجمه إلى ${AiLang.name(targetLang)}. " +
+                "حافظ على الفقرات والعناوين والجداول (كأسطر بقيم مفصولة بـ |). أعد الترجمة فقط دون تعليق." +
+                (if (guidance.isNotBlank()) "\nتعليمات المستخدم للترجمة: ${guidance.trim().take(500)}" else ""),
+                listOf(com.smartdocs.editor.core.ai6.AiMedia.fromBitmap(image))),
+        ))
+
+    /** ai6: pages of [pages] (or all) that have no text layer, i.e. pictures only. */
+    suspend fun imageOnlyPages(ctx: Context, src: File, password: String?, pages: List<Int>?): List<Int> = withContext(Dispatchers.IO) {
+        val s = PdfSession.open(ctx, src, password)
+        try { (pages ?: (0 until s.pageCount).toList()).filter { it in 0 until s.pageCount && s.text(it).count { c -> c.isLetter() } < 8 } } finally { s.closeAsync() }
+    }
+
+    /** ai6: a page picture for the vision model (longest side 1600 px). */
+    suspend fun renderPage(ctx: Context, src: File, password: String?, page: Int): android.graphics.Bitmap = withContext(Dispatchers.IO) {
+        val s = PdfSession.open(ctx, src, password)
+        try {
+            val (w, h) = s.pageSize(page)
+            val scale = 1600f / maxOf(w, h).coerceAtLeast(1f)
+            s.render(page, (w * scale).toInt().coerceAtLeast(1), (h * scale).toInt().coerceAtLeast(1), annotations = false)
+        } finally { s.closeAsync() }
+    }
+
+    suspend fun translate(
+        ctx: Context, client: AiClient, src: File, password: String?, targetLang: String, mode: TranslateMode, out: File,
+        pages: List<Int>? = null, progress: (Int, Int) -> Unit = { _, _ -> },
+        guidance: String = "", translateImages: Boolean = false,
+    ): File = withContext(Dispatchers.IO) {
+        val blocks = readBlocks(ctx, src, password, pages)
+        val imagePages = if (translateImages) imageOnlyPages(ctx, src, password, pages) else emptyList()
+        if (blocks.isEmpty() && imagePages.isEmpty()) throw IllegalStateException("no text")
+        val groups = batches(blocks)
+        val total = groups.size + imagePages.size
+        if (!AiCalls.fits(ctx, client, total)) throw AiQuotaException("need $total")
+        val tr = translateBlocks(ctx, client, blocks, targetLang, guidance) { a, _ -> progress(a, total) }
+        val imageTr = LinkedHashMap<Int, String>()
+        imagePages.forEachIndexed { i, p ->
+            progress(groups.size + i, total)
+            val bmp = renderPage(ctx, src, password, p)
+            // no vision route: keep the text translation instead of failing the whole job (unless there is no text at all)
+            try { imageTr[p] = translateImage(client, bmp, targetLang, guidance) }
+            catch (e: com.smartdocs.editor.core.ai6.AiNotConfiguredException) { if (blocks.isEmpty()) throw e }
+            finally { bmp.recycle() }
+        }
+        progress(total, total)
         when (mode) {
             TranslateMode.TEXT_ONLY -> {
-                val text = blocks.groupBy { it.page }.entries.joinToString("\n\n") { (p, bs) -> "[صفحة ${p + 1}]\n" + bs.joinToString("\n") { tr[it.id] ?: it.text } }
+                val byPage = blocks.groupBy { it.page }
+                val text = (byPage.keys + imageTr.keys).toSortedSet().joinToString("\n\n") { p ->
+                    "[صفحة ${p + 1}]\n" + (byPage[p]?.joinToString("\n") { tr[it.id] ?: it.text } ?: imageTr[p].orEmpty())
+                }
                 AnswerPdf.write(ctx, src.nameWithoutExtension, text, out)
             }
-            TranslateMode.OVERLAY -> overlay(ctx, src, password, blocks, tr, out)
+            TranslateMode.OVERLAY -> {
+                overlay(ctx, src, password, blocks, tr, out)
+                if (imageTr.isNotEmpty()) noteImageTranslations(out, imageTr)
+            }
         }
         out
+    }
+
+    /** ai6: picture-only pages keep their look; the translation is attached as an open note (comment) at the page top. */
+    private fun noteImageTranslations(file: File, tr: Map<Int, String>) {
+        val tmp = File(file.path + ".tmp")
+        PdfOps.load(file, null).use { doc ->
+            tr.forEach { (p, text) ->
+                if (p !in 0 until doc.numberOfPages || text.isBlank()) return@forEach
+                val page = doc.getPage(p)
+                val box = page.mediaBox
+                val a = com.tom_roush.pdfbox.pdmodel.interactive.annotation.PDAnnotationText()
+                a.contents = text
+                a.titlePopup = "AI"
+                a.rectangle = com.tom_roush.pdfbox.pdmodel.common.PDRectangle(box.lowerLeftX + 12f, box.upperRightY - 36f, 24f, 24f)
+                a.setOpen(true)
+                page.annotations.add(a)
+            }
+            doc.save(tmp)
+        }
+        if (!tmp.renameTo(file)) { tmp.copyTo(file, overwrite = true); tmp.delete() }
     }
 
     private fun overlay(ctx: Context, src: File, password: String?, blocks: List<TextBlock>, tr: Map<Int, String>, out: File) {

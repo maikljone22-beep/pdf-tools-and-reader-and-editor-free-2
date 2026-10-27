@@ -34,6 +34,7 @@ object CertInspector {
         val publicKey: String,
         val selfSigned: Boolean,
         val expiredNow: Boolean,
+        val md5: String = "",
     )
 
     data class SigCert(
@@ -44,6 +45,8 @@ object CertInspector {
         val chain: List<String>,
         val anchor: String?,
         val signer: X509Certificate?,
+        /** The trust anchor comes from the Android system CA store, not from the user's trusted certificates. */
+        val systemAnchor: Boolean = false,
     )
 
     val ops = TrustPath.Ops<X509Certificate>(
@@ -69,12 +72,25 @@ object CertInspector {
             signatureAlgorithm = c.sigAlgName, publicKey = keyDesc,
             selfSigned = c.subjectX500Principal == c.issuerX500Principal && runCatching { c.verify(c.publicKey) }.isSuccess,
             expiredNow = now > c.notAfter.time,
+            md5 = CertFormat.hex(java.security.MessageDigest.getInstance("MD5").digest(c.encoded)),
         )
     }
 
-    suspend fun inspect(context: Context, file: File, password: String? = null): List<SigCert> = withContext(Dispatchers.IO) {
+    /** [system]: also accept the Android system CA store as trust anchors (Windows-store equivalent, see [SystemTrust]). */
+    suspend fun inspect(context: Context, file: File, password: String? = null, system: Boolean = SignPrefs.trustSystemRoots(context)): List<SigCert> = withContext(Dispatchers.IO) {
         DigitalSignature.ensureProvider()
-        val trusted = TrustedCerts.certificates(context)
+        // trust levels: a certification signature needs an anchor trusted for certified documents
+        val forSignatures = TrustedCerts.certificates(context, TrustedCerts.Level.SIGNATURES)
+        val forCertified = TrustedCerts.certificates(context, TrustedCerts.Level.CERTIFIED)
+        val systemRoots = if (system) SystemTrust.anchors() else emptyList()
+        val userFps = (forSignatures + forCertified).map { CertFormat.sha256(it.encoded) }.toSet()
+        // nitro-protect2: third anchor set, the EU trusted list (qualified CAs), when the user turned it on
+        val eutl = if (TrustLists.useEutl(context)) TrustLists.anchors(context) else emptyList()
+        val sysFps = systemRoots.map { CertFormat.sha256(it.encoded) }.toSet()
+        fun anchors(user: List<X509Certificate>) = user + systemRoots.filter { CertFormat.sha256(it.encoded) !in userFps } +
+            eutl.filter { CertFormat.sha256(it.encoded).let { fp -> fp !in userFps && fp !in sysFps } }
+        val trustedSig = anchors(forSignatures)
+        val trustedCert = anchors(forCertified)
         val bytes = file.readBytes()
         val conv = JcaX509CertificateConverter()
         val out = ArrayList<SigCert>()
@@ -92,9 +108,12 @@ object CertInspector {
                     } ?: all.firstOrNull()
                     if (signer == null) SigCert(i, null, TrustPath.Status.UNTRUSTED, emptyList(), null, null)
                     else {
-                        val t = TrustPath.evaluate(signer, all.filter { it != signer }, trusted, ops)
+                        val certified = (d.documentCatalog.cosObject.getDictionaryObject(com.tom_roush.pdfbox.cos.COSName.PERMS) as? com.tom_roush.pdfbox.cos.COSDictionary)
+                            ?.getDictionaryObject(com.tom_roush.pdfbox.cos.COSName.DOCMDP) == sig.cosObject
+                        val t = TrustPath.evaluate(signer, all.filter { it != signer }, if (certified) trustedCert else trustedSig, ops)
                         SigCert(i, details(signer), t.status, t.chain.map { DigitalSignature.friendlyName(it.subjectX500Principal.name) },
-                            t.anchor?.let { DigitalSignature.friendlyName(it.subjectX500Principal.name) }, signer)
+                            t.anchor?.let { DigitalSignature.friendlyName(it.subjectX500Principal.name) }, signer,
+                            systemAnchor = t.anchor != null && CertFormat.sha256(t.anchor.encoded) !in userFps)
                     }
                 }.getOrElse { SigCert(i, null, TrustPath.Status.UNTRUSTED, emptyList(), null, null) }
                 out += r

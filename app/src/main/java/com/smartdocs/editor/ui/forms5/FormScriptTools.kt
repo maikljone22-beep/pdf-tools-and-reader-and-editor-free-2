@@ -85,12 +85,10 @@ fun FillSignFormChips(state: ReaderState) {
     var dlg by remember { mutableStateOf(FormDlg.NONE) }
     LaunchedEffect(Unit) { FormPrefs.load(ctx) }
 
-    ToolChip(Icons.Default.CheckBoxOutlineBlank, stringResource(R.string.f8_fs_rect), selected = state.tool == ReaderTool.RECT) { state.selectTool(ReaderTool.RECT) }
-    ToolChip(Icons.Default.ViewWeek, stringResource(R.string.f8_fs_comb)) { dlg = FormDlg.COMB }
     Box {
-        ToolChip(Icons.Default.MoreHoriz, stringResource(R.string.f8_form_menu), selected = menu) { menu = true }
+        // Fill & Sign rectangle and comb text are pdf-3c's tools (ReaderToolbars: FS_RRECT, FS_COMB)
+    ToolChip(Icons.Default.MoreHoriz, stringResource(R.string.f8_form_menu), selected = menu) { menu = true }
         DropdownMenu(menu, { menu = false }) {
-            DropdownMenuItem(text = { Text(stringResource(R.string.f8_comb_convert)) }, leadingIcon = { Icon(Icons.Default.ViewWeek, null) }, onClick = { menu = false; dlg = FormDlg.COMB_CONVERT })
             if (!fs.model.isEmpty) {
                 HorizontalDivider()
                 DropdownMenuItem(text = { Text(stringResource(R.string.f8_calc_now)) }, leadingIcon = { Icon(Icons.Default.Calculate, null) },

@@ -102,6 +102,7 @@ class FormScripts(val js: FormJs, private val limits: JsLimits = JsLimits()) {
     private fun engine(): AcroJs? {
         if (engineTried) return engine
         engineTried = true
+        if (!com.smartdocs.editor.core.security.JsPolicy.enabled) { unavailableReason = "JavaScript is turned off"; return null }
         if (!js.hasScripts && js.docScripts.isEmpty()) return null
         engine = try { AcroJs(fieldsJson(js.fields), js.docScripts, limits, js.numPages, js.fileName, js.pageWords) }
         catch (e: Throwable) { if (e is VirtualMachineError && e !is StackOverflowError) throw e; unavailableReason = e.message ?: e.toString(); null }

@@ -25,6 +25,7 @@ import com.tom_roush.pdfbox.pdmodel.interactive.form.PDTerminalField
 import com.tom_roush.pdfbox.pdmodel.interactive.form.PDTextField
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import com.smartdocs.editor.core.security.JsPolicy
 import java.io.File
 
 enum class WKind { TEXT, CHECK, RADIO, COMBO, LIST, SIGNATURE, BUTTON, IMAGE }
@@ -219,11 +220,11 @@ object FormModelLoader {
                 }
                 "ResetForm" -> return ButtonAction.Reset(names(a.getDictionaryObject(COSName.FIELDS)), a.getInt(COSName.FLAGS, 0) and 1 != 0)
                 "URI" -> return a.getString(COSName.URI)?.let { ButtonAction.OpenUri(it) }
-                "JavaScript" -> FormSubmit.parseJs(js(a))?.let { return it }
+                "JavaScript" -> if (JsPolicy.enabled) FormSubmit.parseJs(js(a))?.let { return it }
                 "Named" -> if (a.getNameAsString(COSName.N) == "Print") return ButtonAction.Print
             }
         }
-        return FormSubmit.parseJs(js(aaU))
+        return if (JsPolicy.enabled) FormSubmit.parseJs(js(aaU)) else null
     }
 
     private fun names(base: COSBase?): List<String> {
@@ -258,6 +259,8 @@ object FormModelLoader {
                 for (i in 0 until arr.size()) (arr.getObject(i) as? COSDictionary)?.let { where.putIfAbsent(it, pi to i) }
             }
         }
+        // "Run JavaScript in PDF documents" off: no field script, AF emulation, validation or JavaScript button action
+        val jsOn = JsPolicy.enabled
         val calc = runCatching { FormCalc.load(doc) }.getOrDefault(FormCalcModel.EMPTY)
         val widgets = ArrayList<FWidget>(); val values = LinkedHashMap<String, String>()
         val jsFields = ArrayList<JsField>(); val jsScripts = LinkedHashMap<String, FieldJs>()
@@ -271,10 +274,10 @@ object FormModelLoader {
             val label = (f.cosObject.getString(TU) ?: f.partialName ?: name).ifBlank { name }
             val aa = f.cosObject.getDictionaryObject(COSName.AA) as? COSDictionary
             val aaV = aa?.getDictionaryObject(COSName.V)
-            val validate = FieldValidation.parseValidate(js(aaV))
+            val validate = if (jsOn) FieldValidation.parseValidate(js(aaV)) else null
             dictName[f.cosObject] = name
             FieldJs(js(aa?.getDictionaryObject(COSName.K)), js(aa?.getDictionaryObject(COSName.F)), js(aaV), js(aa?.getDictionaryObject(COSName.C)))
-                .takeIf { !it.isEmpty }?.let { jsScripts[name] = it }
+                .takeIf { jsOn && !it.isEmpty }?.let { jsScripts[name] = it }
             val (options, exports) = when (f) {
                 is PDChoice -> runCatching { f.optionsDisplayValues to f.optionsExportValues }.getOrDefault(emptyList<String>() to emptyList())
                 is PDButton -> runCatching { emptyList<String>() to f.exportValues }.getOrDefault(emptyList<String>() to emptyList())
@@ -354,10 +357,11 @@ object FormModelLoader {
         }
         jsScripts.forEach { (n, s) -> if (s.calculate != null && n !in co) co += n }
         val coIndex = co.withIndex().associate { it.value to it.index }
-        val docActions = runCatching { docActions(doc) }.getOrDefault(emptyMap())
+        // JavaScript policy (main): with JavaScript off no action / page / document scripts reach the runtime
+        val docActions = if (jsOn) runCatching { docActions(doc) }.getOrDefault(emptyMap()) else emptyMap()
         if (docActions.isNotEmpty()) actionJs = true
         val pageActions = HashMap<Int, Map<String, String>>()
-        doc.pages.forEachIndexed { pi, pg ->
+        if (jsOn) doc.pages.forEachIndexed { pi, pg ->
             val aa = pg.cosObject.getDictionaryObject(COSName.AA) as? COSDictionary ?: return@forEachIndexed
             val m = listOf("O", "C").mapNotNull { k ->
                 PdfActions.chain(aa.getDictionaryObject(COSName.getPDFName(k)), null).filterIsInstance<PdfAction.JavaScript>()
@@ -365,11 +369,12 @@ object FormModelLoader {
             }.toMap()
             if (m.isNotEmpty()) { pageActions[pi] = m; actionJs = true; allJs += m.values }
         }
-        val dScripts = runCatching { docScripts(doc) }.getOrDefault(emptyList())
+        if (!jsOn) actionJs = false
+        val dScripts = if (jsOn) runCatching { docScripts(doc) }.getOrDefault(emptyList()) else emptyList()
         allJs += docActions.values; allJs += dScripts
         jsScripts.values.forEach { listOfNotNull(it.keystroke, it.format, it.validate, it.calculate).forEach { c -> allJs += c } }
         val words = if (allJs.any { it.contains("getPageNthWord") || it.contains("getPageNumWords") }) runCatching { pageWords(doc) }.getOrDefault(emptyList()) else emptyList()
-        val formJs = if (jsFields.isEmpty() && !actionJs) FormJs.EMPTY else FormJs(jsFields.map { it.copy(calcIndex = coIndex[it.name] ?: -1) }, jsScripts, co,
+        val formJs = if (jsFields.isEmpty() && !actionJs || !jsOn) FormJs.EMPTY else FormJs(jsFields.map { it.copy(calcIndex = coIndex[it.name] ?: -1) }, jsScripts, co,
             dScripts, doc.numberOfPages, hasActionJs = actionJs, pageWords = words)
         val repeats = if (generated) runCatching { XfaRepeat.parse(doc.documentInformation?.getCustomMetadataValue(XfaGenerated.KEY_REPEAT)) }.getOrDefault(emptyList()) else emptyList()
         return FormModel(widgets, values, calc, xfa, tabs, generated, formJs, repeats, docActions, pageActions)

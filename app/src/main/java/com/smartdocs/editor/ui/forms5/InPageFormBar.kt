@@ -20,6 +20,7 @@ import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Calculate
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.CheckBox
 import androidx.compose.material.icons.filled.Clear
@@ -44,6 +45,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -168,6 +171,8 @@ private fun FieldBar(fs: FormFillState, w: FWidget, modifier: Modifier) {
     val isDate = w.kind == WKind.TEXT && FieldDates.isDateField(fs.model.calc.scripts[w.name], w.name)
     val textual = w.kind == WKind.TEXT || (w.kind == WKind.COMBO && w.editable)
     val suggestions = if (textual && !isDate) remember(w.id, typed) { fs.suggestions(w, typed) } else emptyList()
+    var smartFill by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }   // ai6
+    val aiOn = com.smartdocs.editor.LocalSettings.current.aiEnabled   // ai6: hidden when the AI master switch is off
     Surface(modifier.fillMaxWidth().imePadding(), tonalElevation = 6.dp, shadowElevation = 8.dp) {
         Column(Modifier.navigationBarsPadding().padding(horizontal = 4.dp, vertical = 2.dp)) {
             fs.errors[w.name]?.let { issue ->
@@ -190,6 +195,7 @@ private fun FieldBar(fs: FormFillState, w: FWidget, modifier: Modifier) {
                 if (w.fileSelect) IconButton(onClick = { fs.filePickFor = w.name }) { Icon(Icons.Default.AttachFile, stringResource(R.string.f8_pick_file)) }
                 if (!com.smartdocs.editor.core.forms5.FormPrefs.autoCalculate && (fs.model.calc.hasCalculations || fs.scripts?.hasCalculations == true))
                     IconButton(onClick = { fs.calculateNow(); fs.message = FormMessage.Calculated }) { Icon(Icons.Default.Calculate, stringResource(R.string.f8_calc_now)) }
+                if (aiOn) IconButton(onClick = { smartFill = true }) { Icon(Icons.Default.AutoAwesome, stringResource(R.string.ai6r_smart_fill)) }   // ai6
                 IconButton(onClick = { fs.setValue(w.name, if (w.kind == WKind.CHECK) "false" else "") }) { Icon(Icons.Default.Clear, stringResource(R.string.f5_clear)) }
                 IconButton(onClick = { fs.undo() }, enabled = fs.canUndo) { Icon(Icons.AutoMirrored.Filled.Undo, stringResource(R.string.f5_undo)) }
                 IconButton(onClick = { fs.redo() }, enabled = fs.canRedo) { Icon(Icons.AutoMirrored.Filled.Redo, stringResource(R.string.f5_redo)) }
@@ -197,6 +203,10 @@ private fun FieldBar(fs: FormFillState, w: FWidget, modifier: Modifier) {
                 TextButton(onClick = { fs.done() }) { Text(stringResource(R.string.f5_done)) }
             }
         }
+    }
+    // ai6: smart fill (profile + document, AI) for the form's fields; values go through setValues (one undo step)
+    if (smartFill) fs.reader.file?.let { f ->
+        com.smartdocs.editor.ui.ai5.FormFillSheet(f, fs.reader.password, onValues = { v -> if (v.isNotEmpty()) fs.setValues(v) }) { smartFill = false }
     }
 }
 

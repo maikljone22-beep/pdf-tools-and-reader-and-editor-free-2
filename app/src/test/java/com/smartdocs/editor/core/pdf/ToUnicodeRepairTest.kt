@@ -47,6 +47,14 @@ class ToUnicodeRepairTest {
         assertEquals(ToUnicodeRepair.Fix("ِ", true), ToUnicodeRepair.correction("ي", listOf(0x0650)))
     }
 
+    @Test fun mathDigitsMappedToSpaceAreRestored() {
+        // «المرشد…» page 78, Cambria Math: glyphs 0xADE / 0xADB (cmap U+1D7D3 / U+1D7D0, bold 5 and 2 of «5/2 O2») -> «<0020>»
+        assertEquals(ToUnicodeRepair.Fix("5", true), ToUnicodeRepair.correction(" ", listOf(0x1D7D3)))
+        assertEquals(ToUnicodeRepair.Fix("2", true), ToUnicodeRepair.correction(" ", listOf(0x1D7D0)))
+        assertNull(ToUnicodeRepair.correction(" ", listOf(0x0020)))                        // a real space
+        assertNull(ToUnicodeRepair.correction("5", listOf(0x1D7D3)))                       // already readable
+    }
+
     @Test fun baseLetters() {
         assertEquals("ب", ToUnicodeRepair.baseOf(0xFE91))
         assertEquals("لا", ToUnicodeRepair.baseOf(0xFEFB))

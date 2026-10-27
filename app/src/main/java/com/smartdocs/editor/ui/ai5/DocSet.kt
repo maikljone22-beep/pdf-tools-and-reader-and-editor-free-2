@@ -37,10 +37,13 @@ class DocSet(val files: List<File>, val spaceId: String?, val persona: String, p
             val list = ArrayList<DocIndex>()
             files.forEachIndexed { fi, f ->
                 runCatching {
-                    if (files.size == 1 && pageText != null && pageCount != null)
+                    if (DocIndexer.isText(f)) DocIndexer.getText(ctx, f)   // ai6 (B9): web link / pasted text sources
+                    else if (files.size == 1 && pageText != null && pageCount != null)
                         DocIndexer.get(ctx, f, password, pageText, pageCount) { i, n -> progress = (i + 1f) / n.coerceAtLeast(1) }
                     else DocIndexer.get(ctx, f, password) { i, n -> progress = (fi + (i + 1f) / n.coerceAtLeast(1)) / files.size }
                 }.onSuccess { list += it }.onFailure { error = it.message ?: it.javaClass.simpleName }
+                // ai6 (§35): files embedded in the PDF are questioned with it
+                if (!DocIndexer.isText(f)) list += runCatching { DocIndexer.attachments(ctx, f, if (files.size == 1) password else null) }.getOrDefault(emptyList())
             }
             indexes = list
         } finally { loading = false }

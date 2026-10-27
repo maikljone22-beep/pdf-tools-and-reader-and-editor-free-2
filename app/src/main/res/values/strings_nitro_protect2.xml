@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- nitro-protect2 (Protect / safe reading: security properties, reader restrictions, Protected View, Trust Manager,
+     attachment security, JavaScript run levels, action inspector, EU trusted list, certificate change, security
+     watermark profiles). Prefix np2_. -->
+<resources>
+    <!-- security properties (document info) -->
+    <string name="np2_sec_title">الأمان</string>
+    <string name="np2_sec_method">طريقة الحماية</string>
+    <string name="np2_sec_none">بلا حماية</string>
+    <string name="np2_sec_password">حماية بكلمة مرور</string>
+    <string name="np2_sec_certificate">حماية بالشهادة</string>
+    <string name="np2_sec_other">معالج حماية آخر</string>
+    <string name="np2_sec_algorithm">التشفير</string>
+    <string name="np2_sec_algo_fmt">%1$s، مفتاح %2$d بت</string>
+    <string name="np2_sec_revision">إصدار المعالج</string>
+    <string name="np2_sec_revision_fmt">الإصدار %1$d، المراجعة %2$d</string>
+    <string name="np2_sec_metadata">البيانات الوصفية مشفّرة</string>
+    <string name="np2_sec_access_owner">فُتح بكلمة مرور الأذونات (المالك): لا تُطبَّق أي قيود. هذه إعدادات المؤلف:</string>
+    <string name="np2_sec_access_user">فُتح دون كلمة مرور الأذونات: القيود التالية مطبَّقة.</string>
+    <string name="np2_sec_access_cert">الأذونات الممنوحة لشهادتك:</string>
+    <string name="np2_sec_allowed">مسموح</string>
+    <string name="np2_sec_denied">غير مسموح</string>
+
+    <!-- reader restrictions / Protected View -->
+    <string name="np2_restricted_author">غير مسموح: قيّد مؤلف المستند هذا الإجراء.</string>
+    <string name="np2_restricted_note">مقيَّد من المؤلف (راجع معلومات المستند)</string>
+    <string name="np2_pv_blocked">عرض محمي: اضغط «تمكين التحرير» أولًا.</string>
+    <string name="np2_pv_title">عرض محمي</string>
+    <string name="np2_pv_body">هذا الملف من موقع قد يكون غير آمن، لذا فُتح للقراءة فقط حتى تمكّن التحرير.</string>
+    <string name="np2_pv_enable">تمكين التحرير</string>
+
+    <!-- action inspector -->
+    <string name="np2_ai_title">يحتوي هذا المستند على محتوى نشط</string>
+    <string name="np2_ai_auto">إجراءات تعمل تلقائيًا (عند الفتح أو أحداث المستند والصفحات): %1$d</string>
+    <string name="np2_ai_js">جافاسكربت: %1$d</string>
+    <string name="np2_ai_launch">تشغيل ملف أو برنامج: %1$d</string>
+    <string name="np2_ai_uri">روابط ويب: %1$d</string>
+    <string name="np2_ai_submit">إرسال بيانات النموذج: %1$d</string>
+    <string name="np2_ai_import">استيراد بيانات: %1$d</string>
+    <string name="np2_ai_remote">فتح ملفات أخرى: %1$d</string>
+    <string name="np2_ai_media">تشغيل وسائط: %1$d</string>
+    <string name="np2_ai_doc_scripts">نصوص برمجية على مستوى المستند: %1$d</string>
+    <string name="np2_ai_safe_mode">وضع القراءة الآمنة مفعَّل: تبقى النصوص البرمجية والإجراءات محظورة.</string>
+    <string name="np2_ai_js_off">جافاسكربت متوقفة في الإعدادات.</string>
+    <string name="np2_ai_trusted_only">تعمل النصوص البرمجية في المستندات الموثوقة فقط (المواقع المميزة).</string>
+    <string name="np2_ai_allow">السماح</string>
+    <string name="np2_ai_block">إبقاء الحظر</string>
+
+    <!-- Safe Reading Mode / Trust Manager -->
+    <string name="np2_safe_blocked">محظور بوضع القراءة الآمنة: %1$s</string>
+    <string name="np2_tm_title">مدير الثقة</string>
+    <string name="np2_safe_title">وضع القراءة الآمنة</string>
+    <string name="np2_safe_sub">حظر كل ما يغادر المستند: روابط الويب وإرسال النماذج وتشغيل الملفات وجافاسكربت (إلا في المواقع المميزة)</string>
+    <string name="np2_priv_title">المواقع المميزة</string>
+    <string name="np2_priv_count">%1$d مجلدات، %2$d مضيفات</string>
+    <string name="np2_priv_hint">المستندات في هذه الأماكن موثوقة: لا يُطبَّق عليها وضع القراءة الآمنة ولا العرض المحمي، ويمكن تشغيل نصوصها البرمجية. وتبقى عناوين الويب على هذه المضيفات متاحة في وضع القراءة الآمنة.</string>
+    <string name="np2_priv_app">المستندات في مساحة تخزين التطبيق</string>
+    <string name="np2_priv_folders">المجلدات</string>
+    <string name="np2_priv_folder_path">مسار المجلد</string>
+    <string name="np2_priv_pick_folder">اختيار مجلد</string>
+    <string name="np2_priv_folder_bad">لا يمكن استخدام هذا المجلد (اختر مجلدًا في ذاكرة الجهاز).</string>
+    <string name="np2_priv_hosts">المضيفات</string>
+    <string name="np2_pv_set">العرض المحمي</string>
+    <string name="np2_pv_set_sub">فتح الملفات للقراءة فقط حتى تمكّن التحرير</string>
+    <string name="np2_pv_off">إيقاف</string>
+    <string name="np2_pv_unsafe">الملفات من التطبيقات الأخرى</string>
+    <string name="np2_pv_all">كل الملفات</string>
+    <string name="np2_trusted_docs">قرارات النصوص البرمجية المحفوظة</string>
+    <string name="np2_trusted_docs_count">%1$d مستندات (اضغط للنسيان)</string>
+    <string name="np2_trusted_docs_clear_q">نسيان كل إجابات «السماح» و«إبقاء الحظر»؟ ستسأل المستندات مرة أخرى.</string>
+    <string name="np2_clear">نسيان</string>
+
+    <!-- JavaScript run levels -->
+    <string name="np2_js_level_sub">إيقاف، أو السؤال لكل مستند، أو المستندات الموثوقة فقط، أو دائمًا</string>
+    <string name="np2_js_off">إيقاف</string>
+    <string name="np2_js_ask">السؤال لكل مستند</string>
+    <string name="np2_js_trusted">الموثوقة فقط</string>
+    <string name="np2_js_on">تشغيل</string>
+
+    <!-- attachment security -->
+    <string name="np2_att_set">أمان المرفقات</string>
+    <string name="np2_att_set_sub">السماح بفتح المرفقات في تطبيقات أخرى أو السؤال أو الحظر حسب نوع الملف</string>
+    <string name="np2_att_title">فتح هذا المرفق؟</string>
+    <string name="np2_att_body">قد تحتوي المرفقات على محتوى ضار، وسيُسلَّم إلى تطبيق آخر.</string>
+    <string name="np2_att_once">فتح مرة واحدة</string>
+    <string name="np2_att_always">السماح دائمًا بـ .%1$s</string>
+    <string name="np2_att_blocked">هذا النوع من المرفقات محظور: %1$s</string>
+    <string name="np2_att_allow">سماح</string>
+    <string name="np2_att_ask">سؤال</string>
+    <string name="np2_att_block">حظر</string>
+    <string name="np2_att_ext">الامتداد</string>
+    <string name="np2_att_rules_hint">الملفات التنفيذية والنصوص البرمجية محظورة، والمستندات والصور الشائعة مسموحة.</string>
+    <string name="np2_att_other">الأنواع الأخرى: سؤال.</string>
+    <string name="np2_att_restore">استعادة الافتراضيات</string>
+
+    <!-- EU trusted list -->
+    <string name="np2_eutl_use">استخدام قائمة الثقة الأوروبية</string>
+    <string name="np2_eutl_use_sub">الوثوق بتوقيعات جهات إصدار الشهادات المؤهلة في دول الاتحاد الأوروبي</string>
+    <string name="np2_eutl_auto">التحديث تلقائيًا</string>
+    <string name="np2_eutl_auto_sub">مرة كل شهر عبر Wi-Fi</string>
+    <string name="np2_eutl_update">تحديث قائمة الثقة الآن</string>
+    <string name="np2_eutl_status">%1$d شهادة من %2$d دولة، حُدِّثت %3$s</string>
+    <string name="np2_eutl_never">لم تُنزَّل بعد</string>
+    <string name="np2_eutl_done">تم التحديث: %1$d شهادة من %2$d دولة</string>
+    <string name="np2_eutl_failed">فشل التحديث: %1$s</string>
+    <string name="np2_eutl_note">تُنزَّل عبر HTTPS من العنوان الأوروبي الرسمي فقط، ولا يُتحقَّق من تواقيع XML الخاصة بالقوائم. قائمة AATL من Adobe غير عامة ولا يمكن استخدامها.</string>
+
+    <!-- certificate protection: change / remove, metadata -->
+    <string name="np2_cert_no_meta">عدم تشفير البيانات الوصفية</string>
+    <string name="np2_cert_no_meta_hint">تبقى بيانات XMP الوصفية للمستند مقروءة (للبحث والفهرسة)، ويُشفَّر كل ما عداها.</string>
+    <string name="np2_cert_change">إعادة التشفير لهؤلاء المستلمين</string>
+    <string name="np2_cert_change_title">هذا الملف محمي بشهادة</string>
+    <string name="np2_cert_change_hint">اختر الهوية الرقمية التي شُفِّر لها، ثم يمكنك تشفيره لقائمة مستلمين جديدة أو إزالة الحماية. يُكتب ملف جديد.</string>
+    <string name="np2_cert_no_ids">لا توجد هوية رقمية على هذا الجهاز. أنشئ واحدة أو استوردها من التواقيع، الشهادة.</string>
+    <string name="np2_cert_pick_id">اختيار هوية رقمية</string>
+    <string name="np2_cert_keychain">مخزن مفاتيح أندرويد</string>
+    <string name="np2_cert_own_id">هويتي الرقمية</string>
+    <string name="np2_cert_remove">إزالة الحماية بالشهادة</string>
+
+    <!-- Change Settings (password protection) -->
+    <string name="np2_change_prefilled">تظهر الخوارزمية والأذونات وخيار البيانات الوصفية الحالية، ولا تظهر كلمات المرور.</string>
+    <string name="np2_change_needs_owner">فُتح الملف دون كلمة مرور الأذونات، لذا لا يمكن تغيير حمايته.</string>
+    <string name="np2_change_enter_owner">إدخال كلمة مرور الأذونات</string>
+
+    <!-- security watermark profiles -->
+    <string name="np2_wm_layers">العلامات المائية في هذا الملف</string>
+    <string name="np2_wm_layers_hint">يمكن أن يضم ملف الإعدادات عدة علامات مائية أمنية تُطبَّق معًا، بدءًا بالعلامة الجاري تحريرها.</string>
+    <string name="np2_wm_layer_n">العلامة المائية %1$d: %2$s</string>
+    <string name="np2_wm_layer_edit">تحرير</string>
+    <string name="np2_wm_layer_add">الإبقاء على هذه وإضافة أخرى</string>
+</resources>

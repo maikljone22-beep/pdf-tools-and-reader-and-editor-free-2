@@ -46,6 +46,13 @@ fun RedactSearchPane(
     var profiles by remember { mutableStateOf(RedactPrefs.profiles(ctx)) }
     var profileMenu by remember { mutableStateOf(false) }
     var saveProfile by remember { mutableStateOf(false) }
+    val importWords = rememberTextImport { t -> st.wordsText = (st.wordsText.lines() + t.lines()).map { it.trim() }.filter { it.isNotEmpty() }.distinct().joinToString("\n") }
+    val exportWords = rememberTextExport("text/plain", { st.wordsText })
+    var profileMsg by remember { mutableStateOf<String?>(null) }
+    val importedFmt = stringResource(R.string.nt_profiles_imported)
+    val badFile = stringResource(R.string.nt_profiles_bad_file)
+    val importProfiles = rememberTextImport { t -> profileMsg = runCatching { importedFmt.format(RedactPrefs.importProfiles(ctx, t)) }.getOrElse { badFile }; profiles = RedactPrefs.profiles(ctx) }
+    val exportProfiles = rememberTextExport("application/json", { RedactPrefs.exportProfiles(ctx) })
     val badRegex = st.regexText.lines().any { it.isNotBlank() && !TextMatcher.isValidRegex(it.trim()) } ||
         (st.options.mode == SearchMode.REGEX && st.query.isNotBlank() && !TextMatcher.isValidRegex(st.query))
     val rows = st.found.map { f -> HitRow(foundKey(f), f.hit.page, f.hit.snippet, f.kind?.let { patternLabel(it) } ?: when (f.source) { "w" -> stringResource(R.string.s5_from_list); "re" -> "regex"; else -> "" }) }
@@ -70,12 +77,19 @@ fun RedactSearchPane(
                         }
                         if (profiles.isNotEmpty()) HorizontalDivider()
                         DropdownMenuItem(text = { Text(stringResource(R.string.s5_profile_save)) }, leadingIcon = { Icon(Icons.Default.Save, null) }, onClick = { profileMenu = false; saveProfile = true })
+                        DropdownMenuItem(text = { Text(stringResource(R.string.nt_profiles_import)) }, leadingIcon = { Icon(Icons.Default.FileOpen, null) }, onClick = { profileMenu = false; importProfiles() })
+                        DropdownMenuItem(text = { Text(stringResource(R.string.nt_profiles_export)) }, leadingIcon = { Icon(Icons.Default.IosShare, null) },
+                            enabled = profiles.isNotEmpty(), onClick = { profileMenu = false; exportProfiles("redaction_profiles.json") })
                     }
                 }
             }
             if (showMore) {
                 OutlinedTextField(st.wordsText, { st.wordsText = it }, Modifier.fillMaxWidth(), minLines = 3, maxLines = 8,
-                    label = { Text(stringResource(R.string.s5_word_list)) }, supportingText = { Text(stringResource(R.string.s5_one_per_line)) })
+                    label = { Text(stringResource(R.string.s5_word_list)) }, supportingText = { Text(stringResource(R.string.nt_rd_words_help)) })
+                Row {
+                    TextButton(onClick = importWords) { Icon(Icons.Default.FileOpen, null); Spacer(Modifier.width(4.dp)); Text(stringResource(R.string.nt_rd_import_words)) }
+                    TextButton(onClick = { exportWords("redaction_words.txt") }, enabled = st.wordsText.isNotBlank()) { Icon(Icons.Default.IosShare, null); Spacer(Modifier.width(4.dp)); Text(stringResource(R.string.nt_rd_export_words)) }
+                }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(st.useNames, { st.useNames = it })
                     Text(stringResource(R.string.s5_names_list), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
@@ -98,7 +112,7 @@ fun RedactSearchPane(
                     if (st.searching) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Icon(Icons.Default.Search, null)
                     Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.search))
                 }
-                OutlinedButton(onClick = { st.patterns = PatternKind.values().toSet(); onSearch() }, enabled = canSearch && !st.searching, modifier = Modifier.weight(1f)) {
+                OutlinedButton(onClick = { st.patterns = PatternKind.values().toSet() - PatternKind.REGIONAL + st.patterns.intersect(PatternKind.REGIONAL); onSearch() }, enabled = canSearch && !st.searching, modifier = Modifier.weight(1f)) {
                     Icon(Icons.Default.AutoFixHigh, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.s5_auto_detect), maxLines = 1)
                 }
             }
@@ -106,6 +120,7 @@ fun RedactSearchPane(
                 Icon(Icons.Default.PersonSearch, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.s5_pii_detect), maxLines = 1)
             }
             if (st.searched && st.found.isEmpty() && !st.searching) Text(stringResource(R.string.pg_redact_no_hits), Modifier.padding(8.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            profileMsg?.let { Text(it, Modifier.padding(4.dp), style = MaterialTheme.typography.labelSmall) }
         }
         if (st.found.isNotEmpty()) {
             HitList(rows, st.checked, { id -> st.checked = if (id in st.checked) st.checked - id else st.checked + id },
@@ -167,13 +182,15 @@ fun RedactReviewList(st: RedactState, onJump: (Int) -> Unit, onEdit: (RedactMark
                         }, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     },
                     supportingContent = {
-                        Text(stringResource(R.string.pg_page_n, m.page + 1) + (if (m.style.overlay.isNotBlank()) " · «" + m.style.overlay + "»" else ""), style = MaterialTheme.typography.labelSmall)
+                        Text(stringResource(R.string.pg_page_n, m.page + 1) + (if (m.style.overlay.isNotBlank()) " · «" + m.style.overlay + "»" else "") +
+                            (if (m.status.isNotBlank()) " · " + reviewLabel(m.status) else ""), style = MaterialTheme.typography.labelSmall)
                     },
                     trailingContent = {
                         Row {
                             IconButton(onClick = { onEdit(m) }) { Icon(Icons.Default.Palette, stringResource(R.string.s5_properties)) }
                             if (!m.wholePage) IconButton(onClick = { onRepeat(m) }) { Icon(Icons.Default.ContentCopy, stringResource(R.string.s5_repeat_pages)) }
-                            IconButton(onClick = { st.remove(m.id) }) { Icon(Icons.Default.Close, stringResource(R.string.delete)) }
+                            if (m.locked) Icon(Icons.Default.Lock, stringResource(R.string.nt_rd_locked), Modifier.padding(12.dp))
+                            else IconButton(onClick = { st.remove(m.id) }) { Icon(Icons.Default.Close, stringResource(R.string.delete)) }
                         }
                     },
                 )

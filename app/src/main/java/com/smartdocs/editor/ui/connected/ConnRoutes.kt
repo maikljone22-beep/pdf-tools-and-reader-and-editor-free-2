@@ -6,15 +6,20 @@ import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
+import com.smartdocs.editor.ui.esign.EsignBrandScreen
+import com.smartdocs.editor.ui.esign.EsignCreateMode
 import com.smartdocs.editor.ui.esign.EsignCreateScreen
 import com.smartdocs.editor.ui.esign.EsignDashboardScreen
 import com.smartdocs.editor.ui.esign.EsignDetailScreen
+import com.smartdocs.editor.ui.esign.EsignFormScreen
 import com.smartdocs.editor.ui.esign.EsignSignScreen
 
 /** Routes of signature requests, connected documents and the enterprise-protection notice. */
 object ConnRoutes {
     const val ESIGN = "esign"
-    const val ESIGN_CREATE = "esign/create?uri={uri}"
+    const val ESIGN_CREATE = "esign/create?uri={uri}&mode={mode}"
+    const val ESIGN_FORM = "esign/form/{id}"
+    const val ESIGN_BRAND = "esign/brand"
     const val ESIGN_DETAIL = "esign/req/{id}"
     const val ESIGN_SIGN = "esign/sign?id={id}&t={t}"
     const val CONNECTED = "connected?uri={uri}"
@@ -23,7 +28,8 @@ object ConnRoutes {
     const val ENTERPRISE = "enterprise_protected?uri={uri}"
 
     private fun q(s: String?) = Uri.encode(s ?: "")
-    fun esignCreate(uri: String? = null) = "esign/create?uri=${q(uri)}"
+    fun esignCreate(uri: String? = null, mode: EsignCreateMode = EsignCreateMode.REQUEST) = "esign/create?uri=${q(uri)}&mode=${mode.name.lowercase()}"
+    fun esignForm(id: String) = "esign/form/$id"
     fun esignDetail(id: String) = "esign/req/$id"
     fun esignSign(id: String, t: String) = "esign/sign?id=${q(id)}&t=${q(t)}"
     fun connected(uri: String? = null) = "connected?uri=${q(uri)}"
@@ -37,7 +43,11 @@ private fun opt(name: String) = navArgument(name) { type = NavType.StringType; n
 /** `connRoutes(nav)` inside `NavHost { … }`. */
 fun NavGraphBuilder.connRoutes(nav: NavHostController) {
     composable(ConnRoutes.ESIGN) { EsignDashboardScreen(nav) }
-    composable(ConnRoutes.ESIGN_CREATE, arguments = listOf(opt("uri"))) { e -> EsignCreateScreen(nav, e.arguments?.getString("uri")?.ifBlank { null }) }
+    composable(ConnRoutes.ESIGN_CREATE, arguments = listOf(opt("uri"), opt("mode"))) { e ->
+        EsignCreateScreen(nav, e.arguments?.getString("uri")?.ifBlank { null }, EsignCreateMode.of(e.arguments?.getString("mode")))
+    }
+    composable(ConnRoutes.ESIGN_FORM, arguments = listOf(navArgument("id") { type = NavType.StringType })) { e -> EsignFormScreen(nav, e.arguments?.getString("id") ?: "") }
+    composable(ConnRoutes.ESIGN_BRAND) { EsignBrandScreen(nav) }
     composable(ConnRoutes.ESIGN_DETAIL, arguments = listOf(navArgument("id") { type = NavType.StringType })) { e -> EsignDetailScreen(nav, e.arguments?.getString("id") ?: "") }
     composable(ConnRoutes.ESIGN_SIGN, arguments = listOf(opt("id"), opt("t"))) { e ->
         EsignSignScreen(nav, e.arguments?.getString("id").orEmpty(), e.arguments?.getString("t").orEmpty())

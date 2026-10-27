@@ -362,7 +362,8 @@ class Annot2Host(val s: ReaderState) {
             val (file, mime) = pair ?: return@launch
             val m = mime.ifBlank { MediaAnnots.mimeOf(file.name) }
             if (a.kind == AnnotKind.SOUND || m.startsWith("audio/")) playing = file
-            else MediaIntents.view(s.context, s.app, file, m)       // generic file attachments only
+            // nitro-protect2: attachment security (per-extension allow / ask / block) before another app gets it
+            else if (com.smartdocs.editor.ui.security.DocSecurityGate.confirmAttachment(s.context, file.name)) MediaIntents.view(s.context, s.app, file, m)       // generic file attachments only
         }
     }
 
@@ -445,6 +446,7 @@ class Annot2Host(val s: ReaderState) {
      * written back (same pattern as deleteExisting). Pending annotations stay in memory untouched.
      */
     suspend fun fileOp(op: suspend (src: File, out: File, pw: String?) -> Unit) {
+        s.guard.require(com.smartdocs.editor.core.security.DocAction.ANNOTATE)      // nitro-protect2: restrictions / Protected View
         s.saveMutex.withLock {
             val f = s.file ?: return
             withContext(NonCancellable) {

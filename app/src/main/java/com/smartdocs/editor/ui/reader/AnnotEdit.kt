@@ -34,7 +34,7 @@ sealed interface AnnotTarget {
  * Selection and editing of annotations already on the page.
  *
  * A stored annotation is only read until the user changes it. On the first change it is converted: read back
- * with [AnnotationWriter.extract], removed from the working file (delete → swap, like deleteExisting) and added
+ * with [AnnotationWriter.extract], removed from the working file (delete -> swap, like deleteExisting) and added
  * as a pending [Annot]; from then on every edit only touches that pending annotation and the normal save
  * commits it. A backup of the file taken before the first conversion is restored when the user discards.
  */
@@ -109,6 +109,7 @@ class AnnotEditor(private val s: ReaderState) {
     /** Apply [change] to the selection, converting a stored annotation into a pending one first. */
     fun edit(change: (Annot) -> Annot) {
         if (current()?.locked == true) { s.annot2.message = s.context.getString(com.smartdocs.editor.R.string.cx_locked_msg); return }
+        if (!s.guard.check(com.smartdocs.editor.core.security.DocAction.ANNOTATE)) return      // nitro-protect2: restrictions / Protected View
         when (val t = target) {
             is AnnotTarget.Pending -> s.annots.firstOrNull { it.id == t.id }?.let { s.replaceAnnot(change(it)) }
             is AnnotTarget.Stored -> {
@@ -169,12 +170,13 @@ class AnnotEditor(private val s: ReaderState) {
     fun setThickness(w: Float) = edit { it.copy(strokeWidth = w.coerceIn(0.5f, 40f)) }
     fun setText(text: String) = edit { a ->
         if (a.kind != AnnotKind.FREETEXT && a.kind != AnnotKind.STAMP_TEXT) return@edit a.copy(text = text)
+        if (a.comb > 0) return@edit a.copy(text = text)      // comb: fixed cells, extra characters are not shown
         // free text: grow the box so every line stays visible
         val r = PageGeometry.normPdf(a.rects.firstOrNull() ?: return@edit a.copy(text = text))
         val lines = text.split('\n')
         val needH = lines.size * a.fontSize * 1.3f + 8f
         val needW = (lines.maxOfOrNull { it.length } ?: 1) * a.fontSize * 0.58f + 12f
-        val rtl = text.any { it in '؀'..'ۿ' }
+        val rtl = text.any { it in '\u0600'..'\u06FF' }
         val w = max(r.right - r.left, needW); val h = max(r.top - r.bottom, needH)
         val nr = if (rtl) RectF(r.right - w, r.top, r.right, r.top - h) else RectF(r.left, r.top, r.left + w, r.top - h)
         a.copy(text = text, rects = listOf(nr))
@@ -182,6 +184,7 @@ class AnnotEditor(private val s: ReaderState) {
 
     fun delete() {
         if (current()?.locked == true || (target as? AnnotTarget.Stored)?.e?.locked == true) { s.annot2.message = s.context.getString(com.smartdocs.editor.R.string.cx_locked_msg); return }
+        if (!s.guard.check(com.smartdocs.editor.core.security.DocAction.ANNOTATE)) return
         when (val t = target) {
             is AnnotTarget.Pending -> { s.removeAnnot(t.id); clear() }
             is AnnotTarget.Stored -> s.scope.launch { s.deleteExisting(t.e); clear() }

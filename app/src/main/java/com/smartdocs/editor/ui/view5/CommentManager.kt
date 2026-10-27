@@ -176,7 +176,7 @@ fun CommentManagerSheet(v: V5State, onMessage: (String) -> Unit) {
                 itemsIndexed(shown, key = { i, it -> "$i:${it.page}:${it.index}:${it.date}:${it.pending}:${it.type}" }) { _, r ->
                     val check: (() -> Unit)? = if (r.pending || r.index < 0) null else ({
                         scope.launch {
-                            runCatching { s.applyInPlace(label = { s.context.getString(R.string.hi_comment_check) }) { src, out, pw -> CommentOps5.setChecked(src, out, pw, r.page, r.index, !r.checked, s.authorName) } }
+                            runCatching { s.applyInPlace(label = { s.context.getString(R.string.hi_comment_check) }, action = com.smartdocs.editor.core.security.DocAction.ANNOTATE) { src, out, pw -> CommentOps5.setChecked(src, out, pw, r.page, r.index, !r.checked, s.authorName) } }
                                 .onFailure { onMessage(it.message ?: "") }
                             reload++
                         }
@@ -193,7 +193,7 @@ fun CommentManagerSheet(v: V5State, onMessage: (String) -> Unit) {
             styling = null
             scope.launch {
                 runCatching {
-                    s.applyInPlace(label = { s.context.getString(R.string.hi_comment_style) }) { src, out, pw ->
+                    s.applyInPlace(label = { s.context.getString(R.string.hi_comment_style) }, action = com.smartdocs.editor.core.security.DocAction.ANNOTATE) { src, out, pw ->
                         withContext(Dispatchers.IO) {
                             com.smartdocs.editor.core.pdf.PdfOps.load(src, pw).use { doc ->
                                 if (!com.smartdocs.editor.core.view5.CommentWriter5.restyle(doc, r.page, r.index, w, d, st, en, c)) error(ctx.getString(R.string.error_generic))

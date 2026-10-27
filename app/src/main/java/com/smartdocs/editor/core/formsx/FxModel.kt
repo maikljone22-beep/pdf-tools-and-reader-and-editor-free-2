@@ -135,7 +135,7 @@ sealed class FxAction {
 }
 
 /** Signature field "when signed" behaviour (/Lock, SigFieldLock). */
-data class FxSigLock(val mode: Mode = Mode.ALL, val fields: List<String> = emptyList(), val script: String = "") {
+data class FxSigLock(val mode: Mode = Mode.ALL, val fields: List<String> = emptyList(), val script: String = "", val docPermission: Int? = null) {
     enum class Mode { NONE, ALL, INCLUDE, EXCLUDE }
 }
 

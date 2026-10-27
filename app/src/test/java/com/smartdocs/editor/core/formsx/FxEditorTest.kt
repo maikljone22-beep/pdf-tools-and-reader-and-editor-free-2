@@ -293,6 +293,24 @@ class FxEditorTest {
         assertEquals(FxMerge.look(edited), FxMerge.decodeLook(FxType.TEXT, look))
     }
 
+    @Test fun designerLockIsReadBySigningCode() {
+        for (lock in listOf(FxSigLock(FxSigLock.Mode.ALL), FxSigLock(FxSigLock.Mode.INCLUDE, listOf("a"), docPermission = 2), FxSigLock(FxSigLock.Mode.EXCLUDE, listOf("b")))) {
+            val d = doc()
+            FxEditor.create(d, text("a")); FxEditor.create(d, text("b", FxRect(50f, 500f, 250f, 520f)))
+            FxEditor.create(d, FieldSpec("sig", FxType.SIGNATURE, listOf(FxWidget(0, FxRect(50f, 100f, 250f, 150f))), sigLock = lock))
+            reload(d).use { r ->
+                val f = r.documentCatalog.getAcroForm(null).getField("sig").cosObject
+                val read = com.smartdocs.editor.core.sign.SigFields.readLock(f.getDictionaryObject(COSName.getPDFName("Lock")) as COSDictionary)!!
+                assertEquals(lock.mode.name, read.action.name)
+                assertEquals(if (lock.mode == FxSigLock.Mode.ALL) emptyList<String>() else lock.fields, read.fields)
+                assertEquals(lock.docPermission, read.docPermission)
+                val expected = listOf("a", "b").filter { read.locks(it) }
+                assertEquals(expected, FxSigLocks.lockedFields(f, listOf("a", "b", "sig"), "sig"))
+                assertEquals(lock.copy(script = ""), FxEditor.readAll(r).first { it.name == "sig" }.sigLock)
+            }
+        }
+    }
+
     @Test fun inheritKeepsIdentity() {
         val src = text("src").copy(fontSize = 9f, fillColor = 0x123456, comb = true, maxLen = 5, format = FxFormat.Percent(1, 0))
         val dst = text("dst", FxRect(1f, 1f, 2f, 2f)).copy(tooltip = "keep")

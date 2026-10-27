@@ -73,7 +73,7 @@ data class EsignRequest(
     val id: String, val title: String, val sender: String, val message: String,
     val order: SignOrder, val signers: List<Signer>, val fields: List<EsignField>,
     val status: RequestStatus, val created: Long, val originalSha: String, val finalSha: String = "",
-    val audit: List<AuditEntry> = emptyList(), val pageCount: Int = 0, val expires: Long = 0L,
+    val audit: List<AuditEntry> = emptyList(), val pageCount: Int = 0, val expires: Long = 0L, val brand: EsignBrand? = null,
 ) {
     companion object {
         fun from(o: JSONObject): EsignRequest {
@@ -84,7 +84,8 @@ data class EsignRequest(
                 SignOrder.of(o.optString("order")), (0 until s.length()).map { Signer.from(s.getJSONObject(it)) },
                 (0 until f.length()).map { EsignField.from(f.getJSONObject(it)) }, RequestStatus.of(o.optString("status")),
                 o.optLong("created"), o.optString("originalSha"), o.optString("finalSha"),
-                (0 until a.length()).map { AuditEntry.from(a.getJSONObject(it)) }, o.optInt("pageCount"), o.optLong("expires"))
+                (0 until a.length()).map { AuditEntry.from(a.getJSONObject(it)) }, o.optInt("pageCount"), o.optLong("expires"),
+                EsignBrand.from(o.optJSONObject("brand")))
         }
     }
 }

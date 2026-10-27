@@ -15,6 +15,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -28,6 +29,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.smartdocs.editor.R
 import com.smartdocs.editor.core.sign.CertFormat
+import com.smartdocs.editor.core.sign.SigAppearanceProfiles
 import com.smartdocs.editor.core.sign.SigAppearanceSpec
 import com.smartdocs.editor.ui.common.rememberImagePicker
 import java.io.File
@@ -39,6 +41,17 @@ class SigAppearanceState(private val context: Context) {
     var enabled by mutableStateOf(prefs.getBoolean("g6_appearance_on", false))
     var spec by mutableStateOf(SigAppearanceSpec.decode(prefs.getString("g6_appearance", null)))
     fun persist() { prefs.edit().putBoolean("g6_appearance_on", enabled).putString("g6_appearance", spec.encode()).apply() }
+
+    /** Named appearance profiles (nitro-quicksign), stored next to the last-used spec. */
+    var profiles by mutableStateOf(SigAppearanceProfiles.decode(prefs.getString("nq_ap_profiles", null)))
+        private set
+
+    fun updateProfiles(f: (List<SigAppearanceProfiles.Profile>) -> List<SigAppearanceProfiles.Profile>) {
+        profiles = f(profiles)
+        prefs.edit().putString("nq_ap_profiles", SigAppearanceProfiles.encode(profiles)).apply()
+    }
+
+    fun apply(p: SigAppearanceProfiles.Profile) { spec = p.spec; persist() }
 
     fun labels(): SigAppearanceSpec.Labels = SigAppearanceSpec.Labels(
         context.getString(R.string.g6_ap_signed_by), context.getString(R.string.sa_sign_reason), context.getString(R.string.sa_sign_location),
@@ -60,7 +73,7 @@ object SigAppearanceRenderer {
         val logo = spec.logoPath?.takeIf { File(it).exists() }?.let { decode(it, 600) }
         val hasLogo = logo != null
         val textLines = lines.ifEmpty { listOf(CertFormat.dnValue(dn, "CN") ?: " ") }
-        val lineH = 64f
+        val lineH = spec.lineHeight(textLines.size)
         val textH = (textLines.size * lineH + 24f).coerceAtLeast(160f)
         val h = when { hasLogo && spec.layout == SigAppearanceSpec.Layout.LOGO_TOP -> (textH + 220f).toInt(); else -> textH.toInt() }
         val bmp = Bitmap.createBitmap(W, h, Bitmap.Config.ARGB_8888)
@@ -85,12 +98,16 @@ object SigAppearanceRenderer {
         } else textRect = RectF(0f, 0f, W.toFloat(), h.toFloat())
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(25, 35, 60) }
         var y = textRect.top + (textRect.height() - textLines.size * lineH) / 2 + lineH * 0.78f
+        val family = when (spec.font) { SigAppearanceSpec.Font.SERIF -> Typeface.SERIF; SigAppearanceSpec.Font.MONO -> Typeface.MONOSPACE; else -> Typeface.SANS_SERIF }
         textLines.forEachIndexed { i, line ->
-            paint.typeface = if (i == 0 && spec.showName) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
-            var size = if (i == 0 && spec.showName) 52f else 40f
+            paint.typeface = Typeface.create(family, if (i == 0 && spec.showName) Typeface.BOLD else Typeface.NORMAL)
+            var size = spec.fontSize(i)
             paint.textSize = size
-            while (paint.measureText(line) > textRect.width() - 16f && size > 18f) { size -= 2f; paint.textSize = size }
-            c.drawText(line, textRect.left + 8f, y, paint)
+            while (paint.measureText(line) > textRect.width() - 16f && size > 12f) { size -= 2f; paint.textSize = size }
+            // right-to-left lines are right-aligned (Canvas shapes and reorders the Arabic text itself)
+            val rtl = spec.rtl(line)
+            paint.textAlign = if (rtl) Paint.Align.RIGHT else Paint.Align.LEFT
+            c.drawText(line, if (rtl) textRect.right - 8f else textRect.left + 8f, y, paint)
             y += lineH
         }
         return bmp
@@ -145,6 +162,33 @@ fun SigAppearanceDesigner(state: SigAppearanceState, name: String, reason: Strin
                     AssistChip(onClick = pickLogo, label = { Text(stringResource(R.string.g6_ap_logo)) }, leadingIcon = { Icon(Icons.Default.AddPhotoAlternate, null, Modifier.size(18.dp)) })
                     if (s.logoPath != null) AssistChip(onClick = { set(s.copy(logoPath = null)) }, label = { Text(stringResource(R.string.g6_ap_logo_remove)) }, leadingIcon = { Icon(Icons.Default.HideImage, null, Modifier.size(18.dp)) })
                 }
+                // nitro-quicksign: maximum font size (Auto or a cap)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(stringResource(R.string.nq_ap_font_max), style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
+                    FilterChip(s.maxFontSize == SigAppearanceSpec.AUTO_FONT, {
+                        set(s.copy(maxFontSize = if (s.maxFontSize == SigAppearanceSpec.AUTO_FONT) 28 else SigAppearanceSpec.AUTO_FONT))
+                    }, label = { Text(stringResource(R.string.nq_ap_font_auto)) })
+                }
+                if (s.maxFontSize != SigAppearanceSpec.AUTO_FONT) {
+                    var font by remember(s.maxFontSize) { mutableFloatStateOf(s.maxFontSize.toFloat()) }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Slider(font, { font = it }, Modifier.weight(1f), valueRange = SigAppearanceSpec.MIN_FONT.toFloat()..SigAppearanceSpec.MAX_FONT.toFloat(),
+                            onValueChangeFinished = { set(s.copy(maxFontSize = font.toInt())) })
+                        Text(stringResource(R.string.nq_ap_font_value, font.toInt()), style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(start = 8.dp))
+                    }
+                }
+                // Foxit: font family and text direction
+                Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(stringResource(R.string.ns2_ap_font), style = MaterialTheme.typography.labelLarge)
+                    listOf(SigAppearanceSpec.Font.SANS to R.string.ns2_ap_font_sans, SigAppearanceSpec.Font.SERIF to R.string.ns2_ap_font_serif, SigAppearanceSpec.Font.MONO to R.string.ns2_ap_font_mono)
+                        .forEach { (f, l) -> FilterChip(s.font == f, { set(s.copy(font = f)) }, label = { Text(stringResource(l)) }) }
+                }
+                Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(stringResource(R.string.ns2_ap_direction), style = MaterialTheme.typography.labelLarge)
+                    listOf(SigAppearanceSpec.Direction.AUTO to R.string.ns2_ap_dir_auto, SigAppearanceSpec.Direction.RTL to R.string.ns2_ap_dir_rtl, SigAppearanceSpec.Direction.LTR to R.string.ns2_ap_dir_ltr)
+                        .forEach { (d, l) -> FilterChip(s.direction == d, { set(s.copy(direction = d)) }, label = { Text(stringResource(l)) }) }
+                }
+                AppearanceProfilesRow(state)
                 val lines = s.lines(name, reason, location, date, dn, state.labels())
                 val preview = remember(s, lines, dn) { runCatching { SigAppearanceRenderer.render(s, lines, dn) }.getOrNull() }
                 if (preview != null) Box(Modifier.fillMaxWidth().background(androidx.compose.ui.graphics.Color.White, RoundedCornerShape(8.dp))
@@ -154,4 +198,63 @@ fun SigAppearanceDesigner(state: SigAppearanceState, name: String, reason: Strin
             }
         }
     }
+}
+
+/** Named appearance profiles: tap to apply; save the current appearance; rename / duplicate / delete in a dialog. */
+@Composable
+private fun AppearanceProfilesRow(state: SigAppearanceState) {
+    var manage by remember { mutableStateOf(false) }
+    var saveAs by remember { mutableStateOf(false) }
+    Text(stringResource(R.string.nq_ap_profiles), style = MaterialTheme.typography.labelLarge)
+    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+        AssistChip(onClick = { saveAs = true }, label = { Text(stringResource(R.string.nq_ap_profile_save)) }, leadingIcon = { Icon(Icons.Default.Save, null, Modifier.size(18.dp)) })
+        if (state.profiles.isNotEmpty()) AssistChip(onClick = { manage = true }, label = { Text(stringResource(R.string.nq_ap_profile_manage)) }, leadingIcon = { Icon(Icons.Default.Settings, null, Modifier.size(18.dp)) })
+        state.profiles.forEach { p -> FilterChip(state.spec == p.spec, { state.apply(p) }, label = { Text(p.name, maxLines = 1) }) }
+    }
+    if (saveAs) NameDialog(stringResource(R.string.nq_ap_profile_save), "", onDismiss = { saveAs = false }) { n ->
+        state.updateProfiles { SigAppearanceProfiles.save(it, n, state.spec) }; saveAs = false
+    }
+    if (manage) ProfilesDialog(state) { manage = false }
+}
+
+@Composable
+private fun ProfilesDialog(state: SigAppearanceState, onDismiss: () -> Unit) {
+    var renaming by remember { mutableStateOf<String?>(null) }
+    val copy = stringResource(R.string.nq_copy_suffix)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.nq_ap_profiles)) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                if (state.profiles.isEmpty()) Text(stringResource(R.string.nq_ap_profiles_empty), style = MaterialTheme.typography.bodySmall)
+                state.profiles.forEach { p ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        TextButton(onClick = { state.apply(p); onDismiss() }, Modifier.weight(1f)) { Text(p.name, maxLines = 1) }
+                        IconButton(onClick = { renaming = p.name }) { Icon(Icons.Default.Edit, stringResource(R.string.nq_rename)) }
+                        IconButton(onClick = { state.updateProfiles { SigAppearanceProfiles.duplicate(it, p.name, copy) } }) { Icon(Icons.Default.ContentCopy, stringResource(R.string.nq_duplicate)) }
+                        IconButton(onClick = { state.updateProfiles { SigAppearanceProfiles.delete(it, p.name) } }) { Icon(Icons.Default.Delete, stringResource(R.string.delete), tint = MaterialTheme.colorScheme.error) }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.done)) } },
+    )
+    renaming?.let { old ->
+        NameDialog(stringResource(R.string.nq_rename), old, onDismiss = { renaming = null }) { n ->
+            state.updateProfiles { SigAppearanceProfiles.rename(it, old, n) }; renaming = null
+        }
+    }
+}
+
+/** Small text-input dialog used for profile and server names. */
+@Composable
+internal fun NameDialog(title: String, initial: String, onDismiss: () -> Unit, onOk: (String) -> Unit) {
+    var text by remember { mutableStateOf(initial) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = { OutlinedTextField(text, { text = it }, singleLine = true, label = { Text(stringResource(R.string.nq_name)) }) },
+        confirmButton = { TextButton(onClick = { onOk(text.trim()) }, enabled = text.isNotBlank()) { Text(stringResource(R.string.save)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
+    )
 }

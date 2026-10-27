@@ -34,6 +34,7 @@ import com.smartdocs.editor.core.forms5.XfaGenerated
 import com.smartdocs.editor.core.forms5.XfaRepeat
 import com.smartdocs.editor.ui.reader.ReaderState
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -89,9 +90,13 @@ class FormFillState internal constructor(val reader: ReaderState) {
     var pendingAction by mutableStateOf<Pair<FWidget, ButtonAction>?>(null)
     /** Image field waiting for the picture picker (the layer launches it). */
     var imageTarget by mutableStateOf<String?>(null)
+    /** Signature field tapped: the reader shows its Sign / Validate / Clear sheet (ui/signature/SigFieldActions). */
+    var sigTapped by mutableStateOf<FWidget?>(null)
+    /** Validity of each signed signature field by full name (true = valid), for the status badges. */
+    var sigStatus by mutableStateOf<Map<String, Boolean>>(emptyMap())
     /** Date picker request for the active field. */
     var datePickerFor by mutableStateOf<String?>(null)
-    /** Short feedback for the field bar (submit result, required fields…), cleared by the UI. */
+    /** Short feedback for the field bar (submit result, required fields\u2026), cleared by the UI. */
     var message by mutableStateOf<FormMessage?>(null)
     var busy by mutableStateOf(false)
 
@@ -304,7 +309,10 @@ class FormFillState internal constructor(val reader: ReaderState) {
     suspend fun ensureLoaded() {
         val f = reader.file ?: return
         val s = reader.session ?: return
-        val key = f.path + "|" + System.identityHashCode(s) + "|" + reader.renderVersion
+        // the JavaScript switch is read before the model: it decides which scripts the model keeps (and a change reloads)
+        // nitro-protect2: the document's own decision (run level, Safe Reading Mode, trusted / "Keep blocked")
+        com.smartdocs.editor.core.security.JsPolicy.enabled = reader.guard.jsAllowed(runCatching { reader.app.settings.settings.first().runJavaScript }.getOrDefault(com.smartdocs.editor.core.security.JsPolicy.enabled))
+        val key = f.path + "|" + System.identityHashCode(s) + "|" + reader.renderVersion + "|" + com.smartdocs.editor.core.security.JsPolicy.enabled
         if (key == loadedKey) return
         loadMutex.withLock {
             if (key == loadedKey) return
@@ -395,6 +403,8 @@ class FormFillState internal constructor(val reader: ReaderState) {
     /** Tap on a widget. */
     fun tap(w: FWidget) {
         if (!enabled || isHidden(w)) return
+        // nitro-protect2: the author's form-filling permission and Protected View (buttons still work)
+        if (w.kind != WKind.BUTTON && !reader.guard.check(com.smartdocs.editor.core.security.DocAction.FILL_FORMS)) return
         if (w.id != activeId && !commitActive()) return
         when (w.kind) {
             WKind.CHECK, WKind.RADIO -> { toggle(w); activeId = w.id; typingField = null }
@@ -416,7 +426,8 @@ class FormFillState internal constructor(val reader: ReaderState) {
                 if (!useChain) w.action?.let { pendingAction = w to it }
                 return
             }
-            WKind.SIGNATURE -> { if (!isReadOnly(w)) signRequest = w.name }
+            // main (pdf-3c): a signature field opens the signature-field sheet (sign this field, lock, verify)
+            WKind.SIGNATURE -> sigTapped = w
         }
         // other widgets: their mouse triggers run after the default behaviour
         val t = w.triggers
@@ -559,6 +570,7 @@ class FormFillState internal constructor(val reader: ReaderState) {
     fun addRow(r: XfaRepeat) {
         val f = reader.file ?: return
         if (busy || !r.canAdd) return
+        if (!reader.guard.check(com.smartdocs.editor.core.security.DocAction.FILL_FORMS)) return      // nitro-protect2
         reader.scope.launch {
             busy = true
             try {

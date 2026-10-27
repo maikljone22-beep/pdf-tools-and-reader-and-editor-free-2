@@ -3,6 +3,8 @@ package com.smartdocs.editor.ui.tools
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -201,7 +203,12 @@ private fun CertEncryptTab(fileState: MutableState<java.io.File?>, runner: com.s
     var pendingP12 by remember { mutableStateOf<ByteArray?>(null) }
     var aes256 by remember { mutableStateOf(true) }
     var localError by remember { mutableStateOf<String?>(null) }
+    var pickContacts by remember { mutableStateOf(false) }
+    var noMeta by remember { mutableStateOf(false) }                       // nitro-protect2: "don't encrypt metadata"
+    val unlock = remember { com.smartdocs.editor.ui.security.IdUnlockState() }
     val pick = rememberPdfPicker { file = it.firstOrNull() }
+    // nitro-protect2: an already certificate-protected source is opened with the user's digital ID (change / remove)
+    val certSource = remember(file) { file?.let { CertEncryption.isCertificateEncrypted(it) } == true }
     val processing = stringResource(R.string.processing)
     val readFailed = stringResource(R.string.ps_cert_read_failed)
     val blocked = stringResource(R.string.ps_cert_blocked)
@@ -224,7 +231,15 @@ private fun CertEncryptTab(fileState: MutableState<java.io.File?>, runner: com.s
     val ownFile = remember { DigitalSignature.ownKeystoreFile(ctx) }
 
     FilePickRow(file, stringResource(R.string.tl_input_file), pick)
-    PasswordField(currentPwd, stringResource(R.string.ps_cert_current_password)) { currentPwd = it }
+    if (certSource) com.smartdocs.editor.ui.security.CertChangeSection(unlock, enabled = !runner.running) {
+        val src = file ?: return@CertChangeSection
+        runner.run(processing) {
+            val idn = unlock.identity(ctx)
+            val out = app.documents.uniqueFile(app.documents.docsDir, outName(src, "decrypted"))
+            try { CertEncryption.decryptToFile(src, out, idn) } catch (e: Exception) { out.delete(); throw e }
+            out
+        }
+    } else PasswordField(currentPwd, stringResource(R.string.ps_cert_current_password)) { currentPwd = it }
     FieldLabel(stringResource(R.string.ps_cert_recipients))
     if (recipients.isEmpty()) Text(stringResource(R.string.ps_cert_no_recipients), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     recipients.forEachIndexed { i, r -> RecipientRow(r, onPerms = { editing = i }, onRemove = { recipients.removeAt(i) }) }
@@ -236,24 +251,34 @@ private fun CertEncryptTab(fileState: MutableState<java.io.File?>, runner: com.s
             Icon(Icons.Default.Key, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.ps_cert_add_p12), maxLines = 1)
         }
     }
+    OutlinedButton(onClick = { pickContacts = true }, Modifier.fillMaxWidth()) {
+        Icon(Icons.Default.Contacts, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.np_recipients_from_contacts))
+    }
     if (ownFile.exists()) OutlinedButton(onClick = { prompt = KeyPrompt.OWN_RECIPIENT }, Modifier.fillMaxWidth()) {
         Icon(Icons.Default.Person, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.ps_cert_add_own))
     }
     Text(stringResource(R.string.ps_cert_self_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     FieldLabel(stringResource(R.string.ps_cert_cipher))
     ChoiceChips(listOf(true, false), aes256, { if (it) "AES-256" else "AES-128" }) { aes256 = it }
+    SwitchRow(stringResource(R.string.np2_cert_no_meta), noMeta) { noMeta = it }
+    Text(stringResource(R.string.np2_cert_no_meta_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     localError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-    PrimaryButton(stringResource(R.string.ps_cert_encrypt), enabled = file != null && recipients.isNotEmpty(), icon = Icons.Default.EnhancedEncryption) {
+    PrimaryButton(stringResource(if (certSource) R.string.np2_cert_change else R.string.ps_cert_encrypt), enabled = file != null && recipients.isNotEmpty() && (!certSource || unlock.ready), icon = Icons.Default.EnhancedEncryption) {
         val src = file ?: return@PrimaryButton
         if (recipients.any { r -> CertEncryption.issues(r.certificate).any { CertEncryption.isBlocking(it) } }) { runner.error = blocked; return@PrimaryButton }
         val list = recipients.toList(); val pw = currentPwd.ifBlank { null }; val bits = if (aes256) 256 else 128
+        val meta = !noMeta; val change = certSource
         runner.run(processing) {
+            val idn = if (change) unlock.identity(ctx) else null
             val out = app.documents.uniqueFile(app.documents.docsDir, outName(src, "cert"))
-            CertEncryption.encrypt(src, out, list, bits, pw)
+            CertEncryption.encrypt(src, out, list, bits, if (change) null else pw, encryptMetadata = meta, unlock = idn)
             out
         }
     }
 
+    if (pickContacts) TrustedRecipientsDialog(already = recipients.map { it.certificate }, onDismiss = { pickContacts = false }) { certs ->
+        pickContacts = false; localError = null; addAll(certs)
+    }
     editing?.let { idx ->
         recipients.getOrNull(idx)?.let { r -> PermissionsDialog(r.perms, onDismiss = { editing = null }) { p -> recipients[idx] = r.copy(perms = p); editing = null } }
     }
@@ -267,10 +292,67 @@ private fun CertEncryptTab(fileState: MutableState<java.io.File?>, runner: com.s
                     if (which == KeyPrompt.OWN_RECIPIENT) CertEncryption.certificateFromPkcs12(ownFile.inputStream(), pw.toCharArray())
                     else CertEncryption.certificateFromPkcs12(java.io.ByteArrayInputStream(pendingP12!!), pw.toCharArray())
                 }.getOrNull()
-                if (cert == null) localError = failed else { localError = null; addAll(listOf(cert)) }
+                if (cert == null) localError = failed else {
+                    localError = null; addAll(listOf(cert))
+                    // the own ID's public certificate, so "request certificate by e-mail" can attach it without the password
+                    if (which == KeyPrompt.OWN_RECIPIENT) withContext(Dispatchers.IO) { runCatching { com.smartdocs.editor.core.sign.OwnPublicCert.remember(ctx, cert) } }
+                }
             }
         }
     }
+}
+
+/**
+ * Multi-select of the Trusted Contacts list as recipients. Each row shows the same expiry / key-usage / RSA issues as
+ * the recipient list; blocking ones cannot be ticked, so the encrypt checks stay as they were.
+ */
+@Composable
+private fun TrustedRecipientsDialog(already: List<java.security.cert.X509Certificate>, onDismiss: () -> Unit, onAdd: (List<java.security.cert.X509Certificate>) -> Unit) {
+    val ctx = LocalContext.current
+    var entries by remember { mutableStateOf<List<com.smartdocs.editor.core.sign.TrustedCerts.Entry>?>(null) }
+    val chosen = remember { mutableStateListOf<String>() }
+    LaunchedEffect(Unit) { entries = withContext(Dispatchers.IO) { runCatching { com.smartdocs.editor.core.sign.TrustedCerts.list(ctx) }.getOrDefault(emptyList()) } }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.np_recipients_from_contacts)) },
+        text = {
+            Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
+                val l = entries
+                when {
+                    l == null -> LinearProgressIndicator(Modifier.fillMaxWidth())
+                    l.isEmpty() -> Text(stringResource(R.string.np_contacts_none), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    else -> l.forEach { e ->
+                        val issues = remember(e.sha256) { CertEncryption.issues(e.cert) }
+                        val blocking = issues.any { CertEncryption.isBlocking(it) }
+                        val added = already.any { it == e.cert }
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                            Checkbox(added || e.sha256 in chosen, { on -> if (on) chosen += e.sha256 else chosen -= e.sha256 }, enabled = !blocking && !added)
+                            Column(Modifier.weight(1f)) {
+                                Text(DigitalSignature.friendlyName(e.cert.subjectX500Principal.name), style = MaterialTheme.typography.bodyMedium, maxLines = 1)
+                                Text(stringResource(R.string.ps_cert_issuer_valid, DigitalSignature.friendlyName(e.cert.issuerX500Principal.name), com.smartdocs.editor.core.files.DocumentRepository.formatDate(e.cert.notAfter.time)),
+                                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
+                                issues.forEach { i -> Text(issueLabel(i), style = MaterialTheme.typography.labelSmall, color = if (CertEncryption.isBlocking(i)) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.tertiary) }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = chosen.isNotEmpty(), onClick = { onAdd(entries.orEmpty().filter { it.sha256 in chosen }.map { it.cert }) }) {
+                Text(stringResource(R.string.np_add_count, chosen.size))
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
+    )
+}
+
+@Composable
+private fun issueLabel(i: CertEncryption.CertIssue): String = when (i) {
+    CertEncryption.CertIssue.EXPIRED -> stringResource(R.string.ps_cert_issue_expired)
+    CertEncryption.CertIssue.NOT_YET_VALID -> stringResource(R.string.ps_cert_issue_not_yet)
+    CertEncryption.CertIssue.NO_ENCIPHERMENT -> stringResource(R.string.ps_cert_issue_usage)
+    CertEncryption.CertIssue.NOT_RSA -> stringResource(R.string.ps_cert_issue_rsa)
 }
 
 @OptIn(ExperimentalLayoutApi::class)

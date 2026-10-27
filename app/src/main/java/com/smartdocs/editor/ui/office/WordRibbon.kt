@@ -148,6 +148,8 @@ private fun WordReview(s: WordState) {
         RibbonButton(Icons.Default.Search, R.string.o5_find, s.findOpen) { s.findOpen = !s.findOpen; s.bump() }
         RibbonButton(Icons.Default.FindReplace, R.string.o5_replace) { s.findOpen = true; s.bump() }
         RibbonButton(Icons.Default.Numbers, R.string.o5_word_count) { count = true }
+        RibbonButton(Icons.Default.RecordVoiceOver, R.string.of6_read_aloud) { OfficeCommandRegistry.run("read_aloud") }   // office6 (registry)
+        RibbonButton(Icons.Default.Print, R.string.of6_print) { OfficeCommandRegistry.run("print") }
     }
     if (count) {
         val st = remember { s.doc.stats() }

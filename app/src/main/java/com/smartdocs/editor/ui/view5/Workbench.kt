@@ -107,7 +107,7 @@ fun WorkbenchSheet(v: V5State, measureFirst: Boolean, onMessage: (String) -> Uni
                     Button(enabled = m.items.isNotEmpty() && !saving, onClick = {
                         saving = true
                         scope.launch {
-                            val r = runCatching { s.applyInPlace(label = { s.context.getString(R.string.hi_workbench) }) { src, out, pw -> m.writeAll(ctx, src, out, pw) } }
+                            val r = runCatching { s.applyInPlace(label = { s.context.getString(R.string.hi_workbench) }, action = com.smartdocs.editor.core.security.DocAction.ANNOTATE) { src, out, pw -> m.writeAll(ctx, src, out, pw) } }
                             saving = false
                             r.onSuccess { m.items.clear(); onMessage(ctx.getString(R.string.v5_saved_items)); close() }
                                 .onFailure { onMessage(it.message ?: ctx.getString(R.string.error_generic)) }

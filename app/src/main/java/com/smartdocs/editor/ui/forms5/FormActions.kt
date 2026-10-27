@@ -17,6 +17,7 @@ import com.smartdocs.editor.core.forms5.WKind
 import com.smartdocs.editor.core.pdf.PdfOps
 import com.tom_roush.pdfbox.cos.COSString
 import com.tom_roush.pdfbox.pdmodel.interactive.annotation.PDAnnotationMarkup
+import com.smartdocs.editor.ui.security.DocSecurityGate
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -49,10 +50,11 @@ object FormActions {
     suspend fun run(fs: FormFillState, w: FWidget, a: ButtonAction) {
         when (a) {
             is ButtonAction.Submit -> submit(fs, a)
-            is ButtonAction.Reset -> reset(fs, a)
+            // nitro-protect2: changing field values follows the form-filling permission / Protected View
+            is ButtonAction.Reset -> if (fs.reader.guard.check(com.smartdocs.editor.core.security.DocAction.FILL_FORMS)) reset(fs, a)
             is ButtonAction.OpenUri -> openUri(fs, a.uri)
             ButtonAction.Print -> print(fs)
-            ButtonAction.ImportImage -> fs.imageTarget = w.name
+            ButtonAction.ImportImage -> if (fs.reader.guard.check(com.smartdocs.editor.core.security.DocAction.FILL_FORMS)) fs.imageTarget = w.name
         }
     }
 
@@ -81,14 +83,14 @@ object FormActions {
         when (a) {
             is PdfAction.JavaScript -> runJs(fs, w, trigger, a.code)
             is PdfAction.Submit -> submit(fs, a.submit, a.includeAnnotations, a.canonicalDates)
-            is PdfAction.Reset -> reset(fs, a.reset)
+            is PdfAction.Reset -> if (fs.reader.guard.check(com.smartdocs.editor.core.security.DocAction.FILL_FORMS)) reset(fs, a.reset)
             is PdfAction.Uri -> openUri(fs, a.uri)
             is PdfAction.GoTo -> if (a.page >= 0) fs.reader.jumpTo(a.page) else fs.message = FormMessage.NotFound(a.named ?: "?")
             is PdfAction.GoToR -> openOther(fs, a.file, a.page, a.named)
             is PdfAction.Launch -> if (a.file.endsWith(".pdf", true)) openOther(fs, a.file, 0, null) else fs.message = FormMessage.Unsupported("Launch " + a.file.substringAfterLast('/'))
             is PdfAction.Hide -> fs.setHidden(a.fields, a.hide)
             is PdfAction.Named -> named(fs, a.name)
-            is PdfAction.ImportData -> importData(fs, a.file)
+            is PdfAction.ImportData -> if (fs.reader.guard.check(com.smartdocs.editor.core.security.DocAction.FILL_FORMS)) importData(fs, a.file)
             is PdfAction.SetOcg -> setOcg(fs, a)
             is PdfAction.Unsupported -> fs.message = FormMessage.Unsupported(a.type)
         }
@@ -131,7 +133,7 @@ object FormActions {
             "image" -> fs.imageTarget = q["n"].ifBlank { w?.name }
             "file" -> fs.filePickFor = q["n"].ifBlank { w?.name }
             "flatten" -> flatten(fs)
-            "remove" -> { fs.removeFieldByScript(q["n"]); unsupported += "removeField → hidden" }
+            "remove" -> { fs.removeFieldByScript(q["n"]); unsupported += "removeField -> hidden" }
             "menu" -> named(fs, q["n"])
             "unsupported" -> unsupported += q["m"]
         }
@@ -197,9 +199,11 @@ object FormActions {
     private fun openUri(fs: FormFillState, uri: String) {
         val u = uri.trim()
         if (!(FormSubmit.isHttp(u) || FormSubmit.isMail(u))) { fs.message = FormMessage.Failed(u); return }
-        runCatching {
-            fs.reader.context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(u)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        }.onFailure { fs.message = FormMessage.Failed(it.message ?: u) }
+        DocSecurityGate.web(fs.reader.context, u) {
+            runCatching {
+                fs.reader.context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(u)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            }.onFailure { fs.message = FormMessage.Failed(it.message ?: u) }
+        }
     }
 
     /** Date fields (Acrobat date format scripts) and their patterns, for CanonicalFormat. */
@@ -237,6 +241,8 @@ object FormActions {
             fs.focus(missing.first().id)
             return
         }
+        // an HTTP submission sends the form data to a server: "Manage Internet Access" decides first
+        if (FormSubmit.isHttp(a.url) && !DocSecurityGate.allowWeb(fs.reader.context, a.url.trim())) return
         var values = FormSubmit.select(exportValues(fs), a)
         if (canonical) values = FormSubmit.canonicalDates(values, datePatterns(fs))
         val file = fs.reader.file ?: return
