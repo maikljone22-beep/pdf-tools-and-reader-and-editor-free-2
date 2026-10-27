@@ -39,7 +39,10 @@ object AiVoiceEngine {
     @Volatile private var sessionDisabled = false
 
     /** True when the user chose the AI voice, it is configured and the device is online. */
-    fun shouldUse(ctx: Context): Boolean = !sessionDisabled && VoicePrefs.load(ctx).readAloudAi && online(ctx)
+    /** ai6: mirror of Settings, AI assistant switch (set by the reader); off means the system voice only. */
+    @Volatile var aiSwitchOn: Boolean = true
+
+    fun shouldUse(ctx: Context): Boolean = aiSwitchOn && !sessionDisabled && VoicePrefs.load(ctx).readAloudAi && online(ctx)
 
     /** After a failure, use the system voice until [enableAgain] (e.g. next start of read aloud). */
     fun disableForSession() { sessionDisabled = true }

@@ -49,6 +49,7 @@ fun SheetEditor(s: SheetState) {
         val wide = maxWidth > 840.dp
         Column(Modifier.fillMaxSize()) {
             SheetRibbon(s)
+            if (s.findOpen) SheetFindBar(s)   // office6
             FormulaBar(s)
             s.suggestions().takeIf { it.isNotEmpty() }?.let { names ->
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 6.dp)) { names.forEach { n -> SuggestionChip(onClick = { s.applySuggestion(n) }, label = { Text(n) }, modifier = Modifier.padding(end = 4.dp)) } }

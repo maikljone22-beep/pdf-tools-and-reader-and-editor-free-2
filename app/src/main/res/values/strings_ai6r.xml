@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ai6 reader AI: rewrite in place (B11), AI edit via chat (B10), smart fill, read aloud (C1), scan AI (B16) -->
+    <string name="ai6r_rewrite_chip">إعادة صياغة</string>
+    <string name="ai6r_replacing">جارٍ استبدال النص في المستند…</string>
+    <string name="ai6r_replaced">استُبدل النص في المستند</string>
+    <string name="ai6r_replace_failed">تعذّر استبدال النص في مكانه: التحديد يمتد على أكثر من فقرة أو أن نص الصفحة غير قابل للتحرير. انسخ النص أو أضفه كملاحظة.</string>
+    <string name="ai6r_err_pattern">النمط غير صالح.</string>
+    <string name="ai6r_err_none_found">لم يُعثر على بيانات من نوع «%1$s».</string>
+    <string name="ai6r_cf_highlight">هل تريد تظليل كل مواضع «%1$s» (%2$s)؟</string>
+    <string name="ai6r_cf_redact_pattern">هل تريد تنقيح (حجب نهائي) كل البيانات من نوع «%1$s»؟</string>
+    <string name="ai6r_cf_replace">هل تريد استبدال «%1$s» بـ «%2$s» في كل المستند؟</string>
+    <string name="ai6r_cf_rewrite">هل تريد إعادة صياغة «%1$s» (%2$s) واستبدالها في المستند؟</string>
+    <string name="ai6r_done_highlight">ظُلّل %1$d موضعاً لـ «%2$s».</string>
+    <string name="ai6r_done_redact_pattern">نُقّح %1$d موضعاً من نوع «%2$s».</string>
+    <string name="ai6r_done_replace">استُبدل %1$d موضعاً لـ «%2$s».</string>
+    <string name="ai6r_done_rewrite">النص الجديد:</string>
+    <string name="ai6r_smart_fill">تعبئة ذكية</string>
+    <string name="ai6r_field_checked">محدد</string>
+    <string name="ai6r_field_unchecked">غير محدد</string>
+    <string name="ai6r_scan_ai">اسأل المساعد عن «%1$s»</string>
+    <string name="ai6r_scan_summary">لخّص</string>
+    <string name="ai6r_scan_ask">اسأل</string>
+</resources>

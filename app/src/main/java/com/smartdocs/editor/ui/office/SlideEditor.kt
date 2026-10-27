@@ -47,6 +47,7 @@ fun SlideEditor(s: SlideState) {
         val wide = maxWidth > 720.dp
         Column(Modifier.fillMaxSize()) {
             SlideRibbon(s)
+            if (s.findOpen) SlideFindBar(s)   // office6
             Row(Modifier.weight(1f).fillMaxWidth()) {
                 if (wide && s.thumbs) Thumbnails(s, vertical = true, Modifier.width(170.dp).fillMaxHeight())
                 BoxWithConstraints(Modifier.weight(1f).fillMaxHeight().background(Color(0xFFDCDFE3)).padding(12.dp), contentAlignment = Alignment.Center) {

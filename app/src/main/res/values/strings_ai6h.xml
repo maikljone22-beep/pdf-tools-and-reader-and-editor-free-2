@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ai6 hub chat: attachments, skills, web search, exports, conversations, Spaces sources, help chat -->
+    <string name="ai6h_add">إضافة</string>
+    <string name="ai6h_add_images">صور من المعرض</string>
+    <string name="ai6h_add_link">رابط ويب</string>
+    <string name="ai6h_add_pdfs">ملفات PDF أخرى</string>
+    <string name="ai6h_add_text">نص ملصوق</string>
+    <string name="ai6h_all">الكل</string>
+    <string name="ai6h_anki">تصدير إلى Anki</string>
+    <string name="ai6h_ask_skill">اكتب سؤالك لهذه المهارة…</string>
+    <string name="ai6h_attach">إرفاق</string>
+    <string name="ai6h_bad">إجابة سيئة</string>
+    <string name="ai6h_bad_url">الرابط غير صالح</string>
+    <string name="ai6h_camera">التقاط صورة</string>
+    <string name="ai6h_chat_files">المحادثة تشمل %1$d ملفات</string>
+    <string name="ai6h_chat_missing">ملفات هذه المحادثة لم تعد موجودة.</string>
+    <string name="ai6h_conversations">المحادثات</string>
+    <string name="ai6h_csv">تصدير CSV</string>
+    <string name="ai6h_export">تصدير</string>
+    <string name="ai6h_export_docx">تصدير Word</string>
+    <string name="ai6h_fetch_empty">لم يُعثر على نص مقروء في هذه الصفحة.</string>
+    <string name="ai6h_fetch_failed">تعذر جلب الصفحة: %1$s</string>
+    <string name="ai6h_good">إجابة جيدة</string>
+    <string name="ai6h_help_ask">اسأل عن استخدام التطبيق…</string>
+    <string name="ai6h_help_chat">مساعد الدعم</string>
+    <string name="ai6h_help_hello">اسألني عن أي ميزة في التطبيق، وسأجيبك من مركز المساعدة.</string>
+    <string name="ai6h_help_q1">كيف أضيف توقيعاً إلى ملف؟</string>
+    <string name="ai6h_help_q2">كيف أقرأ المستند بصوت عالٍ؟</string>
+    <string name="ai6h_help_q3">كيف أستعيد ملفاً حذفته؟</string>
+    <string name="ai6h_import">استيراد</string>
+    <string name="ai6h_n_images">%1$d صور مرفقة</string>
+    <string name="ai6h_new_skill">مهارة جديدة</string>
+    <string name="ai6h_page">رقم الصفحة</string>
+    <string name="ai6h_page_of">رقم الصفحة (من %1$d)</string>
+    <string name="ai6h_page_snapshot">لقطة من صفحة</string>
+    <string name="ai6h_panel_width">عرض اللوحة</string>
+    <string name="ai6h_remove">إزالة</string>
+    <string name="ai6h_skill_image">تحتاج صورة (صيغة، مخطط…)</string>
+    <string name="ai6h_skill_instruction">التعليمات</string>
+    <string name="ai6h_skill_name">اسم المهارة</string>
+    <string name="ai6h_skills">المهارات</string>
+    <string name="ai6h_skills_hint">المهارة تعليمات تُضاف قبل سؤالك. اخترها من شريط المحادثة أو اكتب /الاسم في بداية السؤال. التصدير يشارك JSON، والاستيراد يقرأ JSON من الحافظة أو من ملف.</string>
+    <string name="ai6h_skills_imported">تم استيراد %1$d مهارات</string>
+    <string name="ai6h_source">المصدر</string>
+    <string name="ai6h_space_bad">هذا الملف ليس مساحة SmartDocs صالحة.</string>
+    <string name="ai6h_space_import">استيراد مساحة</string>
+    <string name="ai6h_space_imported">تم استيراد المساحة «%1$s»</string>
+    <string name="ai6h_space_share">مشاركة المساحة</string>
+    <string name="ai6h_text_body">النص</string>
+    <string name="ai6h_text_title">العنوان</string>
+    <string name="ai6h_url">رابط الصفحة (https://…)</string>
+    <string name="ai6h_web">بحث الويب</string>
+    <string name="ai6h_you">أنت</string>
+    <string name="ai6h_assistant">المساعد</string>
+    <string name="ai6h_export_chat_docx">المحادثة إلى Word</string>
+</resources>

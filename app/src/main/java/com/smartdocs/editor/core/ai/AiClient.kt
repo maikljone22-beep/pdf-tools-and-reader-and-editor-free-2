@@ -173,6 +173,12 @@ class AiClient(private val endpoint: String, private val model: String, private 
     /** True when requests go through the app's proxy (the server forces model / voices). */
     val viaProxy: Boolean get() = appToken.isNotBlank()
 
+    /** Auth headers for raw requests built elsewhere (ai6 media routes). */
+    fun authHeaders(): Map<String, String> = buildMap {
+        if (apiKey.isNotBlank()) put("Authorization", "Bearer $apiKey")
+        if (appToken.isNotBlank()) put("X-App-Token", appToken)
+    }
+
     private fun authed(b: Request.Builder): Request.Builder {
         if (apiKey.isNotBlank()) b.header("Authorization", "Bearer $apiKey")
         if (appToken.isNotBlank()) b.header("X-App-Token", appToken)
