@@ -412,6 +412,7 @@ class Annot2Host(val s: ReaderState) {
      * written back (same pattern as deleteExisting). Pending annotations stay in memory untouched.
      */
     suspend fun fileOp(op: suspend (src: File, out: File, pw: String?) -> Unit) {
+        s.guard.require(com.smartdocs.editor.core.security.DocAction.ANNOTATE)      // nitro-protect2: restrictions / Protected View
         s.saveMutex.withLock {
             val f = s.file ?: return
             withContext(NonCancellable) {

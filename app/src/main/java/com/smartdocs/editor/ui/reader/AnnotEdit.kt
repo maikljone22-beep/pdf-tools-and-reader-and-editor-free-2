@@ -107,6 +107,7 @@ class AnnotEditor(private val s: ReaderState) {
 
     /** Apply [change] to the selection, converting a stored annotation into a pending one first. */
     fun edit(change: (Annot) -> Annot) {
+        if (!s.guard.check(com.smartdocs.editor.core.security.DocAction.ANNOTATE)) return      // nitro-protect2: restrictions / Protected View
         when (val t = target) {
             is AnnotTarget.Pending -> s.annots.firstOrNull { it.id == t.id }?.let { s.replaceAnnot(change(it)) }
             is AnnotTarget.Stored -> {
@@ -179,6 +180,7 @@ class AnnotEditor(private val s: ReaderState) {
     }
 
     fun delete() {
+        if (!s.guard.check(com.smartdocs.editor.core.security.DocAction.ANNOTATE)) return
         when (val t = target) {
             is AnnotTarget.Pending -> { s.removeAnnot(t.id); clear() }
             is AnnotTarget.Stored -> s.scope.launch { s.deleteExisting(t.e); clear() }

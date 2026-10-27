@@ -524,6 +524,7 @@ class ReaderState(
      * (PDF space) is removed from the file in one write, which is one undo step.
      */
     fun eraseStoredInk(page: Int, pts: List<Pair<Float, Float>>, radius: Float) {
+        if (!guard.check(com.smartdocs.editor.core.security.DocAction.ANNOTATE)) return      // nitro-protect2
         if (pts.isEmpty() || saving) return
         val candidates = existing.filter { it.page == page && it.subtype == "Ink" && EraseLogic.nearRect(it.rect.left, it.rect.bottom, it.rect.right, it.rect.top, pts, radius + 4f) }
         if (candidates.isEmpty()) return
@@ -548,6 +549,7 @@ class ReaderState(
     }
 
     suspend fun deleteExisting(e: AnnotationWriter.Existing) {
+        if (!guard.check(com.smartdocs.editor.core.security.DocAction.ANNOTATE)) return      // nitro-protect2
         saveMutex.withLock {
             val f = file ?: return
             saving = true

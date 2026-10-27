@@ -36,10 +36,11 @@ object FormActions {
     suspend fun run(fs: FormFillState, w: FWidget, a: ButtonAction) {
         when (a) {
             is ButtonAction.Submit -> submit(fs, a)
-            is ButtonAction.Reset -> reset(fs, a)
+            // nitro-protect2: changing field values follows the form-filling permission / Protected View
+            is ButtonAction.Reset -> if (fs.reader.guard.check(com.smartdocs.editor.core.security.DocAction.FILL_FORMS)) reset(fs, a)
             is ButtonAction.OpenUri -> openUri(fs, a.uri)
             ButtonAction.Print -> fs.message = FormMessage.PrintHint
-            ButtonAction.ImportImage -> fs.imageTarget = w.name
+            ButtonAction.ImportImage -> if (fs.reader.guard.check(com.smartdocs.editor.core.security.DocAction.FILL_FORMS)) fs.imageTarget = w.name
         }
     }
 

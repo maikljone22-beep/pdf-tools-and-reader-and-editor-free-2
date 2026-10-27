@@ -440,6 +440,7 @@ class FormFillState internal constructor(val reader: ReaderState) {
     fun addRow(r: XfaRepeat) {
         val f = reader.file ?: return
         if (busy || !r.canAdd) return
+        if (!reader.guard.check(com.smartdocs.editor.core.security.DocAction.FILL_FORMS)) return      // nitro-protect2
         reader.scope.launch {
             busy = true
             try {
