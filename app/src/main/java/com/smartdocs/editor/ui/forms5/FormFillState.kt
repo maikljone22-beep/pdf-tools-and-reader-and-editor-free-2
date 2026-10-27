@@ -203,6 +203,19 @@ class FormFillState internal constructor(val reader: ReaderState) {
     private var focusedForTriggers: String? = null
 
     init {
+        // page open / close actions (page /AA O, C) as the reader moves between pages
+        reader.scope.launch {
+            var prev = -1
+            snapshotFlow { reader.currentPage to model }.collect { (page, m) ->
+                if (page == prev || m.pageActions.isEmpty()) { prev = page; return@collect }
+                val sc = scripts
+                if (sc != null) {
+                    m.pageActions[prev]?.get("C")?.let { code -> runCatching { sc.action(null, "Page/Close", code, allValues(), prev) }.getOrNull()?.let { applyActionResult(it) } }
+                    m.pageActions[page]?.get("O")?.let { code -> runCatching { sc.action(null, "Page/Open", code, allValues(), page) }.getOrNull()?.let { applyActionResult(it) } }
+                }
+                prev = page
+            }
+        }
         reader.scope.launch {
             snapshotFlow { activeId }.collect { id ->
                 val old = focusedForTriggers?.let { o -> model.widgets.firstOrNull { it.id == o } }

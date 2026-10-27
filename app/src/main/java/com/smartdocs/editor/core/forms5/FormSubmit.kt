@@ -121,22 +121,11 @@ object FormSubmit {
      */
     fun fdfWithAnnots(values: Map<String, String>, fileName: String, annots: List<String>): ByteArray {
         if (annots.isEmpty()) return fdf(values, fileName)
-        val sb = StringBuilder("%FDF-1.2
-1 0 obj
-<< /FDF << /F ").append(pdfString(fileName)).append(" /Fields [
-")
-        values.forEach { (k, v) -> sb.append("<< /T ").append(pdfString(k)).append(" /V ").append(pdfString(v)).append(" >>
-") }
-        sb.append("] /Annots [
-")
-        annots.forEach { sb.append(it).append('
-') }
-        sb.append("] >> >>
-endobj
-trailer
-<< /Root 1 0 R >>
-%%EOF
-")
+        val sb = StringBuilder("%FDF-1.2\n1 0 obj\n<< /FDF << /F ").append(pdfString(fileName)).append(" /Fields [\n")
+        values.forEach { (k, v) -> sb.append("<< /T ").append(pdfString(k)).append(" /V ").append(pdfString(v)).append(" >>\n") }
+        sb.append("] /Annots [\n")
+        annots.forEach { sb.append(it).append('\n') }
+        sb.append("] >> >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n")
         return sb.toString().toByteArray(Charsets.ISO_8859_1)
     }
 

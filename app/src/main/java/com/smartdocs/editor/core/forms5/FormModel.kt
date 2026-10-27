@@ -80,6 +80,8 @@ data class FormModel(
     val xfaRepeats: List<XfaRepeat> = emptyList(),   // generated XFA forms: subforms that can take another row
     /** Document actions of the catalog /AA (WC, WS, DS, WP, DP) as JavaScript text. */
     val docActions: Map<String, String> = emptyMap(),
+    /** Page open / close JavaScript (page /AA O and C): page index -> ("O"|"C" -> code). */
+    val pageActions: Map<Int, Map<String, String>> = emptyMap(),
 ) {
     val byName: Map<String, List<FWidget>> by lazy { widgets.groupBy { it.name } }
     fun onPage(page: Int) = widgets.filter { it.page == page && !it.hidden }
@@ -354,6 +356,15 @@ object FormModelLoader {
         val coIndex = co.withIndex().associate { it.value to it.index }
         val docActions = runCatching { docActions(doc) }.getOrDefault(emptyMap())
         if (docActions.isNotEmpty()) actionJs = true
+        val pageActions = HashMap<Int, Map<String, String>>()
+        doc.pages.forEachIndexed { pi, pg ->
+            val aa = pg.cosObject.getDictionaryObject(COSName.AA) as? COSDictionary ?: return@forEachIndexed
+            val m = listOf("O", "C").mapNotNull { k ->
+                PdfActions.chain(aa.getDictionaryObject(COSName.getPDFName(k)), null).filterIsInstance<PdfAction.JavaScript>()
+                    .joinToString("\n") { it.code }.takeIf { it.isNotBlank() }?.let { k to it }
+            }.toMap()
+            if (m.isNotEmpty()) { pageActions[pi] = m; actionJs = true; allJs += m.values }
+        }
         val dScripts = runCatching { docScripts(doc) }.getOrDefault(emptyList())
         allJs += docActions.values; allJs += dScripts
         jsScripts.values.forEach { listOfNotNull(it.keystroke, it.format, it.validate, it.calculate).forEach { c -> allJs += c } }
@@ -361,7 +372,7 @@ object FormModelLoader {
         val formJs = if (jsFields.isEmpty() && !actionJs) FormJs.EMPTY else FormJs(jsFields.map { it.copy(calcIndex = coIndex[it.name] ?: -1) }, jsScripts, co,
             dScripts, doc.numberOfPages, hasActionJs = actionJs, pageWords = words)
         val repeats = if (generated) runCatching { XfaRepeat.parse(doc.documentInformation?.getCustomMetadataValue(XfaGenerated.KEY_REPEAT)) }.getOrDefault(emptyList()) else emptyList()
-        return FormModel(widgets, values, calc, xfa, tabs, generated, formJs, repeats, docActions)
+        return FormModel(widgets, values, calc, xfa, tabs, generated, formJs, repeats, docActions, pageActions)
     }
 
     suspend fun load(file: File, password: String?): FormModel = withContext(Dispatchers.IO) {
