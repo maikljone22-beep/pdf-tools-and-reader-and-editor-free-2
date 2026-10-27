@@ -47,6 +47,10 @@ fun RedactScreen(nav: NavHostController, uri: String?) {
     var page by remember { mutableIntStateOf(0) }
     var styleAll by remember { mutableStateOf(false) }
     var editMark by remember { mutableStateOf<RedactMark?>(null) }
+    var styleMark by remember { mutableStateOf<RedactMark?>(null) }
+    var outPrefix by remember { mutableStateOf(com.smartdocs.editor.core.redact.RedactPrefs.outPrefix(ctx)) }
+    var outSuffix by remember { mutableStateOf(com.smartdocs.editor.core.redact.RedactPrefs.outSuffix(ctx)) }
+    val me = LocalSettingsAuthor()
     var repeatMark by remember { mutableStateOf<RedactMark?>(null) }
     var confirm by remember { mutableStateOf(false) }
     var confirmClear by remember { mutableStateOf(false) }
@@ -70,18 +74,23 @@ fun RedactScreen(nav: NavHostController, uri: String?) {
     LaunchedEffect(doc.error) { doc.error?.let { snack.showSnackbar(it) } }
 
     val markedMsg = stringResource(R.string.s5_marked_n)
+    val noImageMsg = stringResource(R.string.nt_rd_no_image)
     fun search() { val s = doc.session ?: return; scope.launch { runCatching { st.search(s) }.onFailure { snack.showSnackbar(it.message ?: it.toString()) } } }
     fun markChecked() { val n = st.markChecked(); scope.launch { snack.showSnackbar(markedMsg.format(n)) } }
 
     val applying = stringResource(R.string.pg_redact_applying)
     val reportFmt = stringResource(R.string.s5_report)
     val rasterFmt = stringResource(R.string.s5_report_raster)
-    fun applyAll() {
+    /** Applies [only] (all active marks when null); the other active marks stay pending in the result. */
+    fun applyAll(only: RedactMark? = null) {
         val src = doc.file ?: return
-        val marks = st.activeMarks()
+        val marks = if (only != null) listOf(only) else st.activeMarks()
+        val pending = if (only != null) st.activeMarks().filter { it.id != only.id } else emptyList()
+        com.smartdocs.editor.core.redact.RedactPrefs.saveOutName(ctx, outPrefix, outSuffix)
+        val base = outPrefix + src.nameWithoutExtension + outSuffix
         runner.run(applying) {
-            val out = app.documents.uniqueFile(app.documents.docsDir, src.nameWithoutExtension + com.smartdocs.editor.core.data.NpfPrefs.redactSuffix.ifBlank { "_redacted" })   // nav-prefs: redaction file suffix
-            val r = RedactApplier.apply(ctx, src, out, doc.password, marks, RedactApplier.Options(sanitize = sanitize, maxSecurity = maxSecurity))
+            val out = app.documents.uniqueFile(app.documents.docsDir, base.ifBlank { src.nameWithoutExtension + "_redacted" })
+            val r = RedactApplier.apply(ctx, src, out, doc.password, marks, RedactApplier.Options(sanitize = sanitize, maxSecurity = maxSecurity, keepPending = pending, author = me))
             report = reportFmt.format(r.marks, r.pages, r.glyphs, r.objects + r.images, r.annots) +
                 (if (r.rasterPages.isNotEmpty()) "\n" + rasterFmt.format(r.rasterPages.joinToString(", ") { (it + 1).toString() }) else "")
             runCatching { app.documents.touchRecent(out) }
@@ -142,7 +151,8 @@ fun RedactScreen(nav: NavHostController, uri: String?) {
                     Row(Modifier.fillMaxSize()) {
                         Box(Modifier.weight(1f).fillMaxHeight()) {
                             TabContent(tab, st, s, page, { page = it.coerceIn(0, (s.pageCount - 1).coerceAtLeast(0)) }, ::search, ::markChecked, { batchPick() },
-                                onJump = { page = it; tab = RedactTab.MANUAL }, onEdit = { editMark = it }, onRepeat = { repeatMark = it }, onPii = { showPii = true })
+                                onJump = { page = it; tab = RedactTab.MANUAL }, onEdit = { editMark = it }, onRepeat = { repeatMark = it }, onPii = { showPii = true },
+                                onImageTap = { x, y -> val f = doc.file; if (f != null) scope.launch { if (!st.markImageAt(f, doc.password, page, x, y)) snack.showSnackbar(noImageMsg) } })
                         }
                         if (tablet) {
                             VerticalDivider()
@@ -158,7 +168,13 @@ fun RedactScreen(nav: NavHostController, uri: String?) {
     result?.let { ResultSheet(it, nav, onDismiss = { result = null }, extraInfo = report) }
     if (runner.results.isNotEmpty() || batchSkipped.isNotEmpty()) BatchResults(runner.results, batchSkipped, nav) { runner.results = emptyList(); batchSkipped = emptyList() }
     if (styleAll) RedactStyleDialog(st.style, stringResource(R.string.s5_style_all), onDismiss = { styleAll = false }) { st.applyStyleToAll(it); styleAll = false }
-    editMark?.let { m -> RedactStyleDialog(m.style, stringResource(R.string.s5_properties), onDismiss = { editMark = null }) { st.update(m.copy(style = it)); editMark = null } }
+    editMark?.let { m0 ->
+        val m = st.marks.firstOrNull { it.id == m0.id } ?: m0
+        MarkPropertiesDialog(m, me, onDismiss = { editMark = null }, onAppearance = { styleMark = m },
+            onSave = { a, s, l -> st.setGeneral(m.id, a, s, l); editMark = null }, onReview = { state -> st.review(m.id, state, me) },
+            onApplyOne = { editMark = null; applyAll(m) })
+    }
+    styleMark?.let { m -> RedactStyleDialog(m.style, stringResource(R.string.s5_properties), onDismiss = { styleMark = null }) { st.update((st.marks.firstOrNull { it.id == m.id } ?: m).copy(style = it)); styleMark = null } }
     repeatMark?.let { m -> PagePickDialog(stringResource(R.string.s5_repeat_pages), s5PageCount(doc.session), onDismiss = { repeatMark = null }) { st.repeatOnPages(m, it); repeatMark = null } }
     if (confirmClear) AlertDialog(onDismissRequest = { confirmClear = false }, title = { Text(stringResource(R.string.pg_redact_clear)) },
         confirmButton = { TextButton(onClick = { st.clear(); confirmClear = false }) { Text(stringResource(R.string.ok)) } },
@@ -177,6 +193,12 @@ fun RedactScreen(nav: NavHostController, uri: String?) {
                 Spacer(Modifier.height(8.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(sanitize, { sanitize = it }); Text(stringResource(R.string.s5_also_sanitize), style = MaterialTheme.typography.bodyMedium) }
                 Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(maxSecurity, { maxSecurity = it }); Text(stringResource(R.string.s5_max_security), style = MaterialTheme.typography.bodyMedium) }
+                Text(stringResource(R.string.nt_rd_file_name), Modifier.padding(top = 8.dp), style = MaterialTheme.typography.labelLarge)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(outPrefix, { outPrefix = it }, Modifier.weight(1f), singleLine = true, label = { Text(stringResource(R.string.nt_rd_prefix)) })
+                    OutlinedTextField(outSuffix, { outSuffix = it }, Modifier.weight(1f), singleLine = true, label = { Text(stringResource(R.string.nt_rd_suffix)) })
+                }
+                Text(outPrefix + (doc.file?.nameWithoutExtension ?: "") + outSuffix + ".pdf", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         },
         confirmButton = { TextButton(onClick = { confirm = false; applyAll() }) { Text(stringResource(R.string.apply)) } },
@@ -197,15 +219,17 @@ private fun tabLabel(t: RedactTab) = stringResource(when (t) {
 private fun TabContent(
     tab: RedactTab, st: RedactState, s: PdfSession, page: Int, onPage: (Int) -> Unit, onSearch: () -> Unit, onMark: () -> Unit, onBatch: () -> Unit,
     onJump: (Int) -> Unit, onEdit: (RedactMark) -> Unit, onRepeat: (RedactMark) -> Unit, onPii: () -> Unit,
+    onImageTap: (Float, Float) -> Unit = { _, _ -> },
 ) {
     when (tab) {
         RedactTab.SEARCH -> RedactSearchPane(st, true, onSearch, onMark, onBatch, Modifier.fillMaxSize(), onPii = onPii)
         RedactTab.MANUAL -> {
             val boxes = st.marks.filter { it.page == page }.flatMap { m ->
-                if (m.wholePage) listOf(ManualBox(m.id, RectF(), m.style.fill, m.style.outline, wholePage = true))
-                else m.rects.mapNotNull { r -> st.displayBox(page, r)?.let { b -> ManualBox(m.id, RectF(b.l, b.t, b.r, b.b), m.style.fill, m.style.outline) } }
+                if (m.wholePage) listOf(ManualBox(m.id, RectF(), m.style.fill, m.style.outline, wholePage = true, locked = m.locked))
+                else m.rects.mapNotNull { r -> st.displayBox(page, r)?.let { b -> ManualBox(m.id, RectF(b.l, b.t, b.r, b.b), m.style.fill, m.style.outline, locked = m.locked, single = m.rects.size == 1) } }
             }
-            RedactManualView(s, page, onPage, boxes, onAdd = { r -> st.addManual(page, r) }, Modifier.fillMaxSize())
+            RedactManualView(s, page, onPage, boxes, onAdd = { r -> st.addManual(page, r) }, Modifier.fillMaxSize(),
+                onMove = { id, dx, dy -> st.move(id, page, dx, dy) }, onResize = { id, r -> st.resize(id, page, r) }, onDoubleTap = onImageTap)
         }
         RedactTab.PAGES -> RedactPagesPane(st, s.pageCount, Modifier.fillMaxSize())
         RedactTab.REVIEW -> RedactReviewList(st, onJump, onEdit, onRepeat, Modifier.fillMaxSize())
@@ -228,7 +252,7 @@ private fun runBatch(files: List<File>, st: RedactState, runner: ToolRunner, app
             val found = try { TextSearch.search(session, req) } finally { session.closeAsync() }
             if (found.isEmpty()) continue
             val marks = found.filter { it.hit.rects.isNotEmpty() }.mapIndexed { k, h -> RedactMark("b$k-${System.nanoTime()}", h.hit.page, h.hit.rects.map { RectF(it) }, style, h.hit.snippet.trim()) }
-            val out = app.documents.uniqueFile(app.documents.docsDir, f.nameWithoutExtension + com.smartdocs.editor.core.data.NpfPrefs.redactSuffix.ifBlank { "_redacted" })   // nav-prefs: redaction file suffix
+            val out = app.documents.uniqueFile(app.documents.docsDir, f.nameWithoutExtension + "_redacted")
             runCatching {
                 RedactApplier.apply(ctx, f, out, null, marks, RedactApplier.Options(sanitize = sanitize, sanitizeItems = SanitizeItem.DEFAULTS, maxSecurity = maxSecurity))
                 runCatching { app.documents.touchRecent(out) }
@@ -258,3 +282,7 @@ private fun BatchResults(files: List<File>, skipped: List<String>, nav: NavHostC
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.ok)) } })
 }
+
+/** The author name from the settings (marks, review history). */
+@Composable
+private fun LocalSettingsAuthor(): String = com.smartdocs.editor.LocalSettings.current.authorName

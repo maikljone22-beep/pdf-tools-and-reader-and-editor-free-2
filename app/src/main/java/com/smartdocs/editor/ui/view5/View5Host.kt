@@ -115,6 +115,7 @@ private val remembered = setOf(
     ReaderTool.HIGHLIGHT, ReaderTool.UNDERLINE, ReaderTool.STRIKEOUT, ReaderTool.SQUIGGLY, ReaderTool.NOTE, ReaderTool.FREETEXT, ReaderTool.INK,
     ReaderTool.LINE, ReaderTool.ARROW, ReaderTool.RECT, ReaderTool.OVAL, ReaderTool.TEXTBOX, ReaderTool.POLYGON, ReaderTool.POLYLINE, ReaderTool.CLOUD,
     ReaderTool.CARET, ReaderTool.REPLACE, ReaderTool.FS_TEXT, ReaderTool.FS_CHECK, ReaderTool.FS_CROSS, ReaderTool.FS_DOT, ReaderTool.FS_LINE, ReaderTool.FS_DATE,
+    ReaderTool.FS_RRECT, ReaderTool.FS_COMB,
 )
 
 /**

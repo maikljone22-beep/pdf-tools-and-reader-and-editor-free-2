@@ -23,6 +23,9 @@
     <string name="ne2_bulk_summary">%1$d separate requests, one per recipient</string>
     <string name="ne2_bulk_sample">First recipient: %1$s</string>
     <string name="ne2_bulk_sending">Sending %1$d of %2$d…</string>
+    <string name="ne2_bulk_cancelling">Stopping after the current request…</string>
+    <string name="ne2_bulk_progress_count">%1$d of %2$d sent</string>
+    <string name="ne2_bulk_result_cancelled">Cancelled: %1$d (retry sends them)</string>
     <string name="ne2_bulk_result_title">Bulk send finished</string>
     <string name="ne2_bulk_result_body">Sent: %1$d · Failed: %2$d</string>
     <string name="ne2_bulk_failed_row">%1$s: %2$s</string>

@@ -24,7 +24,8 @@ fun piiLabel(k: PiiKind): String = stringResource(when (k) {
     PiiKind.EMAIL -> R.string.a5_pii_email; PiiKind.PHONE -> R.string.a5_pii_phone; PiiKind.CARD -> R.string.a5_pii_card; PiiKind.IBAN -> R.string.a5_pii_iban
     PiiKind.NATIONAL_ID -> R.string.a5_pii_id; PiiKind.PASSPORT -> R.string.a5_pii_passport; PiiKind.DATE -> R.string.a5_pii_date
     PiiKind.URL -> R.string.a5_pii_url; PiiKind.IP -> R.string.a5_pii_ip
-    PiiKind.NAME -> R.string.ai6t_pii_name; PiiKind.ADDRESS -> R.string.ai6t_pii_address   // ai6: AI pass only
+    PiiKind.NAME -> R.string.ai6t_pii_name; PiiKind.ADDRESS -> R.string.ai6t_pii_address   // ai6: AI pass (NAME also offline)
+    PiiKind.ORG -> R.string.nt_pii_org; PiiKind.ROLE -> R.string.nt_pii_role
 })
 
 /**
@@ -36,7 +37,8 @@ fun piiLabel(k: PiiKind): String = stringResource(when (k) {
 @Composable
 fun PiiScanSheet(file: File?, password: String?, session: PdfSession? = null, onApply: (List<SearchHit>) -> Unit, onDismiss: () -> Unit) {
     val ctx = LocalContext.current
-    var kinds by remember { mutableStateOf(PiiKind.entries.toSet() - PiiKind.DATE) }
+    // organisations and roles are opt-in (Smart Redact): they are not personal data by themselves
+    var kinds by remember { mutableStateOf(PiiKind.entries.toSet() - PiiKind.DATE - PiiKind.ORG - PiiKind.ROLE) }
     var hits by remember { mutableStateOf<List<PiiHit>?>(null) }
     var selected by remember { mutableStateOf(setOf<Int>()) }
     var progress by remember { mutableStateOf(0f) }

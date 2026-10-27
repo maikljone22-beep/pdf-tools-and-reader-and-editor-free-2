@@ -465,7 +465,7 @@ object PdfOps {
         // old callers pass a pixel limit for an A4-ish page; the optimizer works in dpi of each page
         val dpi = (maxDim / 11.7f).toInt().coerceIn(72, 300)
         val opts = com.smartdocs.editor.core.tools5.OptimizeOptions(imageDpi = dpi, jpegQuality = quality.coerceIn(20, 95),
-            stripMetadata = false, stripJavaScript = false, onlyIfSmaller = false)
+            stripMetadata = false, stripJavaScript = false, onlyIfSmaller = false, keepProtection = false)
         val tmp = File(out.absoluteFile.parentFile, ".${out.nameWithoutExtension}.${System.nanoTime()}.opt.pdf")
         try {
             com.smartdocs.editor.core.tools5.Optimizer.optimize(src, password, tmp, opts)
@@ -598,44 +598,24 @@ object PdfOps {
         var n = 0
         load(src, password).use { doc ->
             runCatching { doc.documentCatalog.acroForm?.let { af -> af.needAppearances = false; af.flatten(); n += 1 } }
-            doc.pages.forEach { page ->
-                val annots = runCatching { page.annotations }.getOrNull() ?: return@forEach
-                val keep = ArrayList<com.tom_roush.pdfbox.pdmodel.interactive.annotation.PDAnnotation>()
-                val flat = ArrayList<com.tom_roush.pdfbox.pdmodel.interactive.annotation.PDAnnotation>()
-                annots.forEach { a ->
-                    val sub = a.subtype
-                    val hidden = a.isHidden || a.isNoView
-                    if (sub == "Link" || sub == "Popup" || hidden || a.normalAppearanceStream == null || a.rectangle == null) keep += a else flat += a
-                }
-                if (flat.isEmpty()) return@forEach
-                PDPageContentStream(doc, page, PDPageContentStream.AppendMode.APPEND, true, true).use { cs ->
-                    flat.forEach { a ->
-                        runCatching {
-                            val ap = a.normalAppearanceStream
-                            val rect = a.rectangle
-                            val bbox = ap.bBox ?: return@runCatching
-                            val m = ap.matrix
-                            // transformed bbox corners
-                            val pts = listOf(bbox.lowerLeftX to bbox.lowerLeftY, bbox.upperRightX to bbox.lowerLeftY, bbox.lowerLeftX to bbox.upperRightY, bbox.upperRightX to bbox.upperRightY)
-                                .map { (x, y) -> m.transformPoint(x, y) }
-                            val minX = pts.minOf { it.x }; val maxX = pts.maxOf { it.x }
-                            val minY = pts.minOf { it.y }; val maxY = pts.maxOf { it.y }
-                            val tw = maxX - minX; val th = maxY - minY
-                            if (tw <= 0f || th <= 0f) return@runCatching
-                            val sx = rect.width / tw; val sy = rect.height / th
-                            cs.saveGraphicsState()
-                            cs.transform(PdfMatrix(sx, 0f, 0f, sy, rect.lowerLeftX - minX * sx, rect.lowerLeftY - minY * sy))
-                            cs.drawForm(ap)
-                            cs.restoreGraphicsState()
-                            n++
-                        }
-                    }
-                }
-                page.annotations = keep
-            }
+            // the per-page core is shared with "Apply All Signatures" (nitro-fillsign2)
+            n += com.smartdocs.editor.core.fillsign2.SignatureFlatten.flattenIn(doc) { true }
             saveTo(doc, out)
         }
         n
+    }
+
+    /**
+     * "Apply All Signatures" (nitro-fillsign2): only the placed QuickSign signature / initials stamps are flattened
+     * into the pages (everything else stays editable). Returns how many; [out] is written only when there were any.
+     * The caller must not use it on a digitally signed file (a full save breaks the signatures; see SignedSave).
+     */
+    suspend fun flattenSignatureStamps(src: File, out: File, password: String? = null): Int = withContext(Dispatchers.IO) {
+        load(src, password).use { doc ->
+            val n = com.smartdocs.editor.core.fillsign2.SignatureFlatten.flattenSignatures(doc)
+            if (n > 0) saveTo(doc, out)
+            n
+        }
     }
 
     fun copyStream(input: InputStream, out: File) { out.outputStream().use { o -> input.copyTo(o) } }

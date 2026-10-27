@@ -47,15 +47,14 @@ object NpfPrefs {
         const val RETAIN_TOOLS = "retain_tools"; const val COPY_SEL = "copy_sel_to_markup"
         const val SUM_THUMBS = "sum_thumbs"; const val SUM_REPLIES = "sum_replies"; const val SUM_DATES = "sum_dates"; const val SUM_ORDER = "sum_order"
         const val FORM_HL = "form_hl"; const val FORM_REQ = "form_req"; const val XFA_AUTO = "xfa_auto_open"; const val XFA_BANNER = "xfa_banner"
-        const val DIGITS = "digits"; const val TEXT_DIR = "text_dir"; const val EDIT_SYSTEM_FONTS = "edit_system_fonts"
+        const val DIGITS = "digits"
         const val BM_DELETE = "bm_remove_on_delete"; const val BM_IMPORT = "bm_import_on_replace"
-        const val CMP_INS = "cmp_ins"; const val CMP_DEL = "cmp_del"; const val CMP_CHG = "cmp_chg"
         const val OCR_OUTPUT = "ocr_output"
         const val N_SYNC = "n_sync"; const val N_REVIEW = "n_review"; const val N_TASKS = "n_tasks"
         const val S_CASE = "s_case"; const val S_WHOLE = "s_whole"; const val S_HIT = "s_hit"; const val S_HIT_CUR = "s_hit_cur"
         const val S_SCOPES = "s_scopes"; const val S_ATTACH = "s_attach_content"; const val S_MAX = "s_max"
         const val A11Y_ON = "a11y_on"; const val A11Y_BG = "a11y_bg"; const val A11Y_FG = "a11y_fg"; const val READ_ORDER = "read_order"
-        const val REDACT_SUFFIX = "redact_suffix"; const val FONT_MAP = "font_map"
+        const val FONT_MAP = "font_map"
         const val OFFLINE = "offline"; const val ACCENT = "accent"; const val REVIEW_MIN = "review_min"
     }
 
@@ -72,8 +71,6 @@ object NpfPrefs {
     val recoveryMinutes: Int get() = i(K.RECOVERY_MIN, 5)
     /** Minutes between automatic saves while editing (with Settings → autosave on); 0 = only when leaving. */
     val autoSaveMinutes: Int get() = i(K.AUTOSAVE_MIN, 0)
-    /** Suffix of redacted copies. */
-    val redactSuffix: String get() = s(K.REDACT_SUFFIX, "_redacted")
 
     // ---- page display ----
     /** "auto" (follows the continuous switch), "single", "continuous", "facing", "cover". */
@@ -129,17 +126,12 @@ object NpfPrefs {
     // ---- editing / languages ----
     /** Digits typed in text comments and edit text: "keep", "arabic" (٠١٢), "latin" (012). */
     val digits: String get() = s(K.DIGITS, "keep")
-    /** Default direction of new text comments: "auto", "rtl", "ltr". */
-    val textDirection: String get() = s(K.TEXT_DIR, "auto")
 
     // ---- pages / bookmarks ----
     val removeBookmarksOnDelete: Boolean get() = b(K.BM_DELETE, true)
     val importBookmarksOnReplace: Boolean get() = b(K.BM_IMPORT, false)
 
     // ---- tools ----
-    val compareInserted: Int get() = i(K.CMP_INS, 0x1E88E5)
-    val compareDeleted: Int get() = i(K.CMP_DEL, 0xE53935)
-    val compareChanged: Int get() = i(K.CMP_CHG, 0xFB8C00)
     /** OCR tool output: "searchable" (invisible text layer) or "text". Pre-clean / auto-detect live in prefs "t5_ocr". */
     val ocrOutput: String get() = s(K.OCR_OUTPUT, "searchable")
     /** Font substitutions for conversion: "Missing Font=Replacement" lines. */

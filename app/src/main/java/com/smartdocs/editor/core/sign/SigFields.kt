@@ -148,10 +148,17 @@ object SigFields {
     // ---------------------------------------------------------------- signing
 
     /** Where the signature goes: an existing empty field, or a new field on [page] at [rect] (null = invisible). */
-    data class Target(val fieldName: String? = null, val page: Int = 0, val rect: FloatArray? = null)
+    data class Target(
+        val fieldName: String? = null, val page: Int = 0, val rect: FloatArray? = null,
+        /** More (0-based page, rect) places showing the same visible signature: extra widgets of a new field. */
+        val extra: List<Pair<Int, FloatArray>> = emptyList(),
+    )
 
-    /** Result of [prepare]: the page index and widget rectangle a visual template must use (rect null = invisible). */
-    data class Prepared(val page: Int, val rect: PDRectangle?, val rotation: Int, val lock: Lock?)
+    /**
+     * Result of [prepare]: the page index and widget rectangle a visual template must use (rect null = invisible),
+     * and the extra widgets ([Target.extra]) whose appearance the caller draws ([appearance]).
+     */
+    data class Prepared(val page: Int, val rect: PDRectangle?, val rotation: Int, val lock: Lock?, val extraWidgets: List<PDAnnotationWidget> = emptyList())
 
     /**
      * Attaches [sig] to its field before `PDDocument.addSignature` (which then finds the field by its value and
@@ -183,14 +190,60 @@ object SigFields {
             page.annotations.add(w)
             (page.cosObject.getDictionaryObject(COSName.ANNOTS) as? COSArray)?.isNeedToBeUpdated = true
             form.fields.add(field)
+            if (target.extra.isNotEmpty()) splitWidgets(doc, field, target.extra.filter { it.first in 0 until doc.numberOfPages })
         }
         // /V set directly: PDSignatureField.setValue only adds a "no appearance generation" log warning
         field.cosObject.setItem(COSName.V, sig)
         val effective = lock ?: readLock(field.cosObject.getDictionaryObject(LOCK) as? COSDictionary)
         if (effective != null) applyLock(form, field, sig, effective)
-        val w = field.widgets.first()
-        val r = w.rectangle?.takeIf { it.width > 0f && it.height > 0f }
-        return Prepared(pageIndex, r, doc.getPage(pageIndex).rotation, effective)
+        val ws = field.widgets
+        val r = ws.first().rectangle?.takeIf { it.width > 0f && it.height > 0f }
+        return Prepared(pageIndex, r, doc.getPage(pageIndex).rotation, effective, if (target.fieldName == null) ws.drop(1) else emptyList())
+    }
+
+    /** Widget keys of a merged field/widget dictionary that move into the separate first widget. */
+    private val WIDGET_KEYS = listOf(COSName.TYPE, COSName.SUBTYPE, COSName.RECT, COSName.F, COSName.P, COSName.AP, COSName.MK, COSName.BORDER)
+
+    /**
+     * Turns a new merged signature field into a field with one widget kid per place (Acrobat "same signature on
+     * several pages"); PdfBox signs the first kid and copies the visual template into it.
+     */
+    private fun splitWidgets(doc: PDDocument, field: PDSignatureField, extra: List<Pair<Int, FloatArray>>) {
+        val fd = field.cosObject
+        val first = COSDictionary()
+        for (k in WIDGET_KEYS) fd.getItem(k)?.let { first.setItem(k, it); fd.removeItem(k) }
+        first.setItem(COSName.PARENT, fd)
+        val kids = COSArray().apply { add(first) }
+        for (p in doc.pages) {
+            val annots = p.cosObject.getDictionaryObject(COSName.ANNOTS) as? COSArray ?: continue
+            for (i in 0 until annots.size()) if (annots.getObject(i) == fd) { annots.set(i, first); annots.isNeedToBeUpdated = true }
+        }
+        for ((pg, rc) in extra) {
+            val page = doc.getPage(pg)
+            val w = PDAnnotationWidget().apply { rectangle = PDRectangle(rc[0], rc[1], rc[2], rc[3]); this.page = page; isPrinted = true }
+            w.cosObject.setItem(COSName.PARENT, fd)
+            kids.add(w.cosObject)
+            page.annotations.add(w)
+            // incremental save writes only flagged objects: the page and its /Annots carry the new widget
+            page.cosObject.isNeedToBeUpdated = true
+            (page.cosObject.getDictionaryObject(COSName.ANNOTS) as? COSArray)?.isNeedToBeUpdated = true
+            w.cosObject.isNeedToBeUpdated = true
+        }
+        fd.setItem(COSName.KIDS, kids)
+    }
+
+    /** Normal appearance for a widget at [rect] on a page with [rotation], drawn upright by [draw] into (w, h). */
+    fun appearance(doc: PDDocument, rect: PDRectangle, rotation: Int, draw: (PDDocument, PDPageContentStream, Float, Float) -> Unit): PDAppearanceDictionary {
+        val rot = ((rotation % 360) + 360) % 360
+        val upW = if (rot == 90 || rot == 270) rect.height else rect.width
+        val upH = if (rot == 90 || rot == 270) rect.width else rect.height
+        val ap = PDAppearanceStream(doc).apply {
+            resources = PDResources()
+            bBox = PDRectangle(upW, upH)
+            matrixFor(rot)?.let { m -> cosObject.setItem(COSName.MATRIX, COSArray().apply { m.forEach { add(COSFloat(it)) } }) }
+        }
+        PDPageContentStream(doc, ap).use { cs -> draw(doc, cs, upW, upH) }
+        return PDAppearanceDictionary().apply { setNormalAppearance(ap) }
     }
 
     private fun uniqueName(form: PDAcroForm): String {
@@ -246,16 +299,7 @@ object SigFields {
             val field = PDSignatureField(form)
             val w = field.widgets.first()
             w.rectangle = rect; w.page = page
-            val rot = ((rotation % 360) + 360) % 360
-            val upW = if (rot == 90 || rot == 270) rect.height else rect.width
-            val upH = if (rot == 90 || rot == 270) rect.width else rect.height
-            val ap = PDAppearanceStream(t).apply {
-                resources = PDResources()
-                bBox = PDRectangle(upW, upH)
-                matrixFor(rot)?.let { m -> cosObject.setItem(COSName.MATRIX, COSArray().apply { m.forEach { add(COSFloat(it)) } }) }
-            }
-            PDPageContentStream(t, ap).use { cs -> draw(t, cs, upW, upH) }
-            w.appearance = PDAppearanceDictionary().apply { setNormalAppearance(ap) }
+            w.appearance = appearance(t, rect, rotation, draw)
             form.fields.add(field)
             page.annotations.add(w)
             ByteArrayOutputStream().also { t.save(it) }.toByteArray()
@@ -267,6 +311,91 @@ object SigFields {
         180 -> floatArrayOf(-1f, 0f, 0f, -1f, 0f, 0f)
         270 -> floatArrayOf(0f, -1f, 1f, 0f, 0f, 0f)
         else -> null
+    }
+
+    // ---------------------------------------------------------------- unsigned field editing
+
+    /**
+     * Saves a field edit: incremental on a signed document (the edited objects are flagged), full save otherwise
+     * (re-protected like the source).
+     */
+    private fun saveFieldEdit(d: PDDocument, out: File, password: String?, pages: List<PDPage>) {
+        if (SignedSave.isSigned(d)) {
+            SignedSave.requireAnnotationsAllowed(d)
+            d.documentCatalog.getAcroForm(null)?.let { f ->
+                f.cosObject.isNeedToBeUpdated = true
+                (f.cosObject.getDictionaryObject(COSName.FIELDS) as? COSArray)?.isNeedToBeUpdated = true
+            }
+            SignedSave.saveIncremental(d, pages, out)
+        } else {
+            PdfOps.reprotect(d, password)
+            d.save(out)
+        }
+    }
+
+    /** Nitro/Foxit "add signature field": an empty /Sig field named [name] (unique if blank) at [rect] on [page]. */
+    fun addEmpty(src: File, out: File, page: Int, rect: FloatArray, name: String = "", password: String? = null): String {
+        require(out.canonicalPath != src.canonicalPath) { "addEmpty: out must differ from src" }
+        PdfOps.loadRaw(src, password).use { d ->
+            val catalog = d.documentCatalog
+            val form = catalog.getAcroForm(null) ?: PDAcroForm(d).also { catalog.acroForm = it }
+            val p = d.getPage(page.coerceIn(0, d.numberOfPages - 1))
+            val field = PDSignatureField(form)
+            val wanted = name.trim()
+            field.partialName = if (wanted.isNotEmpty() && form.getField(wanted) == null) wanted else uniqueName(form)
+            val w = field.widgets.first()
+            w.rectangle = PDRectangle(rect[0], rect[1], rect[2], rect[3]); w.page = p; w.isPrinted = true
+            p.annotations.add(w)
+            form.fields.add(field)
+            saveFieldEdit(d, out, password, listOf(p))
+            return field.fullyQualifiedName
+        }
+    }
+
+    /** Moves / resizes the (first) widget of the unsigned field [name] to [rect] on its page. */
+    fun move(src: File, out: File, name: String, rect: FloatArray, password: String? = null) {
+        require(out.canonicalPath != src.canonicalPath) { "move: out must differ from src" }
+        PdfOps.loadRaw(src, password).use { d ->
+            val f = d.documentCatalog.getAcroForm(null)?.getField(name) as? PDSignatureField ?: throw IllegalArgumentException("no signature field $name")
+            if (f.signature != null) throw IllegalStateException("field $name is signed")
+            val w = f.widgets.first()
+            w.rectangle = PDRectangle(rect[0], rect[1], rect[2], rect[3])
+            w.cosObject.isNeedToBeUpdated = true
+            val pg = pageOf(d, w)
+            saveFieldEdit(d, out, password, if (pg >= 0) listOf(d.getPage(pg)) else emptyList())
+        }
+    }
+
+    /** Deletes the unsigned field [name] and its widgets. */
+    fun delete(src: File, out: File, name: String, password: String? = null) {
+        require(out.canonicalPath != src.canonicalPath) { "delete: out must differ from src" }
+        PdfOps.loadRaw(src, password).use { d ->
+            val form = d.documentCatalog.getAcroForm(null) ?: throw IllegalArgumentException("no form")
+            val f = form.getField(name) as? PDSignatureField ?: throw IllegalArgumentException("no signature field $name")
+            if (f.signature != null) throw IllegalStateException("field $name is signed")
+            val pages = ArrayList<PDPage>()
+            for (w in f.widgets) {
+                val pg = pageOf(d, w).takeIf { it >= 0 } ?: continue
+                val p = d.getPage(pg)
+                val annots = p.cosObject.getDictionaryObject(COSName.ANNOTS) as? COSArray ?: continue
+                for (i in annots.size() - 1 downTo 0) if (annots.getObject(i) == w.cosObject) annots.remove(i)
+                annots.isNeedToBeUpdated = true
+                pages += p
+            }
+            val parent = f.parent
+            if (parent != null) {
+                (parent.cosObject.getDictionaryObject(COSName.KIDS) as? COSArray)?.let { k ->
+                    for (i in k.size() - 1 downTo 0) if (k.getObject(i) == f.cosObject) k.remove(i)
+                    k.isNeedToBeUpdated = true
+                }
+                parent.cosObject.isNeedToBeUpdated = true
+            } else {
+                (form.cosObject.getDictionaryObject(COSName.FIELDS) as? COSArray)?.let { a ->
+                    for (i in a.size() - 1 downTo 0) if (a.getObject(i) == f.cosObject) a.remove(i)
+                }
+            }
+            saveFieldEdit(d, out, password, pages)
+        }
     }
 
     // ---------------------------------------------------------------- clear
