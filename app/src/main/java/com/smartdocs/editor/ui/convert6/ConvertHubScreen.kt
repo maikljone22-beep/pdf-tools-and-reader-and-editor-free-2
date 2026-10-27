@@ -118,6 +118,9 @@ fun ConvertHubScreen(nav: NavHostController, uri: String?) {
         }
     }
 
+    // NVE-shell: the "Convert to Word / Excel / PowerPoint / Text" share targets open with that conversion preselected
+    LaunchedEffect(uri) { com.smartdocs.editor.ui.nve.shell.NveConvertTargets.take()?.let { id -> Cv6Catalog.byId(id)?.let { open(it) } } }
+
     fun start() {
         val c = conv ?: return
         val ins = inputs; val o = opts; val pw = password.ifBlank { null }

@@ -34,6 +34,7 @@ fun SmartDocsTheme(
     mode: ThemeMode = ThemeMode.SYSTEM,
     rtl: Boolean = true,
     dynamicColor: Boolean = false, // off: brand consistency
+    accent: Long = Accent.DEFAULT,   // NVE-shell: SHL-13 accent colour (0 default, 1 dynamic, else 0xRRGGBB)
     content: @Composable () -> Unit,
 ) {
     val dark = when (mode) {
@@ -43,7 +44,8 @@ fun SmartDocsTheme(
     }
     val ctx = LocalContext.current
     val scheme = when {
-        dynamicColor && Build.VERSION.SDK_INT >= 31 -> if (dark) dynamicDarkColorScheme(ctx) else dynamicLightColorScheme(ctx)
+        (dynamicColor || accent == Accent.DYNAMIC) && Build.VERSION.SDK_INT >= 31 -> if (dark) dynamicDarkColorScheme(ctx) else dynamicLightColorScheme(ctx)
+        accent > Accent.DYNAMIC -> Accent.apply(if (dark) DarkColors else LightColors, accent, dark)   // NVE-shell
         dark -> DarkColors
         else -> LightColors
     }

@@ -136,6 +136,7 @@ fun ToolsetEditSheet(tools: List<ReaderTool>, onChange: (List<ReaderTool>) -> Un
         LazyColumn(Modifier.fillMaxWidth().heightIn(max = 620.dp).padding(horizontal = 12.dp)) {
             item {
                 Text(stringResource(R.string.an_toolset_title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.padding(8.dp))
+                com.smartdocs.editor.ui.nve.shell.NveCustomTabActions(onRemoveAll = { list.clear(); commit() })   // NVE-shell: rename tab, remove all
                 Text(stringResource(R.string.an_toolset_added) + " · " + stringResource(R.string.an_toolset_drag), style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(8.dp))
                 if (list.isEmpty()) Text(stringResource(R.string.an_toolset_empty), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(8.dp))

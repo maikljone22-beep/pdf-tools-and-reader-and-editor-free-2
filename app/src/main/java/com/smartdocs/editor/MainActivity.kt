@@ -24,7 +24,7 @@ import kotlinx.coroutines.launch
 val LocalApp = staticCompositionLocalOf<SmartDocsApp> { error("no app") }
 val LocalSettings = compositionLocalOf { AppSettings() }
 
-class MainActivity : ComponentActivity() {
+open class MainActivity : ComponentActivity() {   // NVE-shell: open for NveWindowActivity (second reader window)
     private val incoming = MutableStateFlow<Uri?>(null)
     private val incomingRoute = MutableStateFlow<String?>(null)
     private var openedByIntent = false
@@ -43,7 +43,7 @@ class MainActivity : ComponentActivity() {
             val app = application as SmartDocsApp
             val settings by app.settings.settings.collectAsStateWithLifecycle(initialValue = AppSettings())
             CompositionLocalProvider(LocalApp provides app, LocalSettings provides settings) {
-                SmartDocsTheme(mode = settings.theme, rtl = com.smartdocs.editor.core.gaps6.LayoutDir.isRtl(settings)) {
+                SmartDocsTheme(mode = settings.theme, rtl = com.smartdocs.editor.core.gaps6.LayoutDir.isRtl(settings), accent = settings.accentColor) {   // NVE-shell: accent
                     // first run: onboarding + consent before anything else (acct module)
                     var onboarded by remember { mutableStateOf(com.smartdocs.editor.core.review.AcctPrefs.onboardingDone(this@MainActivity)) }
                     if (!onboarded) {
@@ -110,6 +110,16 @@ class MainActivity : ComponentActivity() {
         if (com.smartdocs.editor.ui.cloud.DeepLinks.isOurs(uri)) { com.smartdocs.editor.ui.cloud.DeepLinks.pending.value = uri; return }
         // Most senders grant only a temporary (non-persistable) read permission tied to this activity instance,
         // so a content:// document is copied into our own storage right away instead of at reader open time.
+        // NVE-shell: "Convert to Word / Excel / PowerPoint / Text" share targets (activity-aliases) open the Convert hub preselected
+        com.smartdocs.editor.ui.nve.shell.NveConvertTargets.forComponent(intent?.component?.className)?.let { conv ->
+            val app0 = application as SmartDocsApp
+            lifecycleScope.launch {
+                val local = if (uri.scheme == "file") java.io.File(uri.path ?: "") else runCatching { app0.documents.localFile(uri) }.getOrNull()
+                if (local != null && local.exists()) { com.smartdocs.editor.ui.nve.shell.NveConvertTargets.set(conv); incomingRoute.value = Routes.tool("convert_hub", Uri.fromFile(local).toString()) }
+                else Toast.makeText(this@MainActivity, getString(R.string.error_generic), Toast.LENGTH_LONG).show()
+            }
+            return
+        }
         if (uri.scheme == "file") { incoming.value = uri; return }
         runCatching { contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
         val app = application as SmartDocsApp

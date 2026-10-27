@@ -66,6 +66,7 @@ fun SettingsScreen(nav: NavHostController) {
                 GroupRow(stringResource(R.string.settings_language), icon = Icons.Default.Language, tile = tiles.teal)
                 Choice(listOf("ar" to "العربية", "en" to "English"), s.language) { v -> upd { it.copy(language = v) } }
                 G6GeneralRows(s) { b -> upd(b) }   // gaps6: layout direction, product improvement
+                com.smartdocs.editor.ui.nve.shell.NveShellSettingsRows()   // NVE-shell: accent / themes, auto recovery, toolbar, Custom tab name
             }
 
             // ---- PDF view ----
@@ -102,7 +103,9 @@ fun SettingsScreen(nav: NavHostController) {
             GroupCard(stringResource(R.string.settings_tts)) {
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
                     com.smartdocs.editor.ui.common.LabeledSlider(stringResource(R.string.tts_speed), s.ttsRate, 0.5f..2f, { v -> upd { it.copy(ttsRate = v) } }) { "%.1fx".format(it) }
+                    com.smartdocs.editor.ui.common.LabeledSlider(stringResource(R.string.ns_tts_pitch), s.ttsPitch, 0.5f..2f, { v -> upd { it.copy(ttsPitch = v) } }) { "%.1f".format(it) }   // NVE-tts
                 }
+                com.smartdocs.editor.ui.nve.tts.NveReadAloudPrefs(Modifier.padding(horizontal = 16.dp, vertical = 4.dp), showPitch = false)   // NVE-tts
                 com.smartdocs.editor.ui.voice.ReadAloudVoiceSection(Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
             }
 

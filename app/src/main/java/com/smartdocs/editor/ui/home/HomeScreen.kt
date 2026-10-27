@@ -73,7 +73,8 @@ fun HomeScreen(nav: NavHostController) {
         launchSingleTop = true; restoreState = true
     }
     fun openDoc(d: RecentDoc) = nav.navigate(Routes.reader(d.uri, d.lastPage))
-    fun runTool(id: String) { if (id == "open") pick() else { ToolUsage.record(ctx, id); nav.navigate(Routes.tool(id)) } }
+    val nveHome = com.smartdocs.editor.ui.nve.shell.rememberNveHomeActions(nav)   // NVE-shell: paste, page snapshot, feature guides
+    fun runTool(id: String) { if (id == "open") pick() else if (com.smartdocs.editor.ui.nve.shell.NveHomeIds.owns(id)) nveHome(id) else { ToolUsage.record(ctx, id); nav.navigate(Routes.tool(id)) } }
     // gaps6: list-detail on large / unfolded screens; tool wizard
     val fold = com.smartdocs.editor.ui.gaps6.rememberFoldState()
     var detail by remember { mutableStateOf<RecentDoc?>(null) }
@@ -87,6 +88,10 @@ fun HomeScreen(nav: NavHostController) {
         Quick(Icons.Default.NoteAdd, R.string.create_blank, "blank") { Brand.tiles.blue },
         Quick(Icons.Default.Dashboard, R.string.g6_from_template, "templates") { Brand.tiles.amber },
         Quick(Icons.Default.SwapHoriz, R.string.cv6_title, "convert_hub") { Brand.tiles.green },   // convert6: Convert hub
+        // NVE-shell: HOME-1 paste from clipboard, HOME-2 page snapshot, feature guides
+        Quick(Icons.Default.ContentPaste, R.string.nl_paste, com.smartdocs.editor.ui.nve.shell.NveHomeIds.PASTE) { Brand.tiles.teal },
+        Quick(Icons.Default.PhotoCamera, R.string.nl_snapshot, com.smartdocs.editor.ui.nve.shell.NveHomeIds.SNAPSHOT) { Brand.tiles.purple },
+        Quick(Icons.Default.School, R.string.nl_guides, com.smartdocs.editor.ui.nve.shell.NveHomeIds.GUIDES) { Brand.tiles.amber },
     )
     val listState = rememberLazyListState()
     val fabExpanded by remember { derivedStateOf { listState.firstVisibleItemIndex == 0 } }
@@ -132,6 +137,7 @@ fun HomeScreen(nav: NavHostController) {
                     }
                 }
 
+                item(key = "nve_favs") { com.smartdocs.editor.ui.nve.shell.NveHomeFavorites(nav) }   // NVE-shell: favourite tools
                 // ---- tool wizard (gaps6); in two-pane mode it lives in the detail pane ----
                 if (!fold.twoPane) item(key = "wizard") { com.smartdocs.editor.ui.gaps6.ToolWizardCard(onOpen = { wizard = true }) }
 
