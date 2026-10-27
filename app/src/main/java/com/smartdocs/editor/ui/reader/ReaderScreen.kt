@@ -131,7 +131,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
         }
     }
 
-    val saveAs = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { target ->
+    val saveAs = rememberLauncherForActivityResult(com.smartdocs.editor.ui.nve.shell.NveCreateDocument(ctx)) { target ->   // NVE-shell: starts in the default save folder
         if (target != null) scope.launch {
             val tmp = app.documents.newTemp("saveas")
             runCatching { state.exportWithAnnots(tmp); app.documents.exportTo(tmp, target); tmp.delete() }
@@ -245,6 +245,11 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                                     DropdownMenuItem(text = { Text(stringResource(R.string.cn_register)) }, leadingIcon = { Icon(Icons.Default.Link, null) }, onClick = { menu = false; nav.navigate(com.smartdocs.editor.ui.connected.ConnRoutes.connected(state.fileUri)) })
                                     com.smartdocs.editor.ui.view5.V5MoreMenuItems(state, nav) { menu = false }
                                     com.smartdocs.editor.ui.nve.NveMoreMenuItems(state) { menu = false }     // NVE
+                                    var nveRevert by remember { mutableStateOf(false) }      // NVE-shell: revert to the saved file
+                                    DropdownMenuItem(text = { Text(stringResource(R.string.nl_revert)) }, leadingIcon = { Icon(Icons.Default.Restore, null) }, enabled = state.dirty, onClick = { nveRevert = true })
+                                    if (nveRevert) AlertDialog(onDismissRequest = { nveRevert = false }, text = { Text(stringResource(R.string.nl_revert_confirm)) },
+                                        confirmButton = { TextButton(onClick = { nveRevert = false; menu = false; com.smartdocs.editor.ui.nve.shell.NveRecovery.revert(state) { nav.popBackStack(); nav.navigate(Routes.reader(state.fileUri)) } }) { Text(stringResource(R.string.ok)) } },
+                                        dismissButton = { TextButton(onClick = { nveRevert = false }) { Text(stringResource(R.string.cancel)) } })
                                 }
                             }
                         },
@@ -286,7 +291,9 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                 ) {
                     when {
                         state.session == null && state.openError != null -> OpenErrorView(state.openError!!, onRetry = { state.retryOpen() }, onBack = { leave() },
-                            onOpenWith = state.file?.takeIf { it.exists() }?.let { f -> { openWithOtherApp(ctx, app.documents.shareUri(f)) } })
+                            onOpenWith = state.file?.takeIf { it.exists() }?.let { f -> { openWithOtherApp(ctx, app.documents.shareUri(f)) } },
+                            // NVE-shell: try to repair a damaged file and open the repaired copy
+                            repair = { com.smartdocs.editor.ui.nve.shell.NveRepairButton(state.file, state.password) { f -> nav.popBackStack(); nav.navigate(Routes.reader(android.net.Uri.fromFile(f).toString())) } })
                         state.session == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { if (!state.needPassword) CircularProgressIndicator() }
                         else -> {
                             val openLink: (com.smartdocs.editor.core.pdf.PageLink) -> Unit = { l -> if (l.destPage == null && l.uri.isNullOrBlank()) scope.launch { runCatching { com.smartdocs.editor.ui.edit5.followFileLinkAt(state, state.currentPage, l.bounds.centerX(), l.bounds.centerY()) { f, p -> nav.navigate(Routes.reader(android.net.Uri.fromFile(f).toString(), p)) } } } else if (l.destPage == null && com.smartdocs.editor.ui.nve.NveLinks.openWeb(state, l.uri)) Unit /* NVE: show the URL first */ else ReaderIntents.openLink(ctx, l) { p -> state.jumpTo(p) } }

@@ -4,6 +4,7 @@
     <string name="nv_actual_size">Actual size</string>
     <string name="nv_apply">Apply</string>
     <string name="nv_area_snapshot">Area snapshot</string>
+    <string name="nv_ask_assistant">Ask the help assistant: %1$s</string>
     <string name="nv_auto_reverse">Reverse direction</string>
     <string name="nv_bad_range">Invalid page range</string>
     <string name="nv_bookmark_added">Bookmark added</string>
@@ -33,6 +34,7 @@
     <string name="nv_guides_clear">Clear all guides</string>
     <string name="nv_guides_hint">Tap the top ruler to add a vertical guide, the side ruler for a horizontal one.</string>
     <string name="nv_guides_show">Show guides</string>
+    <string name="nv_help_on">Get help on “%1$s”</string>
     <string name="nv_hit_colours">Highlight colours</string>
     <string name="nv_k_adv_search">Advanced search</string>
     <string name="nv_k_close_all">Close all tabs</string>

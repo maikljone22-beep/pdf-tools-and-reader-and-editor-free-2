@@ -139,6 +139,15 @@ fun CommandSearchSheet(e: V5Env) {
                     ListItem(headlineContent = { Text(stringResource(R.string.v5_search_in_doc, q)) }, leadingContent = { Icon(Icons.Default.FindInPage, null) },
                         modifier = Modifier.combinedClickable(onClick = { v.close(); e.s.searchOpen = true; e.s.runSearch(q) }))
                 }
+                // NVE-shell: "Get help on <keywords>" and the help assistant (AI) for the same query
+                if (q.isNotBlank()) item {
+                    ListItem(headlineContent = { Text(stringResource(R.string.nv_help_on, q)) }, leadingContent = { Icon(Icons.AutoMirrored.Filled.HelpOutline, null) },
+                        modifier = Modifier.combinedClickable(onClick = { v.close(); com.smartdocs.editor.ui.nve.shell.NveHelp.openWithQuery(e.nav, q) }))
+                }
+                if (q.isNotBlank() && com.smartdocs.editor.LocalSettings.current.aiEnabled) item {
+                    ListItem(headlineContent = { Text(stringResource(R.string.nv_ask_assistant, q)) }, leadingContent = { Icon(Icons.Default.AutoAwesome, null) },
+                        modifier = Modifier.combinedClickable(onClick = { v.close(); com.smartdocs.editor.ui.nve.shell.NveHelp.askAi(e.nav, q) }))
+                }
             }
         }
     }

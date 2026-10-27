@@ -61,6 +61,8 @@ class NveState private constructor(val s: ReaderState) {
     var wordCountText by mutableStateOf<String?>(null)
     /** "Edit text" from the selection: page + PDF rect; the reader opens Edit mode there (hook). */
     var requestEdit by mutableStateOf<Pair<Int, android.graphics.RectF?>?>(null)
+    /** Selected user-defined reader tab (customise ribbon), null = a built-in tab. */
+    var userTab by mutableStateOf<String?>(null)
     /** Address of a tapped link waiting for Open / Copy. */
     var linkPreview by mutableStateOf<String?>(null)
     /** Mouse pointer over the page area (viewport px), for the coordinates read-out. */

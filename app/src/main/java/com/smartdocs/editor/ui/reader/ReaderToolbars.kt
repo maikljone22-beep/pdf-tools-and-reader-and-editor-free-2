@@ -68,10 +68,18 @@ fun ReaderTabRow(state: ReaderState, onTab: (ReaderTab) -> Unit) {
     val nveVisible = com.smartdocs.editor.ui.nve.shell.NveToolbarPrefs.visibleTabs(nveCtx)
     val tabsShown = nveVisible.mapNotNull { id -> tabs.firstOrNull { it.first.name == id } }.ifEmpty { tabs }
     val nveCustomName = com.smartdocs.editor.ui.nve.shell.NveShellPrefs.customTabName(nveCtx)
-    val idx = tabsShown.indexOfFirst { it.first == state.tab }.coerceAtLeast(0)
+    val nveUserTabs = com.smartdocs.editor.ui.nve.shell.NveUserTabs.tabs(nveCtx)
+    val nveState = com.smartdocs.editor.ui.nve.NveState.of(state)
+    val nveUserIdx = nveUserTabs.indexOfFirst { it.id == nveState.userTab }
+    val idx = if (nveUserIdx >= 0) tabsShown.size + nveUserIdx else tabsShown.indexOfFirst { it.first == state.tab }.coerceAtLeast(0)
     ScrollableTabRow(selectedTabIndex = idx, modifier = Modifier.coachTarget(CoachIds.READER_TABS), edgePadding = 8.dp, divider = {}, containerColor = MaterialTheme.colorScheme.surface) {
         tabsShown.forEach { (t, label) ->
-            Tab(selected = state.tab == t, onClick = { onTab(t) }, text = { Text(if (t == ReaderTab.CUSTOM && nveCustomName != null) nveCustomName else stringResource(label), maxLines = 1, overflow = TextOverflow.Ellipsis) })
+            Tab(selected = nveUserIdx < 0 && state.tab == t, onClick = { nveState.userTab = null; onTab(t) }, text = { Text(if (t == ReaderTab.CUSTOM && nveCustomName != null) nveCustomName else stringResource(label), maxLines = 1, overflow = TextOverflow.Ellipsis) })
+        }
+        // NVE: user-defined tabs (customise ribbon)
+        nveUserTabs.forEach { ut ->
+            Tab(selected = nveState.userTab == ut.id, onClick = { nveState.userTab = ut.id; state.selectTool(null) }, text = { Text(ut.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                icon = { Icon(com.smartdocs.editor.ui.nve.shell.NveUserTabs.icon(ut.icon), null, Modifier.size(16.dp)) })
         }
     }
 }
@@ -100,6 +108,8 @@ private fun ToolRow(content: @Composable RowScope.() -> Unit) {
 fun BottomToolbar(state: ReaderState, actions: ReaderActions) {
     Surface(Modifier.coachTarget(CoachIds.READER_TOOLBAR), tonalElevation = 3.dp, shadowElevation = 8.dp) {
         Column(Modifier.fillMaxWidth().navigationBarsPadding()) {
+            val nveUser = com.smartdocs.editor.ui.nve.NveState.of(state).userTab      // NVE: a user tab replaces the built-in toolbars
+            if (nveUser != null) com.smartdocs.editor.ui.nve.shell.NveUserTabToolbar(nveUser, actions.navigateTool) else
             when (state.tab) {
                 ReaderTab.VIEW -> ViewToolbar(state, actions)
                 ReaderTab.COMMENT -> { PropertyBar(state); CommentToolbar(state, actions) }

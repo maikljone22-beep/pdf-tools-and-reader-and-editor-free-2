@@ -4,6 +4,7 @@
     <string name="nv_actual_size">الحجم الفعلي</string>
     <string name="nv_apply">تطبيق</string>
     <string name="nv_area_snapshot">لقطة منطقة</string>
+    <string name="nv_ask_assistant">اسأل مساعد المساعدة: %1$s</string>
     <string name="nv_auto_reverse">عكس الاتجاه</string>
     <string name="nv_bad_range">نطاق صفحات غير صالح</string>
     <string name="nv_bookmark_added">أضيفت العلامة</string>
@@ -33,6 +34,7 @@
     <string name="nv_guides_clear">مسح كل الأدلة</string>
     <string name="nv_guides_hint">انقر المسطرة العلوية لإضافة دليل عمودي، والمسطرة الجانبية لدليل أفقي.</string>
     <string name="nv_guides_show">إظهار الأدلة</string>
+    <string name="nv_help_on">مساعدة حول «%1$s»</string>
     <string name="nv_hit_colours">ألوان التمييز</string>
     <string name="nv_k_adv_search">بحث متقدم</string>
     <string name="nv_k_close_all">إغلاق كل التبويبات</string>
