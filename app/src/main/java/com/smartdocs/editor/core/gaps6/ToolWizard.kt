@@ -70,6 +70,7 @@ object ToolWizard {
         "podcast" to listOf("بودكاست", "ملخص صوتي", "podcast", "audio summary"),
         "ai_spaces" to listOf("مساحات", "عدة ملفات", "أسئلة على ملفات", "spaces", "multiple files"),
         "print" to listOf("طباعة", "اطبع", "print"),
+        "batch_print" to listOf("طباعة دفعة", "طباعة عدة ملفات", "batch print", "print all"),
         "e5_hub" to listOf("تحرير", "تعديل النص", "روابط", "رأس وتذييل", "إشارات مرجعية", "edit", "header", "footer", "bookmarks", "links"),
     )
 

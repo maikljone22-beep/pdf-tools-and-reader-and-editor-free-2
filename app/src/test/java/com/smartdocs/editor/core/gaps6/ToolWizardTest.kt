@@ -63,7 +63,7 @@ class ToolWizardTest {
             "compress", "page_numbers", "watermark", "doc_info", "attachments", "sign", "digital_sign", "forms", "form_builder", "protect",
             "cert_protect", "unlock", "redact", "sanitize", "protect_advanced", "flatten", "pdf_to_images", "pdf_to_text", "search_all",
             "search_highlight", "find_replace", "compare", "scan_studio", "to_pdf_plus", "mail_merge", "portfolio", "ocr_plus", "export_plus",
-            "optimize", "pdfa", "accessibility", "recipes", "batch", "ai", "read_aloud", "podcast", "ai_spaces", "print", "e5_hub")
+            "optimize", "pdfa", "accessibility", "recipes", "batch", "ai", "read_aloud", "podcast", "ai_spaces", "print", "batch_print", "e5_hub")
         assertEquals(ids.toSet(), ToolWizard.KEYWORDS.keys)
         for (id in ids) assertTrue(id, ToolWizard.KEYWORDS[id]!!.isNotEmpty())
     }
