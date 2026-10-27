@@ -33,8 +33,11 @@ internal object EditIo {
  * The tokens of a page's content stream (all /Contents streams concatenated, exactly what the content
  * stream engine executes) with per-operator replacements. [commit] writes one new content stream.
  */
-internal class ContentRewriter(private val doc: PDDocument, private val page: PDPage) {
-    private val tokens: List<Any> = PDFStreamParser(page).let { it.parse(); it.tokens }
+internal class ContentRewriter private constructor(private val doc: PDDocument, private val page: PDPage?, private val form: com.tom_roush.pdfbox.pdmodel.graphics.form.PDFormXObject?) {
+    constructor(doc: PDDocument, page: PDPage) : this(doc, page, null)
+    /** NVE-text: rewrites the content stream of a form XObject (the form's stream itself is replaced on [commit]). */
+    constructor(doc: PDDocument, form: com.tom_roush.pdfbox.pdmodel.graphics.form.PDFormXObject) : this(doc, null, form)
+    private val tokens: List<Any> = (if (form != null) PDFStreamParser(form) else PDFStreamParser(page!!)).let { it.parse(); it.tokens }
     /** token index of the n-th operator */
     private val opPos: IntArray = tokens.indices.filter { tokens[it] is Operator }.toIntArray()
     private val replacements = HashMap<Int, List<Any>>()
@@ -109,9 +112,15 @@ internal class ContentRewriter(private val doc: PDDocument, private val page: PD
         }
         // dangling operands after the last operator are dropped (they would be a syntax error anyway)
         out.add(Operator.getOperator("Q"))
+        val f = form
+        if (f != null) {
+            // NVE-text: the form keeps its dictionary (BBox, Matrix, Resources), only its data changes
+            f.cosObject.createOutputStream(COSName.FLATE_DECODE).use { o -> ContentStreamWriter(o).writeTokens(out) }
+            return
+        }
         val stream = PDStream(doc)
         stream.createOutputStream(COSName.FLATE_DECODE).use { o -> ContentStreamWriter(o).writeTokens(out) }
-        page.setContents(stream)
+        page!!.setContents(stream)
     }
 
     companion object {

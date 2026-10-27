@@ -118,6 +118,13 @@ object ReadAloudController {
         if (wasPlaying) { tts?.stop(); speakCurrent() }
     }
 
+    /** NVE-tts: change the voice pitch while reading (0.5..2). */
+    fun setPitch(p: Float) {
+        pitch = p.coerceIn(0.5f, 2f)
+        tts?.setPitch(pitch)
+        if (_status.value.state == State.PLAYING) { tts?.stop(); speakCurrent() }
+    }
+
     fun release() {
         stop()
         com.smartdocs.editor.core.voice.AiVoiceEngine.release()

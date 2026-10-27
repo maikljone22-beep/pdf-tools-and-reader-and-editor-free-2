@@ -83,6 +83,11 @@ fun AnnotActionBar(state: ReaderState, annot: Annot?, frame: Rect) {
                     AeButton(Icons.Default.SaveAlt, R.string.vid_save, !ed.busy, false) { sub = AeSub.NONE; state.video.saveSelected() }
                 }
                 if (annot?.kind == AnnotKind.INK) AeButton(Icons.Default.Gesture, R.string.an_recognize, enabled, false) { sub = AeSub.NONE; state.annot2.startHandwriting() }
+                // NVE: image annotation properties (scaling, position, border, hidden / locked) for stored image stamps
+                val nveStored = (ed.target as? AnnotTarget.Stored)?.e
+                var nveProps by remember { mutableStateOf(false) }
+                if (nveStored != null && (annot?.kind == AnnotKind.STAMP_IMAGE || nveStored.subtype == "Stamp")) AeButton(Icons.Default.Tune, R.string.ni_ia_title, enabled, false) { sub = AeSub.NONE; nveProps = true }
+                if (nveProps && nveStored != null) com.smartdocs.editor.ui.reader.annot.ImageAnnotPropsDialog5(state, nveStored) { nveProps = false }
                 AeButton(Icons.Default.Delete, R.string.ae_delete, !ed.busy, false, tint = MaterialTheme.colorScheme.error) { ed.delete() }
                 if (annot?.locked == true) Icon(androidx.compose.material.icons.Icons.Default.Lock, stringResource(R.string.cx_locked), Modifier.padding(horizontal = 4.dp).size(18.dp))
                 com.smartdocs.editor.ui.reader.annot.SelectionMoreButton(state, multi = false)      // section 7: properties, lock, clipboard, rotate, flatten...

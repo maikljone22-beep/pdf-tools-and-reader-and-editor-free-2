@@ -186,14 +186,15 @@ private fun CrashReportDialog() {
     val ctx = androidx.compose.ui.platform.LocalContext.current
     var report by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(com.smartdocs.editor.core.util.CrashLog.pending(ctx)) }
     val r = report ?: return
+    var nveAttach by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     AlertDialog(
         onDismissRequest = { com.smartdocs.editor.core.util.CrashLog.clear(ctx); report = null },
         title = { Text(stringResource(R.string.crash_title)) },
-        text = { Text(stringResource(R.string.crash_text)) },
+        // NVE-shell: optionally attach the PDF that was open when the app crashed
+        text = { androidx.compose.foundation.layout.Column { Text(stringResource(R.string.crash_text)); com.smartdocs.editor.ui.nve.shell.NveCrashAttachRow(nveAttach) { nveAttach = it } } },
         confirmButton = {
             TextButton(onClick = {
-                val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(android.content.Intent.EXTRA_SUBJECT, "SmartDocs crash report"); putExtra(android.content.Intent.EXTRA_TEXT, r) }
-                runCatching { ctx.startActivity(android.content.Intent.createChooser(send, null)) }
+                runCatching { ctx.startActivity(com.smartdocs.editor.ui.nve.shell.NveCrash.shareIntent(ctx, r, nveAttach)) }
                 com.smartdocs.editor.core.util.CrashLog.clear(ctx); report = null
             }) { Text(stringResource(R.string.crash_send)) }
         },

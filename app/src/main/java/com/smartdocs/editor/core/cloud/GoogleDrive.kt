@@ -165,6 +165,21 @@ class GoogleDrive private constructor(private val context: Context) : CloudProvi
         parse(JSONObject(CloudHttp.string(req)))
     }
 
+    /**
+     * NVE-shell: upload [local] and let Drive convert it to a native Google Docs / Sheets / Slides file
+     * ([googleMime] = application/vnd.google-apps.document | spreadsheet | presentation). PDFs and images become
+     * Google Docs through Drive's OCR conversion.
+     */
+    suspend fun uploadConverted(local: File, parentId: String?, name: String, googleMime: String): CloudItem = authed { t ->
+        val meta = JSONObject().put("name", name).put("mimeType", googleMime).put("parents", JSONArray().put(parentId ?: rootId))
+        val body = MultipartBody.Builder().setType("multipart/related".toMediaType())
+            .addPart(meta.toString().toRequestBody(CloudHttp.JSON))
+            .addPart(local.asRequestBody(mimeOf(local.name).toMediaType()))
+            .build()
+        val req = Request.Builder().url("$UPLOAD/files?uploadType=multipart&fields=$FIELDS").header("Authorization", "Bearer $t").post(body).build()
+        parse(JSONObject(CloudHttp.string(req)))
+    }
+
     override suspend fun update(item: CloudItem, local: File): CloudItem = authed { t ->
         val req = Request.Builder().url("$UPLOAD/files/${item.id}?uploadType=media&fields=$FIELDS").header("Authorization", "Bearer $t")
             .patch(local.asRequestBody(mimeOf(local.name).toMediaType())).build()

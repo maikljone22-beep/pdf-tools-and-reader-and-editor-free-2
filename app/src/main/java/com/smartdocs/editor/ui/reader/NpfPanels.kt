@@ -207,6 +207,7 @@ private fun NpfPanelBody(state: ReaderState, panel: NpfPanel, onJump: (Int) -> U
             }
             NpfPanel.INFO -> Unit
         }
+        com.smartdocs.editor.ui.nve.NveMoreFor(state, panel.name)   // NVE: rename destinations, structure tree with alt text, article editor
     }
 }
 

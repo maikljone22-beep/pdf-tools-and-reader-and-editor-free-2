@@ -165,7 +165,8 @@ private fun Prompt2Dialog(p: Prompt2, onOk: (String) -> Unit, onDismiss: () -> U
                 if (p.kind == AnnotKind.REPLACE && p.original.isNotBlank())
                     Text(stringResource(R.string.an_replace_orig, p.original.take(120)), style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(bottom = 8.dp))
-                OutlinedTextField(text, { text = it }, Modifier.fillMaxWidth(), minLines = 2)
+                OutlinedTextField(text, { text = it }, Modifier.fillMaxWidth(), minLines = 2,   // NVE: spell check
+                    visualTransformation = com.smartdocs.editor.ui.nve.spellTransformation(com.smartdocs.editor.ui.nve.rememberSpellIssues(text)), trailingIcon = { com.smartdocs.editor.ui.nve.SpellCheckButton(text, { text = it }) })
             }
         },
         confirmButton = { Button(onClick = { onOk(text) }) { Text(stringResource(R.string.ok)) } },
