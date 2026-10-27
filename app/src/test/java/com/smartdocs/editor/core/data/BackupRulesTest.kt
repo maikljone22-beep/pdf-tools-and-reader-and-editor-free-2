@@ -20,7 +20,7 @@ class BackupRulesTest {
 
     private val secrets = listOf(
         "sharedpref:cloud_drive.xml", "sharedpref:cloud_onedrive.xml", "sharedpref:cloud_dropbox.xml", "sharedpref:cloud_box.xml",
-        "sharedpref:oauth_pending.xml", "sharedpref:license_state.xml", "sharedpref:pro_entitlement.xml", "sharedpref:connected_keys.xml",
+        "sharedpref:oauth_pending.xml", "sharedpref:license_state.xml", "sharedpref:pro_entitlement.xml", "sharedpref:connected_keys.xml", "sharedpref:tsa_secrets.xml",
         "file:datastore/settings.preferences_pb", "database:search_index.db",
     )
 
