@@ -45,13 +45,16 @@ fun OcrBatchScreen(nav: NavHostController, uri: String?) {
     var minConf by remember { mutableFloatStateOf(prefs.getFloat("conf", 65f)) }
     var background by remember { mutableStateOf(false) }
     var pendingReview by remember { mutableStateOf<OcrDoc?>(null) }
+    var tuning by remember { mutableStateOf(com.smartdocs.editor.core.ocr.OcrTuning.load(ctx)) }
+    var pendingFixed by remember { mutableStateOf<File?>(null) }
+    var moreLangs by remember { mutableStateOf(false) }
     val job = rememberT5Job()
     val pick = rememberAnyFilePicker(true, arrayOf("application/pdf", "image/*")) { picked -> files = files + picked }
     val working = stringResource(R.string.t5_ocr_working)
     val nothing = stringResource(R.string.t5_ocr_nothing)
     val queued = stringResource(R.string.t5_batch_queued)
-    fun plan() = OcrPlan(langs = if (auto) null else langs.sorted().joinToString("+").ifBlank { "ara+eng" }, preClean = clean, minConfidence = minConf)
-    fun save() = prefs.edit().putBoolean("auto", auto).putString("langs", langs.joinToString("+")).putBoolean("clean", clean).putFloat("conf", minConf).apply()
+    fun plan() = OcrPlan(langs = if (auto) null else langs.sorted().joinToString("+").ifBlank { "ara+eng" }, preClean = clean, minConfidence = minConf, tuning = tuning)
+    fun save() { prefs.edit().putBoolean("auto", auto).putString("langs", langs.joinToString("+")).putBoolean("clean", clean).putFloat("conf", minConf).apply(); com.smartdocs.editor.core.ocr.OcrTuning.save(ctx, tuning) }
 
     ToolScaffold(stringResource(R.string.t5_ocr_title), nav, snackbar = snackbar) {
         OutlinedButton(onClick = pick, Modifier.fillMaxWidth()) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.t5_add_files)) }
@@ -59,13 +62,15 @@ fun OcrBatchScreen(nav: NavHostController, uri: String?) {
         T5Card(stringResource(R.string.t5_options), Icons.Default.Tune) {
             SwitchRow(stringResource(R.string.t5_lang_auto), auto, stringResource(R.string.t5_lang_auto_hint)) { auto = it }
             if (!auto) Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                LANG_CHOICES.forEach { l -> FilterChip(l in langs, { langs = if (l in langs) langs - l else langs + l }, label = { Text(OcrEngine.label(l)) }) }
+                (LANG_CHOICES + langs.filter { it !in LANG_CHOICES }).forEach { l -> FilterChip(l in langs, { langs = if (l in langs) langs - l else langs + l }, label = { Text(OcrEngine.label(l)) }) }
+                AssistChip(onClick = { moreLangs = true }, label = { Text(stringResource(R.string.nt_ocr_more_langs)) }, leadingIcon = { Icon(Icons.Default.Language, null) })
             }
             SwitchRow(stringResource(R.string.t5_preclean), clean, stringResource(R.string.t5_preclean_hint)) { clean = it }
             SwitchRow(stringResource(R.string.t5_review), review, stringResource(R.string.t5_review_hint), enabled = files.size == 1 && !background) { review = it }
             if (review) LabeledSlider(stringResource(R.string.t5_min_conf), minConf, 30f..90f, { minConf = it })
             SwitchRow(stringResource(R.string.t5_run_background), background, stringResource(R.string.t5_run_background_hint)) { background = it }
         }
+        com.smartdocs.editor.ui.ocr.OcrTuningSection(tuning) { tuning = it }
         PrimaryButton(stringResource(R.string.t5_ocr_run, files.size), enabled = files.isNotEmpty() && !job.running, icon = Icons.Default.TextFields) {
             save()
             val list = files.toList(); val p = plan()
@@ -78,10 +83,12 @@ fun OcrBatchScreen(nav: NavHostController, uri: String?) {
             }
             val wantReview = review && list.size == 1
             job.launch(working) {
-                val engine = OcrEngine(ctx.applicationContext)
+                val engine = com.smartdocs.editor.core.ocr.OcrPipeline.engineFor(ctx, null, p.tuning)
                 try {
                     if (wantReview) {
-                        val d = OcrRunner.recognize(ctx, engine, list[0], null, p) { a, b -> step(a, b) }
+                        val fixed = OcrRunner.prepare(ctx, engine, list[0], null, p)
+                        val d = OcrRunner.recognize(ctx, engine, fixed ?: list[0], null, p) { a, b -> step(a, b) }
+                        pendingFixed = fixed
                         if (d.pages.isEmpty()) { error = nothing; return@launch }
                         if (d.suspects.isEmpty()) {
                             val out = app.documents.uniqueFile(app.documents.docsDir, list[0].nameWithoutExtension + "_ocr")
@@ -108,11 +115,13 @@ fun OcrBatchScreen(nav: NavHostController, uri: String?) {
             pendingReview = null
             job.launch(working) {
                 OcrRunner.applyReview(d, decisions)
-                val out = app.documents.uniqueFile(app.documents.docsDir, d.src.nameWithoutExtension + "_ocr")
-                result = OcrRunner.write(ctx, d, out)
+                val out = app.documents.uniqueFile(app.documents.docsDir, (files.firstOrNull()?.nameWithoutExtension ?: d.src.nameWithoutExtension) + "_ocr")
+                result = OcrRunner.write(ctx, d, out).also { com.smartdocs.editor.core.ocr.OcrPipeline.shrinkOutput(it, null, tuning) }
+                pendingFixed?.delete(); pendingFixed = null
             }
-        }, onCancel = { pendingReview = null })
+        }, onCancel = { pendingReview = null; pendingFixed?.delete(); pendingFixed = null })
     }
+    if (moreLangs) com.smartdocs.editor.ui.ocr.OcrLanguagePicker(langs, onDismiss = { moreLangs = false }) { langs = it; moreLangs = false }
 }
 
 /** Pager over low-confidence words: crop, editable text, accept / not text. */

@@ -27,6 +27,8 @@ data class OcrPlan(
     val dpi: Int = 300,
     /** Words below this Tesseract confidence (0..100) are offered for review. */
     val minConfidence: Float = 65f,
+    /** Nitro OCR options (quality, de-skew, orientation, threshold, smoothing, numbers only, output images). */
+    val tuning: com.smartdocs.editor.core.ocr.OcrTuning = com.smartdocs.editor.core.ocr.OcrTuning(),
 )
 
 /** A low-confidence word to review; [crop] is a small picture of the word (may be null). */
@@ -103,7 +105,8 @@ object OcrRunner {
         val suspects = ArrayList<Suspect>()
         var done = 0
         forEachPage(ctx, src, password, plan) { pi, total, raw, dedupe ->
-            val bmp = if (plan.preClean) preClean(raw) else raw
+            val cleaned = if (plan.preClean) preClean(raw) else raw
+            val bmp = com.smartdocs.editor.core.ocr.OcrPrep.filter(cleaned, plan.tuning).also { if (it !== cleaned && cleaned !== raw) cleaned.recycle() }
             if (langs == null) langs = detectLanguages(engine, bmp)
             val l = langs!!
             engine.ensureLanguages(l)
@@ -162,9 +165,25 @@ object OcrRunner {
 
     /** Recognise + write without review (batch). Returns null when nothing needed OCR. */
     suspend fun ocrFile(ctx: Context, engine: OcrEngine, src: File, password: String?, plan: OcrPlan, out: File, onProgress: (Int, Int) -> Unit = { _, _ -> }): File? {
-        val d = recognize(ctx, engine, src, password, plan, onProgress)
-        if (d.pages.isEmpty()) return null
-        return write(ctx, d, out)
+        val fixed = prepare(ctx, engine, src, password, plan)
+        try {
+            val d = recognize(ctx, engine, fixed ?: src, password, plan, onProgress)
+            if (d.pages.isEmpty()) return null
+            return write(ctx, d, out).also { com.smartdocs.editor.core.ocr.OcrPipeline.shrinkOutput(it, password, plan.tuning) }
+        } finally { fixed?.delete() }
+    }
+
+    /**
+     * Nitro page corrections (de-skew, text orientation) of a PDF before recognition: a corrected temp copy, or null.
+     * The caller deletes it; [recognize] and [write] then use it as the source.
+     */
+    suspend fun prepare(ctx: Context, engine: OcrEngine, src: File, password: String?, plan: OcrPlan): File? {
+        if (!plan.tuning.changesPages || isImage(src)) return null
+        val langs = plan.langs ?: "ara+eng"
+        engine.ensureLanguages(langs)
+        if (!engine.init(langs)) return null
+        val n = PdfOps.pageCount(src, password)
+        return com.smartdocs.editor.core.ocr.OcrPipeline.correctedCopy(ctx, src, password, (0 until n).toList(), plan.tuning, engine, ctx.cacheDir)
     }
 
     /** Pages without a text layer / all pages. */
@@ -187,7 +206,8 @@ object AutoOcr {
         val (empty, n) = OcrRunner.scannedShare(ctx, src, password)
         if (n == 0 || empty * 2 < n) return null
         val out = File(tempDir, src.nameWithoutExtension + "_ocr_" + System.currentTimeMillis() + ".pdf")
-        val engine = OcrEngine(ctx.applicationContext)
-        return try { OcrRunner.ocrFile(ctx, engine, src, password, OcrPlan(langs = langs), out, onProgress) } finally { engine.close() }
+        val tuning = com.smartdocs.editor.core.ocr.OcrTuning.load(ctx)
+        val engine = com.smartdocs.editor.core.ocr.OcrPipeline.engineFor(ctx, null, tuning)
+        return try { OcrRunner.ocrFile(ctx, engine, src, password, OcrPlan(langs = langs, tuning = tuning), out, onProgress) } finally { engine.close() }
     }
 }

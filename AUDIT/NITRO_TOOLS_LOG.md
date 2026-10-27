@@ -145,7 +145,7 @@ Test: `FoxitOptimizeTest` (adds `org.apache.pdfbox:jbig2-imageio` as a test-only
 | Profiles: overlay text per word / phrase group | done | word list lines "phrase \| overlay" (`PhraseList`), stored in the profile (`RedactProfile.overlays`) and used when marking hits |
 | Profiles: import / export | done | `RedactPrefs.exportProfiles/importProfiles` in the profile menu |
 | Protect Redactions (AIP) | not feasible | needs Microsoft AIP / RMS (unchanged N/A-ANDROID) |
-| Smart Redact: AI detection of person names, organisations, roles | done | `core/ai5/PiiEntities.kt`: AI path through the app's AI client (page text → JSON entities → located in the text, only real text is marked), offline fallback patterns (Arabic / English titles before names, organisation words, job-title list); new `PiiKind` PERSON / ORG / ROLE in the PII scan with a "use AI" switch |
+| Smart Redact: AI detection of person names, organisations, roles | done | offline: `core/ai5/PiiEntities.kt` (Arabic / English titles before names, organisation words, job-title list) as `PiiKind` NAME / ORG / ROLE; AI: one path, ai6 `AiPii` (merged from main) now also asks for organisations and roles. ORG / ROLE are opt-in chips |
 
 Test: `FoxitRedactTest`.
 
