@@ -58,10 +58,6 @@ fun Annot2Dialogs(state: ReaderState, nav: NavHostController, snack: SnackbarHos
         val tap = h.pendingTap; h.pendingTap = null
         if (uri != null && tap != null) scope.launch { MediaIntents.importUri(ctx, uri, h.mediaDir())?.let { (f, name) -> h.addMedia(tap, f, name) } }
     }
-    val video = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        val tap = h.pendingTap; h.pendingTap = null
-        if (uri != null && tap != null) scope.launch { MediaIntents.importUri(ctx, uri, h.mediaDir())?.let { (f, name) -> h.addMedia(tap, f, name) } }
-    }
     val msgImported = stringResource(R.string.an_imported); val msgNone = stringResource(R.string.an_nothing_imported)
     val msgMerged = stringResource(R.string.an_merged); val msgExported = stringResource(R.string.an_exported)
     val msgNoComments = stringResource(R.string.an_no_comments)
@@ -94,7 +90,6 @@ fun Annot2Dialogs(state: ReaderState, nav: NavHostController, snack: SnackbarHos
 
     SideEffect {
         h.launchAttach = { attach.launch(arrayOf("*/*")) }
-        h.launchVideo = { video.launch(arrayOf("video/*")) }
         h.launchImport = { importer.launch(arrayOf("application/vnd.fdf", "application/vnd.adobe.xfdf", "application/xml", "text/xml", "application/octet-stream", "*/*")) }
         h.launchMerge = { merge() }
         h.launchExport = { xfdf ->
@@ -122,6 +117,8 @@ fun Annot2Dialogs(state: ReaderState, nav: NavHostController, snack: SnackbarHos
             }
         }
     }
+
+    VideoDialogs(state)      // in-page video: picker, warnings, options, full screen, lifecycle
 
     // ---------------- dialogs ----------------
     h.prompt?.let { p -> Prompt2Dialog(p, onOk = { h.confirmPrompt(p, it) }, onDismiss = { h.prompt = null }) }

@@ -64,7 +64,9 @@ fun DrawScope.drawAnnot2(a: Annot, g: PageGeometry) {
                 drawCaret(g.pdfRectToScreen(Annot2Writer.caretBox(n.right, n.bottom, n.top - n.bottom)), c)
             }
         }
-        AnnotKind.FILE_ATTACH, AnnotKind.SOUND, AnnotKind.VIDEO -> a.rects.firstOrNull()?.let { drawMediaIcon(a.kind, g.pdfRectToScreen(it), c) }
+        AnnotKind.FILE_ATTACH, AnnotKind.SOUND -> a.rects.firstOrNull()?.let { drawMediaIcon(a.kind, g.pdfRectToScreen(it), c) }
+        // the in-page video box (the poster is drawn on top by InPageVideoLayer)
+        AnnotKind.VIDEO -> a.rects.firstOrNull()?.let { drawVideoBox(g.pdfRectToScreen(it)) }
         else -> {}
     }
 }
@@ -80,6 +82,20 @@ private fun DrawScope.drawCaret(s: androidx.compose.ui.geometry.Rect, c: Color) 
         close()
     }
     drawPath(p, c)
+}
+
+/** Black video box with a round play button (same look as the PDF appearance written by VideoPdf). */
+fun DrawScope.drawVideoBox(s: androidx.compose.ui.geometry.Rect) {
+    drawRect(Color.Black, s.topLeft, s.size)
+    drawPlayButton(s)
+}
+
+fun DrawScope.drawPlayButton(s: androidx.compose.ui.geometry.Rect) {
+    val r = (minOf(s.width, s.height) * 0.17f).coerceIn(8f, 90f)
+    val c = s.center
+    drawCircle(Color.Black.copy(alpha = 0.55f), r, c)
+    val t = r * 0.55f
+    drawPath(Path().apply { moveTo(c.x - t * 0.6f, c.y - t); lineTo(c.x + t, c.y); lineTo(c.x - t * 0.6f, c.y + t); close() }, Color.White)
 }
 
 /** Paperclip / speaker / film icon inside screen rect [s]. */
@@ -153,7 +169,7 @@ fun DrawScope.drawAnnot2Overlay(state: ReaderState, page: Int, g: PageGeometry, 
                 drawPath(p, accent.copy(alpha = 0.12f))
                 drawPath(p, accent, style = Stroke(2f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 6f))))
             }
-            ReaderTool.SNAPSHOT, ReaderTool.REPLACE -> h.dragRect?.let { r ->
+            ReaderTool.SNAPSHOT, ReaderTool.REPLACE, ReaderTool.VIDEO -> h.dragRect?.let { r ->
                 drawRect(accent.copy(alpha = 0.12f), r.topLeft, r.size)
                 drawRect(accent, r.topLeft, r.size, style = Stroke(2f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 6f))))
             }

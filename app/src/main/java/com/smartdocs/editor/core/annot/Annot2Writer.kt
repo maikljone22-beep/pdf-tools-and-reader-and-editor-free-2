@@ -80,7 +80,8 @@ object Annot2Writer {
             AnnotKind.POLYGON, AnnotKind.POLYLINE, AnnotKind.CLOUD -> writePoly(doc, page, a)
             AnnotKind.CARET -> page.annotations.add(caret(doc, a, a.rects.firstOrNull() ?: return, null))
             AnnotKind.REPLACE -> writeReplace(doc, page, a)
-            AnnotKind.FILE_ATTACH, AnnotKind.SOUND, AnnotKind.VIDEO -> writeAttachment(doc, page, a)
+            AnnotKind.FILE_ATTACH, AnnotKind.SOUND -> writeAttachment(doc, page, a)
+            AnnotKind.VIDEO -> writeVideo(doc, page, a)
             else -> {}
         }
     }
@@ -221,6 +222,25 @@ object Annot2Writer {
         page.annotations.add(an)
     }
 
+    /**
+     * Video = Screen annotation + Rendition action with the file embedded and a poster appearance ([VideoPdf]).
+     * Throws when the file is gone, so the annotation stays pending instead of being dropped.
+     */
+    private fun writeVideo(doc: PDDocument, page: PDPage, a: Annot) {
+        val file = a.filePath?.let(::File)?.takeIf { it.isFile } ?: throw java.io.FileNotFoundException("video file missing")
+        val box = a.rects.firstOrNull() ?: throw IllegalArgumentException("video without a box")
+        val r = pdRect(box)
+        val poster = a.posterPath?.let(::File)?.takeIf { it.isFile }?.let { pf -> posterOf(pf.readBytes()) }
+            ?: runCatching { VideoPoster.makeJpeg(file)?.let(::posterOf) }.getOrNull()
+        val name = a.text.ifBlank { file.name.substringAfter('_') }
+        val an = VideoPdf.writeScreen(doc, page, r.lowerLeftX, r.lowerLeftY, r.upperRightX, r.upperRightY, file, name,
+            a.mime.ifBlank { VideoPdf.videoMime(file.name) }, a.video ?: VideoPdf.Options(), poster,
+            title = a.author.ifBlank { name }, contents = name, color = a.color)
+        an.cosObject.setDate(COSName.M, Calendar.getInstance())
+    }
+
+    private fun posterOf(jpeg: ByteArray): VideoPdf.Poster? = VideoPdf.jpegSize(jpeg)?.let { (w, h) -> VideoPdf.Poster(jpeg, w, h) }
+
     /** Vector icons (paperclip / speaker / film) drawn into a w×h box. */
     private fun icon(cs: PDPageContentStream, kind: AnnotKind, c: Int, w: Float, h: Float) {
         fill(cs, 0xFFFFFF); stroke(cs, c); cs.setLineWidth(1.4f); cs.setLineCapStyle(1); cs.setLineJoinStyle(1)
@@ -294,8 +314,9 @@ object Annot2Writer {
     }
 
     /** Kinds of this module read back into an [Annot] for editing; null for anything else. */
-    fun read(an: PDAnnotation, page: Int, base: Annot, rect: RectF): Annot? {
+    fun read(an: PDAnnotation, page: Int, base: Annot, rect: RectF, media: Boolean = true): Annot? {
         val cos = an.cosObject
+        VideoPdf.detect(an)?.let { v -> return readVideo(an, v, base, rect, media) }
         return when (an.subtype) {
             "Polygon", "PolyLine" -> {
                 val v = floats(cos, "Vertices")?.takeIf { it.size >= 4 } ?: return null
@@ -312,10 +333,9 @@ object Annot2Writer {
                 val spec = runCatching { fa.file as? PDComplexFileSpecification }.getOrNull() ?: return null
                 val ef = spec.embeddedFileUnicode ?: spec.embeddedFile ?: return null
                 val name = (spec.filename ?: "attachment").replace(Regex("""[\\/:*?"<>|]"""), "_")
-                // the embedded bytes must survive the round trip through a pending annotation
-                val dir = File(System.getProperty("java.io.tmpdir") ?: "/tmp", "annot2_extract").apply { mkdirs() }
-                val out = File(dir, "${System.nanoTime()}_$name")
-                runCatching { out.outputStream().use { o -> o.write(ef.toByteArray()) } }.getOrElse { return null }
+                // the embedded bytes must survive the round trip through a pending annotation (streamed: files can be large)
+                val out = File(extractDir(), "${System.nanoTime()}_$name")
+                runCatching { out.outputStream().use { o -> ef.createInputStream().use { it.copyTo(o, 1 shl 16) } } }.getOrElse { out.delete(); return null }
                 val mime = ef.subtype ?: ""
                 val media = cos.getNameAsString(MEDIA)
                 val kind = when {
@@ -329,8 +349,34 @@ object Annot2Writer {
         }
     }
 
+    private fun extractDir() = File(System.getProperty("java.io.tmpdir") ?: "/tmp", "annot2_extract").apply { mkdirs() }
+
+    /**
+     * A stored video (any form) as a pending VIDEO annotation: the video is streamed out to a temp file (skipped when
+     * [media] is false: selection preview only) together with our poster. Flash-only RichMedia is not editable (null).
+     */
+    private fun readVideo(an: PDAnnotation, v: VideoPdf.Info, base: Annot, rect: RectF, media: Boolean): Annot? {
+        if (!v.supported) return null
+        val cos = an.cosObject
+        val safe = v.name.replace(Regex("""[\\/:*?"<>|]"""), "_").ifBlank { "video.mp4" }
+        var path: String? = null
+        var poster: String? = null
+        if (media) {
+            val out = File(extractDir(), "${System.nanoTime()}_$safe")
+            val n = runCatching { out.outputStream().use { VideoPdf.copyVideo(cos, it) } }.getOrElse { out.delete(); return null }
+            if (n < 0) { out.delete(); return null }
+            path = out.absolutePath
+            VideoPdf.posterJpeg(cos)?.let { j -> poster = File(extractDir(), "${System.nanoTime()}_poster.jpg").also { it.writeBytes(j) }.absolutePath }
+        }
+        val title = cos.getString(COSName.T) ?: ""
+        return base.copy(kind = AnnotKind.VIDEO, rects = listOf(rect), filePath = path, mime = v.mime,
+            text = an.contents?.takeIf { it.isNotBlank() } ?: v.name, author = title.ifBlank { base.author },
+            video = v.options, posterPath = poster, color = if (v.ours) base.color else 0x000000)
+    }
+
     /** Whether a stored annotation is one of ours with a playable / openable embedded file. */
     fun mediaKind(an: PDAnnotation): AnnotKind? {
+        if (VideoPdf.detect(an) != null) return AnnotKind.VIDEO
         if (an.subtype != "FileAttachment") return null
         return when (an.cosObject.getNameAsString(MEDIA)) { "Audio" -> AnnotKind.SOUND; "Video" -> AnnotKind.VIDEO; else -> AnnotKind.FILE_ATTACH }
     }

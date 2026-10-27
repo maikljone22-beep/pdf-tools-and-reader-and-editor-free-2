@@ -48,7 +48,8 @@ object PdfOps {
 
     /** Load without re-protecting: for incremental saves, which keep the original security handler ([SignedSave]). */
     internal fun loadRaw(src: File, password: String? = null): PDDocument =
-        if (password.isNullOrEmpty()) PDDocument.load(src) else PDDocument.load(src, password)
+        // new large streams (embedded videos, 100+ MB) spill to temp files instead of the heap
+        PDDocument.load(src, password ?: "", com.tom_roush.pdfbox.io.MemoryUsageSetting.setupMixed(48L shl 20))
 
     /** Re-protect an encrypted [doc] (loaded with [loadRaw]) like its source, so a full save keeps its protection. */
     internal fun reprotect(doc: PDDocument, password: String?) {

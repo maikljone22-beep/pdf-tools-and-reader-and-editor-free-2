@@ -1,6 +1,6 @@
 # SmartDocs — release status (single source of truth)
 
-Updated by the integrator (pdf-ad) after every merge. Last update: 2026-10-27 09:40.
+Updated by the integrator (pdf-ad) after every merge. Last update: 2026-10-27 15:05.
 
 ## Version 0.5.0 = "complete" when ALL boxes below are checked
 Scope is FROZEN for 0.5.0: no new features are started until 0.5.0 is released. New requests go to "After 0.5.0".
@@ -13,6 +13,13 @@ Scope is FROZEN for 0.5.0: no new features are started until 0.5.0 is released. 
 - [x] Sharing & clouds, small gaps, unified undo/redo, page-turn effects
 - [x] OCR fixes + root-cause fixes, compression fix, safe write-back
 - [x] Arabic copy fix: wrong ToUnicode maps repaired, OCR layer copies in reading order, broken duplicate lines dropped — merged ea1cb42 (ARABIC_COPY_r5.md)
+
+### A2. Feature gaps vs Nitro / old plan / Foxit (user approved for 0.5.0) — see gaps/ASSIGNMENTS.md
+- [ ] pdf-3c: Protect + Sign, then bookmarks/links/attachments/batch/cloud/settings
+- [ ] pdf-39: redaction/HF/Bates/optimize/compare/OCR, then pages/convert/layers/accessibility/PDF-A
+- [x] In-page video player (play inside the PDF box, Screen+Rendition, poster) — merged 2f2d8d2 (VIDEO_INLINE_r5.md)
+- [ ] pdf-ad: OCR quality, view/edit, comments/forms, AI/Office gaps
+- [ ] Foxit comparison (in progress) assigned when ready
 
 ### B. Audit fixes — DONE
 - [x] Areas 1-3 stages 1, 2, 3, 4 (pdf-39) — merged
