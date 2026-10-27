@@ -21,13 +21,9 @@
     <string name="nt_spell_checking">جارٍ التدقيق…</string>
     <string name="nt_spell_add_dict">إضافة إلى القاموس</string>
     <string name="nt_case">حالة الأحرف</string>
-    <string name="nt_case_upper">أحرف كبيرة</string>
-    <string name="nt_case_lower">أحرف صغيرة</string>
-    <string name="nt_case_title">أول حرف كبير</string>
     <string name="nt_case_sentence">حالة الجملة</string>
     <string name="nt_char_spacing">تباعد الأحرف</string>
     <string name="nt_word_spacing">تباعد الكلمات</string>
-    <string name="nt_line_spacing">تباعد الأسطر</string>
     <string name="nt_para_spacing">التباعد بعد الفقرة</string>
     <string name="nt_clear_runs">إزالة التنسيقات الجزئية</string>
     <string name="nt_cmyk">CMYK (C, M, Y, K)</string>

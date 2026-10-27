@@ -21,13 +21,9 @@
     <string name="nt_spell_checking">Checking…</string>
     <string name="nt_spell_add_dict">Add to dictionary</string>
     <string name="nt_case">Change case</string>
-    <string name="nt_case_upper">UPPERCASE</string>
-    <string name="nt_case_lower">lowercase</string>
-    <string name="nt_case_title">Title Case</string>
     <string name="nt_case_sentence">Sentence case</string>
     <string name="nt_char_spacing">Character spacing</string>
     <string name="nt_word_spacing">Word spacing</string>
-    <string name="nt_line_spacing">Line spacing</string>
     <string name="nt_para_spacing">Paragraph spacing</string>
     <string name="nt_clear_runs">Clear range styles</string>
     <string name="nt_cmyk">CMYK (C, M, Y, K)</string>
