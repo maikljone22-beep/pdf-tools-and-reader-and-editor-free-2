@@ -106,7 +106,7 @@ object CompareOutput {
                     val (pw, ph) = s.pageSize(idx)
                     val px = (1600f / maxOf(pw, ph)).coerceAtMost(3f)
                     val w = (pw * px).toInt().coerceAtLeast(1); val h = (ph * px).toInt().coerceAtLeast(1)
-                    fun render(ss: PdfSession, i: Int) = ss.render(i, w, h, annotations = true).copy(android.graphics.Bitmap.Config.ARGB_8888, false).also { ss.invalidateCache() }
+                    suspend fun render(ss: PdfSession, i: Int) = ss.render(i, w, h, annotations = true).copy(android.graphics.Bitmap.Config.ARGB_8888, false).also { ss.invalidateCache() }
                     val a = p.old?.takeIf { it in 0 until so.pageCount }?.let { render(so, it) }
                     val b = p.new?.takeIf { it in 0 until sn.pageCount }?.let { render(sn, it) }
                     val shown = when {

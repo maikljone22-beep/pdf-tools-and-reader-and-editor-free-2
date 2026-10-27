@@ -47,7 +47,7 @@ object OptimizeExtras {
         }
         fun fixAction(a: COSDictionary?, depth: Int = 0) {
             if (a == null || depth > 20) return
-            if (a.getCOSName(COSName.S) == COSName.GOTO) resolve(a.getDictionaryObject(COSName.D))?.let { a.setItem(COSName.D, it) }
+            if (a.getCOSName(COSName.S) == COSName.getPDFName("GoTo")) resolve(a.getDictionaryObject(COSName.D))?.let { a.setItem(COSName.D, it) }
             when (val next = a.getDictionaryObject(COSName.NEXT)) {
                 is COSDictionary -> fixAction(next, depth + 1)
                 is COSArray -> for (i in 0 until next.size()) fixAction(next.getObject(i) as? COSDictionary, depth + 1)

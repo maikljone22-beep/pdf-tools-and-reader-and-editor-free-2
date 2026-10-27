@@ -30,7 +30,7 @@ class SpaceAudit(val fileSize: Long, val bytes: Map<SpaceCat, Long>) {
 enum class ImgCompression { AUTO, JPEG, ZIP }
 
 /** How 1-bit (monochrome) images are written. */
-enum class MonoCompression { KEEP, CCITT_G4, CCITT_G3, ZIP }
+enum class MonoCompression { KEEP, CCITT_G4, CCITT_G3, JBIG2, RUN_LENGTH, ZIP }
 
 /** Nitro "Remove embedded fonts": none, only the standard 14 (viewers always have them), or every font. */
 enum class FontUnembed { NONE, STANDARD, ALL }
@@ -41,6 +41,9 @@ enum class FontUnembed { NONE, STANDARD, ALL }
  * The remove* options strip annotations, form fields (flattened, values stay as content), links, bookmarks and
  * named destinations (links and bookmarks that use them get explicit destinations first). [keepProtection] saves a
  * protected input protected again with the same password.
+ * Foxit additions: [pdfVersion] ("" = keep), [downsample] method and the [aboveDpi] threshold (0 = 1.1 × target),
+ * [subsetFonts], [mergeFragments], [mrc] (scanned pages as text mask + background), [flattenTransparencyDpi]
+ * (pages with transparency rendered at that resolution; 0 = off) and the [cleanup] switches.
  */
 data class OptimizeOptions(
     val imageDpi: Int = 150,
@@ -69,9 +72,18 @@ data class OptimizeOptions(
     val removeBookmarks: Boolean = false,
     val removeNamedDests: Boolean = false,
     val keepProtection: Boolean = true,
+    val pdfVersion: String = "",
+    val downsample: Downsample = Downsample.BICUBIC,
+    val aboveDpi: Int = 0,
+    val subsetFonts: Boolean = false,
+    val mergeFragments: Boolean = false,
+    val mrc: Boolean = false,
+    val flattenTransparencyDpi: Int = 0,
+    val cleanup: CleanupOptions = CleanupOptions(),
 )
 
-class OptimizeResult(val before: SpaceAudit, val after: SpaceAudit, val imagesChanged: Int, val keptOriginal: Boolean, val fontsUnembedded: Int = 0, val tips: List<OptimizeTip> = emptyList())
+class OptimizeResult(val before: SpaceAudit, val after: SpaceAudit, val imagesChanged: Int, val keptOriginal: Boolean, val fontsUnembedded: Int = 0, val tips: List<OptimizeTip> = emptyList(),
+                     val fontsSubset: Int = 0, val cleaned: Map<String, Int> = emptyMap(), val fragmentsMerged: Int = 0, val flattenedPages: Int = 0)
 
 /** Troubleshooting tips shown after an optimisation (Nitro "troubleshooting tips"). */
 enum class OptimizeTip { LOWER_DPI, LOWER_QUALITY, GRAY_IMAGES, MONO_CCITT, FONTS, ATTACHMENTS, THUMBNAILS, ANNOTATIONS, FORMS, CONTENT, ALREADY_SMALL }
@@ -141,7 +153,7 @@ object Optimizer {
     }
 
     private class Ctx(val doc: PDDocument, val o: OptimizeOptions) {
-        val done = HashMap<COSBase, PDImageXObject>()        // original image stream → replacement
+        val done = HashMap<COSBase, com.tom_roush.pdfbox.pdmodel.graphics.PDXObject>()        // original image stream → replacement
         val byHash = HashMap<String, PDImageXObject>()
         val seenRes = HashSet<COSBase>()
         var changed = 0
@@ -150,9 +162,25 @@ object Optimizer {
     private fun md5(b: ByteArray): String = MessageDigest.getInstance("MD5").digest(b).joinToString("") { String.format(java.util.Locale.US, "%02x", it) }
 
     /** Grey when the image has one colour component (DeviceGray, CalGray, 1-component ICC or Indexed over grey). */
-    private fun isGray(img: PDImageXObject): Boolean = runCatching { img.colorSpace.numberOfComponents == 1 && img.colorSpace !is com.tom_roush.pdfbox.pdmodel.graphics.color.PDIndexed }.getOrDefault(false)
+    private fun isGray(img: PDImageXObject): Boolean = runCatching { img.colorSpace.numberOfComponents == 1 && img.colorSpace.name != "Indexed" }.getOrDefault(false)
 
-    private fun processImage(c: Ctx, img: PDImageXObject, pageMax: Float): PDImageXObject? {
+    /** Pixel size limit for [dpi] on a page whose long side is [pageMax] points, and the size above which to downsample. */
+    private fun limits(o: OptimizeOptions, pageMax: Float, dpi: Int): Pair<Int, Float> {
+        val maxDim = (pageMax / 72f * dpi).toInt().coerceAtLeast(300)
+        val above = if (o.aboveDpi > dpi) pageMax / 72f * o.aboveDpi else maxDim * 1.1f
+        return maxDim to above
+    }
+
+    private fun scaled(bmp0: Bitmap, nw: Int, nh: Int, method: Downsample): Bitmap = when (method) {
+        Downsample.OFF -> bmp0
+        else -> {
+            val w = bmp0.width; val h = bmp0.height
+            val px = IntArray(w * h); bmp0.getPixels(px, 0, w, 0, 0, w, h)
+            Bitmap.createBitmap(Resample.resize(px, w, h, nw, nh, method), nw, nh, Bitmap.Config.ARGB_8888)
+        }
+    }
+
+    private fun processImage(c: Ctx, img: PDImageXObject, pageMax: Float): com.tom_roush.pdfbox.pdmodel.graphics.PDXObject? {
         c.done[img.cosObject]?.let { return it }
         val raw = runCatching { img.cosObject.createRawInputStream().use { it.readBytes() } }.getOrNull()
         if (c.o.dedupImages && raw != null) {
@@ -170,19 +198,20 @@ object Optimizer {
         val oldLen = raw?.size?.toLong() ?: Long.MAX_VALUE
         if (bpc == 1 || img.isStencil) {
             if (hasMask || c.o.monoMode == MonoCompression.KEEP && !c.o.separateClasses) return null
-            val maxDim = (pageMax / 72f * c.o.monoDpi).toInt().coerceAtLeast(300)
-            val made = mono(c, img, maxDim, hasFilter(COSName.JBIG2_DECODE) || hasFilter(COSName.CCITTFAX_DECODE)) ?: return null
+            val (maxDim, above) = limits(c.o, pageMax, c.o.monoDpi)
+            val made = mono(c, img, if (c.o.downsample == Downsample.OFF || long <= above) Int.MAX_VALUE / 2 else maxDim, hasFilter(COSName.JBIG2_DECODE) || hasFilter(COSName.CCITTFAX_DECODE)) ?: return null
             if (runCatching { made.cosObject.length }.getOrDefault(Long.MAX_VALUE) >= oldLen) return null
             c.done[img.cosObject] = made; c.changed++
             return made
         }
         if (hasMask) return null                                // images with transparency stay as they are
+        if (c.o.mrc) OptimizeScan.mrc(c.doc, img, oldLen)?.let { form -> c.done[img.cosObject] = form; c.changed++; return form }
         val gray = c.o.separateClasses && isGray(img)
         val dpi = if (gray) c.o.grayDpi else c.o.imageDpi
         val quality = if (gray) c.o.grayQuality else c.o.jpegQuality
         val mode = if (gray) c.o.grayMode else c.o.colorMode
-        val maxDim = (pageMax / 72f * dpi).toInt().coerceAtLeast(300)
-        val needScale = long > maxDim * 1.1f
+        val (maxDim, above) = limits(c.o, pageMax, dpi)
+        val needScale = c.o.downsample != Downsample.OFF && long > above
         val recode = when (mode) {
             ImgCompression.AUTO -> needScale || (isJpeg && c.o.recompressJpeg) || c.o.grayImages
             ImgCompression.JPEG -> true
@@ -193,7 +222,7 @@ object Optimizer {
         var bmp = bmp0
         if (needScale) {
             val k = maxDim.toFloat() / long
-            bmp = Bitmap.createScaledBitmap(bmp0, (bmp0.width * k).toInt().coerceAtLeast(1), (bmp0.height * k).toInt().coerceAtLeast(1), true)
+            bmp = scaled(bmp0, (bmp0.width * k).toInt().coerceAtLeast(1), (bmp0.height * k).toInt().coerceAtLeast(1), c.o.downsample)
         }
         if (c.o.grayImages) { val g = toGray(bmp); if (bmp !== bmp0) bmp.recycle(); bmp = g }
         val made = runCatching {
@@ -233,9 +262,10 @@ object Optimizer {
         val s = c.doc.document.createCOSStream()
         src.keySet().forEach { k -> if (k != COSName.FILTER && k != COSName.DECODE_PARMS && k != COSName.LENGTH && k != COSName.getPDFName("DP") && k != COSName.F) s.setItem(k, src.getItem(k)) }
         s.setInt(COSName.WIDTH, nw); s.setInt(COSName.HEIGHT, nh)
-        when (if (mode == MonoCompression.KEEP) MonoCompression.CCITT_G4 else mode) {
+        val mode2 = if (mode == MonoCompression.KEEP) MonoCompression.CCITT_G4 else mode
+        when (mode2) {
             MonoCompression.CCITT_G4, MonoCompression.CCITT_G3 -> {
-                val g4 = mode != MonoCompression.CCITT_G3
+                val g4 = mode2 != MonoCompression.CCITT_G3
                 val enc = if (g4) Ccitt.encodeG4(bits, nw, nh) else Ccitt.encodeG3(bits, nw, nh)
                 s.setItem(COSName.FILTER, COSName.CCITTFAX_DECODE)
                 s.setItem(COSName.DECODE_PARMS, COSDictionary().apply {
@@ -244,6 +274,8 @@ object Optimizer {
                 })
                 s.createRawOutputStream().use { it.write(enc) }
             }
+            MonoCompression.JBIG2 -> { s.setItem(COSName.FILTER, COSName.JBIG2_DECODE); s.createRawOutputStream().use { it.write(Jbig2.encode(bits, nw, nh)) } }
+            MonoCompression.RUN_LENGTH -> { s.setItem(COSName.FILTER, COSName.RUN_LENGTH_DECODE); s.createRawOutputStream().use { it.write(RunLength.encode(bits)) } }
             else -> s.createOutputStream(COSName.FLATE_DECODE).use { it.write(bits) }
         }
         return PDImageXObject(com.tom_roush.pdfbox.pdmodel.common.PDStream(s), null)
@@ -254,7 +286,7 @@ object Optimizer {
         runCatching {
             res.xObjectNames.toList().forEach { n ->
                 when (val x = runCatching { res.getXObject(n) }.getOrNull()) {
-                    is PDImageXObject -> processImage(c, x, maxDim)?.let { res.put(n, it) }
+                    is PDImageXObject -> processImage(c, x, maxDim)?.let { r -> if (r is PDImageXObject) res.put(n, r) else if (r is PDFormXObject) res.put(n, r) }
                     is PDFormXObject -> walk(c, x.resources, maxDim, depth + 1)
                     else -> {}
                 }
@@ -262,15 +294,22 @@ object Optimizer {
         }
     }
 
-    suspend fun optimize(src: File, password: String?, out: File, o: OptimizeOptions, onProgress: (Int, Int) -> Unit = { _, _ -> }): OptimizeResult = withContext(Dispatchers.IO) {
+    suspend fun optimize(src: File, password: String?, out: File, o: OptimizeOptions, onProgress: (Int, Int) -> Unit = { _, _ -> },
+                         context: android.content.Context? = null): OptimizeResult = withContext(Dispatchers.IO) {
         var before = SpaceAudit(src.length(), emptyMap())
         var changed = 0
         var fonts = 0
+        var subset = 0; var merged = 0; var flattened = 0
+        var cleaned: Map<String, Int> = emptyMap()
+        var transparency: Set<Int> = emptySet()
         (if (password.isNullOrEmpty()) PDDocument.load(src) else PDDocument.load(src, password)).use { doc ->
             before = audit(doc, src.length())
             val protectedInput = doc.isEncrypted
             if (protectedInput) { if (o.keepProtection) com.smartdocs.editor.core.pdf.PdfOps.reprotect(doc, password) else doc.isAllSecurityToBeRemoved = true }
             OptimizeExtras.removeContent(doc, o)
+            cleaned = OptimizeCleanup.run(doc, o.cleanup)
+            if (o.flattenTransparencyDpi > 0) transparency = runCatching { PdfInspect.inspect(doc).transparencyPages }.getOrDefault(emptySet())
+            if (o.mergeFragments) doc.pages.forEach { p -> merged += runCatching { OptimizeScan.mergeFragments(doc, p) }.getOrDefault(0) }
             val c = Ctx(doc, o)
             val n = doc.numberOfPages
             doc.pages.forEachIndexed { i, p ->
@@ -308,14 +347,25 @@ object Optimizer {
                 }
             }
             fonts = OptimizeExtras.unembedFonts(doc, o.unembedFonts)
+            if (o.subsetFonts) subset = runCatching { FontSubset.run(doc).first }.getOrDefault(0)
+            if (merged > 0) runCatching { com.smartdocs.editor.core.redact.RedactCleanup.pruneUnusedXObjects(doc) }
+            o.pdfVersion.toFloatOrNull()?.let { doc.version = it }
             onProgress(n, n)
             doc.save(out)
+        }
+        if (o.flattenTransparencyDpi > 0 && context != null && transparency.isNotEmpty()) {
+            val tmp = File(out.absoluteFile.parentFile, ".${out.nameWithoutExtension}.${System.nanoTime()}.flat.pdf")
+            try {
+                out.copyTo(tmp, overwrite = true)
+                com.smartdocs.editor.core.redact.RedactApplier.rasterize(context, tmp, out, if (o.keepProtection) password else null, transparency.sorted(), o.flattenTransparencyDpi)
+                flattened = transparency.size
+            } finally { tmp.delete() }
         }
         var kept = false
         // a protected input saved unprotected must not be swapped back for the protected original
         if (o.onlyIfSmaller && out.length() >= src.length() && (password.isNullOrEmpty() || o.keepProtection)) { src.copyTo(out, overwrite = true); kept = true }
         val after = (if (password.isNullOrEmpty()) runCatching { PDDocument.load(out) }.getOrElse { PDDocument.load(out, "") } else runCatching { PDDocument.load(out, password) }.getOrElse { PDDocument.load(out) })
             .use { audit(it, out.length()) }
-        OptimizeResult(before, after, changed, kept, fonts, OptimizeExtras.tips(after, o, kept))
+        OptimizeResult(before, after, changed, kept, fonts, OptimizeExtras.tips(after, o, kept), subset, cleaned, merged, flattened)
     }
 }

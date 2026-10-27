@@ -159,7 +159,7 @@ object RedactApplier {
     }
 
     /** Replaces [pages] of [src] by images rendered with PDFium (boxes already drawn), then saves to [out]. */
-    private suspend fun rasterize(context: Context, src: File, out: File, password: String?, pages: List<Int>, dpi: Int) {
+    internal suspend fun rasterize(context: Context, src: File, out: File, password: String?, pages: List<Int>, dpi: Int) {
         val scale = dpi / 72f
         // one page at a time: render → JPEG-encode → recycle. Keeping every page bitmap in memory (up to 6000² px each)
         // ran out of memory on multi-page documents (OutOfMemoryError is not caught by the tool runner → app crash).

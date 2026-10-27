@@ -85,3 +85,42 @@ Test: `NitroOptimizeTest`.
 | Foxit: Word Count (words, characters with/without spaces, pages, lines, Asian characters; document or selection) | done | `core/tools5/WordCount.kt`; compare screen action (each document, page range) and a "Word count" chip in the reader selection menu |
 
 Test: `NitroCompareTest`.
+
+## Foxit §20 PDF Optimizer / Reduce File Size
+
+| Row | Result | Where |
+|---|---|---|
+| PDF version compatibility | done | `OptimizeOptions.pdfVersion` (retain, 1.4 … 2.0) |
+| Estimate compression size | done | `OptimizePresets.estimate` (optimizes up to 6 sample pages, scales the saving) |
+| Reduce file size, multiple files (files, folder, reorder, remove) | done | `OptimizeBatchSection` (files, a whole folder via SAF, move up, remove) |
+| Output options (folder, naming, overwrite) | done | name suffix, output folder (SAF tree), "replace files with the same name" (`saveToTree`) |
+| Predefined settings: save / delete user presets | done | `OptimizePresets.toJson/fromJson` + the shared profile bar (kind "opt": save, rename, copy, delete, import, export) |
+| Separate settings per image class | done (Nitro §14) | |
+| Downsample: Off / Average / Subsampling / Bicubic + "for images above" | done | `core/tools5/Resample.kt` (box, nearest, separable bicubic with widened kernel), `downsample`, `aboveDpi` |
+| Compression ZIP / JPEG | done (Nitro §14) | |
+| Compression: JPEG 2000 | not feasible | no JPEG 2000 (JPX) encoder exists for Android / PdfBox; writing one is out of scope |
+| Monochrome: JBIG2 lossless, CCITT G3/G4, Run Length | done | `core/tools5/Jbig2.kt` (generic region, MQ coder; decodes with jbig2-imageio in the test), `RunLength`, `Ccitt` |
+| Monochrome: JBIG2 lossy | not feasible | lossy JBIG2 needs symbol (text-region) coding with pattern matching; only the lossless generic region is written |
+| High compression (MRC) / Optimize scanned PDF | done | `OptimizeScan.mrc`: paper whitened, ink as a CCITT G4 stencil in the ink colour over a 1/3-resolution JPEG background, placed as a form XObject so OCR text and other objects stay |
+| Unembed fonts | done (Nitro §14) | |
+| Subset all embedded fonts | done | `FontSubset` / `TtfStrip`: unused TrueType glyph outlines emptied, glyph ids kept (safe for Arabic / CID); fonts of annotations, fields, patterns and Type 3 glyphs left whole |
+| Transparency flattening presets | done | `flattenTransparencyDpi` (low 150 / medium 300 / high 600): pages with transparency are rendered at that resolution (`RedactApplier.rasterize`) |
+| Discard form submission / import / reset actions | done | `OptimizeCleanup.removeActions` (incl. /Next chains and /AA) |
+| Flatten form fields | done (Nitro §14 "remove forms" flattens) | |
+| Discard alternate images | done | `OptimizeCleanup.alternates` |
+| Discard document tags | done | via `Structure` (Sanitize item) |
+| Convert smooth lines to curves | done | `LineFit` / `ContentTidy` (smooth runs of ≥ 6 line segments → Catmull-Rom Béziers within 0.5 units) |
+| Detect and merge image fragments | done | `OptimizeScan.mergeFragments` (strips stacked edge to edge become one image) |
+| Discard embedded print settings | done | `OptimizeCleanup.printSettings` |
+| Discard embedded search index | done | via `SearchIndex` |
+| Discard bookmarks / comments / forms / multimedia | done | Nitro §14 switches + `CleanupOptions.multimedia` (Screen, Movie, Sound, RichMedia, 3D and their actions) |
+| Discard external cross references (keep internal links) | done | GoToR / GoToE / Launch / URI actions removed; links left empty are removed |
+| Discard all object data (tag attributes) | done | `OptimizeCleanup.objectData` (/A, /C, /ClassMap) |
+| Discard hidden layer content and flatten visible layers | done | `OptimizeCleanup.flattenLayers` |
+| Replace LZW with Flate | done | `OptimizeCleanup.lzwToFlate` |
+| Remove invalid bookmarks / links | done | `OptimizeCleanup.invalidLinks` (targets on missing pages or unknown names) |
+| Discard unreferenced named destinations | done | `OptimizeCleanup.unusedDests` + `NameTrees.retain` |
+| Optimize page content | done | `ContentTidy.rewrite` (one compact Flate stream) |
+| Fast Web View | not feasible | PdfBox 2 cannot linearize (unchanged) |
+
+Test: `FoxitOptimizeTest` (adds `org.apache.pdfbox:jbig2-imageio` as a test-only dependency to decode the JBIG2 output).
