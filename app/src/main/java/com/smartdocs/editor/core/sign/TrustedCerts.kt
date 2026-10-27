@@ -55,7 +55,26 @@ object TrustedCerts {
 
     fun certificates(context: Context): List<X509Certificate> = list(context).map { it.cert }
 
-    fun delete(entry: Entry) { entry.file.delete() }
+    fun delete(entry: Entry) { entry.file.delete(); File(entry.file.parentFile, entry.file.nameWithoutExtension + ".level").delete() }
+
+    /**
+     * Foxit/Acrobat trust levels of a trusted certificate: use it as a root for validating signatures, for
+     * certified documents, or both (the default). Stored beside the certificate as `<sha256>.level`.
+     */
+    enum class Level { SIGNATURES, CERTIFIED }
+
+    fun levels(entry: Entry): Set<Level> = parseLevels(File(entry.file.parentFile, entry.file.nameWithoutExtension + ".level").takeIf { it.exists() }?.readText())
+
+    fun setLevels(entry: Entry, levels: Set<Level>) {
+        File(entry.file.parentFile, entry.file.nameWithoutExtension + ".level").writeText(levels.joinToString(",") { it.name })
+    }
+
+    /** Missing / unreadable = both levels; an explicitly empty set stays empty (trusted for nothing). */
+    internal fun parseLevels(text: String?): Set<Level> =
+        if (text == null) Level.entries.toSet() else text.split(',').mapNotNull { n -> Level.entries.firstOrNull { it.name == n.trim() } }.toSet()
+
+    /** Certificates trusted for [level]. */
+    fun certificates(context: Context, level: Level): List<X509Certificate> = list(context).filter { level in levels(it) }.map { it.cert }
 
     /** Adds an already-loaded certificate (e.g. the signer of a verified document: "trust this certificate"). */
     fun add(context: Context, cert: X509Certificate): Boolean {

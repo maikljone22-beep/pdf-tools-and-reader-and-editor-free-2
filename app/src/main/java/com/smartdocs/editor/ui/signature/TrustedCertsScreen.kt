@@ -81,6 +81,7 @@ fun TrustedCertsScreen(nav: NavHostController) {
                                 IconButton(onClick = { confirmDelete = e }) { Icon(Icons.Default.DeleteOutline, stringResource(R.string.delete)) }
                             }
                             CertDetailsBlock(d)
+                            TrustLevelChips(e)
                         }
                     }
                 }
@@ -127,3 +128,19 @@ private fun keyUsageLabel(b: com.smartdocs.editor.core.sign.CertFormat.KeyUsageB
     com.smartdocs.editor.core.sign.CertFormat.KeyUsageBit.ENCIPHER_ONLY -> R.string.g6_ku_encipher_only
     com.smartdocs.editor.core.sign.CertFormat.KeyUsageBit.DECIPHER_ONLY -> R.string.g6_ku_decipher_only
 })
+
+/** Foxit/Acrobat trust levels: use this certificate as a root for signatures and/or for certified documents. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun TrustLevelChips(e: com.smartdocs.editor.core.sign.TrustedCerts.Entry) {
+    var levels by remember(e.sha256) { mutableStateOf(com.smartdocs.editor.core.sign.TrustedCerts.levels(e)) }
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        listOf(com.smartdocs.editor.core.sign.TrustedCerts.Level.SIGNATURES to R.string.ns2_trust_signatures,
+            com.smartdocs.editor.core.sign.TrustedCerts.Level.CERTIFIED to R.string.ns2_trust_certified).forEach { (l, label) ->
+            FilterChip(l in levels, {
+                levels = if (l in levels) levels - l else levels + l
+                runCatching { com.smartdocs.editor.core.sign.TrustedCerts.setLevels(e, levels) }
+            }, label = { Text(stringResource(label)) })
+        }
+    }
+}
