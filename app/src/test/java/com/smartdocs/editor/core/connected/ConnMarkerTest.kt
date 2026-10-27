@@ -46,4 +46,32 @@ class ConnMarkerTest {
             assertNotNull(m); assertEquals(id, m!!.docId)
         } finally { f.delete() }
     }
+
+    /** Audit RD-03: the slow scan runs once per (path, size, mtime); a changed file is scanned again. */
+    @Test fun fileScanIsCachedPerSizeAndMtime() {
+        val f = File.createTempFile("conn", ".pdf")
+        try {
+            fun write(marker: String) = f.outputStream().use { o ->
+                o.write("%PDF-1.7\n<</SDConnId ($marker)>>\n".toByteArray(Charsets.ISO_8859_1))
+                o.write(ByteArray(400 * 1024) { ' '.code.toByte() }); o.write("trailer<</Size 1>>\n%%EOF".toByteArray())
+            }
+            write(id); f.setLastModified(1_600_000_000_000L)
+            val before = ConnMarker.scans.get()
+            val results = (1..8).map { Thread { ConnMarker.find(f) }.apply { start() } }.onEach { it.join() }
+            assertEquals(results.size, 8)
+            assertEquals(id, ConnMarker.find(f)!!.docId)
+            assertTrue("scanned at most once per thread race, then cached", ConnMarker.scans.get() - before <= 8)
+            val afterFirst = ConnMarker.scans.get()
+            repeat(5) { assertEquals(id, ConnMarker.find(f)!!.docId) }
+            assertEquals("cache hits do not read the file", afterFirst, ConnMarker.scans.get())
+
+            val other = "zz12cd34ef56"
+            write(other); f.setLastModified(1_600_000_100_000L)
+            assertEquals(other, ConnMarker.find(f)!!.docId)
+            assertEquals(afterFirst + 1, ConnMarker.scans.get())
+            ConnMarker.invalidate(f)
+            assertEquals(other, ConnMarker.find(f)!!.docId)
+            assertEquals(afterFirst + 2, ConnMarker.scans.get())
+        } finally { f.delete() }
+    }
 }
