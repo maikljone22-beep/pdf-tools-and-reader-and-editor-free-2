@@ -1,6 +1,7 @@
 package com.smartdocs.editor.core.sign
 
 import com.smartdocs.editor.core.pdf.DigitalSignature
+import com.smartdocs.editor.core.pdf.SigTarget
 import com.smartdocs.editor.core.pdf.SignedDocumentException
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDPage
