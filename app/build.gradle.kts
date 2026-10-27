@@ -135,6 +135,7 @@ dependencies {
     implementation("io.legere:pdfiumandroid:2.0.1")
     implementation("com.tom-roush:pdfbox-android:2.0.27.0")
     implementation("org.mozilla:rhino:1.7.15.1")
+    implementation("com.google.zxing:core:3.5.3")   // barcode form fields: PDF417 / QR / Data Matrix encoders (formsx)
     implementation("androidx.window:window:1.2.0")   // foldable / dual screen (gaps6)   // form JavaScript (forms5b)
 
     // Scanner + OCR
