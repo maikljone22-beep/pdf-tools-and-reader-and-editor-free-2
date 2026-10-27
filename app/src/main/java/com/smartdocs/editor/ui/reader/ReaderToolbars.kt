@@ -98,7 +98,7 @@ fun BottomToolbar(state: ReaderState, actions: ReaderActions) {
                 ReaderTab.VIEW -> ViewToolbar(state, actions)
                 ReaderTab.COMMENT -> { PropertyBar(state); CommentToolbar(state, actions) }
                 ReaderTab.EDIT -> { if (state.tool != null) PropertyBar(state); EditToolbar(state, actions) }
-                ReaderTab.FILL_SIGN -> { if (state.tool != null) PropertyBar(state); FillSignToolbar(state) }
+                ReaderTab.FILL_SIGN -> { if (state.tool != null) PropertyBar(state); FillSignToolbar(state, actions) }
                 ReaderTab.SIGN -> SignToolbar(state, actions)
                 ReaderTab.TOOLS -> ToolsToolbar(actions)
                 ReaderTab.PAGES -> {}
@@ -189,7 +189,7 @@ private fun EditToolbar(state: ReaderState, a: ReaderActions) {
 }
 
 @Composable
-private fun FillSignToolbar(state: ReaderState) {
+private fun FillSignToolbar(state: ReaderState, a: ReaderActions) {
     val app = com.smartdocs.editor.LocalApp.current
     val fields by app.db.fillProfile().all().collectAsState(initial = emptyList())
     ToolRow {
@@ -206,7 +206,7 @@ private fun FillSignToolbar(state: ReaderState) {
             state.selectTool(ReaderTool.FS_DATE)
             if (state.tool == ReaderTool.FS_DATE) state.pendingText = java.text.SimpleDateFormat("yyyy/MM/dd", java.util.Locale.US).format(java.util.Date())
         }
-        com.smartdocs.editor.ui.forms5.FillSignFormChips(state)     // form menu (data, JavaScript)
+        com.smartdocs.editor.ui.forms5.FillSignFormChips(state, openDocJs = { a.navigateTool("e5_doc_js") })     // form menu (data, JavaScript)
         VerticalDivider(Modifier.height(36.dp).padding(horizontal = 4.dp))
         if (fields.isEmpty()) {
             Text(stringResource(R.string.rd_profile_empty), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 8.dp))

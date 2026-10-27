@@ -78,7 +78,7 @@ private enum class FormDlg { NONE, CONSOLE, DOC_JS, DOC_ACTIONS, ALL_JS, COMB, C
  * import / CSV row / e-mail, JavaScript console, document JavaScripts, document actions, all JavaScripts).
  */
 @Composable
-fun FillSignFormChips(state: ReaderState) {
+fun FillSignFormChips(state: ReaderState, openDocJs: (() -> Unit)? = null) {
     val ctx = LocalContext.current
     val fs = remember(state) { FormFill.of(state) }
     var menu by remember { mutableStateOf(false) }
@@ -98,9 +98,8 @@ fun FillSignFormChips(state: ReaderState) {
                 DropdownMenuItem(text = { Text(stringResource(R.string.f8_mail_data)) }, leadingIcon = { Icon(Icons.Default.Email, null) }, onClick = { menu = false; dlg = FormDlg.MAIL })
             }
             HorizontalDivider()
-            DropdownMenuItem(text = { Text(stringResource(R.string.f8_js_console)) }, leadingIcon = { Icon(Icons.Default.Terminal, null) }, onClick = { menu = false; dlg = FormDlg.CONSOLE })
-            DropdownMenuItem(text = { Text(stringResource(R.string.f8_doc_js)) }, leadingIcon = { Icon(Icons.Default.Code, null) }, onClick = { menu = false; dlg = FormDlg.DOC_JS })
-            DropdownMenuItem(text = { Text(stringResource(R.string.f8_doc_actions)) }, leadingIcon = { Icon(Icons.Default.Event, null) }, onClick = { menu = false; dlg = FormDlg.DOC_ACTIONS })
+            // document scripts, document actions and the console: the shared editor of main (edit5 DocScriptsScreen, honours JsPolicy)
+            if (openDocJs != null) DropdownMenuItem(text = { Text(stringResource(R.string.nbm_js_title)) }, leadingIcon = { Icon(Icons.Default.Code, null) }, onClick = { menu = false; openDocJs() })
             DropdownMenuItem(text = { Text(stringResource(R.string.f8_all_js)) }, leadingIcon = { Icon(Icons.Default.Functions, null) }, onClick = { menu = false; dlg = FormDlg.ALL_JS })
         }
     }

@@ -92,7 +92,7 @@ fun ReaderPageLinksSheet(state: ReaderState, page: Int, initial: PageLinkInfo? =
         LinkEditorSheet(e.spec, state.pageCount, isNew = false, onDismiss = { if (initial != null) onDismiss() else editing = null },
             onDelete = { onDismiss(); applyLinks(state, deleted) { s, o, p -> LinkOps.delete(s, o, p, mapOf(e.page to setOf(e.index))) } }) { spec ->
             onDismiss()
-            applyLinks(state, ok) { s, o, p -> LinkOps.update(s, o, p, e.page, e.index, spec.copy(rect = e.spec.rect, quads = e.spec.quads)) }
+            applyLinks(state, ok) { s, o, p -> LinkOps.update(s, o, p, e.page, e.index, movedLink(spec, e.spec)) }
         }
         return
     }
@@ -127,7 +127,11 @@ suspend fun followFileLinkAt(state: ReaderState, page: Int, x: Float, y: Float, 
     val target = File(l.spec.file).let { if (it.isAbsolute) it else File(base, l.spec.file) }
     if (!com.smartdocs.editor.ui.security.DocSecurityGate.confirmLaunch(state.context, l.spec.file.ifBlank { target.name })) return true
     if (!target.exists()) { Toast.makeText(state.context, state.context.getString(R.string.e5_link_file_missing, l.spec.file), Toast.LENGTH_LONG).show(); return true }
-    if (l.spec.kind == LinkKind.REMOTE || target.extension.equals("pdf", true)) { openPdf(target, l.spec.page); return true }
+    if (l.spec.kind == LinkKind.REMOTE || target.extension.equals("pdf", true)) {
+        // nav-bookmarks: a named destination in the other file is looked up there (a protected file opens at the page)
+        val pg = if (l.spec.kind == LinkKind.REMOTE && l.spec.named.isNotBlank()) com.smartdocs.editor.core.edit5.NamedDests.pageOf(target, l.spec.named) ?: l.spec.page else l.spec.page
+        openPdf(target, pg); return true
+    }
     runCatching {
         val uri = state.app.documents.shareUri(target)
         state.context.startActivity(Intent.createChooser(Intent(Intent.ACTION_VIEW).apply {
