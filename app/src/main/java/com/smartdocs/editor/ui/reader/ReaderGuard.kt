@@ -95,7 +95,7 @@ class ReaderGuard(private val s: ReaderState) {
 
     /** Whether this document's scripts may run (waits briefly for the action scan). [legacyOn]: the old switch. */
     suspend fun jsAllowed(legacyOn: Boolean): Boolean {
-        withTimeoutOrNull(20_000) { scanned.await() }
+        withTimeoutOrNull(10_000) { scanned.await() }
         val level = TrustPrefs.jsLevel(s.context, legacyOn).also { jsLevel = it }
         if (findings?.hasJavaScript != true) return level != JsLevel.OFF && !safeActive
         return JsRun.allowed(level, safeActive, trusted, jsAnswer)
