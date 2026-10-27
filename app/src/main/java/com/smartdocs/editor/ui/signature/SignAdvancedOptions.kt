@@ -24,15 +24,23 @@ import com.smartdocs.editor.R
 import com.smartdocs.editor.core.data.SavedSignature
 import com.smartdocs.editor.core.pdf.DigitalSignature
 import com.smartdocs.editor.core.sign.TsaClient
+import com.smartdocs.editor.core.sign.TsaServer
+import com.smartdocs.editor.core.sign.TsaServers
 import com.smartdocs.editor.ui.common.LabeledSlider
 import com.smartdocs.editor.ui.common.rememberImagePicker
 import java.io.File
 
 /** Advanced digital-signature options (time-stamp, PAdES, LTV, certification level, paging seal); persisted per device. */
 @Stable
-class AdvancedSignState(private val prefs: SharedPreferences) {
+class AdvancedSignState(private val prefs: SharedPreferences, private val context: Context? = null) {
     var tsa by mutableStateOf(prefs.getBoolean("tsa", false))
     var tsaUrl by mutableStateOf(prefs.getString("tsa_url", null) ?: TsaClient.DEFAULT_URL)
+
+    /** nitro-quicksign: saved time-stamp servers (built-ins + user servers) and the default one. */
+    var tsaServers by mutableStateOf(context?.let { TsaServers.load(it) } ?: TsaServers.builtIns())
+        private set
+    var tsaDefault by mutableStateOf(context?.let { TsaServers.defaultId(it) })
+        private set
     var pades by mutableStateOf(prefs.getBoolean("pades", true))
     var ltv by mutableStateOf(prefs.getBoolean("ltv", false))
     var docTs by mutableStateOf(prefs.getBoolean("doc_ts", false))
@@ -42,6 +50,47 @@ class AdvancedSignState(private val prefs: SharedPreferences) {
     var sealSize by mutableFloatStateOf(prefs.getFloat("seal_size", 110f))
     var sealY by mutableFloatStateOf(prefs.getFloat("seal_y", 0.5f))
     var skipWarning by mutableStateOf(prefs.getBoolean("presign_dont_show", false))
+
+    init {
+        context?.let { ctx ->
+            TsaServers.install(ctx)
+            // the single custom URL of older versions becomes a saved server
+            val legacy = tsaUrl.trim()
+            if (legacy.isNotEmpty() && TsaServers.find(tsaServers, legacy) == null) {
+                tsaServers = TsaServers.upsert(tsaServers, TsaServer(TsaServers.newId(), TsaServers.hostOf(legacy), legacy))
+                TsaServers.save(ctx, tsaServers)
+            }
+            tsaServers.firstOrNull { it.id == tsaDefault }?.let { tsaUrl = it.url }
+        }
+    }
+
+    fun hasTsaPassword(id: String): Boolean = context?.let { TsaServers.hasPassword(it, id) } ?: false
+
+    /** Adds or edits a server. [password]: null keeps the stored one, "" removes it. */
+    fun saveTsaServer(server: TsaServer, password: String?) {
+        val old = tsaServers.firstOrNull { it.id == server.id }
+        tsaServers = TsaServers.upsert(tsaServers, server)
+        context?.let { ctx ->
+            TsaServers.save(ctx, tsaServers)
+            if (server.username.isBlank()) TsaServers.setPassword(ctx, server.id, null)
+            else if (password != null) TsaServers.setPassword(ctx, server.id, password)
+        }
+        if (old != null && TsaServers.normalize(old.url) == TsaServers.normalize(tsaUrl)) tsaUrl = tsaServers.first { it.id == server.id }.url
+    }
+
+    fun deleteTsaServer(id: String) {
+        val gone = tsaServers.firstOrNull { it.id == id && !it.builtIn } ?: return
+        tsaServers = TsaServers.delete(tsaServers, id)
+        if (tsaDefault == id) setDefaultTsa(null)
+        context?.let { TsaServers.save(it, tsaServers) }
+        if (TsaServers.normalize(gone.url) == TsaServers.normalize(tsaUrl)) tsaUrl = (tsaServers.firstOrNull { it.id == tsaDefault } ?: tsaServers.first()).url
+    }
+
+    fun setDefaultTsa(id: String?) {
+        tsaDefault = id
+        context?.let { TsaServers.setDefault(it, id) }
+        tsaServers.firstOrNull { it.id == id }?.let { tsaUrl = it.url }
+    }
 
     fun persist() {
         prefs.edit().putBoolean("tsa", tsa).putString("tsa_url", tsaUrl.trim()).putBoolean("pades", pades).putBoolean("ltv", ltv)
@@ -77,7 +126,7 @@ class AdvancedSignState(private val prefs: SharedPreferences) {
 @Composable
 fun rememberAdvancedSignState(): AdvancedSignState {
     val ctx = LocalContext.current
-    return remember { AdvancedSignState(ctx.getSharedPreferences("psf_sign", Context.MODE_PRIVATE)) }
+    return remember { AdvancedSignState(ctx.getSharedPreferences("psf_sign", Context.MODE_PRIVATE), ctx.applicationContext) }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -107,14 +156,7 @@ fun AdvancedSignOptions(state: AdvancedSignState, signatures: List<SavedSignatur
                 HorizontalDivider()
                 SwitchLine(stringResource(R.string.ps_sign_pades), stringResource(R.string.ps_sign_pades_desc), state.pades) { state.pades = it }
                 SwitchLine(stringResource(R.string.ps_sign_tsa), stringResource(R.string.ps_sign_tsa_desc), state.tsa) { state.tsa = it }
-                if (state.tsa) {
-                    OutlinedTextField(state.tsaUrl, { state.tsaUrl = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.ps_sign_tsa_url)) })
-                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        TsaClient.presets.forEach { u ->
-                            AssistChip(onClick = { state.tsaUrl = u }, label = { Text(u.removePrefix("http://").removePrefix("https://").substringBefore('/'), style = MaterialTheme.typography.labelSmall) })
-                        }
-                    }
-                }
+                if (state.tsa) TsaServerPicker(state)
                 SwitchLine(stringResource(R.string.ps_sign_ltv), stringResource(R.string.ps_sign_ltv_desc), state.ltv) { state.ltv = it }
                 SwitchLine(stringResource(R.string.ps_sign_doc_ts), stringResource(R.string.ps_sign_doc_ts_desc), state.docTs && state.tsa, enabled = state.tsa) { state.docTs = it }
                 HorizontalDivider()

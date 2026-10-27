@@ -322,6 +322,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
             PanelsContent(state, shownPanel, onPanel = { panel = it }, onJump = { state.jumpTo(it); panel = null }, onAiOutline = { panel = null; nav.navigate(Routes.tool("ai", state.fileUri)) }, onClose = { panel = null })
         } }
         com.smartdocs.editor.ui.forms5.InPageFormBar(state, Modifier.align(Alignment.BottomCenter))   // MODULE_forms5
+        com.smartdocs.editor.ui.signature.SigFieldSheet(state, nav)   // Nitro signature-field actions
     }
 
     // ---- dialogs & sheets ----

@@ -208,7 +208,12 @@ private fun SignaturePicker(initials: Boolean, onDismiss: () -> Unit, onPicked: 
     val app = LocalApp.current
     val sigs by app.db.signatures().all().collectAsState(initial = emptyList<SavedSignature>())
     var create by remember { mutableStateOf(false) }
-    val list = sigs.filter { it.isInitials == initials && File(it.path).exists() }.ifEmpty { sigs.filter { File(it.path).exists() } }
+    // nitro-quicksign: recently used first; locked signatures ask for their password
+    val gate = com.smartdocs.editor.ui.signature.rememberSignatureGate()
+    val meta by remember { com.smartdocs.editor.core.data.SignatureMetaStore.flow(app) }.collectAsState()
+    val all = sigs.filter { it.isInitials == initials && File(it.path).exists() }.ifEmpty { sigs.filter { File(it.path).exists() } }
+    val recent = com.smartdocs.editor.core.data.SignatureMetaStore.recent(meta, all.map { it.path }, max = all.size)
+    val list = recent.mapNotNull { p -> all.firstOrNull { it.path == p } } + all.filter { it.path !in recent }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(if (initials) R.string.cn_pick_initials else R.string.cn_pick_signature)) },
@@ -218,7 +223,12 @@ private fun SignaturePicker(initials: Boolean, onDismiss: () -> Unit, onPicked: 
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(list, key = { it.id }) { s ->
                         val bmp = remember(s.path) { runCatching { BitmapFactory.decodeFile(s.path) }.getOrNull() }
-                        Surface(onClick = { onPicked(Base64.encodeToString(File(s.path).readBytes(), Base64.NO_WRAP)) }, shape = RoundedCornerShape(12.dp),
+                        Surface(onClick = {
+                            gate.request(s.path) {
+                                com.smartdocs.editor.core.data.SignatureMetaStore.markUsed(app, s.path)
+                                onPicked(Base64.encodeToString(File(s.path).readBytes(), Base64.NO_WRAP))
+                            }
+                        }, shape = RoundedCornerShape(12.dp),
                             color = MaterialTheme.colorScheme.surfaceContainerHigh, modifier = Modifier.size(140.dp, 70.dp)) {
                             bmp?.let { Image(it.asImageBitmap(), null, Modifier.fillMaxSize().padding(6.dp)) }
                         }
