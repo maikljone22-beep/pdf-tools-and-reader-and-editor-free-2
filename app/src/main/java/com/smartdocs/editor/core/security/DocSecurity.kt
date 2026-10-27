@@ -61,7 +61,7 @@ object InternetAccess {
     }
 }
 
-enum class LaunchVerdict { ALLOWED_WITH_WARNING, BLOCKED_BY_SETTING, BLOCKED_EXECUTABLE }
+enum class LaunchVerdict { ALLOWED_WITH_WARNING, BLOCKED_BY_SETTING, BLOCKED_EXECUTABLE, BLOCKED_SAFE_MODE }
 
 /** File-launch actions (Launch / GoToR): always confirmed, never for executable-like files, or all off. */
 object LaunchPolicy {

@@ -62,7 +62,11 @@ class V5State private constructor(val s: ReaderState) {
     var env by mutableStateOf<V5Env?>(null)
     var pinsVersion by mutableIntStateOf(0)
 
-    fun open(x: V5Surface) { surface = x }
+    fun open(x: V5Surface) {
+        // nitro-protect2: printing follows the document's print permission
+        if (x == V5Surface.PRINT && !s.guard.check(com.smartdocs.editor.core.security.DocAction.PRINT)) return
+        surface = x
+    }
     fun close() { surface = V5Surface.NONE }
 
     fun saveOverlays() {

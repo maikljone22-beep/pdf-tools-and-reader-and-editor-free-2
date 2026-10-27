@@ -84,7 +84,11 @@ object CertInspector {
         val forCertified = TrustedCerts.certificates(context, TrustedCerts.Level.CERTIFIED)
         val systemRoots = if (system) SystemTrust.anchors() else emptyList()
         val userFps = (forSignatures + forCertified).map { CertFormat.sha256(it.encoded) }.toSet()
-        fun anchors(user: List<X509Certificate>) = user + systemRoots.filter { CertFormat.sha256(it.encoded) !in userFps }
+        // nitro-protect2: third anchor set, the EU trusted list (qualified CAs), when the user turned it on
+        val eutl = if (TrustLists.useEutl(context)) TrustLists.anchors(context) else emptyList()
+        val sysFps = systemRoots.map { CertFormat.sha256(it.encoded) }.toSet()
+        fun anchors(user: List<X509Certificate>) = user + systemRoots.filter { CertFormat.sha256(it.encoded) !in userFps } +
+            eutl.filter { CertFormat.sha256(it.encoded).let { fp -> fp !in userFps && fp !in sysFps } }
         val trustedSig = anchors(forSignatures)
         val trustedCert = anchors(forCertified)
         val bytes = file.readBytes()

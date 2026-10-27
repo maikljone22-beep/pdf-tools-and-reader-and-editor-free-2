@@ -14,7 +14,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.smartdocs.editor.R
 import com.smartdocs.editor.core.data.AppSettings
+import com.smartdocs.editor.core.security.JsLevel
 import com.smartdocs.editor.core.security.NetMode
+import com.smartdocs.editor.core.security.TrustPrefs
 import com.smartdocs.editor.core.security.SecurityPrefs
 import com.smartdocs.editor.core.theme.Brand
 
@@ -30,9 +32,14 @@ fun NpSecurityCard(s: AppSettings, upd: ((AppSettings) -> AppSettings) -> Unit) 
     var blockLaunch by remember { mutableStateOf(SecurityPrefs.blockLaunch(ctx)) }
     var editSites by remember { mutableStateOf(false) }
     GroupCard(stringResource(R.string.np_set_title)) {
-        SwitchRow(stringResource(R.string.np_set_run_js), s.runJavaScript, stringResource(R.string.np_set_run_js_sub), icon = Icons.Default.Code, tile = Brand.tiles.amber) { v ->
-            upd { it.copy(runJavaScript = v) }
-        }
+        // nitro-protect2: four run levels (Off / Ask per document / Trusted documents only / On); "on/off" stays in sync
+        var level by remember(s.runJavaScript) { mutableStateOf(TrustPrefs.jsLevel(ctx, s.runJavaScript)) }
+        GroupRow(stringResource(R.string.np_set_run_js), stringResource(R.string.np2_js_level_sub), icon = Icons.Default.Code, tile = Brand.tiles.amber)
+        G6Choice(
+            listOf(JsLevel.OFF to stringResource(R.string.np2_js_off), JsLevel.ASK to stringResource(R.string.np2_js_ask),
+                JsLevel.TRUSTED to stringResource(R.string.np2_js_trusted), JsLevel.ON to stringResource(R.string.np2_js_on)),
+            level,
+        ) { v -> TrustPrefs.setJsLevel(ctx, v); level = v; upd { it.copy(runJavaScript = v != JsLevel.OFF) } }
         GroupDivider()
         GroupRow(stringResource(R.string.np_set_net), stringResource(R.string.np_set_net_sub), icon = Icons.Default.Language, tile = Brand.tiles.blue)
         G6Choice(
