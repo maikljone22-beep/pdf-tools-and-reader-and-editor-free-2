@@ -62,3 +62,26 @@ Test: `NitroDecorTest`.
 | Encrypted input in Optimize (bug: null password) | fixed | password prompt in `OptimizeScreen`; the result stays protected with the same password (`keepProtection`, switchable). `PdfOps.compress` keeps its own re-protect (`keepProtection = false` there) |
 
 Test: `NitroOptimizeTest`.
+
+## 15 Compare (+ Foxit §13 Compare PDFs & Word Count)
+
+| Row | Result | Where |
+|---|---|---|
+| Markers: inserted / deleted / replaced image | done | `CompareCore.images` (images per page with position + content hash via `PageInspector`; same place + other picture = replaced, same picture elsewhere = moved) |
+| Markers: inserted / deleted page | done | `PageMatch.align` → `PageChange` INSERTED / DELETED, full-page marks |
+| Markers: inserted / deleted annotation | done | `CompareCore.annotations` (subtype + contents + place; changed contents = replaced) |
+| Markers: page rotation, crop box, page position | done | `PageChange` ROTATED / CROPPED (size and offset) / MOVED (pages out of order: `PageMatch.movedPairs`) |
+| Option: include text and annotations (toggle) | done | `CompareOptions.text/images/annotations/formatting/pages/tables` |
+| Option: mark colours (Foxit: colour, opacity, line thickness, set as default) | done | `CompareStyle` + `StyleDialog` in `Compare2Screen`; used by the views, the report, the overlay and the annotated copy |
+| Option: auto match pages (reordered pages) | done | `CompareOptions.autoMatch` → `PageMatch.align` (alignment on word-set similarity, then moved pages); the word diff runs over pages in matched order |
+| Visual Compare: output document, auto match | done | `CompareOutput.visualDocument` (pixel overlay per matched page pair, inserted / deleted pages shown alone) |
+| Page ranges for each document | done | `CompareOptions.oldRange/newRange` |
+| Encrypted inputs (bug: null passwords) | fixed | password prompts per file; passwords passed to compare, rendering, report, overlay and outputs |
+| Foxit: Compare Table | done | `TableDetect` (rows from word positions, cells at wide gaps) + `TableDetect.diff` (rows aligned, changed cells); "Tables" tab and report section |
+| Foxit: filter results by Text / Images / Annotations / Formatting / Everything | done | `ChangeKind` filter chips (also Pages, Tables); formatting = font or size change of the same word (`FormatChange`) |
+| Foxit: changes in the Comments panel / save result | done | `CompareOutput.annotatedCopy`: a copy of the new document with every change as a highlight annotation with a note |
+| Foxit: Option "Compare Text Only" | done | the kind switches (text only = all others off) |
+| Foxit: Open from ECM | not feasible | no ECM connectors in the app; SAF already reaches cloud providers |
+| Foxit: Word Count (words, characters with/without spaces, pages, lines, Asian characters; document or selection) | done | `core/tools5/WordCount.kt`; compare screen action (each document, page range) and a "Word count" chip in the reader selection menu |
+
+Test: `NitroCompareTest`.
