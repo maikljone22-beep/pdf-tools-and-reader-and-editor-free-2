@@ -201,6 +201,7 @@ private fun FillSignToolbar(state: ReaderState) {
             state.selectTool(ReaderTool.FS_DATE)
             if (state.tool == ReaderTool.FS_DATE) state.pendingText = java.text.SimpleDateFormat("yyyy/MM/dd", java.util.Locale.US).format(java.util.Date())
         }
+        com.smartdocs.editor.ui.forms5.FillSignFormChips(state)     // rectangle, comb text, form menu (data, JavaScript)
         VerticalDivider(Modifier.height(36.dp).padding(horizontal = 4.dp))
         if (fields.isEmpty()) {
             Text(stringResource(R.string.rd_profile_empty), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 8.dp))
@@ -344,6 +345,7 @@ fun PropertyBar(state: ReaderState) {
             }
         }
         com.smartdocs.editor.ui.reader.annot.Annot2PropertyRow(state)      // MODULE_annot2: polygon progress, fill, cloud
+        com.smartdocs.editor.ui.reader.annot.CreationExtrasRow(state)      // section 7: fill, dash, no border, line ends, rich text, icons, tickmarks
     }
 }
 

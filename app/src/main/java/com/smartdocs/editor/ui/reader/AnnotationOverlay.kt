@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import com.smartdocs.editor.core.pdf.Annot
 import com.smartdocs.editor.core.pdf.AnnotKind
+import com.smartdocs.editor.core.pdf.endStyle
 import com.smartdocs.editor.ui.reader.annot.drawAnnot2
 import kotlin.math.atan2
 import kotlin.math.cos
@@ -61,7 +62,7 @@ fun DrawScope.drawAnnot(a: Annot, g: PageGeometry) {
             val p = Path()
             stroke.forEachIndexed { i, (x, y) -> val o = g.pdfToScreen(x, y); if (i == 0) p.moveTo(o.x, o.y) else p.lineTo(o.x, o.y) }
             if (stroke.size == 1) { val o = g.pdfToScreen(stroke[0].first, stroke[0].second); drawCircle(c, sw / 2, o) }
-            else drawPath(p, c, style = Stroke(width = sw, cap = StrokeCap.Round, join = StrokeJoin.Round))
+            else drawPath(p, c, style = Stroke(width = sw, cap = StrokeCap.Round, join = StrokeJoin.Round, pathEffect = dashEffectOf(a, g)))
         }
         AnnotKind.NOTE -> a.rects.firstOrNull()?.let { r ->
             val o = g.pdfToScreen(r.left, r.top)
@@ -76,16 +77,33 @@ fun DrawScope.drawAnnot(a: Annot, g: PageGeometry) {
         AnnotKind.FREETEXT, AnnotKind.STAMP_TEXT -> a.rects.firstOrNull()?.let { r ->
             val s = g.pdfRectToScreen(r)
             if (a.kind == AnnotKind.STAMP_TEXT) drawRect(c, s.topLeft, s.size, style = Stroke(2f * g.scale))
-            drawTextBlock(a.text, s, a.fontSize * g.scale, c)
+            drawTextBlock(a.text, s, a.fontSize * g.scale, c, bold = a.bold, italic = a.italic, underline = a.underline)
         }
         AnnotKind.LINE, AnnotKind.ARROW -> if (a.points.size >= 2) {
             val p1 = g.pdfToScreen(a.points[0].first, a.points[0].second)
             val p2 = g.pdfToScreen(a.points[1].first, a.points[1].second)
-            drawLine(c, p1, p2, sw, cap = StrokeCap.Round)
-            if (a.kind == AnnotKind.ARROW) drawArrowHead(p1, p2, c, sw)
+            drawLine(c, p1, p2, sw, cap = StrokeCap.Round, pathEffect = dashEffectOf(a, g))
+            drawLineEnd(a.endStyle(), p1, p2, c, sw)
+            drawLineEnd(a.lineStart, p2, p1, c, sw)
         }
-        AnnotKind.RECT -> a.rects.firstOrNull()?.let { r -> val s = g.pdfRectToScreen(r); drawRect(c, s.topLeft, s.size, style = Stroke(sw)) }
-        AnnotKind.OVAL -> a.rects.firstOrNull()?.let { r -> val s = g.pdfRectToScreen(r); drawOval(c, s.topLeft, s.size, style = Stroke(sw)) }
+        AnnotKind.RECT, AnnotKind.OVAL -> a.rects.firstOrNull()?.let { r ->
+            val s = g.pdfRectToScreen(r)
+            if (a.kind == AnnotKind.OVAL && a.subject == com.smartdocs.editor.core.annot.AnnotStyle.TICKMARK) { drawTickmark(a, s); return@let }
+            val fill = a.fillColor?.let { annotColor(it, a.opacity) }
+            val stroke = Stroke(sw, pathEffect = dashEffectOf(a, g))
+            if (a.kind == AnnotKind.RECT && a.cloud > 0) {
+                val n = PageGeometry.normPdf(r)
+                val path = com.smartdocs.editor.ui.reader.annot.polyPath(listOf(n.left to n.bottom, n.right to n.bottom, n.right to n.top, n.left to n.top), g, true, a.cloud.coerceIn(1, 3), a.strokeWidth)
+                fill?.let { drawPath(path, it) }
+                if (!a.noBorder) drawPath(path, c, style = Stroke(sw))
+            } else if (a.kind == AnnotKind.RECT) {
+                fill?.let { drawRect(it, s.topLeft, s.size) }
+                if (!a.noBorder) drawRect(c, s.topLeft, s.size, style = stroke)
+            } else {
+                fill?.let { drawOval(it, s.topLeft, s.size) }
+                if (!a.noBorder) drawOval(c, s.topLeft, s.size, style = stroke)
+            }
+        }
         AnnotKind.STAMP_IMAGE -> a.rects.firstOrNull()?.let { r ->
             val s = g.pdfRectToScreen(r); val img = a.image ?: return@let
             drawImage(img.asImageBitmap(), dstOffset = IntOffset(s.left.roundToInt(), s.top.roundToInt()),
@@ -97,6 +115,52 @@ fun DrawScope.drawAnnot(a: Annot, g: PageGeometry) {
     }
 }
 
+/** Dash pattern of [a] scaled to the screen (null when solid). */
+fun dashEffectOf(a: Annot, g: PageGeometry): androidx.compose.ui.graphics.PathEffect? =
+    com.smartdocs.editor.core.view5.DashStyle.entries.getOrElse(a.dash) { com.smartdocs.editor.core.view5.DashStyle.SOLID }
+        .scaled(a.strokeWidth)?.map { it * g.scale }?.toFloatArray()?.let { androidx.compose.ui.graphics.PathEffect.dashPathEffect(it, 0f) }
+
+/** Preview of a PDF line ending ([name] = /LE value) at [to] for a line coming from [from]. */
+fun DrawScope.drawLineEnd(name: String, from: Offset, to: Offset, color: Color, sw: Float) {
+    val ang = atan2((to.y - from.y).toDouble(), (to.x - from.x).toDouble())
+    val len = (sw * 4f + 5f * (sw / 2f).coerceAtLeast(1f))
+    fun pt(d: Float, a: Double) = Offset(to.x + (d * cos(a)).toFloat(), to.y + (d * sin(a)).toFloat())
+    when (name) {
+        "OpenArrow", "ClosedArrow" -> {
+            val p = Path().apply { val a1 = pt(len, ang + Math.PI - 0.45); val b1 = pt(len, ang + Math.PI + 0.45); moveTo(a1.x, a1.y); lineTo(to.x, to.y); lineTo(b1.x, b1.y); if (name == "ClosedArrow") close() }
+            if (name == "ClosedArrow") drawPath(p, color) else drawPath(p, color, style = Stroke(sw, cap = StrokeCap.Round))
+        }
+        "ROpenArrow", "RClosedArrow" -> {
+            val p = Path().apply { val a1 = pt(len, ang - 0.45); val b1 = pt(len, ang + 0.45); moveTo(a1.x, a1.y); lineTo(to.x, to.y); lineTo(b1.x, b1.y); if (name == "RClosedArrow") close() }
+            if (name == "RClosedArrow") drawPath(p, color) else drawPath(p, color, style = Stroke(sw, cap = StrokeCap.Round))
+        }
+        "Butt" -> drawLine(color, pt(len * 0.6f, ang + Math.PI / 2), pt(len * 0.6f, ang - Math.PI / 2), sw)
+        "Slash" -> drawLine(color, pt(len * 0.6f, ang + Math.PI / 3), pt(len * 0.6f, ang + Math.PI / 3 + Math.PI), sw)
+        "Square" -> { val h = len * 0.4f; drawRect(color, Offset(to.x - h, to.y - h), Size(h * 2, h * 2)) }
+        "Circle" -> drawCircle(color, len * 0.4f, to)
+        "Diamond" -> {
+            val h = len * 0.5f
+            val p = Path().apply { val q = listOf(pt(h, ang), pt(h, ang + Math.PI / 2), pt(h, ang + Math.PI), pt(h, ang - Math.PI / 2)); moveTo(q[0].x, q[0].y); q.drop(1).forEach { lineTo(it.x, it.y) }; close() }
+            drawPath(p, color)
+        }
+        else -> {}
+    }
+}
+
+/** Numbered / lettered / symbol tickmark preview (filled circle + white label). */
+fun DrawScope.drawTickmark(a: Annot, s: Rect) {
+    drawOval(annotColor(a.color, a.opacity), s.topLeft, s.size)
+    val symbol = a.text.startsWith("zd:")
+    val label = if (symbol) tickSymbolPreview(a.text.removePrefix("zd:")) else a.text
+    drawIntoCanvas { cv ->
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = android.graphics.Color.WHITE; textSize = s.height * 0.62f; textAlign = Paint.Align.CENTER; isFakeBoldText = true }
+        cv.nativeCanvas.drawText(label, s.center.x, s.center.y + paint.textSize * 0.35f, paint)
+    }
+}
+
+/** Screen glyph of a ZapfDingbats tickmark code (the palette of [com.smartdocs.editor.ui.reader.annot.TickSymbols]). */
+fun tickSymbolPreview(code: String): String = com.smartdocs.editor.ui.reader.annot.TickSymbols.all.firstOrNull { it.first == code }?.second ?: "?"
+
 fun DrawScope.drawArrowHead(from: Offset, to: Offset, color: Color, sw: Float) {
     val ang = atan2((to.y - from.y).toDouble(), (to.x - from.x).toDouble())
     val len = 10f + sw * 2
@@ -107,12 +171,14 @@ fun DrawScope.drawArrowHead(from: Offset, to: Offset, color: Color, sw: Float) {
 }
 
 /** Multi-line text inside a rect using the native canvas (handles Arabic shaping and RTL alignment). */
-fun DrawScope.drawTextBlock(text: String, box: Rect, textSizePx: Float, color: Color, rtl: Boolean = text.any { it in '؀'..'ۿ' }) {
+fun DrawScope.drawTextBlock(text: String, box: Rect, textSizePx: Float, color: Color, rtl: Boolean = text.any { it in '؀'..'ۿ' },
+                            bold: Boolean = false, italic: Boolean = false, underline: Boolean = false) {
     if (text.isBlank()) return
     drawIntoCanvas { cv ->
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             this.color = color.toArgb(); textSize = textSizePx
             textAlign = if (rtl) Paint.Align.RIGHT else Paint.Align.LEFT
+            isFakeBoldText = bold; textSkewX = if (italic) -0.22f else 0f; isUnderlineText = underline
         }
         val pad = 4f * (textSizePx / 14f).coerceAtLeast(0.5f)
         var y = box.top + textSizePx + pad * 0.5f

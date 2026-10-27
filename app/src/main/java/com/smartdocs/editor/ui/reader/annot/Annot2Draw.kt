@@ -51,7 +51,8 @@ fun DrawScope.drawAnnot2(a: Annot, g: PageGeometry) {
             val closed = a.kind != AnnotKind.POLYLINE
             val path = polyPath(a.points, g, closed, if (a.kind == AnnotKind.CLOUD) a.cloud.coerceIn(1, 3) else 0, a.strokeWidth)
             if (closed) a.fillColor?.let { drawPath(path, annotColor(it, a.opacity), style = Fill) }
-            drawPath(path, c, style = Stroke(sw, cap = StrokeCap.Round, join = StrokeJoin.Round))
+            if (!(a.noBorder && closed && a.fillColor != null))
+                drawPath(path, c, style = Stroke(sw, cap = StrokeCap.Round, join = StrokeJoin.Round, pathEffect = com.smartdocs.editor.ui.reader.dashEffectOf(a, g)))
         }
         AnnotKind.CARET -> a.rects.firstOrNull()?.let { drawCaret(g.pdfRectToScreen(it), c) }
         AnnotKind.REPLACE -> {

@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.SaveAlt
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.LineWeight
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Opacity
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material3.*
@@ -72,6 +73,8 @@ fun AnnotActionBar(state: ReaderState, annot: Annot?, frame: Rect) {
                 }
                 if (annot?.kind == AnnotKind.INK) AeButton(Icons.Default.Gesture, R.string.an_recognize, enabled, false) { sub = AeSub.NONE; state.annot2.startHandwriting() }
                 AeButton(Icons.Default.Delete, R.string.ae_delete, !ed.busy, false, tint = MaterialTheme.colorScheme.error) { ed.delete() }
+                if (annot?.locked == true) Icon(androidx.compose.material.icons.Icons.Default.Lock, stringResource(R.string.cx_locked), Modifier.padding(horizontal = 4.dp).size(18.dp))
+                com.smartdocs.editor.ui.reader.annot.SelectionMoreButton(state, multi = false)      // section 7: properties, lock, clipboard, rotate, flatten...
                 if (ed.busy || ed.storedLoading) CircularProgressIndicator(Modifier.padding(horizontal = 8.dp).size(18.dp), strokeWidth = 2.dp)
             }
             if (annot != null) when (sub) {

@@ -30,6 +30,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
+import com.smartdocs.editor.ui.reader.annot.styleNew
 
 enum class ReaderTab { VIEW, COMMENT, EDIT, FILL_SIGN, SIGN, TOOLS, PAGES, CUSTOM }
 
@@ -44,6 +45,8 @@ enum class ReaderTool {
     SIGNATURE,
     // MODULE_annot2 (ui/reader/annot)
     CARET, REPLACE, POLYGON, POLYLINE, CLOUD, ATTACH, SOUND, VIDEO, SNAPSHOT, SELECT,
+    // section 7: numbered / lettered / symbol tickmarks
+    TICKMARK,
 }
 
 /** A text selection on one page. Rects are in PDF space. */
@@ -427,6 +430,7 @@ class ReaderState(
                  color: Int = this.color): Annot =
         Annot(kind = kind, page = page, color = color, opacity = opacity, strokeWidth = thickness, rects = rects, paths = paths,
             points = points, text = text, fontSize = fontSize, author = authorName, image = image)
+            .let { if (tool != null) annot2.styleNew(it) else it }
 
     // ================= save =================
 
@@ -717,7 +721,12 @@ class ReaderState(
     // ================= tools =================
 
     fun selectTool(t: ReaderTool?) {
+        // remember the settings of the tool being left, restore those of the new one (OLD_PLAN: settings per tool)
+        val mem = com.smartdocs.editor.ui.reader.annot.ToolMemory
+        tool?.takeIf { it in mem.REMEMBERED }?.let { old -> mem.save(context, old, mem.capture(this)) }
         tool = if (tool == t) null else t
+        val restored = tool?.takeIf { it in mem.REMEMBERED }?.let { nt -> mem.load(context, nt) }?.also { mem.apply(this, it) } != null
+        if (restored) { selection = null; measure = null; edit.clear(); placement = null; pendingImage = null; pendingText = ""; return }
         selection = null; measure = null; edit.clear()
         if (tool != ReaderTool.SIGNATURE && tool != ReaderTool.STAMP && tool != ReaderTool.IMAGE) { placement = null; pendingImage = null }
         if (tool != ReaderTool.FS_PROFILE && tool != ReaderTool.FS_DATE) pendingText = ""

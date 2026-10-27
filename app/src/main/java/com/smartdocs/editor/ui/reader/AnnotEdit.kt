@@ -64,7 +64,7 @@ class AnnotEditor(private val s: ReaderState) {
     fun bounds(): RectF? = current()?.let(::annotBounds) ?: (target as? AnnotTarget.Stored)?.e?.rect?.let { PageGeometry.normPdf(it) }
 
     /** Whether the selection can be dragged / resized right now. */
-    val movable: Boolean get() = !busy && current() != null
+    val movable: Boolean get() = !busy && current() != null && current()?.locked != true
 
     fun clear() { target = null; storedAnnot = null; storedLoading = false; editingText = false }
 
@@ -86,6 +86,7 @@ class AnnotEditor(private val s: ReaderState) {
 
     /** Select the annotation under a PDF point of [page]; pending ones win since they are drawn on top. */
     fun selectAt(page: Int, x: Float, y: Float, tolerancePt: Float): Boolean {
+        if (s.annot2.cx.hidden) return false            // comments hidden (7.65): nothing to pick
         annotAt(s.annots, page, x, y, tolerancePt)?.let {
             // grouped annotations are selected (and moved) together through the multi-selection
             if (s.annot2.multi.trySelectGroup(it, null)) { clear(); return true }
@@ -107,6 +108,7 @@ class AnnotEditor(private val s: ReaderState) {
 
     /** Apply [change] to the selection, converting a stored annotation into a pending one first. */
     fun edit(change: (Annot) -> Annot) {
+        if (current()?.locked == true) { s.annot2.message = s.context.getString(com.smartdocs.editor.R.string.cx_locked_msg); return }
         when (val t = target) {
             is AnnotTarget.Pending -> s.annots.firstOrNull { it.id == t.id }?.let { s.replaceAnnot(change(it)) }
             is AnnotTarget.Stored -> {
@@ -179,6 +181,7 @@ class AnnotEditor(private val s: ReaderState) {
     }
 
     fun delete() {
+        if (current()?.locked == true || (target as? AnnotTarget.Stored)?.e?.locked == true) { s.annot2.message = s.context.getString(com.smartdocs.editor.R.string.cx_locked_msg); return }
         when (val t = target) {
             is AnnotTarget.Pending -> { s.removeAnnot(t.id); clear() }
             is AnnotTarget.Stored -> s.scope.launch { s.deleteExisting(t.e); clear() }

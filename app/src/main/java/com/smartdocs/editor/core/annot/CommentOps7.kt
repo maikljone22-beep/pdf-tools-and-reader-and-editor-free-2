@@ -218,6 +218,39 @@ object CommentOps7 {
         }
     }
 
+    /**
+     * Copy of [src] (not encrypted, for export only) keeping just the annotations [refs] (page -> indices) with
+     * their replies / states / pop-ups and every non-comment annotation (links, widgets). Used by "export selected
+     * comments" so the FDF / XFDF writers export the selection only.
+     */
+    fun keepOnly(doc: PDDocument, refs: Map<Int, Set<Int>>) {
+        doc.pages.forEachIndexed { pi, page ->
+            val list = page.annotations
+            val keep = java.util.Collections.newSetFromMap(java.util.IdentityHashMap<COSDictionary, Boolean>())
+            refs[pi].orEmpty().mapNotNullTo(keep) { list.getOrNull(it)?.cosObject }
+            // replies and states of kept comments (several levels)
+            var grew = true
+            while (grew) {
+                grew = false
+                list.forEach { an ->
+                    val c = an.cosObject
+                    val parent = (c.getDictionaryObject(IRT) as? COSDictionary) ?: (c.getDictionaryObject(COSName.PARENT) as? COSDictionary)
+                    if (parent != null && parent in keep && keep.add(c)) grew = true
+                }
+            }
+            page.annotations = list.filter { an -> an.subtype in setOf("Link", "Widget") || an.cosObject in keep }.toMutableList()
+        }
+    }
+
+    suspend fun keepOnly(src: File, pw: String?, out: File, refs: Map<Int, Set<Int>>) = withContext(Dispatchers.IO) {
+        val doc = if (pw.isNullOrEmpty()) PDDocument.load(src) else PDDocument.load(src, pw)
+        doc.use { d ->
+            d.isAllSecurityToBeRemoved = true
+            keepOnly(d, refs)
+            d.save(out)
+        }
+    }
+
     /** Write numbered tickmarks [marks] (page, x, y, label) into the file. */
     suspend fun tickmarks(src: File, out: File, pw: String?, marks: List<Pair<Int, Triple<Float, Float, String>>>, color: Int, author: String) =
         edit(src, out, pw, marks.map { it.first }.distinct()) { d ->

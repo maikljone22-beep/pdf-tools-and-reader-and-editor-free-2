@@ -89,14 +89,16 @@ fun PageCanvas(
 
     var base by remember(page) { mutableStateOf<Bitmap?>(null) }
     var tile by remember(page) { mutableStateOf<Pair<Rect, Bitmap>?>(null) }
-    LaunchedEffect(page, renderKeyW, night, version, session) {
+    // section 7.65: "hide comments" renders the page without annotations (PDFium FPDF_ANNOT off)
+    val showAnnots = !state.annot2.cx.hidden
+    LaunchedEffect(page, renderKeyW, night, version, session, showAnnots) {
         if (session == null || session.isClosed || page !in 0 until session.pageCount) return@LaunchedEffect
         if (base != null) delay(140)
         val w = renderKeyW.coerceAtLeast(1); val h = (w * g.bitmapH / g.bitmapW).roundToInt().coerceAtLeast(1)
         // keep the previous bitmap when a render fails (e.g. the session is being swapped during save)
-        runCatching { session.render(page, w, h, night, true) }.getOrNull()?.let { base = it }
+        runCatching { session.render(page, w, h, night, showAnnots) }.getOrNull()?.let { base = it }
     }
-    LaunchedEffect(page, factor < 0.999f, night, version, session, renderKeyW) {
+    LaunchedEffect(page, factor < 0.999f, night, version, session, renderKeyW, showAnnots) {
         if (session == null || session.isClosed || factor >= 0.999f) { tile = null; return@LaunchedEffect }
         snapshotFlow { visibleClip() }
             .map { c -> c?.let { quantise(it) } }
@@ -105,7 +107,7 @@ fun PageCanvas(
                 if (clip == null) { tile = null; return@collectLatest }
                 delay(220)
                 val screenClip = layoutFractionToScreenFraction(clip, g)
-                val bmp = runCatching { session.renderRegion(page, g.bitmapW.roundToInt(), g.bitmapH.roundToInt(), RectF(screenClip.left, screenClip.top, screenClip.right, screenClip.bottom), night) }.getOrNull()
+                val bmp = runCatching { session.renderRegion(page, g.bitmapW.roundToInt(), g.bitmapH.roundToInt(), RectF(screenClip.left, screenClip.top, screenClip.right, screenClip.bottom), night, showAnnots) }.getOrNull()
                 tile = bmp?.let { screenClip to it }
             }
     }
@@ -263,7 +265,7 @@ fun PageCanvas(
             if (highlightLinks) links.forEach { l -> val r = g.pdfRectToScreen(l.bounds); drawRect(Color(0x332196F3), r.topLeft, r.size) }
             hits.forEachIndexed { i, h -> if (h.page == page) drawPdfRects(h.rects, g, if (i == hitIndex) Color(0x99FF9800) else Color(0x66FFEB3B), multiply = true) }
             val frameDrag = draft.active && draft.annotFrame != null
-            annots.forEach { a -> if (a.page == page && !(frameDrag && a.id == pendingEditId)) drawAnnot(a, g) }
+            if (showAnnots) annots.forEach { a -> if (a.page == page && !(frameDrag && a.id == pendingEditId)) drawAnnot(a, g) }
             if (editBounds != null) {
                 val fr = frameRect(editBounds, g)
                 val shown = if (frameDrag) dragFrame(draft.annotFrame!!, draft.handle, draft.start, draft.current) else fr

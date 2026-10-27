@@ -119,6 +119,7 @@ fun Annot2Dialogs(state: ReaderState, nav: NavHostController, snack: SnackbarHos
     }
 
     VideoDialogs(state)      // in-page video: picker, warnings, options, full screen, lifecycle
+    CommentExtrasDialogs(state)      // section 7: properties, rotate, place on pages, calculator, export selected
 
     // ---------------- dialogs ----------------
     h.prompt?.let { p -> Prompt2Dialog(p, onOk = { h.confirmPrompt(p, it) }, onDismiss = { h.prompt = null }) }

@@ -314,7 +314,9 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
         if (!tablet) panel?.let { shownPanel -> ModalBottomSheet(onDismissRequest = { panel = null }) {
             PanelsContent(state, shownPanel, onPanel = { panel = it }, onJump = { state.jumpTo(it); panel = null }, onAiOutline = { panel = null; nav.navigate(Routes.tool("ai", state.fileUri)) }, onClose = { panel = null })
         } }
-        com.smartdocs.editor.ui.forms5.InPageFormBar(state, Modifier.align(Alignment.BottomCenter))   // MODULE_forms5
+        com.smartdocs.editor.ui.forms5.InPageFormBar(state, Modifier.align(Alignment.BottomCenter),    // MODULE_forms5
+            onOpen = { f, p -> nav.navigate(Routes.reader(android.net.Uri.fromFile(f).toString(), p)) },
+            onSign = { f -> nav.navigate(Routes.tool("digital_sign", android.net.Uri.fromFile(f).toString())) })
     }
 
     // ---- dialogs & sheets ----

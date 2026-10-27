@@ -53,6 +53,22 @@ class Annot2Host(val s: ReaderState) {
     // ---- property bar extras ----
     var fillColor by mutableStateOf<Int?>(null)
     var cloudIntensity by mutableIntStateOf(1)
+    // ---- section 7 creation extras (remembered per tool, ToolMemory) ----
+    var dash by mutableIntStateOf(0)
+    var noBorder by mutableStateOf(false)
+    var lineStart by mutableStateOf("None")
+    var lineEnd by mutableStateOf("")
+    var rectCloud by mutableIntStateOf(0)
+    var bold by mutableStateOf(false)
+    var italic by mutableStateOf(false)
+    var underline by mutableStateOf(false)
+    var noteIcon by mutableStateOf("")
+    /** Ink strokes that look like a line / rectangle / ellipse become that shape (OLD_PLAN D2). */
+    var inkToShapes by mutableStateOf(false)
+    /** Rectangle / oval drawn as square / circle (Shift constraint). */
+    var constrain by mutableStateOf(false)
+    /** Comment features of section 7 (clipboard, align, lock, flatten, pop-ups, tickmarks...). */
+    val cx = CommentExtras(this)
 
     // ---- polygon / polyline / cloud in progress ----
     var polyPage by mutableIntStateOf(-1); private set
@@ -86,6 +102,8 @@ class Annot2Host(val s: ReaderState) {
     var launchMerge: () -> Unit = {}
     var launchExport: (xfdf: Boolean) -> Unit = {}
     var launchSummary: () -> Unit = {}
+    /** Export the selection (or all when [all]) as XFDF / FDF; [share] sends it (e-mail) instead of saving. */
+    var launchExportSelected: (xfdf: Boolean, share: Boolean, all: Boolean) -> Unit = { _, _, _ -> }
 
     val polyTools = setOf(ReaderTool.POLYGON, ReaderTool.POLYLINE, ReaderTool.CLOUD)
 
@@ -172,6 +190,7 @@ class Annot2Host(val s: ReaderState) {
             ReaderTool.SOUND -> recordTap = Tap2(ReaderTool.SOUND, page, x, y)
             ReaderTool.SNAPSHOT -> {}
             ReaderTool.SELECT -> { if (!multi.toggleAt(page, x, y, tol)) multi.clear() }
+            ReaderTool.TICKMARK -> cx.placeTick(page, x, y)
             else -> return false
         }
         return true
@@ -446,6 +465,6 @@ class Annot2Host(val s: ReaderState) {
     companion object {
         /** Tools whose toolbar click goes through [pick]. */
         val OWN_TOOLS = setOf(ReaderTool.POLYGON, ReaderTool.POLYLINE, ReaderTool.CLOUD, ReaderTool.CARET, ReaderTool.REPLACE,
-            ReaderTool.ATTACH, ReaderTool.SOUND, ReaderTool.VIDEO, ReaderTool.SNAPSHOT, ReaderTool.SELECT)
+            ReaderTool.ATTACH, ReaderTool.SOUND, ReaderTool.VIDEO, ReaderTool.SNAPSHOT, ReaderTool.SELECT, ReaderTool.TICKMARK)
     }
 }
