@@ -204,7 +204,9 @@ class FormFillState internal constructor(val reader: ReaderState) {
 
     init {
         // page open / close actions (page /AA O, C) as the reader moves between pages
+        // yield first: the collectors must not run before the rest of this object is initialised
         reader.scope.launch {
+            kotlinx.coroutines.yield()
             var prev = -1
             snapshotFlow { reader.currentPage to model }.collect { (page, m) ->
                 if (page == prev || m.pageActions.isEmpty()) { prev = page; return@collect }
@@ -217,6 +219,7 @@ class FormFillState internal constructor(val reader: ReaderState) {
             }
         }
         reader.scope.launch {
+            kotlinx.coroutines.yield()
             snapshotFlow { activeId }.collect { id ->
                 val old = focusedForTriggers?.let { o -> model.widgets.firstOrNull { it.id == o } }
                 focusedForTriggers = id
