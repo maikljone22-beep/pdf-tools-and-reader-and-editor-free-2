@@ -56,8 +56,15 @@ data class JsResult(
     val props: Map<String, JsProps> = emptyMap(),
     val calculateNow: Boolean = false,
     val error: String? = null,
+    /** Viewer requests the script made (submitForm, print, pageNum, launchURL, ...), in order. */
+    val requests: List<JsRequest> = emptyList(),
 ) {
     companion object { fun failed(e: Throwable) = JsResult(ok = false, error = e.message ?: e.toString()) }
+}
+
+/** A Doc / app / Field call the viewer carries out after the script ran: [kind] plus string arguments. */
+data class JsRequest(val kind: String, val args: Map<String, String> = emptyMap()) {
+    operator fun get(k: String): String = args[k].orEmpty()
 }
 
 /** Input of one event. */
@@ -79,7 +86,8 @@ data class JsEvent(
  * [fieldsJson] is the field list (see [FormScripts]); [docScripts] are the document-level scripts
  * (/Names /JavaScript), run once at start-up. Not thread-safe by itself: callers synchronise (FormScripts).
  */
-class AcroJs(fieldsJson: String, docScripts: List<String>, private val limits: JsLimits = JsLimits(), numPages: Int = 1, fileName: String = "") {
+class AcroJs(fieldsJson: String, docScripts: List<String>, private val limits: JsLimits = JsLimits(), numPages: Int = 1, fileName: String = "",
+            pageWords: List<List<String>> = emptyList()) {
 
     private val factory = JsSandbox(limits.maxStackDepth)
     private val scope: ScriptableObject
@@ -99,6 +107,7 @@ class AcroJs(fieldsJson: String, docScripts: List<String>, private val limits: J
             ScriptableObject.putProperty(sd, "numPages", numPages.toDouble())
             ScriptableObject.putProperty(sd, "fileName", fileName)
             ScriptableObject.callMethod(cx, sd, "init", arrayOf<Any>(fieldsJson))
+            if (pageWords.isNotEmpty()) ScriptableObject.callMethod(cx, sd, "setWords", arrayOf<Any>(JsonArray(pageWords.map { p -> JsonArray(p.map { JsonPrimitive(it) }) }).toString()))
             for ((i, src) in docScripts.withIndex()) {
                 try { deadline(cx, limits.initMillis); cx.evaluateString(scope, src, "doc-$i.js", 1, null) }
                 catch (e: Throwable) { if (!JsSandbox.scriptError(e)) throw e; docErrors += e.message ?: e.toString() }
@@ -122,10 +131,11 @@ class AcroJs(fieldsJson: String, docScripts: List<String>, private val limits: J
      * Run [script] as the [kind] event ("Keystroke", "Format", "Validate", "Calculate") of field [target], with the
      * current raw [values] (FormOps conventions). Errors and time-outs give `ok = false`.
      */
-    fun run(kind: String, target: String?, script: String, ev: JsEvent, values: Map<String, String>?): JsResult {
+    fun run(kind: String, target: String?, script: String, ev: JsEvent, values: Map<String, String>?, page: Int = -1): JsResult {
         val cx = factory.enterContext()
         try {
             deadline(cx, limits.eventMillis)
+            if (page >= 0) ScriptableObject.putProperty(sd, "page", page.toDouble())
             if (values != null) ScriptableObject.callMethod(cx, sd, "values", arrayOf<Any>(JsonObject(values.mapValues { JsonPrimitive(it.value) }).toString()))
             ScriptableObject.callMethod(cx, sd, "begin", arrayOf<Any>(kind, target ?: "", eventJson(ev)))
             val fn = compile(cx, script) ?: return JsResult(ok = false, error = "syntax error")
@@ -148,6 +158,19 @@ class AcroJs(fieldsJson: String, docScripts: List<String>, private val limits: J
         finally { Context.exit() }
     }
 
+    /** console.println output since the last call. */
+    fun drainLog(): List<String> {
+        val cx = factory.enterContext()
+        try {
+            deadline(cx, limits.eventMillis)
+            val out = Context.toString(ScriptableObject.callMethod(cx, sd, "drainLog", emptyArray()))
+            return runCatching { Json.parseToJsonElement(out).jsonArray.map { (it as? JsonPrimitive)?.content ?: it.toString() } }.getOrDefault(emptyList())
+        } catch (e: Throwable) {
+            if (!JsSandbox.scriptError(e)) throw e
+            return emptyList()
+        } finally { Context.exit() }
+    }
+
     private fun eventJson(e: JsEvent) = JsonObject(mapOf(
         "value" to JsonPrimitive(e.value), "change" to JsonPrimitive(e.change), "selStart" to JsonPrimitive(e.selStart),
         "selEnd" to JsonPrimitive(e.selEnd), "willCommit" to JsonPrimitive(e.willCommit), "keyDown" to JsonPrimitive(e.keyDown),
@@ -162,11 +185,16 @@ class AcroJs(fieldsJson: String, docScripts: List<String>, private val limits: J
         }.orEmpty()
         val setv = (o["s"] as? JsonObject)?.mapValues { (it.value as? JsonPrimitive)?.content ?: "" }.orEmpty()
         val props = (o["p"] as? JsonObject)?.mapValues { (_, v) -> props(v.jsonObject) }.orEmpty()
+        val requests = (o["rq"] as? JsonArray)?.mapNotNull { el ->
+            val r = el as? JsonObject ?: return@mapNotNull null
+            val k = (r["k"] as? JsonPrimitive)?.content ?: return@mapNotNull null
+            JsRequest(k, r.filterKeys { it != "k" }.mapValues { (_, v) -> (v as? JsonPrimitive)?.takeIf { it !is JsonNull }?.content ?: "" })
+        }.orEmpty()
         return JsResult(
             ok = err == null, rc = (o["rc"] as? JsonPrimitive)?.booleanOrNull ?: true, value = s("v"), change = s("c"),
             selStart = (o["ss"] as? JsonPrimitive)?.intOrNull ?: -1, selEnd = (o["se"] as? JsonPrimitive)?.intOrNull ?: -1,
             alerts = alerts, setValues = setv, props = props, calculateNow = (o["cn"] as? JsonPrimitive)?.booleanOrNull ?: false,
-            error = err?.let { it.message ?: it.toString() },
+            error = err?.let { it.message ?: it.toString() }, requests = requests,
         )
     }
 
