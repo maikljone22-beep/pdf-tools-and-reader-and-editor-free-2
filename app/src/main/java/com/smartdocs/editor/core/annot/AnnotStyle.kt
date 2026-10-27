@@ -300,7 +300,11 @@ object AnnotStyle {
 
     // ================= rich text =================
 
-    data class Rich(val fontSize: Float, val color: Int, val bold: Boolean, val italic: Boolean, val underline: Boolean = false)
+    data class Rich(val fontSize: Float, val color: Int, val bold: Boolean, val italic: Boolean, val underline: Boolean = false,
+                    val strike: Boolean = false, val family: Int = 0, val align: Int = -1, val lineHeight: Float = 1.3f,
+                    val letterSpacing: Float = 0f, val wordSpacing: Float = 0f, val bullets: Boolean = false)
+
+    private val FAMILIES = listOf("Helvetica,sans-serif", "Times New Roman,serif", "Courier New,monospace")
 
     private fun hex(c: Int) = String.format(Locale.US, "#%06X", c and 0xFFFFFF)
 
@@ -313,8 +317,13 @@ object AnnotStyle {
         append("font: ")
         if (r.italic) append("italic ")
         if (r.bold) append("bold ")
-        append(String.format(Locale.US, "%.1fpt Helvetica,sans-serif; color:%s", r.fontSize, hex(r.color)))
-        if (r.underline) append("; text-decoration:underline")
+        append(String.format(Locale.US, "%.1fpt %s; color:%s", r.fontSize, FAMILIES.getOrElse(r.family) { FAMILIES[0] }, hex(r.color)))
+        val deco = listOfNotNull("underline".takeIf { r.underline }, "line-through".takeIf { r.strike })
+        if (deco.isNotEmpty()) append("; text-decoration:").append(deco.joinToString(" "))
+        if (r.align in 0..3) append("; text-align:").append(listOf("start", "center", "end", "justify")[r.align])
+        if (r.lineHeight != 1.3f) append(String.format(Locale.US, "; line-height:%.2f", r.lineHeight))
+        if (r.letterSpacing != 0f) append(String.format(Locale.US, "; letter-spacing:%.1fpt", r.letterSpacing))
+        if (r.wordSpacing != 0f) append(String.format(Locale.US, "; word-spacing:%.1fpt", r.wordSpacing))
     }
 
     /** XHTML rich-text body (/RC) of [text] in style [r]; [rtl] sets the direction. */
@@ -323,14 +332,21 @@ object AnnotStyle {
             append(String.format(Locale.US, "font-size:%.1fpt;color:%s", r.fontSize, hex(r.color)))
             if (r.bold) append(";font-weight:bold")
             if (r.italic) append(";font-style:italic")
-            if (r.underline) append(";text-decoration:underline")
-            append(";text-align:").append(if (rtl) "right" else "left")
+            val deco = listOfNotNull("underline".takeIf { r.underline }, "line-through".takeIf { r.strike })
+            if (deco.isNotEmpty()) append(";text-decoration:").append(deco.joinToString(" "))
+            append(";font-family:").append(FAMILIES.getOrElse(r.family) { FAMILIES[0] })
+            append(";text-align:").append(when (r.align) { 1 -> "center"; 2 -> if (rtl) "left" else "right"; 3 -> "justify"; else -> if (rtl) "right" else "left" })
+            if (r.lineHeight != 1.3f) append(String.format(Locale.US, ";line-height:%.2f", r.lineHeight))
+            if (r.letterSpacing != 0f) append(String.format(Locale.US, ";letter-spacing:%.1fpt", r.letterSpacing))
+            if (r.wordSpacing != 0f) append(String.format(Locale.US, ";word-spacing:%.1fpt", r.wordSpacing))
         }
         return buildString {
             append("<?xml version=\"1.0\"?><body xmlns=\"http://www.w3.org/1999/xhtml\" xmlns:xfa=\"http://www.xfa.org/schema/xfa-data/1.0/\" xfa:APIVersion=\"Acrobat:11.0.0\" xfa:spec=\"2.0.2\"")
             if (rtl) append(" dir=\"rtl\"")
             append(" style=\"").append(style).append("\">")
-            text.split('\n').forEach { line -> append("<p>").append(esc(line)).append("</p>") }
+            if (r.bullets) {
+                append("<ul>"); text.split('\n').forEach { line -> append("<li>").append(esc(line)).append("</li>") }; append("</ul>")
+            } else text.split('\n').forEach { line -> append("<p>").append(esc(line)).append("</p>") }
             append("</body>")
         }
     }
@@ -349,12 +365,20 @@ object AnnotStyle {
         val bold = Regex("""\bbold\b""").containsMatchIn(s)
         val italic = Regex("""\bitalic\b""").containsMatchIn(s)
         val underline = s.contains("underline")
-        return Rich(size, color, bold, italic, underline)
+        val strike = s.contains("line-through")
+        val ds = cos.getString(DS) ?: ""
+        val family = when { s.contains("monospace") || s.contains("Courier") -> 2; s.contains("serif") && !s.contains("sans-serif") || s.contains("Times") -> 1; else -> 0 }
+        val align = Regex("""text-align:\s*(start|center|end|justify)""").find(ds)?.groupValues?.get(1)?.let { listOf("start", "center", "end", "justify").indexOf(it) } ?: -1
+        val lh = Regex("""line-height:\s*([0-9.]+)""").find(s)?.groupValues?.get(1)?.toFloatOrNull() ?: 1.3f
+        val ls = Regex("""letter-spacing:\s*(-?[0-9.]+)pt""").find(s)?.groupValues?.get(1)?.toFloatOrNull() ?: 0f
+        val ws = Regex("""word-spacing:\s*(-?[0-9.]+)pt""").find(s)?.groupValues?.get(1)?.toFloatOrNull() ?: 0f
+        val bullets = (cos.getString(RC) ?: "").contains("<li>")
+        return Rich(size, color, bold, italic, underline, strike, family, align, lh, ls, ws, bullets)
     }
 
     /** Plain text of an /RC body (paragraphs become lines). */
     fun richPlain(rc: String): String =
-        rc.replace(Regex("""</p>\s*<p[^>]*>"""), "\n").replace(Regex("""<[^>]+>"""), "")
+        rc.replace(Regex("""</(p|li)>\s*<(p|li)[^>]*>"""), "\n").replace(Regex("""<[^>]+>"""), "")
             .replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\"").replace("&amp;", "&").trim()
 
     // ================= shape appearance =================

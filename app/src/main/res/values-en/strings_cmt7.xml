@@ -188,4 +188,12 @@
     <string name="cx_note_font">Font size: %1$d</string>
     <string name="cx_note_opacity">Opacity: %1$d%%</string>
     <string name="cx_note_sample">Sample note text — نص للمعاينة</string>
+    <string name="cx_text_format">Text format</string>
+    <string name="cx_strike">Strikethrough</string>
+    <string name="cx_bullets">Bullets</string>
+    <string name="cx_line_spacing">Line spacing: %1$s</string>
+    <string name="cx_char_spacing">Character spacing: %1$s</string>
+    <string name="cx_word_spacing">Word spacing (Latin): %1$s</string>
+    <string name="cx_char_scale">Character scale: %1$d%%</string>
+    <string name="cx_line_caption">Show note text on the line</string>
 </resources>

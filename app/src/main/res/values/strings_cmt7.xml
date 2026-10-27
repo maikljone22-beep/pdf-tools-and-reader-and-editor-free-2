@@ -188,4 +188,12 @@
     <string name="cx_note_font">حجم الخط: %1$d</string>
     <string name="cx_note_opacity">العتامة: %1$d%%</string>
     <string name="cx_note_sample">نص ملاحظة للمعاينة — Sample note</string>
+    <string name="cx_text_format">تنسيق النص</string>
+    <string name="cx_strike">يتوسطه خط</string>
+    <string name="cx_bullets">تعداد نقطي</string>
+    <string name="cx_line_spacing">تباعد الأسطر: %1$s</string>
+    <string name="cx_char_spacing">تباعد الأحرف: %1$s</string>
+    <string name="cx_word_spacing">تباعد الكلمات (لاتيني): %1$s</string>
+    <string name="cx_char_scale">عرض الأحرف: %1$d%%</string>
+    <string name="cx_line_caption">إظهار نص الملاحظة على الخط</string>
 </resources>

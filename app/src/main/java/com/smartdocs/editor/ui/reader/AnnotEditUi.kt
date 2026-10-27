@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.LineWeight
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.FormatSize
 import androidx.compose.material.icons.filled.Opacity
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material3.*
@@ -49,6 +50,10 @@ private enum class AeSub { NONE, COLOR, OPACITY, THICKNESS }
 fun AnnotActionBar(state: ReaderState, annot: Annot?, frame: Rect) {
     val ed = state.edit
     var sub by remember(ed.target) { mutableStateOf(AeSub.NONE) }
+    var fmtOpen by remember(ed.target) { mutableStateOf(false) }
+    if (fmtOpen && annot != null) com.smartdocs.editor.ui.reader.annot.TextFormatDialog(com.smartdocs.editor.ui.reader.annot.TextFmt.of(annot), onDismiss = { fmtOpen = false }, showBiu = true) { fm ->
+        fmtOpen = false; ed.edit { a -> fm.applyAll(a) }
+    }
     val loaded = annot != null
     val enabled = loaded && !ed.busy
     Surface(
@@ -62,6 +67,7 @@ fun AnnotActionBar(state: ReaderState, annot: Annot?, frame: Rect) {
                 if (!video) AeButton(Icons.Default.Opacity, R.string.ae_opacity, enabled, sub == AeSub.OPACITY) { sub = if (sub == AeSub.OPACITY) AeSub.NONE else AeSub.OPACITY }
                 if (hasStroke(annot)) AeButton(Icons.Default.LineWeight, R.string.ae_thickness, enabled, sub == AeSub.THICKNESS) { sub = if (sub == AeSub.THICKNESS) AeSub.NONE else AeSub.THICKNESS }
                 if (hasEditableText(annot)) AeButton(Icons.Default.Edit, R.string.ae_edit_text, enabled, false) { sub = AeSub.NONE; ed.editingText = true }
+                if (annot?.kind == AnnotKind.FREETEXT) AeButton(Icons.Default.FormatSize, R.string.cx_text_format, enabled, false) { sub = AeSub.NONE; fmtOpen = true }
                 AeButton(Icons.Default.ContentCopy, R.string.ae_copy, enabled, false) { sub = AeSub.NONE; ed.copy() }
                 if (annot?.kind == AnnotKind.FILE_ATTACH || annot?.kind == AnnotKind.SOUND)
                     AeButton(if (annot?.kind == AnnotKind.FILE_ATTACH) Icons.Default.OpenInNew else Icons.Default.PlayArrow, R.string.an_open, enabled, false) { sub = AeSub.NONE; state.annot2.openSelected() }

@@ -10,6 +10,7 @@ import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDPage
 import com.tom_roush.pdfbox.pdmodel.PDPageContentStream
 import com.tom_roush.pdfbox.pdmodel.common.PDRectangle
+import com.tom_roush.pdfbox.pdmodel.font.PDType1Font
 import com.tom_roush.pdfbox.pdmodel.graphics.blend.BlendMode
 import com.tom_roush.pdfbox.pdmodel.graphics.color.PDColor
 import com.tom_roush.pdfbox.pdmodel.graphics.color.PDDeviceRGB
@@ -64,6 +65,17 @@ data class Annot(
     val bold: Boolean = false,                  // FREETEXT rich text (/RC /DS)
     val italic: Boolean = false,
     val underline: Boolean = false,
+    // ---- FREETEXT formatting (Foxit 24.99-24.107), written to the appearance and to /RC /DS ----
+    val fontFamily: Int = 0,                    // 0 sans (Helvetica / Naskh), 1 serif (Times), 2 mono (Courier)
+    val strike: Boolean = false,
+    val align: Int = -1,                        // -1 auto (by script), 0 start, 1 centre, 2 end, 3 justify
+    val lineSpacing: Float = 1.3f,              // line height in font sizes
+    val charSpacing: Float = 0f,                // Tc, points
+    val wordSpacing: Float = 0f,                // Tw, points
+    val hScale: Float = 1f,                     // Tz / 100
+    val bullets: Boolean = false,
+    // ---- LINE / ARROW: show the note text on the line (/Cap, Foxit 24.42) ----
+    val caption: Boolean = false,
     val video: com.smartdocs.editor.core.annot.VideoPdf.Options? = null,   // VIDEO: in-page player options
     val posterPath: String? = null,             // VIDEO: poster frame JPEG (appearance in other viewers)
 )
@@ -217,7 +229,8 @@ object AnnotationWriter {
                     a.fontSize, ((a.color shr 16) and 0xFF) / 255f, ((a.color shr 8) and 0xFF) / 255f, (a.color and 0xFF) / 255f))
                 if (a.kind == AnnotKind.STAMP_TEXT) ft.cosObject.setName(name("IT"), "FreeTextStamp")
                 else com.smartdocs.editor.core.annot.AnnotStyle.applyRich(ft.cosObject, a.text,
-                    com.smartdocs.editor.core.annot.AnnotStyle.Rich(a.fontSize, a.color, a.bold, a.italic, a.underline), ArabicShaper.isArabic(a.text))
+                    com.smartdocs.editor.core.annot.AnnotStyle.Rich(a.fontSize, a.color, a.bold, a.italic, a.underline, a.strike, a.fontFamily, a.align,
+                        a.lineSpacing, a.charSpacing, a.wordSpacing, a.bullets), ArabicShaper.isArabic(a.text))
                 ft.appearance = apDict(textAppearance(context, doc, rect, a))
                 annotations.add(ft)
             }
@@ -234,8 +247,9 @@ object AnnotationWriter {
                 line.borderStyle = PDBorderStyleDictionary().apply { width = a.strokeWidth }
                 com.smartdocs.editor.core.annot.AnnotStyle.applyBorder(line.cosObject, a.strokeWidth, a.dash)
                 com.smartdocs.editor.core.annot.AnnotStyle.setLineEnds(line.cosObject, a.lineStart, a.endStyle())
+                if (a.caption && a.text.isNotBlank()) line.cosObject.setBoolean(COSName.getPDFName("Cap"), true)
                 line.contents = a.text; line.titlePopup = a.author; line.setCreationDate(now); line.setModifiedDate(now)
-                line.appearance = apDict(lineAppearance(doc, rect, a))
+                line.appearance = apDict(lineAppearance(doc, rect, a, if (a.caption && a.text.isNotBlank()) PdfOps.arabicFont(context, doc) else null))
                 annotations.add(line)
             }
             AnnotKind.RECT, AnnotKind.OVAL -> {
@@ -345,35 +359,78 @@ object AnnotationWriter {
         return form
     }
 
+    /** Standard 14 face for Latin-only text in [a]'s family / weight / slant (null: use the embedded Arabic font). */
+    private fun std14(a: Annot): com.tom_roush.pdfbox.pdmodel.font.PDFont? {
+        if (!com.smartdocs.editor.core.view5.V5Pdf.latinOnly(a.text.replace("\u2022", ""))) return null
+        if (a.fontFamily == 0 && !a.bold && !a.italic) return null
+        return when (a.fontFamily) {
+            1 -> when { a.bold && a.italic -> PDType1Font.TIMES_BOLD_ITALIC; a.bold -> PDType1Font.TIMES_BOLD; a.italic -> PDType1Font.TIMES_ITALIC; else -> PDType1Font.TIMES_ROMAN }
+            2 -> when { a.bold && a.italic -> PDType1Font.COURIER_BOLD_OBLIQUE; a.bold -> PDType1Font.COURIER_BOLD; a.italic -> PDType1Font.COURIER_OBLIQUE; else -> PDType1Font.COURIER }
+            else -> when { a.bold && a.italic -> PDType1Font.HELVETICA_BOLD_OBLIQUE; a.bold -> PDType1Font.HELVETICA_BOLD; a.italic -> PDType1Font.HELVETICA_OBLIQUE; else -> PDType1Font.HELVETICA }
+        }
+    }
+
     private fun textAppearance(context: Context, doc: PDDocument, rect: PDRectangle, a: Annot): PDAppearanceStream {
         val form = newForm(doc, rect)
-        val font = PdfOps.arabicFont(context, doc)
+        val std = std14(a)
+        val font = std ?: PdfOps.arabicFont(context, doc)
+        // the Arabic font has one face: bold is drawn as fill + stroke and italic as a slant
+        val fakeBold = a.bold && std == null
+        val fakeItalic = a.italic && std == null
         PDPageContentStream(doc, form).use { cs ->
             alpha(cs, a)
             if (a.kind == AnnotKind.STAMP_TEXT) {
                 setColors(cs, a.color); cs.setLineWidth(2f)
                 cs.addRect(1f, 1f, rect.width - 2, rect.height - 2); cs.stroke()
             }
-            cs.beginText(); cs.setFont(font, a.fontSize); setColors(cs, a.color)
-            val lines = a.text.split('\n')
+            val size = a.fontSize
+            val lines = a.text.split('\n').map { if (a.bullets && it.isNotBlank()) "\u2022 $it" else it }
             val rtl = ArabicShaper.isArabic(a.text)
-            var y = rect.height - a.fontSize - 4f
-            lines.forEach { line ->
-                val shaped = ArabicShaper.shape(line)
-                val w = runCatching { font.getStringWidth(shaped) / 1000f * a.fontSize }.getOrDefault(0f)
-                val x = if (rtl) (rect.width - w - 4f).coerceAtLeast(2f) else 4f
-                cs.setTextMatrix(com.tom_roush.pdfbox.util.Matrix.getTranslateInstance(x, y))
-                cs.showArabic(line, shaped)
-                y -= a.fontSize * 1.3f
+            val avail = rect.width - 8f
+            var y = rect.height - size - 4f
+            val decorations = ArrayList<FloatArray>()      // x0, x1, y of underline / strike
+            lines.forEachIndexed { li, raw ->
+                val line = com.smartdocs.editor.core.view5.V5Pdf.sanitize(font, raw)
+                val shaped = if (std == null) ArabicShaper.shape(line) else line
+                val glyphW = runCatching { font.getStringWidth(shaped) / 1000f * size }.getOrDefault(0f) * a.hScale
+                val gaps = (shaped.length - 1).coerceAtLeast(0)
+                val spaces = shaped.count { it == ' ' }
+                val justify = a.align == 3 && li < lines.size - 1 && gaps > 0
+                var tc = a.charSpacing
+                if (justify) tc += ((avail - glyphW - a.charSpacing * gaps - a.wordSpacing * spaces) / gaps).coerceAtLeast(0f)
+                val w = if (justify) avail else glyphW + tc * gaps + (if (std != null) a.wordSpacing * spaces else 0f)
+                val start = if (rtl) (rect.width - w - 4f) else 4f
+                val x = when (a.align) {
+                    1 -> (rect.width - w) / 2
+                    2 -> if (rtl) 4f else rect.width - w - 4f
+                    3 -> 4f
+                    0 -> start
+                    else -> start
+                }.coerceAtLeast(2f)
+                cs.beginText(); cs.setFont(font, size); setColors(cs, a.color)
+                cs.setCharacterSpacing(tc)
+                if (std != null) cs.setWordSpacing(a.wordSpacing)
+                if (a.hScale != 1f) cs.setHorizontalScaling(a.hScale * 100f)
+                if (fakeBold) { cs.setRenderingMode(com.tom_roush.pdfbox.pdmodel.graphics.state.RenderingMode.FILL_STROKE); cs.setLineWidth(size * 0.035f) }
+                cs.setTextMatrix(com.tom_roush.pdfbox.util.Matrix(1f, 0f, if (fakeItalic) 0.2f else 0f, 1f, x, y))
+                if (std == null) cs.showArabic(line, shaped) else cs.showText(shaped)
+                cs.endText()
+                if (a.underline) decorations += floatArrayOf(x, x + w, y - size * 0.15f)
+                if (a.strike) decorations += floatArrayOf(x, x + w, y + size * 0.3f)
+                y -= size * a.lineSpacing.coerceIn(0.8f, 4f)
             }
-            cs.endText()
+            if (decorations.isNotEmpty()) {
+                setColors(cs, a.color); cs.setLineWidth((size / 16f).coerceAtLeast(0.6f))
+                decorations.forEach { d -> cs.moveTo(d[0], d[2]); cs.lineTo(d[1], d[2]) }
+                cs.stroke()
+            }
         }
         return form
     }
 
     private fun dashOf(a: Annot): FloatArray? = com.smartdocs.editor.core.view5.DashStyle.entries.getOrElse(a.dash) { com.smartdocs.editor.core.view5.DashStyle.SOLID }.scaled(a.strokeWidth)
 
-    private fun lineAppearance(doc: PDDocument, rect: PDRectangle, a: Annot): PDAppearanceStream {
+    private fun lineAppearance(doc: PDDocument, rect: PDRectangle, a: Annot, captionFont: com.tom_roush.pdfbox.pdmodel.font.PDFont? = null): PDAppearanceStream {
         val form = newForm(doc, rect)
         val (p1, p2) = a.points
         PDPageContentStream(doc, form).use { cs ->
@@ -385,6 +442,12 @@ object AnnotationWriter {
             val q1 = com.smartdocs.editor.core.view5.P(x1.toDouble(), y1.toDouble()); val q2 = com.smartdocs.editor.core.view5.P(x2.toDouble(), y2.toDouble())
             com.smartdocs.editor.core.view5.V5Pdf.drawEnd(cs, com.smartdocs.editor.core.view5.LineEnd.of(a.endStyle()), q1, q2, a.strokeWidth)
             com.smartdocs.editor.core.view5.V5Pdf.drawEnd(cs, com.smartdocs.editor.core.view5.LineEnd.of(a.lineStart), q2, q1, a.strokeWidth)
+            if (captionFont != null) {
+                // the note text written on the line (Foxit "show text in line")
+                val mid = com.smartdocs.editor.core.view5.Geom.midpoint(q1, q2)
+                com.smartdocs.editor.core.view5.V5Pdf.label(cs, a.text.replace('\n', ' ').take(120), mid.x.toFloat(), mid.y.toFloat() + 3f,
+                    Math.atan2(y2 - y1.toDouble(), (x2 - x1).toDouble()), (a.fontSize * 0.75f).coerceIn(6f, 24f), a.color, captionFont)
+            }
         }
         return form
     }
@@ -500,7 +563,8 @@ object AnnotationWriter {
                 val swap = simple && startArrow && !endArrow
                 if (swap) { val t = p1; p1 = p2; p2 = t }
                 val ends = if (swap) "None" to (le.getOrNull(0) ?: "OpenArrow") else (le.getOrNull(0) ?: "None") to (le.getOrNull(1) ?: "None")
-                base.copy(kind = if (startArrow || endArrow) AnnotKind.ARROW else AnnotKind.LINE, points = listOf(p1, p2), lineStart = ends.first, lineEnd = ends.second)
+                base.copy(kind = if (startArrow || endArrow) AnnotKind.ARROW else AnnotKind.LINE, points = listOf(p1, p2), lineStart = ends.first, lineEnd = ends.second,
+                    caption = cos.getBoolean(name("Cap"), false))
             }
             "Square", "Circle" -> {
                 val rd = floats(cos, "RD")
@@ -519,7 +583,10 @@ object AnnotationWriter {
                 val stamp = cos.getNameAsString(name("IT")) == "FreeTextStamp"
                 val rich = if (stamp) null else st.readRich(cos)
                 base.copy(kind = if (stamp) AnnotKind.STAMP_TEXT else AnnotKind.FREETEXT, rects = listOf(rect), fontSize = size, color = rgb ?: 0x212121,
-                    bold = rich?.bold ?: false, italic = rich?.italic ?: false, underline = rich?.underline ?: false)
+                    bold = rich?.bold ?: false, italic = rich?.italic ?: false, underline = rich?.underline ?: false,
+                    strike = rich?.strike ?: false, fontFamily = rich?.family ?: 0, align = rich?.align ?: -1, lineSpacing = rich?.lineHeight ?: 1.3f,
+                    charSpacing = rich?.letterSpacing ?: 0f, wordSpacing = rich?.wordSpacing ?: 0f, bullets = rich?.bullets ?: false,
+                    text = rich?.takeIf { it.bullets }?.let { contents.split('\n').joinToString("\n") { l -> l.removePrefix("\u2022 ") } } ?: contents)
             }
             "Text" -> base.copy(kind = AnnotKind.NOTE, rects = listOf(RectF(rect.left, rect.top, rect.left + 20f, rect.top - 20f)), color = color ?: 0xFFEB3B,
                 icon = st.noteIconOf(cos).takeIf { it != "Comment" } ?: "")

@@ -63,6 +63,10 @@ class Annot2Host(val s: ReaderState) {
     var italic by mutableStateOf(false)
     var underline by mutableStateOf(false)
     var noteIcon by mutableStateOf("")
+    /** Text box formatting for new FreeText (font family, strike, alignment, spacing, scale, bullets). */
+    var textFmt by mutableStateOf(TextFmt())
+    /** New lines / arrows show their note text on the line (/Cap). */
+    var caption by mutableStateOf(false)
     /** Ink strokes that look like a line / rectangle / ellipse become that shape (OLD_PLAN D2). */
     var inkToShapes by mutableStateOf(false)
     /** Rectangle / oval drawn as square / circle (Shift constraint). */

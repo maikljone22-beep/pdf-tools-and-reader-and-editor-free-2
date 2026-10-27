@@ -77,7 +77,9 @@ fun DrawScope.drawAnnot(a: Annot, g: PageGeometry) {
         AnnotKind.FREETEXT, AnnotKind.STAMP_TEXT -> a.rects.firstOrNull()?.let { r ->
             val s = g.pdfRectToScreen(r)
             if (a.kind == AnnotKind.STAMP_TEXT) drawRect(c, s.topLeft, s.size, style = Stroke(2f * g.scale))
-            drawTextBlock(a.text, s, a.fontSize * g.scale, c, bold = a.bold, italic = a.italic, underline = a.underline)
+            drawTextBlock(if (a.bullets) a.text.split('\n').joinToString("\n") { if (it.isBlank()) it else "\u2022 $it" } else a.text, s, a.fontSize * g.scale, c,
+                bold = a.bold, italic = a.italic, underline = a.underline, strike = a.strike, family = a.fontFamily, align = a.align,
+                lineSpacing = a.lineSpacing, letterSpacingPx = a.charSpacing * g.scale, scaleX = a.hScale)
         }
         AnnotKind.LINE, AnnotKind.ARROW -> if (a.points.size >= 2) {
             val p1 = g.pdfToScreen(a.points[0].first, a.points[0].second)
@@ -187,21 +189,26 @@ fun DrawScope.drawArrowHead(from: Offset, to: Offset, color: Color, sw: Float) {
 
 /** Multi-line text inside a rect using the native canvas (handles Arabic shaping and RTL alignment). */
 fun DrawScope.drawTextBlock(text: String, box: Rect, textSizePx: Float, color: Color, rtl: Boolean = text.any { it in '؀'..'ۿ' },
-                            bold: Boolean = false, italic: Boolean = false, underline: Boolean = false) {
+                            bold: Boolean = false, italic: Boolean = false, underline: Boolean = false, strike: Boolean = false, family: Int = 0,
+                            align: Int = -1, lineSpacing: Float = 1.3f, letterSpacingPx: Float = 0f, scaleX: Float = 1f) {
     if (text.isBlank()) return
     drawIntoCanvas { cv ->
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             this.color = color.toArgb(); textSize = textSizePx
             textAlign = if (rtl) Paint.Align.RIGHT else Paint.Align.LEFT
-            isFakeBoldText = bold; textSkewX = if (italic) -0.22f else 0f; isUnderlineText = underline
+            isFakeBoldText = bold; textSkewX = if (italic) -0.22f else 0f; isUnderlineText = underline; isStrikeThruText = strike
+            typeface = when (family) { 1 -> android.graphics.Typeface.SERIF; 2 -> android.graphics.Typeface.MONOSPACE; else -> android.graphics.Typeface.DEFAULT }
+            textScaleX = scaleX
+            if (textSizePx > 0f) letterSpacing = letterSpacingPx / textSizePx
+            textAlign = when (align) { 1 -> Paint.Align.CENTER; 2 -> if (rtl) Paint.Align.LEFT else Paint.Align.RIGHT; 0 -> if (rtl) Paint.Align.RIGHT else Paint.Align.LEFT; else -> textAlign }
         }
         val pad = 4f * (textSizePx / 14f).coerceAtLeast(0.5f)
         var y = box.top + textSizePx + pad * 0.5f
-        val x = if (rtl) box.right - pad else box.left + pad
+        val x = when (paint.textAlign) { Paint.Align.CENTER -> box.center.x; Paint.Align.RIGHT -> box.right - pad; else -> box.left + pad }
         text.split('\n').forEach { line ->
             if (y > box.bottom + textSizePx) return@forEach
             cv.nativeCanvas.drawText(line, x, y, paint)
-            y += textSizePx * 1.3f
+            y += textSizePx * lineSpacing
         }
     }
 }

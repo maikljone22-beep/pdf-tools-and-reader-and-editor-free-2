@@ -70,6 +70,8 @@ fun CreationExtrasRow(state: ReaderState) {
     val poly = t == ReaderTool.POLYGON || t == ReaderTool.CLOUD || t == ReaderTool.POLYLINE
     if (!(shapes || lines || poly || t == ReaderTool.INK || t == ReaderTool.FREETEXT || t == ReaderTool.NOTE || t == ReaderTool.ATTACH || t == ReaderTool.TICKMARK)) return
     var dashOpen by remember { mutableStateOf(false) }
+    var fmtOpen by remember { mutableStateOf(false) }
+    if (fmtOpen) TextFormatDialog(h.textFmt, onDismiss = { fmtOpen = false }) { h.textFmt = it; fmtOpen = false }
     Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp)) {
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -98,6 +100,8 @@ fun CreationExtrasRow(state: ReaderState) {
                 FilterChip(h.bold, { h.bold = !h.bold }, label = { Text("B", fontWeight = FontWeight.Bold) }, modifier = Modifier.height(30.dp))
                 FilterChip(h.italic, { h.italic = !h.italic }, label = { Text("I", fontStyle = FontStyle.Italic, fontFamily = FontFamily.Serif) }, modifier = Modifier.height(30.dp))
                 FilterChip(h.underline, { h.underline = !h.underline }, label = { Text("U", textDecoration = TextDecoration.Underline) }, modifier = Modifier.height(30.dp))
+                FilterChip(h.textFmt.strike, { h.textFmt = h.textFmt.copy(strike = !h.textFmt.strike) }, label = { Text("S", textDecoration = TextDecoration.LineThrough) }, modifier = Modifier.height(30.dp))
+                AssistChip(onClick = { fmtOpen = true }, label = { Text(stringResource(R.string.cx_text_format)) }, leadingIcon = { Icon(Icons.Default.FormatSize, null, Modifier.size(16.dp)) }, modifier = Modifier.height(30.dp))
             }
             if (t == ReaderTool.NOTE || t == ReaderTool.ATTACH) {
                 val icons = if (t == ReaderTool.NOTE) AnnotStyle.NOTE_ICONS else AnnotStyle.ATTACH_ICONS
@@ -108,6 +112,7 @@ fun CreationExtrasRow(state: ReaderState) {
         }
         if (dashOpen && (shapes || lines || poly || t == ReaderTool.INK)) DashPicker(DashStyle.entries.getOrElse(h.dash) { DashStyle.SOLID }) { h.dash = it.ordinal }
         if (lines) {
+            Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(h.caption, { h.caption = it }); Text(stringResource(R.string.cx_line_caption), style = MaterialTheme.typography.labelSmall) }
             Text(stringResource(R.string.v5_line_start), style = MaterialTheme.typography.labelSmall)
             LineEndPicker(LineEnd.of(h.lineStart)) { h.lineStart = it.pdf }
             Text(stringResource(R.string.v5_line_end), style = MaterialTheme.typography.labelSmall)
@@ -487,5 +492,44 @@ private fun SummaryOptionsDialog(pageCount: Int, onDismiss: () -> Unit, onOk: (c
     AlertDialog(onDismissRequest = onDismiss, title = { Text(stringResource(R.string.an_summary)) },
         text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) { SummaryOptionsFields(o, pageCount) { o = it } } },
         confirmButton = { TextButton(onClick = { onOk(o) }) { Text(stringResource(R.string.ok)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } })
+}
+
+/** Text box format (Foxit 24.99 font family, 24.101 strike, 24.102 spacing / scale, 24.105 bullets, 24.106 justify, 24.107 line spacing). */
+@Composable
+fun TextFormatDialog(initial: TextFmt, onDismiss: () -> Unit, showBiu: Boolean = false, onOk: (TextFmt) -> Unit) {
+    var f by remember { mutableStateOf(initial) }
+    AlertDialog(onDismissRequest = onDismiss, title = { Text(stringResource(R.string.cx_text_format)) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    listOf(R.string.cx_font_sans, R.string.cx_font_serif, R.string.cx_font_mono).forEachIndexed { i, r ->
+                        FilterChip(f.family == i, { f = f.copy(family = i) }, label = { Text(stringResource(r)) })
+                    }
+                }
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    listOf(-1 to Icons.Default.AutoAwesome, 0 to Icons.Default.FormatAlignLeft, 1 to Icons.Default.FormatAlignCenter,
+                        2 to Icons.Default.FormatAlignRight, 3 to Icons.Default.FormatAlignJustify).forEach { (v, ic) ->
+                        FilterChip(f.align == v, { f = f.copy(align = v) }, label = { Icon(ic, null, Modifier.size(18.dp)) })
+                    }
+                }
+                if (showBiu) Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    FilterChip(f.bold, { f = f.copy(bold = !f.bold) }, label = { Text("B", fontWeight = FontWeight.Bold) })
+                    FilterChip(f.italic, { f = f.copy(italic = !f.italic) }, label = { Text("I", fontStyle = FontStyle.Italic) })
+                    FilterChip(f.underline, { f = f.copy(underline = !f.underline) }, label = { Text("U", textDecoration = TextDecoration.Underline) })
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(f.strike, { f = f.copy(strike = it) }); Text(stringResource(R.string.cx_strike)) }
+                Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(f.bullets, { f = f.copy(bullets = it) }); Text(stringResource(R.string.cx_bullets)) }
+                Text(stringResource(R.string.cx_line_spacing, "%.2f".format(java.util.Locale.US, f.lineSpacing)), style = MaterialTheme.typography.labelMedium)
+                Slider(f.lineSpacing, { f = f.copy(lineSpacing = it) }, valueRange = 0.9f..3f)
+                Text(stringResource(R.string.cx_char_spacing, "%.1f".format(java.util.Locale.US, f.charSpacing)), style = MaterialTheme.typography.labelMedium)
+                Slider(f.charSpacing, { f = f.copy(charSpacing = it) }, valueRange = -1f..8f)
+                Text(stringResource(R.string.cx_word_spacing, "%.1f".format(java.util.Locale.US, f.wordSpacing)), style = MaterialTheme.typography.labelMedium)
+                Slider(f.wordSpacing, { f = f.copy(wordSpacing = it) }, valueRange = 0f..20f)
+                Text(stringResource(R.string.cx_char_scale, (f.hScale * 100).toInt()), style = MaterialTheme.typography.labelMedium)
+                Slider(f.hScale, { f = f.copy(hScale = it) }, valueRange = 0.5f..2f)
+            }
+        },
+        confirmButton = { TextButton(onClick = { onOk(f) }) { Text(stringResource(R.string.ok)) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } })
 }

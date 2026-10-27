@@ -61,12 +61,27 @@ object ToolMemory {
 fun Annot2Host.styleNew(a: Annot): Annot = when (a.kind) {
     AnnotKind.RECT -> a.copy(fillColor = fillColor, dash = dash, noBorder = noBorder && fillColor != null, cloud = rectCloud)
     AnnotKind.OVAL -> a.copy(fillColor = fillColor, dash = dash, noBorder = noBorder && fillColor != null)
-    AnnotKind.LINE, AnnotKind.ARROW -> a.copy(dash = dash, lineStart = lineStart, lineEnd = lineEnd)
+    AnnotKind.LINE, AnnotKind.ARROW -> a.copy(dash = dash, lineStart = lineStart, lineEnd = lineEnd, caption = caption)
     AnnotKind.INK -> a.copy(dash = dash)
     AnnotKind.POLYGON, AnnotKind.CLOUD -> a.copy(dash = dash, noBorder = noBorder && fillColor != null)
     AnnotKind.POLYLINE -> a.copy(dash = dash)
-    AnnotKind.FREETEXT -> a.copy(bold = bold, italic = italic, underline = underline)
+    AnnotKind.FREETEXT -> textFmt.applyTo(a.copy(bold = bold, italic = italic, underline = underline))
     AnnotKind.NOTE -> a.copy(icon = noteIcon.takeIf { it in com.smartdocs.editor.core.annot.AnnotStyle.NOTE_ICONS } ?: "")
     AnnotKind.FILE_ATTACH -> a.copy(icon = noteIcon.takeIf { it in com.smartdocs.editor.core.annot.AnnotStyle.ATTACH_ICONS } ?: "")
     else -> a
+}
+
+/** Text box formatting of section 24.99-24.107 (everything except bold / italic / underline, which have chips). */
+data class TextFmt(val family: Int = 0, val strike: Boolean = false, val align: Int = -1, val lineSpacing: Float = 1.3f,
+                   val charSpacing: Float = 0f, val wordSpacing: Float = 0f, val hScale: Float = 1f, val bullets: Boolean = false,
+                   val bold: Boolean = false, val italic: Boolean = false, val underline: Boolean = false) {
+    /** Everything including bold / italic / underline (editing an existing text box). */
+    fun applyAll(a: Annot): Annot = applyTo(a).copy(bold = bold, italic = italic, underline = underline)
+
+    fun applyTo(a: Annot): Annot = a.copy(fontFamily = family, strike = strike, align = align, lineSpacing = lineSpacing,
+        charSpacing = charSpacing, wordSpacing = wordSpacing, hScale = hScale, bullets = bullets)
+
+    companion object {
+        fun of(a: Annot) = TextFmt(a.fontFamily, a.strike, a.align, a.lineSpacing, a.charSpacing, a.wordSpacing, a.hScale, a.bullets, a.bold, a.italic, a.underline)
+    }
 }
