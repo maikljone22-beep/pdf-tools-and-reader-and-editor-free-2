@@ -1,9 +1,16 @@
 name: Build APK
 
+# Every branch gets its own build + APK (named after the branch), so each session can push its
+# work-in-progress branch and test it. Only main is the integration branch (merged by one session).
 on:
   push:
-    branches: [ main, master ]
+    branches: [ '**' ]
+  pull_request:
   workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -22,8 +29,17 @@ jobs:
         run: chmod +x gradlew && ./gradlew :app:assembleDebug --no-daemon --stacktrace
       - name: Unit tests
         run: ./gradlew :app:testDebugUnitTest --no-daemon
+      - name: Artifact name
+        id: name
+        run: echo "n=SmartDocs-$(echo '${{ github.head_ref || github.ref_name }}' | tr '/ ' '--')-${{ github.run_number }}" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v4
         with:
-          name: SmartDocs-debug-apk
+          name: ${{ steps.name.outputs.n }}
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: test-reports-${{ github.run_number }}
+          path: app/build/reports/tests/
+          if-no-files-found: ignore
