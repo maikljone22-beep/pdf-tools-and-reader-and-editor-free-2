@@ -46,7 +46,7 @@ object ConnectedStamp {
             existing.replace(Regex("""<rdf:Description[^>]*xmlns:sdc="[^"]*"[^>]*>.*?</rdf:Description>""", RegexOption.DOT_MATCHES_ALL), "")
                 .replace("</rdf:RDF>", "$desc</rdf:RDF>")
         } else {
-            "<?xpacket begin=\"﻿\" id=\"W5M0MpCehiHzreSzNTczkc9d\"?><x:xmpmeta xmlns:x=\"adobe:ns:meta/\"><rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">$desc</rdf:RDF></x:xmpmeta><?xpacket end=\"w\"?>"
+            "<?xpacket begin=\"\uFEFF\" id=\"W5M0MpCehiHzreSzNTczkc9d\"?><x:xmpmeta xmlns:x=\"adobe:ns:meta/\"><rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">$desc</rdf:RDF></x:xmpmeta><?xpacket end=\"w\"?>"
         }
         val md = PDMetadata(d)
         md.importXMPMetadata(xml.toByteArray(Charsets.UTF_8))

@@ -85,7 +85,7 @@ object ArabicShaper {
     private fun visualOrder(s: String): String {
         val runs = ArrayList<Pair<Boolean, StringBuilder>>()   // (isLtr, text)
         for (c in s) {
-            val ltr = c.isLetterOrDigit() && !(c in '؀'..'ۿ' || c in 'ﹰ'..'﻿' || c in 'ݐ'..'ݿ')
+            val ltr = c.isLetterOrDigit() && !(c in '؀'..'ۿ' || c in 'ﹰ'..'\uFEFF' || c in 'ݐ'..'ݿ')
             if (runs.isEmpty() || runs.last().first != ltr) runs += ltr to StringBuilder()
             runs.last().second.append(c)
         }

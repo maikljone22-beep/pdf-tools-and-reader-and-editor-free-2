@@ -200,7 +200,7 @@ class DocxEditor private constructor(private val src: File, private val docPath:
         fun open(file: File): DocxEditor = OoxmlPackage(file).use { pkg ->
             val path = pkg.rels("").values.firstOrNull { it.type.endsWith("/officeDocument") }?.target ?: "word/document.xml"
             val bytes = pkg.bytes(path) ?: throw OfficeFormatException("word/document.xml missing")
-            DocxEditor(file, path, String(bytes, Charsets.UTF_8).removePrefix("﻿"))
+            DocxEditor(file, path, String(bytes, Charsets.UTF_8).removePrefix("\uFEFF"))
         }
     }
 }

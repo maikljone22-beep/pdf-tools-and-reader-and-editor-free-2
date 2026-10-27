@@ -313,4 +313,4 @@ internal object XmlScan {
 }
 
 /** True when [s] contains Arabic/Hebrew letters (used to default new paragraphs to RTL). */
-fun hasRtlChars(s: String): Boolean = s.any { it in '֐'..'ࣿ' || it in 'יִ'..'﷿' || it in 'ﹰ'..'﻿' }
+fun hasRtlChars(s: String): Boolean = s.any { it in '֐'..'ࣿ' || it in 'יִ'..'﷿' || it in 'ﹰ'..'\uFEFF' }
