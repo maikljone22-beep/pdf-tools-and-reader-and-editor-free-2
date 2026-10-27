@@ -65,4 +65,5 @@
     <string name="np_bn_portfolio">This is a PDF portfolio with %1$d files.</string>
     <string name="np_bn_portfolio_act">Show files</string>
     <string name="np_dismiss">Dismiss</string>
+    <string name="np_signed_version">View signed version</string>
 </resources>

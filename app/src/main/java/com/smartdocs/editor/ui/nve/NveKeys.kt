@@ -145,6 +145,17 @@ object NveKeys {
     fun onKey(s: ReaderState, e: KeyEvent, switchTab: (DocTab?) -> Unit): Boolean {
         if (e.action != KeyEvent.ACTION_DOWN) return false
         val ctx = s.context
+        // auto-scroll running: 0-9 set the speed, minus reverses, arrows / page keys jump pages (Foxit)
+        val v5 = V5State.of(s)
+        if (v5.autoScroll && !e.isCtrlPressed && !e.isAltPressed) {
+            when (e.keyCode) {
+                in KeyEvent.KEYCODE_0..KeyEvent.KEYCODE_9 -> { v5.autoSpeed = (e.keyCode - KeyEvent.KEYCODE_0).coerceAtLeast(1); return true }
+                KeyEvent.KEYCODE_MINUS -> { NveState.of(s).autoReverse = !NveState.of(s).autoReverse; return true }
+                KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_PAGE_UP -> { s.jumpTo(s.currentPage - 1); return true }
+                KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_PAGE_DOWN -> { s.jumpTo(s.currentPage + 1); return true }
+                KeyEvent.KEYCODE_ESCAPE -> { v5.autoScroll = false; return true }
+            }
+        }
         val c = Chord(e.keyCode, e.isCtrlPressed, e.isShiftPressed, e.isAltPressed)
         val k = NveKey.entries.firstOrNull { chord(ctx, it) == c }
             ?: if (singleKey(ctx) && !c.ctrl && !c.alt && !c.shift) single[e.keyCode] else null

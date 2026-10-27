@@ -118,7 +118,7 @@ fun NvePaneContent(
             val f = state.file
             when (pane) {
                 NvePane.ATTACHMENTS -> if (f != null) NveAttachmentsList(f, state.password, onJump, onOpenPdf, state.renderVersion)
-                NvePane.SIGNATURES -> SignaturesPane(state, onJump)
+                NvePane.SIGNATURES -> SignaturesPane(state, onJump, onOpenPdf)
                 NvePane.TAGS -> TagsPane(state, onJump, onOpenTool)
                 NvePane.FIELDS -> FieldsPane(state, onJump)
                 NvePane.DESTINATIONS -> DestinationsPane(state, onJump)
@@ -198,7 +198,7 @@ fun NveAttachmentsList(file: File, password: String?, onJump: ((Int) -> Unit)?, 
 // ---------------------------------------------------------------- signatures
 
 @Composable
-private fun SignaturesPane(state: ReaderState, onJump: (Int) -> Unit) {
+private fun SignaturesPane(state: ReaderState, onJump: (Int) -> Unit, onOpenPdf: (File) -> Unit) {
     val f = state.file
     val load = rememberLoad(f, state.password, state.renderVersion) { d -> PaneReaders.signatureFields(d) to PaneReaders.certificationLevel(d) }
     val scope = rememberCoroutineScope()
@@ -214,7 +214,7 @@ private fun SignaturesPane(state: ReaderState, onJump: (Int) -> Unit) {
                     busy = true; err = null
                     scope.launch {
                         // existing verifier of the Digital-sign screen (pdf-3c builds deeper validation)
-                        runCatching { DigitalSignature.verify(f!!) }.onSuccess { results = it }.onFailure { err = it.message ?: it.toString() }
+                        runCatching { DigitalSignature.verify(f!!, revocation = false) }.onSuccess { results = it }.onFailure { err = it.message ?: it.toString() }
                         busy = false
                     }
                 }) { Icon(Icons.Default.Verified, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(stringResource(if (busy) R.string.np_verifying else R.string.np_verify)) }
@@ -222,14 +222,24 @@ private fun SignaturesPane(state: ReaderState, onJump: (Int) -> Unit) {
             err?.let { Text(it, Modifier.padding(horizontal = 20.dp), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
             val signed = sigs.filter { it.signed }
             LazyColumn(Modifier.fillMaxWidth().heightIn(max = 520.dp)) {
-                items(sigs, key = { it.name }) { s -> SigRow(s, results?.getOrNull(signed.indexOf(s)), onJump) }
+                items(sigs, key = { it.name }) { s ->
+                    // results are matched by field name (main's VerifyResult.fieldName), by order as a fallback
+                    val r = results?.let { rs -> rs.firstOrNull { it.fieldName == s.name } ?: rs.getOrNull(signed.indexOf(s)) }
+                    SigRow(s, r, onJump, onSignedVersion = r?.takeIf { it.signedLength > 0 }?.let { v -> {
+                        scope.launch {
+                            val out = File(state.app.documents.tempDir, (f?.nameWithoutExtension ?: "signed") + "_rev" + v.revision + ".pdf")
+                            runCatching { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.smartdocs.editor.core.sign.SigRevisions.extract(f!!, v.signedLength, out) } }
+                                .onSuccess { onOpenPdf(out) }.onFailure { err = it.message }
+                        }
+                    } })
+                }
             }
         }
     }
 }
 
 @Composable
-private fun SigRow(s: SigFieldInfo, r: DigitalSignature.VerifyResult?, onJump: (Int) -> Unit) {
+private fun SigRow(s: SigFieldInfo, r: DigitalSignature.VerifyResult?, onJump: (Int) -> Unit, onSignedVersion: (() -> Unit)? = null) {
     ListItem(
         headlineContent = { Text(if (s.signed) stringResource(R.string.np_signed_by, s.signer.ifBlank { r?.name ?: s.name }) else s.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
         supportingContent = {
@@ -245,6 +255,8 @@ private fun SigRow(s: SigFieldInfo, r: DigitalSignature.VerifyResult?, onJump: (
                     Text(stringResource(if (r.coversWholeDocument) R.string.np_covers_all else R.string.np_not_all), style = MaterialTheme.typography.bodySmall)
                     if (r.certSubject.isNotBlank()) Text(stringResource(R.string.np_cert, r.certSubject), style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     r.error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+                    if (r.revisionCount > 0) Text("${r.revision} / ${r.revisionCount}", style = MaterialTheme.typography.bodySmall)
+                    if (onSignedVersion != null) TextButton(onClick = onSignedVersion) { Text(stringResource(R.string.np_signed_version)) }
                 }
             }
         },

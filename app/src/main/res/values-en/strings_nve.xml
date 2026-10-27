@@ -4,6 +4,7 @@
     <string name="nv_actual_size">Actual size</string>
     <string name="nv_apply">Apply</string>
     <string name="nv_area_snapshot">Area snapshot</string>
+    <string name="nv_auto_reverse">Reverse direction</string>
     <string name="nv_bad_range">Invalid page range</string>
     <string name="nv_bookmark_added">Bookmark added</string>
     <string name="nv_clipboard_empty">The clipboard has no text or image</string>
@@ -80,6 +81,7 @@
     <string name="nv_properties">Document properties</string>
     <string name="nv_quad_split">Spreadsheet split</string>
     <string name="nv_replace_failed">The text could not be replaced in the page (it spans several blocks); use Edit mode</string>
+    <string name="nv_reset_pins">Reset pinned commands</string>
     <string name="nv_reverse_view">Reverse view</string>
     <string name="nv_rewrite">Rewrite</string>
     <string name="nv_ruler_h">Horizontal ruler</string>

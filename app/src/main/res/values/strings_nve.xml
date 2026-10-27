@@ -4,6 +4,7 @@
     <string name="nv_actual_size">الحجم الفعلي</string>
     <string name="nv_apply">تطبيق</string>
     <string name="nv_area_snapshot">لقطة منطقة</string>
+    <string name="nv_auto_reverse">عكس الاتجاه</string>
     <string name="nv_bad_range">نطاق صفحات غير صالح</string>
     <string name="nv_bookmark_added">أضيفت العلامة</string>
     <string name="nv_clipboard_empty">لا يوجد نص أو صورة في الحافظة</string>
@@ -80,6 +81,7 @@
     <string name="nv_properties">خصائص المستند</string>
     <string name="nv_quad_split">تقسيم رباعي</string>
     <string name="nv_replace_failed">تعذّر استبدال النص في الصفحة (يمتد على عدة كتل)؛ استخدم وضع التحرير</string>
+    <string name="nv_reset_pins">إعادة تعيين الأوامر المثبتة</string>
     <string name="nv_reverse_view">عرض معكوس</string>
     <string name="nv_rewrite">إعادة صياغة</string>
     <string name="nv_ruler_h">المسطرة الأفقية</string>

@@ -197,6 +197,9 @@ object NveCommands {
             V5Command("nv_fields", R.string.nv_pane_fields, Icons.Default.Checklist, "form fields حقول") { n.pane = NvePane.FIELDS },
             V5Command("nv_dests", R.string.nv_pane_destinations, Icons.Default.Place, "named destinations وجهات") { n.pane = NvePane.DESTINATIONS },
             V5Command("nv_articles", R.string.nv_pane_articles, Icons.Default.Article, "articles threads مقالات") { n.pane = NvePane.ARTICLES },
+            V5Command("nv_reset_pins", R.string.nv_reset_pins, Icons.Default.PushPin, "reset pinned commands quick access إعادة تعيين المثبتة") {
+                e.v.prefs.edit().putString("pins", "").apply(); e.v.pinsVersion++
+            },
             V5Command("nv_keys", R.string.nv_keys_title, Icons.Default.Keyboard, "customize keyboard shortcuts تخصيص الاختصارات") { n.open(NveSurface.KEYS) },
             V5Command("nv_edit5", R.string.nv_edit5_tools, Icons.Default.EditNote, "edit tools header footer bates links bookmarks أدوات التحرير") { n.open(NveSurface.EDIT5) },
         )

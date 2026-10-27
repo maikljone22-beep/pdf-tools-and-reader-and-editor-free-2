@@ -65,4 +65,5 @@
     <string name="np_bn_portfolio">هذا ملف PDF حافظة يضم %1$d من الملفات.</string>
     <string name="np_bn_portfolio_act">عرض الملفات</string>
     <string name="np_dismiss">إخفاء</string>
+    <string name="np_signed_version">عرض النسخة الموقّعة</string>
 </resources>
