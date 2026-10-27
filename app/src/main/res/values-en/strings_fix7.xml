@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- audit stage 7: cloud working copies and folder sync data safety (DI-23..DI-26) -->
+<resources>
+    <string name="fix7_st_confirm">Needs confirmation</string>
+    <plurals name="fix7_deletes_withheld">
+        <item quantity="one">This sync would delete %d file. Nothing was deleted yet</item>
+        <item quantity="other">This sync would delete %d files. Nothing was deleted yet</item>
+    </plurals>
+    <string name="fix7_deletes_allow">Delete them</string>
+    <string name="fix7_deletes_keep">Keep them</string>
+    <string name="fix7_opened_local">Your changes to this file are not uploaded yet, so your copy was opened. They will be uploaded when you are online</string>
+    <string name="fix7_opened_conflict">This file changed both in the cloud and here. Your copy was opened and will be uploaded as a separate conflict copy; the cloud version stays as it is</string>
+</resources>
