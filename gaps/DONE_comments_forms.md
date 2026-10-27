@@ -84,7 +84,7 @@ Each file exists in `res/values/` (Arabic) and in `res/values-en/` (English).
 | 8.67 / 8.70 Submit (URL / mailto, FDF / XFDF / HTML / PDF, field list, exclude, empty fields, canonical dates, comments, GET) | DONE | SubmitForm flags. |
 | 8.68 Import form data action | DONE | ImportData action. |
 | 8.69 Named, SetOCGState and Read article actions; ordered action list | DONE | The list has up / down / edit / delete and is written as a /Next chain. |
-| 8.72 Signature field: lock fields when signed, run a script | DONE (form side) | `F/FxSigLocks.kt` writes /Lock (SigFieldLock) and the on-sign script (/SDOnSign). `FxSigLocks.lockedFields` is the helper for the signing code. **The FieldMDP transform inside the signature belongs to feature/nitro-protect-sign (pdf-3c).** |
+| 8.72 Signature field: lock fields when signed, run a script | DONE (form side) | `F/FxSigLocks.kt` writes /Lock (SigFieldLock) and the on-sign script (/SDOnSign). `FxSigLocks.lockedFields` delegates to `SigFields.Lock.locks`. The /Lock format is the one `SigFields.readLock` reads, including /P; a JVM test checks the round trip. **The FieldMDP transform inside the signature belongs to feature/nitro-protect-sign (pdf-3c).** |
 | 8.73 Form data: FDF / XFDF / XML / CSV / TXT | DONE | `F/FormData.kt`. Import / export menu in the designer, the Forms tool and the reader form menu. |
 | 8.76 Collect returned forms into a responses file | DONE | `FormData.collect` writes one CSV row per form and can append to an existing CSV; designer menu "Combine forms to a sheet". |
 | 8.77 Tab order: rows / columns / structure / unspecified / manual | DONE | Manual order by tapping fields in order (`FxEditor.setManualTabOrder`); tab numbers shown on the page. |
@@ -245,8 +245,8 @@ Each file exists in `res/values/` (Arabic) and in `res/values-en/` (English).
 |---|---|---|
 | 26.3 | DONE | "This form is fillable" strip (close, don't show again). |
 | 26.11 | DONE | Auto-shrink on screen. The saved appearance relies on PdfBox's auto size (not checked against the PdfBox source). |
-| 26.14 | OWNED BY pdf-3c | A chip was added before ownership was clarified; it only selects the existing rectangle tool. |
-| 26.15 | OWNED BY pdf-3c | A Fill & Sign comb was added (`FormScriptTools`) before ownership was clarified; pdf-3c owns the row. The AcroForm comb flag is done (8.27). |
+| 26.14 | OWNED BY pdf-3c | pdf-3c's rounded rectangle (FS_RRECT) is the tool. Fork B's duplicate chip was removed when main was merged. |
+| 26.15 | OWNED BY pdf-3c | pdf-3c's FS_COMB is the tool. Fork B's duplicate comb chip and its comb-convert menu item were removed when main was merged. The AcroForm comb flag (8.27) is ours and done. |
 | 26.18 | DONE | Field recognition (H1). |
 | 26.19 | DONE | Designer assistant: in Create mode the detected boxes are outlined, and one tap creates the field. |
 | 26.22 / 26.83 | DONE | Barcode field (8.9). |
@@ -286,9 +286,9 @@ Each file exists in `res/values/` (Arabic) and in `res/values-en/` (English).
 | Row | Status | Note |
 |---|---|---|
 | 27.3 | DONE | JavaScript on page open / close, bookmarks and links. |
-| 27.4 | DONE | Document JavaScript dialog: add, edit, delete. |
-| 27.5 | DONE | Document actions WC / WS / DS / WP / DP: edited, and run at the right moments. |
-| 27.6 | DONE | JavaScript console. |
+| 27.4 | DONE | Main's Document JavaScript screen (edit5 DocScriptsScreen, honours JsPolicy), opened from the form menu. Fork B's duplicate dialog was removed when main was merged. |
+| 27.5 | DONE | Edited in main's Document JavaScript screen. The form runtime runs them at the right moments, only when JsPolicy allows JavaScript. |
+| 27.6 | DONE | Main's console (DocJsConsole). |
 | 27.7 | DONE | "Edit all JavaScripts". |
 | 27.10 | PARTIAL | Same as 8.84. |
 | 27.12 | SKIPPED | Owned by pdf-3c. |
@@ -309,7 +309,7 @@ Each file exists in `res/values/` (Arabic) and in `res/values-en/` (English).
 
 Nothing was tested on a device.
 
-**GitHub CI: run 40546019173 on commit 61986a2 passed.** It built the debug APK and ran the full JVM unit test suite.
+**GitHub CI: run 40546019173 on commit 61986a2 passed.** After merging origin/main twice (caaf3a9, then 0621679), run **40584600861** on commit **625ea32** also passed. It built the debug APK and ran the full JVM unit test suite.
 
 Earlier CI runs failed, and each failure was fixed:
 
