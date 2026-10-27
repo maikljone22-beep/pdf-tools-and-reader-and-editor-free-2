@@ -271,3 +271,18 @@ through `applyInPlace`, which ReaderGuard already guards).
 
 CI (GitHub Actions "Build APK"): "Build debug APK" passes since defc609; unit tests: 40584635868 (9089ce5) 895/896 passed,
 the last failure (CMYK colour-space name) is fixed in d56db97; run 40587769001 (dd4ff4c): build + all unit tests GREEN.
+
+## Merges with main after the report (eb22f83, bd8b01d) — one implementation per feature
+
+- Print: main's nav-batch print sheet is the base (presets, preview, greyscale, poster, booklet sides, N×M, scaling,
+  comment summary, batch print `batch_print`). C's duplicate print sheet, presets and `print_batch` tool were removed;
+  "only pages with markups" was ported onto main's sheet (`PrintSettings.markedOnly`).
+- Attachments: main's reader ATTACHMENTS panel (pdf-3c) is the one pane; NVE entry points open it.
+- Fields / destinations / tags / articles: main's INFO panels (nav-prefs §40) are the entry; NVE's richer editors
+  (rename destinations, structure tree with alt text, article editor) open from them ("More…").
+- Accent colour, grid colour / offsets / subdivisions / units / guides, hit colours, typing digits: NpfPrefs (main) is
+  the single source; NVE UI writes it (NVE adds dynamic colour, auto / Persian digits, lens size).
+- Settings search: main's (NpfSettingsScreen); G's search hook removed. Find-bar scopes: main's NpfScopeHits.
+- Annotation text dialogs: main's SpellCheckRow; unit tests use main's `unitTests.isReturnDefaultValues` (Log shadow removed).
+
+Last CI: run 40597148391 on d6c1c3d — build + unit tests green.
