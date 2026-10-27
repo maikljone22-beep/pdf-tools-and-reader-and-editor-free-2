@@ -150,26 +150,29 @@ object BulkTemplate {
         listOf("{name}", "{email}") + (sample?.extra?.keys ?: headers).map { "{$it}" }
 }
 
-enum class BulkState { PENDING, SENT, FAILED }
+enum class BulkState { PENDING, SENT, FAILED, CANCELLED }
 
 data class BulkItem(val row: BulkRecipient, val state: BulkState = BulkState.PENDING, val requestId: String = "", val link: String = "", val error: String = "")
 
-/** Sends one request per item; partial failures are kept and only those are retried on the next [run]. */
+/** Sends one request per item; failed and cancelled items are kept and only those are sent again on the next [run]. */
 object BulkSender {
     data class Sent(val id: String, val link: String)
 
     /**
      * Sends every item not yet [BulkState.SENT]. [send] creates one request (blocking); [retryable] says whether a failure is
-     * worth a second immediate attempt (network errors, 5xx). Cancellation exceptions propagate.
+     * worth a second immediate attempt (network errors, 5xx). [cancelled] is checked before each item: once it is true the
+     * request in flight finishes, items already sent stay sent and every remaining one becomes [BulkState.CANCELLED].
+     * Coroutine cancellation exceptions propagate.
      */
     fun run(
         items: List<BulkItem>, send: (BulkRecipient) -> Sent, progress: (done: Int, total: Int) -> Unit = { _, _ -> },
-        retryable: (Throwable) -> Boolean = { false }, attempts: Int = 2,
+        retryable: (Throwable) -> Boolean = { false }, attempts: Int = 2, cancelled: () -> Boolean = { false },
     ): List<BulkItem> {
         val out = items.toMutableList()
         val todo = items.indices.filter { items[it].state != BulkState.SENT }
         progress(0, todo.size)
         todo.forEachIndexed { n, i ->
+            if (cancelled()) { out[i] = items[i].copy(state = BulkState.CANCELLED, error = ""); return@forEachIndexed }
             var last: Throwable? = null
             var result: Sent? = null
             for (a in 1..attempts.coerceAtLeast(1)) {
@@ -188,4 +191,8 @@ object BulkSender {
 
     fun sent(items: List<BulkItem>) = items.count { it.state == BulkState.SENT }
     fun failed(items: List<BulkItem>) = items.count { it.state == BulkState.FAILED }
+    fun cancelled(items: List<BulkItem>) = items.count { it.state == BulkState.CANCELLED }
+
+    /** Items a "retry" sends again: failures and the ones a cancel skipped. */
+    fun retryable(items: List<BulkItem>) = items.count { it.state == BulkState.FAILED || it.state == BulkState.CANCELLED }
 }

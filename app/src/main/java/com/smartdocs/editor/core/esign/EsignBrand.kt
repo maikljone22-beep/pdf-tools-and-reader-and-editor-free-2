@@ -50,6 +50,12 @@ data class EsignBrand(val name: String = "", val color: String = "", val logoBas
             else -> null
         }
 
+        /** True when a request's brand has anything to show (name, colour or logo). */
+        fun shows(b: EsignBrand?): Boolean = b != null && !b.isEmpty
+
+        /** Name shown as the sender: the brand name when set, else the request's sender. */
+        fun senderLabel(b: EsignBrand?, sender: String): String = b?.name?.trim()?.ifBlank { null } ?: sender
+
         fun from(o: JSONObject?): EsignBrand? = o?.let { EsignBrand(it.optString("name"), normalizeColor(it.optString("color")), "", it.optBoolean("logo")) }
     }
 }

@@ -46,6 +46,16 @@ class BrandFormTest {
         assertNull(EsignRequest.from(JSONObject().put("id", "x")).brand)
     }
 
+    @Test fun signerScreenBrandRules() {
+        assertFalse(EsignBrand.shows(null))
+        assertFalse(EsignBrand.shows(EsignBrand()))
+        assertTrue(EsignBrand.shows(EsignBrand(color = "#123456")))
+        assertTrue(EsignBrand.shows(EsignBrand(hasLogo = true)))
+        assertEquals("ACME", EsignBrand.senderLabel(EsignBrand(name = " ACME "), "Ali"))
+        assertEquals("Ali", EsignBrand.senderLabel(EsignBrand(name = "  ", color = "#000000"), "Ali"))
+        assertEquals("Ali", EsignBrand.senderLabel(null, "Ali"))
+    }
+
     @Test fun formParsingAndCopyAsRequest() {
         val o = JSONObject("""{"id":"abcdefabcdef","title":"Consent","sender":"Clinic","created":10,"status":"active","state":"full","count":3,
             "maxResponses":3,"requireEmail":true,"link":"https://w/f/abcdefabcdef","originalSha":"${"a".repeat(64)}",

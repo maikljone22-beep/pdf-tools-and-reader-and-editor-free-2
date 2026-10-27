@@ -15,8 +15,24 @@ data class SigAppearanceSpec(
     val layout: Layout = Layout.LOGO_LEFT,
     /** Maximum text size in appearance pixels (the 900 px wide bitmap); [AUTO_FONT] = automatic layout. */
     val maxFontSize: Int = AUTO_FONT,
+    /** Typeface family of the text lines (Foxit appearance "font"). */
+    val font: Font = Font.SANS,
+    /** Text direction (Foxit appearance "text direction"); AUTO follows each line's first strong character. */
+    val direction: Direction = Direction.AUTO,
 ) {
     enum class Layout { LOGO_LEFT, LOGO_RIGHT, LOGO_TOP }
+    enum class Font { SANS, SERIF, MONO }
+    enum class Direction { AUTO, LTR, RTL }
+
+    /** Whether [line] is laid out right-to-left. */
+    fun rtl(line: String): Boolean = when (direction) {
+        Direction.RTL -> true
+        Direction.LTR -> false
+        Direction.AUTO -> line.firstOrNull { Character.isLetter(it) }?.let {
+            val d = Character.getDirectionality(it)
+            d == Character.DIRECTIONALITY_RIGHT_TO_LEFT || d == Character.DIRECTIONALITY_RIGHT_TO_LEFT_ARABIC
+        } ?: false
+    }
 
     /** Localised labels ("Digitally signed by", "Reason", …). */
     data class Labels(val signedBy: String, val reason: String, val location: String, val date: String, val dn: String)
@@ -43,9 +59,17 @@ data class SigAppearanceSpec(
     /** Line height: follows the biggest text so small capped text gives a compact appearance. */
     fun lineHeight(lineCount: Int): Float = ((0 until lineCount.coerceAtLeast(1)).maxOf { fontSize(it) } * 1.23f).coerceAtLeast(24f)
 
-    // The font cap rides in the layout field ("LOGO_LEFT:24") so specs saved before it still decode.
-    fun encode(): String = listOf(showName, showReason, showLocation, showDate, showDn, showLabels).joinToString("") { if (it) "1" else "0" } +
-        "|" + layout.name + (if (maxFontSize > AUTO_FONT) ":$maxFontSize" else "") + "|" + (logoPath ?: "")
+    // The font cap, family and direction ride in the layout field ("LOGO_LEFT:24", "LOGO_LEFT:0:SERIF:RTL") so specs
+    // saved before them still decode.
+    fun encode(): String {
+        val extra = when {
+            font != Font.SANS || direction != Direction.AUTO -> ":$maxFontSize:${font.name}:${direction.name}"
+            maxFontSize > AUTO_FONT -> ":$maxFontSize"
+            else -> ""
+        }
+        return listOf(showName, showReason, showLocation, showDate, showDn, showLabels).joinToString("") { if (it) "1" else "0" } +
+            "|" + layout.name + extra + "|" + (logoPath ?: "")
+    }
 
     companion object {
         const val AUTO_FONT = 0
@@ -62,12 +86,14 @@ data class SigAppearanceSpec(
             if (parts.size != 3 || b.length != 6 || b.any { it != '0' && it != '1' }) return SigAppearanceSpec()
             fun bit(i: Int, d: Boolean) = b.getOrNull(i)?.let { it == '1' } ?: d
             val d = SigAppearanceSpec()
-            val layoutPart = parts.getOrNull(1).orEmpty()
+            val lp = parts.getOrNull(1).orEmpty().split(':')
             return SigAppearanceSpec(
                 bit(0, d.showName), bit(1, d.showReason), bit(2, d.showLocation), bit(3, d.showDate), bit(4, d.showDn), bit(5, d.showLabels),
                 logoPath = parts.getOrNull(2)?.ifBlank { null },
-                layout = layoutPart.substringBefore(':').let { n -> Layout.entries.firstOrNull { it.name == n } } ?: d.layout,
-                maxFontSize = layoutPart.substringAfter(':', "").toIntOrNull()?.takeIf { it in MIN_FONT..MAX_FONT } ?: AUTO_FONT,
+                layout = lp[0].let { n -> Layout.entries.firstOrNull { it.name == n } } ?: d.layout,
+                maxFontSize = lp.getOrNull(1)?.toIntOrNull()?.takeIf { it in MIN_FONT..MAX_FONT } ?: AUTO_FONT,
+                font = lp.getOrNull(2)?.let { n -> Font.entries.firstOrNull { it.name == n } } ?: d.font,
+                direction = lp.getOrNull(3)?.let { n -> Direction.entries.firstOrNull { it.name == n } } ?: d.direction,
             )
         }
     }

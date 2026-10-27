@@ -32,6 +32,7 @@ import com.smartdocs.editor.LocalSettings
 import com.smartdocs.editor.R
 import com.smartdocs.editor.core.esign.EsignBrand
 import com.smartdocs.editor.core.esign.EsignBrandStore
+import com.smartdocs.editor.core.esign.EsignClient
 import com.smartdocs.editor.core.theme.PillShape
 import com.smartdocs.editor.ui.common.AppTopBar
 import kotlinx.coroutines.Dispatchers
@@ -79,6 +80,27 @@ fun BrandPreview(brand: EsignBrand?, logo: File?, title: String, sender: String,
         }
         if (brand == null) Text(stringResource(R.string.ne2_brand_none), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         onEdit?.let { TextButton(onClick = it) { Icon(Icons.Default.Palette, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.ne2_brand_edit)) } }
+    }
+}
+
+/** Branded header of a request in the in-app signer screen: logo (served by the worker), sender name and theme colour. */
+@Composable
+fun SignerBrandHeader(brand: EsignBrand, requestId: String, title: String, sender: String) {
+    val main = brandColor(brand.color, MaterialTheme.colorScheme.primaryContainer)
+    val ink = if (brand.color.isNotBlank()) brandColor(EsignBrand.onColor(brand.color), Color.White) else MaterialTheme.colorScheme.onPrimaryContainer
+    val who = EsignBrand.senderLabel(brand, sender)
+    Surface(shape = RoundedCornerShape(16.dp), color = main, modifier = Modifier.fillMaxWidth()) {
+        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (brand.hasLogo) {
+                AsyncImage(model = EsignClient.logoUrl(requestId), contentDescription = stringResource(R.string.ne2_brand_logo), contentScale = ContentScale.Fit,
+                    modifier = Modifier.heightIn(max = 44.dp).widthIn(max = 120.dp).clip(RoundedCornerShape(6.dp)).background(Color.White).padding(2.dp))
+                Spacer(Modifier.width(12.dp))
+            }
+            Column(Modifier.weight(1f)) {
+                if (who.isNotBlank()) Text(stringResource(R.string.cn_from, who), color = ink, style = MaterialTheme.typography.titleSmall)
+                Text(title, color = ink.copy(alpha = 0.85f), style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
     }
 }
 

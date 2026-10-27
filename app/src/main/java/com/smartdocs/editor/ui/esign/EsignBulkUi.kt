@@ -82,18 +82,38 @@ private fun issueText(i: CsvRecipients.RowIssue): String = when (i.issue) {
     CsvRecipients.Issue.TOO_MANY -> stringResource(R.string.ne2_issue_too_many, i.line, CsvRecipients.MAX_ROWS)
 }
 
-/** Outcome of a bulk send: counts, the failed rows with their error, retry of the failed ones, and all links to share. */
+/** Progress of a bulk send with a cancel button: the request in flight finishes, the rest are left for a retry. */
+@Composable
+fun BulkProgressDialog(done: Int, total: Int, cancelling: Boolean, onCancel: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = {},
+        title = { Text(stringResource(if (cancelling) R.string.ne2_bulk_cancelling else R.string.ne2_bulk_sending, (done + 1).coerceAtMost(total), total)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (total > 0) LinearProgressIndicator(progress = { done.toFloat() / total }, modifier = Modifier.fillMaxWidth())
+                else LinearProgressIndicator(Modifier.fillMaxWidth())
+                Text(stringResource(R.string.ne2_bulk_progress_count, done, total), style = MaterialTheme.typography.bodySmall)
+            }
+        },
+        confirmButton = { TextButton(onClick = onCancel, enabled = !cancelling) { Text(stringResource(R.string.cancel)) } },
+    )
+}
+
+/** Outcome of a bulk send: counts, the failed rows with their error, retry of the failed/cancelled ones, and all links to share. */
 @Composable
 fun BulkResultDialog(items: List<BulkItem>, onRetry: () -> Unit, onDone: () -> Unit) {
     val ctx = LocalContext.current
     val sent = BulkSender.sent(items)
     val failed = items.filter { it.state == BulkState.FAILED }
+    val cancelled = BulkSender.cancelled(items)
+    val again = BulkSender.retryable(items)
     AlertDialog(
         onDismissRequest = {},
         title = { Text(stringResource(R.string.ne2_bulk_result_title)) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(stringResource(R.string.ne2_bulk_result_body, sent, failed.size), style = MaterialTheme.typography.titleSmall)
+                if (cancelled > 0) Text(stringResource(R.string.ne2_bulk_result_cancelled, cancelled), style = MaterialTheme.typography.bodySmall)
                 failed.take(30).forEach { Text(stringResource(R.string.ne2_bulk_failed_row, it.row.name, it.error), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
                 if (failed.size > 30) Text(stringResource(R.string.ne2_bulk_more, failed.size - 30), style = MaterialTheme.typography.bodySmall)
                 if (sent > 0) {
@@ -105,6 +125,6 @@ fun BulkResultDialog(items: List<BulkItem>, onRetry: () -> Unit, onDone: () -> U
             }
         },
         confirmButton = { TextButton(onClick = onDone) { Text(stringResource(R.string.cn_done)) } },
-        dismissButton = { if (failed.isNotEmpty()) TextButton(onClick = onRetry) { Text(stringResource(R.string.ne2_bulk_retry, failed.size)) } },
+        dismissButton = { if (again > 0) TextButton(onClick = onRetry) { Text(stringResource(R.string.ne2_bulk_retry, again)) } },
     )
 }
