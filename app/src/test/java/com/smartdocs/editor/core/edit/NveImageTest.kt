@@ -97,7 +97,8 @@ class NveImageTest {
         }
     }
 
-    private fun doOrder(d: PDDocument): List<Float> = imageOps(d).map { ctmOf(d, it)[4] }
+    /** x positions of the images in painting order, rounded (matrix products leave float noise like 10.000008). */
+    private fun doOrder(d: PDDocument): List<Float> = imageOps(d).map { Math.round(ctmOf(d, it)[4]).toFloat() }
 
     @Test fun zOrder() {
         val f = doc(3)

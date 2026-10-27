@@ -70,7 +70,7 @@ internal object ImageEdit5 {
         val name: String get() = op.name
         var userBox: FloatArray? = null
         var localBox: FloatArray? = null
-        fun tokens(): List<Any> = operands + op
+        fun tokens(): List<Any> = ArrayList<Any>(operands).apply { add(op) }
     }
 
     class Scan(val ops: List<OpInfo>, val endCtm: Matrix)
@@ -203,6 +203,9 @@ internal object ImageEdit5 {
 
     private fun op(name: String) = Operator.getOperator(name)
 
+    /** Concatenate token lists (never `a + b`: with element type Any that can add [b] as one nested element). */
+    private fun cat(a: List<Any>, b: List<Any>): List<Any> = ArrayList<Any>(a.size + b.size).apply { addAll(a); addAll(b) }
+
     /** Clip path tokens for fractions [cr] of the local box [lb]. */
     private fun clipTokens(cr: FloatArray, lb: FloatArray, ellipse: Boolean): List<Any> {
         val x0 = lb[0] + cr[0] * (lb[2] - lb[0]); val y0 = lb[1] + cr[1] * (lb[3] - lb[1])
@@ -304,9 +307,10 @@ internal object ImageEdit5 {
                 else -> ownGs(res, alpha, blend)
             }
             var inner = g.inner
-            ch.fill?.let { c -> inner = inner.filter { opName(it) !in FILL_COLOR && opName(it) != "cs" } + listOf(rgb(c, "rg")) }
-            ch.stroke?.let { c -> inner = inner.filter { opName(it) !in STROKE_COLOR && opName(it) != "CS" } + listOf(rgb(c, "RG")) }
-            ch.lineWidth?.let { w -> inner = inner.filter { opName(it) != "w" } + listOf(listOf(COSFloat(w), op("w"))) }
+            // (explicit adds: `List<List<Any>> + listOf(x)` would resolve to plus(element) and nest the list)
+            ch.fill?.let { c -> inner = ArrayList(inner.filter { opName(it) !in FILL_COLOR && opName(it) != "cs" }).apply { add(rgb(c, "rg")) } }
+            ch.stroke?.let { c -> inner = ArrayList(inner.filter { opName(it) !in STROKE_COLOR && opName(it) != "CS" }).apply { add(rgb(c, "RG")) } }
+            ch.lineWidth?.let { w -> inner = ArrayList(inner.filter { opName(it) != "w" }).apply { add(listOf<Any>(COSFloat(w), op("w"))) } }
             val body: List<Any> = ch.newName?.let { listOf(it, op("Do")) } ?: bodyTokens(s.ops, g)
             for (i in g.start..g.end) rw.remove(i)
             rw.replace(g.start, groupTokens(m, inner, own, alpha, blend, crop, ellipse, o.localBox ?: floatArrayOf(0f, 0f, 1f, 1f), body))
@@ -377,14 +381,19 @@ internal object ImageEdit5 {
         val target = if (before) ops[at].ctm else ops.getOrNull(at + 1)?.ctm ?: s.endCtm
         val tokens = movedGroup(page, ops, g, target, null)
         for (i in g.start..g.end) rw.remove(i)
-        rw.replace(at, if (before) tokens + rw.original(at) else rw.original(at) + tokens)
+        rw.replace(at, if (before) cat(tokens, rw.original(at)) else cat(rw.original(at), tokens))
         rw.commit()
         return true
     }
 
     /** State in effect around the original (colours, line, ExtGState) followed by the group's own state ops. */
-    private fun fullInner(ops: List<OpInfo>, g: Group): List<List<Any>> =
-        ops[g.start].style + ops[g.start].gs.map { listOf(it, op("gs")) } + g.inner
+    private fun fullInner(ops: List<OpInfo>, g: Group): List<List<Any>> {
+        val l = ArrayList<List<Any>>()
+        l.addAll(ops[g.start].style)
+        ops[g.start].gs.forEach { l.add(listOf<Any>(it, op("gs"))) }
+        l.addAll(g.inner)
+        return l
+    }
 
     /** A copy of group [g] for insertion where the CTM is [target], moved by the display affine [display]. */
     private fun movedGroup(page: PDPage, ops: List<OpInfo>, g: Group, target: Matrix, display: FloatArray?): List<Any> {
@@ -403,7 +412,7 @@ internal object ImageEdit5 {
         val g = groupOf(s.ops, op)
         val target = s.ops.getOrNull(g.end + 1)?.ctm ?: s.endCtm
         val copy = movedGroup(page, s.ops, g, target, floatArrayOf(1f, 0f, 0f, 1f, dx, dy))
-        rw.replace(g.end, rw.original(g.end) + copy)
+        rw.replace(g.end, cat(rw.original(g.end), copy))
         rw.commit()
     }
 
@@ -417,7 +426,7 @@ internal object ImageEdit5 {
             return
         }
         val last = rw.operatorCount - 1
-        rw.replace(last, rw.original(last) + tokens)
+        rw.replace(last, cat(rw.original(last), tokens))
         rw.commit()
     }
 
@@ -503,7 +512,9 @@ internal object ImageEdit5 {
         val o = s.ops.getOrNull(op) ?: return null
         if (kindOf(page, o) != Kind.SHAPE) return null
         val g = groupOf(s.ops, op)
-        val tokens = (fullInner(s.ops, g).filter { opName(it) != "gs" && opName(it) != "cs" && opName(it) != "CS" && opName(it) != "scn" && opName(it) != "SCN" }.flatten()) + bodyTokens(s.ops, g)
+        val tokens = ArrayList<Any>()
+        fullInner(s.ops, g).filter { opName(it) != "gs" && opName(it) != "cs" && opName(it) != "CS" && opName(it) != "scn" && opName(it) != "SCN" }.forEach { tokens.addAll(it) }
+        tokens.addAll(bodyTokens(s.ops, g))
         val bo = ByteArrayOutputStream(); ContentStreamWriter(bo).writeTokens(tokens)
         val frame = PageFrame.of(page)
         val ub = o.userBox ?: return null
@@ -587,7 +598,9 @@ internal object ImageEdit5 {
             is COSArray -> (0 until f.size()).mapNotNull { (f.getObject(it) as? COSName)?.name }
             else -> emptyList()
         }
-        val cs = runCatching { img.colorSpace?.name }.getOrNull() ?: if (img.isStencil) "Stencil" else "?"
+        val cs = runCatching { img.colorSpace?.name }.getOrNull()
+            ?: (d?.getDictionaryObject(COSName.COLORSPACE, COSName.CS) as? COSName)?.name
+            ?: if (img.isStencil) "Stencil" else "?"
         return ImageInfo(
             name, inline, img.width, img.height, pw * cropW, ph * cropH,
             if (pw > 0f) img.width / (pw / 72f) else 0f, if (ph > 0f) img.height / (ph / 72f) else 0f,
