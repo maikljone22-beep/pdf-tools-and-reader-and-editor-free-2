@@ -12,7 +12,7 @@ import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDPage
 import com.tom_roush.pdfbox.pdmodel.PDPageContentStream
 import com.tom_roush.pdfbox.pdmodel.common.PDRectangle
-import com.tom_roush.pdfbox.pdmodel.font.PDType1Font
+import com.tom_roush.pdfbox.pdmodel.font.PDType0Font
 import com.tom_roush.pdfbox.text.PDFTextStripper
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -55,12 +55,17 @@ class NveShellTest {
         assertEquals(setOf("mid", "old"), RecoveryNames.expired(files, now, keep = 1).toSet())
     }
 
+    /** The bundled TTF (has Latin + Arabic): JVM tests must not touch the standard-14 fonts (PDType1Font static init fails). */
+    private val ttf = File("src/main/assets/fonts/NotoNaskhArabic-Regular.ttf")
+    private fun font(d: PDDocument) = PDType0Font.load(d, ttf)
+
     private fun sample(pages: Int): File {
         val f = tmp("src")
         PDDocument().use { d ->
+            val font = font(d)
             repeat(pages) { i ->
                 val p = PDPage(PDRectangle.A4); d.addPage(p)
-                PDPageContentStream(d, p).use { cs -> cs.beginText(); cs.setFont(PDType1Font.HELVETICA, 12f); cs.newLineAtOffset(50f, 700f); cs.showText("Page ${i + 1}"); cs.endText() }
+                PDPageContentStream(d, p).use { cs -> cs.beginText(); cs.setFont(font, 12f); cs.newLineAtOffset(50f, 700f); cs.showText("Page ${i + 1}"); cs.endText() }
             }
             d.save(f)
         }
@@ -165,7 +170,7 @@ class NveShellTest {
     @Test fun featureGuidesWritePages() {
         for (g in FeatureGuides.Guide.entries) {
             val out = tmp(g.name)
-            val n = FeatureGuides.write(g, out)
+            val n = FeatureGuides.write(g, out, arabic = { d -> font(d) }, latin = { d -> font(d) })
             PDDocument.load(out).use { d ->
                 assertEquals(n, d.numberOfPages)
                 when (g) {

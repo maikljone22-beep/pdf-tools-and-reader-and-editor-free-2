@@ -28,9 +28,11 @@ import java.util.Calendar
 object FeatureGuides {
     enum class Guide(val fileName: String) { EDIT("Guide - Edit text and images.pdf"), FORM("Guide - Fill and sign.pdf"), COMMENT("Guide - Comment and review.pdf"), ORGANIZE("Guide - Organize pages.pdf") }
 
-    private class Writer(val doc: PDDocument, val arabic: PDFont?) {
-        val latin: PDFont = PDType1Font.HELVETICA
-        val bold: PDFont = PDType1Font.HELVETICA_BOLD
+    private class Writer(val doc: PDDocument, val arabic: PDFont?, latinFont: PDFont?) {
+        // the standard-14 fonts are touched only when no font is provided (JVM tests pass an embedded TTF)
+        val latin: PDFont = latinFont ?: PDType1Font.HELVETICA
+        val bold: PDFont = latinFont ?: PDType1Font.HELVETICA_BOLD
+        val standardFonts = latinFont == null
 
         fun page(): Pair<PDPage, PDPageContentStream> {
             val p = PDPage(PDRectangle.A4); doc.addPage(p)
@@ -70,10 +72,13 @@ object FeatureGuides {
         }
     }
 
-    /** Write [guide] into [out]; returns the number of pages. [arabic] loads the Arabic font into the document. */
-    fun write(guide: Guide, out: File, arabic: ((PDDocument) -> PDFont?)? = null): Int {
+    /**
+     * Write [guide] into [out]; returns the number of pages. [arabic] loads the Arabic font into the document,
+     * [latin] the font of the Latin text (null = Helvetica / Helvetica-Bold).
+     */
+    fun write(guide: Guide, out: File, arabic: ((PDDocument) -> PDFont?)? = null, latin: ((PDDocument) -> PDFont?)? = null): Int {
         PDDocument().use { doc ->
-            val w = Writer(doc, arabic?.invoke(doc))
+            val w = Writer(doc, arabic?.invoke(doc), latin?.invoke(doc))
             doc.documentInformation.title = guide.fileName.removeSuffix(".pdf")
             doc.documentInformation.creator = "SmartDocs"
             doc.documentInformation.creationDate = Calendar.getInstance()
@@ -119,7 +124,7 @@ object FeatureGuides {
         val doc = w.doc
         val form = PDAcroForm(doc)
         doc.documentCatalog.acroForm = form
-        val dr = PDResources(); dr.put(COSName.getPDFName("Helv"), PDType1Font.HELVETICA); form.defaultResources = dr
+        val dr = PDResources(); dr.put(COSName.getPDFName("Helv"), w.latin); form.defaultResources = dr
         form.defaultAppearance = "/Helv 12 Tf 0 g"
         val name = PDTextField(form).apply { partialName = "name"; defaultAppearance = "/Helv 12 Tf 0 g" }
         val nw: PDAnnotationWidget = name.widgets[0]
@@ -130,7 +135,9 @@ object FeatureGuides {
         wd.rectangle = PDRectangle(140f, 414f, 16f, 16f); wd.page = pg
         pg.annotations.add(wd)
         form.fields = listOf(name, box)
-        runCatching { form.refreshAppearances() }
+        form.needAppearances = true
+        // field appearances are generated only with the standard fonts (the app); tests pass their own font
+        if (w.standardFonts) runCatching { form.refreshAppearances() }
     }
 
     private fun comment(w: Writer) {
