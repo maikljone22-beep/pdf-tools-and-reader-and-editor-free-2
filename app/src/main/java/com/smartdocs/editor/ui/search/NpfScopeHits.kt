@@ -61,7 +61,7 @@ fun NpfScopeHits(state: ReaderState) {
                 val start = ((r?.first ?: 0) - 40).coerceAtLeast(0)
                 val snippet = h.text.substring(start, ((r?.last ?: 0) + 80).coerceAtMost(h.text.length).coerceAtLeast(start))
                 ListItem(
-                    overlineContent = { Text(stringResource(kindLabel(h.kind))) },
+                    overlineContent = { Text(stringResource(npfKindLabel(h.kind))) },
                     headlineContent = { Text((if (start > 0) "…" else "") + snippet, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall) },
                     trailingContent = { if (h.page >= 0) Text((h.page + 1).toString(), style = MaterialTheme.typography.labelMedium) },
                     modifier = Modifier.clickable(enabled = h.page >= 0) { state.jumpTo(h.page) },
@@ -71,7 +71,7 @@ fun NpfScopeHits(state: ReaderState) {
     }
 }
 
-private fun kindLabel(k: PartKind): Int = when (k) {
+private fun npfKindLabel(k: PartKind): Int = when (k) {
     PartKind.COMMENTS -> R.string.npf_scope_comments
     PartKind.BOOKMARK -> R.string.npf_scope_bookmarks
     PartKind.FIELD -> R.string.npf_scope_fields

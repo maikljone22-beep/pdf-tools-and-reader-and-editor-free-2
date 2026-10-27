@@ -7,7 +7,6 @@ import com.tom_roush.pdfbox.cos.COSName
 import com.tom_roush.pdfbox.cos.COSObject
 import com.tom_roush.pdfbox.cos.COSString
 import com.tom_roush.pdfbox.pdmodel.PDDocument
-import com.tom_roush.pdfbox.pdmodel.PDDocumentNameDestinationDictionary
 import com.tom_roush.pdfbox.pdmodel.PDDocumentNameDictionary
 import com.tom_roush.pdfbox.pdmodel.interactive.documentnavigation.destination.PDPageDestination
 import com.tom_roush.pdfbox.pdmodel.interactive.documentnavigation.destination.PDPageXYZDestination
@@ -165,7 +164,7 @@ object NpfDocPanels {
         val cat = doc.documentCatalog
         cat.cosObject.removeItem(COSName.DESTS)      // the old-style dictionary is folded into the name tree
         val names = cat.names ?: PDDocumentNameDictionary(cat).also { cat.names = it }
-        val tree = PDDocumentNameDestinationDictionary(COSDictionary())
+        val tree = com.tom_roush.pdfbox.pdmodel.PDDestinationNameTreeNode()
         val map = LinkedHashMap<String, PDPageDestination>()
         all.toSortedMap().forEach { (n, p) ->
             if (p !in 0 until doc.numberOfPages) return@forEach
