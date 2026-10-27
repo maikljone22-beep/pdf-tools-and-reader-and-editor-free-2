@@ -125,7 +125,7 @@ private fun SignTab(nav: NavHostController, file: File?, identity: DigitalSignat
             runCatching {
                 PdfOps.loadRaw(f).use { d ->
                     sigFields = SigFields.list(d)
-                    formFields = d.documentCatalog.acroForm?.fieldTree?.filter { it !is PDNonTerminalField && it !is PDSignatureField }?.map { it.fullyQualifiedName }.orEmpty()
+                    formFields = d.documentCatalog.getAcroForm(null)?.fieldTree?.filter { it !is PDNonTerminalField && it !is PDSignatureField }?.map { it.fullyQualifiedName }.orEmpty()
                 }
             }
         }

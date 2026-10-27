@@ -62,7 +62,7 @@ object SigFields {
     fun list(file: File, password: String? = null): List<Field> = PdfOps.loadRaw(file, password).use { list(it) }
 
     fun list(doc: PDDocument): List<Field> {
-        val form = doc.documentCatalog.acroForm ?: return emptyList()
+        val form = doc.documentCatalog.getAcroForm(null) ?: return emptyList()
         return form.fieldTree.filterIsInstance<PDSignatureField>().map { f ->
             val w = f.widgets.firstOrNull()
             val r = w?.rectangle?.takeIf { it.width > 0f && it.height > 0f }
@@ -77,7 +77,7 @@ object SigFields {
 
     /** Fully qualified name of the field whose value is [sig], or null (signature not attached to a field). */
     fun fieldOf(doc: PDDocument, sig: PDSignature): String? =
-        doc.documentCatalog.acroForm?.fieldTree?.filterIsInstance<PDSignatureField>()?.firstOrNull { it.signature?.cosObject == sig.cosObject }?.fullyQualifiedName
+        doc.documentCatalog.getAcroForm(null)?.fieldTree?.filterIsInstance<PDSignatureField>()?.firstOrNull { it.signature?.cosObject == sig.cosObject }?.fullyQualifiedName
 
     /** Lock stored on the signature field whose value is [sig] (approval signature with FieldMDP), if any. */
     fun lockOf(doc: PDDocument, sig: PDSignature): Lock? {
@@ -160,7 +160,7 @@ object SigFields {
      */
     fun prepare(doc: PDDocument, sig: PDSignature, target: Target, lock: Lock?): Prepared {
         val catalog = doc.documentCatalog
-        val form = catalog.acroForm ?: PDAcroForm(doc).also { catalog.acroForm = it }
+        val form = catalog.getAcroForm(null) ?: PDAcroForm(doc).also { catalog.acroForm = it }
         val field: PDSignatureField
         val pageIndex: Int
         if (target.fieldName != null) {
@@ -278,7 +278,7 @@ object SigFields {
     fun clear(src: File, out: File, name: String, password: String? = null) {
         require(out.canonicalPath != src.canonicalPath) { "clear: out must differ from src" }
         PdfOps.loadRaw(src, password).use { d ->
-            val form = d.documentCatalog.acroForm ?: throw IllegalArgumentException("no form")
+            val form = d.documentCatalog.getAcroForm(null) ?: throw IllegalArgumentException("no form")
             val f = form.getField(name) as? PDSignatureField ?: throw IllegalArgumentException("no signature field $name")
             val sig = f.signature ?: throw IllegalStateException("field $name is not signed")
             val others = d.signatureDictionaries.filter { it.cosObject != sig.cosObject }

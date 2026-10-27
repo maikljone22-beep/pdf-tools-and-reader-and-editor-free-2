@@ -88,7 +88,7 @@ class SigFieldsTest {
     @Test fun fieldMdpLockMakesFieldsReadOnlyAndIsReported() {
         val out = sign(formPdf(), SigTarget(fieldName = "Approve"), SigFields.Lock(SigFields.LockAction.INCLUDE, listOf("amount"), docPermission = 2))
         PDDocument.load(out).use { d ->
-            val form = d.documentCatalog.acroForm
+            val form = d.documentCatalog.getAcroForm(null)
             assertTrue(form.getField("amount").isReadOnly)
             assertFalse(form.getField("name").isReadOnly)
         }
