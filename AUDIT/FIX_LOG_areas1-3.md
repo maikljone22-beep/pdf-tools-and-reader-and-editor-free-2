@@ -68,3 +68,17 @@ Needed outside scope: `ui/share5/StorageScreen.kt` should show `b.unsynced` on t
 | AN-05 | fixed | A save that wrote without a `before` snapshot (copy failed) removes the `annots` and `forms` memory steps, so undo cannot replay annotations already in the file. | reviewed (ReaderState is not JVM-constructible) |
 | AN-04 | fixed (the audit's "forbid" option) | While stored annotations are taken out for editing (`edit.hasBackup`), undo/redo/undoThrough of any **file** step is refused with "Save the annotations you are editing first". This prevents the duplicate and the stale save `before`. Memory steps still work. | `UndoGuardsTest.fileStepsBlockedOnlyDuringConversion`, `undoStepsTo/redoStepsTo` |
 | AN-35 | partly | New DocHistory-level tests. A full ReaderState+history integration test still needs Robolectric or an instrumented test. | — |
+
+## Stage 5 — reader parts (part B; non-reader parts are in pdf-3c's fix/audit-5-6)
+
+| ID | Status | Change | Test |
+|---|---|---|---|
+| RD-01 | fixed | `ReaderState.openError` (classified by `OpenError.of`: MISSING / PERMISSION / DAMAGED / OTHER) is never cleared by the snackbar. `OpenErrorView` shows a full-screen, localized error with Retry (`retryOpen`), "Open with another app" and Back, instead of the endless spinner. | `ReaderStage5Test.openErrorsAreClassified`; screen needs device test |
+| RD-05 | fixed | `TapZones.zone` uses the **screen viewport**: PageCanvas reports taps in root coordinates and PageView subtracts the viewport origin. In facing mode the spine is the centre, and there are no edge flips while zoomed in. | `tapZonesAreScreenEdges`; device test in facing mode |
+| RD-04 | fixed | `readerGestures` (`composed` + `rememberUpdatedState`) and PageCanvas's tap detector always call the newest callbacks after a view-mode or tool change. | **needs device test** (switch mode, pinch and pan) |
+| AN-06 | fixed | `PageGeometry` takes the page's `/Rotate` and crop-box origin (`PageUserFrame.read`, PdfBox page tree, loaded in the background on open and reopen; only non-trivial pages are stored). The user space → rendered page mapping matches `core/convert/PageFrame`. Annotations, selection, search hits and saved-annotation frames are now placed correctly on rotated and offset pages. | `userSpaceMapsOntoTheRenderedPageForEveryRotation` (0/90/180/270 + offset crop), `plainPagesKeepTheOldMapping`; check with another viewer on a device |
+| AN-13 | fixed | The eraser also removes **saved** Ink: rect pre-filter, then stroke hit test (`EraseLogic`), then one `StoredOps.removeOnly` write = **one undo step**. Tap and drag-end both run it. | `eraserHitsSavedStrokes`; device test |
+| RD-03 (reader part) | fixed | `open()` opens the PDF first. The marker scan only runs up front when PDFium asks for a password (protected connected copies). Otherwise it runs after the first render; a revoked protected copy still locks. The result is cached by pdf-3c's ConnMarker. | reviewed |
+| AN-28 hook | fixed | `SignedDocumentException` from a save → dialog (`signed_doc_*` strings) with "Save a copy". The annotations stay pending. The copy uses `AnnotationWriter.commit(fullSave = true)` (new flag in `saveChanged`), so a certified original is never touched. | reviewed |
+
+CI note: the first Stage 5 push failed to compile (`Modifier.composed` was called fully qualified). It was diagnosed from the GitHub job log and fixed in 553b018.
