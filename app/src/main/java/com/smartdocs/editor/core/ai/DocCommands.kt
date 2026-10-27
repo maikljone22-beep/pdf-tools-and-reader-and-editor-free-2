@@ -44,7 +44,12 @@ enum class DocCmd(val id: String, val confirm: Boolean) {
     CHANGE_PAGE_COLOR("change_page_color", true),
     SUMMARIZE_TO_NOTE("summarize_to_note", true),
     TRANSLATE_SELECTION("translate_selection", false),
-    CREATE_BLANK_PDF("create_blank_pdf", true);
+    CREATE_BLANK_PDF("create_blank_pdf", true),
+    // ai6 (B10 / AI-7): edit the document through chat
+    HIGHLIGHT_TEXT("highlight_text", true),
+    REDACT_PATTERN("redact_pattern", true),
+    REPLACE_TEXT("replace_text", true),
+    REWRITE_TEXT("rewrite_text", true);
 
     companion object {
         private val aliases = mapOf(
@@ -53,6 +58,7 @@ enum class DocCmd(val id: String, val confirm: Boolean) {
             "duplicate-page" to DUPLICATE_PAGE, "move-page" to MOVE_PAGE, "change-bg-color" to CHANGE_PAGE_COLOR,
             "flatten-pages" to FLATTEN, "redaction-pages" to REDACT_TEXT, "update-properties" to SET_PROPERTIES,
             "convert-to-file" to CONVERT, "create-blank-pdf" to CREATE_BLANK_PDF, "search" to SEARCH_TEXT,
+            "highlight" to HIGHLIGHT_TEXT, "replace" to REPLACE_TEXT, "rewrite" to REWRITE_TEXT, "rewrite_block" to REWRITE_TEXT, "redact" to REDACT_PATTERN,   // ai6
         )
         fun of(name: String): DocCmd? {
             val n = name.trim()
@@ -191,6 +197,19 @@ object DocTools {
                 mapOf("page" to ("integer" to "رقم الصفحة"), "summary" to ("string" to "الملخص بالعربية (اختياري، يُولَّد تلقائياً إن تُرك)"))))
             add(fn("translate_selection", "ترجمة النص المحدد حالياً في القارئ.", emptyList(), mapOf("target_language" to ("string" to "اللغة الهدف، الافتراضي العربية"))))
             add(fn("create_blank_pdf", "إنشاء ملف PDF فارغ جديد.", emptyList(), mapOf("pages" to ("integer" to "عدد الصفحات، الافتراضي 1"))))
+            // ai6 (B10 / AI-7): edit through chat
+            add(fn("highlight_text", "تظليل كل مواضع نص أو نمط (تعبير نمطي) في المستند بلون، مثل: ظلّل كل التواريخ بالأصفر.", listOf("query"),
+                mapOf("query" to ("string" to "النص المطلوب أو التعبير النمطي"), "regex" to ("boolean" to "true إن كان query تعبيراً نمطياً"),
+                    "color" to ("string" to "اللون"), "pages" to ("string" to PAGES)),
+                mapOf("color" to listOf("yellow", "green", "blue", "pink", "red", "orange", "purple"))))
+            add(fn("redact_pattern", "تنقيح (حجب نهائي) كل البيانات من نوع معيّن: بريد، هاتف، بطاقة، آيبان، هوية، جواز، تاريخ، رابط، أو تعبير نمطي مخصص.", listOf("kind"),
+                mapOf("kind" to ("string" to "نوع البيانات"), "regex" to ("string" to "تعبير نمطي عند kind=custom"), "pages" to ("string" to PAGES)),
+                mapOf("kind" to listOf("email", "phone", "card", "iban", "national_id", "passport", "date", "url", "ip", "all", "custom"))))
+            add(fn("replace_text", "استبدال كل مواضع نص بنص آخر داخل محتوى الصفحات (تحرير حقيقي)، مثل: استبدل اسم العميل بـ Brightfield.", listOf("find", "replace"),
+                mapOf("find" to ("string" to "النص الموجود"), "replace" to ("string" to "النص الجديد"), "match_case" to ("boolean" to "مطابقة حالة الأحرف"))))
+            add(fn("rewrite_text", "إعادة صياغة فقرة أو النص المحدد في المستند واستبداله (مثلاً: أعد كتابة هذه الفقرة بأسلوب رسمي). اترك original فارغاً لاستعمال النص المحدد.", listOf("instruction"),
+                mapOf("original" to ("string" to "النص الأصلي كما يظهر في المستند (اختياري)"), "instruction" to ("string" to "طريقة إعادة الصياغة"),
+                    "new_text" to ("string" to "النص الجديد إن كتبته بنفسك (اختياري)"))))
         }
     }
 

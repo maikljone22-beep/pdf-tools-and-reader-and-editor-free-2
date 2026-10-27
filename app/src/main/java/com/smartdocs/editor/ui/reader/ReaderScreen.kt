@@ -77,6 +77,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
     var menu by remember { mutableStateOf(false) }
     var showHistory by remember { mutableStateOf(false) }           // MODULE_history: unified undo / redo sheet
     val tts by ReadAloudController.status.collectAsState()
+    SideEffect { com.smartdocs.editor.core.voice.AiVoiceEngine.aiSwitchOn = settings.aiEnabled }   // ai6: AI switch off -> no AI voice in read aloud
     val tablet = LocalConfiguration.current.screenWidthDp > 700
 
     // ---- platform glue ----
@@ -142,7 +143,12 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
     }
     fun doStartReadAloud(fromChar: Int, page: Int) {
         if (state.pageCount == 0 || state.session == null) return
-        ReadAloudController.start(ctx, state.file?.name ?: "", page.coerceIn(0, state.pageCount - 1), state.pageCount, settings.ttsRate, settings.ttsPitch, { state.pageText(it) }, fromChar)
+        // ai6 (C1): column-aware reading order + form fields; "read from here" offsets mapped into that order
+        val p0 = page.coerceIn(0, state.pageCount - 1)
+        scope.launch {
+            val from = ReaderAi6.toReadingOffset(state, p0, fromChar)
+            ReadAloudController.start(ctx, state.file?.name ?: "", p0, state.pageCount, settings.ttsRate, settings.ttsPitch, { ReaderAi6.readingText(state, it) }, from)
+        }
     }
     // API 33+: ask for POST_NOTIFICATIONS first, start reading once the user answered (granted or not —
     // the foreground service is allowed either way, only the notification would be hidden).
@@ -264,7 +270,8 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                             onTranslate = { textTools = sel to com.smartdocs.editor.core.ai5.TextAction.TRANSLATE }, onAskAi = { textTools = sel to com.smartdocs.editor.core.ai5.TextAction.EXPLAIN },
                             onReadFrom = { s -> startReadAloud(s.start, s.page); state.selection = null },
                             onWebSearch = { ReaderIntents.webSearch(ctx, it) }, onShare = { ReaderIntents.shareText(ctx, it) },
-                            onRedact = { s -> com.smartdocs.editor.ui.search.ReaderRedact.markSelection(ctx, state, quick, s) })   // MODULE_search5b
+                            onRedact = { s -> com.smartdocs.editor.ui.search.ReaderRedact.markSelection(ctx, state, quick, s) },   // MODULE_search5b
+                            onRewrite = { s -> textTools = s to com.smartdocs.editor.core.ai5.TextAction.REWRITE })   // ai6 (B11)
                     }
                     if (state.session != null) BottomToolbar(state, actions)
                 }
@@ -357,11 +364,12 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
         )
     }
     if (showAi) state.file?.let { f -> com.smartdocs.editor.ui.ai5.DocAssistantSheet(agentHost, f, state.password, state.pageCount, { state.pageText(it) },
-        onCitation = { c -> showAi = false; if (c.filePath == f.absolutePath) state.jumpTo(c.page) else nav.navigate(com.smartdocs.editor.ui.ai5.citationRoute(c)) },
+        onCitation = { c -> showAi = false; if (c.filePath == f.absolutePath) ReaderAi6.highlightQuote(scope, state, c.page, c.quote) else nav.navigate(com.smartdocs.editor.ui.ai5.citationRoute(c)) },   // ai6 (B1): highlight the passage
         onDismiss = { showAi = false },
         initialQuestion = aiText?.let { "اشرح هذا النص:\n$it" },
-        onPodcast = { showAi = false; nav.navigate(Routes.tool("podcast", state.fileUri)) }) }
-    textTools?.let { (sel, act) -> com.smartdocs.editor.ui.ai5.TextToolsSheet(sel.text, act, docContext = null, onReplace = null,
+        onPodcast = { showAi = false; nav.navigate(Routes.tool("podcast", state.fileUri)) }, currentPage = state.currentPage) }   // ai6: snapshot page
+    textTools?.let { (sel, act) -> com.smartdocs.editor.ui.ai5.TextToolsSheet(sel.text, act, docContext = null,
+        onReplace = if (sel.rects.isNotEmpty() && state.session != null) ({ t: String -> ReaderAi6.replaceSelection(ctx, state, quick, sel, t) }) else null,   // ai6 (B11): replace in the document, undoable
         onAddNote = { t -> sel.rects.firstOrNull()?.let { r -> val top = maxOf(r.top, r.bottom)
             state.addAnnot(com.smartdocs.editor.core.pdf.Annot(kind = com.smartdocs.editor.core.pdf.AnnotKind.NOTE, page = sel.page,
                 rects = listOf(android.graphics.RectF(r.left, top, r.left + 20f, top - 20f)), text = t, author = state.authorName)) } },
@@ -376,6 +384,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
     if (showShare5) { var f by remember { mutableStateOf<java.io.File?>(null) }; LaunchedEffect(Unit) { f = outputFile() }
         f?.let { com.smartdocs.editor.ui.share5.Share5Sheet(it, if (it == state.file) state.password else null, state.currentPage, nav) { showShare5 = false } } }
     com.smartdocs.editor.ui.view5.View5ReaderHost(state, nav, snack, actions) { outputFile() }
+    ReaderAi6.ReadAloudHighlight(state)   // ai6 (C1): sentence highlight while reading aloud
 }
 
 /** Suffix of the token path handed to the AI chat for its undo (see agentHost). */

@@ -87,7 +87,8 @@ object OfficeCommandCatalog {
     fun prompt(k: OfficeKind): String = buildString {
         append("You turn a user's request about the open ")
         append(when (k) { OfficeKind.WORD -> "Word document"; OfficeKind.SHEET -> "spreadsheet"; OfficeKind.SLIDE -> "presentation"; else -> "document" })
-        append(" into app commands. Answer ONLY with a JSON array like [{\"id\":\"word.bold\",\"args\":{}}]. ")
+        val example = forKind(k).firstOrNull { it.kind == k }?.id ?: "undo"
+        append(" into app commands. Answer ONLY with a JSON array like [{\"id\":\"").append(example).append("\",\"args\":{}}]. ")
         append("Use only these ids (args in parentheses):\n")
         forKind(k).forEach { c -> append("- ").append(c.id); if (c.args.isNotEmpty()) append(" (").append(c.args.joinToString(", ")).append(")"); append(": ").append(c.help).append('\n') }
         append("Run them in order. Select before formatting a part. Answer [] when no command fits. The user may write in Arabic.")

@@ -5,6 +5,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -30,6 +31,7 @@ import java.io.File
 fun DocAssistantSheet(
     host: DocHost, file: File, password: String?, pageCount: Int, pageText: suspend (Int) -> String,
     onCitation: (Citation) -> Unit, onDismiss: () -> Unit, initialQuestion: String? = null, onPodcast: (() -> Unit)? = null,
+    currentPage: Int = 0,   // ai6: default page of the "page snapshot" attachment
 ) {
     val ctx = LocalContext.current
     val app = LocalApp.current
@@ -43,15 +45,24 @@ fun DocAssistantSheet(
     var voice by remember { mutableStateOf(false) }
     val hasAi = AiClient.available(settings)
     var asked by remember { mutableStateOf(false) }
+    var textCitation by remember { mutableStateOf<Citation?>(null) }
     LaunchedEffect(docs.ready) {
         if (!docs.ready || !hasAi) return@LaunchedEffect
         if (!initialQuestion.isNullOrBlank() && !asked) { asked = true; chat.send(initialQuestion) } else chat.loadStarters()
     }
-    ModalBottomSheet(onDismissRequest = { chat.stop(); onDismiss() }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+    // ai6 (§35 adjustable panel width): on wide screens the sheet width cycles narrow / medium / wide (remembered)
+    val wideScreen = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp > 700
+    val prefs = remember { ctx.getSharedPreferences("ai6_ui", android.content.Context.MODE_PRIVATE) }
+    var widthStep by remember { mutableStateOf(prefs.getInt("assistant_width", 1).coerceIn(0, 2)) }
+    val sheetWidth = if (wideScreen) listOf(480.dp, 640.dp, 960.dp)[widthStep] else BottomSheetDefaults.SheetMaxWidth
+    ModalBottomSheet(onDismissRequest = { chat.stop(); onDismiss() }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), sheetMaxWidth = sheetWidth) {
         Column(Modifier.fillMaxWidth().fillMaxHeight(0.92f)) {
             Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.AutoAwesome, null, tint = MaterialTheme.colorScheme.primary); Spacer(Modifier.width(8.dp))
                 Text(stringResource(R.string.a5_hub_title), style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                if (wideScreen) IconButton(onClick = { widthStep = (widthStep + 1) % 3; prefs.edit().putInt("assistant_width", widthStep).apply() }) {
+                    Icon(Icons.Default.SwapHoriz, stringResource(R.string.ai6h_panel_width))
+                }
                 if (tab == 0) IconButton(onClick = { history = true }) { Icon(Icons.Default.History, stringResource(R.string.a5_history)) }
                 if (onPodcast != null) IconButton(onClick = onPodcast) { Icon(Icons.Default.Headphones, stringResource(R.string.a5_podcast)) }
             }
@@ -62,14 +73,18 @@ fun DocAssistantSheet(
             if (!hasAi) Text(stringResource(R.string.a5_no_ai), Modifier.padding(16.dp), color = MaterialTheme.colorScheme.error)
             if (tab == 0) {
                 if (docs.loading) LinearProgressIndicator(progress = { docs.progress }, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp))
-                CitedMessageList(chat, onCitation, onShare = { shareText(ctx, it) },
-                    onExportPdf = { t -> scope.launch { exportPdfAndShare(ctx, app.documents, file.name, t) } }, modifier = Modifier.weight(1f).fillMaxWidth())
-                CitedChatInput(enabled = hasAi && docs.ready, busy = chat.busy, onSend = { chat.send(it) }, onStop = { chat.stop() }, onVoiceChat = { voice = true })
+                CitedMessageList(chat, { c -> if (isTextSource(c.filePath)) textCitation = c else onCitation(c) }, onShare = { shareText(ctx, it) },
+                    onExportPdf = { t -> scope.launch { exportPdfAndShare(ctx, app.documents, file.name, t) } }, modifier = Modifier.weight(1f).fillMaxWidth(),
+                    onExportDocx = { t -> scope.launch { exportDocxAndShare(ctx, app.documents, file.name, t) } })   // ai6 (AI-15)
+                // ai6: images / page snapshot (AI-10), skills (AI-6 / AI-11), web search (AI-14)
+                com.smartdocs.editor.ui.ai6.HubChatInput(chat, enabled = hasAi && docs.ready, onVoiceChat = { voice = true },
+                    snapshotFile = file, snapshotPassword = password, snapshotPages = pageCount, currentPage = currentPage)
             } else {
                 com.smartdocs.editor.ui.ai.DocAgentPanel(host, Modifier.weight(1f).fillMaxWidth(), null, null)
             }
         }
     }
-    if (history) ChatHistorySheet(chat) { history = false }
+    if (history) ChatHistorySheet(chat, onExportChat = { t -> scope.launch { exportDocxAndShare(ctx, app.documents, file.name, t) } }) { history = false }
+    textCitation?.let { c -> com.smartdocs.editor.ui.ai6.TextSourceDialog(c) { textCitation = null } }
     if (voice) VoiceChatDialog(busy = chat.busy, onAsk = { chat.send(it) }, latestAnswer = { chat.lastAnswer()?.answer?.text ?: chat.lastAnswer()?.text }, onDismiss = { voice = false })
 }
