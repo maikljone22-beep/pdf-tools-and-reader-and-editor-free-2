@@ -39,6 +39,7 @@ object WebPdfWriter {
         webView.settings.loadWithOverviewMode = true
         webView.settings.useWideViewPort = true
         webView.settings.domStorageEnabled = true
+        webView.settings.blockNetworkLoads = !com.smartdocs.editor.core.data.NpfNet.allowed()   // nav-prefs: offline mode
         webView.layout(0, 0, 1240, 1754)
         var finished = false
         var done = false

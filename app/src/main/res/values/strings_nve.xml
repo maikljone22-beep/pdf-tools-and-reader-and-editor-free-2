@@ -65,6 +65,7 @@
     <string name="nv_marquee_out">تصغير منطقة</string>
     <string name="nv_marquee_out_hint">اسحب مستطيلًا للتصغير (نقرة: ½×)</string>
     <string name="nv_marquee_toggle">تبديل التكبير / التصغير</string>
+    <string name="nv_more_tools">المزيد: تحرير، إعادة تسمية، شجرة البنية، محرر المقالات</string>
     <string name="nv_next_pane">اللوحة التالية</string>
     <string name="nv_open">فتح</string>
     <string name="nv_page_layout">تخطيط الصفحات</string>

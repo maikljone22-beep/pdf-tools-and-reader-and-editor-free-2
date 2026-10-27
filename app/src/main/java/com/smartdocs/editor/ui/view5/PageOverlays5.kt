@@ -49,8 +49,8 @@ fun View5PageOverlays(s: ReaderState) {
         val pageW = s.pageSizes[s.currentPage]?.first ?: 595f
         val pxPerPt = ((wPx - gap * 2) / pageW * s.zoom).coerceAtLeast(0.01f)
 
-        // NVE: page-anchored grid / rulers with units, colour, subdivisions, offsets, guides (replaces GridAndRulers)
-        if (v.grid || v.rulers) com.smartdocs.editor.ui.nve.NveGridRulers(s, v.grid, v.rulers)
+        if (v.grid || v.rulers) GridAndRulers(v, pxPerPt, wPx, hPx)
+        NpfGuidesOverlay()   // nav-prefs: draggable guides
         if (v.readingRuler) ReadingRuler(v, hPx)
         if (v.lens) LensOverlay(v)
         if (v.autoScroll) AutoScrollBar(v, Modifier.align(Alignment.BottomCenter).padding(bottom = 56.dp))
@@ -62,35 +62,43 @@ fun View5PageOverlays(s: ReaderState) {
 @Composable
 private fun GridAndRulers(v: V5State, pxPerPt: Float, w: Float, h: Float) {
     val mmPx = pxPerPt * 72f / 25.4f
+    // nav-prefs: grid colour, offsets and subdivisions; rulers in inches when the default units are inches / points
+    val gridRgb = com.smartdocs.editor.core.data.NpfPrefs.gridColor
+    val sub = com.smartdocs.editor.core.data.NpfPrefs.gridSubdivisions.coerceIn(1, 20)
+    val offX = com.smartdocs.editor.core.data.NpfPrefs.gridOffsetXmm * mmPx; val offY = com.smartdocs.editor.core.data.NpfPrefs.gridOffsetYmm * mmPx
+    val inches = com.smartdocs.editor.core.data.NpfPrefs.units == "in" || com.smartdocs.editor.core.data.NpfPrefs.units == "pt"
     val label = remember { android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { textSize = 22f; color = 0xFF37474F.toInt() } }
     Canvas(Modifier.fillMaxSize()) {
         if (v.grid) {
             val step = (v.gridMm * mmPx).coerceAtLeast(6f)
-            var x = 0f; var i = 0
-            while (x < w) { drawLine(Color(if (i % 5 == 0) 0x552196F3 else 0x302196F3), Offset(x, 0f), Offset(x, h), if (i % 5 == 0) 1.5f else 1f); x += step; i++ }
-            var y = 0f; i = 0
-            while (y < h) { drawLine(Color(if (i % 5 == 0) 0x552196F3 else 0x302196F3), Offset(0f, y), Offset(w, y), if (i % 5 == 0) 1.5f else 1f); y += step; i++ }
+            val major = Color(0x55000000 or gridRgb); val minor = Color(0x30000000 or gridRgb)
+            var x = offX % step; var i = 0
+            while (x < w) { drawLine(if (i % sub == 0) major else minor, Offset(x, 0f), Offset(x, h), if (i % sub == 0) 1.5f else 1f); x += step; i++ }
+            var y = offY % step; i = 0
+            while (y < h) { drawLine(if (i % sub == 0) major else minor, Offset(0f, y), Offset(w, y), if (i % sub == 0) 1.5f else 1f); y += step; i++ }
         }
         if (v.rulers) {
             val band = 28f
             drawRect(Color(0xE6FFFDE7), Offset.Zero, Size(w, band))
             drawRect(Color(0xE6FFFDE7), Offset.Zero, Size(band, h))
-            // mm ticks, cm labels
+            // mm ticks with cm labels, or 1/8 in ticks with inch labels (nav-prefs: default units)
+            val tick = if (inches) pxPerPt * 9f else mmPx
+            val per = if (inches) 8 else 10; val half = per / 2
             var k = 0
-            while (k * mmPx < w) {
-                val x = k * mmPx; val len = if (k % 10 == 0) band else if (k % 5 == 0) band * 0.6f else band * 0.35f
-                if (mmPx >= 2.5f || k % 5 == 0) drawLine(Color(0xFF455A64), Offset(x, 0f), Offset(x, len), 1f)
-                if (k % 10 == 0 && k > 0) drawContext.canvas.nativeCanvas.drawText((k / 10).toString(), x + 3f, band - 4f, label)
+            while (k * tick < w) {
+                val x = k * tick; val len = if (k % per == 0) band else if (k % half == 0) band * 0.6f else band * 0.35f
+                if (tick >= 2.5f || k % half == 0) drawLine(Color(0xFF455A64), Offset(x, 0f), Offset(x, len), 1f)
+                if (k % per == 0 && k > 0) drawContext.canvas.nativeCanvas.drawText((k / per).toString(), x + 3f, band - 4f, label)
                 k++
             }
             k = 0
-            while (k * mmPx < h) {
-                val y = k * mmPx; val len = if (k % 10 == 0) band else if (k % 5 == 0) band * 0.6f else band * 0.35f
-                if (mmPx >= 2.5f || k % 5 == 0) drawLine(Color(0xFF455A64), Offset(0f, y), Offset(len, y), 1f)
-                if (k % 10 == 0 && k > 0) drawContext.canvas.nativeCanvas.drawText((k / 10).toString(), 3f, y - 3f, label)
+            while (k * tick < h) {
+                val y = k * tick; val len = if (k % per == 0) band else if (k % half == 0) band * 0.6f else band * 0.35f
+                if (tick >= 2.5f || k % half == 0) drawLine(Color(0xFF455A64), Offset(0f, y), Offset(len, y), 1f)
+                if (k % per == 0 && k > 0) drawContext.canvas.nativeCanvas.drawText((k / per).toString(), 3f, y - 3f, label)
                 k++
             }
-            drawContext.canvas.nativeCanvas.drawText("cm", 2f, band - 4f, label)
+            drawContext.canvas.nativeCanvas.drawText(if (inches) "in" else "cm", 2f, band - 4f, label)
         }
     }
 }

@@ -81,7 +81,6 @@ fun WorkbenchCanvas(m: WorkbenchModel, bitmap: Bitmap?, view: WbView, snapTo: (P
             val top = view.pageH - p.y
             p = P(Math.round(p.x / step) * step, view.pageH - Math.round(top / step) * step)
         }
-        p = com.smartdocs.editor.ui.nve.NveGridSnap.snapP(m.v.s, p, m.page)   // NVE: snap to grid / guides
         if (m.v.ortho && m.pts.isNotEmpty() && (m.tool == WTool.DISTANCE || m.tool == WTool.PERIMETER || m.tool == WTool.AREA || m.tool == WTool.LINE || m.calibrating)) p = Geom.constrain45(m.pts.last(), p)
         return p
     }

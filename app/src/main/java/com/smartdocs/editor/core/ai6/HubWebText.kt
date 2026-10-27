@@ -19,7 +19,7 @@ object WebText {
     const val MAX_CHARS = 400_000
 
     private val http: OkHttpClient by lazy {
-        OkHttpClient.Builder().connectTimeout(20, TimeUnit.SECONDS).readTimeout(40, TimeUnit.SECONDS).followRedirects(true).build()
+        OkHttpClient.Builder().addInterceptor(com.smartdocs.editor.core.data.NpfNet.interceptor).connectTimeout(20, TimeUnit.SECONDS).readTimeout(40, TimeUnit.SECONDS).followRedirects(true).build()
     }
 
     private val DROP = Regex("(?is)<(script|style|noscript|template|svg|nav|header|footer|form|aside|iframe|head)\\b[^>]*>.*?</\\1\\s*>")

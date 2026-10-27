@@ -71,6 +71,8 @@ object FontMap {
     fun family(raw: String?, serif: Boolean = false, monospace: Boolean = false): String {
         val name = raw?.trim().orEmpty()
         if (name.isNotEmpty()) {
+            // nav-prefs: the user's font mapping (Settings → more preferences → font mapping) wins
+            com.smartdocs.editor.core.data.NpfText.userFontMap().let { m -> m[com.smartdocs.editor.core.data.NpfText.fontKey(name)] ?: m[com.smartdocs.editor.core.data.NpfText.fontKey(baseName(name))] }?.let { return it }
             val k = key(name.substringAfter('+'))
             KNOWN.firstOrNull { k.startsWith(it.first) }?.let { return it.second }
             KNOWN.firstOrNull { it.first.length >= 5 && k.contains(it.first) }?.let { return it.second }

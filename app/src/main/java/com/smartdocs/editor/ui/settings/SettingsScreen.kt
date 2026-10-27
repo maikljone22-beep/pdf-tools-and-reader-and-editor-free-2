@@ -56,7 +56,6 @@ fun SettingsScreen(nav: NavHostController) {
         val nveScroll = rememberScrollState()   // NVE-shell: settings search scrolls to a card
         val nveAnchors = remember { androidx.compose.runtime.mutableStateMapOf<String, Float>() }
         Column(Modifier.padding(pad).verticalScroll(nveScroll).padding(bottom = 32.dp)) {
-            com.smartdocs.editor.ui.nve.shell.NveSettingsSearch(nveScroll, nveAnchors)   // NVE-shell
             // ---- General ----
             GroupCard(stringResource(R.string.ds_set_general), Modifier.nveSettingsAnchor(nveAnchors, "general")) {
                 SwitchRow(stringResource(R.string.settings_autosave), s.autoSave, icon = Icons.Default.Save, tile = tiles.blue) { v -> upd { it.copy(autoSave = v) } }
@@ -107,6 +106,9 @@ fun SettingsScreen(nav: NavHostController) {
                 SwitchRow(stringResource(R.string.settings_pressure), s.pressureSensitivity, icon = Icons.Default.Gesture) { v -> upd { it.copy(pressureSensitivity = v) } }
             }
             FormRunSettings()      // forms: auto-calculate, autocomplete, highlight colours, fillable banner
+
+            // ---- More preferences (nav-prefs): retain markup tools, offline mode, and the full preferences screen ----
+            NpfSettingsCard(nav)
 
             // ---- Read aloud ----
             GroupCard(stringResource(R.string.settings_tts), Modifier.nveSettingsAnchor(nveAnchors, "tts")) {

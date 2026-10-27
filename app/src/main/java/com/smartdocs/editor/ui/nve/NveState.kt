@@ -73,7 +73,10 @@ class NveState private constructor(val s: ReaderState) {
     var scrollLock by mutableIntStateOf(0)
 
     // ---- rulers / grid / guides ----
-    var unit by mutableStateOf(NveUnit.entries.getOrElse(prefs.getInt("unit", 0)) { NveUnit.MM })
+    /** Units of rulers / coordinates: main's nav-prefs default units (NpfPrefs.units), the single source. */
+    var unit: NveUnit
+        get() = when (com.smartdocs.editor.core.data.NpfPrefs.units) { "mm" -> NveUnit.MM; "in" -> NveUnit.IN; "pt" -> NveUnit.PT; else -> NveUnit.CM }
+        set(u) { com.smartdocs.editor.core.data.NpfPrefs.setString(com.smartdocs.editor.core.data.NpfPrefs.K.UNITS, when (u) { NveUnit.MM -> "mm"; NveUnit.IN -> "in"; NveUnit.PT -> "pt"; else -> "cm" }) }
     var gridColor by mutableIntStateOf(prefs.getInt("grid_c", 0x2196F3))
     var gridSubdiv by mutableIntStateOf(prefs.getInt("grid_sub", 5))
     var gridOffX by mutableFloatStateOf(prefs.getFloat("grid_ox", 0f))
@@ -107,7 +110,7 @@ class NveState private constructor(val s: ReaderState) {
 
     fun saveView() {
         prefs.edit().putBoolean("cont_facing", continuousFacing).putBoolean("cont_cover", continuousCover).putBoolean("reverse", reverseView)
-            .putInt("unit", unit.ordinal).putInt("grid_c", gridColor).putInt("grid_sub", gridSubdiv).putFloat("grid_ox", gridOffX).putFloat("grid_oy", gridOffY)
+            .putInt("grid_c", gridColor).putInt("grid_sub", gridSubdiv).putFloat("grid_ox", gridOffX).putFloat("grid_oy", gridOffY)
             .putBoolean("grid_page", gridPageAnchored).putBoolean("snap_grid", snapToGrid).putBoolean("ruler_v", rulerVertical).putBoolean("ruler_h", rulerHorizontal)
             .putFloat("ruler_o", rulerOpacity).putBoolean("guides", guidesOn).putInt("lens_w", lensW).putInt("lens_h", lensH)
             .putString("guides_x", guidesX.joinToString(",")).putString("guides_y", guidesY.joinToString(",")).apply()

@@ -119,11 +119,10 @@ fun PageCanvas(
     val placement = state.placement?.takeIf { it.page == page }
     val measure = state.measure?.takeIf { it.page == page }
     val hits = state.searchHits
-    // NVE: search hit colour / opacity (find bar settings)
-    val nveHitAlpha = remember(hits) { com.smartdocs.editor.ui.nve.search.NveHitStyle.alpha(state.context) }
-    val nveHit = remember(hits) { Color(0xFF000000 or com.smartdocs.editor.ui.nve.search.NveHitStyle.color(state.context).toLong()).copy(alpha = nveHitAlpha) }
-    val nveHitCur = remember(hits) { Color(0xFF000000 or com.smartdocs.editor.ui.nve.search.NveHitStyle.currentColor(state.context).toLong()).copy(alpha = (nveHitAlpha + 0.2f).coerceAtMost(1f)) }
     val hitIndex = state.searchIndex
+    // nav-prefs: search hit colours and the accessibility colour override (Settings → more preferences)
+    val hitColor = Color(com.smartdocs.editor.core.data.NpfPrefs.hitColor); val hitCurColor = Color(com.smartdocs.editor.core.data.NpfPrefs.hitCurrentColor)
+    val a11yFilter = NpfReader.pageFilter(night)
     val pageColor = state.pageColor
     val pressure = settings.pressureSensitivity
     val highlightLinks = settings.highlightLinks
@@ -261,15 +260,15 @@ fun PageCanvas(
             val bw = g.bitmapW; val bh = g.bitmapH
             val b = base
             if (b == null) drawRect(if (night) Color(0xFF202020) else Color.White, Offset.Zero, Size(bw, bh))
-            else drawImage(b.asImageBitmap(), dstSize = IntSize(bw.roundToInt(), bh.roundToInt()))
+            else drawImage(b.asImageBitmap(), dstSize = IntSize(bw.roundToInt(), bh.roundToInt()), colorFilter = a11yFilter)
             tile?.let { (clip, t) ->
                 drawImage(t.asImageBitmap(), dstOffset = IntOffset((clip.left * bw).roundToInt(), (clip.top * bh).roundToInt()),
-                    dstSize = IntSize((clip.width * bw).roundToInt().coerceAtLeast(1), (clip.height * bh).roundToInt().coerceAtLeast(1)))
+                    dstSize = IntSize((clip.width * bw).roundToInt().coerceAtLeast(1), (clip.height * bh).roundToInt().coerceAtLeast(1)), colorFilter = a11yFilter)
             }
             // page colour preset: white -> background, black -> matching text colour (view module)
-            if (!night) with(com.smartdocs.editor.ui.reader.view.PageTintDraw) { drawPageTint(pageColor, bw, bh) }
+            if (!night && a11yFilter == null) with(com.smartdocs.editor.ui.reader.view.PageTintDraw) { drawPageTint(pageColor, bw, bh) }
             if (highlightLinks) links.forEach { l -> val r = g.pdfRectToScreen(l.bounds); drawRect(Color(0x332196F3), r.topLeft, r.size) }
-            hits.forEachIndexed { i, h -> if (h.page == page) drawPdfRects(h.rects, g, if (i == hitIndex) nveHitCur else nveHit, multiply = true) }   // NVE: hit colours from settings
+            hits.forEachIndexed { i, h -> if (h.page == page) drawPdfRects(h.rects, g, if (i == hitIndex) hitCurColor else hitColor, multiply = true) }
             ReaderAi6.ttsHighlight.value?.let { (p, rs) -> if (p == page) drawPdfRects(rs, g, Color(0x5542A5F5), multiply = true) }   // ai6 (C1): sentence read aloud
             val frameDrag = draft.active && draft.annotFrame != null
             if (showAnnots) annots.forEach { a -> if (a.page == page && !(frameDrag && a.id == pendingEditId)) drawAnnot(a, g) }

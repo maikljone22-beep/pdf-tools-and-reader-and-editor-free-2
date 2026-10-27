@@ -65,6 +65,7 @@
     <string name="nv_marquee_out">Marquee zoom out</string>
     <string name="nv_marquee_out_hint">Drag a rectangle to zoom out (tap: ½×)</string>
     <string name="nv_marquee_toggle">Switch zoom in / out</string>
+    <string name="nv_more_tools">More: edit, rename, structure tree, article editor</string>
     <string name="nv_next_pane">Next pane</string>
     <string name="nv_open">Open</string>
     <string name="nv_page_layout">Page layout</string>

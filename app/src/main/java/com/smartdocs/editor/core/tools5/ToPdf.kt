@@ -53,6 +53,7 @@ object ToPdf {
     }
 
     suspend fun url(ctx: Context, url: String, out: File): File {
+        com.smartdocs.editor.core.data.NpfNet.check()   // nav-prefs: offline mode
         var u = url.trim(); if (!u.startsWith("http://", true) && !u.startsWith("https://", true)) u = "https://$u"
         withContext(Dispatchers.Main) { WebPdfWriter.convertUrl(ctx, u, out) }
         if (!out.exists() || out.length() == 0L) throw IllegalStateException("empty PDF")

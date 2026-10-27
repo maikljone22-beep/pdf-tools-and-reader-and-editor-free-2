@@ -58,7 +58,9 @@ fun HomeScreen(nav: NavHostController) {
     val app = LocalApp.current
     val ctx = LocalContext.current
     val settings = LocalSettings.current
-    val recents by app.db.docs().recents().collectAsStateWithLifecycle(initialValue = emptyList())
+    val recentsAll by app.db.docs().recents().collectAsStateWithLifecycle(initialValue = emptyList())
+    val recentLimit = com.smartdocs.editor.core.data.NpfPrefs.recentLimit   // nav-prefs (PREF-9): recent list size
+    val recents = if (recentLimit > 0) recentsAll.take(recentLimit) else recentsAll
     val favorites by app.db.docs().favorites().collectAsStateWithLifecycle(initialValue = emptyList())
     val tags by app.db.tags().tags().collectAsStateWithLifecycle(initialValue = emptyList())
     var selectedTag by rememberSaveable { mutableStateOf<Long?>(null) }
@@ -121,7 +123,7 @@ fun HomeScreen(nav: NavHostController) {
                     if (hits.isEmpty()) item(key = "search_empty") { EmptyIllustration(R.drawable.ds_empty_search, stringResource(R.string.ds_no_results)) }
                     items(hits, key = { "s" + it.uri }) { d -> DocRow(d, onOpen = { showDoc(d) }, onMenu = { menuDoc = d }, modifier = Modifier.animateItem()) }
                     item(key = "search_files") {
-                        GoRow(stringResource(R.string.ds_search_all_files), Icons.Default.ManageSearch) { goTab(Routes.FILES) }
+                        GoRow(stringResource(R.string.ds_search_all_files), Icons.Default.ManageSearch) { nav.navigate(Routes.tool("search_all", "q:$q")) }   // nav-prefs: full-text search of every file
                     }
                     return@LazyColumn
                 }

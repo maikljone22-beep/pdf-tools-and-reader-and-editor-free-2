@@ -362,7 +362,7 @@ fun PropertyBar(state: ReaderState) {
                 FilterChip(selected = state.opacity == o, onClick = { state.opacity = o }, label = { Text("${(o * 100).toInt()}%") }, modifier = Modifier.height(30.dp))
             }
             VerticalDivider(Modifier.height(24.dp))
-            FilterChip(selected = state.continueCreating, onClick = { state.continueCreating = !state.continueCreating },
+            FilterChip(selected = state.continueCreating, onClick = { state.continueCreating = !state.continueCreating; com.smartdocs.editor.core.data.NpfPrefs.setBool(com.smartdocs.editor.core.data.NpfPrefs.K.RETAIN_TOOLS, state.continueCreating) },
                 label = { Text(stringResource(R.string.rd_continue_creating)) }, leadingIcon = { Icon(Icons.Default.Repeat, null, Modifier.size(16.dp)) }, modifier = Modifier.height(30.dp))
         }
         if (showMore) {

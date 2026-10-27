@@ -110,10 +110,6 @@ fun NveViewChips(s: ReaderState) {
     ToolChip(Icons.Default.ContentPaste, stringResource(R.string.nv_paste)) { n.open(NveSurface.PASTE) }
     ToolChip(Icons.Default.SelectAll, stringResource(R.string.nv_select_all)) { s.scope.launchSelectAll(s) }
     ToolChip(Icons.Default.VerifiedUser, stringResource(R.string.nv_pane_signatures)) { n.pane = NvePane.SIGNATURES }
-    ToolChip(Icons.Default.AccountTree, stringResource(R.string.nv_pane_tags)) { n.pane = NvePane.TAGS }
-    ToolChip(Icons.Default.Checklist, stringResource(R.string.nv_pane_fields)) { n.pane = NvePane.FIELDS }
-    ToolChip(Icons.Default.Place, stringResource(R.string.nv_pane_destinations)) { n.pane = NvePane.DESTINATIONS }
-    ToolChip(Icons.Default.Article, stringResource(R.string.nv_pane_articles)) { n.pane = NvePane.ARTICLES }
     ToolChip(Icons.Default.Spellcheck, stringResource(R.string.nv_spell_doc)) { n.open(NveSurface.SPELL_DOC) }
     ToolChip(Icons.Default.DashboardCustomize, stringResource(R.string.nv_customize_toolbar)) { n.open(NveSurface.TOOLBAR_CUSTOMIZE) }
 }
@@ -194,9 +190,9 @@ object NveCommands {
             V5Command("nv_customize", R.string.nv_customize_toolbar, Icons.Default.DashboardCustomize, "customize toolbar tabs تخصيص شريط الأدوات") { n.open(NveSurface.TOOLBAR_CUSTOMIZE) },
             V5Command("nv_attachments", R.string.nv_pane_attachments, Icons.Default.AttachFile, "attachments مرفقات") { a.panels(com.smartdocs.editor.ui.reader.ReaderPanel.ATTACHMENTS) },   // main's attachments panel (pdf-3c)
             V5Command("nv_signatures", R.string.nv_pane_signatures, Icons.Default.VerifiedUser, "signatures validate التواقيع تحقق") { n.pane = NvePane.SIGNATURES },
-            V5Command("nv_tags", R.string.nv_pane_tags, Icons.Default.AccountTree, "tags structure accessibility وسوم بنية") { n.pane = NvePane.TAGS },
-            V5Command("nv_fields", R.string.nv_pane_fields, Icons.Default.Checklist, "form fields حقول") { n.pane = NvePane.FIELDS },
-            V5Command("nv_dests", R.string.nv_pane_destinations, Icons.Default.Place, "named destinations وجهات") { n.pane = NvePane.DESTINATIONS },
+            V5Command("nv_tags", R.string.nv_pane_tags, Icons.Default.AccountTree, "tags structure accessibility وسوم بنية") { a.panels(com.smartdocs.editor.ui.reader.ReaderPanel.INFO) },
+            V5Command("nv_fields", R.string.nv_pane_fields, Icons.Default.Checklist, "form fields حقول") { a.panels(com.smartdocs.editor.ui.reader.ReaderPanel.INFO) },
+            V5Command("nv_dests", R.string.nv_pane_destinations, Icons.Default.Place, "named destinations وجهات") { a.panels(com.smartdocs.editor.ui.reader.ReaderPanel.INFO) },
             V5Command("nv_articles", R.string.nv_pane_articles, Icons.Default.Article, "articles threads مقالات") { n.pane = NvePane.ARTICLES },
             V5Command("nv_reset_pins", R.string.nv_reset_pins, Icons.Default.PushPin, "reset pinned commands quick access إعادة تعيين المثبتة") {
                 e.v.prefs.edit().putString("pins", "").apply(); e.v.pinsVersion++
@@ -256,4 +252,15 @@ fun NveQuadSplit(s: ReaderState) {
             }
         }
     }
+}
+
+/**
+ * Hook at the end of main's INFO panels (ui/reader/NpfPanels.kt): the NVE editors that do more than main's list —
+ * rename / sort named destinations, the expandable structure tree with alt / actual text, the article editor
+ * (define boxes, properties, read, modify). One panel per feature: these open from main's panel only.
+ */
+@Composable
+fun NveMoreFor(s: ReaderState, panel: String) {
+    val pane = when (panel) { "DESTS" -> NvePane.DESTINATIONS; "TAGS" -> NvePane.TAGS; "ARTICLES" -> NvePane.ARTICLES; else -> return }
+    TextButton(onClick = { NveState.of(s).pane = pane }) { Text(stringResource(R.string.nv_more_tools)) }
 }

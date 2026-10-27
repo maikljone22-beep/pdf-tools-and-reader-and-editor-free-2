@@ -46,18 +46,24 @@ fun NveShellSettingsRows() {
     val scope = rememberCoroutineScope()
     var toolbar by remember { mutableStateOf(false) }
     var renameTab by remember { mutableStateOf(false) }
-    fun setAccent(v: Long) = scope.launch { app.settings.update { it.copy(accentColor = v) } }
+    // the colour lives in main's NpfPrefs (nav-prefs); AppSettings.accentColor only flags dynamic colour
+    @Suppress("UNUSED_VARIABLE") val npfVer = com.smartdocs.editor.core.data.NpfPrefs.version.intValue
+    val current: Long = if (s.accentColor == AccentColors.DYNAMIC) AccentColors.DYNAMIC else com.smartdocs.editor.core.data.NpfPrefs.accent.toLong()
+    fun setAccent(v: Long) {
+        com.smartdocs.editor.core.data.NpfPrefs.setInt(com.smartdocs.editor.core.data.NpfPrefs.K.ACCENT, if (v == AccentColors.DYNAMIC) 0 else (v and 0xFFFFFF).toInt())
+        scope.launch { app.settings.update { it.copy(accentColor = if (v == AccentColors.DYNAMIC) AccentColors.DYNAMIC else 0L) } }
+    }
 
     GroupDivider()
     GroupRow(stringResource(R.string.nl_accent), stringResource(R.string.nl_accent_sub), icon = Icons.Default.ColorLens)
     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        NVE_SKINS.forEach { (label, v) -> FilterChip(s.accentColor == v, { setAccent(v) }, label = { Text(stringResource(label)) }) }
-        if (Build.VERSION.SDK_INT >= 31) FilterChip(s.accentColor == AccentColors.DYNAMIC, { setAccent(AccentColors.DYNAMIC) }, label = { Text(stringResource(R.string.nl_accent_dynamic)) },
+        NVE_SKINS.forEach { (label, v) -> FilterChip(current == v, { setAccent(v) }, label = { Text(stringResource(label)) }) }
+        if (Build.VERSION.SDK_INT >= 31) FilterChip(current == AccentColors.DYNAMIC, { setAccent(AccentColors.DYNAMIC) }, label = { Text(stringResource(R.string.nl_accent_dynamic)) },
             leadingIcon = { Icon(Icons.Default.Wallpaper, null, Modifier.size(16.dp)) })
     }
     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         AccentColors.PRESETS.forEach { c ->
-            val sel = s.accentColor == c
+            val sel = current == c
             Box(Modifier.size(34.dp).clip(CircleShape).background(Color(0xFF000000 or c))
                 .border(if (sel) 3.dp else 1.dp, if (sel) MaterialTheme.colorScheme.onSurface else Color(0x33000000), CircleShape)
                 .clickable { setAccent(c) }, contentAlignment = Alignment.Center) {

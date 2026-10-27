@@ -88,7 +88,8 @@ fun PresentationDialog(v: V5State) {
     DisposableEffect(Unit) { onDispose { s.jumpTo(page) } }
 
     Dialog(onDismissRequest = { save(); v.close() }, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
-        BoxWithConstraints(Modifier.fillMaxSize().background(Color.Black).focusRequester(focus).focusable()
+        BoxWithConstraints(Modifier.fillMaxSize().background(Color(0xFF000000.toInt() or com.smartdocs.editor.core.data.NpfPrefs.presentBackground))   // nav-prefs: full-screen background
+           .focusRequester(focus).focusable()
             .onKeyEvent { e ->
                 if (e.nativeKeyEvent.action != KeyEvent.ACTION_DOWN) return@onKeyEvent false
                 when (e.nativeKeyEvent.keyCode) {

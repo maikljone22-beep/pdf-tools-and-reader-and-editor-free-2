@@ -118,7 +118,6 @@ fun TextPromptDialog(state: ReaderState, prompt: TextPrompt, onDismiss: () -> Un
         },
         confirmButton = {
             Button(enabled = text.isNotBlank(), onClick = {
-                if (!isLink) text = com.smartdocs.editor.ui.nve.NveDigits.apply(state.context, text)   // NVE: digit shapes setting
                 val rtl = text.any { it in '\u0600'..'\u06FF' }
                 val pageW = state.pageSizes[prompt.page]?.first ?: 595f
                 when (prompt.tool) {

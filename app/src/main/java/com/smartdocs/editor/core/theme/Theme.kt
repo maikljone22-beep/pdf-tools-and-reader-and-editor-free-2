@@ -34,7 +34,7 @@ fun SmartDocsTheme(
     mode: ThemeMode = ThemeMode.SYSTEM,
     rtl: Boolean = true,
     dynamicColor: Boolean = false, // off: brand consistency
-    accent: Long = AccentColors.DEFAULT,   // NVE-shell: SHL-13 accent colour (0 default, 1 dynamic, else 0xRRGGBB)
+    accent: Long = AccentColors.DEFAULT,   // NVE-shell: AccentColors.DYNAMIC = Android 12+ dynamic colour; the accent colour itself is NpfPrefs.accent
     content: @Composable () -> Unit,
 ) {
     val dark = when (mode) {
@@ -43,12 +43,13 @@ fun SmartDocsTheme(
         ThemeMode.DARK -> true
     }
     val ctx = LocalContext.current
-    val scheme = when {
+    // nav-prefs accent (NpfPrefs.accent) is the colour; NVE-shell adds the Android 12+ dynamic colour option
+    val base = when {
         (dynamicColor || accent == AccentColors.DYNAMIC) && Build.VERSION.SDK_INT >= 31 -> if (dark) dynamicDarkColorScheme(ctx) else dynamicLightColorScheme(ctx)
-        accent > AccentColors.DYNAMIC -> AccentColors.apply(if (dark) DarkColors else LightColors, accent, dark)   // NVE-shell
         dark -> DarkColors
         else -> LightColors
     }
+    val scheme = if (accent == AccentColors.DYNAMIC) base else npfAccent(base, dark, com.smartdocs.editor.core.data.NpfPrefs.accent)   // nav-prefs (SHL-13): accent colour
     // status/navigation bar icons follow the app theme (not only the system one)
     val view = LocalView.current
     if (!view.isInEditMode) {
@@ -70,3 +71,20 @@ fun SmartDocsTheme(
         MaterialTheme(colorScheme = scheme, typography = AppTypography, shapes = AppShapes, content = content)
     }
 }
+
+/** nav-prefs (SHL-13): replace the primary colours with the accent [rgb] (0 = keep the brand scheme). */
+fun npfAccent(base: androidx.compose.material3.ColorScheme, dark: Boolean, rgb: Int): androidx.compose.material3.ColorScheme {
+    if (rgb == 0) return base
+    val c = androidx.compose.ui.graphics.Color(0xFF000000.toInt() or rgb)
+    fun mix(a: androidx.compose.ui.graphics.Color, b: androidx.compose.ui.graphics.Color, t: Float) =
+        androidx.compose.ui.graphics.Color(a.red + (b.red - a.red) * t, a.green + (b.green - a.green) * t, a.blue + (b.blue - a.blue) * t, 1f)
+    val white = androidx.compose.ui.graphics.Color.White; val black = androidx.compose.ui.graphics.Color.Black
+    val primary = if (dark) mix(c, white, 0.35f) else c
+    val onPrimary = if (primary.npfLum() > 0.5f) black else white
+    val container = if (dark) mix(c, black, 0.55f) else mix(c, white, 0.8f)
+    val onContainer = if (dark) mix(c, white, 0.8f) else mix(c, black, 0.6f)
+    return base.copy(primary = primary, onPrimary = onPrimary, primaryContainer = container, onPrimaryContainer = onContainer,
+        inversePrimary = if (dark) c else mix(c, white, 0.4f), surfaceTint = primary)
+}
+
+private fun androidx.compose.ui.graphics.Color.npfLum(): Float = 0.2126f * red + 0.7152f * green + 0.0722f * blue

@@ -40,10 +40,11 @@ import java.io.File
 
 /** Tool `search_all`: search inside every indexed document (FTS index), grouped by file. */
 @Composable
-fun GlobalSearchScreen(nav: NavHostController) {
+/** [initial]: the query typed on Home ("search all files", nav-prefs). */
+fun GlobalSearchScreen(nav: NavHostController, initial: String = "") {
     val ctx = LocalContext.current
     val index = remember { FullTextIndex.get(ctx) }
-    var query by rememberSaveable { mutableStateOf("") }
+    var query by rememberSaveable { mutableStateOf(initial) }
     var options by remember { mutableStateOf(SearchOptions(norm = SearchPrefs.load(ctx))) }
     var kinds by remember { mutableStateOf(PartKind.values().toSet()) }
     var showOptions by remember { mutableStateOf(false) }

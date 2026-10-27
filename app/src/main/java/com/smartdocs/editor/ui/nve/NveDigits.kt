@@ -7,15 +7,27 @@ import android.content.Context
  * AUTO: Arabic-Indic digits when the text is Arabic (Arabic letters, no Latin letters), unchanged otherwise.
  */
 object NveDigits {
-    enum class Mode { AUTO, LATIN, ARABIC_INDIC, EASTERN_ARABIC_INDIC }
+    enum class Mode { KEEP, AUTO, LATIN, ARABIC_INDIC, EASTERN_ARABIC_INDIC }
 
     const val PREFS = "nve_edit"
     private const val KEY = "digits"
 
-    fun mode(ctx: Context): Mode =
-        Mode.entries.firstOrNull { it.name == ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY, Mode.AUTO.name) } ?: Mode.AUTO
+    /**
+     * The typing digits setting. main's nav-prefs value (NpfPrefs.digits: keep / arabic / latin) is the single source;
+     * "keep" may be refined here with the extra AUTO / Eastern (Persian) modes.
+     */
+    fun mode(ctx: Context): Mode = when (com.smartdocs.editor.core.data.NpfPrefs.digits) {
+        "arabic" -> Mode.ARABIC_INDIC
+        "latin" -> Mode.LATIN
+        else -> ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY, null)
+            ?.let { n -> Mode.entries.firstOrNull { it.name == n && (it == Mode.AUTO || it == Mode.EASTERN_ARABIC_INDIC) } } ?: Mode.KEEP
+    }
 
-    fun setMode(ctx: Context, m: Mode) { ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY, m.name).apply() }
+    fun setMode(ctx: Context, m: Mode) {
+        val P = com.smartdocs.editor.core.data.NpfPrefs
+        P.setString(P.K.DIGITS, when (m) { Mode.ARABIC_INDIC -> "arabic"; Mode.LATIN -> "latin"; else -> "keep" })
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY, m.name).apply()
+    }
 
     /** [text] with its digits converted for the saved mode. */
     fun apply(ctx: Context, text: String): String = convert(text, mode(ctx))
@@ -23,6 +35,7 @@ object NveDigits {
     /** Pure conversion between 0-9, U+0660-0669 and U+06F0-06F9. */
     fun convert(text: String, mode: Mode): String {
         val target = when (mode) {
+            Mode.KEEP -> return text
             Mode.LATIN -> '0'
             Mode.ARABIC_INDIC -> '\u0660'
             Mode.EASTERN_ARABIC_INDIC -> '\u06F0'

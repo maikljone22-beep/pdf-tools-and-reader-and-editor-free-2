@@ -131,52 +131,42 @@ private fun StatRow(label: Int, v: Int) {
     Row(Modifier.fillMaxWidth()) { Text(stringResource(label), Modifier.weight(1f)); Text(java.text.NumberFormat.getIntegerInstance().format(v)) }
 }
 
-/** Grid / rulers / guides / snap / lens window settings. */
+/**
+ * Grid / rulers / snap / lens window settings. Grid colour, offsets, subdivisions, units and guides are main's
+ * nav-prefs values (NpfPrefs, drawn by view5's GridAndRulers + NpfGuidesOverlay): this sheet edits the same values.
+ */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun NveGridSheet(s: ReaderState) {
     val n = NveState.of(s)
     val v = V5State.of(s)
-    ModalBottomSheet(onDismissRequest = { n.saveView(); v.saveOverlays(); n.close() }) {
+    val P = com.smartdocs.editor.core.data.NpfPrefs
+    @Suppress("UNUSED_VARIABLE") val ver = P.version.intValue
+    ModalBottomSheet(onDismissRequest = { n.saveView(); v.saveOverlays(); v.saveMeasure(); n.close() }) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(stringResource(R.string.nv_grid_title), style = MaterialTheme.typography.titleLarge)
             SwitchLine(stringResource(R.string.v5_grid), v.grid) { v.grid = it }
             SwitchLine(stringResource(R.string.v5_rulers), v.rulers) { v.rulers = it }
             Text(stringResource(R.string.nv_units), style = MaterialTheme.typography.labelLarge)
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) { NveUnit.entries.forEach { u -> FilterChip(n.unit == u, { n.unit = u }, label = { Text(u.label) }) } }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf("cm", "mm", "in", "pt").forEach { u -> FilterChip(P.units == u, { P.setString(P.K.UNITS, u) }, label = { Text(u) }) }
+            }
             Text(stringResource(R.string.v5_grid_spacing, v.gridMm.toInt()), style = MaterialTheme.typography.labelMedium)
             Slider(v.gridMm, { v.gridMm = it }, valueRange = 2f..50f)
-            Text(stringResource(R.string.nv_grid_subdiv, n.gridSubdiv), style = MaterialTheme.typography.labelMedium)
-            Slider(n.gridSubdiv.toFloat(), { n.gridSubdiv = it.toInt() }, valueRange = 1f..10f, steps = 8)
-            Text(stringResource(R.string.nv_grid_offset, n.gridOffX.toInt(), n.gridOffY.toInt()), style = MaterialTheme.typography.labelMedium)
-            Slider(n.gridOffX, { n.gridOffX = it }, valueRange = 0f..50f)
-            Slider(n.gridOffY, { n.gridOffY = it }, valueRange = 0f..50f)
+            Text(stringResource(R.string.nv_grid_subdiv, P.gridSubdivisions), style = MaterialTheme.typography.labelMedium)
+            Slider(P.gridSubdivisions.toFloat(), { P.setInt(P.K.GRID_SUB, it.toInt()) }, valueRange = 1f..10f, steps = 8)
+            Text(stringResource(R.string.nv_grid_offset, P.gridOffsetXmm.toInt(), P.gridOffsetYmm.toInt()), style = MaterialTheme.typography.labelMedium)
+            Slider(P.gridOffsetXmm, { P.setFloat(P.K.GRID_OFF_X, it) }, valueRange = 0f..50f)
+            Slider(P.gridOffsetYmm, { P.setFloat(P.K.GRID_OFF_Y, it) }, valueRange = 0f..50f)
             Text(stringResource(R.string.nv_grid_color), style = MaterialTheme.typography.labelMedium)
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 listOf(0x2196F3, 0x9E9E9E, 0xF44336, 0x4CAF50, 0xFF9800, 0x9C27B0, 0x000000).forEach { c ->
-                    com.smartdocs.editor.ui.reader.ColorDot(c, n.gridColor == c) { n.gridColor = c }
+                    com.smartdocs.editor.ui.reader.ColorDot(c, P.gridColor == c) { P.setInt(P.K.GRID_COLOR, c) }
                 }
             }
-            SwitchLine(stringResource(R.string.nv_grid_page_anchor), n.gridPageAnchored) { n.gridPageAnchored = it }
-            SwitchLine(stringResource(R.string.nv_snap_grid), n.snapToGrid) { n.snapToGrid = it }
-            HorizontalDivider()
-            Text(stringResource(R.string.nv_rulers_options), style = MaterialTheme.typography.labelLarge)
-            SwitchLine(stringResource(R.string.nv_ruler_h), n.rulerHorizontal) { n.rulerHorizontal = it }
-            SwitchLine(stringResource(R.string.nv_ruler_v), n.rulerVertical) { n.rulerVertical = it }
-            Text(stringResource(R.string.nv_ruler_opacity, (n.rulerOpacity * 100).toInt()), style = MaterialTheme.typography.labelMedium)
-            Slider(n.rulerOpacity, { n.rulerOpacity = it }, valueRange = 0.2f..1f)
-            TextButton(onClick = { n.unit = NveUnit.MM; n.rulerHorizontal = true; n.rulerVertical = true; n.rulerOpacity = 0.9f; n.gridOffX = 0f; n.gridOffY = 0f }) { Text(stringResource(R.string.nv_ruler_reset)) }
-            HorizontalDivider()
-            Text(stringResource(R.string.nv_guides, n.guidesX.size + n.guidesY.size), style = MaterialTheme.typography.labelLarge)
-            Text(stringResource(R.string.nv_guides_hint), style = MaterialTheme.typography.bodySmall)
-            SwitchLine(stringResource(R.string.nv_guides_show), n.guidesOn) { n.guidesOn = it }
-            (n.guidesX.map { true to it } + n.guidesY.map { false to it }).forEach { (vertical, value) ->
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text((if (vertical) "| " else "— ") + String.format(java.util.Locale.US, "%.1f %s", value / n.unit.ptPerUnit, n.unit.label), Modifier.weight(1f))
-                    IconButton(onClick = { if (vertical) n.guidesX.remove(value) else n.guidesY.remove(value) }) { Icon(Icons.Default.Delete, stringResource(R.string.delete)) }
-                }
-            }
-            if (n.guidesX.isNotEmpty() || n.guidesY.isNotEmpty()) TextButton(onClick = { n.guidesX.clear(); n.guidesY.clear() }) { Text(stringResource(R.string.nv_guides_clear)) }
+            SwitchLine(stringResource(R.string.nv_snap_grid), v.snapGrid) { v.snapGrid = it }
+            SwitchLine(stringResource(R.string.nv_guides_show), P.guides) { P.setBool(P.K.GUIDES, it) }
+            if (P.guidesH.isNotEmpty() || P.guidesV.isNotEmpty()) TextButton(onClick = { P.setGuides(emptyList(), emptyList()) }) { Text(stringResource(R.string.nv_guides_clear)) }
             HorizontalDivider()
             Text(stringResource(R.string.nv_lens_size, n.lensW, n.lensH), style = MaterialTheme.typography.labelLarge)
             Slider(n.lensW.toFloat(), { n.lensW = it.toInt() }, valueRange = 200f..900f)

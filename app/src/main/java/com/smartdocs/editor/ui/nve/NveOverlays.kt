@@ -70,7 +70,6 @@ fun NvePageOverlays(s: ReaderState) {
     val n = NveState.of(s)
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
-    if (n.guidesOn && n.guidesX.size + n.guidesY.size > 0 && V5State.of(s).rulers) GuideLines(s, n)
     StatusPill(s, n)
     val mode = n.dragMode ?: return
     var start by remember(mode) { mutableStateOf<Offset?>(null) }

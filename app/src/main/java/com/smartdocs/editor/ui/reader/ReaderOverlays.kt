@@ -60,14 +60,7 @@ fun SearchBar(state: ReaderState, quick: com.smartdocs.editor.ui.quick.QuickCont
                 }
             }
             if (replaceOn && quick != null) com.smartdocs.editor.ui.search.ReaderReplaceRow(state, quick)
-            // NVE: find in bookmarks / comments / fields / attachments, their results, hit colour settings
-            var nveHitOpts by remember { mutableStateOf(false) }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.weight(1f)) { com.smartdocs.editor.ui.nve.search.NveFindScopes(state) }
-                IconButton(onClick = { nveHitOpts = !nveHitOpts }) { Icon(Icons.Default.Palette, stringResource(R.string.nv_hit_colours)) }
-            }
-            if (nveHitOpts) com.smartdocs.editor.ui.nve.search.NveHitStyleSettings()
-            if (state.searchQuery.isNotBlank()) com.smartdocs.editor.ui.nve.search.NveFindExtraResults(state, state.searchQuery) { p -> state.jumpTo(p) }
+            com.smartdocs.editor.ui.search.NpfScopeHits(state)   // nav-prefs: hits in comments, bookmarks, fields, attachments
             if (showList && state.searchHits.isNotEmpty()) {
                 LazyColumn(Modifier.fillMaxWidth().heightIn(max = 220.dp)) {
                     itemsIndexed(state.searchHits) { i, h ->
