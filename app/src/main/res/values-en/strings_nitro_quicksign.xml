@@ -13,4 +13,22 @@
     <string name="nq_rename">Rename</string>
     <string name="nq_duplicate">Duplicate</string>
     <string name="nq_name">Name</string>
+    <!-- time-stamp servers -->
+    <string name="nq_tsa_manage">Servers</string>
+    <string name="nq_tsa_servers">Time-stamp servers</string>
+    <string name="nq_tsa_builtin">Built-in</string>
+    <string name="nq_tsa_login_set">With login</string>
+    <string name="nq_tsa_trusted_only">Trusted only</string>
+    <string name="nq_tsa_set_default">Set as default</string>
+    <string name="nq_edit">Edit</string>
+    <string name="nq_tsa_add">Add server</string>
+    <string name="nq_tsa_delete_q">Delete the server “%1$s”?</string>
+    <string name="nq_tsa_login_hint">Login is optional and sent as HTTP Basic authentication. The password is stored encrypted on this device only.</string>
+    <string name="nq_tsa_user">User name</string>
+    <string name="nq_tsa_password">Password</string>
+    <string name="nq_tsa_password_kept">Leave empty to keep the saved password</string>
+    <string name="nq_tsa_password_remove">Remove the saved password</string>
+    <string name="nq_tsa_require_trusted">Only time-stamp from a trusted server</string>
+    <string name="nq_tsa_require_trusted_desc">The time-stamp is accepted only when the server certificate chains to your trusted certificates or to the system certificate store.</string>
+    <string name="nq_tsa_untrusted">Time-stamp rejected: the certificate of the server “%1$s” is not trusted. Add its root certificate to the trusted certificates or turn off “Only time-stamp from a trusted server”.</string>
 </resources>
