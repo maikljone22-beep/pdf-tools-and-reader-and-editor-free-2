@@ -101,6 +101,9 @@ fun SelectionMenu(
             var e5Link by remember { mutableStateOf(false) }
             ToolChip(Icons.Default.Link, stringResource(R.string.annot_link)) { e5Link = true }
             if (e5Link) com.smartdocs.editor.ui.edit5.ReaderLinkFromSelection(state) { e5Link = false }
+            var nbmBookmark by remember { mutableStateOf(false) }   // nav-bookmarks: a real PDF bookmark from the selection
+            ToolChip(Icons.Default.BookmarkAdd, stringResource(R.string.nbm_bm_from_selection)) { nbmBookmark = true }
+            if (nbmBookmark) com.smartdocs.editor.ui.edit5.ReaderBookmarkFromSelection(state) { nbmBookmark = false }
             if (onRedact != null) ToolChip(Icons.Default.Block, stringResource(R.string.s5_rd_chip)) { onRedact(sel) }   // MODULE_search5b
             var wordCount by remember { mutableStateOf(false) }
             ToolChip(Icons.Default.Numbers, stringResource(R.string.nt_wc_title)) { wordCount = true }   // Foxit "Word Count" of the selection

@@ -19,16 +19,19 @@ import java.io.File
 
 /**
  * One bookmark with its look and destination. [color] null = viewer default. [orig] = pre-order index of the item
- * in the file it was read from (-1 for new ones); an item whose target is an action we do not edit (URI, JavaScript,
- * another file …) keeps that action when saved ([keepAction]).
+ * in the file it was read from (-1 for new ones). [actions] non-empty = the bookmark runs this action list (web link,
+ * file, named action, JavaScript, print / extract pages, several in a row) instead of going to [page]; action types
+ * we do not edit are kept from item [orig] ([NavAction.Kept]).
  */
 data class E5Bookmark(
     val key: Long, val title: String, val page: Int, val level: Int,
     val color: Int? = null, val bold: Boolean = false, val italic: Boolean = false, val open: Boolean = false,
     val fit: DestFit = DestFit.XYZ, val zoom: Float = 0f, val top: Float? = null, val left: Float? = null,
-    val orig: Int = -1, val actionLabel: String? = null, val keepAction: Boolean = false,
+    val orig: Int = -1, val fitR: List<Float>? = null, val actions: List<NavAction> = emptyList(),
 ) {
     fun row() = OutlineRow(key, title, page, level)
+    val view: DestView get() = DestView(fit, left, top, zoom, fitR)
+    fun withView(v: DestView) = copy(fit = v.fit, left = v.left, top = v.top, zoom = v.zoom, fitR = v.rect)
 }
 
 /** Outline editor model that keeps colour, bold/italic, open state and destination zoom (the base editor drops them). */
@@ -52,7 +55,12 @@ object OutlineStore {
     }
 
     suspend fun load(src: File, password: String?): Pair<List<E5Bookmark>, Int> = withContext(Dispatchers.IO) {
-        E5Io.load(src, password).use { doc ->
+        E5Io.load(src, password).use { doc -> read(doc) to doc.numberOfPages }
+    }
+
+    /** The outline of [doc] (pre-order with levels). */
+    fun read(doc: PDDocument): List<E5Bookmark> {
+        run {
             val pageIdx = doc.pages.withIndex().associate { it.value.cosObject to it.index }
             val list = items(doc).mapIndexed { k, (d, level) ->
                 val c = (deref(d.getDictionaryObject(COSName.C)) as? COSArray)?.toFloatArray()
@@ -63,8 +71,8 @@ object OutlineStore {
                 var dest = deref(d.getDictionaryObject(COSName.DEST))
                 val action = deref(d.getDictionaryObject(COSName.A)) as? COSDictionary
                 if (dest == null && action != null) {
-                    if (action.getNameAsString(COSName.S) == "GoTo") dest = deref(action.getDictionaryObject(COSName.D))
-                    else bm = bm.copy(keepAction = true, actionLabel = action.getNameAsString(COSName.S) + (action.getString(COSName.URI)?.let { ": $it" } ?: ""))
+                    if (action.getNameAsString(COSName.S) == "GoTo" && action.getDictionaryObject(COSName.NEXT) == null) dest = deref(action.getDictionaryObject(COSName.D))
+                    else bm = bm.copy(actions = NavActions.read(doc, action))
                 }
                 if (dest is COSString || dest is COSName) {
                     val name = (dest as? COSString)?.string ?: (dest as COSName).name
@@ -72,19 +80,18 @@ object OutlineStore {
                 }
                 (dest as? COSArray)?.let { a ->
                     val pg = (deref(a.getObject(0)) as? COSDictionary)?.let { pageIdx[it] } ?: (a.getObject(0) as? COSInteger)?.intValue() ?: -1
-                    val fit = when (a.getName(1)) { "XYZ" -> DestFit.XYZ; "FitH", "FitBH" -> DestFit.FITH; else -> DestFit.FIT }
-                    fun num(i: Int) = (deref(a.getObject(i)) as? COSNumber)?.floatValue()
-                    bm = bm.copy(page = pg, fit = fit, left = if (fit == DestFit.XYZ) num(2) else null, top = if (fit == DestFit.XYZ) num(3) else if (fit == DestFit.FITH) num(2) else null,
-                        zoom = if (fit == DestFit.XYZ) num(4) ?: 0f else 0f)
+                    bm = bm.withView(Dests.view(a)).copy(page = pg)
                 }
+                // the page of an action list's first go-to (for "find current bookmark" and lists)
+                if (bm.actions.isNotEmpty()) (bm.actions.firstOrNull { it is NavAction.GoTo } as? NavAction.GoTo)?.let { g -> if (g.page >= 0) bm = bm.copy(page = g.page) }
                 bm
             }
-            list to doc.numberOfPages
+            return list
         }
     }
 
     suspend fun save(src: File, out: File, password: String?, list: List<E5Bookmark>) = withContext(Dispatchers.IO) {
-        E5Io.edit(src, out, password) { doc -> write(doc, list) }
+        NavIo.edit(src, out, password) { doc, _ -> write(doc, list) }
     }
 
     /** Write [list] (pre-order with levels) as the document outline. */
@@ -104,16 +111,9 @@ object OutlineStore {
             b.color?.let { c -> d.setItem(COSName.C, COSArray().apply { E5Io.rgb(c).forEach { add(COSFloat(it)) } }) }
             val f = (if (b.italic) 1 else 0) or (if (b.bold) 2 else 0)
             if (f != 0) d.setInt(COSName.F, f)
-            val origAction = if (b.keepAction) (old.getOrNull(b.orig)?.getDictionaryObject(COSName.A)) else null
-            if (origAction != null) d.setItem(COSName.A, origAction)
-            else if (b.page in 0 until n) d.setItem(COSName.DEST, COSArray().apply {
-                add(doc.getPage(b.page).cosObject)
-                when (b.fit) {
-                    DestFit.FIT -> add(COSName.getPDFName("Fit"))
-                    DestFit.FITH -> { add(COSName.getPDFName("FitH")); add(b.top?.let { COSFloat(it) } ?: COSNull.NULL) }
-                    DestFit.XYZ -> { add(COSName.getPDFName("XYZ")); add(b.left?.let { COSFloat(it) } ?: COSNull.NULL); add(b.top?.let { COSFloat(it) } ?: COSNull.NULL); add(if (b.zoom > 0f) COSFloat(b.zoom) else COSNull.NULL) }
-                }
-            })
+            val chain = if (b.actions.isNotEmpty()) NavActions.write(doc, b.actions, old.getOrNull(b.orig)?.getDictionaryObject(COSName.A)) else null
+            if (chain != null) d.setItem(COSName.A, chain)
+            else if (b.page in 0 until n) d.setItem(COSName.DEST, Dests.array(doc.getPage(b.page).cosObject, b.view))
             val node = Node(d, b)
             while (stack.size > b.level + 1) stack.removeAt(stack.size - 1)
             stack.last().kids += node

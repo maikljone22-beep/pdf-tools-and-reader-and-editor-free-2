@@ -23,8 +23,11 @@ import java.io.File
 /** What a link does. */
 enum class LinkKind { URI, PAGE, NAMED, REMOTE, LAUNCH, MAIL, OTHER }
 
-/** How a go-to destination shows the target page. XYZ keeps [LinkSpec.zoom] (0 = keep the reader's zoom). */
-enum class DestFit { XYZ, FIT, FITH }
+/**
+ * How a go-to destination shows the target page. XYZ keeps [LinkSpec.zoom] (0 = keep the reader's zoom); FITV = fit
+ * height, FITB / FITBH = fit the visible content (whole / width), FITR = fit a rectangle.
+ */
+enum class DestFit { XYZ, FIT, FITH, FITV, FITB, FITBH, FITR }
 
 enum class LinkBorder { NONE, SOLID, DASHED, UNDERLINE }
 
@@ -50,7 +53,17 @@ data class LinkSpec(
     val highlight: String = "I",
     val quads: List<RectF> = emptyList(),
     val contents: String = "",
-)
+    val left: Float? = null,
+    /** FitR rectangle (left, bottom, right, top). */
+    val fitR: List<Float>? = null,
+    /** For [LinkKind.OTHER]: the action list (several actions run in order; kept types are copied). */
+    val actions: List<NavAction> = emptyList(),
+    /** Cross-reference group the link belongs to ("" = none; see [AutoLinks.groupLinks]). */
+    val group: String = "",
+) {
+    val view: DestView get() = DestView(fit, left, top, zoom, fitR)
+    fun withView(v: DestView) = copy(fit = v.fit, left = v.left, top = v.top, zoom = v.zoom, fitR = v.rect)
+}
 
 /** A link found on a page: its position in the page's /Annots ([index]) and its decoded [spec]. */
 data class PageLinkInfo(val page: Int, val index: Int, val spec: LinkSpec, val editable: Boolean)
@@ -97,11 +110,14 @@ object LinkOps {
         val c = (d.getDictionaryObject(COSName.C) as? COSArray)?.toFloatArray()
         val color = if (c != null && c.size >= 3) (((c[0] * 255).toInt() and 0xFF) shl 16) or (((c[1] * 255).toInt() and 0xFF) shl 8) or ((c[2] * 255).toInt() and 0xFF) else 0x1565C0
         val q = a.quadPoints?.let { qp -> (0 until qp.size / 8).map { k -> val o = k * 8; RectF(minOf(qp[o], qp[o + 4]), maxOf(qp[o + 1], qp[o + 3]), maxOf(qp[o + 2], qp[o + 6]), minOf(qp[o + 5], qp[o + 7])) } } ?: emptyList()
-        var spec = LinkSpec(rect = rect, border = border, borderWidth = bw.coerceAtLeast(0.5f), color = color, highlight = d.getNameAsString(COSName.H) ?: "I", quads = q, contents = a.contents ?: "")
+        var spec = LinkSpec(rect = rect, border = border, borderWidth = bw.coerceAtLeast(0.5f), color = color, highlight = d.getNameAsString(COSName.H) ?: "I", quads = q, contents = a.contents ?: "",
+            group = (d.getDictionaryObject(AutoLinks.XREF_KEY) as? COSString)?.string ?: "")
         val action = d.getCOSDictionary(COSName.A)
         val dest = d.getDictionaryObject(COSName.DEST)
         var editable = true
         spec = when {
+            action != null && action.getDictionaryObject(COSName.NEXT) != null ->
+                spec.copy(kind = LinkKind.OTHER, uri = action.getNameAsString(COSName.S) ?: "", actions = NavActions.read(doc, action))
             action != null -> when (action.getNameAsString(COSName.S)) {
                 "URI" -> {
                     val u = action.getString(COSName.URI) ?: ""
@@ -112,12 +128,12 @@ object LinkOps {
                     val f = fileName(action.getDictionaryObject(COSName.F))
                     val dd = action.getDictionaryObject(COSName.D)
                     val pg = ((dd as? COSArray)?.getObject(0) as? COSInteger)?.intValue() ?: 0
-                    val fit = (dd as? COSArray)?.getName(1)
-                    spec.copy(kind = LinkKind.REMOTE, file = f, page = pg, fit = if (fit == "FitH") DestFit.FITH else if (fit == "XYZ") DestFit.XYZ else DestFit.FIT,
+                    spec.withView((dd as? COSArray)?.let { Dests.view(it) } ?: DestView(DestFit.FIT)).copy(kind = LinkKind.REMOTE, file = f, page = pg,
                         named = (dd as? COSString)?.string ?: (dd as? COSName)?.name ?: "", newWindow = action.getBoolean(COSName.getPDFName("NewWindow"), true))
                 }
                 "Launch" -> spec.copy(kind = LinkKind.LAUNCH, file = fileName(action.getDictionaryObject(COSName.F)), newWindow = action.getBoolean(COSName.getPDFName("NewWindow"), true))
-                else -> { editable = false; spec.copy(kind = LinkKind.OTHER, uri = action.getNameAsString(COSName.S) ?: "") }
+                // named, JavaScript, form, media … actions: edited as an action list (unknown types are kept)
+                else -> spec.copy(kind = LinkKind.OTHER, uri = action.getNameAsString(COSName.S) ?: "", actions = NavActions.read(doc, action))
             }
             dest != null -> destSpec(doc, spec, dest)
             else -> { editable = false; spec.copy(kind = LinkKind.OTHER) }
@@ -143,15 +159,7 @@ object LinkOps {
             is COSArray -> {
                 val pd = runCatching { com.tom_roush.pdfbox.pdmodel.interactive.documentnavigation.destination.PDDestination.create(v) as? PDPageDestination }.getOrNull()
                 val pg = pd?.retrievePageNumber() ?: ((v.getObject(0) as? COSInteger)?.intValue() ?: 0)
-                val fitName = v.getName(1)
-                val fit = when (fitName) { "XYZ" -> DestFit.XYZ; "FitH", "FitBH" -> DestFit.FITH; else -> DestFit.FIT }
-                val zoom = if (fit == DestFit.XYZ) ((v.getObject(4) as? com.tom_roush.pdfbox.cos.COSNumber)?.floatValue() ?: 0f) else 0f
-                val top = when (fit) {
-                    DestFit.XYZ -> (v.getObject(3) as? com.tom_roush.pdfbox.cos.COSNumber)?.floatValue()
-                    DestFit.FITH -> (v.getObject(2) as? com.tom_roush.pdfbox.cos.COSNumber)?.floatValue()
-                    else -> null
-                }
-                base.copy(kind = LinkKind.PAGE, page = pg.coerceAtLeast(0), fit = fit, zoom = zoom, top = top)
+                base.withView(Dests.view(v)).copy(kind = LinkKind.PAGE, page = pg.coerceAtLeast(0))
             }
             else -> base.copy(kind = LinkKind.OTHER)
         }
@@ -161,35 +169,38 @@ object LinkOps {
 
     /** Add links to pages: map page → specs. */
     suspend fun add(src: File, out: File, password: String?, links: Map<Int, List<LinkSpec>>) = withContext(Dispatchers.IO) {
-        E5Io.edit(src, out, password) { doc ->
+        NavIo.edit(src, out, password) { doc, changed ->
             links.forEach { (p, specs) ->
                 if (p !in 0 until doc.numberOfPages) return@forEach
                 val page = doc.getPage(p)
                 val annots = page.annotations
                 specs.forEach { annots.add(build(doc, page, it, src)) }
                 page.annotations = annots
+                changed += page
             }
         }
     }
 
     /** Replace link [index] of [page] by [spec] (keeps its place in the tab order). */
     suspend fun update(src: File, out: File, password: String?, page: Int, index: Int, spec: LinkSpec) = withContext(Dispatchers.IO) {
-        E5Io.edit(src, out, password) { doc ->
+        NavIo.edit(src, out, password) { doc, changed ->
             val pg = doc.getPage(page)
             val annots = pg.annotations
-            if (index in annots.indices && annots[index] is PDAnnotationLink) { annots[index] = build(doc, pg, spec, src); pg.annotations = annots }
+            if (index in annots.indices && annots[index] is PDAnnotationLink) {
+                annots[index] = build(doc, pg, spec, src, annots[index].cosObject.getDictionaryObject(COSName.A)); pg.annotations = annots; changed += pg
+            }
         }
     }
 
     /** Delete links: page → annotation indexes. */
     suspend fun delete(src: File, out: File, password: String?, targets: Map<Int, Set<Int>>) = withContext(Dispatchers.IO) {
-        E5Io.edit(src, out, password) { doc ->
+        NavIo.edit(src, out, password) { doc, changed ->
             targets.forEach { (p, idx) ->
                 if (p !in 0 until doc.numberOfPages) return@forEach
                 val pg = doc.getPage(p)
                 val annots = pg.annotations
                 val keep = annots.filterIndexed { i, a -> !(i in idx && a is PDAnnotationLink) }
-                pg.annotations = keep.toMutableList()
+                pg.annotations = keep.toMutableList(); changed += pg
             }
         }
     }
@@ -197,7 +208,7 @@ object LinkOps {
     /** Remove every link ([webOnly] = only URI / mailto links). Returns how many were removed. */
     suspend fun removeAll(src: File, out: File, password: String?, webOnly: Boolean): Int = withContext(Dispatchers.IO) {
         var n = 0
-        E5Io.edit(src, out, password) { doc ->
+        NavIo.edit(src, out, password) { doc, changed ->
             for (pg in doc.pages) {
                 val annots = runCatching { pg.annotations }.getOrNull() ?: continue
                 val keep = annots.filter { a ->
@@ -205,7 +216,7 @@ object LinkOps {
                     if (drop) n++
                     !drop
                 }
-                if (keep.size != annots.size) pg.annotations = keep.toMutableList()
+                if (keep.size != annots.size) { pg.annotations = keep.toMutableList(); changed += pg }
             }
         }
         n
@@ -216,7 +227,7 @@ object LinkOps {
         return if (t.parentFile?.absolutePath == doc.absoluteFile.parentFile?.absolutePath) t.name else target
     }
 
-    private fun build(doc: PDDocument, page: PDPage, s: LinkSpec, src: File): PDAnnotation {
+    private fun build(doc: PDDocument, page: PDPage, s: LinkSpec, src: File, originalAction: COSBase? = null): PDAnnotation {
         val link = PDAnnotationLink()
         val d = link.cosObject
         link.rectangle = E5Geom.rect(s.rect)
@@ -236,9 +247,18 @@ object LinkOps {
         }
         d.setItem(COSName.BS, bs)
         if (s.quads.isNotEmpty()) link.quadPoints = E5Geom.quads(s.quads)
+        if (s.group.isNotBlank()) d.setItem(AutoLinks.XREF_KEY, COSString(s.group))
         val n = doc.numberOfPages
         when (s.kind) {
-            LinkKind.URI, LinkKind.MAIL, LinkKind.OTHER -> {
+            LinkKind.OTHER -> {
+                val chain = if (s.actions.isNotEmpty()) NavActions.write(doc, s.actions, originalAction, src) else null
+                when {
+                    chain != null -> d.setItem(COSName.A, chain)
+                    originalAction != null -> d.setItem(COSName.A, originalAction)
+                    else -> Unit
+                }
+            }
+            LinkKind.URI, LinkKind.MAIL -> {
                 val a = COSDictionary(); a.setItem(COSName.TYPE, COSName.getPDFName("Action")); a.setName(COSName.S, "URI")
                 a.setString(COSName.URI, if (s.kind == LinkKind.MAIL && !s.uri.startsWith("mailto:", true)) "mailto:" + s.uri.trim() else LinkDetect.normalizeUrl(s.uri))
                 d.setItem(COSName.A, a)
@@ -268,14 +288,30 @@ object LinkOps {
         setString(COSName.F, name); setString(COSName.UF, name)
     }
 
-    private fun destArray(pageRef: COSBase, s: LinkSpec): COSArray = COSArray().apply {
-        add(pageRef)
-        when (s.fit) {
-            DestFit.FIT -> add(COSName.getPDFName("Fit"))
-            DestFit.FITH -> { add(COSName.getPDFName("FitH")); add(s.top?.let { COSFloat(it) } ?: COSNull.NULL) }
-            DestFit.XYZ -> {
-                add(COSName.getPDFName("XYZ")); add(COSNull.NULL); add(s.top?.let { COSFloat(it) } ?: COSNull.NULL)
-                add(if (s.zoom > 0f) COSFloat(s.zoom) else COSNull.NULL)
+    private fun destArray(pageRef: COSBase, s: LinkSpec): COSArray = Dests.array(pageRef, s.view)
+
+    /**
+     * Move / resize links of [page]: annotation index → new rect. QuadPoints follow the rect (same offset and
+     * scale) and the border appearance is rebuilt.
+     */
+    suspend fun setRects(src: File, out: File, password: String?, page: Int, rects: Map<Int, RectF>) = withContext(Dispatchers.IO) {
+        NavIo.edit(src, out, password) { doc, changed ->
+            if (page in 0 until doc.numberOfPages) {
+                val pg = doc.getPage(page)
+                pg.annotations.forEachIndexed { i, a ->
+                    val r = rects[i]
+                    if (r != null && a is PDAnnotationLink) {
+                        val old = a.rectangle?.let { E5Geom.rectF(it) }
+                        a.rectangle = E5Geom.rect(r)
+                        val q = a.quadPoints
+                        if (old != null && q != null && q.size >= 8)
+                            a.quadPoints = LinkGeom.mapQuads(q, LinkGeom.Box(old.left, old.bottom, old.right, old.top), LinkGeom.Box(r.left, r.bottom, r.right, r.top))
+                        a.cosObject.removeItem(COSName.AP)
+                        val bs = a.cosObject.getCOSDictionary(COSName.BS)
+                        if (bs == null || bs.getFloat(COSName.W, 1f) > 0f) runCatching { a.constructAppearances(doc) }
+                        changed += pg
+                    }
+                }
             }
         }
     }
