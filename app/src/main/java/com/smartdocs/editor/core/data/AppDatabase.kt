@@ -122,6 +122,10 @@ interface SignatureDao {
 
     @Delete
     suspend fun delete(sig: SavedSignature)
+
+    /** nitro-fillsign2: temporary signatures are removed by path at the next start. */
+    @Query("DELETE FROM signatures WHERE path = :path")
+    suspend fun deleteByPath(path: String)
 }
 
 @Dao
