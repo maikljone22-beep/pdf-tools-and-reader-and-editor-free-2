@@ -7,12 +7,11 @@ object CsvIO {
 
     fun load(file: File, rtl: Boolean = true): Workbook5 {
         val b = file.readBytes()
-        val bom = b.size >= 3 && b[0] == 0xEF.toByte() && b[1] == 0xBB.toByte() && b[2] == 0xBF.toByte()
-        val text = runCatching {
-            Charsets.UTF_8.newDecoder().onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
-                .decode(java.nio.ByteBuffer.wrap(b, if (bom) 3 else 0, b.size - if (bom) 3 else 0)).toString()
-        }.getOrElse { String(b, runCatching { charset("windows-1256") }.getOrDefault(Charsets.ISO_8859_1)) }
-        val delim = if (file.extension.equals("tsv", true)) '\t' else sniff(text)
+        // open-all: shared encoding detection (BOMs, UTF-16 without BOM, UTF-8, Windows-1256 / 1252) and delimiter sniffing
+        val (cs, bomLen) = com.smartdocs.editor.core.openall.TextDecode.detect(b)
+        val bom = bomLen == 3
+        val text = String(b, bomLen, b.size - bomLen, cs)
+        val delim = com.smartdocs.editor.core.openall.CsvSniff.delimiter(text, file.extension)
         return fromText(text, delim, file.nameWithoutExtension.take(31).ifBlank { "Sheet1" }, rtl).also {
             it.meta = XlsxIO5.Meta("", emptyList(), ArrayList(), bom, delim)
         }

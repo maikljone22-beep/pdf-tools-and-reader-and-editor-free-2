@@ -47,7 +47,7 @@ fun DocRow(d: RecentDoc, onOpen: () -> Unit, onMenu: () -> Unit, modifier: Modif
         modifier.fillMaxWidth().combinedClickable(onClick = onOpen, onLongClick = onMenu).padding(start = 16.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        ThumbBox(thumb, 46.dp, 60.dp)
+        ThumbBox(thumb, 46.dp, 60.dp, kind = kindOfName(d.name))
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
             Text(d.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -78,7 +78,7 @@ fun DocCard(d: RecentDoc, modifier: Modifier, onMenu: (() -> Unit)?, onOpen: () 
     val thumb = rememberDocThumb(d)
     Column(modifier.clip(RoundedCornerShape(16.dp)).combinedClickable(onClick = onOpen, onLongClick = onMenu).padding(4.dp)) {
         Box {
-            ThumbBox(thumb, 0.dp, 0.dp, modifier = Modifier.fillMaxWidth().aspectRatio(0.75f))
+            ThumbBox(thumb, 0.dp, 0.dp, kind = kindOfName(d.name), modifier = Modifier.fillMaxWidth().aspectRatio(0.75f))
             if (d.favorite) Icon(Icons.Default.Star, null, Modifier.align(Alignment.TopStart).padding(6.dp).size(18.dp), tint = Brand.tiles.amber.content)
         }
         Spacer(Modifier.height(6.dp))
@@ -106,7 +106,7 @@ fun DocMenuSheet(d: RecentDoc, tags: List<Tag>, nav: NavHostController, onDismis
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = MaterialTheme.colorScheme.surfaceContainerLow) {
         Column(Modifier.padding(bottom = 24.dp)) {
             Row(Modifier.padding(horizontal = 20.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                ThumbBox(rememberDocThumb(d), 44.dp, 58.dp)
+                ThumbBox(rememberDocThumb(d), 44.dp, 58.dp, kind = kindOfName(d.name))
                 Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
                     Text(d.name, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)

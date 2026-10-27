@@ -77,7 +77,9 @@ fun OfficeScreen(nav: NavHostController, uri: String) {
     }
     when (val s = state) {
         Loaded.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-        is Loaded.Failed -> FailedScreen(nav, s)
+        // open-all: old binary Office files and types the editors do not know open read-only in the universal viewer
+        is Loaded.Failed -> if (s.file != null && s.message == null && s.file.exists()) com.smartdocs.editor.ui.openall.UniversalViewer(nav, Uri.fromFile(s.file).toString(), 0)
+            else FailedScreen(nav, s)
         is Loaded.Ready -> OfficeChrome(nav, s.host) { host -> state = Loaded.Ready(host) }
     }
 }

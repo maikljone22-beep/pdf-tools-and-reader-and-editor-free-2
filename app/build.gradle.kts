@@ -89,7 +89,9 @@ android {
     // JVM unit tests: android.util.Log (called inside PdfBox-Android, e.g. on a second getAcroForm()) returns defaults instead of throwing
     testOptions { unitTests.isReturnDefaultValues = true }
     packaging {
-        resources.excludes += setOf("META-INF/{AL2.0,LGPL2.1}", "META-INF/DEPENDENCIES", "META-INF/LICENSE*", "META-INF/NOTICE*", "META-INF/versions/9/OSGI-INF/MANIFEST.MF")
+        resources.excludes += setOf("META-INF/{AL2.0,LGPL2.1}", "META-INF/DEPENDENCIES", "META-INF/LICENSE*", "META-INF/NOTICE*", "META-INF/versions/9/OSGI-INF/MANIFEST.MF",
+            // open-all: commons-io / commons-lang3 / commons-compress are multi-release jars
+            "META-INF/versions/**/module-info.class", "module-info.class")
     }
 }
 
@@ -157,6 +159,10 @@ dependencies {
 
     // Images + network
     implementation("io.coil-kt:coil-compose:2.7.0")
+    // open-all (gaps/OPEN_ALL_FILES.md): SVG rendering (Apache 2.0), archives 7z/tar/bz2/xz (Apache 2.0) + LZMA for 7z/xz (0BSD)
+    implementation("com.caverock:androidsvg-aar:1.4")
+    implementation("org.apache.commons:commons-compress:1.27.1")
+    implementation("org.tukaani:xz:1.10")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
     // Digital signatures

@@ -169,7 +169,8 @@ fun ResultsList(files: List<File>, nav: NavHostController, mime: String) {
 }
 
 private fun openResult(nav: NavHostController, ctx: android.content.Context, docs: DocumentRepository, f: File) {
-    if (f.extension.equals("pdf", true)) nav.navigate(Routes.reader(Uri.fromFile(f).toString()))
+    // open-all: results of every type open in the app's viewers
+    if (f.isFile) nav.navigate(Routes.reader(Uri.fromFile(f).toString()))
     else runCatching {
         val mime = when (f.extension.lowercase()) { "jpg", "jpeg" -> "image/jpeg"; "png" -> "image/png"; "txt" -> "text/plain"; "html" -> "text/html"; else -> "*/*" }
         ctx.startActivity(Intent(Intent.ACTION_VIEW).apply { setDataAndType(docs.shareUri(f), mime); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) })
