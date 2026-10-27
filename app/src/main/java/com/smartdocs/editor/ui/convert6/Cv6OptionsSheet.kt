@@ -157,6 +157,9 @@ private fun OptionsBody(conv: Conv, inputCount: Int, o: Cv6Opts, onChange: (Cv6O
     if (Opt.CSV_SHEETS in opts) SwitchRow(stringResource(R.string.cv6_csv_all), o.csvAllSheets, stringResource(R.string.cv6_csv_all_sub)) { onChange(o.copy(csvAllSheets = it)) }
     if (Opt.PDFA_STRICT in opts) SwitchRow(stringResource(R.string.cv6_pdfa_strict), o.pdfaStrict, stringResource(R.string.cv6_pdfa_strict_sub)) { onChange(o.copy(pdfaStrict = it)) }
     if (Opt.RANGE in opts) PageRangeField(o.range) { onChange(o.copy(range = it)) }
+    // nav-attach: Create-PDF "attach source file"
+    if (conv.to == com.smartdocs.editor.core.convert6.Fmt.PDF && conv.inputs.isNotEmpty())
+        SwitchRow(stringResource(R.string.nat_attach_source), o.attachSource, stringResource(R.string.nat_attach_source_sub)) { onChange(o.copy(attachSource = it)) }
 }
 
 @Composable

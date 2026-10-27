@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- nav-attach: لوحة المرفقات / أداة المرفقات -->
+    <string name="nat_no_app">لا يوجد تطبيق على هذا الجهاز يفتح هذا الملف</string>
+    <string name="nat_blocked_type">فتح مرفقات .%1$s محظور (أمان المرفقات)</string>
+    <string name="nat_hist_add">إضافة مرفقات</string>
+    <string name="nat_folder_empty">المجلد لا يحتوي على ملفات</string>
+    <string name="nat_add_files">ملفات</string>
+    <string name="nat_add_folder">مجلد</string>
+    <string name="nat_view_mode">تغيير العرض (قائمة، تفاصيل، مربعات)</string>
+    <string name="nat_security">أمان المرفقات</string>
+    <string name="nat_edit_desc">تعديل الوصف</string>
+    <string name="nat_hist_desc">وصف المرفق</string>
+    <string name="nat_delete_q">حذف هذا المرفق؟</string>
+    <string name="nat_hist_delete">حذف المرفق</string>
+    <string name="nat_open_q">فتح «%1$s»؟</string>
+    <string name="nat_open_risky">هذا النوع من الملفات قد يحتوي على برامج أو نصوص برمجية. لا تفتحه إلا إذا كنت تثق بالمستند وكاتبه.</string>
+    <string name="nat_open_note">سيُفتح الملف في تطبيق آخر على هذا الجهاز.</string>
+    <string name="nat_always">دائمًا لـ .%1$s</string>
+    <string name="nat_never">أبدًا لـ .%1$s</string>
+    <string name="nat_open_once">فتح</string>
+    <string name="nat_open">فتح</string>
+    <string name="nat_save_docs">حفظ في المستندات</string>
+    <string name="nat_save_as">حفظ باسم…</string>
+    <string name="nat_properties">الخصائص</string>
+    <string name="nat_go_to_page">الانتقال إلى الصفحة</string>
+    <string name="nat_doc_level">المستند كله</string>
+    <string name="nat_on_page">صفحة %1$d</string>
+    <string name="nat_modified_x">عُدّل %1$s</string>
+    <string name="nat_created_x">أُنشئ %1$s</string>
+    <string name="nat_actions">إجراءات</string>
+    <string name="nat_p_name">الاسم</string>
+    <string name="nat_p_desc">الوصف</string>
+    <string name="nat_p_size">الحجم</string>
+    <string name="nat_p_type">النوع</string>
+    <string name="nat_p_location">مرفق بـ</string>
+    <string name="nat_p_created">تاريخ الإنشاء</string>
+    <string name="nat_p_modified">تاريخ التعديل</string>
+    <string name="nat_security_note">اختر أنواع المرفقات التي تُفتح دائمًا في تطبيقات أخرى والأنواع التي لا تُفتح أبدًا. الأنواع الأخرى تسأل أولًا، والأنواع الخطرة (التطبيقات والنصوص البرمجية وصفحات الويب ومستندات الماكرو) تعرض تحذيرًا.</string>
+    <string name="nat_no_rules">لا توجد قواعد بعد.</string>
+    <string name="nat_rule_allow">فتح دائمًا</string>
+    <string name="nat_rule_never">عدم الفتح أبدًا</string>
+    <string name="nat_type_hint">نوع الملف (مثل docx)</string>
+    <string name="nat_portfolio_title">حافظة PDF</string>
+    <string name="nat_portfolio_text">هذا الملف حافظة PDF تضم %1$d ملفات. هل تريد فتحه في عرض الحافظة لرؤية ملفاته وفتحها واستخراجها؟</string>
+    <string name="nat_portfolio_open">فتح كحافظة</string>
+    <string name="nat_keep_reading">متابعة القراءة</string>
+    <string name="nat_signed_note">هذا الملف موقَّع: تُضاف تغييرات المرفقات كتحديث تزايدي، فيبقى التوقيع صالحًا.</string>
+    <!-- إنشاء PDF: إرفاق الملف الأصلي -->
+    <string name="nat_source_desc">الملف الأصلي</string>
+    <string name="nat_attach_source">إرفاق الملف الأصلي</string>
+    <string name="nat_attach_source_sub">تضمين الملف الأصلي في ملف PDF كمرفق</string>
+    <!-- المشاركة: إزالة المعلومات المخفية -->
+    <string name="nat_strip_title">إزالة من النسخة المشارَكة</string>
+    <string name="nat_strip_meta">البيانات الوصفية (المؤلف، العنوان، XMP، بيانات التطبيقات)</string>
+    <string name="nat_strip_js">النصوص البرمجية (JavaScript)</string>
+    <string name="nat_strip_att">المرفقات</string>
+    <string name="nat_strip_note">تُنظَّف النسخة المشارَكة فقط، ولا يتغير مستندك.</string>
+    <string name="nat_email_tabs">إرسال كل الألسنة المفتوحة بالبريد (%1$d)</string>
+    <string name="nat_email_tabs_sub">إرفاق كل مستند مفتوح في ألسنة القارئ برسالة بريد واحدة</string>
+</resources>

@@ -164,6 +164,8 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
     suspend fun outputFile(): File? {
         val f = state.file ?: return null
         if (!state.dirty) return f
+        // nav-attach (Foxit "automatically save document as e-mail attachment"): with auto-save on, save first
+        if (settings.autoSave && runCatching { state.save() }.getOrDefault(false) && !state.dirty) return f
         val tmp = app.documents.newTemp("share"); state.exportWithAnnots(tmp); return tmp
     }
 
@@ -305,17 +307,20 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                 if (tablet && panel != null) {
                     VerticalDivider()
                     Surface(Modifier.width(340.dp).fillMaxHeight(), tonalElevation = 1.dp) {
-                        PanelsContent(state, panel!!, onPanel = { panel = it }, onJump = { state.jumpTo(it) }, onAiOutline = { nav.navigate(Routes.tool("ai", state.fileUri)) }, onClose = { panel = null })
+                        PanelsContent(state, panel!!, onPanel = { panel = it }, onJump = { state.jumpTo(it) }, onAiOutline = { nav.navigate(Routes.tool("ai", state.fileUri)) }, onClose = { panel = null },
+                            onOpenPdf = { f -> nav.navigate(Routes.reader(android.net.Uri.fromFile(f).toString())) })
                     }
                 }
             }
         }
         // captured value: the sheet's own composition can recompose after panel became null (NPE with panel!!)
         if (!tablet) panel?.let { shownPanel -> ModalBottomSheet(onDismissRequest = { panel = null }) {
-            PanelsContent(state, shownPanel, onPanel = { panel = it }, onJump = { state.jumpTo(it); panel = null }, onAiOutline = { panel = null; nav.navigate(Routes.tool("ai", state.fileUri)) }, onClose = { panel = null })
+            PanelsContent(state, shownPanel, onPanel = { panel = it }, onJump = { state.jumpTo(it); panel = null }, onAiOutline = { panel = null; nav.navigate(Routes.tool("ai", state.fileUri)) }, onClose = { panel = null },
+                onOpenPdf = { f -> panel = null; nav.navigate(Routes.reader(android.net.Uri.fromFile(f).toString())) })
         } }
         com.smartdocs.editor.ui.forms5.InPageFormBar(state, Modifier.align(Alignment.BottomCenter))   // MODULE_forms5
         com.smartdocs.editor.ui.signature.SigFieldSheet(state, nav)   // Nitro signature-field actions
+        com.smartdocs.editor.ui.attachments.PortfolioPrompt(state) { nav.navigate(Routes.tool("portfolio", state.fileUri)) }   // nav-attach: portfolio detection
     }
 
     // ---- dialogs & sheets ----
