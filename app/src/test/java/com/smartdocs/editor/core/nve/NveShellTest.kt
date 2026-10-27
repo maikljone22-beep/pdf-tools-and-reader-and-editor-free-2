@@ -1,5 +1,8 @@
 package com.smartdocs.editor.core.nve
 
+import com.smartdocs.editor.core.nve.shell.ScanPreset
+import com.smartdocs.editor.core.nve.shell.Customization
+import com.smartdocs.editor.core.nve.shell.TrustPolicy
 import com.smartdocs.editor.core.nve.shell.FeatureGuides
 import com.smartdocs.editor.core.nve.shell.Favorites
 import com.smartdocs.editor.core.nve.shell.PdfRepair
@@ -82,19 +85,18 @@ class NveShellTest {
     }
 
     @Test fun trustPolicy() {
-        val T = com.smartdocs.editor.core.nve.shell.TrustPolicy
-        assertEquals("example.com", T.hostOf("https://www.Example.com:8080/a?b#c"))
-        assertEquals("docs.example.com", T.hostOf("docs.example.com/x"))
-        assertEquals("mailto", T.hostOf("mailto:a@b.c"))
-        assertEquals("b.com", T.hostOf("https://user@b.com/"))
+        assertEquals("example.com", TrustPolicy.hostOf("https://www.Example.com:8080/a?b#c"))
+        assertEquals("docs.example.com", TrustPolicy.hostOf("docs.example.com/x"))
+        assertEquals("mailto", TrustPolicy.hostOf("mailto:a@b.c"))
+        assertEquals("b.com", TrustPolicy.hostOf("https://user@b.com/"))
         val trusted = setOf("example.com")
-        assertEquals(T.Decision.ALLOW, T.link("https://docs.example.com/x", trusted, T.Mode.ASK))
-        assertEquals(T.Decision.ASK, T.link("https://evil.com", trusted, T.Mode.ASK))
-        assertEquals(T.Decision.BLOCK, T.link("https://evilexample.com", trusted, T.Mode.NEVER))
-        assertEquals(T.Decision.ALLOW, T.link("https://evil.com", trusted, T.Mode.ALWAYS))
-        assertEquals(T.Decision.ALLOW, T.script("/a.pdf", setOf("/a.pdf"), T.Mode.NEVER))
-        assertEquals(T.Decision.ASK, T.script("/b.pdf", setOf("/a.pdf"), T.Mode.ASK))
-        assertEquals(T.Decision.BLOCK, T.script("/b.pdf", emptySet(), T.Mode.NEVER))
+        assertEquals(TrustPolicy.Decision.ALLOW, TrustPolicy.link("https://docs.example.com/x", trusted, TrustPolicy.Mode.ASK))
+        assertEquals(TrustPolicy.Decision.ASK, TrustPolicy.link("https://evil.com", trusted, TrustPolicy.Mode.ASK))
+        assertEquals(TrustPolicy.Decision.BLOCK, TrustPolicy.link("https://evilexample.com", trusted, TrustPolicy.Mode.NEVER))
+        assertEquals(TrustPolicy.Decision.ALLOW, TrustPolicy.link("https://evil.com", trusted, TrustPolicy.Mode.ALWAYS))
+        assertEquals(TrustPolicy.Decision.ALLOW, TrustPolicy.script("/a.pdf", setOf("/a.pdf"), TrustPolicy.Mode.NEVER))
+        assertEquals(TrustPolicy.Decision.ASK, TrustPolicy.script("/b.pdf", setOf("/a.pdf"), TrustPolicy.Mode.ASK))
+        assertEquals(TrustPolicy.Decision.BLOCK, TrustPolicy.script("/b.pdf", emptySet(), TrustPolicy.Mode.NEVER))
     }
 
     @Test fun helpRankNpsDrive() {
@@ -114,17 +116,16 @@ class NveShellTest {
     }
 
     @Test fun customizationRoundTrip() {
-        val C = com.smartdocs.editor.core.nve.shell.Customization
         val tab = com.smartdocs.editor.core.nve.shell.UserTab("u1", "Work", "work", listOf("merge", "split", "merge"))
-        val c = C(tabOrder = listOf("TOOLS", "VIEW"), hiddenTabs = setOf("SIGN", "BOGUS"), hiddenChips = setOf("ai"), userTabs = listOf(tab, tab.copy(icon = "nope", id = "u2")),
+        val c = Customization(tabOrder = listOf("TOOLS", "VIEW"), hiddenTabs = setOf("SIGN", "BOGUS"), hiddenChips = setOf("ai"), userTabs = listOf(tab, tab.copy(icon = "nope", id = "u2")),
             favorites = listOf("scan"), favoritesTitle = "Mine", customTabName = null)
-        val back = C.fromJson(c.toJson())
+        val back = Customization.fromJson(c.toJson())
         assertEquals("TOOLS", back.tabOrder.first()); assertEquals(ToolbarModel.DEFAULT_TABS.size, back.tabOrder.size)
         assertEquals(setOf("SIGN"), back.hiddenTabs); assertEquals(setOf("ai"), back.hiddenChips)
         assertEquals(listOf("merge", "split"), back.userTabs[0].tools); assertEquals("star", back.userTabs[1].icon)
         assertEquals(listOf("scan"), back.favorites); assertEquals("Mine", back.favoritesTitle); assertEquals(null, back.customTabName)
-        assertEquals(back.userTabs, C.parseTabs(C.tabsJson(back.userTabs)))
-        assertTrue(runCatching { C.fromJson("{\"format\":\"other\"}") }.isFailure)
+        assertEquals(back.userTabs, Customization.parseTabs(Customization.tabsJson(back.userTabs)))
+        assertTrue(runCatching { Customization.fromJson("{\"format\":\"other\"}") }.isFailure)
     }
 
     private fun pageTexts(f: File): List<String> = PDDocument.load(f).use { d ->
@@ -144,14 +145,13 @@ class NveShellTest {
     }
 
     @Test fun scanPresetsAndTranslations() {
-        val P = com.smartdocs.editor.core.nve.shell.ScanPreset
-        var l = P.upsert(emptyList(), P("Office", "A4", "GRAY", 80, true))
-        l = P.upsert(l, P("office", "LETTER", "BW", 60, false))
+        var l = ScanPreset.upsert(emptyList(), ScanPreset("Office", "A4", "GRAY", 80, true))
+        l = ScanPreset.upsert(l, ScanPreset("office", "LETTER", "BW", 60, false))
         assertEquals(1, l.size); assertEquals("LETTER", l[0].paper)
-        assertEquals(l, P.upsert(l, P("good", "A4", "BW", 50, false)))   // built-in name protected
-        assertEquals(l, P.parse(P.format(l + P.BUILT_IN)))
-        assertEquals("office (2)", P.copyOf(l, l[0], "office").name)
-        assertEquals(null, P.decode("bad"))
+        assertEquals(l, ScanPreset.upsert(l, ScanPreset("good", "A4", "BW", 50, false)))   // built-in name protected
+        assertEquals(l, ScanPreset.parse(ScanPreset.format(l + ScanPreset.BUILT_IN)))
+        assertEquals("office (2)", ScanPreset.copyOf(l, l[0], "office").name)
+        assertEquals(null, ScanPreset.decode("bad"))
         val T = com.smartdocs.editor.core.nve.shell.TranslationHistory
         val E = com.smartdocs.editor.core.nve.shell.TranslationEntry::class
         var h = T.add(emptyList(), com.smartdocs.editor.core.nve.shell.TranslationEntry(1, "ar", "en", "مرحبا", "Hello"))

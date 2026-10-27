@@ -1,5 +1,6 @@
 package com.smartdocs.editor.core.edit
 
+import com.smartdocs.editor.core.annot.ImageAnnotProps5
 import com.tom_roush.pdfbox.cos.COSDictionary
 import com.tom_roush.pdfbox.cos.COSName
 import com.tom_roush.pdfbox.pdmodel.PDDocument
@@ -251,18 +252,17 @@ class NveImageTest {
             p.annotations.add(stamp)
             d.save(f)
         }
-        val P = com.smartdocs.editor.core.annot.ImageAnnotProps5
         // 40 px at 96 dpi = 30 pt; proportional "always" in 200 x 100 -> 100 x 100 centred
-        val fit = P.fit(40f, 40f, 200f, 100f, P.Props())
+        val fit = ImageAnnotProps5.fit(40f, 40f, 200f, 100f, ImageAnnotProps5.Props())
         assertEquals(50f, fit[0], 1e-3f); assertEquals(100f, fit[2], 1e-3f)
-        assertEquals(30f, P.fit(40f, 40f, 200f, 100f, P.Props(scaleWhen = P.ScaleWhen.BIGGER))[2], 1e-3f)
-        assertEquals(200f, P.fit(40f, 40f, 200f, 100f, P.Props(proportional = false))[2], 1e-3f)
-        save(f) { d -> assertTrue(P.apply(d, 0, 0, P.Props(hidden = true, locked = true, border = 2f, scaleWhen = P.ScaleWhen.NEVER, posX = 0f, posY = 1f))) }
+        assertEquals(30f, ImageAnnotProps5.fit(40f, 40f, 200f, 100f, ImageAnnotProps5.Props(scaleWhen = ImageAnnotProps5.ScaleWhen.BIGGER))[2], 1e-3f)
+        assertEquals(200f, ImageAnnotProps5.fit(40f, 40f, 200f, 100f, ImageAnnotProps5.Props(proportional = false))[2], 1e-3f)
+        save(f) { d -> assertTrue(ImageAnnotProps5.apply(d, 0, 0, ImageAnnotProps5.Props(hidden = true, locked = true, border = 2f, scaleWhen = ImageAnnotProps5.ScaleWhen.NEVER, posX = 0f, posY = 1f))) }
         reload(f) { d ->
-            val r = P.read(d, 0, 0)!!
+            val r = ImageAnnotProps5.read(d, 0, 0)!!
             assertTrue(r.hidden); assertTrue(r.locked); assertEquals(2f, r.border, 1e-3f)
-            assertEquals(P.ScaleWhen.NEVER, r.scaleWhen); assertEquals(1f, r.posY, 1e-3f)
-            assertNotNull(P.image(d, 0, 0))
+            assertEquals(ImageAnnotProps5.ScaleWhen.NEVER, r.scaleWhen); assertEquals(1f, r.posY, 1e-3f)
+            assertNotNull(ImageAnnotProps5.image(d, 0, 0))
         }
     }
 }
