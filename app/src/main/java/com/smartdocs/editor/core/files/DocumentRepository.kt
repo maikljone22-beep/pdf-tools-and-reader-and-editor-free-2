@@ -8,6 +8,7 @@ import android.provider.DocumentsContract
 import android.provider.MediaStore
 import android.provider.OpenableColumns
 import androidx.core.content.FileProvider
+import androidx.room.withTransaction
 import com.smartdocs.editor.core.data.AppDatabase
 import com.smartdocs.editor.core.data.RecentDoc
 import kotlinx.coroutines.Dispatchers
@@ -95,6 +96,53 @@ class DocumentRepository(private val context: Context, private val db: AppDataba
         origins.getString("l:$path", null)?.let { uri -> if (origins.getString("o:$uri", null) == path) e.remove("o:$uri") }
         listOf("l:", "s:", "n:", "p:").forEach { e.remove(it + path) }
         e.apply()
+    }
+
+    // ---- rename / move / delete with everything keyed by the path (audit DI-22, rest of DI-03) ----
+
+    private val metadata by lazy { DocMetadata(db.docs(), db.tags(), db.bookmarks()) { Uri.fromFile(it).toString() } }
+
+    /** Origin keys, Room rows (one transaction) and the search index follow the files of [moves]. */
+    private suspend fun followMoves(moves: List<Pair<File, File>>) {
+        if (moves.isEmpty()) return
+        moves.forEach { (a, b) -> if (a.absolutePath != b.absolutePath) moveOriginKeys(a.absolutePath, b.absolutePath) }
+        runCatching { db.withTransaction { metadata.moved(moves) } }
+        runCatching { val idx = com.smartdocs.editor.core.search.FullTextIndex.get(context); moves.forEach { (a, b) -> idx.movePath(a.absolutePath, b) } }
+    }
+
+    /** [rename] for Files: also carries recents, tags, bookmarks and the index entry of the file (or a folder's files). */
+    suspend fun renameDocument(f: File, newName: String): SafeRename.Result = withContext(Dispatchers.IO) {
+        val contents = DocMetadata.contents(f)
+        val r = rename(f, newName)
+        if (r is SafeRename.Result.Ok && r.file.absolutePath != f.absolutePath) followMoves(DocMetadata.pairs(f, r.file, contents))
+        r
+    }
+
+    /** Move [f] (file or folder) into [dest] without replacing anything there; returns the new location or null. */
+    suspend fun moveDocument(f: File, dest: File): File? = withContext(Dispatchers.IO) {
+        if (f.parentFile?.absolutePath == dest.absolutePath) return@withContext f
+        var target = File(dest, f.name)
+        if (target.exists()) target = if (f.isDirectory) File(dest, f.name + " (2)") else uniqueFile(dest, f.nameWithoutExtension, f.extension)
+        if (target.exists()) return@withContext null
+        val contents = DocMetadata.contents(f)
+        val moved = f.renameTo(target) || runCatching { f.copyRecursively(target); f.deleteRecursively() }.getOrDefault(false)
+        if (!moved || !target.exists()) return@withContext null
+        followMoves(DocMetadata.pairs(f, target, contents))
+        target
+    }
+
+    /**
+     * Delete [f] with [remove] (move to the trash, or delete permanently) and forget what was keyed by its path:
+     * origin keys, recents rows and the index entry; tags and bookmarks too when [toTrash] is false. False when
+     * [remove] failed (nothing is forgotten then).
+     */
+    suspend fun deleteDocument(f: File, toTrash: Boolean, remove: (File) -> Boolean): Boolean = withContext(Dispatchers.IO) {
+        val files = DocMetadata.pairs(f, f, DocMetadata.contents(f)).map { it.first }
+        if (!remove(f)) return@withContext false
+        (files + f).distinct().forEach { forgetOrigin(it) }
+        runCatching { db.withTransaction { metadata.deleted(files, keepUserData = toTrash) } }
+        runCatching { val idx = com.smartdocs.editor.core.search.FullTextIndex.get(context); files.forEach { idx.remove(it.absolutePath) } }
+        true
     }
 
     /**

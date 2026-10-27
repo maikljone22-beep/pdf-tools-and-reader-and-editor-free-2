@@ -75,6 +75,10 @@ interface DocDao {
 
     @Query("DELETE FROM recent_docs")
     suspend fun clear()
+
+    /** Audit DI-22: a renamed / moved document keeps its recents row (last page, favourite, thumbnail). */
+    @Query("UPDATE OR REPLACE recent_docs SET uri = :to, name = :name WHERE uri = :from")
+    suspend fun moveUri(from: String, to: String, name: String)
 }
 
 @Dao
@@ -99,6 +103,13 @@ interface TagDao {
 
     @Delete
     suspend fun detach(docTag: DocTag)
+
+    /** Audit DI-22: re-key a document's tags; tags the target already has stay once (see [removeDoc]). */
+    @Query("UPDATE OR IGNORE doc_tags SET uri = :to WHERE uri = :from")
+    suspend fun moveUri(from: String, to: String)
+
+    @Query("DELETE FROM doc_tags WHERE uri = :uri")
+    suspend fun removeDoc(uri: String)
 }
 
 @Dao
@@ -123,6 +134,13 @@ interface BookmarkDao {
 
     @Delete
     suspend fun delete(b: ReadingBookmark)
+
+    /** Audit DI-22: bookmarks follow a renamed / moved document. */
+    @Query("UPDATE reading_bookmarks SET uri = :to WHERE uri = :from")
+    suspend fun moveUri(from: String, to: String)
+
+    @Query("DELETE FROM reading_bookmarks WHERE uri = :uri")
+    suspend fun removeDoc(uri: String)
 }
 
 @Dao

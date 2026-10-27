@@ -35,4 +35,23 @@ object IndexText {
         }.distinct()
         return terms.joinToString(if (mode == SearchMode.ANY_WORDS) " OR " else " ")
     }
+
+    /**
+     * The MATCH expressions a search runs, results united (audit AN-15): [ftsQuery] plus, for Arabic words, the
+     * reversed words, because visual-order PDFs store "محمد" as "دمحم" and the body is indexed from the raw text.
+     * A reversed word can only be matched by prefix from its logical end, so each Arabic word gives its reversed
+     * stem ("الكتاب" → "باتك*" finds "باتكلا") and its reversed full word ("كتابه" → "هباتك*"). Separate
+     * expressions instead of `(a OR b) c` keep the meaning the same in FTS standard and enhanced query syntax.
+     * Empty when [ftsQuery] is null.
+     */
+    fun ftsQueries(query: String, mode: SearchMode): List<String> {
+        val forward = ftsQuery(query, mode) ?: return emptyList()
+        val words = ArabicNormalizer.words(ArabicNormalizer.fold(query, INDEX_NORM).text).distinct()
+        if (words.none { ArabicNormalizer.hasArabic(it) && it.length > 1 }) return listOf(forward)
+        fun stem(w: String) = ArabicNormalizer.lightStem(w).takeIf { it.length >= 2 } ?: w
+        fun rev(w: String, useStem: Boolean) = if (ArabicNormalizer.hasArabic(w) && w.length > 1) (if (useStem) stem(w) else w).reversed() + "*" else stem(w) + "*"
+        val reversed = listOf(true, false).map { useStem -> words.map { rev(it, useStem) }.distinct() }
+        return if (mode == SearchMode.ANY_WORDS) listOf((forward.split(" OR ") + reversed.flatten()).distinct().joinToString(" OR "))
+        else (listOf(forward) + reversed.map { it.joinToString(" ") }).distinct()
+    }
 }

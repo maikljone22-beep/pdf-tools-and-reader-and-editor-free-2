@@ -35,6 +35,7 @@ object ConnectedStamp {
             val tmp = File(out.parentFile, ".${out.name}.part")
             d.save(tmp)
             if (!tmp.renameTo(out)) { tmp.copyTo(out, overwrite = true); tmp.delete() }
+            ConnMarker.invalidate(out)
         }
     }
 

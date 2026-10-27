@@ -215,7 +215,8 @@ class OrganizeState(
         val order = (0 until pageCount).toMutableList()
         val pos = if (after < 0) order.size else (after + 1).coerceIn(0, order.size)
         order.addAll(pos, clip)
-        apply { src, out -> PdfOps.keepPages(src, order, out, password) }
+        // audit AN-22: in place on the page tree (keeps outline, forms, labels, encryption); pasted pages are copies
+        apply { src, out -> PdfOps.reorder(src, order, out, password) }
     }
 
     /** Extract selected pages into a new file in docsDir. */

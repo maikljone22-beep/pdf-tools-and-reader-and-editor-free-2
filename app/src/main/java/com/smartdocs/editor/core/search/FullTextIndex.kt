@@ -70,6 +70,18 @@ class FullTextIndex private constructor(context: Context) : SQLiteOpenHelper(con
         try { deleteLocked(db, path); db.setTransactionSuccessful() } finally { db.endTransaction() }
     }
 
+    /** The indexed file at [from] is now [to] (renamed / moved, same content): keep its entry (audit DI-22). */
+    fun movePath(from: String, to: File) {
+        if (from == to.absolutePath) return
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            deleteLocked(db, to.absolutePath)
+            db.update("docs", ContentValues().apply { put("path", to.absolutePath); put("name", to.name); put("mtime", to.lastModified()) }, "path = ?", arrayOf(from))
+            db.setTransactionSuccessful()
+        } finally { db.endTransaction() }
+    }
+
     private fun deleteLocked(db: SQLiteDatabase, path: String) {
         val id = db.rawQuery("SELECT id FROM docs WHERE path = ?", arrayOf(path)).use { if (it.moveToFirst()) it.getLong(0) else null } ?: return
         db.execSQL("DELETE FROM parts_fts WHERE rowid IN (SELECT id FROM parts WHERE doc = ?)", arrayOf<Any>(id))
@@ -103,12 +115,14 @@ class FullTextIndex private constructor(context: Context) : SQLiteOpenHelper(con
      */
     suspend fun search(query: String, options: SearchOptions, kinds: Set<PartKind> = PartKind.values().toSet(), perFile: Int = 20, maxFiles: Int = 200, scanLimit: Int = 30_000): List<FileResult> = withContext(Dispatchers.IO) {
         if (query.isBlank() || kinds.isEmpty()) return@withContext emptyList()
-        val fts = IndexText.ftsQuery(query, options.mode)
+        // forward terms plus the reversed terms of visual-order Arabic, united (audit AN-15)
+        val fts = IndexText.ftsQueries(query, options.mode)
         val kindList = kinds.joinToString(",") { it.ordinal.toString() }
-        val sql = if (fts != null)
-            "SELECT p.doc, p.page, p.kind, p.raw, d.path, d.name, d.pages FROM parts_fts f JOIN parts p ON p.id = f.rowid JOIN docs d ON d.id = p.doc WHERE parts_fts MATCH ? AND p.kind IN ($kindList) ORDER BY p.doc, p.page LIMIT $scanLimit"
-        else "SELECT p.doc, p.page, p.kind, p.raw, d.path, d.name, d.pages FROM parts p JOIN docs d ON d.id = p.doc WHERE p.kind IN ($kindList) ORDER BY p.doc, p.page LIMIT $scanLimit"
-        val args = if (fts != null) arrayOf(fts) else null
+        val sql = if (fts.isNotEmpty()) {
+            val match = fts.joinToString(" UNION ") { "SELECT rowid FROM parts_fts WHERE parts_fts MATCH ?" }
+            "SELECT p.doc, p.page, p.kind, p.raw, d.path, d.name, d.pages FROM parts p JOIN docs d ON d.id = p.doc WHERE p.id IN ($match) AND p.kind IN ($kindList) ORDER BY p.doc, p.page LIMIT $scanLimit"
+        } else "SELECT p.doc, p.page, p.kind, p.raw, d.path, d.name, d.pages FROM parts p JOIN docs d ON d.id = p.doc WHERE p.kind IN ($kindList) ORDER BY p.doc, p.page LIMIT $scanLimit"
+        val args = if (fts.isNotEmpty()) fts.toTypedArray() else null
         val groups = LinkedHashMap<Long, Triple<String, String, Int>>()
         val hits = HashMap<Long, MutableList<IndexHit>>()
         val totals = HashMap<Long, Int>()

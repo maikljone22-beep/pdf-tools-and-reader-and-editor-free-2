@@ -75,16 +75,30 @@ object AnnotationWriter {
         fun orThrow() { if (failed.isNotEmpty()) throw java.io.IOException("${failed.size} annotation(s) could not be written: ${errors.firstOrNull().orEmpty()}") }
     }
 
-    /** Write every annotation into a copy of [src] saved at [out]. */
+    /**
+     * Write every annotation into a copy of [src] saved at [out]. A signed [src] is updated incrementally so its
+     * signatures stay valid (audit AN-28 / DI-27; [SignedSave]); throws [SignedDocumentException] when that is not
+     * possible (certified without annotation rights, or the update failed) — the caller should offer a copy.
+     */
     suspend fun commit(context: Context, src: File, annots: List<Annot>, out: File, password: String? = null): CommitResult = withContext(Dispatchers.IO) {
-        // PdfOps.load re-protects encrypted files so PdfBox 2.0 can save them; never write into [src] itself
         require(out.canonicalPath != src.canonicalPath) { "commit: out must differ from src" }
-        PdfOps.load(src, password).use { d ->
-            val r = writeAll(d, annots) { page, a -> write(context, d, page, a) }
-            d.save(out)
+        saveChanged(src, out, password) { d -> writeAll(d, annots) { page, a -> write(context, d, page, a) } to annots.map { it.page } }
+    }
+
+    /**
+     * Load [src], apply [change] (returns its result and the zero-based pages it touched) and save to [out]: a full
+     * save (encrypted files re-protected like the source, [PdfOps.reprotect]) or, for a signed file, an incremental
+     * update that leaves the signed bytes unchanged. Never writes into [src].
+     */
+    internal fun <T> saveChanged(src: File, out: File, password: String?, change: (PDDocument) -> Pair<T, List<Int>>): T =
+        PdfOps.loadRaw(src, password).use { d ->
+            val signed = SignedSave.isSigned(d)
+            if (signed) SignedSave.requireAnnotationsAllowed(d) else PdfOps.reprotect(d, password)
+            val (r, pages) = change(d)
+            if (signed) SignedSave.saveIncremental(d, pages.distinct().filter { it in 0 until d.numberOfPages }.map { d.getPage(it) }, out)
+            else d.save(out)
             r
         }
-    }
 
     /** The per-annotation loop of [commit], separate so a failing writer can be unit tested (audit DI-05). */
     internal fun writeAll(d: PDDocument, annots: List<Annot>, writeOne: (PDPage, Annot) -> Unit): CommitResult {
@@ -483,11 +497,12 @@ object AnnotationWriter {
 
     suspend fun delete(src: File, page: Int, index: Int, out: File, password: String? = null) = withContext(Dispatchers.IO) {
         require(out.canonicalPath != src.canonicalPath) { "delete: out must differ from src" }
-        PdfOps.load(src, password).use { d ->
-            if (page !in 0 until d.numberOfPages) { d.save(out); return@use }
-            val p = d.getPage(page); val list = p.annotations
-            if (index in list.indices) { list.removeAt(index); p.annotations = list }
-            d.save(out)
+        saveChanged(src, out, password) { d ->
+            if (page in 0 until d.numberOfPages) {
+                val p = d.getPage(page); val list = p.annotations
+                if (index in list.indices) { list.removeAt(index); p.annotations = list }
+            }
+            Unit to listOf(page)
         }
     }
 }
