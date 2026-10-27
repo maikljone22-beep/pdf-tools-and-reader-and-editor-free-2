@@ -2,7 +2,9 @@ package com.smartdocs.editor.core.pdf
 
 import android.content.Context
 import android.graphics.Bitmap
+import com.smartdocs.editor.core.sign.SigFields
 import com.tom_roush.pdfbox.pdmodel.PDDocument
+import com.tom_roush.pdfbox.pdmodel.PDPageContentStream
 import com.tom_roush.pdfbox.pdmodel.interactive.digitalsignature.PDSignature
 import com.tom_roush.pdfbox.pdmodel.interactive.digitalsignature.SignatureInterface
 import com.tom_roush.pdfbox.pdmodel.interactive.digitalsignature.SignatureOptions
@@ -36,6 +38,9 @@ import java.security.cert.X509Certificate
 import java.util.Calendar
 import java.util.Date
 
+/** Where a signature goes (an existing empty field, or a new field). */
+typealias SigTarget = SigFields.Target
+
 /**
  * Certificate-based (PAdES-basic / adbe.pkcs7.detached) signing and verification built on PdfBox + BouncyCastle.
  * Keys come from a PKCS#12 file (user-provided or self-signed one generated on device).
@@ -63,6 +68,8 @@ object DigitalSignature {
         val ltv: Boolean = false,
         /** After signing (and DSS), append an RFC 3161 document time-stamp (PAdES-LTA). Needs [tsaUrl]. */
         val docTimestamp: Boolean = false,
+        /** FieldMDP lock of an approval signature (Nitro "lock document after signing"); null = the field's own /Lock, if any. */
+        val lock: com.smartdocs.editor.core.sign.SigFields.Lock? = null,
     )
 
     /** Seal image split across the right edge of all pages before signing (see core/sign/PagingSeal). */
@@ -101,6 +108,22 @@ object DigitalSignature {
         val certifyLevel: Int? = null,
         /** The document carries a DSS (validation material for long-term validation). */
         val ltvData: Boolean = false,
+        /** Signature form field holding this signature (Sign / Clear / Validate on a field). */
+        val fieldName: String? = null,
+        val contactInfo: String = "",
+        /** 1-based revision this signature covers, out of [revisionCount] saved revisions ("Revision 2 of 3"). */
+        val revision: Int = 0,
+        val revisionCount: Int = 0,
+        /** Length of the signed revision: bytes [0, signedLength) of the file are the version that was signed. */
+        val signedLength: Long = 0,
+        /** FieldMDP lock written with this signature. */
+        val lock: com.smartdocs.editor.core.sign.SigFields.Lock? = null,
+        /** Signers of CMS counter-signatures on this signature. */
+        val counterSigners: List<String> = emptyList(),
+        /** Names of signatures added in later revisions (they counter-sign this one at document level). */
+        val signedLaterBy: List<String> = emptyList(),
+        /** OCSP/CRL revocation check of the signer certificate (see core/sign/Revocation); null = not checked. */
+        val revocation: com.smartdocs.editor.core.sign.Revocation.Result? = null,
     )
 
     /** File that holds the on-device self-signed certificate. */
@@ -228,8 +251,9 @@ object DigitalSignature {
             setItem(com.tom_roush.pdfbox.cos.COSName.TRANSFORM_PARAMS, tp)
             setNeedToBeUpdated(true)
         }
-        val arr = com.tom_roush.pdfbox.cos.COSArray().apply { add(ref); setNeedToBeUpdated(true) }
-        sig.cosObject.setItem(com.tom_roush.pdfbox.cos.COSName.REFERENCE, arr)
+        val arr = sig.cosObject.getDictionaryObject(com.tom_roush.pdfbox.cos.COSName.REFERENCE) as? com.tom_roush.pdfbox.cos.COSArray
+            ?: com.tom_roush.pdfbox.cos.COSArray().also { sig.cosObject.setItem(com.tom_roush.pdfbox.cos.COSName.REFERENCE, it) }
+        arr.add(ref); arr.setNeedToBeUpdated(true)
         val catalog = doc.documentCatalog.cosObject
         val perms = com.tom_roush.pdfbox.cos.COSDictionary().apply { setItem(com.tom_roush.pdfbox.cos.COSName.DOCMDP, sig); setNeedToBeUpdated(true) }
         catalog.setItem(com.tom_roush.pdfbox.cos.COSName.PERMS, perms)
@@ -245,6 +269,7 @@ object DigitalSignature {
     suspend fun sign(
         context: Context, src: File, out: File, identity: Identity, options: SignOptions,
         visible: VisibleSignature? = null, password: String? = null, pagingSeal: PagingSealOptions? = null,
+        target: SigTarget? = null,
     ): SignReport = withContext(Dispatchers.IO) {
         ensureProvider()
         require(out.canonicalPath != src.canonicalPath) { "sign: out must differ from src" }
@@ -259,19 +284,11 @@ object DigitalSignature {
                 com.smartdocs.editor.core.sign.PagingSeal.apply(input, t, pagingSeal.image, pagingSeal.sizePt, pagingSeal.yFraction, password = password)
                 input = t
             }
-            if (visible != null) {
+            // an image appearance goes into the signature widget (see signInto); text only is drawn into the page
+            if (visible != null && visible.image == null) {
                 val t = tmp("visible")
-                if (visible.image != null) {
-                    PdfOps.stampImage(input, visible.page, visible.image, visible.x, visible.y, visible.w, visible.h, t, password = password)
-                    if (!visible.text.isNullOrBlank()) {
-                        val t2 = tmp("visible2")
-                        PdfOps.stampText(context, t, visible.page, visible.text, visible.x, visible.y - visible.fontSize - 2f, visible.fontSize, 0x333333, t2, password = password)
-                        input = t2
-                    } else input = t
-                } else {
-                    PdfOps.stampText(context, input, visible.page, visible.text ?: options.name, visible.x, visible.y, visible.fontSize, 0x333333, t, password = password)
-                    input = t
-                }
+                PdfOps.stampText(context, input, visible.page, visible.text ?: options.name, visible.x, visible.y, visible.fontSize, 0x333333, t, password = password)
+                input = t
             }
             // saveIncremental() cannot strip encryption (it appends to the original bytes); an encrypted
             // input is first fully re-saved without security, then signed incrementally.
@@ -284,27 +301,10 @@ object DigitalSignature {
 
             val needPost = options.ltv || options.docTimestamp
             val signedOut = if (needPost) tmp("signed") else out
-            val signer = CmsSigner(identity, options.tsaUrl?.takeIf { it.isNotBlank() }, options.pades)
-            PDDocument.load(input).use { d ->
-                if (options.certifyLevel in 1..3 && d.signatureDictionaries.isNotEmpty())
-                    throw IllegalStateException("certification must be the first signature")
-                val sig = PDSignature().apply {
-                    setFilter(PDSignature.FILTER_ADOBE_PPKLITE)
-                    setSubFilter(if (options.pades) PDSignature.SUBFILTER_ETSI_CADES_DETACHED else PDSignature.SUBFILTER_ADBE_PKCS7_DETACHED)
-                    name = options.name.ifBlank { friendlyName(identity.subject) }
-                    location = options.location
-                    reason = options.reason
-                    contactInfo = options.contactInfo
-                    signDate = Calendar.getInstance()
-                }
-                if (options.certifyLevel in 1..3) setMdp(d, sig, options.certifyLevel)
-                val size = SignatureOptions.DEFAULT_SIGNATURE_SIZE * (if (options.tsaUrl.isNullOrBlank()) 2 else 4)
-                val sigOpts = SignatureOptions().apply { preferredSignatureSize = size }
-                try {
-                    d.addSignature(sig, signer, sigOpts)
-                    signedOut.outputStream().use { d.saveIncremental(it) }
-                } finally { runCatching { sigOpts.close() } }
-            }
+            val widget = visible?.takeIf { it.image != null }
+            val tgt = target ?: widget?.let { SigTarget(page = it.page, rect = floatArrayOf(it.x, it.y, it.w, it.h)) } ?: SigTarget(page = visible?.page ?: 0)
+            val draw: ((PDDocument, PDPageContentStream, Float, Float) -> Unit)? = widget?.image?.let { img -> { t, cs, w, h -> drawFitted(t, cs, img, w, h) } }
+            val timestamped = signInto(input, signedOut, identity, options, tgt, draw)
 
             var current = signedOut
             var ltvReport: com.smartdocs.editor.core.sign.LtvSupport.Report? = null
@@ -324,10 +324,61 @@ object DigitalSignature {
                 } catch (e: Exception) { warnings += "DocTimeStamp: ${e.message ?: e.javaClass.simpleName}" }
             }
             if (current != out) current.copyTo(out, overwrite = true)
-            SignReport(signer.timestamped, ltvReport, docTs, warnings + (ltvReport?.problems ?: emptyList()))
+            SignReport(timestamped, ltvReport, docTs, warnings + (ltvReport?.problems ?: emptyList()))
         } finally {
             temps.forEach { runCatching { it.delete() } }
         }
+    }
+
+    /**
+     * The cryptographic step of [sign], without Android dependencies: attaches the signature to its field
+     * ([SigFields.prepare]: an existing empty field, or a new one on [target]'s page), adds the optional FieldMDP
+     * lock and DocMDP certification, and appends it incrementally to [signedOut]. A field with a rectangle gets a
+     * widget appearance drawn by [draw] (blank when null). Returns whether a signature time-stamp was embedded.
+     */
+    internal fun signInto(
+        input: File, signedOut: File, identity: Identity, options: SignOptions, target: SigTarget,
+        draw: ((PDDocument, PDPageContentStream, Float, Float) -> Unit)? = null,
+    ): Boolean {
+        ensureProvider()
+        val signer = CmsSigner(identity, options.tsaUrl?.takeIf { it.isNotBlank() }, options.pades)
+        PDDocument.load(input).use { d ->
+            if (options.certifyLevel in 1..3 && d.signatureDictionaries.isNotEmpty())
+                throw IllegalStateException("certification must be the first signature")
+            if (SignedSave.certifyLevel(d) == 1 || d.signatureDictionaries.any { SigFields.lockOf(d, it)?.docPermission == 1 })
+                throw SignedDocumentException(SignedDocumentException.Reason.CERTIFIED_NO_CHANGES, "a signature of this document does not allow changes")
+            val sig = PDSignature().apply {
+                setFilter(PDSignature.FILTER_ADOBE_PPKLITE)
+                setSubFilter(if (options.pades) PDSignature.SUBFILTER_ETSI_CADES_DETACHED else PDSignature.SUBFILTER_ADBE_PKCS7_DETACHED)
+                name = options.name.ifBlank { friendlyName(identity.subject) }
+                location = options.location
+                reason = options.reason
+                contactInfo = options.contactInfo
+                signDate = Calendar.getInstance()
+            }
+            val prep = SigFields.prepare(d, sig, target, options.lock)
+            if (options.certifyLevel in 1..3) setMdp(d, sig, options.certifyLevel)
+            val size = SignatureOptions.DEFAULT_SIGNATURE_SIZE * (if (options.tsaUrl.isNullOrBlank()) 2 else 4)
+            val sigOpts = SignatureOptions().apply { preferredSignatureSize = size; page = prep.page }
+            try {
+                // a field with a rectangle keeps it: PdfBox only zeroes the widget when no visual template is given
+                prep.rect?.let { r ->
+                    val box = d.getPage(prep.page).mediaBox
+                    sigOpts.setVisualSignature(java.io.ByteArrayInputStream(SigFields.template(box, r, prep.rotation) { t, cs, w, h -> draw?.invoke(t, cs, w, h) }))
+                }
+                d.addSignature(sig, signer, sigOpts)
+                signedOut.outputStream().use { d.saveIncremental(it) }
+            } finally { runCatching { sigOpts.close() } }
+        }
+        return signer.timestamped
+    }
+
+    /** Draws [img] centred in a w×h box, keeping its aspect ratio. */
+    private fun drawFitted(t: PDDocument, cs: PDPageContentStream, img: Bitmap, w: Float, h: Float) {
+        val x = com.tom_roush.pdfbox.pdmodel.graphics.image.LosslessFactory.createFromImage(t, img)
+        val k = minOf(w / img.width, h / img.height)
+        val dw = img.width * k; val dh = img.height * k
+        cs.drawImage(x, (w - dw) / 2f, (h - dh) / 2f, dw, dh)
     }
 
     // ---------------------------------------------------------------- verification
@@ -364,12 +415,18 @@ object DigitalSignature {
         info.genTime to (imprintOk && sigOk)
     }.getOrDefault(null to false)
 
-    suspend fun verify(file: File): List<VerifyResult> = withContext(Dispatchers.IO) {
+    /**
+     * Validates every signature of [file]. With [revocation], the signer chain is also checked for revocation
+     * (embedded DSS responses first; [online] allows OCSP/CRL requests).
+     */
+    suspend fun verify(file: File, revocation: Boolean = false, online: Boolean = true): List<VerifyResult> = withContext(Dispatchers.IO) {
         ensureProvider()
         val bytes = file.readBytes()
+        val revEnds = com.smartdocs.editor.core.sign.RevisionDiff.revisionEnds(bytes)
         val results = ArrayList<VerifyResult>()
         PDDocument.load(file).use { doc ->
             val ltv = com.smartdocs.editor.core.sign.LtvSupport.hasDss(doc)
+            val material = if (revocation) com.smartdocs.editor.core.sign.Revocation.dssMaterial(doc) else null
             for (sig in doc.signatureDictionaries) {
                 val name = sig.name.orEmpty()
                 val reason = sig.reason.orEmpty()
@@ -378,6 +435,14 @@ object DigitalSignature {
                 val subFilter = sig.subFilter.orEmpty()
                 val range = sig.byteRange
                 val covers = range != null && range.size == 4 && range[0] == 0 && (range[2].toLong() + range[3].toLong()) == bytes.size.toLong()
+                val signedLen = if (range != null && range.size == 4) range[2].toLong() + range[3].toLong() else 0L
+                val revision = revEnds.indexOfFirst { it >= signedLen }.let { if (it < 0) revEnds.size else it + 1 }
+                val common = VerifyResult(
+                    name = name, signDate = date, reason = reason, coversWholeDocument = covers, signatureValid = false,
+                    certSubject = "", certIssuer = "", validFrom = null, validTo = null, location = location, subFilter = subFilter,
+                    ltvData = ltv, fieldName = SigFields.fieldOf(doc, sig), contactInfo = sig.contactInfo.orEmpty(),
+                    revision = revision, revisionCount = revEnds.size, signedLength = signedLen, lock = SigFields.lockOf(doc, sig),
+                )
                 val isDocTs = subFilter == "ETSI.RFC3161"
                 try {
                     val contents = sig.getContents(bytes)
@@ -386,11 +451,11 @@ object DigitalSignature {
                         val (genTime, ok) = checkToken(CMSSignedData(contents), signedContent)
                         val tokenCms = CMSSignedData(contents)
                         val cert = tokenCms.signerInfos.signers.firstOrNull()?.let { signerCert(tokenCms, it) }
-                        results += VerifyResult(
-                            name = cert?.let { friendlyName(it.subjectX500Principal.name) } ?: "TSA", signDate = genTime, reason = reason,
-                            coversWholeDocument = covers, signatureValid = ok, certSubject = cert?.subjectX500Principal?.name.orEmpty(),
+                        results += common.copy(
+                            name = cert?.let { friendlyName(it.subjectX500Principal.name) } ?: "TSA", signDate = genTime,
+                            signatureValid = ok, certSubject = cert?.subjectX500Principal?.name.orEmpty(),
                             certIssuer = cert?.issuerX500Principal?.name.orEmpty(), validFrom = cert?.notBefore, validTo = cert?.notAfter,
-                            subFilter = subFilter, timestampDate = genTime, timestampValid = ok, isDocTimestamp = true, ltvData = ltv,
+                            location = "", timestampDate = genTime, timestampValid = ok, isDocTimestamp = true,
                         )
                         continue
                     }
@@ -404,20 +469,29 @@ object DigitalSignature {
                         val r = checkToken(CMSSignedData(org.bouncycastle.asn1.cms.ContentInfo.getInstance(v)), signerInfo.signature)
                         tsDate = r.first; tsOk = r.second
                     }
-                    results += VerifyResult(
-                        name = name.ifBlank { cert.subjectX500Principal.name }, signDate = date, reason = reason,
-                        coversWholeDocument = covers, signatureValid = valid,
+                    val counter = signerInfo.counterSignatures.signers.map { cs ->
+                        signerCert(cms, cs)?.let { friendlyName(it.subjectX500Principal.name) } ?: cs.sid.issuer?.toString().orEmpty()
+                    }
+                    val rev = material?.let { m ->
+                        val pool = cms.certificates.getMatches(null).mapNotNull { h -> runCatching { JcaX509CertificateConverter().getCertificate(h as X509CertificateHolder) }.getOrNull() }
+                        runCatching { com.smartdocs.editor.core.sign.Revocation.check(cert, pool, m, online) }.getOrNull()
+                    }
+                    results += common.copy(
+                        name = name.ifBlank { cert.subjectX500Principal.name }, signatureValid = valid,
                         certSubject = cert.subjectX500Principal.name, certIssuer = cert.issuerX500Principal.name,
-                        validFrom = cert.notBefore, validTo = cert.notAfter, location = location,
-                        subFilter = subFilter, timestampDate = tsDate, timestampValid = tsOk,
-                        certifyLevel = certifyLevelOf(doc, sig), ltvData = ltv,
+                        validFrom = cert.notBefore, validTo = cert.notAfter,
+                        timestampDate = tsDate, timestampValid = tsOk, certifyLevel = certifyLevelOf(doc, sig),
+                        counterSigners = counter, revocation = rev,
                     )
                 } catch (e: Exception) {
-                    results += VerifyResult(name, date, reason, covers, false, "", "", null, null, location, e.message ?: e.toString(), subFilter = subFilter, isDocTimestamp = isDocTs, ltvData = ltv)
+                    results += common.copy(error = e.message ?: e.toString(), isDocTimestamp = isDocTs)
                 }
             }
         }
-        results
+        // a signature added in a later revision covers (and so counter-signs) every earlier one
+        results.map { r ->
+            r.copy(signedLaterBy = results.filter { o -> o !== r && !o.isDocTimestamp && o.signedLength > r.signedLength }.map { friendlyName(it.name) })
+        }
     }
 
     /** Human readable "CN=…" → "…" extraction for display. */

@@ -230,6 +230,11 @@ private fun SignToolbar(state: ReaderState, a: ReaderActions) {
     val app = com.smartdocs.editor.LocalApp.current
     val sigs by app.db.signatures().all().collectAsState(initial = emptyList())
     val placing = state.placement != null
+    // nitro-quicksign: locked signatures ask for their password; recently used ones come first
+    val gate = com.smartdocs.editor.ui.signature.rememberSignatureGate()
+    val meta by remember { com.smartdocs.editor.core.data.SignatureMetaStore.flow(app) }.collectAsState()
+    val recent = com.smartdocs.editor.core.data.SignatureMetaStore.recent(meta, sigs.map { it.path }, max = 3)
+    val ordered = recent.mapNotNull { p -> sigs.firstOrNull { it.path == p } } + sigs.filter { it.path !in recent }
     ToolRow {
         if (placing) {
             FilledTonalButton(onClick = { state.confirmPlacement() }) { Icon(Icons.Default.Check, null); Spacer(Modifier.width(4.dp)); Text(stringResource(R.string.done)) }
@@ -240,17 +245,20 @@ private fun SignToolbar(state: ReaderState, a: ReaderActions) {
         ToolChip(Icons.Default.VerifiedUser, stringResource(R.string.sig_digital)) { a.navigateTool("digital_sign") }
         VerticalDivider(Modifier.height(36.dp).padding(horizontal = 4.dp))
         if (sigs.isEmpty()) Text(stringResource(R.string.rd_no_signatures), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 8.dp))
-        sigs.forEach { s ->
+        if (recent.isNotEmpty()) Text(stringResource(R.string.nq_recent), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(horizontal = 4.dp))
+        ordered.forEachIndexed { i, s ->
+            if (recent.isNotEmpty() && i == recent.size) VerticalDivider(Modifier.height(36.dp).padding(horizontal = 4.dp))
             val selected = state.tool == ReaderTool.SIGNATURE && state.pendingText == s.path
             Box(
                 Modifier.padding(2.dp).size(width = 84.dp, height = 48.dp).clip(RoundedCornerShape(10.dp))
                     .background(Color.White)
                     .border(2.dp, if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(10.dp))
-                    .clickable { a.pickSignature(s.path) },
+                    .clickable { gate.request(s.path) { a.pickSignature(s.path) } },
                 contentAlignment = Alignment.Center,
             ) {
                 coil.compose.AsyncImage(model = java.io.File(s.path), contentDescription = null, modifier = Modifier.fillMaxSize().padding(4.dp))
                 if (s.isInitials) Text(stringResource(R.string.sig_initials), style = MaterialTheme.typography.labelSmall, modifier = Modifier.align(Alignment.BottomEnd).padding(2.dp), color = Color.Gray)
+                if (meta[s.path]?.locked == true) Icon(Icons.Default.Lock, null, Modifier.align(Alignment.TopStart).padding(2.dp).size(12.dp), tint = Color.Gray)
             }
         }
     }

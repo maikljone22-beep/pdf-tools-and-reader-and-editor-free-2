@@ -17,7 +17,8 @@ Scope is FROZEN for 0.5.0: no new features are started until 0.5.0 is released. 
 ### A2. Feature gaps vs Nitro / old plan / Foxit (user approved for 0.5.0) — see gaps/ASSIGNMENTS.md
 - [ ] pdf-3c: Protect + Sign, then bookmarks/links/attachments/batch/cloud/settings
 - [ ] pdf-39: redaction/HF/Bates/optimize/compare/OCR, then pages/convert/layers/accessibility/PDF-A
-- [ ] pdf-ad: in-page video, OCR quality, view/edit, comments/forms, AI/Office gaps
+- [x] In-page video player (play inside the PDF box, Screen+Rendition, poster) — merged 2f2d8d2 (VIDEO_INLINE_r5.md)
+- [ ] pdf-ad: OCR quality, view/edit, comments/forms, AI/Office gaps
 - [ ] Foxit comparison (in progress) assigned when ready
 
 ### B. Audit fixes — DONE

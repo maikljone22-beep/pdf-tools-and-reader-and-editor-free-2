@@ -15,6 +15,9 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Gesture
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.SaveAlt
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.LineWeight
 import androidx.compose.material.icons.filled.Opacity
 import androidx.compose.material.icons.filled.Palette
@@ -52,13 +55,21 @@ fun AnnotActionBar(state: ReaderState, annot: Annot?, frame: Rect) {
     ) {
         Column(Modifier.padding(4.dp)) {
             Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
-                if (annot?.kind != AnnotKind.STAMP_IMAGE) AeButton(Icons.Default.Palette, R.string.ae_color, enabled, sub == AeSub.COLOR) { sub = if (sub == AeSub.COLOR) AeSub.NONE else AeSub.COLOR }
-                AeButton(Icons.Default.Opacity, R.string.ae_opacity, enabled, sub == AeSub.OPACITY) { sub = if (sub == AeSub.OPACITY) AeSub.NONE else AeSub.OPACITY }
+                val video = annot?.kind == AnnotKind.VIDEO
+                if (annot?.kind != AnnotKind.STAMP_IMAGE && !video) AeButton(Icons.Default.Palette, R.string.ae_color, enabled, sub == AeSub.COLOR) { sub = if (sub == AeSub.COLOR) AeSub.NONE else AeSub.COLOR }
+                if (!video) AeButton(Icons.Default.Opacity, R.string.ae_opacity, enabled, sub == AeSub.OPACITY) { sub = if (sub == AeSub.OPACITY) AeSub.NONE else AeSub.OPACITY }
                 if (hasStroke(annot)) AeButton(Icons.Default.LineWeight, R.string.ae_thickness, enabled, sub == AeSub.THICKNESS) { sub = if (sub == AeSub.THICKNESS) AeSub.NONE else AeSub.THICKNESS }
                 if (hasEditableText(annot)) AeButton(Icons.Default.Edit, R.string.ae_edit_text, enabled, false) { sub = AeSub.NONE; ed.editingText = true }
                 AeButton(Icons.Default.ContentCopy, R.string.ae_copy, enabled, false) { sub = AeSub.NONE; ed.copy() }
-                if (annot?.kind == AnnotKind.FILE_ATTACH || annot?.kind == AnnotKind.SOUND || annot?.kind == AnnotKind.VIDEO)
+                if (annot?.kind == AnnotKind.FILE_ATTACH || annot?.kind == AnnotKind.SOUND)
                     AeButton(if (annot?.kind == AnnotKind.FILE_ATTACH) Icons.Default.OpenInNew else Icons.Default.PlayArrow, R.string.an_open, enabled, false) { sub = AeSub.NONE; state.annot2.openSelected() }
+                if (annot?.kind == AnnotKind.VIDEO) {
+                    // played inside the page; options, share and save to the device
+                    AeButton(Icons.Default.PlayArrow, R.string.vid_play, enabled, false) { sub = AeSub.NONE; state.video.playSelected() }
+                    AeButton(Icons.Default.Tune, R.string.vid_options, enabled, false) { sub = AeSub.NONE; state.video.optionsOpen = true }
+                    AeButton(Icons.Default.Share, R.string.vid_share, !ed.busy, false) { sub = AeSub.NONE; state.video.shareSelected() }
+                    AeButton(Icons.Default.SaveAlt, R.string.vid_save, !ed.busy, false) { sub = AeSub.NONE; state.video.saveSelected() }
+                }
                 if (annot?.kind == AnnotKind.INK) AeButton(Icons.Default.Gesture, R.string.an_recognize, enabled, false) { sub = AeSub.NONE; state.annot2.startHandwriting() }
                 // NVE: image annotation properties (scaling, position, border, hidden / locked) for stored image stamps
                 val nveStored = (ed.target as? AnnotTarget.Stored)?.e

@@ -299,6 +299,7 @@ fun PageCanvas(
         }
     }
     com.smartdocs.editor.ui.forms5.InPageFormLayer(state, page, g)      // MODULE_forms5: fill fields on the page
+    com.smartdocs.editor.ui.reader.annot.InPageVideoLayer(state, page, g, visibleClip)   // videos play inside the page
     if (editTarget != null && editBounds != null && !(draft.active && draft.annotFrame != null)) {
         AnnotActionBar(state, editAnnot, g.pdfRectToLayout(PageGeometry.normPdf(g.screenRectToPdf(frameRect(editBounds, g)))))
     }

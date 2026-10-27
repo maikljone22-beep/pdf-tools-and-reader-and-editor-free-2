@@ -129,12 +129,14 @@ fun InPageFormLayer(reader: ReaderState, pageIndex: Int, g: PageGeometry) {
         if (target != null && model.byName[target]?.firstOrNull()?.page == pageIndex) { pickFor = target; fs.imageTarget = null; pick() }
     }
 
+    val sigIcons = remember { com.smartdocs.editor.core.sign.SignPrefs.showSignatureIcons(reader.context) }
     Box(Modifier.fillMaxSize()) {
         Canvas(Modifier.fillMaxSize()) {
             val bg = if (night) Color(0xFF202020) else Color.White
             val fg = if (night) Color(0xFFE6E6E6) else Color.Black
             widgets.forEach { w ->
                 val r = rects[w.id] ?: return@forEach
+                if (w.kind == WKind.SIGNATURE && sigIcons) fs.sigStatus[w.name]?.let { ok -> sigBadge(r.topLeft, ok) }
                 val interactive = !fs.isReadOnly(w) && w.kind != WKind.BUTTON && !fs.isCalculated(w.name)
                 if (highlight && interactive && w.id != editing?.id) drawRect(HIGHLIGHT, r.topLeft, r.size)
                 if (highlight && w.required && interactive) drawRect(REQUIRED, r.topLeft, r.size, style = Stroke(1.5f))
@@ -156,8 +158,8 @@ fun InPageFormLayer(reader: ReaderState, pageIndex: Int, g: PageGeometry) {
             }
         }
         if (enabled) widgets.forEach { w ->
-            if (fs.isReadOnly(w) && w.kind != WKind.BUTTON) return@forEach
-            if (w.kind == WKind.SIGNATURE || (w.kind == WKind.BUTTON && w.action == null) || fs.isCalculated(w.name) || w.id == editing?.id) return@forEach
+            if (fs.isReadOnly(w) && w.kind != WKind.BUTTON && w.kind != WKind.SIGNATURE) return@forEach
+            if ((w.kind == WKind.BUTTON && w.action == null) || fs.isCalculated(w.name) || w.id == editing?.id) return@forEach
             val r = rects[w.id] ?: return@forEach
             val minPx = if (w.kind == WKind.CHECK || w.kind == WKind.RADIO) with(density) { 36.dp.toPx() } else 0f
             val t = expand(r, minPx)
@@ -334,5 +336,20 @@ private fun ChoiceMenu(fs: FormFillState, w: FWidget, r: Rect) {
                 )
             }
         }
+    }
+}
+
+/** Signature status badge at a signed field's corner (Nitro signature icons; Settings can hide them). */
+private fun DrawScope.sigBadge(at: Offset, valid: Boolean) {
+    val r = 9.dp.toPx()
+    val c = Offset(at.x + r, at.y + r)
+    drawCircle(if (valid) Color(0xFF2E7D32) else Color(0xFFC62828), r, c)
+    val s = r * 0.5f
+    if (valid) {
+        drawLine(Color.White, Offset(c.x - s, c.y), Offset(c.x - s * 0.2f, c.y + s * 0.7f), 2.dp.toPx(), StrokeCap.Round)
+        drawLine(Color.White, Offset(c.x - s * 0.2f, c.y + s * 0.7f), Offset(c.x + s, c.y - s * 0.6f), 2.dp.toPx(), StrokeCap.Round)
+    } else {
+        drawLine(Color.White, Offset(c.x - s * 0.7f, c.y - s * 0.7f), Offset(c.x + s * 0.7f, c.y + s * 0.7f), 2.dp.toPx(), StrokeCap.Round)
+        drawLine(Color.White, Offset(c.x + s * 0.7f, c.y - s * 0.7f), Offset(c.x - s * 0.7f, c.y + s * 0.7f), 2.dp.toPx(), StrokeCap.Round)
     }
 }

@@ -78,7 +78,8 @@ class AnnotEditor(private val s: ReaderState) {
         target = t; storedAnnot = null; storedLoading = true; s.selection = null
         val f = s.file ?: return
         s.scope.launch {
-            val a = runCatching { AnnotationWriter.extract(f, e.page, e.index, s.password) }.getOrNull()
+            // media = false: a selected video is not copied out of the PDF just to show the edit bar
+            val a = runCatching { AnnotationWriter.extract(f, e.page, e.index, s.password, media = false) }.getOrNull()
             if (target == t) { storedAnnot = a; storedLoading = false }
         }
     }
@@ -188,6 +189,20 @@ class AnnotEditor(private val s: ReaderState) {
     /** Duplicate the selection as a new pending annotation slightly offset, and select the copy. */
     fun copy() {
         val a = current() ?: return
+        val t = target
+        if (a.kind == AnnotKind.VIDEO && a.filePath == null && t is AnnotTarget.Stored) {
+            // the preview of a stored video has no file: read it fully before duplicating
+            val f = s.file ?: return
+            s.scope.launch {
+                busy = true
+                try { AnnotationWriter.extract(f, t.e.page, t.e.index, s.password)?.let { duplicate(it) } } finally { busy = false }
+            }
+            return
+        }
+        duplicate(a)
+    }
+
+    private fun duplicate(a: Annot) {
         val d = 12f
         val c = mapAnnot(a, annotBounds(a), annotBounds(a).let { RectF(it.left + d, it.top - d, it.right + d, it.bottom - d) })
             .copy(id = System.nanoTime(), created = System.currentTimeMillis())
@@ -251,7 +266,7 @@ fun mapAnnot(a: Annot, from: RectF, to: RectF): Annot {
 
 /** Text markup and sticky notes follow text / an icon: they can be moved but not resized. */
 fun resizable(a: Annot?): Boolean = a != null && a.kind !in setOf(AnnotKind.HIGHLIGHT, AnnotKind.UNDERLINE, AnnotKind.STRIKEOUT, AnnotKind.SQUIGGLY, AnnotKind.NOTE,
-    AnnotKind.CARET, AnnotKind.REPLACE, AnnotKind.FILE_ATTACH, AnnotKind.SOUND, AnnotKind.VIDEO)
+    AnnotKind.CARET, AnnotKind.REPLACE, AnnotKind.FILE_ATTACH, AnnotKind.SOUND)
 
 fun hasStroke(a: Annot?): Boolean = a != null && a.kind in setOf(AnnotKind.INK, AnnotKind.LINE, AnnotKind.ARROW, AnnotKind.RECT, AnnotKind.OVAL,
     AnnotKind.POLYGON, AnnotKind.POLYLINE, AnnotKind.CLOUD)
