@@ -22,6 +22,7 @@ import java.io.File
 import java.util.Calendar
 import com.smartdocs.editor.core.fillsign2.CombLayout
 import com.smartdocs.editor.core.fillsign2.RoundRect
+import com.smartdocs.editor.core.fillsign2.StampRead
 
 /** Annotation kinds the editor supports. */
 enum class AnnotKind {
@@ -61,7 +62,11 @@ data class Annot(
     val corner: Float = 0f,                     // RECT: corner radius in points (Fill & Sign rounded rectangle)
     val comb: Int = 0,                          // FREETEXT: number of comb cells (0 = ordinary text)
     val sigPath: String? = null,                // STAMP_IMAGE: the QuickSign signature it was placed from (never written to the file)
-)
+    val sigRef: String? = null,                 // STAMP_IMAGE: a saved signature stamp read back (/SDSigRef, StampRead.refOf of the image)
+) {
+    /** A placed QuickSign signature / initials (pending, or read back from the file). */
+    val isSignature: Boolean get() = kind == AnnotKind.STAMP_IMAGE && (sigPath != null || sigRef != null)
+}
 
 /** Private keys of nitro-fillsign2 annotations (second-class names, ignored by other viewers). */
 object FillSignKeys {
@@ -256,7 +261,10 @@ object AnnotationWriter {
                 val st = PDAnnotationRubberStamp()
                 val rect = PDRectangle(r.left, r.top, r.width(), r.height())
                 st.rectangle = rect; st.name = "Image"; st.constantOpacity = a.opacity
-                if (a.sigPath != null) st.cosObject.setBoolean(FillSignKeys.SIG, true)
+                if (a.isSignature) {
+                    st.cosObject.setBoolean(FillSignKeys.SIG, true)
+                    st.cosObject.setString(StampRead.SIG_REF, a.sigRef ?: StampRead.refOf(a.sigPath!!))
+                }
                 st.titlePopup = a.author; st.setCreationDate(now); st.setModifiedDate(now)
                 val form = newForm(doc, rect)
                 val img = LosslessFactory.createFromImage(doc, bmp)
@@ -541,6 +549,8 @@ object AnnotationWriter {
                 base.copy(kind = if (sub == "Square") AnnotKind.RECT else AnnotKind.OVAL, rects = listOf(box),
                     corner = if (sub == "Square") cos.getFloat(FillSignKeys.ROUND, 0f).coerceAtLeast(0f) else 0f)
             }
+            // nitro-fillsign2: our image stamps (placed signatures above all) become editable again
+            "Stamp" -> readImageStamp(an, page, base, rect) ?: com.smartdocs.editor.core.annot.Annot2Writer.read(an, page, base, rect, media)
             "FreeText" -> {
                 val da = cos.getString(COSName.DA) ?: ""
                 val size = Regex("""([0-9.]+)\s+Tf""").find(da)?.groupValues?.get(1)?.toFloatOrNull()?.takeIf { it > 1f } ?: 12f
@@ -554,6 +564,18 @@ object AnnotationWriter {
             "Text" -> base.copy(kind = AnnotKind.NOTE, rects = listOf(RectF(rect.left, rect.top, rect.left + 20f, rect.top - 20f)), color = color ?: 0xFFEB3B)
             else -> com.smartdocs.editor.core.annot.Annot2Writer.read(an, page, base, rect, media)
         }
+    }
+
+    /** A saved image stamp of ours as a pending STAMP_IMAGE (image, rect; a rotated appearance is turned into the image). */
+    private fun readImageStamp(an: PDAnnotation, page: Int, base: Annot, rect: RectF): Annot? {
+        val img = StampRead.imageOf(an) ?: return null
+        var bmp = runCatching { img.image }.getOrNull() ?: return null
+        val m = runCatching { an.normalAppearanceStream.matrix }.getOrNull()
+        val rot = if (m == null) 0 else StampRead.rotationOf(m.scaleX, m.shearY)
+        if (rot != 0) bmp = Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, android.graphics.Matrix().apply { postRotate(rot.toFloat()) }, true)
+        val ref = an.cosObject.getString(StampRead.SIG_REF)?.takeIf { it.isNotBlank() }
+            ?: if (an.cosObject.getBoolean(FillSignKeys.SIG, false)) "" else null      // signature from before /SDSigRef: still a signature
+        return base.copy(kind = AnnotKind.STAMP_IMAGE, rects = listOf(rect), image = bmp, sigRef = ref, color = base.color)
     }
 
     suspend fun delete(src: File, page: Int, index: Int, out: File, password: String? = null) = withContext(Dispatchers.IO) {

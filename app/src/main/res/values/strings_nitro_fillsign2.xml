@@ -47,6 +47,7 @@
     <string name="nf2_recolor">تغيير لون الحبر</string>
     <string name="nf2_replace_image">استبدال الصورة</string>
     <string name="nf2_edit_failed">تعذّر حفظ التوقيع</string>
+    <string name="nf2_paste_here">لصق هنا</string>
     <plurals name="nf2_locked_not_included">
         <item quantity="zero">لم يُضمَّن %d توقيع مقفل (افتح كلًّا منها مرة على هذا الجهاز لتضمينه)</item>
         <item quantity="one">لم يُضمَّن توقيع مقفل واحد (افتحه مرة على هذا الجهاز لتضمينه)</item>

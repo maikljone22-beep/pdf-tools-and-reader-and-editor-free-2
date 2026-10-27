@@ -496,7 +496,7 @@ class ReaderState(
      * any placed before) become page content. Never on a digitally signed file: its signatures would break.
      */
     private suspend fun flattenSignaturesOnSave(pending: List<Annot>, tmp: File) {
-        if (pending.none { it.sigPath != null } || !com.smartdocs.editor.core.fillsign2.FillSignPrefs.flattenOnSave(context)) return
+        if (pending.none { it.isSignature } || !com.smartdocs.editor.core.fillsign2.FillSignPrefs.flattenOnSave(context)) return
         withContext(Dispatchers.IO) {
             if (!tmp.exists() || com.smartdocs.editor.core.pdf.SignedSave.isSigned(tmp, password)) return@withContext
             val flat = File(tmp.parentFile, tmp.nameWithoutExtension + ".sigflat.pdf")
