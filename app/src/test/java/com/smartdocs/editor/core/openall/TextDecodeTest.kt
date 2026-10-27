@@ -40,7 +40,7 @@ class TextDecodeTest {
     }
 
     @Test fun truncatedUtf8HeadIsStillUtf8() {
-        val b = arabic.toByteArray(Charsets.UTF_8)
+        val b = (arabic + " نص").toByteArray(Charsets.UTF_8)
         val cut = b.copyOf(b.size - 1)   // last character cut in half
         assertTrue(TextDecode.isUtf8(cut, truncated = true))
         assertFalse(TextDecode.isUtf8(cut, truncated = false))

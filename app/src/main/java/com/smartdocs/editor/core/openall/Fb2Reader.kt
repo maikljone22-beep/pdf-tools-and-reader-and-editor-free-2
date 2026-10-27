@@ -16,7 +16,7 @@ object BookHtml {
 
     fun rtlDominant(s: String): Boolean {
         var r = 0; var l = 0
-        for (c in s) { if (c in '֐'..'ࣿ' || c in 'יִ'..'﷿' || c in 'ﹰ'..'﻿') r++ else if (c.isLetter()) l++ }
+        for (c in s) { if (c in '\u0590'..'\u08FF' || c in '\uFB1D'..'\uFDFF' || c in '\uFE70'..'\uFEFF') r++ else if (c.isLetter()) l++ }
         return r > l
     }
 

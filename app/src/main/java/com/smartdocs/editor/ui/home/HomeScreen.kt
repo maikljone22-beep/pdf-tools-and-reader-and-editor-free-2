@@ -67,7 +67,7 @@ fun HomeScreen(nav: NavHostController) {
     var query by rememberSaveable { mutableStateOf("") }
     val prefs = remember { ctx.applicationContext.getSharedPreferences(PREFS_HOME, 0) }
     var grid by remember { mutableStateOf(prefs.getBoolean("recent_grid", false)) }
-    val pick = rememberPdfPicker(mimes = arrayOf("application/pdf", *com.smartdocs.editor.ui.office.OfficeRoutes.MIMES)) { files -> files.firstOrNull()?.let { nav.navigate(Routes.reader(Uri.fromFile(it).toString())) } }   // office5: PDF + Office
+    val pick = rememberPdfPicker(mimes = arrayOf("*/*")) { files -> files.firstOrNull()?.let { nav.navigate(Routes.reader(Uri.fromFile(it).toString())) } }   // open-all: any file type (opened in-app by content)
     fun goTab(route: String) = nav.navigate(route) {
         popUpTo(nav.graph.findStartDestination().id) { saveState = true }
         launchSingleTop = true; restoreState = true
@@ -266,7 +266,7 @@ private fun ContinueCard(d: RecentDoc, onResume: () -> Unit) {
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).animateContentSize(),
     ) {
         Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-            ThumbBox(thumb, 60.dp, 80.dp)
+            ThumbBox(thumb, 60.dp, 80.dp, kind = kindOfName(d.name))
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
                 Text(stringResource(R.string.ds_continue_reading), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)

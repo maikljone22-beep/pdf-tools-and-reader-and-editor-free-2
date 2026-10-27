@@ -169,13 +169,20 @@ class DocumentRepository(private val context: Context, private val db: AppDataba
                 ImportDecision.Action.IMPORT_AS_NEW -> origins.edit().remove("l:" + known.absolutePath).remove("s:" + known.absolutePath).apply()
             }
         }
-        val name = displayName(uri) ?: "document.pdf"
+        val name = displayName(uri) ?: "document"
         // office5: keep the real extension (Office/text imports were all saved as *.pdf)
-        val ext = name.substringAfterLast('.', "pdf").lowercase().takeIf { it.length in 2..5 } ?: "pdf"
-        val target = replace?.takeIf { it.parentFile?.exists() == true } ?: uniqueFile(docsDir, name.substringBeforeLast('.'), ext)
+        // open-all: a name without a usable extension is named after its content (magic bytes), not "*.pdf"
+        val rawExt = name.substringAfterLast('.', "").lowercase()
+        val extKnown = rawExt.length in 1..8 && rawExt.all { it.isLetterOrDigit() }
+        val base = if (extKnown) name.substringBeforeLast('.') else name
+        var target = replace?.takeIf { it.parentFile?.exists() == true } ?: uniqueFile(docsDir, base, if (extKnown) rawExt else "import")
         val tmp = File(target.parentFile, ".${target.name}.import")
         context.contentResolver.openInputStream(uri)?.use { i -> tmp.outputStream().use { o -> i.copyTo(o) } }
             ?: throw IllegalStateException("cannot open $uri")
+        if (!extKnown && replace == null) {
+            val t = com.smartdocs.editor.core.openall.FileSniffer.of(tmp, name, runCatching { context.contentResolver.getType(uri) }.getOrNull())
+            target = uniqueFile(docsDir, base, com.smartdocs.editor.core.openall.FileSniffer.extFor(t))
+        }
         if (!tmp.renameTo(target)) { tmp.copyTo(target, overwrite = true); tmp.delete() }
         setOrigin(target, uri)
         setImportedName(target, name)
@@ -329,7 +336,8 @@ class DocumentRepository(private val context: Context, private val db: AppDataba
         out
     }
 
-    fun listFolder(dir: File): List<File> = (dir.listFiles() ?: emptyArray()).filter { it.isDirectory || it.extension.lowercase() in setOf("pdf", "jpg", "jpeg", "png", "txt", "docx", "xlsx", "pptx", "csv", "odt", "rtf", "doc", "xls", "ppt", "md") }.sortedWith(compareBy({ !it.isDirectory }, { it.name.lowercase() }))
+    /** open-all: every file is listed (all types open in-app); hidden / temporary files ("." prefix) are not. */
+    fun listFolder(dir: File): List<File> = (dir.listFiles() ?: emptyArray()).filter { !it.name.startsWith(".") }.sortedWith(compareBy({ !it.isDirectory }, { it.name.lowercase() }))
 
     fun shareUri(file: File): Uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
 

@@ -36,9 +36,12 @@ object OoxmlReader {
                 val strict = runCatching {
                     Charsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT).onUnmappableCharacter(CodingErrorAction.REPORT).decode(ByteBuffer.wrap(b)).toString()
                 }.getOrNull()
-                if (strict != null) TextContent(strict, "UTF-8", false)
+                // open-all: UTF-16 without BOM, then Windows-1256 (Arabic) vs Windows-1252 by content
+                val u16 = com.smartdocs.editor.core.openall.TextDecode.utf16Guess(b)
+                if (strict != null && u16 == null) TextContent(strict, "UTF-8", false)
+                else if (u16 != null) TextContent(String(b, u16), u16.name(), false)
                 else {
-                    val cs = runCatching { Charset.forName("windows-1256") }.getOrDefault(Charsets.ISO_8859_1)
+                    val cs = com.smartdocs.editor.core.openall.TextDecode.singleByteGuess(b)
                     TextContent(String(b, cs), cs.name(), false)
                 }
             }

@@ -113,6 +113,8 @@ class MainActivity : ComponentActivity() {
         // so a content:// document is copied into our own storage right away instead of at reader open time.
         if (uri.scheme == "file") { incoming.value = uri; return }
         runCatching { contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+        // open-all: audio / video are streamed from the sender (a film is never copied whole); the viewer plays the content uri
+        if (com.smartdocs.editor.ui.openall.OpenAll.isStreamedMedia(this, uri)) { incoming.value = uri; return }
         val app = application as SmartDocsApp
         lifecycleScope.launch {
             val local = runCatching { app.documents.localFile(uri) }.getOrNull()

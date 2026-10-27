@@ -285,7 +285,7 @@ object FileSniffer {
         if (head.isEmpty()) return if (hint == FType.UNKNOWN) FType.TEXT else hint
         // binary content behind a text name (".txt" that is not text) goes to the file-info screen
         if (!TextDecode.looksText(head)) return if (hint.isText()) FType.UNKNOWN else hint
-        val s = TextDecode.decode(head).text.trimStart('﻿', ' ', '\n', '\r', '\t')
+        val s = TextDecode.decode(head).text.trimStart('\uFEFF', ' ', '\n', '\r', '\t')
         val low = s.take(2048).lowercase()
         if (low.startsWith("begin:vcard")) return FType.VCF
         if (low.startsWith("begin:vcalendar")) return FType.ICS
