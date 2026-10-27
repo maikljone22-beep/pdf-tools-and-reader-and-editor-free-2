@@ -22,7 +22,9 @@ import java.util.Calendar
 /**
  * Look of a redaction once applied. [fill] 0xRRGGBB (white = whiteout); [outline] shown while the mark is only
  * marked (null = none); [overlay] text drawn over the box in [textColor]; [fontSize] 0 = auto; [repeat] fills the
- * box with copies of the text; [align] 0 left, 1 centre, 2 right (PDF /Q).
+ * box with copies of the text; [align] 0 left, 1 centre, 2 right (PDF /Q); [font] an
+ * [com.smartdocs.editor.core.edit5.E5Font] name ("" = automatic: Helvetica Bold, the bundled Arabic font for Arabic);
+ * [textCase] one of the CASE_ constants (Latin letters only; Arabic has no case).
  */
 data class RedactStyle(
     val fill: Int = 0x000000,
@@ -32,7 +34,26 @@ data class RedactStyle(
     val fontSize: Float = 0f,
     val repeat: Boolean = false,
     val align: Int = 1,
-)
+    val font: String = "",
+    val textCase: Int = CASE_AS_TYPED,
+) {
+    /** The overlay text as it is drawn: trimmed, with [textCase] applied. */
+    fun shownOverlay(): String = applyCase(overlay.trim(), textCase)
+
+    companion object {
+        const val CASE_AS_TYPED = 0
+        const val CASE_UPPER = 1
+        const val CASE_LOWER = 2
+        const val CASE_TITLE = 3
+
+        fun applyCase(t: String, case: Int): String = when (case) {
+            CASE_UPPER -> t.uppercase(java.util.Locale.ROOT)
+            CASE_LOWER -> t.lowercase(java.util.Locale.ROOT)
+            CASE_TITLE -> t.lowercase(java.util.Locale.ROOT).split(' ').joinToString(" ") { w -> w.replaceFirstChar { it.titlecase(java.util.Locale.ROOT) } }
+            else -> t
+        }
+    }
+}
 
 /**
  * A redaction mark in PDF user space (unrotated, top > bottom like [com.smartdocs.editor.core.pdf.SearchHit]).
@@ -62,6 +83,8 @@ object RedactMarks {
     private val K_Q = COSName.getPDFName("Q")
     private val K_DA = COSName.getPDFName("DA")
     private val K_NM = COSName.getPDFName("NM")
+    private val K_FONT = COSName.getPDFName("SDFont")
+    private val K_CASE = COSName.getPDFName("SDCase")
 
     fun isRedact(a: PDAnnotation) = a.subtype == REDACT
 
@@ -108,6 +131,8 @@ object RedactMarks {
                     fontSize = if (auto) 0f else size,
                     repeat = d.getBoolean(K_REPEAT, false),
                     align = d.getInt(K_Q, 1).coerceIn(0, 2),
+                    font = d.getString(K_FONT) ?: "",
+                    textCase = d.getInt(K_CASE, RedactStyle.CASE_AS_TYPED).coerceIn(0, 3),
                 )
                 out += RedactMark((d.getString(K_NM) ?: "r:$pi:$ai").let { if (seen.add(it)) it else "$it#$pi:$ai:${System.nanoTime()}".also { k -> seen.add(k) } }, pi, rects, style, an.contents ?: "", d.getBoolean(K_WHOLE, false))
             }
@@ -156,7 +181,10 @@ object RedactMarks {
         a.rectangle = PDRectangle(ul, ub, (ur - ul).coerceAtLeast(1f), (ut - ub).coerceAtLeast(1f))
         d.setItem(K_IC, colorArray(m.style.fill))
         m.style.outline?.let { d.setItem(COSName.C, colorArray(it)) }
-        if (m.style.overlay.isNotEmpty()) d.setString(K_OVERLAY, m.style.overlay)
+        // other viewers draw /OverlayText as it is, so the case is applied here; SDCase/SDFont bring the settings back
+        if (m.style.overlay.isNotEmpty()) d.setString(K_OVERLAY, m.style.shownOverlay())
+        if (m.style.font.isNotEmpty()) d.setString(K_FONT, m.style.font)
+        if (m.style.textCase != RedactStyle.CASE_AS_TYPED) d.setInt(K_CASE, m.style.textCase)
         d.setBoolean(K_REPEAT, m.style.repeat)
         val c = rgb(m.style.textColor)
         d.setString(K_DA, "/Helv ${if (m.style.fontSize > 0f) m.style.fontSize else 0f} Tf %.3f %.3f %.3f rg".format(java.util.Locale.US, c[0], c[1], c[2]))

@@ -18,11 +18,17 @@ import java.io.File
 /** Categories of hidden information that [Sanitizer] finds and removes. */
 enum class SanitizeItem {
     METADATA, ATTACHMENTS, COMMENTS, FORMS, JAVASCRIPT, LINKS, BOOKMARKS, PRIVATE_DATA, THUMBNAILS,
-    HIDDEN_LAYERS, INVISIBLE_TEXT, HIDDEN_TEXT, CROPPED, REVISIONS;
+    HIDDEN_LAYERS, INVISIBLE_TEXT, HIDDEN_TEXT, CROPPED, REVISIONS, SEARCH_INDEX, STRUCTURE;
 
     companion object {
-        /** Offered by default with redaction: everything except forms, links and the (searchable) OCR layer. */
-        val DEFAULTS: Set<SanitizeItem> = values().toSet() - setOf(FORMS, LINKS, INVISIBLE_TEXT)
+        /**
+         * Offered by default with redaction: everything except forms, links, the (searchable) OCR layer and the
+         * tag structure (it makes the document accessible; the tags of redacted content are removed anyway).
+         */
+        val DEFAULTS: Set<SanitizeItem> = values().toSet() - setOf(FORMS, LINKS, INVISIBLE_TEXT, STRUCTURE)
+
+        /** Found items that the sanitize screen does not check by itself. */
+        val OPT_IN: Set<SanitizeItem> = setOf(STRUCTURE)
     }
 }
 
@@ -36,7 +42,8 @@ data class ScanResult(val findings: Map<SanitizeItem, Finding>, val ocrLayer: Bo
  * comments, forms (refreshed, flattened, AcroForm/XFA dropped), JavaScript at every level, links and actions,
  * bookmarks, private application data (PieceInfo, SpiderInfo, IDS/URLS), thumbnails, content of hidden
  * layers, invisible text (Tr 3/7), hidden text (covered by a later opaque fill/image, near-white without a dark
- * backdrop, or fully transparent), content outside the crop box, and earlier revisions (a full save drops them).
+ * backdrop, or fully transparent), content outside the crop box, earlier revisions (a full save drops them),
+ * embedded search indexes ([SearchIndex]) and the tag structure (StructTreeRoot, MarkInfo, StructParent(s)).
  */
 object Sanitizer {
     private val N_AF = COSName.getPDFName("AF")
@@ -131,6 +138,8 @@ object Sanitizer {
                 put(SanitizeItem.PRIVATE_DATA, d.size, d)
             }
             put(SanitizeItem.THUMBNAILS, doc.pages.count { it.cosObject.containsKey(N_THUMB) }, emptyList())
+            SearchIndex.find(doc).let { put(SanitizeItem.SEARCH_INDEX, it.size, it) }
+            Structure.count(doc).let { (n, d) -> put(SanitizeItem.STRUCTURE, n, d) }
             // content-level
             var ocr = false
             val oc = cat.ocProperties
@@ -290,6 +299,8 @@ object Sanitizer {
         if (SanitizeItem.BOOKMARKS in items) {
             cat.documentOutline?.let { o -> val d = ArrayList<String>(); walkOutline(o, d, 0); cat.documentOutline = null; add(SanitizeItem.BOOKMARKS, d.size.coerceAtLeast(1)) }
         }
+        if (SanitizeItem.SEARCH_INDEX in items) add(SanitizeItem.SEARCH_INDEX, SearchIndex.remove(doc))
+        if (SanitizeItem.STRUCTURE in items) add(SanitizeItem.STRUCTURE, Structure.remove(doc))
         if (SanitizeItem.PRIVATE_DATA in items) {
             var n = 0
             listOf(N_PIECE, N_SPIDER).forEach { k -> if (c.containsKey(k)) { c.removeItem(k); n++ } }
@@ -371,7 +382,7 @@ object Sanitizer {
         while (it != null && guard++ < 5000) { out += "  ".repeat(depth) + (it.title ?: ""); walkOutline(it, out, depth + 1); it = it.nextSibling }
     }
 
-    private fun collectNames(node: COSDictionary, depth: Int = 0): List<String> {
+    internal fun collectNames(node: COSDictionary, depth: Int = 0): List<String> {
         if (depth > 20) return emptyList()
         val out = ArrayList<String>()
         (node.getDictionaryObject(COSName.NAMES) as? COSArray)?.let { arr ->

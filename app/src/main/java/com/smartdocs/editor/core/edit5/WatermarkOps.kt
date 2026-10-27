@@ -27,13 +27,16 @@ import org.json.JSONObject
 import java.io.File
 
 enum class DecorType { WATERMARK, BACKGROUND, SECURITY }
-enum class DecorSource { TEXT, IMAGE, COLOR }
+enum class DecorSource { TEXT, IMAGE, COLOR, PDF }
 
 /**
  * Watermark / background / security watermark. Text may use tokens ([Tokens]: `{user} {date} {time} {datetime}
  * {page} {file}` …) which are resolved per page when applied ("dynamic" watermark; re-apply with update to refresh).
  * [scale] = width of the text/image as a fraction of the page width (0 = use [style] size for text).
  * [hAlign]/[vAlign] -1 left/bottom, 0 centre, 1 right/top. [behind] draws under the page content.
+ * Nitro additions: [pdfPath]/[pdfPage] (a page of another PDF as the watermark), [lineSpacing] (1, 1.5, 2) and
+ * [wrapWidth] (fraction of the page width, 0 = no wrap) for text, a [border] around the watermark, a [click] action,
+ * "from page [everyStart] every [everyN] pages", and [ignoreRotation] (place on the unrotated page).
  */
 data class DecorSpec(
     val type: DecorType = DecorType.WATERMARK,
@@ -63,6 +66,19 @@ data class DecorSpec(
      * open and before printing ([LiveWatermark]); the static appearance keeps the values of the last apply.
      */
     val live: Boolean = false,
+    val pdfPath: String = "",
+    val pdfPage: Int = 0,
+    val lineSpacing: Float = 1f,
+    val wrapWidth: Float = 0f,
+    val border: Int? = null,
+    val borderWidth: Float = 1f,
+    val borderDashed: Boolean = false,
+    val click: ClickAction = ClickAction.NONE,
+    val clickTarget: String = "",
+    val clickPage: Int = 1,
+    val everyStart: Int = 1,
+    val everyN: Int = 0,
+    val ignoreRotation: Boolean = false,
 ) {
     /** True when this spec is written as a live (JavaScript-updated) watermark. */
     val isLive: Boolean get() = live && type == DecorType.WATERMARK && source == DecorSource.TEXT
@@ -74,6 +90,10 @@ data class DecorSpec(
         put("image", imagePath); put("fill", fill); put("opacity", opacity.toDouble()); put("rotation", rotation.toDouble()); put("scale", scale.toDouble())
         put("h", hAlign); put("v", vAlign); put("ox", offsetX.toDouble()); put("oy", offsetY.toDouble()); put("tile", tile); put("gap", tileGap.toDouble())
         put("behind", behind); put("screen", onScreen); put("print", onPrint); put("range", range); put("subset", subset.name); put("arDigits", arabicDigits); put("micro", microtext); put("live", live)
+        put("underline", style.underline); style.putExtras(this)
+        put("pdf", pdfPath); put("pdfPage", pdfPage); put("spacing", lineSpacing.toDouble()); put("wrap", wrapWidth.toDouble())
+        put("border", border ?: -1); put("borderW", borderWidth.toDouble()); put("dashed", borderDashed)
+        put("click", click.name); put("clickTarget", clickTarget); put("clickPage", clickPage); put("everyStart", everyStart); put("everyN", everyN); put("noRot", ignoreRotation)
     }.toString()
 
     companion object {
@@ -86,6 +106,11 @@ data class DecorSpec(
                     o.optInt("h"), o.optInt("v"), o.optDouble("ox", 0.0).toFloat(), o.optDouble("oy", 0.0).toFloat(), o.optBoolean("tile"), o.optDouble("gap", 60.0).toFloat(),
                     o.optBoolean("behind"), o.optBoolean("screen", true), o.optBoolean("print", true), o.optString("range"),
                     runCatching { PageSubset.valueOf(o.optString("subset")) }.getOrDefault(PageSubset.ALL), o.optBoolean("arDigits"), microtext = o.optBoolean("micro", true), live = o.optBoolean("live"))
+                    .let { d -> d.copy(style = d.style.copy(underline = o.optBoolean("underline")).withExtras(o),
+                        pdfPath = o.optString("pdf"), pdfPage = o.optInt("pdfPage"), lineSpacing = o.optDouble("spacing", 1.0).toFloat(), wrapWidth = o.optDouble("wrap", 0.0).toFloat(),
+                        border = o.optInt("border", -1).takeIf { it >= 0 }, borderWidth = o.optDouble("borderW", 1.0).toFloat(), borderDashed = o.optBoolean("dashed"),
+                        click = runCatching { ClickAction.valueOf(o.optString("click")) }.getOrDefault(ClickAction.NONE), clickTarget = o.optString("clickTarget"),
+                        clickPage = o.optInt("clickPage", 1), everyStart = o.optInt("everyStart", 1), everyN = o.optInt("everyN"), ignoreRotation = o.optBoolean("noRot")) }
             }.getOrNull()
         }
 
@@ -112,6 +137,7 @@ object WatermarkOps {
         E5Io.edit(src, out, password) { doc ->
             if (replace) {
                 doc.pages.forEach { p -> Marked.strip(doc, p) { it == spec.kind } }
+                DecorExtras.removeLinks(doc, spec.kind)
                 if (spec.type == DecorType.WATERMARK) LiveWatermark.remove(doc)
             }
             if (spec.isLive) LiveWatermark.install(doc, spec, fileName, liveFace(context, doc, spec)) else draw(context, doc, spec, fileName)
@@ -127,6 +153,7 @@ object WatermarkOps {
         var n = 0
         E5Io.edit(src, out, password) { doc ->
             doc.pages.forEach { p -> if (Marked.strip(doc, p) { it == kind || (others && it == foreign) }) n++ }
+            DecorExtras.removeLinks(doc, kind)
             if (type == DecorType.WATERMARK) n += LiveWatermark.remove(doc)
             Marked.putSetting(doc, settingKey(type), null)
         }
@@ -156,11 +183,12 @@ object WatermarkOps {
 
     private fun draw(context: Context, doc: PDDocument, spec: DecorSpec, fileName: String) {
         val n = doc.numberOfPages
-        val targets = PageSet.filter(PageSet.parse(spec.range, n), spec.subset) { E5Io.isLandscape(doc.getPage(it)) }
+        val targets = DecorExtras.targets(doc, spec.range, spec.subset, spec.everyStart, spec.everyN)
         if (targets.isEmpty()) return
         val fonts = E5Fonts(context, doc)
         val image: PDImageXObject? = if (spec.source == DecorSource.IMAGE) loadImage(doc, spec.imagePath) else null
         if (spec.source == DecorSource.IMAGE && image == null) throw IllegalArgumentException("image")
+        val form = if (spec.source == DecorSource.PDF) DecorExtras.importPage(doc, File(spec.pdfPath), spec.pdfPage) else null
         val ocg = if (!spec.onScreen || !spec.onPrint) visibilityGroup(doc, spec) else null
         val gs = PDExtendedGraphicsState().apply { nonStrokingAlphaConstant = spec.opacity; strokingAlphaConstant = spec.opacity }
         val now = java.time.LocalDate.now(); val time = java.time.LocalTime.now()
@@ -168,9 +196,11 @@ object WatermarkOps {
         val subtype = if (spec.type == DecorType.BACKGROUND) "Background" else "Watermark"
         for (i in targets) {
             val page = doc.getPage(i)
-            val frame = PageFrame.of(page)
+            val frame = DecorExtras.frameOf(page, spec.ignoreRotation)
             val w = frame.width; val h = frame.height
-            val ctx = TokenContext(page = i + 1, pages = n, date = now, time = time, file = fileName, title = info.title ?: "", author = info.author ?: "", user = spec.user)
+            val ctx = TokenContext(page = i + 1, pages = n, date = now, time = time, file = fileName, title = info.title ?: "", author = info.author ?: "", user = spec.user,
+                subject = info.subject ?: "", keywords = info.keywords ?: "")
+            var placed: Pair<Float, Float>? = null; var boxW = 0f; var boxH = 0f
             val mode = if (spec.behind || spec.type == DecorType.BACKGROUND) PDPageContentStream.AppendMode.PREPEND else PDPageContentStream.AppendMode.APPEND
             PDPageContentStream(doc, page, mode, true, mode == PDPageContentStream.AppendMode.APPEND).use { cs ->
                 cs.saveGraphicsState()
@@ -184,21 +214,32 @@ object WatermarkOps {
                         val img = image!!
                         val iw = (if (spec.scale > 0f) w * spec.scale else img.width.toFloat()).coerceAtLeast(4f)
                         val ih = iw * img.height / img.width.coerceAtLeast(1)
-                        placeEach(cs, spec, w, h, iw, ih) { cs.drawImage(img, -iw / 2f, -ih / 2f, iw, ih) }
+                        boxW = iw; boxH = ih
+                        placed = placeEach(cs, spec, w, h, iw, ih) { cs.drawImage(img, -iw / 2f, -ih / 2f, iw, ih); border(cs, spec, iw, ih) }
+                    }
+                    DecorSource.PDF -> {
+                        val f = form!!
+                        val fw = (if (spec.scale > 0f) w * spec.scale else f.bBox.width).coerceAtLeast(4f)
+                        val fh = fw * f.bBox.height / f.bBox.width.coerceAtLeast(1f)
+                        boxW = fw; boxH = fh
+                        placed = placeEach(cs, spec, w, h, fw, fh) { DecorExtras.drawForm(cs, f, -fw / 2f, -fh / 2f, fw, fh); border(cs, spec, fw, fh) }
                     }
                     DecorSource.TEXT -> {
-                        val lines = Tokens.expand(spec.text, ctx, spec.arabicDigits).split('\n').filter { it.isNotBlank() }
+                        var lines = Tokens.expand(spec.text, ctx, spec.arabicDigits).split('\n').filter { it.isNotBlank() }
                         if (lines.isNotEmpty()) {
                             var style = spec.style
+                            if (spec.wrapWidth > 0f) lines = DecorExtras.wrap(lines.joinToString("\n"), w * spec.wrapWidth) { E5Line(fonts, it, spec.style).width }.filter { it.isNotBlank() }
                             if (spec.scale > 0f) {
                                 val probe = lines.maxOf { E5Line(fonts, it, style).width }.coerceAtLeast(1f)
                                 style = style.copy(size = style.size * (w * spec.scale) / probe)
                             }
                             val laid = lines.map { E5Line(fonts, it, style) }
-                            val lh = style.size * 1.25f
+                            val lh = style.size * 1.25f * spec.lineSpacing.coerceIn(0.8f, 3f)
                             val bw = laid.maxOf { it.width }; val bh = lh * laid.size
-                            placeEach(cs, spec, w, h, bw, bh) {
-                                laid.forEachIndexed { k, l -> l.draw(cs, -l.width / 2f, bh / 2f - lh * (k + 1) + style.size * 0.25f) }
+                            boxW = bw; boxH = bh
+                            placed = placeEach(cs, spec, w, h, bw, bh) {
+                                laid.forEachIndexed { k, l -> l.draw(cs, -l.width / 2f, bh / 2f - lh * (k + 1) + (lh - style.size) / 2f + style.size * 0.25f) }
+                                border(cs, spec, bw, bh)
                             }
                         }
                         if (spec.type == DecorType.SECURITY && spec.microtext && lines.isNotEmpty()) microtext(cs, fonts, lines.joinToString("  "), w, h, spec.style.color)
@@ -208,11 +249,27 @@ object WatermarkOps {
                 @Suppress("DEPRECATION") cs.appendRawCommands(Marked.CLOSE)
                 cs.restoreGraphicsState()
             }
+            placed?.let { (cx, cy) -> DecorExtras.addLink(doc, page, frame, spec.kind, cx, cy, boxW, boxH, spec.rotation, spec.click, spec.clickTarget, spec.clickPage) }
         }
     }
 
-    /** Run [block] with the origin at the centre of each placement (once, or tiled over the page) and the rotation applied. */
-    private fun placeEach(cs: PDPageContentStream, spec: DecorSpec, w: Float, h: Float, bw: Float, bh: Float, block: () -> Unit) {
+    /** Nitro "Border": a frame around the placed watermark box (centred on the origin), solid or dashed. */
+    private fun border(cs: PDPageContentStream, spec: DecorSpec, bw: Float, bh: Float) {
+        val c = spec.border ?: return
+        val pad = 4f + spec.borderWidth
+        val rgb = E5Io.rgb(c)
+        cs.saveGraphicsState()
+        cs.setStrokingColor(rgb[0], rgb[1], rgb[2]); cs.setLineWidth(spec.borderWidth.coerceIn(0.25f, 20f))
+        if (spec.borderDashed) cs.setLineDashPattern(floatArrayOf(spec.borderWidth * 4f, spec.borderWidth * 3f), 0f)
+        cs.addRect(-bw / 2f - pad, -bh / 2f - pad, bw + 2 * pad, bh + 2 * pad); cs.stroke()
+        cs.restoreGraphicsState()
+    }
+
+    /**
+     * Run [block] with the origin at the centre of each placement (once, or tiled over the page) and the rotation
+     * applied. Returns the centre of a single placement (display space), null when tiled.
+     */
+    private fun placeEach(cs: PDPageContentStream, spec: DecorSpec, w: Float, h: Float, bw: Float, bh: Float, block: () -> Unit): Pair<Float, Float>? {
         if (!spec.tile) {
             val cx = when (spec.hAlign) { -1 -> bw / 2f + 18f; 1 -> w - bw / 2f - 18f; else -> w / 2f } + spec.offsetX
             val cy = when (spec.vAlign) { -1 -> bh / 2f + 18f; 1 -> h - bh / 2f - 18f; else -> h / 2f } + spec.offsetY
@@ -220,7 +277,7 @@ object WatermarkOps {
             cs.transform(Affine.mul(Affine.rotateAround(spec.rotation, 0f, 0f), Affine.translate(cx, cy)))
             block()
             cs.restoreGraphicsState()
-            return
+            return cx to cy
         }
         // tiles on a rotated grid centred on the page, covering the page diagonal
         val diag = Math.hypot(w.toDouble(), h.toDouble()).toFloat()
@@ -238,6 +295,7 @@ object WatermarkOps {
             y += sy; row++
         }
         cs.restoreGraphicsState()
+        return null
     }
 
     /** A 3-point text line along each page edge (hard to copy or remove by scanning). */
@@ -256,7 +314,7 @@ object WatermarkOps {
         cs.restoreGraphicsState()
     }
 
-    private fun loadImage(doc: PDDocument, path: String): PDImageXObject? {
+    internal fun loadImage(doc: PDDocument, path: String): PDImageXObject? {
         val f = File(path)
         if (!f.exists()) return null
         val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
