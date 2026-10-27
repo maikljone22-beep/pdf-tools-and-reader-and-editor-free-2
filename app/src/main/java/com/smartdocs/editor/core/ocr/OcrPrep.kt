@@ -54,7 +54,7 @@ data class OcrTuning(
 /** Pre-processing maths on grey / ARGB pixel arrays (pure Kotlin, unit-tested) and the page-level corrections. */
 object OcrPrep {
 
-    /** Otsu threshold of grey values 0..255. */
+    /** Otsu threshold of grey values 0..255: the first value of the light class (dark pixels are `< threshold`). */
     fun otsu(gray: IntArray): Int {
         val hist = IntArray(256); gray.forEach { hist[it.coerceIn(0, 255)]++ }
         val total = gray.size.toDouble()
@@ -68,7 +68,7 @@ object OcrPrep {
             val between = wB * wF * (mB - mF) * (mB - mF)
             if (between > best) { best = between; t = i }
         }
-        return t
+        return (t + 1).coerceAtMost(255)
     }
 
     /**
