@@ -37,7 +37,7 @@ class SearchablePdfWriter private constructor(private val context: Context, priv
     /** Unrotated media box size in points. */
     fun mediaBox(page: Int): Pair<Float, Float> = doc.getPage(page).mediaBox.let { it.width to it.height }
 
-    private fun isArabic(s: String) = s.any { it in '؀'..'ۿ' || it in 'ݐ'..'ݿ' || it in 'ﭐ'..'﷿' || it in 'ﹰ'..'﻿' }
+    private fun isArabic(s: String) = s.any { it in '؀'..'ۿ' || it in 'ݐ'..'ݿ' || it in 'ﭐ'..'﷿' || it in 'ﹰ'..'\uFEFF' }
 
     /**
      * Add the words of [page] to [pageIndex]. [page].imageWidth/Height is the size of the rendered (rotated) image.

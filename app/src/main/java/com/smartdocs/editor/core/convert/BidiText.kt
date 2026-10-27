@@ -72,7 +72,7 @@ object BidiText {
         val n = if (needs) Normalizer.normalize(s, Normalizer.Form.NFKC) else s
         val sb = StringBuilder(n.length)
         for (c in n) {
-            if (c.code == 0x0640 || c.code < 0x20 || c.code in 0xE000..0xF8FF || c == '﻿' || c == '‎' || c == '‏') continue
+            if (c.code == 0x0640 || c.code < 0x20 || c.code in 0xE000..0xF8FF || c == '\uFEFF' || c == '‎' || c == '‏') continue
             sb.append(c)
         }
         return sb.toString()

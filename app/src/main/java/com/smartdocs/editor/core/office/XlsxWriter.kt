@@ -17,7 +17,7 @@ object XlsxWriter {
         val replace = HashMap<String, ByteArray?>()
         OoxmlPackage(src).use { pkg ->
             for ((path, list) in edits.groupBy { it.sheetPath }) {
-                val xml = pkg.bytes(path)?.toString(Charsets.UTF_8)?.removePrefix("﻿") ?: throw OfficeFormatException("missing $path")
+                val xml = pkg.bytes(path)?.toString(Charsets.UTF_8)?.removePrefix("\uFEFF") ?: throw OfficeFormatException("missing $path")
                 replace[path] = applyEdits(xml, list).toByteArray(Charsets.UTF_8)
             }
             if (edits.isNotEmpty()) {
