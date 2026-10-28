@@ -79,7 +79,7 @@ object PptReader {
     }
 
     /** One picture of the BStore (1-based index → bytes / mime), from the Pictures stream or embedded. */
-    fun pictures(s: ByteArray, pics: ByteArray?, top: List<Rec>): List<ImageData?> {
+    private fun pictures(s: ByteArray, pics: ByteArray?, top: List<Rec>): List<ImageData?> {
         val doc = top.firstOrNull { it.type == 0x03E8 } ?: return emptyList()                  // DocumentContainer
         val bstore = find(s, doc, 0xF001) ?: return emptyList()                                 // OfficeArtBStoreContainer
         return kids(s, bstore).map { fbse ->
