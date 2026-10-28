@@ -2798,3 +2798,42 @@ Low
 | NOT-FEASIBLE | 0 | 0 | 1 | 2 | 3 |
 | OWNER-ACTION | 1 | 1 | 0 | 0 | 2 |
 | N/A | 0 | 0 | 0 | 0 | 0 |
+
+## Status update — fix/fc-sync
+
+Scope: every STILL MISSING row of the areas **files** (including files/search and files: share/review) and **share / cloud**, re-checked on main 7c30b70. Nothing here was tested on a device.
+
+What changed in sync: only how changes are **detected**. `SyncEngine`, `DeleteGuard`, `SafeReplace`, the dirty-link rules (`CloudLinks`, `CloudUploadWorker`) and the conflict copies are unchanged; a detected change still calls `SyncWorker.request` for the pair.
+
+| row | now | how / files |
+|---|---|---|
+| OLD: sync near-realtime uses a 60 s cloud poll, no long-poll or push | DONE (push for Drive / OneDrive: OWNER-ACTION) | The fixed poll is gone. `core/sync/ChangeWatch.kt` runs one watcher per provider that has auto pairs, only while the app is open. **Dropbox:** `files/list_folder/longpoll` with the cursor (`Dropbox.waitForChange`, honours `backoff`). **Box:** `OPTIONS /events` gives the realtime server, then a long-poll (`new_change` / `reconnect`, `Box.waitForChange`). **Drive** `changes.list` and **Graph** `/root/delta` deltaLink are polled with a back-off (30 s → 5 min; errors 30 s → 15 min; no network = no request). Long-polls are cancellable (`CloudHttp.stringCancellable`). Fallback: the 15-min WorkManager job (network + battery-not-low constraints) now asks the delta feed from the cursor taken at the start of the pair's last clean run and compares the local listing with the snapshot; if neither changed the pair is skipped, with a full run at least every 6 h (`core/sync/SyncSkip.kt`, hooks in `SyncWorker` and `SyncRuntime`). Nothing is scheduled or held open when nothing is linked. **Local:** `core/sync/AppFolderWatch.kt` puts a FileObserver on the folders of cloud and WebDAV working copies, so a copy changed by another app is queued for upload (hash-checked, own saves skipped). **WebDAV:** `core/webdav/DavWatch.kt` does a Depth-0 `getctag` / ETag PROPFIND per folder (Depth 1 only when the tag moved) and marks linked files "changed on the server" in the WebDAV browser. Delta / cursor parsing is pure in `core/cloud/ChangeFeeds.kt`, with JSON fixtures in `test/resources/fc_sync`. The Sync options show the mode per provider. **OWNER-ACTION:** real push for Drive / OneDrive needs an HTTPS webhook receiver (for example worker routes `POST /push/drive` for `changes.watch` channel notifications and `POST /push/graph` for Graph subscription validation and notifications, relaying to FCM) plus FCM in the app. |
+| 16b: no batch convert from the Files multi-select | DONE | A Convert button in the Files selection bar (`ui/files/FilesComponents.kt`, `FilesScreen.kt`) hands the files to the Convert hub (`ui/convert6/Cv6Batch.kt`). A batch conversion takes every accepted file; a single-file one takes the first. |
+| §31 / §37 / OLD: no "take ownership" of other reviewers' comments | DONE | A "Take over" action per reviewer in the shared-review screen (`ui/cloud/ReviewScreen.kt`). `CollabStore.takeOver` sets /T to my name, removes the comments from the others' set and publishes them as mine. The choice is pure in `CommentMerge.takeOver`. It refuses while the document is open in the reader. |
+| §31: "Remove Me" is local only | DONE (code) + OWNER-ACTION | New worker route `POST /reviews/:id/leave` (`ai-proxy/collab/worker.js`): the participant is hidden from the reviewer list and its comments stay. The app calls it (`CollabClient.leave`) before removing the review locally. An old server answers 404, and leaving then stays local. Owner: redeploy the collab worker. |
+| 37: no local reminder before a review expires | DONE | `core/collab/ReviewReminder.kt`: one WorkManager job per review, due 24 h before the deadline, posted locally (no network). It is rescheduled on every `CollabStore.upsert` and has a switch in the review screen. |
+| 37: no To / Cc auto-complete | DONE | `core/share5/RecipientBook.kt` stores used addresses on the device. `ui/share5/RecipientField.kt` shows suggestion chips. Used in the e-mail review screen (with a new Cc field: `S5Share.email(cc=)`) and in Send back. |
+| 37: no send-as-FDF size rule | DONE | `FdfRule` (default: above 5 MB; choices 1 / 2 / 5 / 10 / 20 MB) and the new "Send my comments back" screen (`ui/share5/SendBackScreen.kt`, route `share5/send_back`, row in the Share hub). Above the limit, only the comments go as FDF (`CommentExchange.exportFdf`). |
+| §32 / §41: no Dropbox Team Folders | DONE | Team-space root: `DropboxSpace.teamRoot` reads `root_info`, and the `Dropbox-API-Path-Root` header switches the root. Switch chips "My folder / Team space" are in the cloud browser (`ui/cloud/CloudScopes.kt`). The switch is refused while Dropbox sync pairs exist. After a switch, saves resolve the file path by id. |
+| §32: no OneDrive Business / SharePoint document library | DONE (client) + OWNER-ACTION | **Business:** already present (the `common` authority with `/me/drive`). **SharePoint:** a "SharePoint libraries" entry lists the libraries of followed sites (`/me/followedSites` → `/sites/{id}/drives`). Items are addressed as `sp:<driveId>|<itemId>` (`core/cloud/SharePoint.kt`, `OneDrive.kt`). The wider scope is asked for only on that tap and is used for refreshes only after the sign-in succeeded. Library folders are never skipped by the periodic job (`feedCovers`). **Owner:** add the delegated Graph permissions Sites.Read.All and Files.ReadWrite.All to the Azure app registration. |
+| §32 / §42: no Egnyte | DONE (WebDAV) + OWNER-ACTION for the native API | WebDAV presets in Add place (`core/webdav/DavPresets.kt`): Egnyte `https://<domain>.egnyte.com/webdav/` (where the Egnyte admin allows WebDAV), Nextcloud, ownCloud, pCloud, Koofr and Yandex. A native Egnyte provider needs an Egnyte API key and OAuth app registered by the owner. |
+| §32: DMS non-PDF preview with DMS context | NOT-FEASIBLE | There are no DMS / ECM connectors on Android (ECM is N/A in §22). |
+| §33: no Connected open message | DONE (code) + OWNER-ACTION | The owner edits it in the document screen (`ConnectedClient.settings(openMessage=)`). Readers see it in the reader banner and on the open screen (`ConnectedStatus.message`). Worker: `settings` stores `openMessage` and `/open` returns `message` (`ai-proxy/connected/worker.js`). Owner: redeploy the connected worker. |
+| §33: no Clone of a connected document | DONE | `ConnectedDocs.clone` gives the copy a new id and key, with no readers or history; settings and the open message are copied. A Clone action is in the owner screen. Works with the current worker. |
+| §33: no switch to turn ConnectedPDF off | DONE | `ConnPrefs` and a switch in the Connected home. When off, `checkOnOpen` makes no server call; a protected copy opens only with a cached offline key. |
+| 37: index preferences lack XMP, custom properties, structure tags and logging | DONE | `core/search/DocMeta.kt` adds `PartKind.METADATA` parts: the title, author / subject / keywords, and optionally custom /Info, XMP text and structure-tag Alt / ActualText. The indexing log is shareable. Switches are in the index sheet (`ui/search/IndexExtrasSection.kt`, a one-line hook in `NveSearchUi.kt`). |
+| 37: search cannot ignore Asian character width | DONE | `NormOptions.ignoreWidth` and `ArabicNormalizer.widthFold` (full-width ASCII, ideographic space, half-width kana). Index and query fold alike; switching it rebuilds the index. It is off by default, so existing behaviour is unchanged. |
+| 37: no document title in search results | DONE | `FileResult.title` comes from the METADATA title part and is shown under the file name in global search (switch in the index sheet). |
+| 37: no Fast Find cache size limit | DONE | `FullTextIndex.enforceLimit` drops the oldest-indexed documents when the index database grows past 50 / 100 / 250 / 500 MB (the choice is in the index sheet), then runs VACUUM. |
+
+Needs a device test:
+- the Dropbox and Box long-polls (held open and cancelled when the app goes to the background), and the Drive / OneDrive back-off;
+- the periodic skip (a pair that did not change makes no listing requests);
+- the FileObserver on working-copy folders;
+- WebDAV ctag on Nextcloud;
+- the Dropbox team space;
+- SharePoint libraries after the owner grants the scopes;
+- the review reminder notification;
+- the To / Cc chips, Send back with FDF, and the Connected switch / open message / clone;
+- batch convert from Files;
+- the index metadata, width folding and size limit.
