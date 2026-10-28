@@ -45,17 +45,29 @@ fun NveOrganizeInsertMore(state: OrganizeState, onMessage: (String) -> Unit) {
     var busy by remember { mutableStateOf(false) }
     var intoTarget by remember { mutableStateOf<File?>(null) }
     fun at(): Int = state.selected.maxOrNull()?.let { it + 1 } ?: state.pageCount
-    fun fail(e: Throwable) { onMessage(ctx.getString(R.string.nl_insert_failed, e.message ?: e.javaClass.simpleName)) }
+    fun fail(e: Throwable) { onMessage(ctx.getString(R.string.nl_insert_failed, state.message(e))) }
+    /** audit 5 G-13: the insert is awaited; a busy organizer is reported instead of dropping the pages silently. */
+    suspend fun insertAwait(f: File) {
+        when (state.insertFromAwait(f, at())) {
+            com.smartdocs.editor.ui.pages.OpResult.BUSY -> onMessage(ctx.getString(R.string.ttpg_busy))
+            else -> Unit                                  // DONE, or FAILED (the organizer shows its error)
+        }
+    }
     fun insertFiles(files: List<File>) {
         if (files.isEmpty()) { onMessage(ctx.getString(R.string.nl_insert_none)); return }
+        if (state.busy) { onMessage(ctx.getString(R.string.ttpg_busy)); return }
         busy = true
         scope.launch {
-            runCatching {
-                val tmp = app.documents.newTemp("insert_many")
-                withContext(Dispatchers.IO) { PageInsert.merge(files, tmp) }
-                state.insertFrom(tmp, at())
-            }.onFailure(::fail)
-            busy = false
+            val tmp = app.documents.newTemp("insert_many")
+            try {
+                runCatching {
+                    withContext(Dispatchers.IO) { PageInsert.merge(files, tmp) }
+                    insertAwait(tmp)
+                }.onFailure(::fail)
+            } finally {
+                withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) { runCatching { tmp.delete() } }   // audit 5 G-13: no leftover temp
+                busy = false
+            }
         }
     }
     val multi = rememberPdfPicker(multiple = true) { files -> insertFiles(files) }
@@ -87,14 +99,19 @@ fun NveOrganizeInsertMore(state: OrganizeState, onMessage: (String) -> Unit) {
                 menu = false; busy = true
                 scope.launch {
                     val f = runCatching { NvePaste.fromClipboard(ctx, app) }.getOrNull()
-                    if (f == null) onMessage(ctx.getString(R.string.nl_paste_empty)) else state.insertFrom(f, at())
+                    // the clipboard PDF is a document of its own in docsDir ("Clipboard"): kept
+                    if (f == null) onMessage(ctx.getString(R.string.nl_paste_empty)) else runCatching { insertAwait(f) }.onFailure(::fail)
                     busy = false
                 }
             })
             DropdownMenuItem(text = { Text(stringResource(R.string.nl_insert_files)) }, leadingIcon = { Icon(Icons.Default.FileCopy, null) }, onClick = { menu = false; multi() })
             DropdownMenuItem(text = { Text(stringResource(R.string.nl_insert_folder)) }, leadingIcon = { Icon(Icons.Default.Folder, null) }, onClick = { menu = false; runCatching { folder.launch(null) } })
             HorizontalDivider()
-            DropdownMenuItem(text = { Text(stringResource(R.string.nl_insert_into)) }, leadingIcon = { Icon(Icons.Default.MoveToInbox, null) }, onClick = { menu = false; pickInto() })
+            DropdownMenuItem(text = { Text(stringResource(R.string.nl_insert_into)) }, leadingIcon = { Icon(Icons.Default.MoveToInbox, null) }, onClick = {
+                menu = false
+                // audit 5 G-03: copying this document's pages into another file needs the COPY permission
+                if (!state.allows(com.smartdocs.editor.core.security.DocAction.COPY)) onMessage(ctx.getString(R.string.np2_restricted_author)) else pickInto()
+            })
         }
     }
     if (urlDialog) {
@@ -105,8 +122,13 @@ fun NveOrganizeInsertMore(state: OrganizeState, onMessage: (String) -> Unit) {
                 TextButton(enabled = url.length > 8, onClick = {
                     urlDialog = false; busy = true
                     scope.launch {
-                        runCatching { val tmp = app.documents.newTemp("web"); com.smartdocs.editor.core.tools5.ToPdf.url(ctx, url, tmp); state.insertFrom(tmp, at()) }.onFailure(::fail)
-                        busy = false
+                        val tmp = app.documents.newTemp("web")
+                        try {
+                            runCatching { com.smartdocs.editor.core.tools5.ToPdf.url(ctx, url, tmp); insertAwait(tmp) }.onFailure(::fail)
+                        } finally {
+                            withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) { runCatching { tmp.delete() } }   // audit 5 G-13
+                            busy = false
+                        }
                     }
                 }) { Text(stringResource(R.string.ok)) }
             },
@@ -115,14 +137,16 @@ fun NveOrganizeInsertMore(state: OrganizeState, onMessage: (String) -> Unit) {
     intoTarget?.let { target -> InsertIntoDialog(target, onDismiss = { intoTarget = null }) { position ->
         intoTarget = null; busy = true
         scope.launch {
+            var pagesTmp: File? = null
             runCatching {
-                val pages = (if (state.selected.isEmpty()) null else state.selectedToTemp()) ?: state.work?.let { w -> app.documents.newTemp("all_pages").also { o -> com.smartdocs.editor.core.pdf.PdfOps.keepPages(w, (0 until state.pageCount).toList(), o, state.password) } }
-                    ?: error(ctx.getString(R.string.nl_insert_none))
+                val pages = ((if (state.selected.isEmpty()) null else state.selectedToTemp()) ?: state.work?.let { w -> app.documents.newTemp("all_pages").also { o -> com.smartdocs.editor.core.pdf.PdfOps.keepPages(w, (0 until state.pageCount).toList(), o, state.password) } }
+                    ?: error(ctx.getString(R.string.nl_insert_none))).also { pagesTmp = it }
                 val out = app.documents.uniqueFile(app.documents.docsDir, target.nameWithoutExtension + " (+" + ctx.getString(R.string.nl_pages) + ")")
                 withContext(Dispatchers.IO) { PageInsert.into(target, pages, position, out) }
                 runCatching { app.documents.touchRecent(out) }
                 out
             }.onSuccess { Toast.makeText(ctx, ctx.getString(R.string.nl_inserted_into, it.name), Toast.LENGTH_LONG).show() }.onFailure(::fail)
+            pagesTmp?.let { t -> withContext(Dispatchers.IO) { runCatching { t.delete() } } }   // audit 5 G-13: no leftover temp
             busy = false
         }
     } }

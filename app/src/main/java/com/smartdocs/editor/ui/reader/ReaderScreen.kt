@@ -236,6 +236,12 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
             },
         )
 
+    // audit 5 G-14: the organizer's "Open page" comes back here and asks for that page
+    val orgPage = nav.currentBackStackEntry?.savedStateHandle?.getStateFlow("ttpg_open_page", -1)?.collectAsState()
+    LaunchedEffect(orgPage?.value) {
+        val p = orgPage?.value ?: -1
+        if (p >= 0) { state.jumpTo(p); nav.currentBackStackEntry?.savedStateHandle?.set("ttpg_open_page", -1) }
+    }
     val focus = remember { FocusRequester() }
     LaunchedEffect(state.session) { if (state.session != null) runCatching { focus.requestFocus() } }
 

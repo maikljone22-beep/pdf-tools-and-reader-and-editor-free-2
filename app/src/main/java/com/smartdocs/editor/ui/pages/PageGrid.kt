@@ -38,6 +38,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
@@ -145,7 +146,9 @@ fun PageGrid(
 private fun PageCell(state: OrganizeState, page: Int, dragging: Boolean, dropTarget: Boolean, modifier: Modifier, actions: List<Pair<Int, (Int) -> Unit>>? = null) {
     val key = state.thumbKey(page)
     val bmp = state.thumbs[key]
-    LaunchedEffect(key) { state.requestThumb(page) }
+    // audit 5 G-07: rendered at the cell's width; asked again when the LRU dropped it or the cell grew
+    var cellPx by remember { mutableIntStateOf(0) }
+    LaunchedEffect(key, cellPx, bmp == null) { if (cellPx > 0) state.requestThumb(page, cellPx.coerceIn(96, 1400)) }
     var ratio by remember(key) { mutableFloatStateOf(0.707f) }
     LaunchedEffect(key) { val (w, h) = state.pageSize(page); if (h > 0f) ratio = w / h }
     val selected = page in state.selected
@@ -154,7 +157,7 @@ private fun PageCell(state: OrganizeState, page: Int, dragging: Boolean, dropTar
         selected -> MaterialTheme.colorScheme.primary
         else -> MaterialTheme.colorScheme.outlineVariant
     }
-    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+    Column(modifier.onSizeChanged { cellPx = it.width }, horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
             Modifier.fillMaxWidth().aspectRatio(ratio.coerceIn(0.3f, 3f))
                 .clip(RoundedCornerShape(8.dp))
@@ -180,7 +183,8 @@ private fun PageCell(state: OrganizeState, page: Int, dragging: Boolean, dropTar
                 color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 4.dp),
             )
-            if (actions != null && !state.selectMode) Box {
+            // audit 5 G-14: the page menu stays available in selection mode
+            if (actions != null) Box {
                 var open by remember { mutableStateOf(false) }
                 IconButton(onClick = { open = true }, Modifier.size(28.dp)) { Icon(Icons.Default.MoreVert, stringResource(R.string.pc_page_menu, page + 1), Modifier.size(18.dp)) }
                 DropdownMenu(open, { open = false }) {
