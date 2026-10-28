@@ -48,5 +48,6 @@ and fix/tab-view-core (the central signed gate). **Nothing was tested on a devic
 | L7 | ALREADY-FIXED on main | core/redact/RedactDrafts.kt holds a persisted draft, restored in RedactScreen (draft snackbar). |
 | minor countEof | FIXED | Sanitizer.kt:194-215: the file is streamed in 64 KiB chunks with KMP matching that carries across chunk borders. Before, it was read whole, and an OOM fell back to 1. Test: RedactSubauditTest.countEofStreamsAcrossChunkBorders. |
 
-Strings: ar (values/strings_tt_rd.xml) and en (values-en/strings_tt_rd.xml). Counts: 21 rows. 13 ALREADY-FIXED on main, 2
-ALREADY-FIXED with a remainder or refactor done here (D6, D10), 6 FIXED (D7, L2, L4, L5, countEof; D10 remainder). 0 NOT-FEASIBLE.
+Strings: ar (values/strings_tt_rd.xml) and en (values-en/strings_tt_rd.xml). Counts: 20 rows (D1-D12, L1-L7, countEof).
+13 ALREADY-FIXED on main (D1-D5, D8, D9, D11, D12, L1, L3, L6, L7). 2 already fixed on main with a remainder or a refactor plus test
+done here (D6, D10). 5 FIXED here (D7, L2, L4, L5, countEof). 0 NOT-FEASIBLE.
