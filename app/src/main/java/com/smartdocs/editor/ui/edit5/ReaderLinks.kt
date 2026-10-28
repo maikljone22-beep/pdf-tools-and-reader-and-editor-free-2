@@ -34,7 +34,7 @@ import java.io.File
 private fun applyLinks(state: ReaderState, msgOk: String, op: suspend (File, File, String?) -> Unit) {
     state.scope.launch {
         runCatching { state.applyInPlace(label = { state.context.getString(R.string.hi_links) }) { src, out, pw -> op(src, out, pw) } }
-            .onSuccess { Toast.makeText(state.context, msgOk, Toast.LENGTH_SHORT).show() }
+            .onSuccess { if (it != null) Toast.makeText(state.context, msgOk, Toast.LENGTH_SHORT).show() }   // null: nothing written (signed file dialog)
             .onFailure { Toast.makeText(state.context, it.message ?: it.toString(), Toast.LENGTH_LONG).show() }
     }
 }

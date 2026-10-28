@@ -131,6 +131,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
         when {
             com.smartdocs.editor.ui.view5.V5State.of(state).onBack() -> {}
             com.smartdocs.editor.ui.nve.NveState.of(state).onBack() -> {}      // NVE
+            com.smartdocs.editor.ui.selmenu.SelHooks.onBack(state) -> {}      // selmenu: close the object / right-click menu
             state.searchOpen -> state.closeSearch()
             state.selection != null -> state.selection = null
             state.edit.target != null -> state.edit.clear()
@@ -199,7 +200,9 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
             saveAs = { saveAs.launch(state.file?.name ?: "document.pdf") },
             pickImage = { pickImage() }, pickStamp = { showStamps = true },
             pickSignature = { path -> scope.launch { ReaderIntents.decode(File(path))?.let { state.pendingImage = it; state.tool = ReaderTool.SIGNATURE; state.pendingText = path; state.selection = null } } },
-            navigateTool = { id ->
+            navigateTool = navigate@{ id ->
+                // tabs audit CM-21: a tool that does not use this document opens as is (no guard, no save, no undo step)
+                if (id in com.smartdocs.editor.core.security.ReaderRestrictions.DOCUMENT_FREE) { state.selectTool(null); nav.navigate(Routes.tool(id)); return@navigate }
                 // nitro-protect2: what the tool needs from the document (restrictions / Protected View)
                 val need = com.smartdocs.editor.core.security.ReaderRestrictions.actionForTool(id)
                 if (need != null && !state.guard.check(need)) { } else
@@ -282,8 +285,13 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                     if (tablet) com.smartdocs.editor.ui.reader.view.ReaderTabStrip(state, switchTab, alwaysShow = true)
                     if (state.searchOpen) SearchBar(state, quick) { state.closeSearch() }
                     else ReaderTabRow(state) { t ->
+                        // tabs audit CM-10 / CM-25 / CM-38: a tab switch ends the View drag modes, the multi-selection
+                        // and the active tool (also before Organize, so the eraser is not still on when coming back)
+                        com.smartdocs.editor.ui.nve.NveState.of(state).let { n -> n.dragMode = null; n.pasteText = null }
+                        state.annot2.onTabChanged()
+                        if (state.tool != null) state.selectTool(null)
                         if (t == ReaderTab.PAGES) actions.navigateTool("organize")
-                        else { state.tab = t; state.selectTool(null); state.selection = null }
+                        else { state.tab = t; state.selection = null }
                     }
                     state.connected?.let { com.smartdocs.editor.ui.connected.ConnectedBanner(it, nav, connUri) }   // share6: above the pages
                     if (state.session != null) ReaderSecurityBanners(state)   // nitro-protect2: Protected View, action inspector, restrictions
@@ -292,7 +300,8 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
             bottomBar = {
                 if (chrome) Column {
                     if (tts.state != ReadAloudController.State.IDLE) TtsBar(tts) { r -> ReadAloudController.setRate(r); scope.launch { app.settings.update { it.copy(ttsRate = r) } } }
-                    state.selection?.let { sel ->
+                    // selmenu: the floating selection menu (SelMenuLayer below) replaced this bottom bar
+                    if (com.smartdocs.editor.ui.selmenu.SelHooks.LEGACY_BAR) state.selection?.let { sel ->
                         SelectionMenu(sel, state,
                             // nitro-protect2: copying / sending the text out follows the document's copy permission
                             onCopy = { if (state.guard.check(com.smartdocs.editor.core.security.DocAction.COPY)) { ReaderIntents.copy(ctx, it); state.selection = null; scope.launch { snack.showSnackbar(ctx.getString(R.string.copy_text)) } } },
@@ -312,6 +321,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                         if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                         // volume (if enabled) / arrows / page keys: spread-aware screen flips (view module)
                         // MODULE_pageflip6: Space / arrows in the document's direction while the page-turn view is shown
+                        com.smartdocs.editor.ui.selmenu.SelHooks.onKey(state, e.nativeKeyEvent) ||     // selmenu: Shift+F10 / Menu key
                         com.smartdocs.editor.ui.nve.NveKeys.onKey(state, e.nativeKeyEvent, switchTab) ||     // NVE: tabs / Ctrl+Home… / customised keys
                         com.smartdocs.editor.ui.pageflip.PageFlipKeys.onKey(state, e.nativeKeyEvent, rtl) ||
                         com.smartdocs.editor.ui.view5.V5Keys.onKey(state, e.nativeKeyEvent) || com.smartdocs.editor.ui.gaps6.G6Keys.handle(state, e.nativeKeyEvent.keyCode, settings, rtl)
@@ -346,6 +356,10 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                             // NVE: document notifications (forms, JavaScript, PDF/A, redactions, 3D, portfolio) + crash-recovery copy
                             com.smartdocs.editor.ui.nve.panes.NveDocBanners(state, onOpenTool = { actions.navigateTool(it) }, modifier = Modifier.align(Alignment.TopCenter).padding(top = 96.dp))
                             com.smartdocs.editor.ui.nve.shell.NveRecoveryBanner(state, onOpen = { f -> nav.navigate(Routes.reader(android.net.Uri.fromFile(f).toString())) }, modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 48.dp))
+                            // selmenu: floating selection / long-press / right-click menus (one registry, core/selmenu)
+                            com.smartdocs.editor.ui.selmenu.SelMenuLayer(state, actions, quick, snack,
+                                onTextTool = { s, a -> if (state.guard.check(com.smartdocs.editor.core.security.DocAction.COPY)) textTools = s to a },
+                                onReadAloud = { p, c -> startReadAloud(c, p) }, onPrompt = { prompt = it }, onOpenLink = openLink)
                         }
                     }
                 }
@@ -377,7 +391,11 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
     state.signedBlock?.let { reason ->
         AlertDialog(onDismissRequest = { state.signedBlock = null },
             icon = { Icon(Icons.Default.Verified, null) },
-            text = { Text(stringResource(if (reason == com.smartdocs.editor.core.pdf.SignedDocumentException.Reason.CERTIFIED_NO_CHANGES) R.string.signed_doc_certified_no_changes else R.string.signed_doc_save_as_copy)) },
+            text = { Text(stringResource(when (reason) {
+                com.smartdocs.editor.core.pdf.SignedDocumentException.Reason.CERTIFIED_NO_CHANGES -> R.string.signed_doc_certified_no_changes
+                com.smartdocs.editor.core.pdf.SignedDocumentException.Reason.CONTENT_CHANGE -> R.string.tc_signed_content_change
+                else -> R.string.signed_doc_save_as_copy
+            })) },
             confirmButton = { TextButton(onClick = { state.signedBlock = null; saveAs.launch((state.file?.nameWithoutExtension ?: "document") + "_copy.pdf") }) { Text(stringResource(R.string.signed_doc_save_copy_action)) } },
             dismissButton = { TextButton(onClick = { state.signedBlock = null }) { Text(stringResource(R.string.cancel)) } })
     }
