@@ -26,4 +26,5 @@
     <string name="cv9_speaker_notes">Speaker notes as comments</string>
     <string name="cv9_notes_author">Speaker notes</string>
     <string name="cv9_info_notes">Speaker notes added to %1$d pages</string>
+    <string name="cv9_info_ppt_layout">PowerPoint 97 file (.ppt): slides with their text and pictures in place; masters, text styling and EMF/WMF pictures are not read</string>
 </resources>

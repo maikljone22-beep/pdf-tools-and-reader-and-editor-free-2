@@ -180,6 +180,7 @@ object ToPdf6 {
         val kind = FileKind6.of(f)
         val title = f.nameWithoutExtension
         val tmp = File(ctx.cacheDir, "tmp").apply { mkdirs() }
+        val pptM = if (kind == Kind6.PPT) withContext(Dispatchers.IO) { pptModel(f) } else null
         val res = when {
             kind == Kind6.PDF -> withContext(Dispatchers.IO) { f.copyTo(out, overwrite = true) }
             kind.isImage -> {
@@ -198,8 +199,9 @@ object ToPdf6 {
                 out
             }
             kind == Kind6.XLSX -> xlsx(ctx, f, out, tmp, info, bookmarks)
-            kind == Kind6.PPTX -> {
-                val model = withContext(Dispatchers.IO) { OoxmlReader.readPptx(f) }
+            kind == Kind6.PPTX || pptM != null -> {
+                val model = pptM ?: withContext(Dispatchers.IO) { OoxmlReader.readPptx(f) }
+                if (pptM != null) info(ctx.getString(R.string.cv9_info_ppt_layout))
                 val s = model.slides.firstOrNull()
                 // the paper is the slide (convert audit A-M3: 16:9 slides sat in the top third of A4 portrait pages)
                 val wMils = ((s?.width ?: 12192000L) * 1000 / 914400).toInt().coerceIn(1000, 50_000)
@@ -244,6 +246,7 @@ object ToPdf6 {
                 ToPdf.htmlParts(ctx, sheetParts(title, sheets.list) { name, shown, all -> ctx.getString(R.string.cvf_info_rows_cut, name, shown, all).also { info(it) } }, out, tmp)
             }
             // row 19: PowerPoint 97-2003 — the slide texts (one page per slide, title as heading); pictures and layout are not read
+            // PowerPoint 97-2003 that the binary reader could not lay out: the slide texts only
             kind == Kind6.PPT -> {
                 val slides = withContext(Dispatchers.IO) { com.smartdocs.editor.core.openall.PptText.slides(f.readBytes()) }
                 info(ctx.getString(R.string.cv9_info_ppt_text))
@@ -263,6 +266,14 @@ object ToPdf6 {
         if (kind == Kind6.DOCX || kind == Kind6.XLSX || kind == Kind6.PPTX)
             withContext(Dispatchers.IO) { runCatching { OfficeProps.applyTo(out, OfficeProps.read(f)) } }
         return res
+    }
+
+    /** Row 19: a .ppt read into the PPTX model (shapes, text boxes, pictures) when it has any shape, else null. Cached per file. */
+    private val pptCache = java.util.Collections.synchronizedMap(object : LinkedHashMap<String, com.smartdocs.editor.core.office.PresentationModel?>(4, 0.75f, true) {
+        override fun removeEldestEntry(e: MutableMap.MutableEntry<String, com.smartdocs.editor.core.office.PresentationModel?>) = size > 2
+    })
+    private fun pptModel(f: File): com.smartdocs.editor.core.office.PresentationModel? = pptCache.getOrPut(f.path + ":" + f.length() + ":" + f.lastModified()) {
+        runCatching { PptReader.read(f.readBytes()) }.getOrNull()?.takeIf { m -> m.slides.any { it.shapes.isNotEmpty() } }
     }
 
     /** Book chapters grouped into print parts of about [PART_CHARS] characters. */

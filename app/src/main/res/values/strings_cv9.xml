@@ -26,4 +26,5 @@
     <string name="cv9_speaker_notes">ملاحظات المتحدث كتعليقات</string>
     <string name="cv9_notes_author">ملاحظات المتحدث</string>
     <string name="cv9_info_notes">أُضيفت ملاحظات المتحدث إلى %1$d صفحة</string>
+    <string name="cv9_info_ppt_layout">ملف PowerPoint 97 (.ppt): الشرائح بنصوصها وصورها في أماكنها؛ لا تُقرأ القوالب وتنسيق النص وصور EMF/WMF</string>
 </resources>
