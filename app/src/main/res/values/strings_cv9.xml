@@ -44,4 +44,5 @@
     <string name="cv9_txt_lines">أسطر الملف</string>
     <string name="cv9_txt_width">طول السطر (حروف)</string>
     <string name="cv9_txt_nowrap">بلا التفاف</string>
+    <string name="cv9_ex_original">الصيغة الأصلية</string>
 </resources>
