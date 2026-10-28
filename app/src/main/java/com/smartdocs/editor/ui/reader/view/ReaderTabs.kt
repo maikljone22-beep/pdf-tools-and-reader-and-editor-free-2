@@ -121,10 +121,19 @@ object ReaderTabs {
         val i = tabs.indexOfFirst { it.uri == uri }; if (i < 0) return null
         val wasActive = active == uri
         tabs.removeAt(i)
+        com.smartdocs.editor.ui.rpf.RpfTabGroups.onClosed(ctx, uri)      // reader-prefs: the tab leaves its group
         val next = if (wasActive) tabs.getOrNull(i) ?: tabs.getOrNull(i - 1) else null
         if (wasActive) active = next?.uri
         save(ctx)
         return next
+    }
+
+    /** reader-prefs: reopen tabs (a restored tab group) without changing the active one; the oldest go beyond [MAX]. */
+    fun addTabs(ctx: Context, list: List<DocTab>) {
+        load(ctx)
+        list.filter { t -> usable(t.uri) && tabs.none { it.uri == t.uri } }.forEach { tabs += it }
+        while (tabs.size > MAX) { val drop = tabs.indexOfFirst { it.uri != active && list.none { l -> l.uri == it.uri } }.let { d -> if (d < 0) tabs.indexOfFirst { it.uri != active } else d }; if (drop < 0) break; tabs.removeAt(drop) }
+        save(ctx)
     }
 
     fun clear(ctx: Context) { load(ctx); tabs.clear(); active = null; save(ctx) }
@@ -182,19 +191,25 @@ fun ReaderTabStrip(state: ReaderState, switchTo: (DocTab?) -> Unit, alwaysShow: 
     if (tabs.size < 2 && !alwaysShow) return
     val pick = rememberPdfPicker { files -> files.firstOrNull()?.let { switchTo(DocTab(Uri.fromFile(it).toString(), it.name, page = -1)) } }
     val current = state.fileUri
+    // reader-prefs (OLD SHL-5): group headers + members (collapsed groups hide theirs); mouse wheel switches tabs
+    val entries = com.smartdocs.editor.core.rpf.TabGroupOps.stripEntries(com.smartdocs.editor.ui.rpf.RpfTabGroups.groups, tabs.map { it.uri }, current)
+    val entriesNow by rememberUpdatedState(entries)
     Surface(Modifier.coachTarget(CoachIds.READER_DOC_TABS), tonalElevation = 1.dp) {
         LazyRow(
-            Modifier.fillMaxWidth().height(40.dp),
+            Modifier.fillMaxWidth().height(40.dp).then(com.smartdocs.editor.ui.rpf.rpfWheelTabs({ entriesNow }, { state.fileUri }, switchTo)),
             contentPadding = PaddingValues(horizontal = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            items(tabs.toList(), key = { it.uri }) { t ->
+            items(entries, key = { e -> when (e) { is com.smartdocs.editor.core.rpf.StripEntry.Header -> "group:" + e.group.id; is com.smartdocs.editor.core.rpf.StripEntry.Tab -> e.uri } }) { e ->
+                if (e is com.smartdocs.editor.core.rpf.StripEntry.Header) { com.smartdocs.editor.ui.rpf.RpfGroupHeader(e.group, e.count); return@items }
+                val t = tabs.firstOrNull { it.uri == (e as com.smartdocs.editor.core.rpf.StripEntry.Tab).uri } ?: return@items
                 val sel = t.uri == current
+                val groupColor = com.smartdocs.editor.ui.rpf.rpfGroupColor(t.uri)
                 Row(
                     Modifier.widthIn(max = 200.dp).height(32.dp).clip(RoundedCornerShape(10.dp))
                         .background(if (sel) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface)
-                        .border(1.dp, if (sel) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(10.dp))
+                        .border(if (groupColor != null) 2.dp else 1.dp, groupColor ?: if (sel) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(10.dp))
                         .then(com.smartdocs.editor.ui.nve.NveTabs.menuModifier(t) { switchTo(t) })   // NVE: tap switches, long press / right click opens the tab menu
                         .padding(start = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,

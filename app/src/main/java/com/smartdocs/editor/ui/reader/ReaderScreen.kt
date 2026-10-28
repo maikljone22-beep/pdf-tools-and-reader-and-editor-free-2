@@ -72,7 +72,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
     LaunchedEffect(state.initialPageMode) {
         when (val m = InitialViewMap.panelOf(state.initialPageMode)) {
             null -> {}
-            "full" -> chrome = false
+            "full" -> com.smartdocs.editor.ui.rpf.RpfFullScreen.request(state) { chrome = false }   // reader-prefs §37: allow / ask / never
             else -> panel = runCatching { ReaderPanel.valueOf(m) }.getOrNull()
         }
         state.initialPageMode = null
@@ -235,7 +235,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
         scope.launch {
             val from = ReaderAi6.toReadingOffset(state, p0, fromChar)
             ReaderAi6.ttsOwner = state.file?.absolutePath      // tab-view-core V-08
-            ReadAloudController.start(ctx, state.file?.name ?: "", p0, state.pageCount, settings.ttsRate, settings.ttsPitch, { pg -> state.file?.let { f -> com.smartdocs.editor.ui.nve.tts.NveReadText.pageText(ctx, f, state.password, pg, base = ReaderAi6.readingText(state, pg)) } ?: ReaderAi6.readingText(state, pg) }, from)   // NVE: + comments / alt text per reading prefs
+            ReadAloudController.start(ctx, state.file?.name ?: "", p0, com.smartdocs.editor.ui.rpf.RpfReader.readLimit(state, p0) /* reader-prefs #23: reading mode */, settings.ttsRate, settings.ttsPitch, { pg -> state.file?.let { f -> com.smartdocs.editor.ui.nve.tts.NveReadText.pageText(ctx, f, state.password, pg, base = ReaderAi6.readingText(state, pg)) } ?: ReaderAi6.readingText(state, pg) }, from)   // NVE: + comments / alt text per reading prefs
         }
     }
     // API 33+: ask for POST_NOTIFICATIONS first, start reading once the user answered (granted or not \u2014
@@ -396,6 +396,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                                     DropdownMenuItem(text = { Text(stringResource(R.string.cn_register)) }, leadingIcon = { Icon(Icons.Default.Link, null) }, onClick = { menu = false; nav.navigate(com.smartdocs.editor.ui.connected.ConnRoutes.connected(state.fileUri)) })
                                     com.smartdocs.editor.ui.view5.V5MoreMenuItems(state, nav) { menu = false }
                                     com.smartdocs.editor.ui.nve.NveMoreMenuItems(state) { menu = false }     // NVE
+                                    com.smartdocs.editor.ui.rpf.RpfMoreMenuItems(state) { menu = false }     // reader-prefs #23: options for this document
                                     // NVE-shell: revert to the saved file (tab-view-core V-28: the dialog lives outside the menu)
                                     DropdownMenuItem(text = { Text(stringResource(R.string.nl_revert)) }, leadingIcon = { Icon(Icons.Default.Restore, null) }, enabled = state.dirty, onClick = { menu = false; nveRevert = true })
                                 }
@@ -417,6 +418,8 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                     state.connected?.let { com.smartdocs.editor.ui.connected.ConnectedBanner(it, nav, connUri) }   // share6: above the pages
                     if (state.session != null) ReaderSecurityBanners(state)   // nitro-protect2: Protected View, action inspector, restrictions
                 }
+                // reader-prefs §37: the tab strip stays in full screen when chosen
+                else if (com.smartdocs.editor.core.rpf.RpfPrefs.fsTabs && state.session != null) com.smartdocs.editor.ui.reader.view.ReaderTabStrip(state, switchTab, alwaysShow = true)
             },
             bottomBar = {
                 if (chrome) Column(Modifier.onSizeChanged { bottomBarPx = it.height }) {      // tab audit D20: measured for the form strip
@@ -436,7 +439,10 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                     if (state.session != null) BottomToolbar(state, actions)
                 }
                 // tab-view-core V-29: in full screen the read-aloud controls stay reachable
-                else if (tts.state != ReadAloudController.State.IDLE && ReaderAi6.ownsTts(state)) TtsBar(tts) { r -> ReadAloudController.setRate(r); scope.launch { app.settings.update { it.copy(ttsRate = r) } } }
+                else Column {
+                    if (tts.state != ReadAloudController.State.IDLE && ReaderAi6.ownsTts(state)) TtsBar(tts) { r -> ReadAloudController.setRate(r); scope.launch { app.settings.update { it.copy(ttsRate = r) } } }
+                    if (com.smartdocs.editor.core.rpf.RpfPrefs.fsToolbar && state.session != null) BottomToolbar(state, actions)     // reader-prefs §37: toolbar kept in full screen
+                }
             },
         ) { pad ->
             Row(Modifier.fillMaxSize().padding(pad)) {
@@ -446,12 +452,15 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                         if (contentEdit) return@onPreviewKeyEvent false      // tab-view-core E-19: Edit content owns the keyboard
                         // volume (if enabled) / arrows / page keys: spread-aware screen flips (view module)
                         // MODULE_pageflip6: Space / arrows in the document's direction while the page-turn view is shown
+                        com.smartdocs.editor.ui.rpf.RpfKeys.onKey(state, e.nativeKeyEvent) ||     // reader-prefs §39: Tab / Shift+Tab between form fields
                         com.smartdocs.editor.ui.selmenu.SelHooks.onKey(state, e.nativeKeyEvent) ||     // selmenu: Shift+F10 / Menu key
                         com.smartdocs.editor.ui.nve.NveKeys.onKey(state, e.nativeKeyEvent, switchTab) ||     // NVE: tabs / Ctrl+Home… / customised keys
                         com.smartdocs.editor.ui.pageflip.PageFlipKeys.onKey(state, e.nativeKeyEvent, rtl) ||
                         com.smartdocs.editor.ui.view5.V5Keys.onKey(state, e.nativeKeyEvent) || com.smartdocs.editor.ui.gaps6.G6Keys.handle(state, e.nativeKeyEvent.keyCode, settings, rtl)
                     },
                 ) {
+                    // OLD gaps6: tabletop posture on a phone: the open panel goes to the lower half, the pages stay above the hinge
+                    com.smartdocs.editor.ui.gaps6.TabletopSplit(fold, showPanel = !tablet && panel != null, content = { Box(Modifier.fillMaxSize()) {
                     when {
                         state.session == null && state.openError != null -> OpenErrorView(state.openError!!, onRetry = { state.retryOpen() }, onBack = { leave() },
                             onOpenWith = state.file?.takeIf { it.exists() }?.let { f -> { openWithOtherApp(ctx, app.documents.shareUri(f)) } },
@@ -459,7 +468,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                             repair = { com.smartdocs.editor.ui.nve.shell.NveRepairButton(state.file, state.password) { f -> nav.popBackStack(); nav.navigate(Routes.reader(android.net.Uri.fromFile(f).toString())) } })
                         state.session == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { if (!state.needPassword) CircularProgressIndicator() }
                         else -> {
-                            val openLink: (com.smartdocs.editor.core.pdf.PageLink) -> Unit = { l -> if (l.destPage == null && l.uri.isNullOrBlank()) scope.launch { runCatching { com.smartdocs.editor.ui.edit5.followFileLinkAt(state, state.currentPage, l.bounds.centerX(), l.bounds.centerY()) { f, p -> nav.navigate(Routes.reader(android.net.Uri.fromFile(f).toString(), p)) } } } else if (l.destPage == null && com.smartdocs.editor.ui.nve.NveLinks.openWeb(state, l.uri)) Unit /* NVE: show the URL first */ else ReaderIntents.openLink(ctx, l) { p -> state.jumpTo(p) } }
+                            val openLink: (com.smartdocs.editor.core.pdf.PageLink) -> Unit = { l -> if (l.destPage == null && l.uri.isNullOrBlank()) scope.launch { runCatching { com.smartdocs.editor.ui.edit5.followFileLinkAt(state, state.currentPage, l.bounds.centerX(), l.bounds.centerY()) { f, p -> nav.navigate(Routes.reader(android.net.Uri.fromFile(f).toString(), p)) } } } else if (l.destPage == null && com.smartdocs.editor.ui.nve.NveLinks.openWeb(state, l.uri)) Unit /* NVE: show the URL first */ else ReaderIntents.openLink(ctx, l) { p -> val from = state.currentPage; state.jumpTo(p); com.smartdocs.editor.ui.rpf.RpfDest.afterJump(state, l, from) } }   // reader-prefs §37: destination zoom unless kept
                             // MODULE_pageflip6: page-turn / horizontal-scroll view modes replace the page list when chosen
                             if (com.smartdocs.editor.ui.pageflip.PageFlipController.of(state).hosts())
                                 com.smartdocs.editor.ui.pageflip.PageFlipHost(state, chrome, onTapCenter = { if (state.tool == null || !chrome) chrome = !chrome }, onOpenLink = openLink, onPrompt = { prompt = it })
@@ -470,7 +479,10 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                                 pageRectsPx = { com.smartdocs.editor.ui.nve.NveState.of(state).visiblePages().map { it.page to it.rect } },
                                 onShowRect = { p, r -> com.smartdocs.editor.ui.nve.NveZoom.zoomToPageRect(state, p, r[0], r[1], r[2], r[3]) })
                             if (state.reflow) com.smartdocs.editor.ui.view5.ReflowReader(state)
-                            PageIndicator(state.currentPage, state.pageCount, { showGoTo = true }, Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp), labels = pageLabels)
+                            com.smartdocs.editor.ui.rpf.RpfDeepZoomView(state)      // reader-prefs: zoom beyond the page view, up to 6400 %
+                            if (chrome || com.smartdocs.editor.core.rpf.RpfPrefs.fsPageNav) PageIndicator(state.currentPage, state.pageCount, { showGoTo = true }, Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp), labels = pageLabels)
+                            com.smartdocs.editor.ui.rpf.RpfFullScreenNav(state, chrome, Modifier.align(Alignment.BottomCenter).padding(bottom = 6.dp))      // reader-prefs §37
+                            com.smartdocs.editor.ui.rpf.RpfPageSizeChip(state, Modifier.align(Alignment.BottomEnd).padding(end = 12.dp, bottom = 14.dp))   // reader-prefs §37
                             // tabs audit D21: the top banners are one column, so they stack instead of covering each other
                             Column(Modifier.align(Alignment.TopCenter).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                             if (state.tool != null && state.placement == null) ToolHint(state.tool!!, Modifier.padding(top = 8.dp))
@@ -481,6 +493,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                                 modifier = Modifier)   // MODULE_forms5
                             // NVE: document notifications (forms, JavaScript, PDF/A, redactions, 3D, portfolio)
                             com.smartdocs.editor.ui.nve.panes.NveDocBanners(state, onOpenTool = { actions.navigateTool(it) }, modifier = Modifier)
+                            com.smartdocs.editor.ui.rpf.RpfBanners(state)      // reader-prefs §37 / PREF-5: PDF/A view mode
                             }
                             com.smartdocs.editor.ui.search.RedactMarksBanner(state, onApply = { actions.navigateTool("redact") },
                                 modifier = Modifier.align(Alignment.BottomEnd).padding(bottom = 44.dp))   // MODULE_search5b
@@ -493,6 +506,10 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                                 onReadAloud = { p, c -> startReadAloud(c, p) }, onPrompt = { prompt = it }, onOpenLink = openLink)
                         }
                     }
+                    } }, panel = {
+                        panel?.let { shown -> PanelsContent(state, shown, onPanel = { panel = it }, onJump = { state.jumpTo(it) }, onAiOutline = { nav.navigate(Routes.tool("ai", state.fileUri)) }, onClose = { panel = null },
+                            onOpenPdf = { f -> panel = null; nav.navigate(Routes.reader(android.net.Uri.fromFile(f).toString())) }) }
+                    })
                 }
                 if (tablet && panel != null) {
                     VerticalDivider()
@@ -505,7 +522,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
             }
         }
         // captured value: the sheet's own composition can recompose after panel became null (NPE with panel!!)
-        if (!tablet) panel?.let { shownPanel -> ModalBottomSheet(onDismissRequest = { panel = null }) {
+        if (!tablet && !(fold.isTabletop && fold.hinge != null)) panel?.let { shownPanel -> ModalBottomSheet(onDismissRequest = { panel = null }) {
             PanelsContent(state, shownPanel, onPanel = { panel = it }, onJump = { state.jumpTo(it); panel = null }, onAiOutline = { panel = null; nav.navigate(Routes.tool("ai", state.fileUri)) }, onClose = { panel = null },
                 onOpenPdf = { f -> panel = null; nav.navigate(Routes.reader(android.net.Uri.fromFile(f).toString())) })
         } }
@@ -637,6 +654,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
     val nveEdit = com.smartdocs.editor.ui.nve.NveState.of(state).requestEdit
     LaunchedEffect(nveEdit) { if (nveEdit != null) { com.smartdocs.editor.ui.nve.NveEditRequest.forward(state, nveEdit); com.smartdocs.editor.ui.nve.NveState.of(state).requestEdit = null; state.selection = null; state.selectTool(null); contentEdit = true } }
     ReaderAi6.ReadAloudHighlight(state)   // ai6 (C1): sentence highlight while reading aloud
+    com.smartdocs.editor.ui.rpf.RpfReaderHost(state, switchTab)   // reader-prefs: per-document options, PDF/A view, full-screen request, tab groups
 }
 
 // tab-view-core V-03: ids of the reader's own top-bar actions for TopBarOverflow
