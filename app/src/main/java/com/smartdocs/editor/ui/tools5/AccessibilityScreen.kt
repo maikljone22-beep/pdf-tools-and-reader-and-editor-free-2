@@ -185,7 +185,7 @@ fun AccessibilityScreen(nav: NavHostController, uri: String?) {
                 Button(onClick = { fixDialog = true }, enabled = !job.running) { Icon(Icons.Default.Build, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.t5_acc_fix)) }
                 OutlinedButton(onClick = {
                     val f = file ?: return@OutlinedButton
-                    val html = AccessRules.htmlReport(f.name, shown, settings.language == "ar", reportTitle, { ruleLabels[it] ?: it }, { statusLabels[it] ?: it.name }, { groupLabels[it] ?: it.name })
+                    val html = AccessRules.htmlReport(f.name, shown, com.smartdocs.editor.core.data.AppLang.isArabic(settings), reportTitle, { ruleLabels[it] ?: it }, { statusLabels[it] ?: it.name }, { groupLabels[it] ?: it.name })
                     job.launch(checking) {
                         val out = app.documents.uniqueFile(app.documents.docsDir, f.nameWithoutExtension + "_accessibility", "html")
                         io { out.writeText(html) }
@@ -199,7 +199,7 @@ fun AccessibilityScreen(nav: NavHostController, uri: String?) {
                 // Foxit 34.4: the report goes into the document as an attachment
                 OutlinedButton(onClick = {
                     val f = file ?: return@OutlinedButton
-                    val html = AccessRules.htmlReport(f.name, shown, settings.language == "ar", reportTitle, { ruleLabels[it] ?: it }, { statusLabels[it] ?: it.name }, { groupLabels[it] ?: it.name })
+                    val html = AccessRules.htmlReport(f.name, shown, com.smartdocs.editor.core.data.AppLang.isArabic(settings), reportTitle, { ruleLabels[it] ?: it }, { statusLabels[it] ?: it.name }, { groupLabels[it] ?: it.name })
                     job.launch(checking) {
                         val out = app.documents.uniqueFile(app.documents.docsDir, f.nameWithoutExtension + "_report")
                         io { PDDocument.load(f).use { d -> Embed.addFiles(d, listOf(Attachment(f.nameWithoutExtension + "_accessibility.html", "text/html", html.toByteArray()))); d.save(out) } }
@@ -346,7 +346,7 @@ private fun FiguresPanel(file: File, figures: List<Pair<Int, String>>, onSaved: 
                                     }
                                 } finally { s.closeAsync() }
                             }
-                            alts[i] = AltTextAi.suggest(ctx, settings, img, pageText, settings.language == "ar")
+                            alts[i] = AltTextAi.suggest(ctx, settings, img, pageText, com.smartdocs.editor.core.data.AppLang.isArabic(settings))
                         }
                     }, enabled = busy < 0) { Icon(Icons.Default.AutoAwesome, null); Spacer(Modifier.width(4.dp)); Text(stringResource(R.string.t5_acc_ai_alt)) }
                     Spacer(Modifier.weight(1f))

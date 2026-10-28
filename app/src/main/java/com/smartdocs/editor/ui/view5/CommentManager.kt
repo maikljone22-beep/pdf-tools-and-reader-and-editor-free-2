@@ -98,12 +98,26 @@ fun CommentManagerSheet(v: V5State, onMessage: (String) -> Unit) {
     fun header() = listOf(R.string.v5_col_page, R.string.v5_col_type, R.string.v5_col_author, R.string.v5_col_date, R.string.v5_col_status, R.string.v5_col_checked,
         R.string.v5_col_contents, R.string.v5_col_marked, R.string.v5_col_replies).map { ctx.getString(it) }
 
+    fun exportHighlights() {
+        scope.launch {
+            val txt = CommentFilter.highlightedText(shown, ::pageLabel)
+            if (txt.isBlank()) { onMessage(ctx.getString(R.string.v5_no_highlights)); return@launch }
+            runCatching { withContext(Dispatchers.IO) { app.documents.newTemp(base + "_highlights", "txt").also { it.writeText(txt) } } }
+                .onSuccess { share(it, "text/plain") }.onFailure { onMessage(it.message ?: ctx.getString(R.string.error_generic)) }
+        }
+    }
+    // fc-settings (§39): Ctrl+Alt+L opens the export menu, Ctrl+I exports the highlighted text once the rows are loaded
+    val fcsReq = com.smartdocs.editor.ui.nve.NveState.of(s)
+    val fcsMenu = remember { fcsReq.commentExport == "menu" }
+    LaunchedEffect(rows) { if (rows != null && fcsReq.commentExport == "highlights") { fcsReq.commentExport = null; exportHighlights() } }
+    LaunchedEffect(Unit) { if (fcsReq.commentExport == "menu") fcsReq.commentExport = null }
+
     ModalBottomSheet(onDismissRequest = { v.close() }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(Modifier.fillMaxWidth().fillMaxHeight(0.92f).padding(horizontal = 12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(R.string.v5_comment_manager), style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
                 Text("${shown.size}/${all.size}", style = MaterialTheme.typography.labelLarge)
-                var exportOpen by remember { mutableStateOf(false) }
+                var exportOpen by remember { mutableStateOf(fcsMenu) }
                 Box {
                     // tabs audit CM-12: CSV / Word / summaries / highlights carry the document's text: copy permission needed
                     IconButton(onClick = { if (s.guard.check(com.smartdocs.editor.core.security.DocAction.COPY)) exportOpen = true }) { Icon(Icons.Default.IosShare, stringResource(R.string.v5_export)) }
@@ -136,12 +150,7 @@ fun CommentManagerSheet(v: V5State, onMessage: (String) -> Unit) {
                         HorizontalDivider()
                         DropdownMenuItem(text = { Text(stringResource(R.string.v5_export_highlights)) }, leadingIcon = { Icon(Icons.Default.Highlight, null) }, onClick = {
                             exportOpen = false
-                            scope.launch {
-                                val txt = CommentFilter.highlightedText(shown, ::pageLabel)
-                                if (txt.isBlank()) { onMessage(ctx.getString(R.string.v5_no_highlights)); return@launch }
-                                runCatching { withContext(Dispatchers.IO) { app.documents.newTemp(base + "_highlights", "txt").also { it.writeText(txt) } } }
-                                    .onSuccess { share(it, "text/plain") }.onFailure { onMessage(it.message ?: ctx.getString(R.string.error_generic)) }
-                            }
+                            exportHighlights()
                         })
                         DropdownMenuItem(text = { Text(stringResource(R.string.v5_copy_highlights)) }, leadingIcon = { Icon(Icons.Default.ContentCopy, null) }, onClick = {
                             exportOpen = false

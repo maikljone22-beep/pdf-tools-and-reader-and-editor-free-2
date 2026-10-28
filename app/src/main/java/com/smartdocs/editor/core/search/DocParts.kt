@@ -13,7 +13,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 /** Where a piece of searchable text lives. The ordinal is stored in the index: append only. */
-enum class PartKind { TEXT, COMMENTS, BOOKMARK, FIELD, ATTACHMENT }
+enum class PartKind { TEXT, COMMENTS, BOOKMARK, FIELD, ATTACHMENT, METADATA }   // fc-settings: METADATA = XMP, custom properties, tag texts
 
 /** Searchable text that is not page content. [page] is -1 for document-level items. */
 data class DocPart(val kind: PartKind, val page: Int, val text: String)
@@ -23,6 +23,11 @@ object DocParts {
 
     suspend fun load(file: File, password: String?): List<DocPart> = withContext(Dispatchers.IO) {
         runCatching { PdfOps.load(file, password).use { collect(it) } }.getOrDefault(emptyList())
+    }
+
+    /** fc-settings: parts plus the index extras of [meta] (XMP, custom properties, tags) and the document /Title. */
+    suspend fun loadForIndex(file: File, password: String?, meta: FcsIndexPrefs.Meta): Pair<List<DocPart>, String> = withContext(Dispatchers.IO) {
+        runCatching { PdfOps.load(file, password).use { d -> (collect(d) + FcsIndexPrefs.parts(d, meta)) to FcsIndexPrefs.title(d) } }.getOrDefault(emptyList<DocPart>() to "")
     }
 
     fun collect(doc: PDDocument): List<DocPart> {

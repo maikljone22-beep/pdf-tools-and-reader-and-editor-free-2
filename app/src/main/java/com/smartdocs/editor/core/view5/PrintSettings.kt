@@ -46,6 +46,11 @@ data class PrintSettings(
     val overlap: Float = 18f,
     val posterLabels: Boolean = true,
     val cutMarks: Boolean = false,
+    // fc-settings: printer marks for normal printing and the hairline fix (see PrinterMarks)
+    val regMarks: Boolean = false,
+    val bleedMarks: Boolean = false,
+    val bleed: Float = 9f,
+    val hairline: Float = 0f,
     val grayscale: Boolean = false,
     val asImage: Boolean = false,
     val dpi: Int = 150,
@@ -56,6 +61,7 @@ data class PrintSettings(
         scale = scale, scalePct = scalePct, autoRotate = autoRotate, margin = margin, cols = cols, rows = rows, vertical = vertical,
         sides = sides, sheets = sheets, content = content, poster = poster, posterZoom = posterZoom, overlap = overlap,
         posterLabels = posterLabels, cutMarks = cutMarks, notes = notes,
+        regMarks = regMarks, bleedMarks = bleedMarks, bleed = bleed, hairline = hairline,
     )
 
     fun extras(): PrintExtras = PrintExtras(grayscale = grayscale, asImage = asImage, dpi = dpi, summary = summary)
@@ -67,6 +73,7 @@ data class PrintSettings(
         put("paper", paper); put("landscape", landscape); put("borders", borders); put("scale", scale.name); put("pct", scalePct)
         put("autoRotate", autoRotate); put("margin", margin.toDouble()); put("poster", poster); put("zoom", posterZoom); put("overlap", overlap.toDouble())
         put("labels", posterLabels); put("cutMarks", cutMarks); put("gray", grayscale); put("image", asImage); put("dpi", dpi)
+        put("reg", regMarks); put("bleedMarks", bleedMarks); put("bleed", bleed.toDouble()); put("hairline", hairline.toDouble())
     }.toString()
 
     companion object {
@@ -89,6 +96,7 @@ data class PrintSettings(
                     borders = o.optBoolean("borders"), scale = enumOf(o.optString("scale"), d.scale), scalePct = o.optInt("pct", 100), autoRotate = o.optBoolean("autoRotate", true),
                     margin = o.optDouble("margin", 18.0).toFloat(), poster = o.optBoolean("poster"), posterZoom = o.optInt("zoom", 200), overlap = o.optDouble("overlap", 18.0).toFloat(),
                     posterLabels = o.optBoolean("labels", true), cutMarks = o.optBoolean("cutMarks"), grayscale = o.optBoolean("gray"), asImage = o.optBoolean("image"), dpi = o.optInt("dpi", 150),
+                    regMarks = o.optBoolean("reg"), bleedMarks = o.optBoolean("bleedMarks"), bleed = o.optDouble("bleed", 9.0).toFloat(), hairline = o.optDouble("hairline", 0.0).toFloat(),
                 )
             }.getOrNull()
         }

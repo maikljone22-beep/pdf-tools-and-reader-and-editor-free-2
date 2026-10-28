@@ -18,7 +18,28 @@ object NpfPrefs {
 
     fun init(context: Context) {
         if (sp == null) sp = context.applicationContext.getSharedPreferences("npf_prefs", Context.MODE_PRIVATE)
+        migrateRecentSize(context)
     }
+
+    /**
+     * fc-settings: the NVE shell had its own recent-list size ("recent_size" in prefs [NVE_SHELL_PREFS]); [recentLimit]
+     * is now the only one. A value chosen there before the merge is carried over once.
+     */
+    private fun migrateRecentSize(context: Context) {
+        val p = sp ?: return
+        if (p.contains(K.RECENT_LIMIT)) return
+        val old = context.applicationContext.getSharedPreferences(NVE_SHELL_PREFS, Context.MODE_PRIVATE)
+        if (old.contains("recent_size")) p.edit().putInt(K.RECENT_LIMIT, mergedRecentLimit(old.getInt("recent_size", 50))).apply()
+    }
+
+    /** The old shell value (5..50, 50 = the database maximum) as a [recentLimit] (50 → 0 = no limit). */
+    internal fun mergedRecentLimit(shell: Int): Int = if (shell >= RECENT_MAX) 0 else shell.coerceAtLeast(1)
+
+    /** The database keeps this many recent documents. */
+    const val RECENT_MAX = 50
+    /** Choices of both recent-size rows (Settings → General and More preferences → Files); 0 = all. */
+    val RECENT_CHOICES = listOf(5, 10, 25, 0)
+    private const val NVE_SHELL_PREFS = "nve_shell"
 
     private fun touch() { version.intValue }
     private fun b(k: String, d: Boolean): Boolean { touch(); return sp?.getBoolean(k, d) ?: d }
@@ -65,7 +86,7 @@ object NpfPrefs {
     var saveLast: Long
         get() = l(K.SAVE_LAST, 0L)
         set(v) { sp?.edit()?.putLong(K.SAVE_LAST, v)?.apply() }
-    /** Recent list size on Home; 0 = no limit (the database keeps at most 50). */
+    /** Recent list size on Home; 0 = no limit (the database keeps at most 50). The only recent-size setting (fc-settings). */
     val recentLimit: Int get() = i(K.RECENT_LIMIT, 0)
     /** Minutes between recovery copies of a document with unsaved edits; 0 = off. */
     val recoveryMinutes: Int get() = i(K.RECOVERY_MIN, 5)

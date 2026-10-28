@@ -23,6 +23,7 @@ import com.smartdocs.editor.BuildConfig
 import com.smartdocs.editor.LocalApp
 import com.smartdocs.editor.LocalSettings
 import com.smartdocs.editor.R
+import com.smartdocs.editor.core.data.AppLang
 import com.smartdocs.editor.core.data.AppSettings
 import com.smartdocs.editor.core.theme.Brand
 import com.smartdocs.editor.core.theme.PillShape
@@ -67,7 +68,15 @@ fun SettingsScreen(nav: NavHostController) {
                 ) { m -> upd { it.copy(theme = m) } }
                 GroupDivider()
                 GroupRow(stringResource(R.string.settings_language), icon = Icons.Default.Language, tile = tiles.teal)
-                Choice(listOf("ar" to "العربية", "en" to "English"), s.language) { v -> upd { it.copy(language = v) } }
+                // fc-settings: "follow system" + applied to the app's resources (AppLang: per-app language on 13+, context wrap below)
+                Choice(listOf(AppLang.SYSTEM to stringResource(R.string.fcs_lang_system), AppLang.AR to "العربية", AppLang.EN to "English"), AppLang.normalize(s.language)) { v ->
+                    scope.launch {
+                        app.settings.update { it.copy(language = v) }
+                        var c: android.content.Context? = ctx
+                        while (c is android.content.ContextWrapper && c !is android.app.Activity) c = c.baseContext
+                        (c as? android.app.Activity)?.let { AppLang.apply(it, v) }
+                    }
+                }
                 G6GeneralRows(s) { b -> upd(b) }   // gaps6: layout direction, product improvement
                 com.smartdocs.editor.ui.nve.shell.NveShellSettingsRows()   // NVE-shell: accent / themes, auto recovery, toolbar, Custom tab name
             }

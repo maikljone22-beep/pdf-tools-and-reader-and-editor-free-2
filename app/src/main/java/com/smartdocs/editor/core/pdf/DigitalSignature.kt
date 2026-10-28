@@ -494,10 +494,17 @@ object DigitalSignature {
     internal fun verifyBlocking(
         file: File, password: String?, revocation: Boolean = false, online: Boolean = true,
         acceptExpiredTimestamps: Boolean = true, useDocumentValidationInfo: Boolean = true,
+        /**
+         * Tabs audit D22: results of an earlier check of the same file before an append. A signature with the same
+         * signed length and name is not checked again (its signed bytes are unchanged); only its coverage changes.
+         */
+        reuse: List<VerifyResult> = emptyList(),
     ): List<VerifyResult> {
         ensureProvider()
-        val bytes = file.readBytes()
-        val revEnds = com.smartdocs.editor.core.sign.RevisionDiff.revisionEnds(bytes)
+        // the file is never read into memory as a whole: revisions are found by streaming, and each signature reads
+        // only its own contents / signed ranges
+        val fileLength = file.length()
+        val revEnds = com.smartdocs.editor.core.sign.RevisionDiff.revisionEnds(file)
         val results = ArrayList<VerifyResult>()
         (if (password.isNullOrEmpty()) PDDocument.load(file) else PDDocument.load(file, password)).use { doc ->
             val ltv = com.smartdocs.editor.core.sign.LtvSupport.hasDss(doc)
@@ -512,7 +519,7 @@ object DigitalSignature {
                 val date = sig.signDate?.time
                 val subFilter = sig.subFilter.orEmpty()
                 val range = sig.byteRange
-                val covers = range != null && range.size == 4 && range[0] == 0 && (range[2].toLong() + range[3].toLong()) == bytes.size.toLong()
+                val covers = range != null && range.size == 4 && range[0] == 0 && (range[2].toLong() + range[3].toLong()) == fileLength
                 val signedLen = if (range != null && range.size == 4) range[2].toLong() + range[3].toLong() else 0L
                 val revision = revEnds.indexOfFirst { it >= signedLen }.let { if (it < 0) revEnds.size else it + 1 }
                 val common = VerifyResult(
@@ -522,9 +529,13 @@ object DigitalSignature {
                     revision = revision, revisionCount = revEnds.size, signedLength = signedLen, lock = SigFields.lockOf(doc, sig),
                 )
                 val isDocTs = subFilter == "ETSI.RFC3161"
+                reuse.firstOrNull { it.signedLength == signedLen && it.fieldName == common.fieldName && it.error == null && it.isDocTimestamp == isDocTs }?.let { old ->
+                    results += old.copy(coversWholeDocument = covers, revision = revision, revisionCount = revEnds.size, ltvData = ltv)
+                    continue
+                }
                 try {
-                    val contents = sig.getContents(bytes)
-                    val signedContent = sig.getSignedContent(bytes)
+                    val contents = file.inputStream().buffered().use { sig.getContents(it) }
+                    val signedContent = file.inputStream().buffered().use { sig.getSignedContent(it) }
                     if (isDocTs) {
                         val (genTime, ok) = checkToken(CMSSignedData(contents), signedContent)
                         val tokenCms = CMSSignedData(contents)

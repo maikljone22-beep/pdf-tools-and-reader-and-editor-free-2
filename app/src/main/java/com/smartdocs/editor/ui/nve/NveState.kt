@@ -59,6 +59,12 @@ class NveState private constructor(val s: ReaderState) {
     var pasteText by mutableStateOf<String?>(null)
     /** Text whose words the word-count dialog counts (null = whole document). */
     var wordCountText by mutableStateOf<String?>(null)
+    /** fc-settings (§39 keys): the comment manager opens with its export menu ("menu") or exports the highlighted text ("highlights"). */
+    var commentExport by mutableStateOf<String?>(null)
+    /** fc-settings: Ctrl+Enter, the stored comment (page, index) whose reply box the comments panel opens. */
+    var replyTo by mutableStateOf<Pair<Int, Int>?>(null)
+    /** fc-settings: Ctrl+F11, bumped to hide / show the reader toolbars (ReaderScreen hook). */
+    var chromeToggle by mutableIntStateOf(0)
     /** "Edit text" from the selection: page + PDF rect; the reader opens Edit mode there (hook). */
     var requestEdit by mutableStateOf<Pair<Int, android.graphics.RectF?>?>(null)
     /** Selected user-defined reader tab (customise ribbon), null = a built-in tab. */
