@@ -164,6 +164,19 @@ private fun OptionsBody(conv: Conv, inputCount: Int, o: Cv6Opts, onChange: (Cv6O
     // Foxit "Restore defaults" (keeps the page range)
     if (opts.any { it != Opt.RANGE } && o != defaultsFor(conv).copy(range = o.range))
         TextButton(onClick = { onChange(defaultsFor(conv).copy(range = o.range)) }) { Text(stringResource(R.string.pc_restore_defaults)) }
+    // fc-settings: keep these options as this conversion's default (Settings → Conversion defaults lists / forgets them)
+    if (opts.any { it != Opt.RANGE && it != Opt.URL && it != Opt.TEXT }) {
+        val ctx = LocalContext.current
+        var saved by remember(conv.id) { mutableStateOf(com.smartdocs.editor.core.convert6.Cv6Defaults.has(ctx, conv.id)) }
+        val savedMsg = stringResource(R.string.fcs_cv_saved)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            OutlinedButton(onClick = {
+                com.smartdocs.editor.core.convert6.Cv6Defaults.save(ctx, conv.id, o); saved = true
+                android.widget.Toast.makeText(ctx, savedMsg, android.widget.Toast.LENGTH_SHORT).show()
+            }, shape = RoundedCornerShape(50)) { Icon(Icons.Default.BookmarkAdd, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.fcs_cv_save_default)) }
+            if (saved) TextButton(onClick = { com.smartdocs.editor.core.convert6.Cv6Defaults.clear(ctx, conv.id); saved = false }) { Text(stringResource(R.string.fcs_cv_forget_default)) }
+        }
+    }
     // nav-attach: Create-PDF "attach source file"
     if (conv.to == com.smartdocs.editor.core.convert6.Fmt.PDF && conv.inputs.isNotEmpty())
         SwitchRow(stringResource(R.string.nat_attach_source), o.attachSource, stringResource(R.string.nat_attach_source_sub)) { onChange(o.copy(attachSource = it)) }
