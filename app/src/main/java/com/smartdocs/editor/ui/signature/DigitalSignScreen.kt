@@ -21,6 +21,12 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import com.smartdocs.editor.core.pdf.OpenPasswords
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -46,15 +52,37 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 
+/**
+ * Audit D16: what must survive a rotation or a split-screen resize — the picked file, the unlocked digital ID
+ * (never in saved state), the reader's request and the signing job, which runs in the ViewModel's scope so a
+ * configuration change does not cancel TSA / LTV network calls.
+ */
+class DigitalSignVm : androidx.lifecycle.ViewModel() {
+    var file by mutableStateOf<File?>(null)
+    var identity by mutableStateOf<DigitalSignature.Identity?>(null)
+    var request: SigFieldRequest.Request? = null
+    var initialized = false
+    val runner = ToolRunner(androidx.lifecycle.viewModelScope)
+    var signReport by mutableStateOf<DigitalSignature.SignReport?>(null)
+}
+
 /** Certificate-based signing + verification. Tabs: sign / verify / certificate. */
 @Composable
 fun DigitalSignScreen(nav: NavHostController, uri: String?) {
-    var file by remember { mutableStateOf(uri?.let { runCatching { File(Uri.parse(it).path!!) }.getOrNull() }) }
-    // a tap on a signature field in the reader: sign into it, or validate it
-    val request = remember { SigFieldRequest.take(file) }
+    val vm: DigitalSignVm = androidx.lifecycle.viewmodel.compose.viewModel(key = "digital_sign:$uri")
+    if (!vm.initialized) {
+        vm.file = uri?.let { runCatching { File(Uri.parse(it).path!!) }.getOrNull() }
+        // a tap on a signature field in the reader: sign into it, or validate it
+        vm.request = SigFieldRequest.take(vm.file)
+        vm.initialized = true
+    }
+    val file = vm.file
+    val request = vm.request
+    // audit D4: the reader's open password (memory only) reaches every call of this screen
+    val password = OpenPasswords.get(file)
     var tab by rememberSaveable { mutableIntStateOf(if (request?.verify == true) 1 else 0) }
-    var identity by remember { mutableStateOf<DigitalSignature.Identity?>(null) }
-    val pick = rememberPdfPicker { files -> files.firstOrNull()?.let { file = it } }
+    val identity = vm.identity
+    val pick = rememberPdfPicker { files -> files.firstOrNull()?.let { vm.file = it } }
 
     Scaffold(topBar = { AppTopBar(stringResource(R.string.sa_digital_title), onBack = { nav.popBackStack() }) }) { pad ->
         Column(Modifier.padding(pad).fillMaxSize()) {
@@ -64,9 +92,9 @@ fun DigitalSignScreen(nav: NavHostController, uri: String?) {
                 }
             }
             when (tab) {
-                0 -> SignTab(nav, file, identity, request?.field?.takeIf { !request.verify }, onPick = pick, onNeedCert = { tab = 2 })
-                1 -> VerifyTab(nav, file, request?.field?.takeIf { request.verify }, autoVerify = request?.verify == true, onPick = pick)
-                else -> CertificateTab(identity) { identity = it }
+                0 -> SignTab(nav, vm, password, request?.field?.takeIf { !request.verify }, onPick = pick, onNeedCert = { tab = 2 })
+                1 -> VerifyTab(nav, file, password, request?.field?.takeIf { request.verify }, autoVerify = request?.verify == true, onPick = pick)
+                else -> CertificateTab(identity) { vm.identity = it }
             }
         }
     }
@@ -78,11 +106,13 @@ private val REASONS = listOf(R.string.ns_reason_author, R.string.ns_reason_revie
 private enum class LockMode { NONE, ALL, INCLUDE, EXCLUDE }
 
 @Composable
-private fun SignTab(nav: NavHostController, file: File?, identity: DigitalSignature.Identity?, requestedField: String?, onPick: () -> Unit, onNeedCert: () -> Unit) {
+private fun SignTab(nav: NavHostController, vm: DigitalSignVm, password: String?, requestedField: String?, onPick: () -> Unit, onNeedCert: () -> Unit) {
     val app = LocalApp.current
     val ctx = LocalContext.current
     val settings = LocalSettings.current
-    val runner = rememberToolRunner()
+    val file = vm.file
+    val identity = vm.identity
+    val runner = vm.runner
     val scope = rememberCoroutineScope()
     var name by rememberSaveable(identity) { mutableStateOf(identity?.let { DigitalSignature.friendlyName(it.subject) } ?: settings.authorName) }
     var location by rememberSaveable { mutableStateOf("") }
@@ -103,9 +133,8 @@ private fun SignTab(nav: NavHostController, file: File?, identity: DigitalSignat
     val adv = rememberAdvancedSignState()
     var report by remember(file) { mutableStateOf<com.smartdocs.editor.core.sign.PreSignAnalyzer.Report?>(null) }
     var showWarning by remember { mutableStateOf(false) }
-    var signReport by remember { mutableStateOf<DigitalSignature.SignReport?>(null) }
     val sealMissing = stringResource(R.string.ps_sign_seal_none)
-    LaunchedEffect(file) { report = file?.let { f -> runCatching { com.smartdocs.editor.core.sign.PreSignAnalyzer.analyze(f) }.getOrNull() } }
+    LaunchedEffect(file) { report = file?.let { f -> runCatching { com.smartdocs.editor.core.sign.PreSignAnalyzer.analyze(f, password) }.getOrNull() } }
     LaunchedEffect(report) { if (report?.canCertify == false && adv.certify > 0) adv.certify = 0 }
     // gaps6: appearance designer + changes since the last signed revision
     val appearance = rememberSigAppearanceState()
@@ -113,7 +142,7 @@ private fun SignTab(nav: NavHostController, file: File?, identity: DigitalSignat
     var showChanges by remember { mutableStateOf(false) }
     var changesAck by remember(file) { mutableStateOf(false) }
     var confirmChanges by remember { mutableStateOf(false) }
-    LaunchedEffect(file) { changes = file?.let { f -> runCatching { com.smartdocs.editor.core.sign.RevisionSnapshot.changes(f) }.getOrNull() } }
+    LaunchedEffect(file) { changes = file?.let { f -> runCatching { com.smartdocs.editor.core.sign.RevisionSnapshot.changes(f, password) }.getOrNull() } }
     val today = remember { DocumentRepository.formatDate(System.currentTimeMillis()) }
 
     // Nitro: signature fields (sign into an empty one), free placement, field lock
@@ -124,7 +153,7 @@ private fun SignTab(nav: NavHostController, file: File?, identity: DigitalSignat
         val f = file ?: return@LaunchedEffect
         withContext(Dispatchers.IO) {
             runCatching {
-                PdfOps.loadRaw(f).use { d ->
+                PdfOps.loadRaw(f, password).use { d ->
                     sigFields = SigFields.list(d)
                     formFields = d.documentCatalog.getAcroForm(null)?.fieldTree?.filter { it !is PDNonTerminalField && it !is PDSignatureField }?.map { it.fullyQualifiedName }.orEmpty()
                 }
@@ -211,9 +240,9 @@ private fun SignTab(nav: NavHostController, file: File?, identity: DigitalSignat
             val out = app.documents.uniqueFile(app.documents.docsDir, outName.ifBlank { f.nameWithoutExtension + "_signed" })
             var target: SigTarget? = field?.let { SigTarget(fieldName = it.name) }
             val vis = if (!visible) null else withContext(Dispatchers.IO) {
-                PdfOps.loadRaw(f).use { d -> visibleFor(d, id, field).also { target = it.second }.first }
+                PdfOps.loadRaw(f, password).use { d -> visibleFor(d, id, field).also { target = it.second }.first }
             }
-            signReport = DigitalSignature.sign(ctx, f, out, id, opts, vis, pagingSeal = seal, target = target)
+            vm.signReport = DigitalSignature.sign(ctx, f, out, id, opts, vis, password = password, pagingSeal = seal, target = target)
             if (visible && useSaved) savedPath?.let { runCatching { com.smartdocs.editor.core.data.SignatureMetaStore.markUsed(ctx, it) } }
             out
         }
@@ -230,7 +259,7 @@ private fun SignTab(nav: NavHostController, file: File?, identity: DigitalSignat
     }
 
     /** Signs every file of [batchFiles] with the same ID, options and (relative) placement; one output each. */
-    fun signBatch() {
+    fun signBatchUnlocked() {
         val id = identity ?: run { onNeedCert(); return }
         val files = batchFiles.takeIf { it.isNotEmpty() } ?: return
         adv.persist()
@@ -241,8 +270,9 @@ private fun SignTab(nav: NavHostController, file: File?, identity: DigitalSignat
             for (f in files) {
                 runCatching {
                     val out = app.documents.uniqueFile(app.documents.docsDir, f.nameWithoutExtension + "_signed")
-                    val (vis, tgt) = if (!visible) null to null else withContext(Dispatchers.IO) { PdfOps.loadRaw(f).use { d -> visibleFor(d, id, null) } }
-                    DigitalSignature.sign(ctx, f, out, id, opts, vis, target = tgt)
+                    val pw = OpenPasswords.get(f)
+                    val (vis, tgt) = if (!visible) null to null else withContext(Dispatchers.IO) { PdfOps.loadRaw(f, pw).use { d -> visibleFor(d, id, null) } }
+                    DigitalSignature.sign(ctx, f, out, id, opts, vis, password = pw, target = tgt)
                     outs += out
                 }.onFailure { failed += "${f.name}: ${it.message ?: it.javaClass.simpleName}" }
             }
@@ -250,6 +280,12 @@ private fun SignTab(nav: NavHostController, file: File?, identity: DigitalSignat
             batchFiles = emptyList()
             outs.firstOrNull() ?: throw IllegalStateException(failed.joinToString("\n"))
         }
+    }
+
+    fun signBatch() {
+        val sp = savedPath
+        if (visible && useSaved && sp != null && com.smartdocs.editor.core.data.SignatureLock.isLocked(ctx, sp)) gate.request(sp) { signBatchUnlocked() }
+        else signBatchUnlocked()
     }
 
     fun sign() {
@@ -324,20 +360,22 @@ private fun SignTab(nav: NavHostController, file: File?, identity: DigitalSignat
                 scope.launch {
                     val r = withContext(Dispatchers.IO) {
                         runCatching {
-                            val tmp = File(ctx.cacheDir, "sigadd_${System.nanoTime()}.pdf")
-                            try {
-                                val rect = PdfOps.loadRaw(f).use { d -> val p = d.getPage(placePage.coerceIn(0, d.numberOfPages - 1)); SigFields.toUserSpace(box.l, box.t, box.w, box.h, p.cropBox, p.rotation) }
-                                SigFields.addEmpty(f, tmp, placePage, rect).also { tmp.copyTo(f, overwrite = true) }
-                            } finally { tmp.delete() }
+                            val out = app.documents.uniqueFile(app.documents.docsDir, f.nameWithoutExtension + "_field")
+                            val rect = PdfOps.loadRaw(f, password).use { d -> val p = d.getPage(placePage.coerceIn(0, d.numberOfPages - 1)); SigFields.toUserSpace(box.l, box.t, box.w, box.h, p.cropBox, p.rotation) }
+                            val n = SigFields.addEmpty(f, out, placePage, rect, password = password)
+                            OpenPasswords.put(out, password)
+                            out to n
                         }
                     }
-                    r.onSuccess { n -> fieldsVersion++; placeBox = null; localError = null; targetField = n }.onFailure { localError = it.message ?: it.toString() }
+                    // audit D6: the field goes into a new copy, which this screen now works on (the reader's file is untouched)
+                    r.onSuccess { (out, n) -> vm.file = out; fieldsVersion++; placeBox = null; targetField = n; localError = ctx.getString(R.string.ns3_field_added_copy, out.name) }
+                        .onFailure { localError = it.message ?: it.toString() }
                 }
             }) { Text(stringResource(R.string.ns2_add_empty_field)) }
             OutlinedTextField(visibleText, { visibleText = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.sa_visible_text)) }, singleLine = true)
             Row(verticalAlignment = Alignment.CenterVertically) { Switch(useSaved, { useSaved = it }); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.sa_visible_use_saved)) }
             if (useSaved) Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                signatures.forEach { s -> FilterChip(savedPath == s.path, { savedPath = s.path }, label = { Text(File(s.path).nameWithoutExtension.takeLast(8)) }) }
+                signatures.forEach { s -> FilterChip(savedPath == s.path, { savedPath = s.path }, label = { SavedSignatureThumb(s.path) }) }
             }
         }
         if (visible) SigAppearanceDesigner(appearance, name.ifBlank { identity?.let { DigitalSignature.friendlyName(it.subject) } ?: "" }, reason, location, today, identity?.subject ?: "")
@@ -384,14 +422,17 @@ private fun SignTab(nav: NavHostController, file: File?, identity: DigitalSignat
     val ltvDone = stringResource(R.string.ps_sign_result_ltv)
     val docTsDone = stringResource(R.string.ps_sign_result_doc_ts)
     val warnLabel = stringResource(R.string.ps_sign_result_warnings)
+    val encRemoved = stringResource(R.string.ns3_encryption_removed)
     if (showResult) runner.result?.let {
-        val rep = signReport
+        val rep = vm.signReport
         val extra = buildString {
             append(signedInfo)
             if (rep?.timestamped == true) append("\n• ").append(tsDone)
             rep?.ltv?.let { l -> append("\n• ").append(ltvDone.format(l.certs, l.ocsps, l.crls)) }
             if (rep?.docTimestamped == true) append("\n• ").append(docTsDone)
-            if (!rep?.warnings.isNullOrEmpty()) append("\n").append(warnLabel).append("\n").append(rep!!.warnings.take(4).joinToString("\n") { w -> "– $w" })
+            if (rep?.warnings?.contains("ENCRYPTION_REMOVED") == true) append("\n• ").append(encRemoved)
+            val ws = rep?.warnings.orEmpty().filter { it != "ENCRYPTION_REMOVED" }
+            if (ws.isNotEmpty()) append("\n").append(warnLabel).append("\n").append(ws.take(4).joinToString("\n") { w -> "– $w" })
         }
         ResultSheet(it, nav, onDismiss = { showResult = false }, extraInfo = extra)
     }
@@ -406,7 +447,7 @@ private fun SignTab(nav: NavHostController, file: File?, identity: DigitalSignat
     )
     if (placing) file?.let { f ->
         SigPlacementDialog(f, placePage, placeBox,
-            taken = { pg -> sigFields.filter { it.page == pg && it.rect != null }.mapNotNull { fl -> runCatching { displayedBox(f, fl) }.getOrNull() } },
+            taken = { pg -> sigFields.filter { it.page == pg && it.rect != null }.mapNotNull { fl -> runCatching { displayedBox(f, fl, password) }.getOrNull() } },
             onDone = { pg, b -> placePage = pg; placeBox = b; placing = false; targetField = null }, onDismiss = { placing = false })
     }
     nameDialog?.let { initial ->
@@ -426,7 +467,7 @@ private fun SignTab(nav: NavHostController, file: File?, identity: DigitalSignat
 }
 
 /** An existing field's rectangle as displayed fractions (for the placement preview). */
-private fun displayedBox(f: File, fl: SigFields.Field): PlaceBox? = PdfOps.loadRaw(f).use { d ->
+private fun displayedBox(f: File, fl: SigFields.Field, password: String?): PlaceBox? = PdfOps.loadRaw(f, password).use { d ->
     val p = d.getPage(fl.page)
     val v = SigFields.toDisplayed(fl.rect ?: return null, p.cropBox, p.rotation)
     PlaceBox(v[0], v[1], v[2], v[3])
@@ -456,7 +497,7 @@ private fun withLabel(sig: Bitmap, text: String): Bitmap {
 }
 
 @Composable
-private fun VerifyTab(nav: NavHostController, file: File?, focusField: String?, autoVerify: Boolean = false, onPick: () -> Unit) {
+private fun VerifyTab(nav: NavHostController, file: File?, password: String?, focusField: String?, autoVerify: Boolean = false, onPick: () -> Unit) {
     val scope = rememberCoroutineScope()
     val ctx = LocalContext.current
     var results by remember(file) { mutableStateOf<List<DigitalSignature.VerifyResult>?>(null) }
@@ -490,8 +531,8 @@ private fun VerifyTab(nav: NavHostController, file: File?, focusField: String?, 
         val f = file ?: return
         scope.launch {
             busy = true; error = null
-            runCatching { DigitalSignature.verify(f, revocation = revocation) }.onSuccess { results = it }.onFailure { error = it.message ?: it.toString() }
-            certs = runCatching { com.smartdocs.editor.core.sign.CertInspector.inspect(ctx, f, system = systemRoots) }.getOrDefault(emptyList())   // gaps6
+            runCatching { DigitalSignature.verify(f, revocation = revocation, password = password) }.onSuccess { results = it }.onFailure { error = it.message ?: it.toString() }
+            certs = runCatching { com.smartdocs.editor.core.sign.CertInspector.inspect(ctx, f, password, system = systemRoots) }.getOrDefault(emptyList())   // gaps6
             busy = false
         }
     }
@@ -562,18 +603,8 @@ private fun VerifyTab(nav: NavHostController, file: File?, focusField: String?, 
             confirmButton = {
                 TextButton(onClick = {
                     clearing = null
-                    val f = file ?: return@TextButton
-                    scope.launch {
-                        busy = true
-                        withContext(Dispatchers.IO) {
-                            runCatching {
-                                val tmp = File(ctx.cacheDir, "sigclear_${System.nanoTime()}.pdf")
-                                try { SigFields.clear(f, tmp, fieldName); tmp.copyTo(f, overwrite = true) } finally { tmp.delete() }
-                            }
-                        }.onFailure { error = it.message ?: it.toString() }
-                        busy = false
-                        verify()
-                    }
+                    // audit D6: never rewrite the opened file behind the reader; the result is a new copy to open
+                    produce("_cleared") { a, b -> SigFields.clear(a, b, fieldName, password); OpenPasswords.put(b, password) }
                 }) { Text(stringResource(R.string.ns_field_clear)) }
             },
             dismissButton = { TextButton(onClick = { clearing = null }) { Text(stringResource(R.string.cancel)) } })
@@ -665,4 +696,22 @@ object SignedCompare {
 
     /** The current version to compare with when [old] is the signed revision just handed over. */
     fun take(old: File?): File? = pending?.takeIf { old != null && it.first.path == old.path }?.also { pending = null }?.second
+}
+
+/** Audit D35: a saved signature as a small picture; a locked one is blurred behind a lock (its PIN guards it). */
+@Composable
+private fun SavedSignatureThumb(path: String) {
+    val ctx = LocalContext.current
+    val locked = remember(path) { com.smartdocs.editor.core.data.SignatureLock.isLocked(ctx, path) }
+    val bmp by produceState<Bitmap?>(null, path) {
+        value = withContext(Dispatchers.IO) { runCatching { PdfOps.decodeScaled(File(path), 160) }.getOrNull() }
+    }
+    val desc = stringResource(if (locked) R.string.ns3_saved_sig_locked else R.string.ns3_saved_sig)
+    Box(Modifier.size(64.dp, 28.dp).semantics { contentDescription = desc }, contentAlignment = Alignment.Center) {
+        bmp?.let {
+            androidx.compose.foundation.Image(it.asImageBitmap(), null, Modifier.fillMaxSize().then(if (locked) Modifier.blur(6.dp) else Modifier),
+                contentScale = androidx.compose.ui.layout.ContentScale.Fit)
+        }
+        if (locked) Icon(Icons.Default.Lock, null, Modifier.size(16.dp))
+    }
 }

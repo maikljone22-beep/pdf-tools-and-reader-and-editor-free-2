@@ -83,7 +83,8 @@ class ReaderState(
     // ---- document ----
     var file by mutableStateOf<File?>(null); private set
     var session by mutableStateOf<PdfSession?>(null); private set
-    var password: String? = null; internal set
+    var password: String? = null
+        internal set(value) { field = value; file?.let { com.smartdocs.editor.core.pdf.OpenPasswords.put(it, value) } }   // audit D4
     var needPassword by mutableStateOf(false)
     var wrongPassword by mutableStateOf(false)
     var error by mutableStateOf<String?>(null)
@@ -229,6 +230,7 @@ class ReaderState(
                 }
                 if (disposed) { runCatching { s.closeAsync() }; return@launch }
                 password = openPw
+                com.smartdocs.editor.core.pdf.OpenPasswords.put(f, openPw)   // audit D4: tool screens open it too
                 pageCount = s.pageCount
                 val recent = app.db.docs().get(Uri.fromFile(f).toString())
                 initialPage = (if (startPage >= 0) startPage else recent?.lastPage ?: 0).coerceIn(0, (s.pageCount - 1).coerceAtLeast(0))

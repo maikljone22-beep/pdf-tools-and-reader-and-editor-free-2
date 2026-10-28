@@ -86,6 +86,9 @@ object SignedSave {
                 // edited existing annotations (moved, regrouped, unlinked) and their popups must be rewritten too
                 for (i in 0 until annots.size()) {
                     val an = annots.getObject(i) as? COSDictionary ?: continue
+                    // audit D34: an untouched signed signature widget is not rewritten (validators would report
+                    // "signature field modified"); writers that edit one flag it themselves
+                    if (isSignedSigWidget(an)) continue
                     an.isNeedToBeUpdated = true
                     (an.getDictionaryObject(POPUP) as? COSDictionary)?.isNeedToBeUpdated = true
                 }
@@ -96,6 +99,13 @@ object SignedSave {
                 node = node.getDictionaryObject(COSName.PARENT) as? COSDictionary
             }
         }
+    }
+
+    /** A widget of a signature field that holds a signature (/FT /Sig with /V, on the widget or its parent field). */
+    internal fun isSignedSigWidget(an: COSDictionary): Boolean {
+        if (an.getCOSName(COSName.SUBTYPE) != COSName.getPDFName("Widget")) return false
+        val field = if (an.containsKey(COSName.FT)) an else an.getDictionaryObject(COSName.PARENT) as? COSDictionary ?: return false
+        return field.getCOSName(COSName.FT) == COSName.SIG && field.getDictionaryObject(COSName.V) != null
     }
 
     /**
