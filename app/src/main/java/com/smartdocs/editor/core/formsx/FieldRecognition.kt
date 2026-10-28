@@ -205,7 +205,7 @@ object FieldRecognition {
      * the document. Returns how many fields were created.
      */
     fun recognizeAll(doc: PDDocument, maxPages: Int = 200): Int {
-        if (doc.documentCatalog.acroForm?.fields?.isNotEmpty() == true) return 0
+        if (doc.documentCatalog.getAcroForm(null)?.fields?.isNotEmpty() == true) return 0      // no fix-up: only a look
         val used = HashSet<String>()
         var n = 0
         for (p in 0 until minOf(doc.numberOfPages, maxPages)) {
