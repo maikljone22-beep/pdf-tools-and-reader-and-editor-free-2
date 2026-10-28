@@ -66,6 +66,8 @@ data class Cv6Opts(
     val bookmarks: Boolean = true,
     /** To PDF: turn likely blanks (lines, boxes) into form fields (form field recognition on creation). */
     val recognizeFields: Boolean = false,
+    /** PDF → Word text recovery (row 51): with [autoOcr], recognise every page instead of only the problem pages. */
+    val recoverAllPages: Boolean = false,
 )
 
 enum class Stage { WORK, OCR }
@@ -251,7 +253,7 @@ class Cv6Engine(private val ctx: Context, private val docs: DocumentRepository) 
     private suspend fun word(f: File, base: String, pw: String?, o: Cv6Opts, ocr: Boolean, p: (Int, Int) -> Unit, ocrProgress: (Int, Int) -> Unit): Cv6Result {
         val pages = pagesOf(f, pw, o.range)
         val cancelled = cancelCheck()
-        return PdfFlow6.wordInput(ctx, f, pw, pages, o.ocrLangs, tempDir, ocr, ocrProgress).use { inp ->
+        return PdfFlow6.wordInput(ctx, f, pw, pages, o.ocrLangs, tempDir, ocr, ocrProgress, allPages = ocr && o.recoverAllPages).use { inp ->
             val flowing = o.keepLayout?.not() ?: (inp.ocrPages > 0 && inp.rtl)
             val out = out(base, "docx")
             val opts = ConvertOptions(format = TargetFormat.DOCX, pages = pages, detectTables = o.tables, includeImages = o.includeImages, docxFlowing = flowing)

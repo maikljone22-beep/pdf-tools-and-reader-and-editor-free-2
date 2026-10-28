@@ -104,8 +104,15 @@ private fun OptionsBody(conv: Conv, inputCount: Int, o: Cv6Opts, onChange: (Cv6O
         FieldLabel(stringResource(R.string.cv6_output))
         ChoiceChips(listOf(true, false), o.merge, { if (it) stringResource(R.string.cv6_merge_one) else stringResource(R.string.cv6_merge_separate) }) { onChange(o.copy(merge = it)) }
     }
-    if (Opt.AUTO_OCR in opts) SwitchRow(stringResource(R.string.cv6_auto_ocr), o.autoOcr, stringResource(R.string.cv6_auto_ocr_sub)) { onChange(o.copy(autoOcr = it)) }
-    if (Opt.OCR_LANG in opts) {
+    if (Opt.TEXT_RECOVERY in opts) {
+        // row 51: text recovery off / problem pages only / all pages (problem pages = no text, unusable text, pictures of text)
+        FieldLabel(stringResource(R.string.cv9_recovery))
+        val mode = if (!o.autoOcr) 0 else if (o.recoverAllPages) 2 else 1
+        ChoiceChips(listOf(0, 1, 2), mode, { when (it) { 0 -> stringResource(R.string.cv9_recovery_off); 1 -> stringResource(R.string.cv9_recovery_problem); else -> stringResource(R.string.cv9_recovery_all) } }) {
+            onChange(o.copy(autoOcr = it > 0, recoverAllPages = it == 2))
+        }
+    } else if (Opt.AUTO_OCR in opts) SwitchRow(stringResource(R.string.cv6_auto_ocr), o.autoOcr, stringResource(R.string.cv6_auto_ocr_sub)) { onChange(o.copy(autoOcr = it)) }
+    if (Opt.OCR_LANG in opts && (Opt.TEXT_RECOVERY !in opts || o.autoOcr)) {
         FieldLabel(stringResource(R.string.cv6_ocr_lang))
         ChoiceChips(listOf<String?>(null, "ara", "eng", "ara+eng"), o.ocrLangs, { when (it) { null -> stringResource(R.string.cv6_lang_auto); "ara" -> stringResource(R.string.cv6_lang_ar); "eng" -> stringResource(R.string.cv6_lang_en); else -> stringResource(R.string.cv6_lang_both) } }) { onChange(o.copy(ocrLangs = it)) }
     }

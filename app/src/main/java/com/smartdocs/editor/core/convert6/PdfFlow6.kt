@@ -132,7 +132,9 @@ object PdfFlow6 {
      * OCR that cannot run (no language data offline) leaves the repaired copy: the conversion goes on without it.
      * [pages]: zero-based pages to convert (empty = all). [langs] null = from the document's text.
      */
-    suspend fun wordInput(ctx: Context, src: File, password: String?, pages: List<Int>, langs: String?, tempDir: File, ocr: Boolean, onProgress: (Int, Int) -> Unit): WordInput {
+    suspend fun wordInput(ctx: Context, src: File, password: String?, pages: List<Int>, langs: String?, tempDir: File, ocr: Boolean, onProgress: (Int, Int) -> Unit,
+                          /** Row 51 text recovery "all pages": every page is recognised, not only the problem pages. */
+                          allPages: Boolean = false): WordInput {
         val input = com.smartdocs.editor.core.ocr.RepairedInput.of(tempDir, src, password, rerun = if (!ocr) emptyList() else pages.ifEmpty { null })
         if (!ocr) return WordInput(input.file, 0, input.repaired, false, listOf(input))
         val out = File(tempDir, src.nameWithoutExtension + "_wordocr_" + System.nanoTime() + ".pdf")
@@ -141,7 +143,7 @@ object PdfFlow6 {
             val session = com.smartdocs.editor.core.pdf.PdfSession.open(ctx, input.file, password)
             try {
                 val range = pages.filter { it in 0 until session.pageCount }.ifEmpty { (0 until session.pageCount).toList() }
-                val plan = com.smartdocs.editor.core.ocr.MixedPageOcr.plan(session, input.file, password, range)
+                val plan = com.smartdocs.editor.core.ocr.MixedPageOcr.plan(session, input.file, password, range).let { pl -> if (allPages) recoverAll(pl, range) else pl }
                 if (plan.pages.isEmpty()) return WordInput(input.file, 0, input.repaired, false, listOf(input))
                 val sample = StringBuilder()
                 for (pi in range) { if (sample.length > 20000) break; sample.append(runCatching { session.text(pi) }.getOrDefault("")).append('\n') }
@@ -177,6 +179,10 @@ object PdfFlow6 {
             return WordInput(input.file, 0, input.repaired, true, listOf(input))
         } finally { engine?.close() }
     }
+
+    /** Text recovery on every page: the plan's pages become the whole range (pages already planned keep their geometry). */
+    fun recoverAll(plan: com.smartdocs.editor.core.ocr.MixedPageOcr.Plan, range: List<Int>): com.smartdocs.editor.core.ocr.MixedPageOcr.Plan =
+        plan.copy(pages = range.distinct().sorted())
 
     /**
      * A searchable copy for scanned input. [force] = OCR every page without a text layer (scanned → editable);

@@ -11,4 +11,8 @@
     <string name="cv9_fields_made">أُنشئ %1$d حقل نموذج</string>
     <string name="cv9_fields_none">لم يُعثر على حقول نموذج</string>
     <string name="cv9_info_ppt_text">ملف PowerPoint 97 (.ppt): نصوص الشرائح فقط، دون الصور أو التنسيق</string>
+    <string name="cv9_recovery">استرداد النص (ترميز خطوط غير قياسي، صفحات ممسوحة)</string>
+    <string name="cv9_recovery_off">متوقف</string>
+    <string name="cv9_recovery_problem">الصفحات المتضررة فقط</string>
+    <string name="cv9_recovery_all">كل الصفحات</string>
 </resources>
