@@ -74,6 +74,15 @@ class ProOcrTest {
         assertTrue(w.all { it.conf > 90f })
     }
 
+    @Test fun aBorderBoxDoesNotJoinAllRowsIntoOneLine() {
+        // s41: the page frame was detected as one 3253-px box («c») and every row became one "line"
+        val segs = listOf(seg(1200, 100, 1900, 150, "١ نميأ"), seg(1200, 200, 1900, 250, "٢ نميأ"), seg(1200, 300, 1900, 350, "٣ نميأ"),
+            seg(60, 20, 90, 3273, "c"))
+        val w = ProOcrCore.words(segs)
+        assertEquals(listOf("أيمن", "١", "أيمن", "٢", "أيمن", "٣"), w.map { it.text })
+        assertEquals(listOf(0, 0, 1, 1, 2, 2), w.map { it.line })
+    }
+
     @Test fun segmentsOfOneRowJoinIntoOneLine() {
         val segs = listOf(seg(100, 100, 400, 150, "CO"), seg(450, 100, 900, 150, "ةلتك"))
         val w = ProOcrCore.words(segs)

@@ -171,7 +171,11 @@ object ProOcrCore {
     }
 
     /** Words (logical order, reading order, line ids) from the recognised segments of one page. Confidence 0..100. */
-    fun words(segs: List<Seg>): List<OcrRefine.Tok> {
+    fun words(all: List<Seg>): List<OcrRefine.Tok> {
+        if (all.isEmpty()) return emptyList()
+        // a page border / table rule detected as one tall box would join every row into one line: drop such boxes
+        val medH = all.map { it.y1 - it.y0 }.sorted()[all.size / 2]
+        val segs = all.filter { it.y1 - it.y0 <= 3 * medH }
         val pageRtl = segs.sumOf { it.arabic } >= segs.sumOf { it.latin } * 0.5
         val out = ArrayList<OcrRefine.Tok>()
         xyCut(makeLines(segs), pageRtl).forEachIndexed { li, line ->
