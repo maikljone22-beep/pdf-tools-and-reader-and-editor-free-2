@@ -29,8 +29,11 @@ data class Cv6Opts(
     val includeImages: Boolean = true,
     val singleSheet: Boolean = false,
     val pptEditable: Boolean = true,
-    /** Word: keep page layout (page breaks, positioned look) or plain text flow. */
-    val keepLayout: Boolean = true,
+    /**
+     * Word: keep the page layout (a Word page per PDF page, running header / footer) or flowing text; null = automatic:
+     * flowing for Arabic documents whose pages needed OCR (scanned or mixed pages), the page layout otherwise.
+     */
+    val keepLayout: Boolean? = null,
     /** null = keep the source format (image converter). */
     val imgFormat: ImgFmt? = ImgFmt.JPG,
     val dpi: Int = 150,
@@ -103,6 +106,11 @@ class Cv6Engine(private val ctx: Context, private val docs: DocumentRepository) 
             val p: (Int, Int) -> Unit = { d, t -> if (multi) progress(Stage.WORK, k * 100 + (if (t > 0) d * 100 / t else 0), inputs.size * 100) else progress(Stage.WORK, d, t) }
             val forceOcr = conv.id.startsWith("ocr_pdf")
             val wantsOcr = forceOcr || (Opt.AUTO_OCR in conv.opts && o.autoOcr && !(conv.id == "pdf_pptx" && !o.pptEditable))
+            if ((conv.id == "pdf_docx" || conv.id == "ocr_pdf_docx") && FileKind6.of(f0) == Kind6.PDF) {
+                val r = word(f0, f0.nameWithoutExtension, pw, o, wantsOcr, p) { d, t -> progress(Stage.OCR, d, t) }
+                outs += r.files; r.info?.let { infos += it }
+                return@forEachIndexed
+            }
             val ocr = if (wantsOcr && FileKind6.of(f0) == Kind6.PDF) PdfFlow6.ocrCopy(ctx, f0, pw, o.ocrLangs, tempDir, forceOcr) { d, t -> progress(Stage.OCR, d, t) } else null
             val f = ocr ?: f0
             val fpw = if (ocr != null) null else pw
@@ -112,6 +120,26 @@ class Cv6Engine(private val ctx: Context, private val docs: DocumentRepository) 
             } finally { ocr?.delete() }
         }
         return Cv6Result(outs, infos.distinct().joinToString("\n").ifBlank { null })
+    }
+
+    /**
+     * PDF → Word (PDF_TO_WORD_r5): converts a repaired copy, with a fresh OCR layer on the pages that need one when [ocr]
+     * ([PdfFlow6.wordInput]); flowing text or the page layout per [Cv6Opts.keepLayout].
+     */
+    private suspend fun word(f: File, base: String, pw: String?, o: Cv6Opts, ocr: Boolean, p: (Int, Int) -> Unit, ocrProgress: (Int, Int) -> Unit): Cv6Result {
+        val pages = pagesOf(f, pw, o.range)
+        return PdfFlow6.wordInput(ctx, f, pw, pages, o.ocrLangs, tempDir, ocr, ocrProgress).use { inp ->
+            val flowing = o.keepLayout?.not() ?: (inp.ocrPages > 0 && inp.rtl)
+            val out = out(base, "docx")
+            val opts = ConvertOptions(format = TargetFormat.DOCX, pages = pages, detectTables = o.tables, includeImages = o.includeImages, docxFlowing = flowing)
+            val stats = ConvertEngine.convert(ctx, inp.file, pw, opts, out, p) { false }
+            val info = ArrayList<String>()
+            info += if (stats.textPages == 0) ctx.getString(R.string.cv_scanned_warning) else ctx.getString(R.string.cv6_info_pages, stats.pages, stats.tables, stats.images)
+            if (inp.ocrPages > 0) info += ctx.getString(R.string.cv6_info_word_ocr, inp.ocrPages)
+            if (inp.ocrUnavailable) info += ctx.getString(R.string.cv6_info_ocr_unavailable)
+            if (stats.rebuiltPages.isNotEmpty()) info += ctx.getString(R.string.cv6_info_rebuilt, stats.rebuiltPages.joinToString("، ") { (it + 1).toString() })
+            Cv6Result(listOf(out), info.joinToString("\n"))
+        }
     }
 
     private suspend fun office(target: TargetFormat, f: File, base: String, pw: String?, o: Cv6Opts, p: (Int, Int) -> Unit): Cv6Result {
@@ -131,10 +159,8 @@ class Cv6Engine(private val ctx: Context, private val docs: DocumentRepository) 
     }
 
     private suspend fun onePdf(conv: Conv, f: File, base: String, pw: String?, o: Cv6Opts, p: (Int, Int) -> Unit): Cv6Result = when (conv.id) {
-        "pdf_docx", "ocr_pdf_docx" -> if (o.keepLayout) office(TargetFormat.DOCX, f, base, pw, o, p) else {
-            val doc = PdfFlow6.flow(f, pw, pagesOf(f, pw, o.range), o.includeImages, pageBreaks = false, onProgress = p)
-            val out = out(base, "docx"); withContext(Dispatchers.IO) { out.outputStream().buffered().use { FlowDocx.write(doc, it) } }; Cv6Result(listOf(out))
-        }
+        // a PDF reaches word() from fromPdf directly; this branch only serves a mis-typed input
+        "pdf_docx", "ocr_pdf_docx" -> word(f, base, pw, o, false, p) { _, _ -> }
         "pdf_xlsx", "ocr_pdf_xlsx" -> office(TargetFormat.XLSX, f, base, pw, o, p)
         "pdf_pptx" -> office(TargetFormat.PPTX, f, base, pw, o, p)
         "pdf_html" -> office(TargetFormat.HTML, f, base, pw, o, p)

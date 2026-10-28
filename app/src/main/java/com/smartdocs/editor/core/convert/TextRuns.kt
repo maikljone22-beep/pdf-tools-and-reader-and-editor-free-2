@@ -18,7 +18,8 @@ object TextRuns {
     fun of(line: Line): List<TextRun> {
         val out = ArrayList<TextRun>()
         line.words.forEachIndexed { i, w ->
-            val run = TextRun(w.text, w.bold, w.italic, round(w.fontSize), w.color, w.font, w.underline, w.strike, w.bg)
+            // recognised (OCR) words have no font of their own: the layer's font is the app's, not the document's
+            val run = TextRun(w.text, w.bold, w.italic, round(w.fontSize), w.color, if (w.ocr) null else w.font, w.underline, w.strike, w.bg)
             val last = out.lastOrNull()
             if (last != null && last.sameStyle(run)) out[out.size - 1] = last.copy(text = last.text + " " + w.text)
             else if (last != null && i > 0) {

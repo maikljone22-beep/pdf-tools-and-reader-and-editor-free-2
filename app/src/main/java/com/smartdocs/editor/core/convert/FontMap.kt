@@ -82,4 +82,34 @@ object FontMap {
 
     /** Font for complex-script (Arabic) runs: the family itself when it has Arabic glyphs, else Arial. */
     fun complexScript(family: String?): String = if (hasArabic(family)) family!! else ARIAL
+
+    private val SYMBOL = mapOf(
+        0xB7 to "•", 0xDC to "⇐", 0xDE to "⇒", 0xDB to "⇔", 0xAE to "→", 0xAC to "←", 0xAB to "↔", 0x5C to "∴", 0xB4 to "×", 0xB8 to "÷",
+        0xB1 to "±", 0xB0 to "°", 0xBB to "≈", 0xA3 to "≤", 0xB3 to "≥", 0xB9 to "≠", 0xBA to "≡", 0xA5 to "∞", 0xD6 to "√", 0xE5 to "∑",
+        0x44 to "Δ", 0x53 to "Σ", 0x57 to "Ω", 0x50 to "Π", 0x46 to "Φ", 0x61 to "α", 0x62 to "β", 0x67 to "γ", 0x64 to "δ", 0x65 to "ε",
+        0x6C to "λ", 0x6D to "μ", 0x70 to "π", 0x72 to "ρ", 0x73 to "σ", 0x74 to "τ", 0x71 to "θ", 0x77 to "ω", 0x6E to "ν", 0x2D to "−",
+        0x2B to "+", 0x3D to "=", 0x28 to "(", 0x29 to ")", 0x2E to ".", 0x2C to ",",
+    )
+    private val WINGDINGS = mapOf(
+        0x3F to "✍", 0xFC to "✓", 0xFB to "✗", 0xFE to "☑", 0xFD to "☒", 0x76 to "❖", 0xA7 to "▪", 0x6C to "●", 0x6E to "■", 0x71 to "❑",
+        0x77 to "◆", 0xD8 to "➢", 0xA8 to "◻", 0x4A to "☺", 0xE0 to "→", 0xDF to "←", 0xE8 to "➔", 0x9F to "•", 0xA1 to "○",
+    )
+
+    /**
+     * Unicode for a glyph of a Symbol / Wingdings font whose PDF text is a private-use code (U+F020–U+F0FF, the font's
+     * own character code + F000): Word's bullets («•»), arrows («⇐», «→»), «∴», «✓», «✍». Such codes were dropped as
+     * private-use text, so list bullets and the arrows of worked examples were lost. Unknown Wingdings codes become «•»;
+     * null for any other font or code.
+     */
+    fun symbolText(rawFont: String?, text: String): String? {
+        if (text.length != 1) return null
+        val c = text[0].code
+        if (c !in 0xF020..0xF0FF) return null
+        val k = key(rawFont.orEmpty().substringAfter('+'))
+        return when {
+            k.startsWith("symbol") -> SYMBOL[c - 0xF000]
+            k.startsWith("wingdings") -> WINGDINGS[c - 0xF000] ?: "•"
+            else -> null
+        }
+    }
 }

@@ -25,6 +25,8 @@ data class ConvertOptions(
      * HTML / TXT / XLSX drop them, PPTX keeps them on each slide.
      */
     val detectHeaders: Boolean = true,
+    /** DOCX: flowing text (no page breaks, running headers / footers left out) instead of one Word page per PDF page. */
+    val docxFlowing: Boolean = false,
 )
 
 /** Where page content comes from (PdfBox on Android, desktop PdfBox in the test harness). */
@@ -37,7 +39,8 @@ interface PageSource {
     fun render(index: Int, scale: Float): Pair<ByteArray, String>?
 }
 
-data class ConvertStats(val pages: Int, val textPages: Int, val tables: Int, val images: Int)
+/** [ocrPages]: pages whose text is (partly) recognised; [rebuiltPages]: zero-based pages an older OCR build rebuilt. */
+data class ConvertStats(val pages: Int, val textPages: Int, val tables: Int, val images: Int, val ocrPages: Int = 0, val rebuiltPages: List<Int> = emptyList())
 
 class ConvertCancelled : RuntimeException("cancelled")
 
@@ -54,11 +57,14 @@ object ConvertPipeline {
     ): ConvertStats {
         val pages = opts.pages.filter { it in 0 until src.pageCount }.ifEmpty { (0 until src.pageCount).toList() }
         val total = pages.size
-        var textPages = 0; var tables = 0; var images = 0
+        var textPages = 0; var tables = 0; var images = 0; var ocrPages = 0
+        val rebuilt = ArrayList<Int>()
         val furniture = if (opts.detectHeaders && opts.format != TargetFormat.PPTX && pages.size >= 2) detectFurniture(src, pages) else PageFurniture.NONE
         fun layout(i: Int, withImages: Boolean): PageLayout {
             val l = LayoutAnalyzer.analyze(src.content(i, withImages), opts.detectTables, furniture)
             if (l.hasText) textPages++
+            if (l.ocrChars > 0) ocrPages++
+            if (l.rebuiltByOcr) rebuilt += i
             tables += l.blocks.count { it is TableBlock }
             images += l.blocks.count { it is ImageBlock }
             return l
@@ -66,7 +72,7 @@ object ConvertPipeline {
         fun step(k: Int) { if (cancelled()) throw ConvertCancelled(); progress(k, total) }
         progress(0, total)
         when (opts.format) {
-            TargetFormat.DOCX -> DocxBuilder(out, title, furniture).use { b ->
+            TargetFormat.DOCX -> DocxBuilder(out, title, furniture, opts.docxFlowing).use { b ->
                 pages.forEachIndexed { k, i -> b.addPage(layout(i, opts.includeImages)); step(k + 1) }
                 b.finish()
             }
@@ -114,7 +120,7 @@ object ConvertPipeline {
                 w.flush(); out.close()
             }
         }
-        return ConvertStats(total, textPages, tables, images)
+        return ConvertStats(total, textPages, tables, images, ocrPages, rebuilt)
     }
 
     /** Samples up to 8 of [pages] (spread over the document) to find running headers and footers. */

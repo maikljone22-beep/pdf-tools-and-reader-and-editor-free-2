@@ -15,7 +15,11 @@ import java.io.OutputStream
  * fills become paragraph / cell shading; running headers and footers ([PageFurniture]) become a real Word header and
  * footer with the page number as a PAGE field.
  */
-class DocxBuilder(out: OutputStream, private val title: String, private val furniture: PageFurniture = PageFurniture.NONE) : Closeable {
+class DocxBuilder(
+    out: OutputStream, private val title: String, private val furniture: PageFurniture = PageFurniture.NONE,
+    /** Flowing text: no page breaks and no Word header / footer (running headers and footers are left out). */
+    private val flowing: Boolean = false,
+) : Closeable {
 
     private val zip = OoxmlZip(out)
     private val body = StringBuilder()
@@ -33,9 +37,13 @@ class DocxBuilder(out: OutputStream, private val title: String, private val furn
     fun addPage(page: PageLayout) {
         if (pages == 0) setupFirstPage(page)
         pageHasFills = page.hasFills
-        if (headerXml == null && page.header.isNotEmpty()) headerXml = furniturePart("hdr", page.header, page)
-        if (footerXml == null && page.footer.isNotEmpty()) footerXml = furniturePart("ftr", page.footer, page)
-        else body.append("<w:p><w:r><w:br w:type=\"page\"/></w:r></w:p>")
+        // a page break before every page but the first (the old else-branch of the footer test put one before the first
+        // page and skipped the one before the page that first had a footer)
+        if (pages > 0 && !flowing) body.append("<w:p><w:r><w:br w:type=\"page\"/></w:r></w:p>")
+        if (!flowing) {
+            if (headerXml == null && page.header.isNotEmpty()) headerXml = furniturePart("hdr", page.header, page)
+            if (footerXml == null && page.footer.isNotEmpty()) footerXml = furniturePart("ftr", page.footer, page)
+        }
         pages++
         if (page.rtl) rtlVotes++ else rtlVotes--
         for (b in page.blocks) when (b) {
@@ -60,8 +68,11 @@ class DocxBuilder(out: OutputStream, private val title: String, private val furn
 
     private fun halfPts(fs: Float) = Math.round(fs * 2f).coerceIn(2, 3276)
 
-    private fun runs(sb: StringBuilder, runs: List<TextRun>, rtl: Boolean, forceBold: Boolean = false) {
-        for (r in runs) {
+    private fun runs(sb: StringBuilder, runs0: List<TextRun>, rtl: Boolean, forceBold: Boolean = false) {
+        // a run is right-to-left only where it holds Arabic: Latin words, formulas and European numbers inside an Arabic
+        // paragraph are left-to-right runs (with w:rtl on them Word ordered «CO2(g) + 2H2O(l)» and «(C = 12 ، H = 1)» wrongly)
+        val runs = runs0.flatMap { r -> BidiText.scriptRuns(r.text, rtl).map { (t, isRtl) -> r.copy(text = t) to isRtl } }
+        for ((r, runRtl) in runs) {
             val rp = StringBuilder()
             r.font?.let { f ->
                 val cs = FontMap.complexScript(f)
@@ -74,7 +85,7 @@ class DocxBuilder(out: OutputStream, private val title: String, private val furn
             if (kotlin.math.abs(r.size - bodySize) >= 0.5f) { val hp = halfPts(r.size); rp.append("<w:sz w:val=\"").append(hp).append("\"/><w:szCs w:val=\"").append(hp).append("\"/>") }
             if (r.underline) rp.append("<w:u w:val=\"single\"/>")
             r.bg?.let { rp.append("<w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"").append(Decorations.hex(it)).append("\"/>") }
-            if (rtl) rp.append("<w:rtl/>")
+            if (runRtl) rp.append("<w:rtl/>")
             sb.append("<w:r>")
             if (rp.isNotEmpty()) sb.append("<w:rPr>").append(rp).append("</w:rPr>")
             sb.append("<w:t xml:space=\"preserve\">").append(BidiText.xml(r.text)).append("</w:t></w:r>")

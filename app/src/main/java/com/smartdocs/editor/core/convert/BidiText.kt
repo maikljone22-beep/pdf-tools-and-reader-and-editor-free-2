@@ -29,6 +29,88 @@ object BidiText {
 
     fun isRtlChar(c: Char) = dirOf(c) == Dir.R
 
+    private val MIRROR = mapOf('(' to ')', ')' to '(', '[' to ']', ']' to '[', '{' to '}', '}' to '{', '<' to '>', '>' to '<', '«' to '»', '»' to '«')
+
+    /**
+     * Logical text of an Arabic OCR word from its glyphs left → right. The app's OCR layer writes every Arabic word in
+     * visual order — runs of digits / Latin letters kept, everything else reversed with brackets mirrored, runs reversed
+     * ([com.smartdocs.editor.core.ocr.SearchablePdfWriter.visualWord]) — and that transform is its own inverse. The
+     * generic reordering ([visualToLogical]) does not mirror, so «(س)» came out «)س(» and «١)» as «(١».
+     */
+    fun ocrLogical(visual: String): String = ocrLogical(visual.map { it.toString() })
+
+    /**
+     * [ocrLogical] on glyph units: a glyph that stands for several letters (a lam-alef ligature «لا» of a shaped OCR
+     * layer) keeps its letters in order — reversing it letter by letter gave «ال يمكن», «األخرى».
+     */
+    fun ocrLogical(glyphs: List<String>): String {
+        fun ltr(g: String) = g.isNotEmpty() && g[0].let { it.isDigit() || it in 'a'..'z' || it in 'A'..'Z' }
+        val runs = ArrayList<MutableList<String>>(); var ltrRun = false
+        for (g in glyphs) {
+            if (g.isEmpty()) continue
+            if (runs.isEmpty() || ltr(g) != ltrRun) { runs += ArrayList<String>(); ltrRun = ltr(g) }
+            runs.last() += g
+        }
+        return runs.asReversed().joinToString("") { r ->
+            if (ltr(r.first())) r.joinToString("") else r.asReversed().joinToString("") { g -> if (g.length == 1) (MIRROR[g[0]] ?: g[0]).toString() else g }
+        }
+    }
+
+    /** Arabic-script character (letters, marks, Arabic-Indic digits, Arabic punctuation, presentation forms). */
+    fun isArabicScript(c: Char) = c.code in 0x0600..0x06FF || c.code in 0x0750..0x077F || c.code in 0xFB50..0xFDFF || c.code in 0xFE70..0xFEFF
+
+    /**
+     * [s] cut into runs of one writing direction for Word: (text, right-to-left). Arabic letters, marks, Arabic-Indic
+     * digits and Arabic punctuation are right-to-left; Latin letters and European digits left-to-right; spaces and
+     * punctuation join the runs around them when both sides agree, else take the paragraph direction [rtlPara].
+     */
+    fun scriptRuns(s: String, rtlPara: Boolean): List<Pair<String, Boolean>> {
+        if (s.isEmpty()) return emptyList()
+        fun cls(c: Char): Int = when {
+            c == '،' -> -1                                   // the Arabic comma separates, like «,»
+            isArabicScript(c) || c.code in 0x08A0..0x08FF -> 1
+            Character.getDirectionality(c) == Character.DIRECTIONALITY_RIGHT_TO_LEFT -> 1
+            c.isLetterOrDigit() -> 0
+            else -> -1
+        }
+        val k0 = IntArray(s.length) { cls(s[it]) }
+        // paired brackets take the direction of what they enclose (the Unicode bidi rule BD16, simplified): «CO2(g)» keeps
+        // its «)» in the Latin run instead of a lone right-to-left «)» Word would draw mirrored at the far end
+        val open = ArrayList<Int>()
+        for (i in s.indices) {
+            val c = s[i]
+            if (c in "([{") open += i
+            else if (c in ")]}" && open.isNotEmpty()) {
+                val o = open.removeAt(open.size - 1)
+                var l = false; var r = false
+                for (j in o + 1 until i) { if (k0[j] == 0) l = true else if (k0[j] == 1) r = true }
+                val d = when { (if (rtlPara) r else l) -> if (rtlPara) 1 else 0; l -> 0; r -> 1; else -> -1 }
+                if (d >= 0) { k0[o] = d; k0[i] = d }
+            }
+        }
+        // segments of one class
+        val segs = ArrayList<Pair<StringBuilder, Int>>()
+        for (i in s.indices) {
+            val k = k0[i]
+            if (segs.isNotEmpty() && segs.last().second == k) segs.last().first.append(s[i]) else segs += StringBuilder().append(s[i]) to k
+        }
+        // neutral segments take the direction of their neighbours when both agree, else the paragraph's
+        val dirs = segs.indices.map { i ->
+            val k = segs[i].second
+            if (k >= 0) k else {
+                val prev = (i - 1 downTo 0).firstOrNull { segs[it].second >= 0 }?.let { segs[it].second }
+                val next = (i + 1 until segs.size).firstOrNull { segs[it].second >= 0 }?.let { segs[it].second }
+                if (prev != null && prev == next) prev else if (rtlPara) 1 else 0
+            }
+        }
+        val out = ArrayList<Pair<String, Boolean>>()
+        segs.forEachIndexed { i, (t, _) ->
+            val r = dirs[i] == 1
+            if (out.isNotEmpty() && out.last().second == r) out[out.size - 1] = (out.last().first + t) to r else out += t.toString() to r
+        }
+        return out
+    }
+
     /** Strong RTL and strong LTR letter counts (digits ignored). */
     fun strongCounts(s: String): IntArray {
         val rl = IntArray(2)

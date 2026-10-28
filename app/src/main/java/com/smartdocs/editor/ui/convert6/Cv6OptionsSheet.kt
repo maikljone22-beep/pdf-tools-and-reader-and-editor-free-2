@@ -47,7 +47,7 @@ fun defaultsFor(c: Conv): Cv6Opts = when (c.id) {
     "pdf_svg" -> Cv6Opts(dpi = 150, zip = true)
     "pdf_long_image" -> Cv6Opts(imgFormat = ImgFmt.JPG, dpi = 110, quality = 85)
     "images_pdf", "tiff_pdf" -> Cv6Opts(quality = 88)
-    "ocr_pdf_docx" -> Cv6Opts(keepLayout = true)
+    "ocr_pdf_docx" -> Cv6Opts(keepLayout = null)
     else -> Cv6Opts()
 }
 
@@ -115,7 +115,7 @@ private fun OptionsBody(conv: Conv, inputCount: Int, o: Cv6Opts, onChange: (Cv6O
     }
     if (Opt.LAYOUT in opts) {
         FieldLabel(stringResource(R.string.cv6_layout))
-        ChoiceChips(listOf(true, false), o.keepLayout, { if (it) stringResource(R.string.cv6_layout_keep) else stringResource(R.string.cv6_layout_flow) }) { onChange(o.copy(keepLayout = it)) }
+        ChoiceChips(listOf<Boolean?>(null, true, false), o.keepLayout, { when (it) { null -> stringResource(R.string.cv6_lang_auto); true -> stringResource(R.string.cv6_layout_keep); false -> stringResource(R.string.cv6_layout_flow) } }) { onChange(o.copy(keepLayout = it)) }
     }
     if (Opt.PPT_MODE in opts) {
         FieldLabel(stringResource(R.string.cv_ppt_mode))

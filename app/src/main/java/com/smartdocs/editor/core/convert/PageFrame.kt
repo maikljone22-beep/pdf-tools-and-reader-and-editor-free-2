@@ -8,7 +8,7 @@ import kotlin.math.abs
  */
 data class RawGlyph(
     val x: Float, val y: Float, val dx: Float, val dy: Float, val w: Float, val h: Float, val text: String, val fontSize: Float,
-    val bold: Boolean = false, val italic: Boolean = false, val color: Int = 0, val font: String? = null,
+    val bold: Boolean = false, val italic: Boolean = false, val color: Int = 0, val font: String? = null, val ocr: Boolean = false,
 )
 
 /**
@@ -47,7 +47,7 @@ class PageFrame private constructor(private val cropW: Float, private val cropH:
             val p = map(g.x, g.y)
             if (p[0] < -1f || p[0] > width + 1f || p[1] < -1f || p[1] > height + g.h + 1f) continue // outside the crop box
             val rel = ((displayQuarter(rotation, g.dx, g.dy) - turn) % 4 + 4) % 4
-            if (rel == 0) out += Glyph(p[0], p[1] - g.h, g.w, g.h, p[1], g.text, g.fontSize, g.bold, g.italic, g.color, g.font)
+            if (rel == 0) out += Glyph(p[0], p[1] - g.h, g.w, g.h, p[1], g.text, g.fontSize, g.bold, g.italic, g.color, g.font, g.ocr)
             else minority.getOrPut(rel) { ArrayList() } += p to g
         }
         for ((rel, list) in minority) out += layoutMinority(rel, list)
@@ -73,7 +73,7 @@ class PageFrame private constructor(private val cropW: Float, private val cropH:
             val start = along(gr.first().first)
             val h = gr.map { it.second.h }.sorted()[gr.size / 2]
             val base = y0 + h
-            for ((p, g) in gr) out += Glyph(x0 + (along(p) - start), base - g.h, g.w, g.h, base, g.text, g.fontSize, g.bold, g.italic, g.color, g.font)
+            for ((p, g) in gr) out += Glyph(x0 + (along(p) - start), base - g.h, g.w, g.h, base, g.text, g.fontSize, g.bold, g.italic, g.color, g.font, g.ocr)
         }
         return out
     }
