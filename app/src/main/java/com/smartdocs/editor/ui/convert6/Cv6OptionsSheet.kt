@@ -187,6 +187,13 @@ private fun OptionsBody(conv: Conv, inputCount: Int, o: Cv6Opts, onChange: (Cv6O
     if (Opt.GRAY in opts && !o.bw) SwitchRow(stringResource(R.string.cv6_gray), o.gray) { onChange(o.copy(gray = it)) }
     if (Opt.BW in opts) SwitchRow(stringResource(R.string.pc_bw), o.bw, stringResource(R.string.pc_bw_sub)) { onChange(o.copy(bw = it)) }
     if (Opt.FORM_FIELDS in opts) SwitchRow(stringResource(R.string.cv9_form_fields), o.recognizeFields, stringResource(R.string.cv9_form_fields_sub)) { onChange(o.copy(recognizeFields = it)) }
+    if (Opt.CREATE in opts) {
+        // FINAL_CHECK_2 #3: creation presets and a tagged PDF
+        FieldLabel(stringResource(R.string.cv9_preset))
+        ChoiceChips(listOf(0, 1, 2, 3), o.preset, { when (it) { 0 -> stringResource(R.string.cv9_preset_standard); 1 -> stringResource(R.string.cv9_preset_high)
+            2 -> stringResource(R.string.cv9_preset_small); else -> stringResource(R.string.cv9_preset_archive) } }) { onChange(o.copy(preset = it)) }
+        SwitchRow(stringResource(R.string.cv9_tagged), o.tagged, stringResource(R.string.cv9_tagged_sub)) { onChange(o.copy(tagged = it)) }
+    }
     if (Opt.DOCX_TEXT in opts) {
         // s6 Word: custom character spacing; image anchoring
         FieldLabel(stringResource(R.string.cv9_char_spacing))

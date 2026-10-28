@@ -94,6 +94,9 @@ data class Cv6Opts(
     val fileRanges: Map<String, String> = emptyMap(),
     /** s6 Batch / s5 "output folder": a folder (SAF tree URI) the outputs are also copied to; "" = Documents only. */
     val outputTree: String = "",
+    /** FINAL_CHECK_2 #3: creation preset (CreatePreset) and a tagged PDF when creating one. */
+    val preset: Int = CreatePreset.STANDARD,
+    val tagged: Boolean = false,
 )
 
 enum class Stage { WORK, OCR }

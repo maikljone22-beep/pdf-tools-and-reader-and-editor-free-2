@@ -62,4 +62,11 @@
     <string name="cv9_out_failed">Could not copy to the folder</string>
     <string name="cv9_not_convertible">%1$s could not be converted to PDF</string>
     <string name="cv9_split_more">Add more files to split</string>
+    <string name="cv9_preset">Creation preset</string>
+    <string name="cv9_preset_standard">Standard</string>
+    <string name="cv9_preset_high">High quality</string>
+    <string name="cv9_preset_small">Smallest size</string>
+    <string name="cv9_preset_archive">Archival (PDF/A)</string>
+    <string name="cv9_tagged">Tagged PDF</string>
+    <string name="cv9_tagged_sub">Headings, lists and tables tagged for screen readers</string>
 </resources>

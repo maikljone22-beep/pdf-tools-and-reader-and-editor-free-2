@@ -62,4 +62,11 @@
     <string name="cv9_out_failed">تعذّر النسخ إلى المجلد</string>
     <string name="cv9_not_convertible">تعذّر تحويل %1$s إلى PDF</string>
     <string name="cv9_split_more">إضافة ملفات أخرى للتقسيم</string>
+    <string name="cv9_preset">إعداد مسبق للإنشاء</string>
+    <string name="cv9_preset_standard">قياسي</string>
+    <string name="cv9_preset_high">جودة عالية</string>
+    <string name="cv9_preset_small">أصغر حجم</string>
+    <string name="cv9_preset_archive">أرشيفي (PDF/A)</string>
+    <string name="cv9_tagged">PDF موسوم</string>
+    <string name="cv9_tagged_sub">وسوم العناوين والقوائم والجداول لقارئات الشاشة</string>
 </resources>
