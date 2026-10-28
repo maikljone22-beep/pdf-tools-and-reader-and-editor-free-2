@@ -162,6 +162,7 @@ fun PageCanvas(
                         val s = g.layoutToScreen(p); val (x, y) = g.screenToPdf(s.x, s.y)
                         // an annotation under the finger wins over text selection
                         if (state.placement == null && state.edit.selectAt(page, x, y, 8f / g.scale.coerceAtLeast(0.1f))) return@detectTapGestures
+                        if (state.placement == null && com.smartdocs.editor.ui.selmenu.SelHooks.longPressFieldAt(state, page, x, y)) return@detectTapGestures   // selmenu-rest: field menu
                         // nitro-fillsign2: a stamp on the clipboard can be pasted where the finger is
                         if (state.placement == null && StampClipboard.annot != null) StampClipboard.offer = StampClipboard.Offer(state, page, x, y)
                         if (state.placement == null && com.smartdocs.editor.ui.selmenu.SelHooks.longPressLink(state, page, x, y, linksNow)) return@detectTapGestures   // selmenu: link menu
@@ -393,6 +394,7 @@ private fun handleTap(
     onTap: (Offset, Size) -> Unit, onOpenLink: (PageLink) -> Unit, onPrompt: (TextPrompt) -> Unit,
 ) {
     val s = g.layoutToScreen(p); val (x, y) = g.screenToPdf(s.x, s.y)
+    if (com.smartdocs.editor.ui.selmenu.SelHooks.onPageTap(state)) return     // selmenu-rest: a tap closes the link / empty-area / field menu
     StampClipboard.offer = null
     val pl = state.placement
     if (pl != null && pl.page == page) {

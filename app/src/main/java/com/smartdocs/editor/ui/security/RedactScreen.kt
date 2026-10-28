@@ -59,12 +59,15 @@ fun RedactScreen(nav: NavHostController, uri: String?) {
     // audit AN-10: metadata, bookmarks, attachments etc. also hold the redacted words, so sanitising is on by default
     var sanitize by remember { mutableStateOf(true) }
     var batchSkipped by remember { mutableStateOf<List<String>>(emptyList()) }
+    var batchNoHits by remember { mutableStateOf<List<String>>(emptyList()) }
+    /** audit 5b D7: the single mark "apply this mark" waits for confirmation (null = the confirm dialog is for all marks). */
+    var confirmOne by remember { mutableStateOf<RedactMark?>(null) }
     var maxSecurity by remember { mutableStateOf(false) }
     var result by remember { mutableStateOf<File?>(null) }
     var report by remember { mutableStateOf<String?>(null) }
     val snack = remember { SnackbarHostState() }
     val pick = rememberPdfPicker { it.firstOrNull()?.let { f -> doc.file = f } }
-    val batchPick = rememberPdfPicker(multiple = true) { files -> if (files.isNotEmpty()) runBatch(files, st, runner, app, ctx, sanitize, maxSecurity) { batchSkipped = it } }
+    val batchPick = rememberPdfPicker(multiple = true) { files -> if (files.isNotEmpty()) runBatch(files, st, runner, app, ctx, sanitize, maxSecurity) { skipped, noHits -> batchSkipped = skipped; batchNoHits = noHits } }
 
     // T-09: the password the reader opened this document with
     LaunchedEffect(Unit) {
@@ -73,6 +76,7 @@ fun RedactScreen(nav: NavHostController, uri: String?) {
     }
     var signed by remember { mutableStateOf(false) }
     val restoredFmt = stringResource(R.string.ttrd_draft_restored)
+    val loadFailedMsg = stringResource(R.string.ttrd_marks_load_failed)
     LaunchedEffect(doc.generation) {
         val f = doc.file ?: return@LaunchedEffect
         if (doc.session == null) return@LaunchedEffect
@@ -81,6 +85,7 @@ fun RedactScreen(nav: NavHostController, uri: String?) {
         signed = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.smartdocs.editor.core.pdf.SignedSave.isSigned(f, pw) }
         val restored = st.load(f, pw); page = 0
         if (restored > 0) scope.launch { snack.showSnackbar(restoredFmt.format(restored)) }
+        if (st.loadFailed) scope.launch { snack.showSnackbar(loadFailedMsg) }   // audit 5b L4
         // audit 5 R-L7: unsaved marks are kept as a draft (written shortly after each change)
         snapshotFlow { st.marks.toList() to st.excluded }.collectLatest { (list, ex) ->
             kotlinx.coroutines.delay(800)
@@ -93,6 +98,7 @@ fun RedactScreen(nav: NavHostController, uri: String?) {
 
     val markedMsg = stringResource(R.string.s5_marked_n)
     val noImageMsg = stringResource(R.string.nt_rd_no_image)
+    val imageFailedMsg = stringResource(R.string.ttrd_image_failed)
     fun search() { val s = doc.session ?: return; scope.launch { runCatching { st.search(s) }.onFailure { snack.showSnackbar(it.message ?: it.toString()) } } }
     fun markChecked() { val n = st.markChecked(); scope.launch { snack.showSnackbar(markedMsg.format(n)) } }
 
@@ -182,7 +188,14 @@ fun RedactScreen(nav: NavHostController, uri: String?) {
                         Box(Modifier.weight(1f).fillMaxHeight()) {
                             TabContent(tab, st, s, page, { page = it.coerceIn(0, (s.pageCount - 1).coerceAtLeast(0)) }, ::search, ::markChecked, { batchPick() },
                                 onJump = { page = it; tab = RedactTab.MANUAL }, onEdit = { editMark = it }, onRepeat = { repeatMark = it }, onPii = { showPii = true },
-                                onImageTap = { x, y -> val f = doc.file; if (f != null) scope.launch { if (!st.markImageAt(f, doc.password, page, x, y)) snack.showSnackbar(noImageMsg) } })
+                                onImageTap = { x, y -> val f = doc.file; if (f != null) scope.launch {
+                                    // audit 5b L4: a page that could not be inspected is not "no image here"
+                                    when (st.markImageAt(f, doc.password, page, x, y)) {
+                                        ImageMark.NONE -> snack.showSnackbar(noImageMsg)
+                                        ImageMark.FAILED -> snack.showSnackbar(imageFailedMsg)
+                                        ImageMark.ADDED -> {}
+                                    }
+                                } })
                         }
                         if (tablet) {
                             VerticalDivider()
@@ -196,13 +209,14 @@ fun RedactScreen(nav: NavHostController, uri: String?) {
 
     if (runner.running) ProgressDialog(runner.message)
     result?.let { ResultSheet(it, nav, onDismiss = { result = null }, extraInfo = report) }
-    if (runner.results.isNotEmpty() || batchSkipped.isNotEmpty()) BatchResults(runner.results, batchSkipped, nav) { runner.results = emptyList(); batchSkipped = emptyList() }
+    if (runner.results.isNotEmpty() || batchSkipped.isNotEmpty() || batchNoHits.isNotEmpty())
+        BatchResults(runner.results, batchSkipped, batchNoHits, nav) { runner.results = emptyList(); batchSkipped = emptyList(); batchNoHits = emptyList() }
     if (styleAll) RedactStyleDialog(st.style, stringResource(R.string.s5_style_all), onDismiss = { styleAll = false }) { st.applyStyleToAll(it); styleAll = false }
     editMark?.let { m0 ->
         val m = st.marks.firstOrNull { it.id == m0.id } ?: m0
         MarkPropertiesDialog(m, me, onDismiss = { editMark = null }, onAppearance = { styleMark = m },
             onSave = { a, s, l -> st.setGeneral(m.id, a, s, l); editMark = null }, onReview = { state -> st.review(m.id, state, me) },
-            onApplyOne = { editMark = null; applyAll(m) })
+            onApplyOne = { editMark = null; confirmOne = m; confirm = true })
     }
     styleMark?.let { m -> RedactStyleDialog(m.style, stringResource(R.string.s5_properties), onDismiss = { styleMark = null }) { st.update((st.marks.firstOrNull { it.id == m.id } ?: m).copy(style = it)); styleMark = null } }
     repeatMark?.let { m -> PagePickDialog(stringResource(R.string.s5_repeat_pages), s5PageCount(doc.session), onDismiss = { repeatMark = null }) { st.repeatOnPages(m, it); repeatMark = null } }
@@ -216,10 +230,13 @@ fun RedactScreen(nav: NavHostController, uri: String?) {
         if (tab == RedactTab.SEARCH && doc.session != null) tab = RedactTab.REVIEW   // phone: the review list is its own tab
         scope.launch { snack.showSnackbar(piiMsg.format(n)) }
     }, onDismiss = { showPii = false })
-    if (confirm) AlertDialog(onDismissRequest = { confirm = false }, title = { Text(stringResource(R.string.s5_apply_all, st.activeMarks().size)) },
+    // audit 5b D7: "apply this mark" also confirms, with its own sanitize / maximum-security choice
+    if (confirm) AlertDialog(onDismissRequest = { confirm = false; confirmOne = null },
+        title = { Text(if (confirmOne != null) stringResource(R.string.ttrd_apply_one_title) else stringResource(R.string.s5_apply_all, st.activeMarks().size)) },
         text = {
             Column {
                 Text(stringResource(R.string.redact_warning))
+                if (confirmOne != null && st.activeMarks().size > 1) Text(stringResource(R.string.ttrd_apply_one_pending), Modifier.padding(top = 8.dp), style = MaterialTheme.typography.bodySmall)
                 if (signed) Text(stringResource(R.string.ttrd_signed_warning), Modifier.padding(top = 8.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                 Spacer(Modifier.height(8.dp))
                 // audit 5 P-L: the whole row toggles, so TalkBack reads the label with the checkbox
@@ -233,8 +250,8 @@ fun RedactScreen(nav: NavHostController, uri: String?) {
                 Text(outPrefix + (doc.file?.nameWithoutExtension ?: "") + outSuffix + ".pdf", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         },
-        confirmButton = { TextButton(onClick = { confirm = false; applyAll() }) { Text(stringResource(R.string.apply)) } },
-        dismissButton = { TextButton(onClick = { confirm = false }) { Text(stringResource(R.string.cancel)) } })
+        confirmButton = { TextButton(onClick = { val one = confirmOne; confirm = false; confirmOne = null; applyAll(one) }) { Text(stringResource(R.string.apply)) } },
+        dismissButton = { TextButton(onClick = { confirm = false; confirmOne = null }) { Text(stringResource(R.string.cancel)) } })
 }
 
 private fun s5PageCount(s: PdfSession?) = s?.pageCount ?: 1
@@ -268,42 +285,54 @@ private fun TabContent(
     }
 }
 
-/** Redacts several files with the current search inputs and style. */
-private fun runBatch(files: List<File>, st: RedactState, runner: ToolRunner, app: com.smartdocs.editor.SmartDocsApp, ctx: android.content.Context, sanitize: Boolean, maxSecurity: Boolean, onSkipped: (List<String>) -> Unit) {
+/**
+ * Redacts several files with the current search inputs, page range and style. audit 5b L5: the page range applies to
+ * every file, files without a match are reported, and the Compose state is set on the main thread.
+ */
+private fun runBatch(files: List<File>, st: RedactState, runner: ToolRunner, app: com.smartdocs.editor.SmartDocsApp, ctx: android.content.Context, sanitize: Boolean, maxSecurity: Boolean,
+                     onReport: (skipped: List<String>, noHits: List<String>) -> Unit) {
     val req = st.request()
     if (req.isEmpty) return
     val style = st.style
-    runner.runMany(ctx.getString(R.string.pg_redact_applying)) {
+    val range = st.pageRange
+    val applying = ctx.getString(R.string.pg_redact_applying)
+    runner.runMany(applying) {
         val outs = ArrayList<File>()
         // audit AN-10: protected / unreadable / failed files are reported, never silently left unredacted
         val skipped = ArrayList<String>()
+        val noHits = ArrayList<String>()
         for ((i, f) in files.withIndex()) {
-            runner.message = ctx.getString(R.string.pg_redact_applying) + " ${i + 1}/${files.size}"
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) { runner.message = "$applying ${i + 1}/${files.size}" }
             val session = runCatching { PdfSession.open(ctx, f, null) }.getOrNull()
             if (session == null) { skipped += f.name; continue }
-            val found = try { TextSearch.search(session, req) } finally { session.closeAsync() }
-            if (found.isEmpty()) continue
+            val found = try { runCatching { st.searchPages(session, req, range) }.getOrNull() } finally { session.closeAsync() }
+            if (found == null) { skipped += f.name; continue }
             val marks = found.filter { it.hit.rects.isNotEmpty() }.mapIndexed { k, h -> RedactMark("b$k-${System.nanoTime()}", h.hit.page, h.hit.rects.map { RectF(it) }, style, h.hit.snippet.trim()) }
+            if (marks.isEmpty()) { noHits += f.name; continue }
             val out = app.documents.uniqueFile(app.documents.docsDir, f.nameWithoutExtension + "_redacted")
             runCatching {
                 RedactApplier.apply(ctx, f, out, null, marks, RedactApplier.Options(sanitize = sanitize, sanitizeItems = SanitizeItem.DEFAULTS, maxSecurity = maxSecurity))
                 runCatching { app.documents.touchRecent(out) }
                 outs += out
-            }.onFailure { skipped += f.name }
+            }.onFailure { if (it is kotlinx.coroutines.CancellationException) throw it; skipped += f.name }
         }
-        onSkipped(skipped)
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) { onReport(skipped, noHits) }
         outs
     }
 }
 
 @Composable
-private fun BatchResults(files: List<File>, skipped: List<String>, nav: NavHostController, onDismiss: () -> Unit) {
+private fun BatchResults(files: List<File>, skipped: List<String>, noHits: List<String>, nav: NavHostController, onDismiss: () -> Unit) {
     AlertDialog(onDismissRequest = onDismiss, title = { Text(stringResource(R.string.s5_batch_done, files.size)) },
         text = {
             LazyColumn(Modifier.heightIn(max = 320.dp)) {
                 if (skipped.isNotEmpty()) item {
                     Text(stringResource(R.string.fx_redact_skipped, skipped.size) + "\n" + skipped.joinToString("\n"),
                         color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(bottom = 8.dp))
+                }
+                if (noHits.isNotEmpty()) item {
+                    Text(stringResource(R.string.ttrd_batch_no_hits, noHits.size) + "\n" + noHits.joinToString("\n"),
+                        style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(bottom = 8.dp))
                 }
                 items(files, key = { it.absolutePath }) { f ->
                     ListItem(headlineContent = { Text(f.name) }, trailingContent = {

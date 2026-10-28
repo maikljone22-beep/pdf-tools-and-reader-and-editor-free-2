@@ -104,7 +104,9 @@ fun ProtectAdvancedScreen(nav: NavHostController, uri: String?) {
     }
     val mismatch = openPw.isNotEmpty() && openPw != openPw2
     val effective = if (restrict) perms else Permissions()
-    val nothing = (openPw.isEmpty() && !restrict) || (scope == EncScope.ATTACHMENTS_ONLY && openPw.isEmpty())
+    // audit 5b L2: "restrict" with every permission still allowed and no open password protects nothing (it failed later)
+    val noRestriction = openPw.isEmpty() && restrict && perms == Permissions()
+    val nothing = (openPw.isEmpty() && !restrict) || noRestriction || (scope == EncScope.ATTACHMENTS_ONLY && openPw.isEmpty())
     // audit 5 P-2: revision 2-4 algorithms would turn non-Latin (e.g. Arabic) characters into '?'
     val notLatin = !ProtectAdvanced.passwordsFit(ProtectOptions(openPw, if (restrict) ownerPw else "", algo))
     // audit 5 P-5: an owner password equal to the open password would let anyone who opens the file lift the restrictions
@@ -209,6 +211,7 @@ fun ProtectAdvancedScreen(nav: NavHostController, uri: String?) {
                 PermRow(stringResource(R.string.s5_perm_access), perms.accessibility) { perms = perms.copy(accessibility = it) }
                 PermRow(stringResource(R.string.s5_perm_annotate), perms.annotate) { perms = perms.copy(annotate = it) }
                 PermRow(stringResource(R.string.s5_perm_forms), perms.fillForms) { perms = perms.copy(fillForms = it) }
+                if (noRestriction) Text(stringResource(R.string.ttrd_nothing_to_protect), Modifier.padding(top = 6.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
             }
             Text(stringResource(R.string.s5_protect_note), Modifier.padding(vertical = 12.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }

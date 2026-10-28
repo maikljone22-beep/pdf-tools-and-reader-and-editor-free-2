@@ -31,6 +31,9 @@ import java.io.File
 /** Display ⇄ user space of one page (see [PageFrame]); display space is what the page view shows. */
 class PageGeo(val width: Float, val height: Float, val toDisplay: FloatArray, val toUser: FloatArray)
 
+/** Result of [RedactState.markImageAt]. */
+enum class ImageMark { ADDED, NONE, FAILED }
+
 fun foundKey(f: Found) = "${f.hit.page}:${f.hit.charIndex}:${f.hit.length}"
 
 /**
@@ -64,6 +67,9 @@ class RedactState(private val context: Context) {
     /** The document the marks belong to (set once [load] finished), for the draft (audit 5 R-L7). */
     var loadedFile by mutableStateOf<File?>(null)
         private set
+    /** audit 5b L4: true when the file could not be read for its marks and page geometry (said on screen). */
+    var loadFailed by mutableStateOf(false)
+        private set
     /** The marks as stored in the file (what needs no draft). */
     var baseline: List<RedactMark> = emptyList()
 
@@ -73,7 +79,7 @@ class RedactState(private val context: Context) {
      */
     suspend fun load(file: File, password: String?): Int = withContext(Dispatchers.IO) {
         val g = HashMap<Int, PageGeo>()
-        val existing = runCatching {
+        val read = runCatching {
             PdfOps.load(file, password).use { doc ->
                 doc.pages.forEachIndexed { i, p ->
                     val f = PageFrame.of(p)
@@ -81,7 +87,9 @@ class RedactState(private val context: Context) {
                 }
                 RedactMarks.read(doc)
             }
-        }.getOrDefault(emptyList())
+        }
+        // audit 5b L4: a failed read is reported (the marks already in the file and the page geometry are missing)
+        val existing = read.getOrDefault(emptyList())
         val draft = runCatching { com.smartdocs.editor.core.redact.RedactDrafts.load(context, file) }.getOrNull()
             ?.takeIf { it.marks != existing || it.excluded.isNotEmpty() }
         withContext(Dispatchers.Main) {
@@ -90,6 +98,7 @@ class RedactState(private val context: Context) {
             marks.clear(); marks.addAll(draft?.marks ?: existing); excluded = draft?.excluded ?: emptySet()
             found = emptyList(); checked = emptySet(); searched = false
             loadedFile = file
+            loadFailed = read.isFailure
         }
         draft?.marks?.size ?: 0
     }
@@ -116,15 +125,20 @@ class RedactState(private val context: Context) {
     suspend fun search(session: PdfSession) {
         searching = true
         try {
-            val pages = PdfOps.parseRange(pageRange, session.pageCount)
-            val req = request()
-            val all = ArrayList<Found>()
-            if (pages.size == session.pageCount) all += TextSearch.search(session, req)
-            else pages.forEach { p -> all += TextSearch.search(session, req, p..p) }
+            val all = searchPages(session, request(), pageRange)
             found = all
             checked = all.map(::foundKey).toSet()
             searched = true
         } finally { searching = false }
+    }
+
+    /** Hits of [req] on the pages of [range] ("" = all), for the open document and (audit 5b L5) every batch file. */
+    suspend fun searchPages(session: PdfSession, req: SearchRequest, range: String): List<Found> {
+        val pages = PdfOps.parseRange(range, session.pageCount)
+        if (pages.size == session.pageCount) return TextSearch.search(session, req)
+        val all = ArrayList<Found>()
+        pages.forEach { p -> all += TextSearch.search(session, req, p..p) }
+        return all
     }
 
     /** Turns the checked hits into marks (one mark per hit, one rect per line). */
@@ -219,21 +233,26 @@ class RedactState(private val context: Context) {
 
     /**
      * Foxit "double-click an image to mark the whole image": the image under display point ([x], [y]) on [page]
-     * becomes a mark. Returns false when there is no image there.
+     * becomes a mark. audit 5b L4: [ImageMark.FAILED] when the page could not be inspected (it was reported as
+     * "no image here").
      */
-    suspend fun markImageAt(file: File, password: String?, page: Int, x: Float, y: Float): Boolean = withContext(Dispatchers.IO) {
+    suspend fun markImageAt(file: File, password: String?, page: Int, x: Float, y: Float): ImageMark = withContext(Dispatchers.IO) {
         val g = geo[page]
         val pt = if (g == null) Box.of(x, y, x, y) else RedactMath.map(g.toUser, Box.of(x, y, x, y))
-        val box = runCatching {
+        val found = runCatching {
             PdfOps.load(file, password).use { doc ->
                 val p = doc.getPage(page)
-                com.smartdocs.editor.core.redact.PageInspector(p, doc.documentCatalog.ocProperties).run(p).paints
+                val insp = com.smartdocs.editor.core.redact.PageInspector(p, doc.documentCatalog.ocProperties).run(p)
+                if (insp.failed) throw IllegalStateException("page not readable")
+                insp.paints
                     .filter { it.kind == com.smartdocs.editor.core.redact.PaintKind.IMAGE || it.kind == com.smartdocs.editor.core.redact.PaintKind.INLINE_IMAGE }
                     .filter { it.box.contains(pt.l, pt.b) }.minByOrNull { it.box.area }?.box
             }
-        }.getOrNull() ?: return@withContext false
+        }
+        if (found.isFailure) return@withContext ImageMark.FAILED
+        val box = found.getOrNull() ?: return@withContext ImageMark.NONE
         withContext(Dispatchers.Main) { marks += RedactMark(newId(), page, listOf(RectF(box.l, box.t, box.r, box.b)), style, "") }
-        true
+        ImageMark.ADDED
     }
 
     fun setGeneral(id: String, author: String, subject: String, locked: Boolean) {

@@ -76,6 +76,8 @@ fun FormDesignerScreen(nav: NavHostController, uri: String?) {
     DisposableEffect(Unit) { onDispose { st.dispose() } }
     val initial = remember(uri) { uri?.let { runCatching { File(android.net.Uri.parse(it).path!!) }.getOrNull()?.takeIf { f -> f.exists() } } }
     LaunchedEffect(initial) { initial?.let { st.open(it) } }
+    // selmenu-rest: the reader's field menu opened the designer on one field (select it; duplicate / delete / tab order)
+    LaunchedEffect(st.specs) { com.smartdocs.editor.ui.selmenu.SelFieldHandoff.apply(ctx, st) }
     val pick = rememberPdfPicker { f -> f.firstOrNull()?.let { st.open(it) } }
 
     var kind by remember { mutableStateOf(NewKind.TEXT) }

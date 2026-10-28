@@ -30,6 +30,8 @@ sealed class Issue {
     data class TooLong(val max: Int) : Issue()
     data class BadFormat(val kind: Int) : Issue()     // AFSpecial: 0 zip, 1 zip+4, 2 phone, 3 SSN
     data class Script(val message: String?) : Issue()
+    /** XFA `<validate><picture>`: the value does not match the pattern. */
+    data class Picture(val pattern: String) : Issue()
 }
 
 /** Everything that constrains one field's value. */

@@ -1,7 +1,9 @@
 package com.smartdocs.editor.core.forms
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** fix/pdf39-forms-2: XFA picture clauses. */
@@ -41,5 +43,36 @@ class XfaPictureTest {
         assertEquals("zero", f("zero{'zero'}|num{zz9}", "0"))
         assertEquals("7", f("zero{'zero'}|num{zz9}", "7"))
         assertNull(f("", "x"))
+    }
+
+    @Test fun percentArabicNamesAndLocale() {
+        assertEquals("25%", f("num{zz9%}", "0.25"))
+        assertEquals("12.5%", f("num{zz9.9%}", ".125"))
+        assertEquals("3 مايو 2024", f("date(ar_SA){D MMMM YYYY}", "2024-05-03"))
+        assertEquals("الجمعة", f("date(ar){EEEE}", "2024-05-03"))
+        assertEquals("02:05 م", f("time(ar_AE){hh:MM A}", "14:05"))
+        assertEquals("date(ar_SA){DD/MM/YYYY}", XfaPicture.withCategory("DD/MM/YYYY", XfaPicture.Hint.DATE, "ar_SA"))
+        assertEquals("num(ar){9}|text(ar){X}", XfaPicture.withCategory("num{9}|text{X}", XfaPicture.Hint.TEXT, "ar"))
+    }
+
+    @Test fun parsingTypedText() {
+        fun p(pic: String, s: String) = XfaPicture.parse(pic, s)
+        assertEquals("1234.5", p("num{z,zzz,zz9.99}", "1,234.50"))
+        assertEquals("-12", p("num{zz9}", "-12"))
+        assertEquals("0.25", p("num{zz9%}", "25%"))
+        assertEquals("1234.5", p("num{zzzz9.99}", "١٢٣٤٫٥٠"))           // Arabic-Indic digits and separator
+        assertEquals("2024-05-03", p("date{MM/DD/YYYY}", "05/03/2024"))
+        assertEquals("2024-05-03", p("date{D MMMM YYYY}", "3 May 2024"))
+        assertEquals("2024-05-03", p("date(ar){D MMMM YYYY}", "3 مايو 2024"))
+        assertEquals("2024-05-03", p("date{DD.MM.YY}", "03.05.24"))
+        assertNull(p("date{MM/DD/YYYY}", "02/30/2024"))
+        assertEquals("14:05:00", p("time{hh:MM A}", "02:05 PM"))
+        assertEquals("123456789", p("text{999-99-9999}", "123-45-6789"))
+        assertNull(p("text{999-99-9999}", "123456789"))
+        // validation: canonical or typed values that the pattern reads conform
+        assertTrue(XfaPicture.conforms("text{999-99-9999}", "123456789"))
+        assertTrue(XfaPicture.conforms("date{MM/DD/YYYY}", "05/03/2024"))
+        assertFalse(XfaPicture.conforms("text{999-99-9999}", "12-34"))
+        assertTrue(XfaPicture.conforms("text{999}", ""))
     }
 }

@@ -14,11 +14,22 @@ internal object RedactIo {
         val tmp = File(dir, ".${out.name}.${System.nanoTime()}.tmp")
         try {
             doc.save(tmp)
-            if (!tmp.renameTo(out)) {
-                // renameTo does not replace an existing file on every platform
-                if (out.exists() && !out.delete()) { tmp.copyTo(out, overwrite = true) }
-                else if (!tmp.renameTo(out)) tmp.copyTo(out, overwrite = true)
-            }
+            moveInto(tmp, out)
         } finally { if (tmp.exists()) tmp.delete() }
+    }
+
+    /**
+     * Moves the finished [tmp] (same folder) to [out]. A rename where possible; otherwise the bytes are copied to a
+     * second temp file next to [out] first, so [out] is never a half-written copy.
+     */
+    fun moveInto(tmp: File, out: File) {
+        if (tmp.renameTo(out)) return
+        // renameTo does not replace an existing file on every platform
+        if (out.exists() && out.delete() && tmp.renameTo(out)) return
+        val copy = File(out.absoluteFile.parentFile, ".${out.name}.${System.nanoTime()}.cp")
+        try {
+            tmp.copyTo(copy, overwrite = true)
+            if (!copy.renameTo(out)) { out.delete(); if (!copy.renameTo(out)) throw java.io.IOException("cannot write ${out.name}") }
+        } finally { if (copy.exists()) copy.delete() }
     }
 }

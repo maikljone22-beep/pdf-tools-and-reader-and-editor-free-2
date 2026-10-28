@@ -7,27 +7,40 @@ import java.util.GregorianCalendar
 import java.util.Locale
 
 /**
- * XFA picture clauses (`<format><picture>`): the display of a field value from its canonical form. Supports the
- * num{}, date{}, time{}, text{} and zero{} / null{} categories with their common symbols; a bare pattern takes its
- * category from the field type. Alternatives ("a|b") use the first one that formats. Returns null when a pattern
- * cannot format the value (the raw value is then shown, as Acrobat does for values that do not match).
+ * XFA picture clauses: the display (`<format><picture>`), edit (`<ui><picture>`) and validation
+ * (`<validate><picture>`) patterns of a field. [format] turns the canonical value into its pattern form; [parse]
+ * reads text typed in a pattern form back to the canonical value (num: plain decimal, date: YYYY-MM-DD, time:
+ * HH:MM:SS, text: the placeholder characters). Supports the num{}, date{}, time{}, text{} and zero{} / null{}
+ * categories with their common symbols; a bare pattern takes its category from the field type. Alternatives
+ * ("a|b") use the first one that works. A locale in the category ("date(ar_SA){…}") or the field's locale gives
+ * Arabic month and day names. In num patterns '%' shows the value as a percentage (0.25 → 25%).
+ * Null results mean the value does not match (the raw value is then shown, as Acrobat does).
  */
 object XfaPicture {
     enum class Hint { TEXT, NUMBER, DATE, TIME }
+
+    /** Key of the generated AcroForm text field that keeps the XFA display picture (our key). */
+    const val KEY = "SDXfaPicture"
+    /** Keys of the edit and validation pictures (our keys). */
+    const val KEY_EDIT = "SDXfaEditPicture"
+    const val KEY_VALIDATE = "SDXfaValidatePicture"
+
+    private val CATEGORY_START = Regex("""^(num|date|time|text|zero|null|datetime)(\([^)]*\))?\{""")
+    private val CATEGORY = Regex("""^(num|date|time|text|zero|null|datetime)(?:\(([^)]*)\))?\{(.*)\}$""", RegexOption.DOT_MATCHES_ALL)
 
     fun format(picture: String?, raw: String, hint: Hint = Hint.TEXT): String? {
         val p = picture?.trim().orEmpty()
         if (p.isEmpty()) return null
         for (alt in splitAlternatives(p)) {
-            val (cat, body) = category(alt, hint)
-            val r = when (cat) {
-                "zero" -> if (raw.toBigDecimalOrNull()?.signum() == 0) literalOnly(body) else null
-                "null" -> if (raw.isEmpty()) literalOnly(body) else null
-                else -> if (raw.isEmpty()) null else when (cat) {
-                    "num" -> num(body, raw)
-                    "date" -> date(body, raw)
-                    "time" -> time(body, raw)
-                    "text" -> text(body, raw)
+            val c = category(alt, hint)
+            val r = when (c.cat) {
+                "zero" -> if (raw.toBigDecimalOrNull()?.signum() == 0) literalOnly(c.body) else null
+                "null" -> if (raw.isEmpty()) literalOnly(c.body) else null
+                else -> if (raw.isEmpty()) null else when (c.cat) {
+                    "num" -> num(c.body, raw)
+                    "date" -> date(c.body, raw, c.arabic)
+                    "time" -> time(c.body, raw, c.arabic)
+                    "text" -> text(c.body, raw)
                     else -> null
                 }
             }
@@ -36,16 +49,42 @@ object XfaPicture {
         return null
     }
 
-    /** Key of the generated AcroForm text field that keeps the XFA display picture (our key). */
-    const val KEY = "SDXfaPicture"
+    /** Canonical value of [input] typed in the form of [picture]; null when it does not match. */
+    fun parse(picture: String?, input: String, hint: Hint = Hint.TEXT): String? {
+        val p = picture?.trim().orEmpty()
+        val s = input.trim()
+        if (p.isEmpty() || s.isEmpty()) return null
+        for (alt in splitAlternatives(p)) {
+            val c = category(alt, hint)
+            val r = when (c.cat) {
+                "num" -> parseNum(c.body, s)
+                "date" -> parseDateText(c.body, s)
+                "time" -> parseTime(c.body, s)
+                "text" -> parseText(c.body, s)
+                else -> null
+            }
+            if (r != null) return r
+        }
+        return null
+    }
 
-    private val CATEGORY_START = Regex("""^(num|date|time|text|zero|null|datetime)(\([^)]*\))?\{""")
+    /** Whether [value] (canonical or typed) conforms to the validation [picture] (empty values always do). */
+    fun conforms(picture: String?, value: String, hint: Hint = Hint.TEXT): Boolean =
+        picture.isNullOrBlank() || value.isEmpty() || format(picture, value, hint) != null || parse(picture, value, hint) != null
 
-    /** [p] with an explicit category: a bare pattern gets num{} / date{} / time{} from [hint] (text stays bare). */
-    fun withCategory(p: String, hint: Hint): String {
+    /** [p] with an explicit category: a bare pattern gets num{} / date{} / time{} from [hint]; [locale] is kept with it. */
+    fun withCategory(p: String, hint: Hint, locale: String? = null): String {
         val t = p.trim()
-        if (t.isEmpty() || CATEGORY_START.containsMatchIn(t)) return t
-        return when (hint) { Hint.NUMBER -> "num{$t}"; Hint.DATE -> "date{$t}"; Hint.TIME -> "time{$t}"; Hint.TEXT -> "text{$t}" }
+        if (t.isEmpty()) return t
+        val loc = locale?.takeIf { it.isNotBlank() }?.let { "($it)" }.orEmpty()
+        return splitAlternatives(t).joinToString("|") { alt ->
+            val m = CATEGORY.find(alt)
+            when {
+                m == null -> when (hint) { Hint.NUMBER -> "num$loc{$alt}"; Hint.DATE -> "date$loc{$alt}"; Hint.TIME -> "time$loc{$alt}"; Hint.TEXT -> "text$loc{$alt}" }
+                m.groupValues[2].isEmpty() && loc.isNotEmpty() -> m.groupValues[1] + loc + "{" + m.groupValues[3] + "}"
+                else -> alt
+            }
+        }
     }
 
     private fun splitAlternatives(p: String): List<String> {
@@ -63,10 +102,12 @@ object XfaPicture {
         return out.map { it.trim() }.filter { it.isNotEmpty() }
     }
 
-    private fun category(alt: String, hint: Hint): Pair<String, String> {
-        val m = Regex("""^(num|date|time|text|zero|null|datetime)(\([^)]*\))?\{(.*)\}$""", RegexOption.DOT_MATCHES_ALL).find(alt)
-        if (m != null) return m.groupValues[1] to m.groupValues[3]
-        return when (hint) { Hint.NUMBER -> "num"; Hint.DATE -> "date"; Hint.TIME -> "time"; Hint.TEXT -> "text" } to alt
+    private class Cat(val cat: String, val arabic: Boolean, val body: String)
+
+    private fun category(alt: String, hint: Hint): Cat {
+        val m = CATEGORY.find(alt)
+        if (m != null) return Cat(m.groupValues[1], m.groupValues[2].lowercase().startsWith("ar"), m.groupValues[3])
+        return Cat(when (hint) { Hint.NUMBER -> "num"; Hint.DATE -> "date"; Hint.TIME -> "time"; Hint.TEXT -> "text" }, false, alt)
     }
 
     /** Pattern tokens: quoted literals stay literal; letters repeat into runs ("MMM", "zz"). */
@@ -89,21 +130,26 @@ object XfaPicture {
 
     // ---------------------------------------------------------------- num
 
+    private fun radixOf(body: String): Int {
+        var q = false
+        for ((i, c) in body.withIndex()) { if (c == '\'') q = !q; if (!q && (c == '.' || c == 'v' || c == 'V')) return i }
+        return -1
+    }
+
+    private fun hasPercent(body: String): Boolean = tokens(body).any { !it.startsWith("'") && it.contains('%') }
+
     private fun num(body: String, raw: String): String? {
         val v = raw.trim().replace(",", "").toBigDecimalOrNull() ?: return null
-        val value = v      // '%' is printed as a literal; the value is not scaled
-        // split into integer and fraction pattern at the radix (. or v / V)
-        var radix = -1; var q = false
-        for ((i, c) in body.withIndex()) { if (c == '\'') q = !q; if (!q && (c == '.' || c == 'v' || c == 'V')) { radix = i; break } }
+        val value = if (hasPercent(body)) v.movePointRight(2) else v
+        val radix = radixOf(body)
         val intPat = if (radix < 0) body else body.substring(0, radix)
         val fracPat = if (radix < 0) "" else body.substring(radix + 1)
-        val fracDigits = fracPat.count { it == '9' || it == 'z' || it == 'Z' || it == '8' }
+        val fracDigits = tokens(fracPat).filter { !it.startsWith("'") }.sumOf { t -> t.count { it == '9' || it == 'z' || it == 'Z' || it == '8' } }
         val rounded = value.abs().setScale(fracDigits, RoundingMode.HALF_UP)
         val plain = rounded.toPlainString()
         var intDigits = plain.substringBefore('.').trimStart('0')
         val frac = if (fracDigits > 0) plain.substringAfter('.', "").padEnd(fracDigits, '0') else ""
         val neg = value.signum() < 0 && rounded.signum() != 0
-        // integer part, right to left
         val itoks = tokens(intPat)
         val digitSlots = itoks.sumOf { t -> if (t.startsWith("'")) 0 else t.count { it == '9' || it == 'z' || it == 'Z' } }
         if (intDigits.length > digitSlots) return null       // does not fit the picture
@@ -129,25 +175,44 @@ object XfaPicture {
         for (t in tokens(fracPat)) {
             if (t.startsWith("'")) { sbF.append(t.substring(1)); continue }
             for (c in t) when (c) {
-                '9', 'Z', '8' -> { sbF.append(frac.getOrElse(fi) { '0' }); fi++ }
-                'z' -> { sbF.append(frac.getOrElse(fi) { '0' }); fi++ }
+                '9', 'Z', '8', 'z' -> { sbF.append(frac.getOrElse(fi) { '0' }); fi++ }
                 's' -> { if (neg) sbF.append('-'); signDone = true }
                 'S' -> { sbF.append(if (neg) '-' else ' '); signDone = true }
                 else -> sbF.append(c)
             }
         }
-        // 8 = optional trailing digits: drop trailing zeros they produced
+        // 8 = optional trailing digits: drop the trailing zeros they produced (only digits right before literals / the end)
         var fracOut = sbF.toString()
-        if (fracPat.contains('8')) fracOut = fracOut.trimEnd('0')
+        if (fracPat.contains('8')) fracOut = Regex("0+(?=\\D*$)").replace(fracOut, "")
         val sepOut = if (radix < 0 || (fracPat.contains('8') && fracOut.none { it.isDigit() })) "" else "."
         val text = sbI.toString() + sepOut + fracOut
         return if (neg && !signDone) "-$text" else text
+    }
+
+    private fun parseNum(body: String, s: String): String? {
+        // keep digits, the radix and a sign; parentheses or a trailing minus also mean negative
+        val neg = s.contains('-') || (s.contains('(') && s.contains(')'))
+        val digits = StringBuilder(); var seenRadix = false
+        for (c in s) when {
+            c.isDigit() -> digits.append(Character.getNumericValue(c))      // Arabic-Indic digits too
+            c == '.' || c == '٫' -> if (!seenRadix) { digits.append('.'); seenRadix = true } else return null
+            c == ',' || c == '٬' || c == ' ' || c == '-' || c == '+' || c == '(' || c == ')' || c == '$' || c == '%' -> {}
+            c.isLetter() -> {}                                                  // currency words / units of the pattern
+            else -> if (!literalOnly(body).contains(c)) return null
+        }
+        if (digits.isEmpty() || digits.toString() == ".") return null
+        var v = digits.toString().toBigDecimalOrNull() ?: return null
+        if (hasPercent(body)) v = v.movePointLeft(2)
+        if (neg) v = v.negate()
+        return v.stripTrailingZeros().let { if (it.scale() < 0) it.setScale(0) else it }.toPlainString()
     }
 
     // ---------------------------------------------------------------- date / time
 
     private val MONTHS = listOf("January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December")
     private val DAYS = listOf("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday")
+    private val MONTHS_AR = listOf("يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر")
+    private val DAYS_AR = listOf("الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت")
 
     /** Canonical XFA date: YYYY-MM-DD or YYYYMMDD (time part ignored). */
     fun parseDate(raw: String): Triple<Int, Int, Int>? {
@@ -158,7 +223,10 @@ object XfaPicture {
         return Triple(y, mo, d)
     }
 
-    private fun date(body: String, raw: String): String? {
+    private fun month(mo: Int, full: Boolean, ar: Boolean) = if (ar) MONTHS_AR[mo - 1] else MONTHS[mo - 1].let { if (full) it else it.take(3) }
+    private fun day(dow: Int, full: Boolean, ar: Boolean) = if (ar) DAYS_AR[dow] else DAYS[dow].let { if (full) it else it.take(3) }
+
+    private fun date(body: String, raw: String, ar: Boolean): String? {
         val (y, mo, d) = parseDate(raw) ?: return null
         val cal = GregorianCalendar(y, mo - 1, d)
         if (cal.get(Calendar.DAY_OF_MONTH) != d) return null
@@ -169,15 +237,52 @@ object XfaPicture {
                 t == "D" -> d.toString(); t == "DD" -> "%02d".format(Locale.US, d)
                 t == "J" -> cal.get(Calendar.DAY_OF_YEAR).toString(); t == "JJJ" -> "%03d".format(Locale.US, cal.get(Calendar.DAY_OF_YEAR))
                 t == "M" -> mo.toString(); t == "MM" -> "%02d".format(Locale.US, mo)
-                t == "MMM" -> MONTHS[mo - 1].take(3); t == "MMMM" -> MONTHS[mo - 1]
-                t == "E" -> (dow + 1).toString(); t == "EEE" -> DAYS[dow].take(3); t == "EEEE" -> DAYS[dow]
+                t == "MMM" -> month(mo, false, ar); t == "MMMM" -> month(mo, true, ar)
+                t == "E" -> (dow + 1).toString(); t == "EEE" -> day(dow, false, ar); t == "EEEE" -> day(dow, true, ar)
                 t == "YY" -> "%02d".format(Locale.US, y % 100); t == "YYYY" -> y.toString()
                 else -> t
             }
         }
     }
 
-    private fun time(body: String, raw: String): String? {
+    private fun parseDateText(body: String, s: String): String? {
+        val names = (MONTHS.map { it.lowercase() } + MONTHS.map { it.take(3).lowercase() } + MONTHS_AR)
+        val rx = StringBuilder("^")
+        val roles = ArrayList<String>()
+        for (t in tokens(body)) {
+            when {
+                t.startsWith("'") -> rx.append(Regex.escape(t.substring(1)))
+                t == "D" || t == "M" -> { rx.append("(\\d{1,2})"); roles += t }
+                t == "DD" || t == "MM" || t == "YY" -> { rx.append("(\\d{2})"); roles += t }
+                t == "YYYY" -> { rx.append("(\\d{4})"); roles += t }
+                t == "MMM" || t == "MMMM" -> { rx.append("(\\p{L}+)"); roles += "MN" }
+                t == "EEE" || t == "EEEE" -> { rx.append("\\p{L}+") }
+                t == "E" -> rx.append("\\d")
+                t == "J" || t == "JJJ" -> { rx.append("(\\d{1,3})"); roles += "J" }
+                t.isBlank() -> rx.append("\\s*")
+                else -> rx.append(Regex.escape(t))
+            }
+        }
+        rx.append("$")
+        val m = Regex(rx.toString(), RegexOption.IGNORE_CASE).find(toLatinDigits(s)) ?: return null
+        var y = -1; var mo = -1; var d = -1
+        roles.forEachIndexed { i, r ->
+            val g = m.groupValues[i + 1]
+            when (r) {
+                "D", "DD" -> d = g.toInt()
+                "M", "MM" -> mo = g.toInt()
+                "YY" -> y = g.toInt().let { if (it < 30) 2000 + it else 1900 + it }    // XFA's default century split (30)
+                "YYYY" -> y = g.toInt()
+                "MN" -> mo = names.indexOf(g.lowercase()).takeIf { it >= 0 }?.let { it % 12 + 1 } ?: return null
+            }
+        }
+        if (y < 0 || mo !in 1..12 || d !in 1..31) return null
+        val cal = GregorianCalendar(y, mo - 1, d)
+        if (cal.get(Calendar.DAY_OF_MONTH) != d) return null
+        return "%04d-%02d-%02d".format(Locale.US, y, mo, d)
+    }
+
+    private fun time(body: String, raw: String, ar: Boolean): String? {
         val s = raw.trim().substringAfter('T')
         val m = Regex("""^(\d{2}):?(\d{2})(?::?(\d{2}))?""").find(s) ?: return null
         val h = m.groupValues[1].toInt(); val mi = m.groupValues[2].toInt(); val se = m.groupValues[3].ifEmpty { "0" }.toInt()
@@ -192,11 +297,42 @@ object XfaPicture {
                 t == "K" -> (if (h == 0) 24 else h).toString(); t == "KK" -> "%02d".format(Locale.US, if (h == 0) 24 else h)
                 t == "M" -> mi.toString(); t == "MM" -> "%02d".format(Locale.US, mi)
                 t == "S" -> se.toString(); t == "SS" -> "%02d".format(Locale.US, se)
-                t == "A" -> if (h < 12) "AM" else "PM"
+                t == "A" -> if (ar) (if (h < 12) "ص" else "م") else if (h < 12) "AM" else "PM"
                 else -> t
             }
         }
     }
+
+    private fun parseTime(body: String, s: String): String? {
+        val rx = StringBuilder("^"); val roles = ArrayList<String>()
+        for (t in tokens(body)) when {
+            t.startsWith("'") -> rx.append(Regex.escape(t.substring(1)))
+            t in setOf("h", "H", "k", "K", "M", "S") -> { rx.append("(\\d{1,2})"); roles += t }
+            t in setOf("hh", "HH", "kk", "KK", "MM", "SS") -> { rx.append("(\\d{2})"); roles += t.take(1) }
+            t == "A" -> { rx.append("(AM|PM|am|pm|ص|م)"); roles += "A" }
+            t.isBlank() -> rx.append("\\s*")
+            else -> rx.append(Regex.escape(t))
+        }
+        rx.append("$")
+        val m = Regex(rx.toString()).find(toLatinDigits(s)) ?: return null
+        var h = 0; var mi = 0; var se = 0; var pm: Boolean? = null; var twelve = false
+        roles.forEachIndexed { i, r ->
+            val g = m.groupValues[i + 1]
+            when (r) {
+                "h" -> { h = g.toInt() % 12; twelve = true }
+                "H" -> h = g.toInt()
+                "k" -> { h = g.toInt(); twelve = true }
+                "K" -> h = g.toInt() % 24
+                "M" -> mi = g.toInt(); "S" -> se = g.toInt()
+                "A" -> pm = g.equals("PM", true) || g == "م"
+            }
+        }
+        if (twelve && pm == true) h += 12
+        if (h !in 0..23 || mi !in 0..59 || se !in 0..59) return null
+        return "%02d:%02d:%02d".format(Locale.US, h, mi, se)
+    }
+
+    private fun toLatinDigits(s: String): String = buildString { s.forEach { c -> append(if (c.isDigit()) ('0' + Character.getNumericValue(c)) else c) } }
 
     // ---------------------------------------------------------------- text
 
@@ -205,13 +341,7 @@ object XfaPicture {
         for (t in tokens(body)) {
             if (t.startsWith("'")) { sb.append(t.substring(1)); continue }
             for (c in t) {
-                val need: ((Char) -> Boolean)? = when (c) {
-                    '9' -> { ch -> ch.isDigit() }
-                    'A' -> { ch -> ch.isLetter() }
-                    'X' -> { _ -> true }
-                    'O', '0' -> { ch -> ch.isLetterOrDigit() }
-                    else -> null
-                }
+                val need = placeholder(c)
                 if (need == null) { sb.append(c); continue }
                 val ch = raw.getOrNull(i) ?: return null
                 if (!need(ch)) return null
@@ -219,6 +349,31 @@ object XfaPicture {
             }
         }
         return if (i == raw.length) sb.toString() else null
+    }
+
+    private fun placeholder(c: Char): ((Char) -> Boolean)? = when (c) {
+        '9' -> { ch -> ch.isDigit() }
+        'A' -> { ch -> ch.isLetter() }
+        'X' -> { _ -> true }
+        'O', '0' -> { ch -> ch.isLetterOrDigit() }
+        else -> null
+    }
+
+    /** Typed text in the form of a text picture → its placeholder characters (literals dropped). */
+    private fun parseText(body: String, s: String): String? {
+        val out = StringBuilder(); var i = 0
+        for (t in tokens(body)) {
+            val lit = if (t.startsWith("'")) t.substring(1) else null
+            if (lit != null) { if (!s.startsWith(lit, i)) return null; i += lit.length; continue }
+            for (c in t) {
+                val need = placeholder(c)
+                if (need == null) { if (s.getOrNull(i) != c) return null; i++; continue }
+                val ch = s.getOrNull(i) ?: return null
+                if (!need(ch)) return null
+                out.append(ch); i++
+            }
+        }
+        return if (i == s.length) out.toString() else null
     }
 
     private fun String.toBigDecimalOrNull(): BigDecimal? = runCatching { BigDecimal(this) }.getOrNull()

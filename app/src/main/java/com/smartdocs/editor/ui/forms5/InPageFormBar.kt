@@ -226,6 +226,7 @@ internal fun issueText(i: Issue): String = when (i) {
     is Issue.TooLong -> stringResource(R.string.f5_err_too_long, i.max)
     is Issue.BadFormat -> stringResource(R.string.f5_err_format)
     is Issue.Script -> i.message ?: stringResource(R.string.f5_err_script)
+    is Issue.Picture -> stringResource(R.string.cf_err_picture, i.pattern.substringAfter('{').substringBeforeLast('}'))
 }
 
 @Composable
