@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- aor (fix/ai-office-rest): AI image editing, Workspace crafts, video voices, AI panel width. Arabic (default). -->
+<resources>
+    <string name="aor_panel_drag">اسحب لتغيير عرض اللوحة</string>
+
+    <!-- Workspace crafts -->
+    <string name="aor_infographic">إنفوجرافيك</string>
+    <string name="aor_infographic_sub">ملخص مرئي بالأرقام البارزة والأقسام: صورة أو HTML أو PDF</string>
+    <string name="aor_webpage">صفحة ويب</string>
+    <string name="aor_webpage_sub">صفحة تعريفية تشرح المستند مع فهرس: HTML أو صورة أو PDF</string>
+    <string name="aor_png">صورة PNG</string>
+    <string name="aor_preview">معاينة</string>
+    <string name="aor_key_figures">أرقام بارزة</string>
+    <string name="aor_takeaway">الخلاصة</string>
+    <string name="aor_contents">المحتويات</string>
+    <string name="aor_made_from">أُنشئ بالذكاء الاصطناعي من: %1$s</string>
+    <string name="aor_crafts">عروض وإنفوجرافيك وصفحات</string>
+    <string name="aor_crafts_title">إنشاء من المساحة: %1$s</string>
+    <string name="aor_crafts_empty">لا توجد نتائج بعد. أنشئ عرضاً تقديمياً أو إنفوجرافيك أو صفحة ويب من ملفات هذه المساحة، وستظهر هنا لتفتحها لاحقاً.</string>
+    <string name="aor_craft_remove">إزالة من القائمة</string>
+
+    <!-- Narrated video voices -->
+    <string name="aor_ai_voice">صوت الذكاء الاصطناعي في الفيديو</string>
+    <string name="aor_ai_voice_note">يحتاج إلى الإنترنت؛ إن تعذّر يُستخدم صوت الجهاز.</string>
+    <string name="aor_video_note">يُنشأ الفيديو على الجهاز، بصوت الذكاء الاصطناعي إن كان مفعّلاً أو بصوت محرك النطق في النظام، وقد يستغرق دقيقة أو أكثر.</string>
+    <string name="aor_video_device_voice">تعذّر صوت الذكاء الاصطناعي، فاستُخدم صوت الجهاز.</string>
+
+    <!-- AI image editing and undoable insert -->
+    <string name="aor_edit_pick">اختيار صورة لتعديلها</string>
+    <string name="aor_edit_prompt">صف التعديل (مثلاً: اجعل الخلفية بيضاء)</string>
+    <string name="aor_edit_apply">تعديل الصورة</string>
+    <string name="aor_edit_undo">التراجع عن التعديل</string>
+    <string name="aor_insert_page">إدراج في الصفحة (قابل للتراجع)</string>
+    <string name="aor_img_history">صورة ذكاء اصطناعي، صفحة %1$d</string>
+    <string name="aor_img_inserted">أُدرجت الصورة في الصفحة %1$d. يمكنك التراجع عنها.</string>
+    <string name="aor_img_not_inserted">لم تُدرج الصورة في هذا الملف. احفظ نسخة أو استخدم زر الإدراج في نسخة.</string>
+    <string name="aor_img_failed">تعذّر إدراج الصورة: %1$s</string>
+    <string name="aor_img_unreadable">تعذّرت قراءة الصورة.</string>
+</resources>
