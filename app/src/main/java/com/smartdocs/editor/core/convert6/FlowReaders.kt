@@ -29,12 +29,13 @@ object MdFlow {
                 (c == '*' || c == '_') && (italic || (i + 1 < s.length && !s[i + 1].isWhitespace())) &&
                     (c == '*' || i == 0 || !s[i - 1].isLetterOrDigit()) -> { flush(); italic = !italic; i++; continue }
                 c == '!' && i + 1 < s.length && s[i + 1] == '[' -> {
-                    val m = Regex("""^!\[([^\]]*)]\(([^)\s]+)[^)]*\)""").find(s.substring(i))
-                    if (m != null) { buf.append(m.groupValues[1]); i += m.value.length; continue }
+                    val m = link(s, i + 1)
+                    if (m != null) { buf.append(m.text); i = m.end; continue }
                 }
                 c == '[' -> {
-                    val m = Regex("""^\[([^\]]+)]\(([^)\s]+)[^)]*\)""").find(s.substring(i))
-                    if (m != null) { flush(); out += FRun(m.groupValues[1], bold, italic, link = m.groupValues[2]); i += m.value.length; continue }
+                    val m = link(s, i)
+                    // only http(s) / mailto / tel / in-document links survive (convert audit C34: no javascript: in outputs)
+                    if (m != null && m.text.isNotEmpty()) { flush(); out += FRun(m.text, bold, italic, link = Text6.safeLink(m.url)); i = m.end; continue }
                 }
             }
             buf.append(c); i++
@@ -43,9 +44,63 @@ object MdFlow {
         return out
     }
 
+    /** `[text](url "title")` starting at [start] (the `[`), with balanced parentheses in the URL (Wikipedia links). */
+    class Link(val text: String, val url: String, val end: Int)
+
+    fun link(s: String, start: Int): Link? {
+        if (start >= s.length || s[start] != '[') return null
+        val close = s.indexOf(']', start + 1)
+        if (close < 0 || close + 1 >= s.length || s[close + 1] != '(') return null
+        var depth = 0; var j = close + 2
+        val url = StringBuilder()
+        while (j < s.length) {
+            val c = s[j]
+            if (c == '(') depth++
+            else if (c == ')') { if (depth == 0) break; depth-- }
+            url.append(c); j++
+        }
+        if (j >= s.length) return null
+        val target = url.toString().trim().let { u -> Regex("""^(\S+)(\s+["'(].*)?$""").find(u)?.groupValues?.get(1) ?: u }.removePrefix("<").removeSuffix(">")
+        if (target.isEmpty()) return null
+        return Link(s.substring(start + 1, close), target, j + 1)
+    }
+
+    /** A line that is only a picture: `![alt](src)` (convert audit C35: pictures were dropped). */
+    private val imageLine = Regex("""^!\[([^\]]*)]\((.+)\)$""")
+
+    /** Bytes of a picture source: a base64 data: URI, or what [resolve] returns for a relative path. */
+    fun imageBytes(src: String, resolve: ((String) -> ByteArray?)?): ByteArray? {
+        val u = src.trim().substringBefore(' ').removePrefix("<").removeSuffix(">")
+        if (u.startsWith("data:image/", true) && u.contains(";base64,")) return runCatching { Base64.getMimeDecoder().decode(u.substringAfter(";base64,")) }.getOrNull()
+        if (u.contains("://") || u.startsWith("/") || u.contains("..") || u.startsWith("data:", true)) return null
+        return runCatching { resolve?.invoke(java.net.URLDecoder.decode(u, "UTF-8")) }.getOrNull()
+    }
+
+    /**
+     * Clipboard text is Markdown only with strong signs (convert audit A-M9): a fenced block, a pipe table with its
+     * separator row, or at least two kinds of Markdown constructs (headings, lists of two or more items, **bold**,
+     * links, quotes). A note with one "1. item" line or "5*3*2" stays plain text.
+     */
+    fun looksLikeMarkdown(text: String): Boolean {
+        val lines = text.lines().map { it.trim() }
+        val fence = lines.count { it.startsWith("```") || it.startsWith("~~~") } >= 2
+        val table = lines.zipWithNext().any { (a, b) -> a.startsWith("|") && Regex("""^\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)*\|?$""").matches(b) }
+        if (fence || table) return true
+        val heading = lines.any { Regex("""^#{1,6}\s+\S""").containsMatchIn(it) }
+        val list = lines.count { Regex("""^([-*+]|\d+[.)])\s+\S""").containsMatchIn(it) } >= 2
+        val emph = Regex("""(\*\*[^*\s][^*]*\*\*|__[^_\s][^_]*__)""").containsMatchIn(text)
+        val links = Regex("""!?\[[^\]]+]\([^)\s]+\)""").containsMatchIn(text)
+        val quote = lines.any { it.startsWith("> ") }
+        return listOf(heading, list, emph, links, quote).count { it } >= 2
+    }
+
     private fun cells(line: String): List<String> = line.trim().removePrefix("|").removeSuffix("|").split(Regex("""(?<!\\)\|""")).map { it.trim().replace("\\|", "|") }
 
-    fun parse(md: String, title: String = ""): FlowDoc {
+    /**
+     * [hardBreaks]: every line break inside a paragraph is kept (clipboard text, convert audit A-M9).
+     * [resolve] reads a picture referenced by a relative path (null = only data: URIs are embedded).
+     */
+    fun parse(md: String, title: String = "", hardBreaks: Boolean = false, resolve: ((String) -> ByteArray?)? = null): FlowDoc {
         val lines = md.replace("\r\n", "\n").replace('\r', '\n').split('\n')
         val out = ArrayList<FBlock>()
         val para = StringBuilder()
@@ -61,6 +116,12 @@ object MdFlow {
                     out += FBlock.Code(code.toString())
                 }
                 t.isEmpty() -> flush()
+                imageLine.matches(t) && imageBytes(imageLine.find(t)!!.groupValues[2], resolve) != null -> {
+                    flush()
+                    val m = imageLine.find(t)!!
+                    val bytes = imageBytes(m.groupValues[2], resolve)!!
+                    out += FBlock.Image(bytes, Images6.sniffExt(bytes) ?: "png", alt = m.groupValues[1])
+                }
                 Regex("""^#{1,6}\s""").containsMatchIn(t) -> {
                     flush()
                     val n = t.takeWhile { it == '#' }.length
@@ -96,7 +157,7 @@ object MdFlow {
                     val num = if (marker[0].isDigit()) marker.dropLast(1).toIntOrNull() ?: 1 else 0
                     out += FBlock.Item(inline(text), Text6.rtlDominant(text), (indent / 2).coerceIn(0, 8), num)
                 }
-                l.endsWith("  ") -> { para.append(t).append('\n') }
+                l.endsWith("  ") || hardBreaks -> { para.append(t).append('\n') }
                 else -> para.append(t).append(' ')
             }
             i++
@@ -113,11 +174,15 @@ object HtmlFlow {
     private val entity = Regex("""&(#x[0-9a-fA-F]+|#\d+|[a-zA-Z]+);""")
     private val named = mapOf("amp" to "&", "lt" to "<", "gt" to ">", "quot" to "\"", "apos" to "'", "nbsp" to "\u00A0", "laquo" to "«", "raquo" to "»", "hellip" to "…", "mdash" to "—", "ndash" to "–", "rlm" to "\u200F", "lrm" to "\u200E", "zwnj" to "\u200C", "zwj" to "\u200D", "copy" to "©")
 
+    /** A numeric character reference; an invalid one (above U+10FFFF, a lone surrogate, NUL) becomes U+FFFD (audit C19). */
+    private fun codePoint(cp: Long?): String =
+        if (cp == null || cp <= 0L || cp > 0x10FFFFL || cp in 0xD800L..0xDFFFL) "�" else String(Character.toChars(cp.toInt()))
+
     fun decode(s: String): String = entity.replace(s) { m ->
         val v = m.groupValues[1]
         when {
-            v.startsWith("#x") || v.startsWith("#X") -> v.drop(2).toIntOrNull(16)?.let { String(Character.toChars(it)) } ?: m.value
-            v.startsWith("#") -> v.drop(1).toIntOrNull()?.let { String(Character.toChars(it)) } ?: m.value
+            v.startsWith("#x") || v.startsWith("#X") -> codePoint(v.drop(2).take(9).toLongOrNull(16))
+            v.startsWith("#") -> codePoint(v.drop(1).take(12).toLongOrNull())
             else -> named[v.lowercase()] ?: m.value
         }
     }
@@ -179,7 +244,7 @@ object HtmlFlow {
                 "b", "strong" -> bold += if (close) -1 else 1
                 "i", "em", "cite" -> italic += if (close) -1 else 1
                 "code", "kbd", "tt" -> if (!pre) code += if (close) -1 else 1
-                "a" -> link = if (close) null else Regex("""(?i)href\s*=\s*["']([^"']+)["']""").find(attrs)?.groupValues?.get(1)?.takeIf { it.startsWith("http") || it.startsWith("mailto:") }
+                "a" -> link = if (close) null else Regex("""(?i)href\s*=\s*["']([^"']+)["']""").find(attrs)?.groupValues?.get(1)?.let { Text6.safeLink(decode(it)) }?.takeIf { !it.startsWith("#") }
                 "br" -> if (cell != null) cell!!.append('\n') else if (pre) preBuf.append('\n') else runs += FRun("\n", bold > 0, italic > 0)
                 "p", "div", "section", "article", "header", "footer", "figure", "figcaption", "dd", "dt", "caption" -> { flush(); block = if (close && listStack.isNotEmpty()) "li" else "p" }
                 "h1", "h2", "h3", "h4", "h5", "h6" -> { flush(); block = if (close) "p" else tag }

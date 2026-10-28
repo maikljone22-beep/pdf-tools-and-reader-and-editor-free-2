@@ -15,4 +15,8 @@
     <string name="cf_show_note">عرض الملاحظة</string>
     <string name="cf_auto_popup">فتح ملاحظة التعليق تلقائيًا</string>
     <string name="cf_auto_popup_sub">تظهر ملاحظة التعليق المحدد مباشرة؛ عند الإيقاف تُفتح بزر «عرض الملاحظة».</string>
+    <string name="cf_overflow_ind">علامة تجاوز النص في الحقول</string>
+    <string name="cf_float_note">نافذة الملاحظة العائمة</string>
+    <string name="cf_float_select">حُدِّد التعليق؛ اضغط حفظ مرة أخرى.</string>
+    <string name="cf_float_gone">لم يعد هذا التعليق موجودًا.</string>
 </resources>

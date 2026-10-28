@@ -40,7 +40,7 @@ object SelBindings {
         SelAction.REPLACE_TEXT -> R.string.an_replace_title
         SelAction.INSERT_TEXT -> R.string.an_insert_text_title
         SelAction.ADD_NOTE -> R.string.annot_note
-        SelAction.READING_BOOKMARK -> R.string.add_bookmark
+        SelAction.READING_BOOKMARK -> R.string.tvc_reading_bookmark      // tab-view-core V-11: named apart from "Bookmark in PDF"
         SelAction.PDF_BOOKMARK -> R.string.nbm_bm_from_selection
         SelAction.SEARCH_DOC -> R.string.sm_search_doc
         SelAction.WEB_SEARCH -> R.string.rd_web_search
@@ -82,6 +82,7 @@ object SelBindings {
         SelAction.A_THICKNESS -> R.string.ae_thickness
         SelAction.A_EDIT_TEXT -> R.string.ae_edit_text
         SelAction.A_TEXT_FORMAT -> R.string.cx_text_format
+        SelAction.A_FLOAT_NOTE -> R.string.cf_float_note
         SelAction.A_COPY -> R.string.ae_copy
         SelAction.A_PLAY, SelAction.A_OPEN_FILE -> R.string.an_open
         SelAction.A_STAMP_CUT -> R.string.nf2_cut
@@ -176,7 +177,7 @@ object SelBindings {
         SelAction.REPLACE_TEXT -> Icons.Default.FindReplace
         SelAction.INSERT_TEXT -> Icons.Default.PostAdd
         SelAction.ADD_NOTE, SelAction.NOTE_HERE -> Icons.Default.AddComment
-        SelAction.READING_BOOKMARK -> Icons.Default.Bookmark
+        SelAction.READING_BOOKMARK -> Icons.Default.BookmarkBorder      // tab-view-core V-11
         SelAction.PDF_BOOKMARK -> Icons.Default.BookmarkAdd
         SelAction.SEARCH_DOC -> Icons.Default.FindInPage
         SelAction.WEB_SEARCH -> Icons.Default.TravelExplore
@@ -220,7 +221,7 @@ object SelBindings {
         SelAction.A_STAMP_COPY -> Icons.Default.CopyAll
         SelAction.A_STAMP_DEFAULT_SIZE -> Icons.Default.AspectRatio
         SelAction.A_STAMP_PAGES, SelAction.A_PLACE_PAGES -> Icons.Default.FileCopy
-        SelAction.A_OPEN_FILE -> Icons.Default.OpenInNew
+        SelAction.A_OPEN_FILE, SelAction.A_FLOAT_NOTE -> Icons.Default.OpenInNew
         SelAction.A_VIDEO_OPTIONS, SelAction.A_IMAGE_PROPS -> Icons.Default.Tune
         SelAction.A_VIDEO_SHARE -> Icons.Default.Share
         SelAction.A_VIDEO_SAVE -> Icons.Default.SaveAlt

@@ -23,12 +23,146 @@ internal class DocxReader(private val pkg: OoxmlPackage) {
     private var bodyIndex = 0
     private var pendingBlocks = ArrayList<Block>()
 
+    /** Part whose relationships resolve pictures / links (document, header, footer or notes part). */
+    private var curPart: String = docPath
+
+    // convert audit A-H10 / A-M4: section page setup, header / footer references, notes, equations, charts
+    private var page: DocPage? = null
+    private var headerRef: String? = null
+    private var footerRef: String? = null
+    private val noteRefs = ArrayList<Pair<String, String>>()   // (kind "footnote"/"endnote", id) in reference order
+    private var equations = 0
+    private var unrendered = 0
+
     fun read(): DocModel {
         loadStyles(); loadNumbering()
         val p = pkg.parser(docPath) ?: throw OfficeFormatException("word/document.xml missing")
         if (!p.seek("body")) return DocModel(emptyList())
         val blocks = readBlocks(p, topLevel = true)
-        return DocModel(blocks, readTitle())
+        val header = headerRef?.let { partBlocks(it, "hdr") }.orEmpty()
+        val footer = footerRef?.let { partBlocks(it, "ftr") }.orEmpty()
+        return DocModel(blocks, readTitle(), header, footer, readNotes(), page, equations, unrendered)
+    }
+
+    /** Blocks of a header / footer part (rId of the document's relationships). */
+    private fun partBlocks(rId: String, root: String): List<Block> = runCatching {
+        val path = pkg.rels(docPath)[rId]?.target ?: return emptyList()
+        val p = pkg.parser(path) ?: return emptyList()
+        if (!p.seek(root)) return emptyList()
+        val saved = curPart; curPart = path
+        try { readBlocks(p, topLevel = false) } finally { curPart = saved }
+    }.getOrDefault(emptyList())
+
+    /** Footnotes and endnotes in the order they are referenced, numbered 1, 2 … (endnotes i, ii …). */
+    private fun readNotes(): List<Pair<String, List<Block>>> {
+        if (noteRefs.isEmpty()) return emptyList()
+        fun load(kind: String): Map<String, List<Block>> {
+            val path = pkg.rels(docPath).values.firstOrNull { it.type.endsWith("/" + kind + "s") }?.target ?: "word/${kind}s.xml"
+            val p = pkg.parser(path) ?: return emptyMap()
+            if (!p.seek(kind + "s")) return emptyMap()
+            val out = HashMap<String, List<Block>>()
+            val saved = curPart; curPart = path
+            try {
+                p.forEachChild { n ->
+                    if (n == kind) {
+                        val id = p.attr("id"); val type = p.attr("type")
+                        if (id != null && (type == null || type == "normal")) out[id] = readBlocks(p, topLevel = false)
+                    }
+                }
+            } finally { curPart = saved }
+            return out
+        }
+        val foot = runCatching { load("footnote") }.getOrDefault(emptyMap())
+        val end = runCatching { load("endnote") }.getOrDefault(emptyMap())
+        var fn = 0; var en = 0
+        return noteRefs.mapNotNull { (kind, id) ->
+            if (kind == "footnote") foot[id]?.let { (++fn).toString() to it } else end[id]?.let { NumberText.roman(++en).lowercase() to it }
+        }
+    }
+
+    /** The marker of the next footnote / endnote reference (same numbering as [readNotes]). */
+    private fun noteMarker(kind: String, id: String?): String? {
+        id ?: return null
+        noteRefs += kind to id
+        return if (kind == "footnote") noteRefs.count { it.first == "footnote" }.toString() else NumberText.roman(noteRefs.count { it.first == "endnote" }).lowercase()
+    }
+
+    /** The section properties: page size / orientation / margins and the default header / footer. */
+    private fun readSection(p: XmlPullParser) {
+        var w = 0; var h = 0; var land = false; var t = 1440; var r = 1440; var b = 1440; var l = 1440
+        var hdr: String? = null; var ftr: String? = null; var hdrFirst: String? = null; var ftrFirst: String? = null
+        p.forEachChild { n ->
+            when (n) {
+                "pgSz" -> { w = p.attr("w")?.toIntOrNull() ?: 0; h = p.attr("h")?.toIntOrNull() ?: 0; land = p.attr("orient") == "landscape" }
+                "pgMar" -> { t = p.attr("top")?.toIntOrNull()?.let { kotlin.math.abs(it) } ?: t; r = p.attr("right")?.toIntOrNull() ?: r; b = p.attr("bottom")?.toIntOrNull()?.let { kotlin.math.abs(it) } ?: b; l = p.attr("left")?.toIntOrNull() ?: l }
+                "headerReference" -> when (p.attr("type")) { "default", null -> hdr = p.rAttr("id"); "first" -> hdrFirst = p.rAttr("id") }
+                "footerReference" -> when (p.attr("type")) { "default", null -> ftr = p.rAttr("id"); "first" -> ftrFirst = p.rAttr("id") }
+            }
+        }
+        if (w > 0 && h > 0) page = DocPage(w, h, land || w > h, t, r, b, l)
+        headerRef = hdr ?: hdrFirst ?: headerRef
+        footerRef = ftr ?: ftrFirst ?: footerRef
+    }
+
+    // ---------------- equations (OMML) → linear text ----------------
+
+    private fun grp(s: String): String = if (s.length <= 1 || (s.startsWith("(") && s.endsWith(")"))) s else "($s)"
+
+    /** Children of the current math element as linear text; ends on its END_TAG. */
+    private fun math(p: XmlPullParser): String {
+        val sb = StringBuilder()
+        p.forEachChild { n -> sb.append(mathElem(p, n)) }
+        return sb.toString()
+    }
+
+    private fun mathElem(p: XmlPullParser, n: String): String = when (n) {
+        "r" -> { val sb = StringBuilder(); p.forEachChild { c -> if (c == "t") sb.append(p.readText()) }; sb.toString() }
+        "f" -> {
+            var num = ""; var den = ""; var bar = true
+            p.forEachChild { c -> when (c) { "num" -> num = math(p); "den" -> den = math(p); "fPr" -> p.forEachChild { k -> if (k == "type" && p.attr("val") == "noBar") bar = false } } }
+            if (bar) grp(num) + "/" + grp(den) else "$num $den"
+        }
+        "sSup", "sSub", "sSubSup", "sPre" -> {
+            var e = ""; var sub = ""; var sup = ""
+            p.forEachChild { c -> when (c) { "e" -> e = math(p); "sub" -> sub = math(p); "sup" -> sup = math(p) } }
+            val scripts = (if (sub.isNotEmpty()) "_" + grp(sub) else "") + (if (sup.isNotEmpty()) "^" + grp(sup) else "")
+            if (n == "sPre") scripts + e else e + scripts
+        }
+        "rad" -> {
+            var deg = ""; var e = ""
+            p.forEachChild { c -> when (c) { "deg" -> deg = math(p); "e" -> e = math(p) } }
+            (if (deg.isBlank()) "√" else "${grp(deg)}√") + grp(e)
+        }
+        "nary" -> {
+            var chr = "∫"; var sub = ""; var sup = ""; var e = ""
+            p.forEachChild { c -> when (c) { "naryPr" -> p.forEachChild { k -> if (k == "chr") p.attr("val")?.takeIf { it.isNotEmpty() }?.let { chr = it } }; "sub" -> sub = math(p); "sup" -> sup = math(p); "e" -> e = math(p) } }
+            chr + (if (sub.isNotEmpty()) "_" + grp(sub) else "") + (if (sup.isNotEmpty()) "^" + grp(sup) else "") + " " + e
+        }
+        "d" -> {
+            var beg = "("; var end = ")"; var sep = "|"; val parts = ArrayList<String>()
+            p.forEachChild { c -> when (c) { "dPr" -> p.forEachChild { k -> when (k) { "begChr" -> beg = p.attr("val") ?: ""; "endChr" -> end = p.attr("val") ?: ""; "sepChr" -> sep = p.attr("val") ?: "|" } }; "e" -> parts += math(p) } }
+            beg + parts.joinToString(sep) + end
+        }
+        "func" -> { var name = ""; var e = ""; p.forEachChild { c -> when (c) { "fName" -> name = math(p); "e" -> e = math(p) } }; "$name ${grp(e)}" }
+        "acc" -> { var chr = "̂"; var e = ""; p.forEachChild { c -> when (c) { "accPr" -> p.forEachChild { k -> if (k == "chr") p.attr("val")?.let { chr = it } }; "e" -> e = math(p) } }; e + chr }
+        "bar" -> { var e = ""; p.forEachChild { c -> if (c == "e") e = math(p) }; e + "̅" }
+        "limLow", "limUpp" -> { var e = ""; var lim = ""; p.forEachChild { c -> when (c) { "e" -> e = math(p); "lim" -> lim = math(p) } }; e + (if (n == "limLow") "_" else "^") + grp(lim) }
+        "eqArr" -> { val rows = ArrayList<String>(); p.forEachChild { c -> if (c == "e") rows += math(p) }; rows.joinToString("; ") }
+        "m" -> {
+            val rows = ArrayList<String>()
+            p.forEachChild { c -> if (c == "mr") { val cells = ArrayList<String>(); p.forEachChild { k -> if (k == "e") cells += math(p) }; rows += cells.joinToString(" ") } }
+            "[" + rows.joinToString("; ") + "]"
+        }
+        "oMath", "oMathPara", "e", "num", "den", "sub", "sup", "deg", "lim", "fName", "box", "borderBox", "groupChr", "phant" -> math(p)
+        else -> ""
+    }
+
+    /** An equation as one run of linear text in a math font ("x = (−b ± √(b²−4ac))/(2a)"). */
+    private fun readEquation(p: XmlPullParser, out: MutableList<Inline>) {
+        val text = runCatching { math(p) }.getOrDefault("").trim()
+        if (text.isEmpty()) return
+        equations++
+        out.add(Inline.Text(" $text ", RunStyle(italic = true, font = "Cambria Math")))
     }
 
     private fun readTitle(): String? {
@@ -51,7 +185,10 @@ internal class DocxReader(private val pkg: OoxmlPackage) {
                 // paragraphs nested in containers are not direct body children, so they are not editable by index
                 "sdt" -> p.forEachChild { c -> if (c == "sdtContent") out.addAll(readBlocks(p, false)) }
                 "customXml", "ins", "smartTag" -> out.addAll(readBlocks(p, false))
-                "AlternateContent" -> p.forEachChild { c -> if (c == "Choice") out.addAll(readBlocks(p, false)) }
+                // Choice first; the Fallback only when the Choice gave nothing (a feature this reader does not know)
+                "AlternateContent" -> { val before = out.size; p.forEachChild { c -> if (c == "Choice" && out.size == before) out.addAll(readBlocks(p, false)) else if (c == "Fallback" && out.size == before) out.addAll(readBlocks(p, false)) } }
+                "sectPr" -> if (topLevel) readSection(p)
+                "oMathPara" -> { val inl = ArrayList<Inline>(); readEquation(p, inl); if (inl.isNotEmpty()) out.add(Block.Para(Paragraph(inl, Align.CENTER))) }
             }
         }
         return out
@@ -100,12 +237,13 @@ internal class DocxReader(private val pkg: OoxmlPackage) {
             "r" -> readRun(p, out, link)
             "hyperlink" -> {
                 val rid = p.rAttr("id")
-                val target = rid?.let { pkg.rels(docPath)[it]?.target } ?: p.attr("anchor")?.let { "#$it" }
+                val target = rid?.let { pkg.rels(curPart)[it]?.target } ?: p.attr("anchor")?.let { "#$it" }
                 p.forEachChild { c -> readInlineContainer(p, c, out, target ?: link) }
             }
             "fldSimple", "ins", "smartTag", "customXml", "bdo", "dir", "moveTo" -> p.forEachChild { c -> readInlineContainer(p, c, out, link) }
             "sdt" -> p.forEachChild { c -> if (c == "sdtContent") p.forEachChild { k -> readInlineContainer(p, k, out, link) } }
-            "AlternateContent" -> p.forEachChild { c -> if (c == "Choice") p.forEachChild { k -> readInlineContainer(p, k, out, link) } }
+            "AlternateContent" -> { val before = out.size; p.forEachChild { c -> if ((c == "Choice" || c == "Fallback") && out.size == before) p.forEachChild { k -> readInlineContainer(p, k, out, link) } } }
+            "oMath", "oMathPara" -> readEquation(p, out)
         }
     }
 
@@ -122,8 +260,12 @@ internal class DocxReader(private val pkg: OoxmlPackage) {
                 "sym" -> p.attr("char")?.toIntOrNull(16)?.let { out.add(Inline.Text(symbolChar(it), style, link)) }
                 "drawing" -> readDrawing(p, out)
                 "pict", "object" -> readVml(p, out)
-                "AlternateContent" -> p.forEachChild { c ->
-                    if (c == "Choice") p.forEachChild { k -> if (k == "drawing") readDrawing(p, out) }
+                "AlternateContent" -> { val before = out.size; p.forEachChild { c ->
+                    if (c == "Choice" && out.size == before) p.forEachChild { k -> if (k == "drawing") readDrawing(p, out) else if (k == "pict" || k == "object") readVml(p, out) }
+                    else if (c == "Fallback" && out.size == before) p.forEachChild { k -> if (k == "pict" || k == "object") readVml(p, out) else if (k == "drawing") readDrawing(p, out) }
+                } }
+                "footnoteReference", "endnoteReference" -> noteMarker(if (n == "footnoteReference") "footnote" else "endnote", p.attr("id"))?.let { m ->
+                    out.add(Inline.Text(m, style.copy(vertAlign = "superscript"), link))
                 }
             }
         }
@@ -135,7 +277,7 @@ internal class DocxReader(private val pkg: OoxmlPackage) {
     }
 
     private fun readDrawing(p: XmlPullParser, out: MutableList<Inline>) {
-        var cx = 0L; var cy = 0L; var embed: String? = null; var alt: String? = null
+        var cx = 0L; var cy = 0L; var embed: String? = null; var alt: String? = null; var chart = false
         val d = p.depth
         while (true) {
             val ev = p.next()
@@ -146,9 +288,11 @@ internal class DocxReader(private val pkg: OoxmlPackage) {
                 "docPr" -> alt = p.attr("descr") ?: p.attr("name")
                 "blip" -> if (embed == null) embed = p.rAttr("embed")
                 "txbxContent" -> pendingBlocks.addAll(readBlocks(p, topLevel = false))
+                "graphicData" -> p.attr("uri")?.let { u -> if (u.endsWith("/chart") || u.endsWith("/diagram") || u.contains("chartex")) chart = true }
             }
         }
-        if (embed != null) out.add(Inline.Image(pkg.image(docPath, embed), cx, cy, alt))
+        if (embed != null) out.add(Inline.Image(pkg.image(curPart, embed), cx, cy, alt))
+        else if (chart) { unrendered++; out.add(Inline.Image(null, cx, cy, alt)) }   // charts / SmartArt: a marked placeholder, not silent loss
     }
 
     private fun readVml(p: XmlPullParser, out: MutableList<Inline>) {
@@ -164,7 +308,7 @@ internal class DocxReader(private val pkg: OoxmlPackage) {
                 "txbxContent" -> pendingBlocks.addAll(readBlocks(p, topLevel = false))
             }
         }
-        if (rid != null) out.add(Inline.Image(pkg.image(docPath, rid), w, h))
+        if (rid != null) out.add(Inline.Image(pkg.image(curPart, rid), w, h))
     }
 
     private fun cssLenEmu(style: String, key: String): Long {

@@ -14,6 +14,8 @@ data class AnnotFacts(
     val opacity: Boolean = true,
     val stroke: Boolean = false,
     val editText: Boolean = false,
+    /** A note with editable text (not free text / text stamp): open it in a floating window (7.10). */
+    val floatNote: Boolean = false,
     /** Free text: font / size / bold-italic-underline dialog. */
     val textFormat: Boolean = false,
     /** A sound / screen-without-video annotation, or a sound attachment: play it. */
@@ -65,7 +67,7 @@ object SelObjects {
     /** Bar candidates per object context. The annotation bar shows all of them (its own scrolling row). */
     fun barOrder(ctx: SelCtx): List<SelAction> = when (ctx) {
         SelCtx.ANNOT -> listOf(
-            SelAction.A_COLOR, SelAction.A_OPACITY, SelAction.A_THICKNESS, SelAction.A_EDIT_TEXT, SelAction.A_TEXT_FORMAT, SelAction.A_COPY,
+            SelAction.A_COLOR, SelAction.A_OPACITY, SelAction.A_THICKNESS, SelAction.A_EDIT_TEXT, SelAction.A_FLOAT_NOTE, SelAction.A_TEXT_FORMAT, SelAction.A_COPY,
             SelAction.A_PLAY, SelAction.A_STAMP_CUT, SelAction.A_STAMP_COPY, SelAction.A_STAMP_DEFAULT_SIZE, SelAction.A_STAMP_PAGES,
             SelAction.A_OPEN_FILE, SelAction.A_VIDEO_PLAY, SelAction.A_VIDEO_OPTIONS, SelAction.A_VIDEO_SHARE, SelAction.A_VIDEO_SAVE,
             SelAction.A_RECOGNIZE, SelAction.A_IMAGE_PROPS, SelAction.A_DELETE,
@@ -111,6 +113,7 @@ object SelObjects {
             SelAction.A_THICKNESS -> an.stroke
             SelAction.A_EDIT_TEXT -> an.editText
             SelAction.A_TEXT_FORMAT -> an.textFormat
+            SelAction.A_FLOAT_NOTE -> an.floatNote
             SelAction.A_PLAY -> an.playable
             SelAction.A_STAMP_CUT, SelAction.A_STAMP_COPY -> an.stamp
             SelAction.A_STAMP_DEFAULT_SIZE -> an.stamp && an.sigDefaultSize

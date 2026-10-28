@@ -30,6 +30,7 @@ object SelAnnotMenu {
         val cx = s.annot2.cx
         return AnnotFacts(
             color = annot?.kind != AnnotKind.STAMP_IMAGE && !video, opacity = !video, stroke = hasStroke(annot), editText = hasEditableText(annot),
+            floatNote = hasEditableText(annot) && annot?.kind != AnnotKind.FREETEXT && annot?.kind != AnnotKind.STAMP_TEXT,
             textFormat = annot?.kind == AnnotKind.FREETEXT, playable = nativeAudio || annot?.kind == AnnotKind.SOUND,
             stamp = annot?.kind == AnnotKind.STAMP_IMAGE, sigDefaultSize = sigPath != null, attachment = annot?.kind == AnnotKind.FILE_ATTACH,
             video = video, ink = annot?.kind == AnnotKind.INK,

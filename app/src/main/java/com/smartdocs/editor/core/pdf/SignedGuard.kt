@@ -91,8 +91,13 @@ object SignedGuard {
     }
 
     /** Decision for replacing [src] by the already written [out]. */
-    fun decideWrite(src: File, out: File, password: String?, change: Change, info: Info = inspect(src, password)): Decision =
-        if (!info.protectedBySignature) Decision.PROCEED else decide(info, change, isIncrementalOf(src, out))
+    fun decideWrite(src: File, out: File, password: String?, change: Change, info: Info = inspect(src, password)): Decision {
+        if (!info.protectedBySignature) return Decision.PROCEED
+        val incr = isIncrementalOf(src, out)
+        // a writer that appended an incremental update knows about signatures (form fill, links, attachments):
+        // judged as an annotation-level change, as ReaderState.applyInPlace does
+        return decide(info, if (incr && change == Change.MODIFY) Change.ANNOTATE else change, incr)
+    }
 
     /**
      * Throws [SignedDocumentException] when [out] may not replace [src] (signed and not an incremental update, or

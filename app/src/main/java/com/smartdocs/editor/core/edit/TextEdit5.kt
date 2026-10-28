@@ -348,4 +348,79 @@ object TextEdit5 {
         val rtl = blocks.count { it.rtl } * 2 > blocks.size
         writeIn(context, doc, doc.getPage(page), a.frame.toUser, null, text, style, left, right, first.firstBaseline, rtl)
     }
+
+    // ------------------------------------------------------------------ §14d reflow editing of a page range
+
+    /** Most pages one reflow edit takes (the whole range is analysed and rewritten in one go). */
+    const val FLOW_MAX_PAGES = 30
+
+    private fun flowSources(a: PageAnalysis, page: Int): List<FlowSrc> = a.model.blocks.filter { it.angle == 0f && !it.unreadable }.map { b ->
+        FlowSrc(page, b.text, b.rect.left, b.rect.top, b.rect.right, b.rect.bottom, b.size, b.color, b.bold, b.italic, b.rtl, b.family, b.align,
+            b.firstBaseline, if (b.lineCount > 1) b.lineHeight else null)
+    }
+
+    /** The flow of [pages] (clipped to the document): text in column reading order, paragraphs joined over page breaks. */
+    suspend fun loadFlow(src: File, password: String?, pages: IntRange): Flow = withContext(Dispatchers.IO) {
+        EditIo.load(src, password).use { doc ->
+            val r = pages.first.coerceIn(0, doc.numberOfPages - 1)..pages.last.coerceIn(0, doc.numberOfPages - 1)
+            require(r.last - r.first < FLOW_MAX_PAGES) { "too many pages" }
+            ReflowFlow.build(r, r.associateWith { flowSources(PageTextModel.analyze(doc, it), it) })
+        }
+    }
+
+    /**
+     * §14d: reflow editing of a page range. The upright text of every page of [flow] (as loaded by [loadFlow]; a
+     * changed document throws [StalePageException]) is removed and the edited [text] with its [runs] (bold /
+     * italic / size / colour) is written back as one flow: frame after frame (the column areas in reading order,
+     * page after page), so a paragraph crossing a page break stays one. Text that does not fit continues on new
+     * pages inserted after the range. Returns the number of pages added.
+     */
+    suspend fun reflowRange(context: Context, src: File, out: File, password: String?, flow: Flow, text: String, runs: List<RunStyle>): Int = edit(src, out, password) { doc ->
+        require(flow.pages.last < doc.numberOfPages) { "page range" }
+        val analyses = flow.pages.associateWith { PageTextModel.analyze(doc, it) }
+        if (ReflowFlow.build(flow.pages, analyses.mapValues { (p, a) -> flowSources(a, p) }).text != flow.text) throw StalePageException()
+        for ((p, a) in analyses) {
+            val bs = a.model.blocks.filter { it.angle == 0f && !it.unreadable }
+            if (bs.isNotEmpty()) removeOps(doc, p, a, bs.flatMap { it.ops.toList() }.distinct().toIntArray())
+        }
+        val base = flow.base
+        val arabic = arabicLoader(context, doc, base.embed)
+        var rest = text.filter { it.code != 13 }      // no carriage returns
+        var restRuns = RichText.normalize(runs, rest.length)
+        var last = flow.pages.last
+        var added = 0
+        var fi = 0
+        while (rest.isNotBlank()) {
+            val fr: FlowFrame; val toUser: Matrix; val bottom: Float
+            if (fi < flow.frames.size) {
+                fr = flow.frames[fi]
+                toUser = analyses.getValue(fr.page).frame.toUser
+                // the last frame of the range may grow down to the bottom margin
+                bottom = if (fi == flow.frames.size - 1) minOf(fr.bottom, MARGIN * 2) else fr.bottom
+            } else {
+                require(added < 50) { "text too long" }
+                val ref = doc.getPage(last)
+                val np = PDPage(ref.mediaBox).also { it.cropBox = ref.cropBox; it.rotation = ref.rotation }
+                doc.pages.insertAfter(np, ref)
+                last++; added++
+                val a = PageTextModel.analyze(doc, last)
+                val m = MARGIN * 3
+                fr = FlowFrame(last, m, a.frame.width - m, a.frame.height - m - base.size, m)
+                toUser = a.frame.toUser
+                bottom = m
+            }
+            fi++
+            val st = base.copy(runs = restRuns)
+            val width = fr.right - fr.left
+            val lines = RichWriter.lines(rest, st, width, flow.rtl, null, arabic, customLoader(context, doc, st))
+            val k = ReflowFlow.fit(lines.map { it.maxSize }, lines.map { it.lastOfPara }, st, fr.firstBaseline - bottom - base.size * 0.2f)
+            var (headEnd, tailStart) = ReflowFlow.cut(rest, lines.map { it.logical }, k)
+            if (tailStart <= 0) { headEnd = rest.length; tailStart = rest.length }       // never loop without progress
+            writeIn(context, doc, doc.getPage(fr.page), toUser, null, rest.substring(0, headEnd), base.copy(runs = ReflowFlow.slice(restRuns, 0, headEnd)),
+                fr.left, fr.right, fr.firstBaseline, flow.rtl)
+            restRuns = ReflowFlow.slice(restRuns, tailStart, rest.length)
+            rest = rest.substring(tailStart)
+        }
+        added
+    }
 }

@@ -24,7 +24,7 @@
     <string name="nbm_auto_page_links">Auto page links (table of contents)</string>
     <string name="nbm_auto_size">automatic size</string>
     <string name="nbm_bm_added">Bookmark added</string>
-    <string name="nbm_bm_from_selection">Bookmark</string>
+    <string name="nbm_bm_from_selection">Bookmark in PDF</string>
     <string name="nbm_bm_imported_n">Imported %1$d bookmarks</string>
     <string name="nbm_bold_top">Bold top level</string>
     <string name="nbm_centered">Centred</string>

@@ -112,6 +112,8 @@ object ReaderRestrictions {
         "unlock" -> DocAction.SAVE_UNPROTECTED
         "ai", "compare", "pdf_to_images", "pdf_to_text", "convert_hub", "extract_images", "podcast" -> DocAction.COPY
         "info", "properties", "signatures" -> null
+        // tab-view-core E-11: viewers (they edit only a working copy; writing back goes through the reader's checks)
+        "e5_xref", "e5_destinations", "e5_doc_props" -> null
         else -> DocAction.MODIFY
     }
 

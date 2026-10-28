@@ -71,13 +71,15 @@ object ShareImport {
 
     /** Copy the shared streams into [dir] (the senders' grants are temporary) and collect the text extras. Blocking: call off the main thread. */
     fun read(ctx: Context, intent: Intent, dir: File): SharePayload {
-        dir.mkdirs()
+        // one folder per share: the copies keep their real names (convert audit A-M13: titles and bookmarks read
+        // "1730000000000_0_IMG_1"); folders older than a day are removed at start-up (A-M14)
+        val shareDir = File(dir, System.currentTimeMillis().toString()).apply { mkdirs() }
         val files = streams(intent).mapIndexedNotNull { i, u ->
             runCatching {
                 val mime = ctx.contentResolver.getType(u) ?: intent.type
-                var name = nameOf(ctx, u)?.replace(Regex("""[\\/:*?"<>|]"""), "_") ?: "shared_$i"
+                var name = nameOf(ctx, u)?.let { com.smartdocs.editor.core.files.FileNames.clean(it.substringBeforeLast('.'), 120, "shared_$i") + (it.substringAfterLast('.', "").takeIf { e -> e.isNotEmpty() && e.length <= 8 }?.let { e -> ".$e" } ?: "") } ?: "shared_$i"
                 if (!name.contains('.')) name += "." + extFor(mime)
-                val f = File(dir, "${System.currentTimeMillis()}_$i" + "_" + name)
+                val f = com.smartdocs.editor.core.files.FileNames.unique(shareDir, name.substringBeforeLast('.'), name.substringAfterLast('.'))
                 ctx.contentResolver.openInputStream(u)?.use { s -> f.outputStream().use { s.copyTo(it) } } ?: return@runCatching null
                 f
             }.getOrNull()
@@ -124,15 +126,18 @@ class T5PrintService : PrintService() {
 
     override fun onPrintJobQueued(printJob: PrintJob) {
         if (!printJob.start()) return
-        val label = printJob.info.label ?: "print"
-        val data = printJob.document.data ?: run { printJob.fail("no data"); return }
+        val label = printJob.info.label ?: getString(com.smartdocs.editor.R.string.cvf_print_label)
+        val data = printJob.document.data ?: run { printJob.fail(getString(com.smartdocs.editor.R.string.cvf_print_failed)); return }
         scope.launch {
             val result = withContext(Dispatchers.IO) {
                 runCatching {
                     val dir = File(File(getExternalFilesDir(null) ?: filesDir, "Documents"), "Printed").apply { mkdirs() }
                     val base = TextNorm.safeFileName(label.removeSuffix(".pdf"), 80).ifBlank { "print" } + "_" + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
-                    val out = File(dir, "$base.pdf")
+                    // never over an earlier print of the same name in the same second (convert audit A-L2)
+                    val out = com.smartdocs.editor.core.files.FileNames.unique(dir, base, "pdf")
+                    if (printJob.isCancelled) throw kotlinx.coroutines.CancellationException("cancelled")
                     android.os.ParcelFileDescriptor.AutoCloseInputStream(data).use { input -> out.outputStream().use { input.copyTo(it) } }
+                    if (printJob.isCancelled) { out.delete(); throw kotlinx.coroutines.CancellationException("cancelled") }
                     // nav-batch: the printer's "conversion settings" are a recipe (security, watermark, header/footer, PDF/A…)
                     val recipe = RecipeStore.printerRecipe(this@T5PrintService)
                     if (recipe == null) out else {
@@ -143,7 +148,10 @@ class T5PrintService : PrintService() {
                     }
                 }
             }
-            result.onSuccess { f -> printJob.complete(); notifySaved(f) }.onFailure { e -> printJob.fail(e.message ?: "error") }
+            result.onSuccess { f -> printJob.complete(); notifySaved(f) }.onFailure { e ->
+                if (e is kotlinx.coroutines.CancellationException || printJob.isCancelled) runCatching { printJob.cancel() }
+                else printJob.fail(com.smartdocs.editor.ui.convert6.Cv6ErrorText.of(this@T5PrintService, e))
+            }
         }
     }
 
@@ -153,8 +161,14 @@ class T5PrintService : PrintService() {
 
     private fun notifySaved(f: File) = runCatching {
         val nm = getSystemService(NotificationManager::class.java) ?: return@runCatching
-        if (!com.smartdocs.editor.core.data.NpfPrefs.notifyTasks) return@runCatching   // nav-prefs: notification toggle
-        if (Build.VERSION.SDK_INT >= 26) nm.createNotificationChannel(NotificationChannel(CHANNEL, "SmartDocs PDF", NotificationManager.IMPORTANCE_DEFAULT))
+        // no notification (switched off, or not allowed): say where the file went (convert audit A-L2)
+        val canNotify = com.smartdocs.editor.core.data.NpfPrefs.notifyTasks && (Build.VERSION.SDK_INT < 33 ||
+            checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED) && nm.areNotificationsEnabled()
+        if (!canNotify) {
+            android.os.Handler(android.os.Looper.getMainLooper()).post { runCatching { android.widget.Toast.makeText(this, getString(com.smartdocs.editor.R.string.cvf_print_saved, "Documents/Printed/" + f.name), android.widget.Toast.LENGTH_LONG).show() } }
+            return@runCatching
+        }
+        if (Build.VERSION.SDK_INT >= 26) nm.createNotificationChannel(NotificationChannel(CHANNEL, getString(com.smartdocs.editor.R.string.cvf_print_channel), NotificationManager.IMPORTANCE_DEFAULT))
         // a content:// URI (file:// in an intent trips FileUriExposedException); MainActivity copies it like any shared PDF
         val uri = androidx.core.content.FileProvider.getUriForFile(this, "$packageName.fileprovider", f)
         val open = Intent(Intent.ACTION_VIEW).setDataAndType(uri, "application/pdf").setClassName(packageName, "com.smartdocs.editor.MainActivity")
@@ -162,7 +176,7 @@ class T5PrintService : PrintService() {
         val pi = PendingIntent.getActivity(this, f.name.hashCode(), open, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val n = android.app.Notification.Builder(this, CHANNEL)
             .setSmallIcon(android.R.drawable.stat_sys_download_done)
-            .setContentTitle("SmartDocs PDF").setContentText(f.name).setContentIntent(pi).setAutoCancel(true).build()
+            .setContentTitle(getString(com.smartdocs.editor.R.string.cvf_print_saved, "Documents/Printed")).setContentText(f.name).setContentIntent(pi).setAutoCancel(true).build()
         nm.notify(f.name.hashCode(), n)
     }
 

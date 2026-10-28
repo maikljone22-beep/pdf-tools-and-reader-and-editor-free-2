@@ -466,6 +466,12 @@
             android:foregroundServiceType="dataSync"
             tools:node="merge" />
 
+        <!-- convert audit A-L16 / C11: keeps a running hub conversion alive in the background (progress notification) -->
+        <service
+            android:name=".ui.convert6.Cv6JobService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
         <service
             android:name=".core.tts.ReadAloudService"
             android:exported="false"

@@ -89,6 +89,8 @@ fun AnnotActionBar(state: ReaderState, annot: Annot?, frame: Rect) {
             SA.A_COLOR, SA.A_OPACITY, SA.A_THICKNESS -> {}
             SA.A_EDIT_TEXT -> ed.editingText = true
             SA.A_TEXT_FORMAT -> fmtOpen = true
+            // 7.10: the note in a floating window that stays open
+            SA.A_FLOAT_NOTE -> ed.target?.let { t -> if (annot != null) state.annot2.cx.floating = com.smartdocs.editor.ui.reader.annot.FloatingNote(t, annot.author, annot.text) }
             SA.A_STAMP_CUT -> annot?.let { state.cutStamp(it) }
             SA.A_STAMP_COPY -> annot?.let { state.copyStamp(it); android.widget.Toast.makeText(ctx, copied, android.widget.Toast.LENGTH_SHORT).show() }
             SA.A_STAMP_DEFAULT_SIZE -> if (annot != null && sigPath != null) {

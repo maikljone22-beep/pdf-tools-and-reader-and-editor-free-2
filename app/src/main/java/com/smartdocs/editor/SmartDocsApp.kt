@@ -32,8 +32,11 @@ class SmartDocsApp : Application() {
         runCatching { com.smartdocs.editor.core.billing.LicenseCheckWorker.schedule(this) }   // licence re-check (no-op without LICENSE_URL)
         runCatching { com.smartdocs.editor.core.webdav.DavLinks.install(this) }                // nav-attach: WebDAV working copies are uploaded back on save
         runCatching { com.smartdocs.editor.core.sign.TrustLists.schedule(this) }              // nitro-protect2: monthly EU trusted-list update (when on)
+        com.smartdocs.editor.core.convert6.Cv6Platform.install(this)   // convert audit: picture decoder for the writers, localised labels
         runCatching { com.smartdocs.editor.core.tools5.AltTextVision.install(this, settings) }  // pages-convert: AI alt text sees the figure
         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+            // convert audit C2 / C11 / A-M14: half-written outputs of a run the system killed, stale temp files
+            runCatching { com.smartdocs.editor.core.convert6.Cv6Platform.cleanUp(this@SmartDocsApp, documents) }
             // nitro-fillsign2: temporary signatures of the previous session go first (they are never synced anyway)
             runCatching { com.smartdocs.editor.core.data.TemporarySignatures.cleanUp(this@SmartDocsApp) }
             runCatching { com.smartdocs.editor.core.share5.AppDataSync.autoSyncQuietly(this@SmartDocsApp) }

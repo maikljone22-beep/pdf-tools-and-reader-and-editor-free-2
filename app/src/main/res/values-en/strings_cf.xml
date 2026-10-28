@@ -15,4 +15,8 @@
     <string name="cf_show_note">Show note</string>
     <string name="cf_auto_popup">Open comment pop-ups automatically</string>
     <string name="cf_auto_popup_sub">The selected comment\'s note shows at once; when off, a Show note button opens it.</string>
+    <string name="cf_overflow_ind">Text field overflow indicator</string>
+    <string name="cf_float_note">Floating note</string>
+    <string name="cf_float_select">The comment is selected; tap Save again.</string>
+    <string name="cf_float_gone">This comment no longer exists.</string>
 </resources>

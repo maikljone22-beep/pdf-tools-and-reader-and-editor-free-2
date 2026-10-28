@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- fix/reflow-plus: §14d reflow editing of a page range -->
+    <string name="rfp_note">The text of these pages is one flow in reading order: columns keep their order and a paragraph crossing a page break stays one paragraph. Bold, italic, size and colour of the source are kept. Text that no longer fits continues on new pages after the range.</string>
+    <string name="rfp_from">From page</string>
+    <string name="rfp_to">To page</string>
+    <string name="rfp_earlier">Earlier page</string>
+    <string name="rfp_later">Later page</string>
+    <string name="rfp_loading">Reading the text…</string>
+    <string name="rfp_areas">%1$d text areas on %2$d pages</string>
+    <string name="rfp_failed">Could not read the text: %1$s</string>
+</resources>

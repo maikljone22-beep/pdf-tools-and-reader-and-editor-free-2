@@ -64,7 +64,9 @@ fun CombineTab(initial: List<File>, job: T5Job, attachSrc: Boolean, srcDesc: Str
     val tocTitle = stringResource(R.string.pc_toc_title)
     val combining = stringResource(R.string.t5_combining)
     val defaultName = stringResource(R.string.t5_combined_name)
-    fun work(block: suspend () -> Unit) { busy = true; scope.launch { runCatching { block() }.onFailure { note = it.message ?: it.toString() }; busy = false } }
+    // errors in the app language (convert audit A-L15)
+    fun work(block: suspend () -> Unit) { busy = true; scope.launch { runCatching { block() }.onFailure { note = com.smartdocs.editor.ui.convert6.Cv6ErrorText.of(ctx, it) }; busy = false } }
+    var askPw by remember { mutableStateOf<Int?>(null) }   // entry whose PDF needs a password
 
     val pickFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { tree ->
         if (tree != null) work {
@@ -124,12 +126,14 @@ fun CombineTab(initial: List<File>, job: T5Job, attachSrc: Boolean, srcDesc: Str
     }
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         OutlinedTextField(url, { url = it }, Modifier.weight(1f), singleLine = true, label = { Text(stringResource(R.string.pc_web_page)) })
-        OutlinedButton(enabled = url.isNotBlank() && !busy, onClick = {
+        OutlinedButton(enabled = url.isNotBlank() && !busy && !job.running, onClick = {
             val u = url.trim()
-            work {
+            // a web page can take a minute: run as a job with progress and Cancel (convert audit A-L15)
+            job.launch(combining) {
                 val host = runCatching { Uri.parse(if (u.contains("://")) u else "https://$u").host }.getOrNull()?.ifBlank { null } ?: "webpage"
                 val f = File(app.documents.tempDir, "${host}_${System.currentTimeMillis()}.pdf")
-                ToPdf.url(ctx, u, f); add(listOf(f)) { host }; url = ""
+                try { ToPdf.url(ctx, u, f) } catch (e: Throwable) { f.delete(); throw e }
+                add(listOf(f)) { host }; url = ""
             }
         }) { Text(stringResource(R.string.pc_add)) }
     }
@@ -161,7 +165,8 @@ fun CombineTab(initial: List<File>, job: T5Job, attachSrc: Boolean, srcDesc: Str
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (perFile) OutlinedTextField(e.title, { entries[i] = e.copy(title = it) }, Modifier.weight(1.4f), singleLine = true, label = { Text(stringResource(R.string.pc_bookmark_title)) })
-                if (!e.attach) OutlinedTextField(e.pages, { entries[i] = e.copy(pages = it) }, Modifier.weight(1f), singleLine = true, label = { Text(stringResource(R.string.page_range)) }, placeholder = { Text(stringResource(R.string.e5_all_pages)) })
+                if (!e.attach) OutlinedTextField(e.pages, { entries[i] = e.copy(pages = it) }, Modifier.weight(1f), singleLine = true, label = { Text(stringResource(R.string.page_range)) }, placeholder = { Text(stringResource(R.string.e5_all_pages)) },
+                    isError = !com.smartdocs.editor.core.pdf.PdfOps.rangeSyntaxOk(e.pages))
             }
             // PDF Binder: a non-PDF file can travel as an attachment instead of being converted
             if (ToPdf.kindOf(e.file.name) != SourceKind.PDF) Row(verticalAlignment = Alignment.CenterVertically) {
@@ -170,7 +175,8 @@ fun CombineTab(initial: List<File>, job: T5Job, attachSrc: Boolean, srcDesc: Str
             }
         }
     }
-    val unsupported = entries.filter { !it.attach && ToPdf.kindOf(it.file.name) == SourceKind.UNKNOWN }
+    val unsupported = entries.filter { !it.attach && ToPdf.kindOf(it.file.name) == SourceKind.UNKNOWN && ToPdf.kindOf(it.file) == SourceKind.UNKNOWN }
+    val badRange = entries.any { !it.attach && !com.smartdocs.editor.core.pdf.PdfOps.rangeSyntaxOk(it.pages) }
     if (unsupported.isNotEmpty()) Text(stringResource(R.string.t5_unsupported, unsupported.joinToString { it.file.name }), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
 
     // ---- options
@@ -180,21 +186,40 @@ fun CombineTab(initial: List<File>, job: T5Job, attachSrc: Boolean, srcDesc: Str
     SwitchRow(stringResource(R.string.pc_toc_page), toc) { toc = it }
     SwitchRow(stringResource(R.string.pc_save_pdfa), pdfa, stringResource(R.string.pc_save_pdfa_sub)) { pdfa = it }
     OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.t5_file_name_optional)) })
-    PrimaryButton(stringResource(R.string.t5_combine), enabled = entries.isNotEmpty() && unsupported.isEmpty() && !job.running && !busy, icon = Icons.Default.CallMerge) {
+    PrimaryButton(stringResource(R.string.t5_combine), enabled = entries.isNotEmpty() && unsupported.isEmpty() && !badRange && !job.running && !busy, icon = Icons.Default.CallMerge) {
         val list = entries.toList()
         val o = CombineOpts(perFile, keepBm, headings, toc, tocTitle)
         val base = name.ifBlank { if (list.size == 1) list[0].file.nameWithoutExtension else defaultName }
         val attach = attachSrc; val pa = pdfa
         job.launch(combining) {
             val out = app.documents.uniqueFile(app.documents.docsDir, base)
-            CombinePlus.combine(ctx, list, out, app.documents.tempDir, o) { d, t -> step(d, t) }
+            val signedNames = ArrayList<String>()
+            try {
+                CombinePlus.combine(ctx, list, out, app.documents.tempDir, o, { d, t -> step(d, t) }) { f -> signedNames += f.name }
+            } catch (e: com.smartdocs.editor.core.convert6.Cv6NeedPassword) {
+                // ask that file's password, then combine again (convert audit A-M12: protected PDFs just failed)
+                out.delete(); askPw = list.indexOfFirst { it.file == e.file }.takeIf { it >= 0 }; error = com.smartdocs.editor.ui.convert6.Cv6ErrorText.of(ctx, e); return@launch
+            } catch (e: Throwable) { out.delete(); throw e }
             // PDF/A-3b keeps the binder's attachments
             if (pa) { val a = File(app.documents.tempDir, "cmb_pdfa_${System.nanoTime()}.pdf")
                 com.smartdocs.editor.core.tools5.PdfA.convert(ctx, out, null, a, com.smartdocs.editor.core.tools5.PdfAOptions(level = com.smartdocs.editor.core.tools5.PdfALevel.A3B), title = base)
                 withContext(Dispatchers.IO) { a.copyTo(out, true); a.delete() } }
             if (attach) com.smartdocs.editor.core.pdf.AttachmentOps.attachSources(out, list.map { it.file }, srcDesc)
             runCatching { app.documents.touchRecent(out) }
+            // signed inputs lose their signatures in the combined copy: say so (convert audit A-L14)
+            info = signedNames.joinToString("\n") { ctx.getString(R.string.cvf_info_signed, it) }.ifBlank { null }
             result = out
+        }
+    }
+    askPw?.let { i ->
+        val e = entries.getOrNull(i)
+        if (e == null) askPw = null else {
+            var pw by remember(i) { mutableStateOf("") }
+            AlertDialog(onDismissRequest = { askPw = null },
+                title = { Text(stringResource(R.string.cvf_pw_for, e.file.name)) },
+                text = { OutlinedTextField(pw, { pw = it }, singleLine = true, label = { Text(stringResource(R.string.cv_password)) }, visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation()) },
+                confirmButton = { TextButton(enabled = pw.isNotEmpty(), onClick = { entries[i] = e.copy(password = pw); askPw = null }) { Text(stringResource(R.string.ok)) } },
+                dismissButton = { TextButton(onClick = { askPw = null }) { Text(stringResource(R.string.cancel)) } })
         }
     }
 

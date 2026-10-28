@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Convert-section audit fixes (gaps/convert-audit): errors, notes, password prompts, job notification. -->
+<resources>
+    <string name="cvf_e_generic">تعذّر إكمال التحويل. جرّب ملفًا آخر أو أعد المحاولة.</string>
+    <string name="cvf_e_memory">الملف أكبر من أن يتسع له ذاكرة الجهاز. جرّب نطاق صفحات أصغر أو دقة أقل.</string>
+    <string name="cvf_e_too_large">المستند كبير جدًا لعرضه وطباعته دفعة واحدة. قسّمه أو جرّب جزءًا منه.</string>
+    <string name="cvf_e_timeout">استغرقت العملية وقتًا أطول من المسموح. أعد المحاولة أو جرّب ملفًا أصغر.</string>
+    <string name="cvf_e_network">تعذّر الاتصال بالإنترنت. تحقّق من الاتصال ثم أعد المحاولة.</string>
+    <string name="cvf_e_http">ردّ الموقع بخطأ (%1$d). تحقّق من الرابط.</string>
+    <string name="cvf_e_damaged">الملف تالف أو ليس من النوع الذي يوحي به اسمه.</string>
+    <string name="cvf_e_damaged_pdf">ملف PDF تالف أو غير مكتمل.</string>
+    <string name="cvf_e_disk_full">لا توجد مساحة كافية في التخزين. أفرغ بعض المساحة ثم أعد المحاولة.</string>
+    <string name="cvf_e_name_long">اسم الملف طويل جدًا. أعد تسميته باسم أقصر.</string>
+    <string name="cvf_e_empty">لم يُنتج التحويل أي صفحة.</string>
+    <string name="cvf_e_image_write">تعذّر حفظ الصورة (حجمها يتجاوز حدود الصيغة أو لا توجد مساحة).</string>
+    <string name="cvf_e_img_fax">صورة فاكس (CCITT) لا يمكن فتحها هنا</string>
+    <string name="cvf_e_img_tiff">صورة TIFF بضغط غير مدعوم</string>
+    <string name="cvf_e_img_generic">تعذّر فتح الصورة: صيغة غير مدعومة أو ملف تالف</string>
+    <string name="cvf_e_restricted">الملف «%1$s» محمي: مالكه لا يسمح بهذا التحويل. افتحه بكلمة مرور المالك.</string>
+    <string name="cvf_e_range_file">نطاق الصفحات لا يطابق «%1$s».</string>
+    <string name="cvf_pw_for">كلمة مرور «%1$s»</string>
+    <string name="cvf_pw_wrong">كلمة المرور غير صحيحة لـ «%1$s»</string>
+    <string name="cvf_pw_wrong_short">كلمة المرور غير صحيحة</string>
+    <string name="cvf_encrypted_files">ملفات محمية بكلمة مرور ولا يمكن فتحها: %1$s</string>
+    <string name="cvf_failed_n">تعذّر تحويل %1$d ملف:</string>
+    <string name="cvf_info_skipped">صفحات أو صور لم تُقرأ: %1$s</string>
+    <string name="cvf_info_equations">%1$d معادلة حُوِّلت إلى نص خطي</string>
+    <string name="cvf_info_unrendered">%1$d مخطط أو رسم لم يُعرض (ظهر مكانه علامة)</string>
+    <string name="cvf_info_images_dropped">%1$d صورة لم تُضمَّن (صيغة غير مدعومة أو حجم كبير)</string>
+    <string name="cvf_info_sheet_cut">الورقة «%1$s» قُصّت لكثرة صفوفها أو أعمدتها</string>
+    <string name="cvf_info_rows_cut">الورقة «%1$s»: طُبع أول %2$d صفًا من %3$d</string>
+    <string name="cvf_info_doc_text">ملف Word 97 (‎.doc): يُحوَّل النص فقط، بدون الجداول والصور والتنسيق</string>
+    <string name="cvf_info_signed">«%1$s» موقَّع رقميًا: الناتج نسخة غير موقَّعة</string>
+    <string name="cvf_info_capped">الصورة أكبر من %1$d بكسل فصُغِّرت إليها</string>
+    <string name="cvf_info_first_sheet">في الملف %1$d أوراق: صُدِّرت الأولى فقط (فعّل «كل الأوراق» لتصديرها كلها)</string>
+    <string name="cvf_info_long_parts">الصورة الطويلة قُسِّمت إلى %1$d صور (حدّ الصيغة أو الذاكرة)</string>
+    <string name="cvf_info_gray_raster">%1$d صفحة فيها تدرجات أو أنماط لونية حُوِّلت إلى صورة رمادية</string>
+    <string name="cvf_ex_skipped">%1$d صورة تعذّر استخراجها (صيغة غير مدعومة أو حجم كبير)</string>
+    <string name="cvf_ex_gallery_perm">الحفظ في المعرض على هذا الإصدار من Android يتطلب إذن التخزين</string>
+    <string name="cvf_lbl_image">[صورة]</string>
+    <string name="cvf_lbl_chart">[مخطط أو رسم]</string>
+    <string name="cvf_job_channel">التحويلات الجارية</string>
+    <string name="cvf_job_running">جارٍ التحويل…</string>
+    <string name="cvf_job_done">اكتمل التحويل</string>
+    <string name="cvf_job_failed">تعذّر التحويل</string>
+    <string name="cvf_print_channel">طابعة SmartDocs PDF</string>
+    <string name="cvf_print_label">طباعة</string>
+    <string name="cvf_print_failed">لا توجد بيانات للطباعة</string>
+    <string name="cvf_print_saved">حُفظ ملف PDF في %1$s</string>
+</resources>

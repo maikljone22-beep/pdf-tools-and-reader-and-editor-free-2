@@ -1,5 +1,6 @@
 package com.smartdocs.editor.ui.view5
 
+import com.smartdocs.editor.ui.reader.view.pageTint
 import android.graphics.Bitmap
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -31,11 +32,12 @@ import com.smartdocs.editor.R
 import com.smartdocs.editor.core.pdf.PdfSession
 import com.smartdocs.editor.ui.common.rememberPdfPicker
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
 import java.io.File
 
 /** A scrollable column of rendered pages of [session] (its own scroll state and zoom). */
 @Composable
-fun PagePane(session: PdfSession?, pageCount: Int, sizes: Map<Int, Pair<Float, Float>>, list: LazyListState, night: Boolean, zoom: Float, modifier: Modifier = Modifier, label: String = "") {
+fun PagePane(session: PdfSession?, pageCount: Int, sizes: Map<Int, Pair<Float, Float>>, list: LazyListState, night: Boolean, zoom: Float, modifier: Modifier = Modifier, label: String = "", pageColor: Long = 0xFFFFFFL) {
     BoxWithConstraints(modifier.background(Color(0xFF808080))) {
         val density = LocalDensity.current
         // never negative / zero: requiredWidth / height with a negative or infinite size throws
@@ -53,7 +55,7 @@ fun PagePane(session: PdfSession?, pageCount: Int, sizes: Map<Int, Pair<Float, F
                     value = runCatching { s.render(p, w, h, night, true) }.getOrNull()
                 }
                 Box(Modifier.requiredWidth(with(density) { wPx.toDp() }).height(with(density) { hPx.toDp() }).background(Color.White)) {
-                    bmp?.let { Image(it.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.FillBounds) }
+                    bmp?.let { Image(it.asImageBitmap(), null, Modifier.fillMaxSize().pageTint(pageColor, night), contentScale = ContentScale.FillBounds) }   // tab-view-core V-38
                     Text("${p + 1}", Modifier.align(Alignment.BottomEnd).background(Color(0x99000000)).padding(horizontal = 6.dp), color = Color.White, style = MaterialTheme.typography.labelSmall)
                 }
             }
@@ -100,15 +102,21 @@ fun SplitCompareDialog(v: V5State, compare: Boolean) {
     var otherSession by remember { mutableStateOf<PdfSession?>(null) }
     var otherSizes by remember { mutableStateOf<Map<Int, Pair<Float, Float>>>(emptyMap()) }
     var otherError by remember { mutableStateOf<String?>(null) }
-    val pick = rememberPdfPicker(multiple = false) { files -> files.firstOrNull()?.let { other = it } }
-    LaunchedEffect(other) {
+    // tab-view-core V-35: a password-protected PDF asks for its password
+    var otherPw by remember { mutableStateOf<String?>(null) }
+    var needPw by remember { mutableStateOf(false) }
+    var wrongPw by remember { mutableStateOf(false) }
+    val pick = rememberPdfPicker(multiple = false) { files -> files.firstOrNull()?.let { otherPw = null; wrongPw = false; other = it } }
+    LaunchedEffect(other, otherPw) {
         val f = other ?: return@LaunchedEffect
         runCatching { otherSession?.closeAsync() }
         otherSession = null
-        runCatching { PdfSession.open(ctx, f, null) }.onSuccess { ses -> otherSizes = runCatching { ses.pageSizes() }.getOrDefault(emptyMap()); otherSession = ses; otherError = null }
-            .onFailure { otherError = it.message ?: ctx.getString(R.string.error_generic) }
+        runCatching { PdfSession.open(ctx, f, otherPw) }.onSuccess { ses -> otherSizes = runCatching { ses.pageSizes() }.getOrDefault(emptyMap()); otherSession = ses; otherError = null; needPw = false }
+            .onFailure { e -> if (e is PdfSession.Companion.PasswordRequiredException) { wrongPw = otherPw != null; needPw = true } else otherError = e.message ?: ctx.getString(R.string.error_generic) }
     }
-    DisposableEffect(Unit) { onDispose { otherSession?.let { ses -> runCatching { ses.close() } } } }
+    if (needPw) com.smartdocs.editor.ui.reader.PasswordDialog(wrongPw, onOk = { pw -> needPw = false; otherPw = pw }, onCancel = { needPw = false; other = null })
+    // tab-view-core V-24: closing waits for in-flight pane renders: off the main thread, never blocking the UI
+    DisposableEffect(Unit) { onDispose { otherSession?.let { ses -> kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch(kotlinx.coroutines.NonCancellable) { runCatching { ses.closeAsync() } } } } }
     LaunchedEffect(compare) { if (compare && other == null) pick() }
 
     var stacked by remember { mutableStateOf(false) }
@@ -137,9 +145,9 @@ fun SplitCompareDialog(v: V5State, compare: Boolean) {
                 BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
                     val density = LocalDensity.current
                     val total = with(density) { if (stacked) maxHeight.toPx() else maxWidth.toPx() }
-                    val paneA: @Composable (Modifier) -> Unit = { m -> PagePane(s.session, s.pageCount, s.pageSizes, listA, s.nightMode, zoomA, m, s.file?.name ?: "") }
+                    val paneA: @Composable (Modifier) -> Unit = { m -> PagePane(s.session, s.pageCount, s.pageSizes, listA, s.nightMode, zoomA, m, s.file?.name ?: "", s.pageColor) }
                     val paneB: @Composable (Modifier) -> Unit = { m ->
-                        if (!compare) PagePane(s.session, s.pageCount, s.pageSizes, listB, s.nightMode, zoomB, m, s.file?.name ?: "")
+                        if (!compare) PagePane(s.session, s.pageCount, s.pageSizes, listB, s.nightMode, zoomB, m, s.file?.name ?: "", s.pageColor)
                         else if (otherSession != null) PagePane(otherSession, otherSession!!.pageCount, otherSizes, listB, s.nightMode, zoomB, m, other?.name ?: "")
                         else Box(m.background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {

@@ -1,5 +1,6 @@
 package com.smartdocs.editor.ui.reader
 
+import com.smartdocs.editor.ui.reader.view.pageTint
 import android.graphics.Bitmap
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -164,6 +165,7 @@ private fun OutlinePrintMenu(state: ReaderState, flat: List<Pair<OutlineItem, Li
     val scope = rememberCoroutineScope()
     var open by remember { mutableStateOf(false) }
     fun print(range: IntRange) {
+        if (!state.guard.check(com.smartdocs.editor.core.security.DocAction.PRINT)) return   // tab-view-core V-05
         val f = state.file ?: return
         scope.launch {
             runCatching {
@@ -228,37 +230,7 @@ private fun BookmarksPanel(state: ReaderState, onJump: (Int) -> Unit) {
     }
 }
 
-/** Previous simple list (kept for reference; the panel now uses annot.CommentsPanel). */
-@Suppress("unused")
-@Composable
-private fun AnnotationsPanel(state: ReaderState, onJump: (Int) -> Unit) {
-    val scope = rememberCoroutineScope()
-    val pending = state.annots
-    val existing = state.existing
-    if (pending.isEmpty() && existing.isEmpty()) { EmptyState(Icons.Default.Comment, stringResource(R.string.no_annotations)); return }
-    LazyColumn(Modifier.fillMaxWidth().heightIn(max = 520.dp)) {
-        if (pending.isNotEmpty()) item { Text(stringResource(R.string.rd_pending_annots), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(16.dp, 8.dp)) }
-        items(pending, key = { "p" + it.id }) { a ->
-            ListItem(
-                headlineContent = { Text(kindLabel(a.kind)) },
-                supportingContent = { Text(listOf(stringResource(R.string.page_of, a.page + 1, state.pageCount), a.text.take(80)).filter { it.isNotBlank() }.joinToString(" · "), maxLines = 2, overflow = TextOverflow.Ellipsis) },
-                leadingContent = { Box(Modifier.size(14.dp).clip(RoundedCornerShape(4.dp)).background(annotColor(a.color))) },
-                trailingContent = { IconButton(onClick = { state.removeAnnot(a.id) }) { Icon(Icons.Default.Delete, stringResource(R.string.annot_delete)) } },
-                modifier = Modifier.clickable { onJump(a.page) },
-            )
-        }
-        if (existing.isNotEmpty()) item { Text(stringResource(R.string.rd_saved_annots), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp, 8.dp)) }
-        items(existing, key = { "e${it.page}_${it.index}" }) { e ->
-            ListItem(
-                headlineContent = { Text(subtypeLabel(e.subtype)) },
-                supportingContent = { Text(listOf(stringResource(R.string.page_of, e.page + 1, state.pageCount), e.author, e.contents.take(80)).filter { it.isNotBlank() }.joinToString(" · "), maxLines = 2, overflow = TextOverflow.Ellipsis) },
-                leadingContent = { Icon(Icons.Default.Comment, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
-                trailingContent = { IconButton(onClick = { scope.launch { state.deleteExisting(e) } }, enabled = !state.saving) { Icon(Icons.Default.Delete, stringResource(R.string.annot_delete)) } },
-                modifier = Modifier.clickable { onJump(e.page) },
-            )
-        }
-    }
-}
+// tab-view-core V-23: the unused AnnotationsPanel was removed (the panel is annot.CommentsPanel)
 
 @Composable
 fun kindLabel(k: AnnotKind): String = stringResource(
@@ -273,15 +245,6 @@ fun kindLabel(k: AnnotKind): String = stringResource(
         AnnotKind.SOUND -> R.string.annot_audio; AnnotKind.VIDEO -> R.string.an_video
     }
 )
-
-@Composable
-private fun subtypeLabel(sub: String): String = when (sub) {
-    "Highlight" -> stringResource(R.string.annot_highlight); "Underline" -> stringResource(R.string.annot_underline)
-    "StrikeOut" -> stringResource(R.string.annot_strikeout); "Squiggly" -> stringResource(R.string.annot_squiggly)
-    "Ink" -> stringResource(R.string.annot_ink); "Text" -> stringResource(R.string.annot_note); "FreeText" -> stringResource(R.string.annot_text)
-    "Line" -> stringResource(R.string.annot_line); "Square" -> stringResource(R.string.annot_rect); "Circle" -> stringResource(R.string.annot_oval)
-    "Stamp" -> stringResource(R.string.annot_stamp); else -> sub
-}
 
 @Composable
 private fun ThumbnailsPanel(state: ReaderState, onJump: (Int) -> Unit) {
@@ -309,7 +272,7 @@ private fun ThumbnailsPanel(state: ReaderState, onJump: (Int) -> Unit) {
                         .border(if (current) 2.dp else 1.dp, if (current) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(6.dp)),
                     contentAlignment = Alignment.Center,
                 ) {
-                    bmp?.let { Image(it.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Fit) } ?: CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                    bmp?.let { Image(it.asImageBitmap(), null, Modifier.fillMaxSize().pageTint(state.pageColor, state.nightMode), contentScale = ContentScale.Fit) } ?: CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)   // tab-view-core V-38
                 }
                 val label = labels?.getOrNull(page)?.takeIf { it.isNotBlank() && it != (page + 1).toString() }
                 Text(if (label != null) "$label (${page + 1})" else (page + 1).toString(), style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis,

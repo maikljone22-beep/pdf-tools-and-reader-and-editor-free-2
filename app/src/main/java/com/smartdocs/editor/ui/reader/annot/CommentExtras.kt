@@ -85,6 +85,38 @@ class CommentExtras(private val h: Annot2Host) {
         private set
     fun toggleCopyEncircled() { copyEncircled = !copyEncircled; prefs().edit().putBoolean("copy_encircled", copyEncircled).apply() }
 
+    /** 7.10: the pop-up note opened as a floating window (FloatingNoteWindow), null when closed. */
+    var floating by mutableStateOf<FloatingNote?>(null)
+    private var floatingConverting = false
+
+    /**
+     * Save [text] into the floating note's comment. A pending comment is selected and changed at once; a stored one
+     * is selected first (its edit converts it to a pending one, and [rebindFloating] then follows the new id).
+     * Returns true when the text was handed to the editor.
+     */
+    fun saveFloating(text: String): Boolean {
+        val f = floating ?: return false
+        val ed = s.edit
+        when (val t = f.target) {
+            is com.smartdocs.editor.ui.reader.AnnotTarget.Pending -> {
+                val a = s.annots.firstOrNull { it.id == t.id } ?: run { h.message = str(R.string.cf_float_gone); return false }
+                if (ed.target != t) ed.selectPending(a)
+                ed.setText(text); return true
+            }
+            is com.smartdocs.editor.ui.reader.AnnotTarget.Stored -> {
+                if (ed.target != t) { ed.selectStored(t.e); h.message = str(R.string.cf_float_select); return false }
+                if (ed.current() == null) return false
+                floatingConverting = true
+                ed.setText(text); return true
+            }
+        }
+    }
+
+    /** After a stored comment was converted for editing, the floating note follows its new pending id. */
+    fun rebindFloating(t: com.smartdocs.editor.ui.reader.AnnotTarget?) {
+        if (floatingConverting && t is com.smartdocs.editor.ui.reader.AnnotTarget.Pending) { floating = floating?.copy(target = t); floatingConverting = false }
+    }
+
     /** Pencil stroke merge timeout in ms (0 = every stroke is its own ink annotation), remembered in prefs. */
     var inkMergeMs by mutableLongStateOf(prefs().getLong("ink_merge_ms", 0L))
         private set

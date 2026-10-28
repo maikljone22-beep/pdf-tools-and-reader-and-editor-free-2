@@ -75,7 +75,20 @@ sealed class Block {
     object SectionBreak : Block()
 }
 
-data class DocModel(val blocks: List<Block>, val title: String? = null) {
+/** Page of a Word section (twips): size, orientation and margins (`w:sectPr/w:pgSz`, `w:pgMar`). */
+data class DocPage(val widthTwips: Int, val heightTwips: Int, val landscape: Boolean, val top: Int, val right: Int, val bottom: Int, val left: Int)
+
+/**
+ * A Word document. [header] / [footer]: the default header and footer of the last section; [notes]: footnotes and
+ * endnotes (marker → blocks) in reference order; [page]: the last section's page setup (convert audit A-H10 / A-M4).
+ */
+data class DocModel(
+    val blocks: List<Block>, val title: String? = null,
+    val header: List<Block> = emptyList(), val footer: List<Block> = emptyList(),
+    val notes: List<Pair<String, List<Block>>> = emptyList(), val page: DocPage? = null,
+    /** Equations rendered as linear text, and charts / diagrams that could not be rendered. */
+    val equations: Int = 0, val unrendered: Int = 0,
+) {
     val plainText: String get() = buildString { appendBlocks(blocks, this) }
 
     private fun appendBlocks(bs: List<Block>, sb: StringBuilder) {

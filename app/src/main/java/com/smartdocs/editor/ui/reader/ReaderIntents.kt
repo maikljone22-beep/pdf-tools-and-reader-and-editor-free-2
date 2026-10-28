@@ -72,12 +72,7 @@ object ReaderIntents {
 
     /** Decode an image file (signature / picked picture) at a size suitable for stamping. */
     suspend fun decode(file: File, maxDim: Int = 1600): Bitmap? = withContext(Dispatchers.IO) {
-        runCatching {
-            val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            BitmapFactory.decodeFile(file.absolutePath, o)
-            var sample = 1
-            while (o.outWidth / sample > maxDim || o.outHeight / sample > maxDim) sample *= 2
-            BitmapFactory.decodeFile(file.absolutePath, BitmapFactory.Options().apply { inSampleSize = sample; inPreferredConfig = Bitmap.Config.ARGB_8888 })
-        }.getOrNull()
+        // tab-view-core E-08: EXIF orientation applied (a portrait phone photo is placed upright, as in Edit content)
+        runCatching { com.smartdocs.editor.core.pdf.PdfOps.decodeScaled(file, maxDim) }.getOrNull()
     }
 }

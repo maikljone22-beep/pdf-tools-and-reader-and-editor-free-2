@@ -45,6 +45,8 @@ class SelObjectsTest {
         assertTrue(SelAction.A_OPEN_FILE in actions(build(SelCtx.ANNOT, AnnotFacts(attachment = true))))
         assertTrue(SelAction.A_PLAY in actions(build(SelCtx.ANNOT, AnnotFacts(playable = true))))
         assertFalse(SelAction.A_REPLY in actions(build(SelCtx.ANNOT, AnnotFacts(stored = false))))
+        assertTrue(SelAction.A_FLOAT_NOTE in actions(build(SelCtx.ANNOT, AnnotFacts(editText = true, floatNote = true))))
+        assertFalse(SelAction.A_FLOAT_NOTE in actions(build(SelCtx.ANNOT, AnnotFacts(editText = true, textFormat = true))))
     }
 
     @Test fun annotationRowAndMoreAreSplitAsBefore() {
