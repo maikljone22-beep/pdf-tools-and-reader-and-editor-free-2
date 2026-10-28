@@ -69,6 +69,15 @@ fun ReaderSecurityBanners(state: ReaderState) {
             else TextButton(onClick = { g.dismissBanner() }) { Text(stringResource(R.string.ok)) }
         }
     }
+    // tab audit D8: a certified (DocMDP) or locked (FieldMDP /P) document: say so before any work is done
+    if (com.smartdocs.editor.core.security.CertifiedLock.showBanner(g.signedInfo)) Surface(Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.tertiaryContainer) {
+        Row(Modifier.padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.Verified, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onTertiaryContainer)
+            Spacer(Modifier.width(6.dp))
+            Text(stringResource(if (g.signedInfo?.lockP == 1) R.string.tfr_certified_banner_p1 else R.string.tfr_certified_banner_p2),
+                style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onTertiaryContainer)
+        }
+    }
     if (g.restricted && !g.protectedView) Surface(Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.surfaceVariant) {
         Row(Modifier.padding(horizontal = 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Default.Lock, null, Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)

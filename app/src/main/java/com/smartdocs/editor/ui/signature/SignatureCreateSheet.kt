@@ -68,7 +68,7 @@ fun SignatureCreateSheet(onDismiss: () -> Unit, onSaved: () -> Unit) {
     val nothingMsg = stringResource(R.string.sa_nothing_to_save)
 
     // Each tab exposes a producer for its current bitmap.
-    val drawState = remember { DrawState() }
+    val drawState = rememberSaveable(saver = DrawState.Saver) { DrawState() }      // tab audit D33: survives rotation
     var typedBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var imageBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var cameraBitmap by remember { mutableStateOf<Bitmap?>(null) }
@@ -152,6 +152,44 @@ class DrawState {
     var canvasW by mutableIntStateOf(0)
     var canvasH by mutableIntStateOf(0)
     var enlarged by mutableStateOf(false)
+
+    /**
+     * Tab audit D33: the canvas got a new size (rotation, split screen): strokes are in the old inline-canvas units,
+     * so they are scaled uniformly to stay inside it (never stretched; only shrunk when the canvas got smaller).
+     */
+    fun resize(w: Int, h: Int) {
+        val ow = canvasW; val oh = canvasH
+        canvasW = w; canvasH = h
+        if (ow <= 0 || oh <= 0 || (ow == w && oh == h) || strokes.isEmpty()) return
+        val k = minOf(w.toFloat() / ow, h.toFloat() / oh, 1f)
+        if (k >= 0.999f) return
+        val scaled = strokes.map { st -> st.copy(points = st.points.map { it.copy(x = it.x * k, y = it.y * k) }, width = st.width * k) }
+        strokes.clear(); strokes.addAll(scaled)
+    }
+
+    companion object {
+        /** Bundle form: pen, canvas size and every stroke (points as x, y, pressure triples). */
+        val Saver: androidx.compose.runtime.saveable.Saver<DrawState, Any> = androidx.compose.runtime.saveable.Saver(
+            save = { d ->
+                arrayListOf<Any>(d.color, d.width, d.canvasW, d.canvasH,
+                    ArrayList(d.strokes.map { st ->
+                        val f = FloatArray(st.points.size * 3)
+                        st.points.forEachIndexed { i, p -> f[i * 3] = p.x; f[i * 3 + 1] = p.y; f[i * 3 + 2] = p.pressure }
+                        arrayListOf<Any>(f, st.color, st.width, st.pressure)
+                    }))
+            },
+            restore = { v ->
+                @Suppress("UNCHECKED_CAST") val l = v as List<Any>
+                DrawState().apply {
+                    color = l[0] as Int; width = l[1] as Float; canvasW = l[2] as Int; canvasH = l[3] as Int
+                    (l[4] as List<Any>).forEach { e ->
+                        val s = e as List<Any>; val f = s[0] as FloatArray
+                        strokes += InkStroke((0 until f.size / 3).map { i -> InkPoint(f[i * 3], f[i * 3 + 1], f[i * 3 + 2]) }, s[1] as Int, s[2] as Float, s[3] as Boolean)
+                    }
+                }
+            },
+        )
+    }
 }
 
 /**
@@ -225,7 +263,7 @@ private fun DrawTab(state: DrawState) {
         Box(
             Modifier.fillMaxWidth().height(220.dp).background(Color.White, RoundedCornerShape(12.dp))
                 .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(12.dp))
-                .onSizeChanged { state.canvasW = it.width; state.canvasH = it.height }
+                .onSizeChanged { state.resize(it.width, it.height) }
         ) {
             if (state.strokes.isEmpty() && state.current.isEmpty())
                 Text(stringResource(R.string.sa_draw_hint), Modifier.align(Alignment.Center), color = Color.LightGray)

@@ -133,6 +133,7 @@ fun rememberAdvancedSignState(): AdvancedSignState {
 @Composable
 fun AdvancedSignOptions(state: AdvancedSignState, signatures: List<SavedSignature>, canCertify: Boolean) {
     var open by remember { mutableStateOf(false) }
+    val sealGate = rememberSignatureGate()
     val pickSeal = rememberImagePicker(multiple = false) { files -> files.firstOrNull()?.let { state.sealPath = it.absolutePath; state.seal = true } }
     OutlinedCard(Modifier.fillMaxWidth()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -165,7 +166,8 @@ fun AdvancedSignOptions(state: AdvancedSignState, signatures: List<SavedSignatur
                     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                         AssistChip(onClick = pickSeal, label = { Text(stringResource(R.string.ps_sign_seal_pick)) }, leadingIcon = { Icon(Icons.Default.AddPhotoAlternate, null, Modifier.size(18.dp)) })
                         signatures.forEach { s ->
-                            FilterChip(state.sealPath == s.path, { state.sealPath = s.path }, label = { Text(File(s.path).nameWithoutExtension.takeLast(8)) })
+                            // audit D15: a locked hand signature becomes the seal only after its PIN
+                            FilterChip(state.sealPath == s.path, { sealGate.request(s.path) { state.sealPath = s.path } }, label = { Text(File(s.path).nameWithoutExtension.takeLast(8)) })
                         }
                     }
                     state.sealPath?.let { Text(File(it).name, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1) }

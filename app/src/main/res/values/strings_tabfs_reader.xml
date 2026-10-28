@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- tab audit 4 (Fill & Sign / Sign, reader side) -->
+    <string name="tfr_certified_blocked">هذا المستند مُصدَّق ولا يسمح بإضافة تعليقات أو علامات. احفظ نسخة لتعدّل عليها.</string>
+    <string name="tfr_certified_banner_p1">مستند مُصدَّق: لا يُسمح بأي تغيير (لا تعليقات ولا تعبئة نماذج). احفظ نسخة للتعديل.</string>
+    <string name="tfr_certified_banner_p2">مستند مُصدَّق: يُسمح بتعبئة النماذج والتوقيع فقط، ولا يُسمح بالتعليقات أو علامات التعبئة.</string>
+    <string name="tfr_comb_grow">النص أطول من عدد الخانات؛ سيُكبَّر المربع إلى %1$d خانة.</string>
+    <string name="tfr_comb_too_long">الحد الأقصى %1$d خانة؛ ستُحذف الأحرف الزائدة.</string>
+    <string name="tfr_thumb_signature">توقيع %1$d</string>
+    <string name="tfr_thumb_initials">أحرف أولى %1$d</string>
+    <string name="tfr_thumb_locked">مقفل</string>
+    <string name="tfr_date_format">صيغة التاريخ</string>
+    <string name="tfr_edit_profile">بياناتي</string>
+    <string name="tfr_sig_panel">لوحة التواقيع</string>
+    <string name="tfr_validate_all">التحقق من الكل</string>
+    <string name="tfr_digital_ids">الهويات الرقمية</string>
+    <string name="tfr_close_kept_copy">تعذّر الحفظ في الملف الموقَّع؛ احتُفظ بتعديلاتك كنسخة استرداد تُعرض عند فتحه مجدداً.</string>
+    <string name="tfr_close_lost">تعذّر حفظ تعديلاتك في الملف الموقَّع.</string>
+</resources>

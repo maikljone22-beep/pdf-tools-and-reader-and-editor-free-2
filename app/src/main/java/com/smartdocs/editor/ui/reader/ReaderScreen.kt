@@ -25,6 +25,7 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
@@ -246,17 +247,25 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
             save = { scope.launch { if (state.confirmOwnerPassword() && state.save()) snack.showSnackbar(ctx.getString(R.string.saved_to, state.file?.name ?: "")) } },   // tab-view-core E-12
             saveAs = { saveAs.launch(state.file?.name ?: "document.pdf") },
             pickImage = { pickImage() }, pickStamp = { showStamps = true },
-            pickSignature = { path -> scope.launch { ReaderIntents.decode(File(path))?.let { state.pendingImage = it; state.tool = ReaderTool.SIGNATURE; state.pendingText = path; state.selection = null } } },
+            pickSignature = { path -> scope.launch { ReaderIntents.decode(File(path))?.let { bmp ->
+                // tab audit D27: through selectTool (tool memory saved / restored, edit selection and measure cleared)
+                if (state.tool != ReaderTool.SIGNATURE) state.selectTool(ReaderTool.SIGNATURE)
+                if (state.tool == ReaderTool.SIGNATURE) { state.placement = null; state.pendingImage = bmp; state.pendingText = path; state.selection = null }
+            } } },
             navigateTool = navigate@{ id ->
                 // tabs audit CM-21: a tool that does not use this document opens as is (no guard, no save, no undo step)
                 if (id in com.smartdocs.editor.core.security.ReaderRestrictions.DOCUMENT_FREE) { state.selectTool(null); nav.navigate(Routes.tool(id)); return@navigate }
                 // nitro-protect2: what the tool needs from the document (restrictions / Protected View)
-                val need = com.smartdocs.editor.core.security.ReaderRestrictions.actionForTool(id)
+                // tab audit D25 / D32: screens that never read this document need no permission and no save first
+                val docFree = id in DOC_FREE_TOOLS
+                val need = if (docFree) null else com.smartdocs.editor.core.security.ReaderRestrictions.actionForTool(id)
                 if (need != null && !state.guard.check(need)) { } else
                 if (id == "content_edit") { state.selectTool(null); contentEdit = true } else {
                 val go = {
                     when (id) {
                         "signatures" -> nav.navigate(Routes.tool("signatures"))
+                        "fill_profile" -> nav.navigate(Routes.tool("fill_profile"))
+                        "digital_ids" -> nav.navigate(Routes.tool("digital_sign"))      // no file: the Digital IDs tab is one tap away
                         else -> {
                             // MODULE_history: a change the tool saves into this file becomes one undo step on return
                             val label = ctx.getString(if (id == "organize") R.string.hi_organize else R.string.hi_tool_change)
@@ -265,7 +274,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                     }
                     Unit
                 }
-                if (state.dirty) saveThen(go) else go()      // tools read the file: pending edits go in first
+                if (state.dirty && !docFree) saveThen(go) else go()      // tools read the file: pending edits go in first
                 }
             },
             ai = { if (com.smartdocs.editor.core.gaps6.AiGate.enabled(settings) && state.guard.check(com.smartdocs.editor.core.security.DocAction.COPY)) { showAi = true } },   // nav-prefs (PREF-8)
@@ -274,8 +283,10 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                     onShare = { showShare5 = true },   // share6: Share5Sheet
                     onPrint = { com.smartdocs.editor.ui.view5.V5State.of(state).open(com.smartdocs.editor.ui.view5.V5Surface.PRINT) })
             },
+            esign = { nav.navigate(com.smartdocs.editor.ui.connected.ConnRoutes.esignCreate(state.fileUri)) },      // tab audit D25 (as the top-bar menu)
         )
 
+    var bottomBarPx by remember { mutableIntStateOf(0) }      // tab audit D20
     val focus = remember { FocusRequester() }
     LaunchedEffect(state.session) { if (state.session != null) runCatching { focus.requestFocus() } }
     // tab-view-core V-25: keys work again once a dialog, sheet, search bar, panel or menu closes (focus back to the pages)
@@ -365,7 +376,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                 }
             },
             bottomBar = {
-                if (chrome) Column {
+                if (chrome) Column(Modifier.onSizeChanged { bottomBarPx = it.height }) {      // tab audit D20: measured for the form strip
                     if (tts.state != ReadAloudController.State.IDLE && ReaderAi6.ownsTts(state)) TtsBar(tts) { r -> ReadAloudController.setRate(r); scope.launch { app.settings.update { it.copy(ttsRate = r) } } }
                     // selmenu: the floating selection menu (SelMenuLayer below) replaced this bottom bar
                     if (com.smartdocs.editor.ui.selmenu.SelHooks.LEGACY_BAR) state.selection?.let { sel ->
@@ -449,6 +460,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                 onOpenPdf = { f -> panel = null; nav.navigate(Routes.reader(android.net.Uri.fromFile(f).toString())) })
         } }
         com.smartdocs.editor.ui.forms5.InPageFormBar(state, Modifier.align(Alignment.BottomCenter),    // MODULE_forms5
+            stripBottom = with(androidx.compose.ui.platform.LocalDensity.current) { (if (chrome) bottomBarPx else 0).toDp() },      // tab audit D20
             onOpen = { f, p -> nav.navigate(Routes.reader(android.net.Uri.fromFile(f).toString(), p)) },
             onSign = { f -> nav.navigate(Routes.tool("digital_sign", android.net.Uri.fromFile(f).toString())) })
         SigFieldSheet(state, nav)   // Nitro signature-field actions + signed/certified bar
@@ -581,6 +593,8 @@ private const val TOP_UNDO = "undo"
 private const val TOP_SAVE = "save"
 private const val TOP_SEARCH = "search"
 private const val TOP_TABS = "tabs"
+/** Tab audit D25 / D32: tool screens that never read the open document (no permission check, no save first). */
+private val DOC_FREE_TOOLS = setOf("signatures", "fill_profile", "digital_ids")
 
 /** Suffix of the token path handed to the AI chat for its undo (see agentHost). */
 private const val AI_TOKEN = ".ai-undo"

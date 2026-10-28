@@ -46,9 +46,15 @@ object FormFillAi {
         return profile.firstOrNull { p -> SYN[group]!!.any { AiNorm.fold(p.label + " " + p.key).contains(AiNorm.fold(it)) } }
     }
 
-    suspend fun suggest(ctx: Context, client: AiClient, file: File, password: String?, profile: List<FillProfileField>, index: DocIndex?, useAi: Boolean = true): List<FillSuggestion> {
+    /**
+     * [current]: the values the reader shows (pending edits included; tab audit D18), used instead of the saved ones
+     * so a field the user already filled is not proposed again. [skip]: field names never proposed (pending values).
+     */
+    suspend fun suggest(ctx: Context, client: AiClient, file: File, password: String?, profile: List<FillProfileField>, index: DocIndex?, useAi: Boolean = true,
+                        current: Map<String, String>? = null, skip: Set<String> = emptySet()): List<FillSuggestion> {
         // one suggestion per field name: the sheet keys its LazyColumn by name (duplicate / unnamed fields crashed it)
-        val fields = fillable(FormOps.listFields(file, password)).filter { it.name.isNotBlank() }.distinctBy { it.name }
+        val fields = fillable(FormOps.listFields(file, password)).filter { it.name.isNotBlank() && it.name !in skip }.distinctBy { it.name }
+            .map { f -> current?.get(f.name)?.let { v -> f.copy(value = v) } ?: f }
         val out = ArrayList<FillSuggestion>()
         val rest = ArrayList<FormField>()
         fields.forEach { f ->

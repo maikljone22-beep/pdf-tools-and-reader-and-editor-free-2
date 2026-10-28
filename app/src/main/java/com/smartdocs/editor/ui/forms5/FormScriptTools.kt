@@ -24,6 +24,8 @@ import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.Functions
 import androidx.compose.material.icons.filled.MoreHoriz
+import androidx.compose.material.icons.filled.Pin
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.TableRows
 import androidx.compose.material.icons.filled.ViewWeek
@@ -71,7 +73,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 
-private enum class FormDlg { NONE, CONSOLE, DOC_JS, DOC_ACTIONS, ALL_JS, COMB, COMB_CONVERT, CSV_ROW, MAIL }
+private enum class FormDlg { NONE, CONSOLE, DOC_JS, DOC_ACTIONS, ALL_JS, COMB_CONVERT, CSV_ROW, MAIL }
 
 /**
  * Fill & Sign extras (hook: FillSignToolbar): rectangle, comb text, and the form menu (calculate now, data
@@ -96,11 +98,17 @@ fun FillSignFormChips(state: ReaderState, openDocJs: (() -> Unit)? = null) {
                 DropdownMenuItem(text = { Text(stringResource(R.string.f8_import_data)) }, leadingIcon = { Icon(Icons.Default.Download, null) }, onClick = { menu = false; fs.importPick = true })
                 DropdownMenuItem(text = { Text(stringResource(R.string.f8_import_csv_row)) }, leadingIcon = { Icon(Icons.Default.TableRows, null) }, onClick = { menu = false; dlg = FormDlg.CSV_ROW })
                 DropdownMenuItem(text = { Text(stringResource(R.string.f8_mail_data)) }, leadingIcon = { Icon(Icons.Default.Email, null) }, onClick = { menu = false; dlg = FormDlg.MAIL })
+                // tab audit D23: "convert to comb" had no button
+                DropdownMenuItem(text = { Text(stringResource(R.string.f8_comb_convert)) }, leadingIcon = { Icon(Icons.Default.Pin, null) }, onClick = { menu = false; dlg = FormDlg.COMB_CONVERT })
             }
             HorizontalDivider()
             // document scripts, document actions and the console: the shared editor of main (edit5 DocScriptsScreen, honours JsPolicy)
             if (openDocJs != null) DropdownMenuItem(text = { Text(stringResource(R.string.nbm_js_title)) }, leadingIcon = { Icon(Icons.Default.Code, null) }, onClick = { menu = false; openDocJs() })
+            else DropdownMenuItem(text = { Text(stringResource(R.string.f8_doc_js)) }, leadingIcon = { Icon(Icons.Default.Code, null) }, onClick = { menu = false; dlg = FormDlg.DOC_JS })
             DropdownMenuItem(text = { Text(stringResource(R.string.f8_all_js)) }, leadingIcon = { Icon(Icons.Default.Functions, null) }, onClick = { menu = false; dlg = FormDlg.ALL_JS })
+            // tab audit D23: the JavaScript console and the document actions had no button
+            DropdownMenuItem(text = { Text(stringResource(R.string.f8_js_console)) }, leadingIcon = { Icon(Icons.Default.Terminal, null) }, onClick = { menu = false; dlg = FormDlg.CONSOLE })
+            DropdownMenuItem(text = { Text(stringResource(R.string.f8_doc_actions)) }, leadingIcon = { Icon(Icons.Default.PlayArrow, null) }, onClick = { menu = false; dlg = FormDlg.DOC_ACTIONS })
         }
     }
 
@@ -110,7 +118,6 @@ fun FillSignFormChips(state: ReaderState, openDocJs: (() -> Unit)? = null) {
         FormDlg.DOC_JS -> DocJsDialog(state, close)
         FormDlg.DOC_ACTIONS -> DocActionsDialog(state, close)
         FormDlg.ALL_JS -> AllJsDialog(state, close)
-        FormDlg.COMB -> CombDialog(state, close)
         FormDlg.COMB_CONVERT -> CombConvertDialog(state, close)
         FormDlg.CSV_ROW -> CsvRowDialog(fs, close)
         FormDlg.MAIL -> MailDataDialog(fs, close)
@@ -461,44 +468,6 @@ internal fun combAnnots(state: ReaderState, page: Int, text: String, cells: Int,
     return out
 }
 
-@Composable
-private fun CombDialog(state: ReaderState, onDismiss: () -> Unit) {
-    var text by remember { mutableStateOf("") }
-    var cells by remember { mutableStateOf("") }
-    var width by remember { mutableStateOf("18") }
-    var boxes by remember { mutableStateOf(true) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.f8_fs_comb)) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(stringResource(R.string.f8_comb_help), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                OutlinedTextField(text, { text = it.replace("\n", "") }, label = { Text(stringResource(R.string.f8_comb_text)) }, singleLine = true)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(cells, { cells = it.filter { c -> c.isDigit() }.take(3) }, Modifier.weight(1f), label = { Text(stringResource(R.string.f8_comb_cells)) }, singleLine = true)
-                    OutlinedTextField(width, { width = it.filter { c -> c.isDigit() || c == '.' }.take(5) }, Modifier.weight(1f), label = { Text(stringResource(R.string.f8_comb_width)) }, singleLine = true)
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) { Switch(boxes, { boxes = it }); Text(stringResource(R.string.f8_comb_boxes), Modifier.padding(start = 8.dp)) }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = {
-                val n = (cells.toIntOrNull() ?: text.codePointCount(0, text.length)).coerceIn(1, 200)
-                val cw = (width.toFloatOrNull() ?: 18f).coerceIn(6f, 72f)
-                val page = state.currentPage
-                val (pw, ph) = state.pageSizes[page] ?: (595f to 842f)
-                val x = ((pw - n * cw) / 2f).coerceAtLeast(8f)
-                val top = ph / 2f + cw
-                val list = combAnnots(state, page, text, n, cw, x, top, boxes)
-                if (list.isNotEmpty()) state.batchAnnots { it.addAll(list) }
-                onDismiss()
-            }) { Text(stringResource(R.string.f8_place)) }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
-    )
-}
-
-/** Comb groups and single texts of the current page, to convert comb <-> text. */
 @Composable
 private fun CombConvertDialog(state: ReaderState, onDismiss: () -> Unit) {
     val page = state.currentPage
