@@ -241,8 +241,9 @@ ReaderBookmarkFromSelection, WordCount, NveClipboard.paste, pasteStampAt, TextPr
 | WORD | long-press on one word (adds **Select sentence**) |
 | LINK | long-press / right-click on a link annotation |
 | EMPTY | long-press / right-click where there is no character, link or annotation |
-| annotation | unchanged: existing `AnnotActionBar` (already Foxit-level: colour, opacity, thickness, edit, format, copy, open/play, ink→text, properties, delete, lock, more, range ±) |
-| form field / page image | not wired in this branch (see §6) |
+| ANNOT | selected annotation: `AnnotActionBar` now drawn from the registry (fix/selmenu-rest, §7) |
+| FIELD | long-press on a form field of the in-page form layer (fix/selmenu-rest, §7) |
+| IMAGE | long-press on a picture / shape of the content-edit screen, EDIT tab (fix/selmenu-rest, §7) |
 
 ### 4.3 Per-tab floating bar (phone 4 / tablet 6, then More) — before → after
 Before: the same 26-chip bottom row in every tab.
@@ -305,10 +306,24 @@ Before: the same 26-chip bottom row in every tab.
   `SelHooks.LEGACY_BAR`, `SelMenuLayer`, key hook, Back), `NveOverlays.kt` (NVE context menu yields to the registry).
 - Tests: `app/src/test/java/com/smartdocs/editor/core/selmenu/SelMenuTest.kt`.
 
-## 6. Not done / not feasible here
-- **Form field menu** (fill mode: Clear, Copy value, Reset field; form-edit: Properties, Duplicate, Delete, Tab order) — the in-page
-  form layer owns those touches; needs its own hook in `forms5` (left for the forms owner to avoid conflicts with the running audit).
-- **Page-content image menu** (EDIT tab: Copy image, Save image, Replace, Crop, Rotate, Delete) — lives in `EditModeHost`; not wired.
-- **Annotation menu** keeps the existing `AnnotActionBar` (already complete); Reply / Flatten single are reached via its More.
-- Thumbnail (PAGES) context menu is the organiser's (separate screen).
+## 6. Not done / not feasible here (updated by fix/selmenu-rest)
+- ~~Form field menu~~ — **done** (§7.1).
+- ~~Page-content image menu~~ — **done** (§7.3).
+- ~~Annotation menu keeps the existing `AnnotActionBar`~~ — **done**: moved into the registry, Reply added (§7.2).
+- Thumbnail (PAGES) context menu: the organiser's / thumbnails panel's (separate screen, another helper).
 - Not tested on a device; CI compiles and runs the JVM tests only.
+
+## 7. fix/selmenu-rest (branch `fix/selmenu-rest`, from main `8106ebe`)
+
+| # | Item | Status | Files |
+|---|---|---|---|
+| 7.1 | **Form-field menu** (long-press a field): Copy value, Paste (keystroke script applied, max length), Clear, Reset field (back to the saved value), Choose picture (image field), Sign / verify (signature field sheet), Check spelling (dialog with the spelling row), Calculate now (manual calculation), Field properties (name, tooltip, type, page, value, required, read only, calculated, max length, options), Edit in form designer, Duplicate field, Delete field, Set tab order (the designer opens on that field and runs the operation). Fill items need the author's form-filling permission (`Need.FILL`); designer items need MODIFY and are refused on a signed file. Read-only / calculated fields (no touch box) are found by PageCanvas's long-press. | done | `core/selmenu/SelObjects.kt`, `core/selmenu/SelMenu.kt`, `ui/selmenu/SelFieldMenu.kt` (+ `SelFieldHandoff`), `ui/selmenu/SelMenuLayer.kt`, `ui/selmenu/SelMenuState.kt` (`SelHooks.longPressField / longPressFieldAt`), hooks `ui/forms5/InPageFormLayer.kt`, `ui/reader/PageCanvas.kt`, `ui/formsx/FormDesignerScreen.kt` (one line each, marked `selmenu-rest`) |
+| 7.2 | **Annotation menu in the registry** (ANNOT context): every item of the former bar — Colour, Opacity, Thickness, Edit text, Text format, Copy, Open / play, stamp Cut / Copy / Set size as default / Multiple pages, Open attachment, video Play / Options / Share / Save, Recognise ink, Image annotation properties, Delete, markup range ± word — and of its More menu — Properties, Lock / Unlock, Cut, Copy, Paste in place, Rotate left / right / custom, Place on pages, Flatten, Export XFDF / FDF, E-mail FDF — plus **Reply** (opens the thread in the comments panel). Items the guard refuses stay greyed and tell why; Flatten is refused on a signed file. Right-click on an annotation selects it (its bar opens). | done | `core/selmenu/SelObjects.kt` (`AnnotFacts`, `ANNOT_MORE`), `ui/selmenu/SelAnnotMenu.kt`, `ui/reader/AnnotEditUi.kt` (bar drawn from the model), `ui/selmenu/SelBindings.kt` |
+| 7.3 | **Page-image menu, EDIT tab** (content-edit screen): long-press a picture / shape / shading selects it and opens the floating bar + More: Copy, Cut, Save to Pictures, Share, Replace, Crop, Rotate left / right, Flip H / V, Image editor, Image properties, More tools, Delete (confirm), Bring to front, Send to back, Duplicate (vector shapes: no save / share / replace / editor / 90° rotate; shadings: no copy / cut). | done | `ui/selmenu/SelEditImage.kt`, hook `ui/edit/EditPageView.kt` |
+| 7.4 | **Sign / Insert image at the pressed point**: "Sign" opens a chooser of the saved signatures (recent first, locked ones ask for the PIN) and opens the reader's signature placement frame centred on the point; "Insert image" picks a picture and opens the image placement frame there. Box from `FsGeom.stampBoxInside` (crop box + /Rotate, kept on the page, default signature width honoured). | done | `ui/selmenu/SelPlace.kt`, `core/fillsign2/FsGeom.kt` (`stampBoxInside`), `ui/selmenu/SelHandlers.kt` |
+| 7.5 | **No gesture lock**: the link / empty-area / field menus no longer put a full-screen tap catcher over the pages; the page scrolls and zooms with the menu open (the bar follows its anchor), a tap on a page or field closes it (`SelHooks.onPageTap`). | done | `ui/selmenu/SelMenuLayer.kt`, `ui/selmenu/SelMenuState.kt`, hooks `ui/reader/PageCanvas.kt`, `ui/forms5/InPageFormLayer.kt` |
+| 7.6 | Thumbnail (Organize / thumbnails panel) menu | other helper | — |
+
+Strings: `values/strings_selmenu_rest.xml` (ar), `values-en/strings_selmenu_rest.xml` (en), prefix `smr_`.
+Tests: `app/src/test/java/com/smartdocs/editor/core/selmenu/SelObjectsTest.kt` (object menus, guard / signed rules, `stampBoxInside` incl. a /Rotate 90 cropped page).
+Needs a device test: field long-press over every field kind; designer hand-off (duplicate / delete / tab order); annotation bar for each kind; content-edit long-press; sign / image placement on rotated pages; pinch and scroll with a link / empty-area menu open.
