@@ -83,11 +83,14 @@ fun Annot2Dialogs(state: ReaderState, nav: NavHostController, snack: SnackbarHos
             snack.showSnackbar(if (n > 0) String.format(msgMerged, n) else msgNone)
         }
     }
-    var exportTmp by remember { mutableStateOf<File?>(null) }
     fun exportTo(uri: android.net.Uri?) {
-        val tmp = exportTmp; exportTmp = null
+        val tmp = h.pendingExport; val msg = h.pendingExportMsg; h.pendingExport = null; h.pendingExportMsg = null
         if (uri == null || tmp == null) { tmp?.delete(); return }
-        scope.launch { runCatching { MediaIntents.writeTo(ctx, tmp, uri) }.onFailure { state.error = it.message }; tmp.delete() }
+        // tabs audit CM-17: "exported n" only after the file was written to the chosen place
+        scope.launch {
+            runCatching { MediaIntents.writeTo(ctx, tmp, uri) }.onSuccess { msg?.let { snack.showSnackbar(it) } }.onFailure { state.error = it.message }
+            tmp.delete()
+        }
     }
     val saveXfdf = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/vnd.adobe.xfdf")) { exportTo(it) }
     val saveFdf = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/vnd.fdf")) { exportTo(it) }
@@ -99,29 +102,32 @@ fun Annot2Dialogs(state: ReaderState, nav: NavHostController, snack: SnackbarHos
         h.launchImport = { importer.launch(arrayOf("application/vnd.fdf", "application/vnd.adobe.xfdf", "application/xml", "text/xml", "application/octet-stream", "*/*")) }
         h.launchMerge = { merge() }
         h.launchExport = { xfdf ->
-            h.launchBusy {
-                if (state.dirty && !state.save()) return@launchBusy
-                val f = state.file ?: return@launchBusy
-                val tmp = state.app.documents.newTemp("comments", if (xfdf) "xfdf" else "fdf")
-                val n = if (xfdf) CommentExchange.exportXfdf(f, state.password, tmp) else CommentExchange.exportFdf(f, state.password, tmp)
-                if (n == 0) { tmp.delete(); snack.showSnackbar(msgNoComments); return@launchBusy }
-                exportTmp = tmp
-                val name = f.nameWithoutExtension + if (xfdf) ".xfdf" else ".fdf"
-                if (xfdf) saveXfdf.launch(name) else saveFdf.launch(name)
-                snack.showSnackbar(String.format(msgExported, n))
+            // tabs audit CM-12: comment text leaves the document only when copying is allowed
+            if (state.guard.check(com.smartdocs.editor.core.security.DocAction.COPY)) h.launchBusy {
+                val (f, cleanup) = h.exportSource() ?: return@launchBusy
+                val pw = state.password     // the temp copy keeps the document's protection
+                try {
+                    val tmp = state.app.documents.newTemp("comments", if (xfdf) "xfdf" else "fdf")
+                    val n = if (xfdf) CommentExchange.exportXfdf(f, pw, tmp) else CommentExchange.exportFdf(f, pw, tmp)
+                    if (n == 0) { tmp.delete(); snack.showSnackbar(msgNoComments); return@launchBusy }
+                    h.pendingExport = tmp; h.pendingExportMsg = String.format(msgExported, n)
+                    val name = (state.file?.nameWithoutExtension ?: "comments") + if (xfdf) ".xfdf" else ".fdf"
+                    if (xfdf) saveXfdf.launch(name) else saveFdf.launch(name)
+                } finally { cleanup() }
             }
         }
         h.launchSummary = { h.cx.summaryAsk = true }       // section 7.70: options first
         h.cx.runSummary = { opts ->
-            h.launchBusy {
-                if (state.dirty && !state.save()) return@launchBusy
-                val f = state.file ?: return@launchBusy
-                val out = state.app.documents.uniqueFile(state.app.documents.docsDir, "Summarize_" + f.nameWithoutExtension)
-                val n = CommentSummary.build(ctx, f, state.password, out, summaryLabels,
-                    pageSize = { state.pageSize(it) },
-                    thumb = { p, w, hh -> runCatching { state.session?.render(p, w, hh, false, true) }.getOrNull() },
-                    opts = opts.copy(pageCount = state.pageCount))
-                if (n == 0) { out.delete(); snack.showSnackbar(msgNoComments) } else h.summaryFile = out
+            if (state.guard.check(com.smartdocs.editor.core.security.DocAction.COPY)) h.launchBusy {     // CM-12
+                val (f, cleanup) = h.exportSource() ?: return@launchBusy        // CM-36: pending edits via a temp copy
+                try {
+                    val out = state.app.documents.uniqueFile(state.app.documents.docsDir, "Summarize_" + (state.file?.nameWithoutExtension ?: f.nameWithoutExtension))
+                    val n = CommentSummary.build(ctx, f, state.password, out, summaryLabels,
+                        pageSize = { state.pageSize(it) },
+                        thumb = { p, w, hh -> runCatching { state.session?.render(p, w, hh, false, true) }.getOrNull() },
+                        opts = opts.copy(pageCount = state.pageCount))
+                    if (n == 0) { out.delete(); snack.showSnackbar(msgNoComments) } else h.summaryFile = out
+                } finally { cleanup() }
             }
         }
     }
@@ -188,7 +194,12 @@ private fun RecordDialog(h: Annot2Host, tap: Tap2) {
             .onFailure { h.s.error = it.message ?: it.toString() }
     }
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok -> if (ok) start() else denied = true }
-    DisposableEffect(Unit) { onDispose { recorder.stop(discard = true) } }
+    // tabs audit CM-18: a recording in progress when the dialog goes away (rotation) is kept and added, not thrown away
+    val recNow by rememberUpdatedState(recording)
+    DisposableEffect(Unit) { onDispose {
+        if (recNow) { val f = recorder.stop(); h.recordTap = null; if (f != null) h.addMedia(tap, f, title + " " + java.text.SimpleDateFormat("HH:mm", java.util.Locale.US).format(java.util.Date())) }
+        else recorder.stop(discard = true)
+    } }
     LaunchedEffect(recording) {
         while (recording) { elapsed = System.currentTimeMillis() - recorder.startedAt; level = (recorder.amplitude() / 20000f).coerceIn(0f, 1f); delay(150) }
     }
@@ -198,7 +209,9 @@ private fun RecordDialog(h: Annot2Host, tap: Tap2) {
         if (f != null) h.addMedia(tap, f, title + " " + java.text.SimpleDateFormat("HH:mm", java.util.Locale.US).format(java.util.Date()))
     }
     AlertDialog(
-        onDismissRequest = { recorder.stop(discard = true); h.recordTap = null },
+        onDismissRequest = { if (!recording) { recorder.stop(discard = true); h.recordTap = null } },
+        // tabs audit CM-18: no tap-outside / back while recording (Stop or Cancel decide)
+        properties = androidx.compose.ui.window.DialogProperties(dismissOnClickOutside = !recording, dismissOnBackPress = !recording),
         icon = { Icon(Icons.Default.Mic, null) },
         title = { Text(stringResource(R.string.an_record_title)) },
         text = {
@@ -272,7 +285,9 @@ private fun SnapshotSheet(state: ReaderState, snap: Snapshot2, onDismiss: () -> 
             Image(snap.bitmap.asImageBitmap(), null, Modifier.fillMaxWidth().heightIn(max = 320.dp), contentScale = ContentScale.Fit)
             Text("${snap.bitmap.width} × ${snap.bitmap.height}", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(4.dp))
             Spacer(Modifier.height(12.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            // tabs audit CM-23: the buttons wrap on narrow phones / long Arabic labels
+            @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+            androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 OutlinedButton(onClick = { MediaIntents.copyImage(ctx, state.app, snap.file) }) { Icon(Icons.Default.ContentPaste, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.ae_copy)) }
                 OutlinedButton(onClick = { MediaIntents.share(ctx, state.app, snap.file, "image/png") }) { Icon(Icons.Default.Share, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.share)) }
                 Button(onClick = { save.launch("snapshot_" + java.text.SimpleDateFormat("yyMMddHHmmss", java.util.Locale.US).format(java.util.Date()) + ".png") }) {
@@ -282,7 +297,8 @@ private fun SnapshotSheet(state: ReaderState, snap: Snapshot2, onDismiss: () -> 
             // nav-batch: Foxit "Snapshot → Print" (print a portion of a page)
             Spacer(Modifier.height(8.dp))
             OutlinedButton(onClick = {
-                scope.launch {
+                // tabs audit CM-12: printing a snapshot needs the print permission
+                if (state.guard.check(com.smartdocs.editor.core.security.DocAction.PRINT)) scope.launch {
                     runCatching {
                         val pdf = com.smartdocs.editor.core.tools5.ToPdf.convert(ctx, snap.file, state.app.documents.newTemp("snapshot"))
                         com.smartdocs.editor.core.util.PdfPrint.print(ctx, pdf, "snapshot", 1)

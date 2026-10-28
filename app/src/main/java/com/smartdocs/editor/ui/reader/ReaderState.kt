@@ -129,7 +129,16 @@ class ReaderState(
     /** The active tool. nitro-protect2: a tool the document's restrictions or Protected View forbid is refused here. */
     var tool: ReaderTool?
         get() = toolState
-        set(v) { if (v != null && v != toolState && ReaderGuard.actionFor(v)?.let { guard.check(it) } == false) return; toolState = v }
+        set(v) {
+            if (v != null && v != toolState && ReaderGuard.actionFor(v)?.let { guard.check(it) } == false) return
+            // tabs audit CM-06: the settings of the tool being left are kept on every change, also when a tool clears itself
+            val old = toolState
+            if (old != null && old != v) {
+                val mem = com.smartdocs.editor.ui.reader.annot.ToolMemory
+                if (old in mem.REMEMBERED && mem.enabled(context)) runCatching { mem.save(context, old, mem.capture(this)) }
+            }
+            toolState = v
+        }
     var color by mutableIntStateOf(0xFFEB3B)
     var opacity by mutableFloatStateOf(1f)
     var thickness by mutableFloatStateOf(3f)
@@ -164,7 +173,7 @@ class ReaderState(
     val canRedo: Boolean get() = history.canRedo && !saving
     var dirty by mutableStateOf(false); private set
     var existing by mutableStateOf<List<AnnotationWriter.Existing>>(emptyList()); private set
-    var saving by mutableStateOf(false); private set
+    var saving by mutableStateOf(false); internal set   // internal: Annot2Host.fileOp (audit CM-15)
     /** In-page form filling (MODULE_forms5): pending field values, live calculations, field bar. */
     val forms5 = com.smartdocs.editor.ui.forms5.FormFill.of(this).also { it.markDirty = { dirty = true } }
     /** nitro-protect2: restrictions, Protected View, Safe Reading Mode, action inspector. */
@@ -496,6 +505,21 @@ class ReaderState(
         edit.validate()
     }
 
+    /** Eraser stroke (tabs audit CM-08): pending ink removed while dragging, one undo step at the end ([endErase]); locked ink stays. */
+    private var eraseBefore: List<Annot>? = null
+
+    fun eraseHits(ids: List<Long>) {
+        if (ids.isEmpty() || !guard.check(com.smartdocs.editor.core.security.DocAction.ANNOTATE)) return
+        if (eraseBefore == null) eraseBefore = annots.toList()
+        if (annots.removeAll { it.id in ids && !it.locked }) dirty = true
+    }
+
+    fun endErase(page: Int) {
+        val b = eraseBefore ?: return
+        eraseBefore = null
+        if (annots.size != b.size) annotStep(R.string.hi_del_annot, page, b)
+    }
+
     fun removeAnnot(id: Long) {
         val a = annots.firstOrNull { it.id == id } ?: return
         val before = annots.toList()
@@ -685,7 +709,7 @@ class ReaderState(
     fun eraseStoredInk(page: Int, pts: List<Pair<Float, Float>>, radius: Float) {
         if (!guard.check(com.smartdocs.editor.core.security.DocAction.ANNOTATE)) return      // nitro-protect2
         if (pts.isEmpty() || saving) return
-        val candidates = existing.filter { it.page == page && it.subtype == "Ink" && EraseLogic.nearRect(it.rect.left, it.rect.bottom, it.rect.right, it.rect.top, pts, radius + 4f) }
+        val candidates = existing.filter { it.page == page && it.subtype == "Ink" && !it.locked && EraseLogic.nearRect(it.rect.left, it.rect.bottom, it.rect.right, it.rect.top, pts, radius + 4f) }
         if (candidates.isEmpty()) return
         scope.launch {
             saveMutex.withLock {
@@ -825,6 +849,9 @@ class ReaderState(
                     writeBackResult = runCatching { app.documents.writeBack(f) }.getOrNull().also { com.smartdocs.editor.core.cloud.SaveHooks.onSaved(app, f) }
                     snap
                 }
+            } catch (e: com.smartdocs.editor.core.pdf.SignedDocumentException) {
+                // tabs audit CM-01 / CM-14: signed / certified file -> "save a copy" dialog, nothing written
+                out.delete(); signedBlock = e.reason; null
             } catch (e: Throwable) {
                 out.delete(); throw e
             }
@@ -925,9 +952,11 @@ class ReaderState(
     fun selectTool(t: ReaderTool?) {
         // remember the settings of the tool being left, restore those of the new one (OLD_PLAN: settings per tool)
         val mem = com.smartdocs.editor.ui.reader.annot.ToolMemory
-        tool?.takeIf { it in mem.REMEMBERED }?.let { old -> mem.save(context, old, mem.capture(this)) }
-        tool = if (tool == t) null else t
-        val restored = tool?.takeIf { it in mem.REMEMBERED }?.let { nt -> mem.load(context, nt) }?.also { mem.apply(this, it) } != null
+        val prevTool = tool
+        tool = if (tool == t) null else t                 // the setter saved the old tool's settings
+        // tabs audit CM-27: the stamp picker starts empty (a picture of the image / signature tool is not a stamp)
+        if (tool == ReaderTool.STAMP && prevTool != ReaderTool.STAMP) { pendingImage = null; placement = null }
+        val restored = mem.enabled(context) && tool?.takeIf { it in mem.REMEMBERED }?.let { nt -> mem.load(context, nt) }?.also { mem.apply(this, it) } != null
         if (restored) { selection = null; measure = null; edit.clear(); placement = null; pendingImage = null; pendingText = ""; return }
         selection = null; measure = null; edit.clear()
         if (tool != ReaderTool.SIGNATURE && tool != ReaderTool.STAMP && tool != ReaderTool.IMAGE) { placement = null; pendingImage = null }

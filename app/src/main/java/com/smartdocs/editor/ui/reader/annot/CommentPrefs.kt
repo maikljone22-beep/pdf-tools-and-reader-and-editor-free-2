@@ -44,6 +44,11 @@ object ToolMemory {
         h.bold = v.bold; h.italic = v.italic; h.underline = v.underline; h.noteIcon = v.icon
     }
 
+    /** "Remember tool settings" (one switch for the one memory; key kept from view5 so the old choice stays). */
+    fun enabled(ctx: Context): Boolean = runCatching { ctx.getSharedPreferences("view5", Context.MODE_PRIVATE).getBoolean("tool_memory", true) }.getOrDefault(true)
+
+    fun setEnabled(ctx: Context, on: Boolean) { runCatching { ctx.getSharedPreferences("view5", Context.MODE_PRIVATE).edit().putBoolean("tool_memory", on).apply() } }
+
     fun save(ctx: Context, tool: ReaderTool, v: Settings) {
         runCatching { ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(tool.name, v.encode()).apply() }
     }

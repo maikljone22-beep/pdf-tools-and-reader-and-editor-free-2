@@ -92,7 +92,7 @@ fun Annot2PropertyRow(state: ReaderState) {
                     VerticalDivider(Modifier.height(24.dp))
                 }
                 Text("${stringResource(R.string.prop_thickness)} ${"%.0f".format(state.thickness)}", style = MaterialTheme.typography.labelSmall)
-                Slider(state.thickness, { state.thickness = it }, valueRange = 1f..12f, modifier = Modifier.width(120.dp).height(28.dp))
+                Slider(state.thickness.coerceIn(0.5f, 24f), { state.thickness = it }, valueRange = 0.5f..24f, modifier = Modifier.width(120.dp).height(28.dp))   // same range as the property bar (CM-34)
                 if (t != ReaderTool.POLYLINE) {
                     VerticalDivider(Modifier.height(24.dp))
                     Text(stringResource(R.string.an_fill), style = MaterialTheme.typography.labelSmall)

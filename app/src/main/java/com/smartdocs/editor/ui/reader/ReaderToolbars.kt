@@ -1,5 +1,9 @@
 package com.smartdocs.editor.ui.reader
 
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -94,14 +98,14 @@ fun ToolChip(icon: ImageVector, label: String, selected: Boolean = false, enable
     val bg = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
     val fg = if (!enabled) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f) else if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
     Column(
-        Modifier.width(64.dp).clip(RoundedCornerShape(14.dp)).background(bg).clickable(enabled = enabled, onClick = onClick).padding(vertical = 6.dp, horizontal = 2.dp),
+        Modifier.width(72.dp).clip(RoundedCornerShape(14.dp)).background(bg).clickable(enabled = enabled, onClick = onClick).padding(vertical = 6.dp, horizontal = 2.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         // tab-view-core E-15: the label is read once (icon without its own description) and may take two lines
         Icon(icon, null, Modifier.size(24.dp), tint = tint?.takeIf { enabled } ?: fg)
         Spacer(Modifier.height(3.dp))
-        Text(label, style = MaterialTheme.typography.labelSmall, color = fg, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center,
-            lineHeight = MaterialTheme.typography.labelSmall.fontSize * 1.1f)
+        // tabs audit CM-19: two lines (Arabic labels such as "مدير التعليقات" were cut at one line)
+        Text(label, style = MaterialTheme.typography.labelSmall, color = fg, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center, lineHeight = 12.sp)
     }
 }
 
@@ -115,10 +119,10 @@ fun BottomToolbar(state: ReaderState, actions: ReaderActions) {
     Surface(Modifier.coachTarget(CoachIds.READER_TOOLBAR), tonalElevation = 3.dp, shadowElevation = 8.dp) {
         Column(Modifier.fillMaxWidth().navigationBarsPadding()) {
             val nveUser = com.smartdocs.editor.ui.nve.NveState.of(state).userTab      // NVE: a user tab replaces the built-in toolbars
-            if (nveUser != null) com.smartdocs.editor.ui.nve.shell.NveUserTabToolbar(nveUser, actions.navigateTool) else
+            if (nveUser != null) com.smartdocs.editor.ui.nve.shell.NveUserTabToolbar(nveUser, actions.navigateTool, onMissing = { com.smartdocs.editor.ui.nve.NveState.of(state).userTab = null }) else
             when (state.tab) {
                 ReaderTab.VIEW -> ViewToolbar(state, actions)
-                ReaderTab.COMMENT -> { PropertyBar(state); CommentToolbar(state, actions) }
+                ReaderTab.COMMENT -> { if (state.tool != null) PropertyBar(state); CommentToolbar(state, actions) }
                 ReaderTab.EDIT -> { if (state.tool != null) PropertyBar(state); EditToolbar(state, actions) }
                 ReaderTab.FILL_SIGN -> { if (state.tool != null) PropertyBar(state); FillSignToolbar(state, actions) }
                 ReaderTab.SIGN -> SignToolbar(state, actions)
@@ -182,7 +186,7 @@ private val commentTools = listOf(
     ToolDef(ReaderTool.RECT, Icons.Default.CropSquare, R.string.annot_rect),
     ToolDef(ReaderTool.OVAL, Icons.Default.Circle, R.string.annot_oval),
     ToolDef(ReaderTool.STAMP, Icons.Default.Approval, R.string.annot_stamp),
-    ToolDef(ReaderTool.MEASURE, Icons.Default.Straighten, R.string.annot_measure),
+    // tabs audit CM-05: measuring is the workbench "Measure" chip (saved); the canvas measure is not offered twice
 )
 
 @Composable
@@ -365,13 +369,10 @@ fun PropertyBar(state: ReaderState) {
     val t = state.tool
     Column(Modifier.fillMaxWidth()) {
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            IconButton(onClick = { state.undo() }, enabled = state.canUndo, modifier = Modifier.size(32.dp)) { Icon(Icons.AutoMirrored.Filled.Undo, stringResource(R.string.undo)) }
-            IconButton(onClick = { state.redo() }, enabled = state.canRedo, modifier = Modifier.size(32.dp)) { Icon(Icons.AutoMirrored.Filled.Redo, stringResource(R.string.redo)) }
             // tab-view-core E-14: only the controls the tool uses (IMAGE: opacity; LINK: none)
             val colorT = t != ReaderTool.IMAGE && t != ReaderTool.LINK
             val opacityT = t != ReaderTool.LINK
             if (colorT) {
-                VerticalDivider(Modifier.height(24.dp))
                 PALETTE.forEach { c -> ColorDot(c, state.color == c) { state.color = c } }
                 Box(Modifier.size(28.dp).clip(CircleShape).border(1.dp, MaterialTheme.colorScheme.outline, CircleShape).clickable { showMore = !showMore }, contentAlignment = Alignment.Center) {
                     Icon(Icons.Default.Tune, stringResource(R.string.rd_custom_color), Modifier.size(16.dp))
@@ -386,12 +387,17 @@ fun PropertyBar(state: ReaderState) {
             VerticalDivider(Modifier.height(24.dp))
             FilterChip(selected = state.continueCreating, onClick = { state.continueCreating = !state.continueCreating; com.smartdocs.editor.core.data.NpfPrefs.setBool(com.smartdocs.editor.core.data.NpfPrefs.K.RETAIN_TOOLS, state.continueCreating) },
                 label = { Text(stringResource(R.string.rd_continue_creating)) }, leadingIcon = { Icon(Icons.Default.Repeat, null, Modifier.size(16.dp)) }, modifier = Modifier.height(30.dp))
+            val ctx = androidx.compose.ui.platform.LocalContext.current
+            var memOn by remember { mutableStateOf(com.smartdocs.editor.ui.reader.annot.ToolMemory.enabled(ctx)) }
+            FilterChip(selected = memOn, onClick = { memOn = !memOn; com.smartdocs.editor.ui.reader.annot.ToolMemory.setEnabled(ctx, memOn) },
+                label = { Text(stringResource(R.string.v5_tool_memory)) }, leadingIcon = { Icon(Icons.Default.Memory, null, Modifier.size(16.dp)) }, modifier = Modifier.height(30.dp))
         }
         if (showMore && t != ReaderTool.IMAGE && t != ReaderTool.LINK) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(hex, { v -> hex = v.take(7); v.removePrefix("#").toIntOrNull(16)?.let { if (v.removePrefix("#").length == 6) state.color = it } },
                     label = { Text(stringResource(R.string.rd_custom_color)) }, placeholder = { Text("#FF5722") }, singleLine = true, modifier = Modifier.width(140.dp))
-                val thick = t == ReaderTool.INK || t == ReaderTool.LINE || t == ReaderTool.ARROW || t == ReaderTool.RECT || t == ReaderTool.OVAL || t == ReaderTool.ERASER || t == null || t == ReaderTool.FS_RRECT
+                val poly = t == ReaderTool.POLYGON || t == ReaderTool.POLYLINE || t == ReaderTool.CLOUD
+                val thick = !poly && (t == ReaderTool.INK || t == ReaderTool.LINE || t == ReaderTool.ARROW || t == ReaderTool.RECT || t == ReaderTool.OVAL || t == ReaderTool.ERASER || t == null || t == ReaderTool.FS_RRECT)
                 val fontT = t == ReaderTool.FREETEXT || t == ReaderTool.TEXTBOX || t == ReaderTool.FS_TEXT || t == ReaderTool.FS_PROFILE || t == ReaderTool.FS_DATE || t == ReaderTool.NOTE
                         || t == ReaderTool.FS_CHECK || t == ReaderTool.FS_CROSS || t == ReaderTool.FS_DOT || t == ReaderTool.FS_LINE || t == ReaderTool.FS_COMB
                 Column(Modifier.weight(1f)) {
@@ -399,7 +405,7 @@ fun PropertyBar(state: ReaderState) {
                         Text("${stringResource(R.string.prop_thickness)}: ${"%.1f".format(state.thickness)}", style = MaterialTheme.typography.labelSmall)
                         Slider(state.thickness, { state.thickness = it }, valueRange = 0.5f..24f, modifier = Modifier.height(28.dp))
                     }
-                    if (fontT || !thick) {
+                    if (fontT || (!thick && !poly)) {
                         Text("${stringResource(R.string.prop_font_size)}: ${state.fontSize.toInt()}", style = MaterialTheme.typography.labelSmall)
                         Slider(state.fontSize, { state.fontSize = it }, valueRange = 6f..72f, modifier = Modifier.height(28.dp))
                     }
@@ -416,7 +422,20 @@ fun ColorDot(rgb: Int, selected: Boolean, size: androidx.compose.ui.unit.Dp = 28
     Box(
         Modifier.size(size).clip(CircleShape).background(annotColor(rgb))
             .border(if (selected) 3.dp else 1.dp, if (selected) MaterialTheme.colorScheme.primary else Color(0x33000000), CircleShape)
-            .clickable(onClick = onClick),
+            .clickable(onClickLabel = colorName(rgb), role = androidx.compose.ui.semantics.Role.RadioButton, onClick = onClick)
+            .semantics { contentDescription = colorName0(rgb); this.selected = selected },
         contentAlignment = Alignment.Center,
     ) { if (selected) Icon(Icons.Default.Check, null, Modifier.size(14.dp), tint = if (rgb == 0xFFEB3B || rgb == 0x8BC34A) Color.Black else Color.White) }
 }
+
+/** Spoken name of an annotation colour (tabs audit CM-30): a palette name or the hex value. */
+@Composable
+private fun colorName(rgb: Int): String = colorName0(rgb)
+
+private fun colorName0(rgb: Int): String = COLOR_NAMES[rgb] ?: "#%06X".format(rgb and 0xFFFFFF)
+
+private val COLOR_NAMES = mapOf(
+    0xFFEB3B to "Yellow · أصفر", 0xF44336 to "Red · أحمر", 0xE53935 to "Red · أحمر", 0x4CAF50 to "Green · أخضر", 0x8BC34A to "Light green · أخضر فاتح",
+    0x2196F3 to "Blue · أزرق", 0x3F51B5 to "Indigo · نيلي", 0x9C27B0 to "Purple · بنفسجي", 0xE91E63 to "Pink · وردي", 0xFF9800 to "Orange · برتقالي",
+    0x795548 to "Brown · بني", 0x212121 to "Black · أسود", 0x000000 to "Black · أسود", 0xFFFFFF to "White · أبيض", 0x9E9E9E to "Grey · رمادي", 0x00BCD4 to "Cyan · سماوي",
+)

@@ -144,7 +144,7 @@ fun simplify(points: List<Offset>): List<Offset> {
 
 /** Ids of pending INK annotations on [page] that pass within [radiusPt] points of PDF point (x, y). */
 fun inkHits(annots: List<Annot>, page: Int, x: Float, y: Float, radiusPt: Float): List<Long> =
-    annots.filter { it.page == page && it.kind == AnnotKind.INK }.filter { a ->
+    annots.filter { it.page == page && it.kind == AnnotKind.INK && !it.locked }.filter { a ->   // tabs audit CM-08: locked ink stays
         a.paths.any { stroke -> stroke.any { (px, py) -> hypot(px - x, py - y) <= radiusPt + a.strokeWidth } }
     }.map { it.id }
 
