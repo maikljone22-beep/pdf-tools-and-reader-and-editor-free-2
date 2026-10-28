@@ -292,7 +292,7 @@ object ToPdf6 {
         val res = ToPdf.htmlParts(ctx, parts, out, tmp, WebPdfWriter.Setup(landscape = landscape, marginMils = 400, javaScript = false))
         // a bookmark per sheet: each printed sheet starts with its name when the workbook has several
         if (bookmarks && book.sheets.size > 1) runCatching {
-            OfficeOutline.applyByText(out, book.sheets.filter { OfficeHtml.xlsxUsedRows(it).isNotEmpty() }.map { OfficeOutline.Title(1, it.name) })
+            OfficeOutline.applyByText(out, book.sheets.filter { !OfficeHtml.xlsxUsedRows(it).isEmpty() }.map { OfficeOutline.Title(1, it.name) })
         }
         return res
     }
