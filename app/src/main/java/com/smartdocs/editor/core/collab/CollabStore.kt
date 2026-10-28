@@ -53,8 +53,12 @@ object CollabStore {
         prefs(c).edit().putString("reviews", JSONArray().apply { list.forEach { put(it.toJson()) } }.toString()).apply()
     }
 
-    fun upsert(c: Context, r: ReviewRef) = synchronized(this) { save(c, load(c).filterNot { it.id == r.id } + r) }
+    fun upsert(c: Context, r: ReviewRef) {
+        synchronized(this) { save(c, load(c).filterNot { it.id == r.id } + r) }
+        runCatching { ReviewReminder.schedule(c, r) }   // fc-sync: local reminder before the deadline
+    }
     fun remove(c: Context, id: String) = synchronized(this) {
+        runCatching { ReviewReminder.cancel(c, id) }
         save(c, load(c).filterNot { it.id == id })
         prefs(c).edit().remove("pub_$id").remove("foreign_$id").remove("applied_$id").apply()
     }
@@ -139,6 +143,36 @@ object CollabStore {
             upsert(c, (get(c, ref.id) ?: ref).copy(lastSync = System.currentTimeMillis()))
             n
         }
+    }
+
+    /** Thrown by [takeOver] while the document is open in the reader (its save would overwrite the change). */
+    class DocumentOpen : IllegalStateException("document open")
+
+    /**
+     * fc-sync "take ownership": the comments of [author] (null = all other reviewers) become mine: their /T is set to
+     * my name, they leave the "from others" set and are published as mine. Returns how many were taken.
+     */
+    suspend fun takeOver(c: Context, ref: ReviewRef, author: String?): Int = withContext(Dispatchers.IO) {
+        val file = File(ref.localPath)
+        if (CollabLive.isAttached(file)) throw DocumentOpen()
+        val n = ioLock.withLock {
+            PDDocument.load(file).use { doc ->
+                val foreign = map(c, "foreign_${ref.id}")
+                val byName = HashMap<String, com.tom_roush.pdfbox.pdmodel.interactive.annotation.PDAnnotation>()
+                doc.pages.forEach { p -> runCatching { p.annotations }.getOrDefault(emptyList()).forEach { a -> a.annotationName?.let { byName[it] = a } } }
+                val authors = byName.mapValues { (_, a) -> (a as? com.tom_roush.pdfbox.pdmodel.interactive.annotation.PDAnnotationMarkup)?.titlePopup.orEmpty() }
+                val picked = CommentMerge.takeOver(authors, foreign.keys, author)
+                if (picked.isEmpty()) return@use 0
+                val me = com.smartdocs.editor.core.share5.ReviewConsent.author(c, ref.id, authorName(c))
+                picked.forEach { nm -> (byName[nm] as? com.tom_roush.pdfbox.pdmodel.interactive.annotation.PDAnnotationMarkup)?.titlePopup = me }
+                saveAtomically(doc, file)
+                picked.forEach { foreign.remove(it) }
+                putMap(c, "foreign_${ref.id}", foreign)
+                picked.size
+            }
+        }
+        if (n > 0 && CollabConfig.enabled && !ref.closed) runCatching { publish(c, ref) }
+        n
     }
 
     /** /NM of every annotation in [doc]. */

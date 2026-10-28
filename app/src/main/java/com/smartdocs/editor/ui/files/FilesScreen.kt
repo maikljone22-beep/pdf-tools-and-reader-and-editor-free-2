@@ -192,6 +192,9 @@ fun FilesScreen(nav: NavHostController) {
                         onCopy = { copyTargets = selectedFiles },
                         onDelete = { deleteTargets = selectedFiles },
                         onMerge = { val first = selectedFiles.first(); selected = emptySet(); nav.navigate(Routes.tool("merge", Uri.fromFile(first).toString())) },
+                        onConvert = if (selectedFiles.any { it.isFile }) ({   // fc-sync 16b: batch convert the selection
+                            com.smartdocs.editor.ui.convert6.Cv6Batch.hand(selectedFiles); selected = emptySet(); nav.navigate(Routes.tool("convert_hub"))
+                        }) else null,
                     ) else TopAppBar(
                         title = { Text(stringResource(R.string.nav_files), style = MaterialTheme.typography.headlineSmall) },
                         colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),

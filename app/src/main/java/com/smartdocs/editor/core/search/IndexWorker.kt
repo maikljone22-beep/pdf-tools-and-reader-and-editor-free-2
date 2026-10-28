@@ -49,6 +49,7 @@ class Indexer(private val context: Context) {
     /** Indexes [only] (one file) or every source. Returns the number of files (re)indexed. */
     suspend fun run(only: File? = null, force: Boolean = false): Int {
         val index = FullTextIndex.get(context)
+        IndexExtras.apply(context)   // fc-sync: width folding / metadata options
         val files = if (only != null) listOf(only) else sources()
         val todo = files.filter { force || runCatching { index.needsIndex(it) }.getOrDefault(true) }
         var done = 0
@@ -56,10 +57,12 @@ class Indexer(private val context: Context) {
         try {
             for (f in todo) {
                 FullTextIndex.progressState.value = IndexProgress(true, done, todo.size, f.name)
-                runCatching { indexFile(index, f) }
+                val r = runCatching { indexFile(index, f) }
+                IndexExtras.log(context, f, r.exceptionOrNull())   // fc-sync: optional indexing log
                 done++
             }
             if (only == null) runCatching { index.prune() }
+            runCatching { index.enforceLimit(IndexExtras.limitBytes(context)) }   // fc-sync: cache size limit
         } finally {
             FullTextIndex.progressState.value = IndexProgress(false, done, todo.size, null)
         }
@@ -83,6 +86,7 @@ class Indexer(private val context: Context) {
             }
         } finally { session.closeAsync() }
         parts += DocParts.load(f, null)
+        parts += DocMeta.load(f, IndexExtras.options(context))   // fc-sync: title, XMP, custom properties, tags
         index.put(f, pages, parts, locked = false)
     }
 }

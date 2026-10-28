@@ -8,11 +8,11 @@
 //   PUT    /docs/:id/versions?sha=&size=&note=   body = PDF or empty (hash-only version) -> {n}
 //   GET    /docs/:id                  -> meta + versions + readers + opens
 //   POST   /docs/:id/readers/:rid     {status: allowed|blocked}
-//   POST   /docs/:id/settings         {requireApproval, offlineDays, revoked}
+//   POST   /docs/:id/settings         {requireApproval, offlineDays, revoked, openMessage?}  (openMessage: shown to readers on open)
 //   POST   /docs/:id/revoke-all       every reader blocked, document revoked (protected copies stop opening after their offline period)
 //   DELETE /docs/:id
 // Reader:
-//   POST   /open/:id                  {rid, name, sha} -> {status ok|pending|blocked|revoked, latest, isLatest, key?, offlineDays, title, owner}
+//   POST   /open/:id                  {rid, name, sha} -> {status ok|pending|blocked|revoked, latest, isLatest, key?, offlineDays, title, owner, message}
 //   POST   /open/:id/request          {rid, name, message}  (access request when approval is required / after a block)
 //   GET    /open/:id/latest?rid=      the newest version PDF (allowed readers only)
 
@@ -55,6 +55,7 @@ async function route(req, env) {
     meta.requireApproval = !!b.requireApproval;
     meta.offlineDays = clampInt(b.offlineDays, 0, 365, meta.offlineDays);
     if (b.revoked === false && meta.revoked) meta.revoked = false;
+    if (typeof b.openMessage === "string") meta.openMessage = str(b.openMessage, 500);
     await save(env, meta); return json({ ok: true });
   }
   if (req.method === "POST" && sub === "revoke-all") {
@@ -76,7 +77,7 @@ async function create(req, env) {
   const meta = {
     id, ownerKey: rnd(32), title: str(b.title, 120), owner: str(b.owner, 80), protected: !!b.protected,
     key: b.protected ? hex(24) : "", requireApproval: !!b.requireApproval, offlineDays: clampInt(b.offlineDays, 0, 365, 7),
-    revoked: false, created: Date.now(), opens: 0, versions: [], readers: {},
+    revoked: false, created: Date.now(), opens: 0, versions: [], readers: {}, openMessage: str(b.openMessage || "", 500),
   };
   await save(env, meta);
   return json({ id, ownerKey: meta.ownerKey, key: meta.key || undefined });
@@ -121,7 +122,7 @@ async function reader(req, env, meta, sub, url) {
     const isLatest = !latest || !sha || latest.sha === sha;
     const status = meta.revoked ? "revoked" : r.status === "allowed" ? "ok" : r.status;
     return json({
-      status, latest, isLatest, offlineDays: meta.offlineDays, title: meta.title, owner: meta.owner,
+      status, latest, isLatest, offlineDays: meta.offlineDays, title: meta.title, owner: meta.owner, message: meta.openMessage || "",
       key: status === "ok" && meta.protected ? meta.key : undefined,
     });
   }

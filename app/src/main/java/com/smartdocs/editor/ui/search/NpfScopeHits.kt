@@ -77,4 +77,5 @@ private fun npfKindLabel(k: PartKind): Int = when (k) {
     PartKind.FIELD -> R.string.npf_scope_fields
     PartKind.ATTACHMENT -> R.string.npf_scope_attachments
     PartKind.TEXT -> R.string.npf_scope_text
+    PartKind.METADATA -> R.string.fcy_scope_metadata   // fc-sync
 }

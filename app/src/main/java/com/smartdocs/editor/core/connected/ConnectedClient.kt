@@ -25,11 +25,14 @@ data class ConnReader(val rid: String, val name: String, val opens: Int, val fir
 data class ConnDocInfo(
     val id: String, val title: String, val owner: String, val protected: Boolean, val requireApproval: Boolean, val offlineDays: Int,
     val revoked: Boolean, val opens: Int, val versions: List<ConnVersion>, val readers: List<ConnReader>, val created: Long,
+    /** fc-sync: message shown to readers when they open the document ("" = none). */
+    val openMessage: String = "",
 )
 
 /** Reader-side answer of `POST /open/:id`: ok | pending | blocked | revoked | gone. */
 data class ConnAccess(
     val status: String, val latest: ConnVersion?, val isLatest: Boolean, val key: String?, val offlineDays: Int, val title: String, val owner: String,
+    val message: String = "",
 ) { val allowed get() = status == "ok" }
 
 data class Registered(val id: String, val ownerKey: String, val key: String?)
@@ -68,7 +71,7 @@ object ConnectedClient {
             o.optInt("offlineDays", 7), o.optBoolean("revoked"), o.optInt("opens"),
             (0 until v.length()).map { version(v.getJSONObject(it)) },
             (0 until r.length()).map { r.getJSONObject(it).let { x -> ConnReader(x.optString("rid"), x.optString("name"), x.optInt("opens"), x.optLong("first"), x.optLong("last"), x.optString("status"), x.optString("message")) } },
-            o.optLong("created"))
+            o.optLong("created"), o.optString("openMessage"))
     }
 
     private fun version(o: JSONObject) = ConnVersion(o.optInt("n"), o.optString("sha"), o.optLong("size"), o.optString("note"), o.optLong("time"), o.optBoolean("hasFile"))
@@ -77,9 +80,10 @@ object ConnectedClient {
         obj(Request.Builder().url(url("/docs/$id/readers/${enc(rid)}")).owner(ownerKey).post(json(JSONObject().put("status", status))).build())
     }
 
-    fun settings(id: String, ownerKey: String, requireApproval: Boolean, offlineDays: Int, revoked: Boolean) {
+    /** [openMessage] null = unchanged (fc-sync; older workers ignore the field). */
+    fun settings(id: String, ownerKey: String, requireApproval: Boolean, offlineDays: Int, revoked: Boolean, openMessage: String? = null) {
         obj(Request.Builder().url(url("/docs/$id/settings")).owner(ownerKey).post(json(JSONObject().put("requireApproval", requireApproval)
-            .put("offlineDays", offlineDays).put("revoked", revoked))).build())
+            .put("offlineDays", offlineDays).put("revoked", revoked).apply { openMessage?.let { put("openMessage", it) } })).build())
     }
 
     fun revokeAll(id: String, ownerKey: String) { obj(Request.Builder().url(url("/docs/$id/revoke-all")).owner(ownerKey).post(json(JSONObject())).build()) }
@@ -91,7 +95,7 @@ object ConnectedClient {
     fun open(id: String, rid: String, name: String, sha: String): ConnAccess {
         val o = obj(Request.Builder().url(url("/open/$id")).app().post(json(JSONObject().put("rid", rid).put("name", name).put("sha", sha))).build(), quick)
         return ConnAccess(o.optString("status", "ok"), o.optJSONObject("latest")?.let(::version), o.optBoolean("isLatest", true),
-            o.optString("key").ifEmpty { null }, o.optInt("offlineDays", 7), o.optString("title"), o.optString("owner"))
+            o.optString("key").ifEmpty { null }, o.optInt("offlineDays", 7), o.optString("title"), o.optString("owner"), o.optString("message"))
     }
 
     fun requestAccess(id: String, rid: String, name: String, message: String) {

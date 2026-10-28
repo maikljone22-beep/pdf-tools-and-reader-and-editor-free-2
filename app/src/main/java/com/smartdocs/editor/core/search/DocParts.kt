@@ -13,7 +13,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 /** Where a piece of searchable text lives. The ordinal is stored in the index: append only. */
-enum class PartKind { TEXT, COMMENTS, BOOKMARK, FIELD, ATTACHMENT }
+enum class PartKind { TEXT, COMMENTS, BOOKMARK, FIELD, ATTACHMENT, METADATA }
 
 /** Searchable text that is not page content. [page] is -1 for document-level items. */
 data class DocPart(val kind: PartKind, val page: Int, val text: String)

@@ -86,6 +86,7 @@ fun ConvertHubScreen(nav: NavHostController, uri: String?) {
     val ocrLabel = stringResource(R.string.cv6_running_ocr)
     val pwMsg = stringResource(R.string.cv_password_needed)
 
+    val batch = remember { Cv6Batch.take() }   // fc-sync 16b: files selected in Files
     var pickTarget by remember { mutableStateOf<Conv?>(null) }
     var appendPick by remember { mutableStateOf(false) }
     fun onPicked(files: List<File>) {
@@ -111,8 +112,14 @@ fun ConvertHubScreen(nav: NavHostController, uri: String?) {
         Cv6Recent.push(ctx, c.id); recentVersion++
         c.route?.let { r -> nav.navigate(Routes.tool(r, if (currentKind != null && currentKind in c.inputs) uri else null)); return }
         conv = c; opts = defaultsFor(c); needPassword = false; password = ""
+        val fromFiles = batch.filter { FileKind6.of(it) in c.inputs }
         when {
             c.inputs.isEmpty() -> { inputs = emptyList(); sheet = true }
+            fromFiles.isNotEmpty() -> {
+                // fc-sync 16b: a batch conversion takes all accepted files, a single-file one the first
+                inputs = if (c.multi) fromFiles else fromFiles.take(1); sheet = true
+                if (fromFiles.size < batch.size) scope.launch { snackbar.showSnackbar(ctx.getString(R.string.cv6_skipped, batch.size - fromFiles.size)) }
+            }
             current != null && currentKind in c.inputs -> { inputs = listOf(current); sheet = true }
             else -> pick(c, append = false)
         }
@@ -173,6 +180,9 @@ fun ConvertHubScreen(nav: NavHostController, uri: String?) {
                 }
                 items(found, key = { "q_" + it.id }) { c -> ConvCard(c, labels[c.id].orEmpty()) { open(c) } }
                 return@LazyVerticalGrid
+            }
+            if (batch.isNotEmpty()) item(span = { GridItemSpan(maxLineSpan) }, key = "batch") {
+                Text(stringResource(R.string.fcy_batch_hint, batch.size), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
             }
             if (current != null) item(span = { GridItemSpan(maxLineSpan) }, key = "current") {
                 val forIt = remember(currentKind) { currentKind?.let { Cv6Catalog.forKind(it).filter { c -> c.route != "scan" } }.orEmpty() }

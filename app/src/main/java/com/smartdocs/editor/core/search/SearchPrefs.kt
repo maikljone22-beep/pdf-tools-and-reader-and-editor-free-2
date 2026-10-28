@@ -14,6 +14,7 @@ object SearchPrefs {
             taMarbuta = p.getBoolean("ta_marbuta", false),
             unifyDigits = p.getBoolean("digits", true),
             matchCase = matchCase,
+            ignoreWidth = IndexExtras.widthFold(context),   // fc-sync
         )
     }
 

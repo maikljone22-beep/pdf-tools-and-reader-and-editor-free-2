@@ -140,6 +140,7 @@ fun EmailReviewScreen(nav: NavHostController, uri: String?) {
     var file by remember { mutableStateOf(uri?.let { Uri.parse(it).path }?.let(::File)) }
     var subject by remember { mutableStateOf(file?.nameWithoutExtension.orEmpty()) }
     var to by remember { mutableStateOf("") }
+    var cc by remember { mutableStateOf("") }   // fc-sync
     var message by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -149,7 +150,9 @@ fun EmailReviewScreen(nav: NavHostController, uri: String?) {
             Text(stringResource(R.string.sh5_email_review_explain), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             FilePickRow(file, stringResource(R.string.sh5_pick_pdf), pick)
             OutlinedTextField(subject, { subject = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.sh5_subject)) }, singleLine = true)
-            OutlinedTextField(to, { to = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.sh5_recipients)) })
+            // fc-sync: To / Cc with suggestions from addresses used before
+            RecipientField(to, { to = it }, stringResource(R.string.sh5_recipients))
+            RecipientField(cc, { cc = it }, stringResource(R.string.fcy_cc))
             OutlinedTextField(message, { message = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.sh5_message)) }, minLines = 2)
             error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             Button(enabled = file != null && !busy, shape = PillShape, modifier = Modifier.fillMaxWidth().height(52.dp), onClick = {
@@ -159,7 +162,9 @@ fun EmailReviewScreen(nav: NavHostController, uri: String?) {
                     runCatching { EmailReview.prepare(ctx, f, null, subject.trim(), to.trim()) }
                         .onSuccess { rec ->
                             val body = (message.trim().takeIf { it.isNotEmpty() }?.let { it + "\n\n" } ?: "") + ctx.getString(R.string.sh5_email_review_body)
-                            S5Share.email(ctx, listOf(File(rec.masterPath)), "application/pdf", S5Share.emails(to), ctx.getString(R.string.sh5_email_review_subject, subject.trim().ifBlank { f.nameWithoutExtension }), body)
+                            com.smartdocs.editor.core.share5.RecipientBook.remember(ctx, S5Share.emails(to) + S5Share.emails(cc))
+                            S5Share.email(ctx, listOf(File(rec.masterPath)), "application/pdf", S5Share.emails(to), ctx.getString(R.string.sh5_email_review_subject, subject.trim().ifBlank { f.nameWithoutExtension }), body,
+                                cc = S5Share.emails(cc))
                             nav.popBackStack()
                         }
                         .onFailure { error = it.message ?: it.toString() }

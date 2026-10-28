@@ -18,7 +18,9 @@ data class IndexStats(val docs: Int, val locked: Int, val parts: Int)
 /** One match in an indexed file: [snippet] with [highlights] (ranges inside the snippet). */
 data class IndexHit(val page: Int, val kind: PartKind, val snippet: String, val highlights: List<IntRange>)
 
-data class FileResult(val path: String, val name: String, val pages: Int, val hits: List<IndexHit>, val total: Int)
+data class FileResult(val path: String, val name: String, val pages: Int, val hits: List<IndexHit>, val total: Int,
+                      /** fc-sync: the document title (/Info or XMP), when indexed and shown ([IndexExtras.showTitle]). */
+                      val title: String? = null)
 
 /**
  * Full-text index across files, in its own SQLite file `search_index.db` (FTS4; the Room database is untouched).
@@ -117,6 +119,7 @@ class FullTextIndex private constructor(context: Context) : SQLiteOpenHelper(con
      */
     suspend fun search(query: String, options: SearchOptions, kinds: Set<PartKind> = PartKind.values().toSet(), perFile: Int = 20, maxFiles: Int = 200, scanLimit: Int = 30_000): List<FileResult> = withContext(Dispatchers.IO) {
         if (query.isBlank() || kinds.isEmpty()) return@withContext emptyList()
+        IndexExtras.apply(appCtx)   // fc-sync: width folding of the query follows the index
         // forward terms plus the reversed terms of visual-order Arabic, united (audit AN-15)
         val fts = IndexText.ftsQueries(com.smartdocs.editor.core.nve.NveSearchCore.stripQuery(query, com.smartdocs.editor.ui.nve.search.NveIndexPrefs.load(appCtx)), options.mode)   // NVE-search
         val kindList = kinds.joinToString(",") { it.ordinal.toString() }
@@ -144,8 +147,28 @@ class FullTextIndex private constructor(context: Context) : SQLiteOpenHelper(con
                 }
             }
         }
-        groups.entries.map { (id, g) -> FileResult(g.first, g.second, g.third, hits[id].orEmpty(), totals[id] ?: 0) }
+        val showTitle = IndexExtras.showTitle(appCtx)
+        groups.entries.map { (id, g) -> FileResult(g.first, g.second, g.third, hits[id].orEmpty(), totals[id] ?: 0, if (showTitle) titleOf(id) else null) }
             .sortedByDescending { it.total }.take(maxFiles)
+    }
+
+    /** fc-sync: the title part ([DocMeta.TITLE_PAGE]) of document row [docId], when the metadata was indexed. */
+    private fun titleOf(docId: Long): String? = runCatching {
+        readableDatabase.rawQuery("SELECT raw FROM parts WHERE doc = ? AND kind = ? AND page = ? LIMIT 1",
+            arrayOf(docId.toString(), PartKind.METADATA.ordinal.toString(), DocMeta.TITLE_PAGE.toString())).use { c -> if (c.moveToFirst()) c.getString(0) else null }
+    }.getOrNull()?.takeIf { it.isNotBlank() }
+
+    /** fc-sync (Foxit §37 "cache size limit"): size of the index database file in bytes. */
+    fun sizeBytes(): Long = appCtx.getDatabasePath(DB_NAME).length()
+
+    /** Drops the oldest-indexed documents until the database is under [maxBytes] (then compacts it). Returns how many. */
+    fun enforceLimit(maxBytes: Long): Int {
+        if (maxBytes <= 0 || sizeBytes() <= maxBytes) return 0
+        val rows = readableDatabase.rawQuery("SELECT path FROM docs ORDER BY indexed ASC", null).use { c -> val l = ArrayList<String>(); while (c.moveToNext()) l += c.getString(0); l }
+        val n = IndexExtras.toDrop(rows.size, sizeBytes(), maxBytes)
+        rows.take(n).forEach { remove(it) }
+        if (n > 0) runCatching { writableDatabase.execSQL("VACUUM") }
+        return n
     }
 
     private fun snippet(raw: String, r: IntRange, page: Int, kind: PartKind, pad: Int = 40): IndexHit {

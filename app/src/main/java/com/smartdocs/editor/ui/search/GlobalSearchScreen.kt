@@ -117,7 +117,11 @@ fun GlobalSearchScreen(nav: NavHostController, initial: String = "") {
                             Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Default.PictureAsPdf, null, tint = MaterialTheme.colorScheme.primary)
                                 Spacer(Modifier.width(8.dp))
-                                Text(fr.name, Modifier.weight(1f), fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Column(Modifier.weight(1f)) {
+                                    Text(fr.name, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    // fc-sync (Foxit §37): the document title under the file name
+                                    fr.title?.let { Text(it, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                                }
                                 Text(stringResource(R.string.s5_n_hits, fr.total), style = MaterialTheme.typography.labelMedium)
                             }
                         }
@@ -146,4 +150,5 @@ fun kindLabel(k: PartKind): String = stringResource(when (k) {
     PartKind.BOOKMARK -> R.string.s5_scope_bookmarks
     PartKind.FIELD -> R.string.s5_scope_fields
     PartKind.ATTACHMENT -> R.string.s5_scope_attachments
+    PartKind.METADATA -> R.string.fcy_scope_metadata   // fc-sync
 })

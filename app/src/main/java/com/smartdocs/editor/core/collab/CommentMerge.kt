@@ -54,4 +54,12 @@ object CommentMerge {
     /** Remote comments that are waiting while a document is open (shown in the reader before they are merged). */
     fun pendingCount(remote: List<Incoming>, me: String, applied: Map<String, Long>, mine: Set<String>): Int =
         plan(remote, me, applied, mine).let { it.upserts.size + it.deletes.size }
+
+    /**
+     * fc-sync (Foxit §31 / §37 "take ownership"): which of [comments] (nm → author) this device takes over: comments of
+     * other reviewers ([foreign]) by [author] (null = every other reviewer). They become mine: published under my
+     * participant id, never replaced from the server again.
+     */
+    fun takeOver(comments: Map<String, String>, foreign: Set<String>, author: String?): Set<String> =
+        comments.filter { (nm, a) -> nm in foreign && (author == null || a == author) }.keys
 }

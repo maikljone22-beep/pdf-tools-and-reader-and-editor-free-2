@@ -9,6 +9,8 @@ data class NormOptions(
     val taMarbuta: Boolean = false,         // ة→ه
     val unifyDigits: Boolean = true,        // ٠١٢ / ۰۱۲ → 012
     val matchCase: Boolean = false,
+    /** fc-sync (Foxit §37 "ignore Asian character width"): full-width / half-width forms fold to their normal width. */
+    val ignoreWidth: Boolean = false,
 )
 
 /** Folded text plus, for every folded char, the index of the source char it came from. */
@@ -47,6 +49,10 @@ object ArabicNormalizer {
         for (i in src.indices) {
             val c = src[i]
             if (isInvisible(c) || c.code == 0x0640) continue
+            if (o.ignoreWidth) {
+                val w = widthFold(c)
+                if (w != c) { put(mapLetter(w, o), i); continue }
+            }
             if (o.ignoreDiacritics && isArabicMark(c)) continue
             // presentation forms and ligatures (ﻻ, ﷲ, ﺃ…) → base letters
             if (c.code in 0xFB50..0xFDFF || c.code in 0xFE70..0xFEFF) {
@@ -69,6 +75,17 @@ object ArabicNormalizer {
     }
 
     fun foldQuery(q: String, o: NormOptions) = fold(q.trim(), o).text
+
+    /**
+     * fc-sync: the normal-width form of a full-width ASCII letter / digit / sign (U+FF01–FF5E), the ideographic space,
+     * full-width symbols (U+FFE0–FFE6) and half-width katakana / hangul (U+FF61–FFDC). Other chars are returned as is.
+     */
+    fun widthFold(c: Char): Char = when (c.code) {
+        in 0xFF01..0xFF5E -> (c.code - 0xFEE0).toChar()
+        0x3000 -> ' '
+        in 0xFF61..0xFFDC, in 0xFFE0..0xFFEE -> Normalizer.normalize(c.toString(), Normalizer.Form.NFKC).singleOrNull() ?: c
+        else -> c
+    }
 
     private fun mapLetter(c: Char, o: NormOptions): Char = when {
         o.unifyLetters && (c == 'أ' || c == 'إ' || c == 'آ' || c == 'ٱ' || c == 'ٲ' || c == 'ٳ') -> 'ا'

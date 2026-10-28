@@ -324,6 +324,7 @@ fun NveIndexSheet(onDismiss: () -> Unit) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Switch(o.includeNumbers, { persist(o.copy(includeNumbers = it)) }); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.ns_include_numbers))
             }
+            com.smartdocs.editor.ui.search.IndexExtrasSection()   // fc-sync: metadata, width, titles, size limit, log
             Text(stringResource(R.string.ns_excluded), style = MaterialTheme.typography.labelLarge)
             o.excluded.forEach { p ->
                 Row(verticalAlignment = Alignment.CenterVertically) {

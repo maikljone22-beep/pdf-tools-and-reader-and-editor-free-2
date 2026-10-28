@@ -66,6 +66,12 @@ fun ConnectedOpenScreen(nav: NavHostController, id: String, uri: String?) {
             Icon(icon, null, Modifier.size(64.dp), tint = MaterialTheme.colorScheme.primary)
             Text(text, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
             if (s.owner.isNotBlank()) Text(stringResource(R.string.cn_owner_is, s.owner), style = MaterialTheme.typography.bodySmall)
+            // fc-sync: the owner's open message
+            if (s.message.isNotBlank()) Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.fillMaxWidth()) {
+                Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Campaign, null); Spacer(Modifier.width(8.dp)); Text(s.message, style = MaterialTheme.typography.bodyMedium)
+                }
+            }
             s.newer?.note?.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
             error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
 
@@ -105,6 +111,7 @@ fun ConnectedBanner(status: ConnectedStatus, nav: NavHostController, fileUri: St
         status.status == "gone" -> stringResource(R.string.cn_banner_gone)
         status.offline -> stringResource(R.string.cn_banner_offline)
         status.newer != null -> stringResource(R.string.cn_banner_newer, status.newer.n)
+        status.message.isNotBlank() -> status.message   // fc-sync: the owner's open message
         else -> return
     }
     Surface(color = MaterialTheme.colorScheme.tertiaryContainer, modifier = Modifier.fillMaxWidth()) {
