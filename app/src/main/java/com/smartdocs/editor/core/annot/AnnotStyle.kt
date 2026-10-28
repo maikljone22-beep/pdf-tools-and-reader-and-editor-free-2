@@ -168,10 +168,16 @@ object AnnotStyle {
     }
 
     /** Cloudy border effect (/BE /S /C /I intensity 0..2; Nitro's "cloudy 1-3" = intensities 0, 1, 2). */
-    fun setCloudy(cos: COSDictionary, intensity: Int) {
+    fun setCloudy(cos: COSDictionary, intensity: Int, inward: Boolean = false) {
+        setCloudInward(cos, intensity > 0 && inward)
         if (intensity <= 0) { cos.removeItem(BE); return }
         cos.setItem(BE, COSDictionary().apply { setName(COSName.S, "C"); setItem(I, COSFloat((intensity - 1).coerceIn(0, 2).toFloat())) })
     }
+
+    /** Foxit 24.33: scallops pointing into the shape (our key; other viewers draw their own outward cloud from /BE). */
+    val CLOUD_INWARD: COSName = COSName.getPDFName("SDCloudIn")
+    fun setCloudInward(cos: COSDictionary, inward: Boolean) { if (inward) cos.setBoolean(CLOUD_INWARD, true) else cos.removeItem(CLOUD_INWARD) }
+    fun cloudInwardOf(cos: COSDictionary): Boolean = cos.getBoolean(CLOUD_INWARD, false)
 
     /** Cloud level 1..3 written by [setCloudy] (0 = not cloudy). */
     fun cloudyOf(cos: COSDictionary): Int {
@@ -390,7 +396,7 @@ object AnnotStyle {
      * border [width] with [dash] (or no border), opacity.
      */
     fun shapeStream(doc: PDDocument, x: Float, y: Float, w: Float, h: Float, oval: Boolean, stroke: Int, fill: Int?, width: Float,
-                    dash: Int, noBorder: Boolean, opacity: Float, cloudy: Int = 0): PDAppearanceStream {
+                    dash: Int, noBorder: Boolean, opacity: Float, cloudy: Int = 0, inward: Boolean = false): PDAppearanceStream {
         val form = PDAppearanceStream(doc)
         form.bBox = PDRectangle(0f, 0f, w, h)
         form.resources = PDResources()
@@ -402,11 +408,13 @@ object AnnotStyle {
             val lw = if (noBorder) 0f else width
             cs.setLineWidth(lw.coerceAtLeast(0.01f))
             DashStyle.entries.getOrElse(dash) { DashStyle.SOLID }.scaled(width)?.let { if (!noBorder) cs.setLineDashPattern(it, 0f) }
-            val i = lw / 2 + if (cloudy > 0) cloudPad(cloudy, width) else 0f
+            // inward scallops stay inside the outline, so the shape keeps the whole box
+            val i = lw / 2 + if (cloudy > 0 && !inward) cloudPad(cloudy, width) else 0f
             val iw = (w - 2 * i).coerceAtLeast(1f); val ih = (h - 2 * i).coerceAtLeast(1f)
-            if (cloudy > 0 && !oval) {
-                val pts = listOf(i to i, i + iw to i, i + iw to i + ih, i to i + ih)
-                val segs = CloudPath.build(pts, cloudy.coerceIn(1, 3), width)
+            if (cloudy > 0) {
+                val lv = cloudy.coerceIn(1, 3)
+                val pts = if (oval) CloudPath.ellipse(i, i, i + iw, i + ih, lv, width) else listOf(i to i, i + iw to i, i + iw to i + ih, i to i + ih)
+                val segs = CloudPath.build(pts, lv, width, inward)
                 segs.forEachIndexed { k, c -> if (k == 0) cs.moveTo(c.x0, c.y0); cs.curveTo(c.x1, c.y1, c.x2, c.y2, c.x3, c.y3) }
                 cs.closePath()
             } else if (!oval) cs.addRect(i, i, iw, ih)

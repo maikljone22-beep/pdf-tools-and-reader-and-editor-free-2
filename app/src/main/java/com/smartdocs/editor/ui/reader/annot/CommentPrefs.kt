@@ -17,15 +17,15 @@ object ToolMemory {
     data class Settings(
         val color: Int, val opacity: Float, val thickness: Float, val fontSize: Float,
         val fill: Int?, val dash: Int, val noBorder: Boolean, val lineStart: String, val lineEnd: String, val cloud: Int,
-        val bold: Boolean, val italic: Boolean, val underline: Boolean, val icon: String,
+        val bold: Boolean, val italic: Boolean, val underline: Boolean, val icon: String, val cloudInward: Boolean = false,
     ) {
-        fun encode(): String = listOf(color, opacity, thickness, fontSize, fill ?: "", dash, noBorder, lineStart, lineEnd, cloud, bold, italic, underline, icon).joinToString("|")
+        fun encode(): String = listOf(color, opacity, thickness, fontSize, fill ?: "", dash, noBorder, lineStart, lineEnd, cloud, bold, italic, underline, icon, cloudInward).joinToString("|")
 
         companion object {
             fun decode(s: String): Settings? = runCatching {
                 val p = s.split('|')
                 Settings(p[0].toInt(), p[1].toFloat(), p[2].toFloat(), p[3].toFloat(), p[4].toIntOrNull(), p[5].toInt(), p[6].toBoolean(),
-                    p[7], p[8], p[9].toInt(), p[10].toBoolean(), p[11].toBoolean(), p[12].toBoolean(), p.getOrElse(13) { "" })
+                    p[7], p[8], p[9].toInt(), p[10].toBoolean(), p[11].toBoolean(), p[12].toBoolean(), p.getOrElse(13) { "" }, p.getOrElse(14) { "false" }.toBoolean())
             }.getOrNull()
         }
     }
@@ -33,7 +33,7 @@ object ToolMemory {
     fun capture(s: ReaderState): Settings {
         val h = s.annot2
         return Settings(s.color, s.opacity, s.thickness, s.fontSize, h.fillColor, h.dash, h.noBorder, h.lineStart, h.lineEnd,
-            if (s.tool == ReaderTool.CLOUD) h.cloudIntensity else h.rectCloud, h.bold, h.italic, h.underline, h.noteIcon)
+            if (s.tool == ReaderTool.CLOUD) h.cloudIntensity else h.rectCloud, h.bold, h.italic, h.underline, h.noteIcon, h.cloudInward)
     }
 
     fun apply(s: ReaderState, v: Settings) {
@@ -41,7 +41,7 @@ object ToolMemory {
         s.color = v.color; s.opacity = v.opacity; s.thickness = v.thickness; s.fontSize = v.fontSize
         h.fillColor = v.fill; h.dash = v.dash; h.noBorder = v.noBorder; h.lineStart = v.lineStart; h.lineEnd = v.lineEnd
         if (s.tool == ReaderTool.CLOUD) h.cloudIntensity = v.cloud.coerceIn(1, 3) else h.rectCloud = v.cloud.coerceIn(0, 3)
-        h.bold = v.bold; h.italic = v.italic; h.underline = v.underline; h.noteIcon = v.icon
+        h.bold = v.bold; h.italic = v.italic; h.underline = v.underline; h.noteIcon = v.icon; h.cloudInward = v.cloudInward
     }
 
     /** "Remember tool settings" (one switch for the one memory; key kept from view5 so the old choice stays). */
@@ -64,8 +64,8 @@ object ToolMemory {
 
 /** Apply the creation extras of the active tool to a freshly created annotation. */
 fun Annot2Host.styleNew(a: Annot): Annot = when (a.kind) {
-    AnnotKind.RECT -> a.copy(fillColor = fillColor, dash = dash, noBorder = noBorder && fillColor != null, cloud = rectCloud)
-    AnnotKind.OVAL -> a.copy(fillColor = fillColor, dash = dash, noBorder = noBorder && fillColor != null)
+    AnnotKind.RECT -> a.copy(fillColor = fillColor, dash = dash, noBorder = noBorder && fillColor != null, cloud = rectCloud, cloudInward = rectCloud > 0 && cloudInward)
+    AnnotKind.OVAL -> a.copy(fillColor = fillColor, dash = dash, noBorder = noBorder && fillColor != null, cloud = rectCloud, cloudInward = rectCloud > 0 && cloudInward)
     AnnotKind.LINE, AnnotKind.ARROW -> a.copy(dash = dash, lineStart = lineStart, lineEnd = lineEnd, caption = caption)
     AnnotKind.INK -> a.copy(dash = dash)
     AnnotKind.POLYGON, AnnotKind.CLOUD -> a.copy(dash = dash, noBorder = noBorder && fillColor != null)

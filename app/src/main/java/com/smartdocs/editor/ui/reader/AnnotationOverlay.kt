@@ -94,9 +94,12 @@ fun DrawScope.drawAnnot(a: Annot, g: PageGeometry) {
             if (a.kind == AnnotKind.OVAL && a.subject == com.smartdocs.editor.core.annot.AnnotStyle.TICKMARK) { drawTickmark(a, s); return@let }
             val fill = a.fillColor?.let { annotColor(it, a.opacity) }
             val stroke = Stroke(sw, pathEffect = dashEffectOf(a, g))
-            if (a.kind == AnnotKind.RECT && a.cloud > 0) {
-                val n = PageGeometry.normPdf(r)
-                val path = com.smartdocs.editor.ui.reader.annot.polyPath(listOf(n.left to n.bottom, n.right to n.bottom, n.right to n.top, n.left to n.top), g, true, a.cloud.coerceIn(1, 3), a.strokeWidth)
+            if (a.cloud > 0 && a.corner <= 0f) {
+                // cloudy rectangle / oval (Nitro 7.27), scallops in or out (Foxit 24.33)
+                val n = PageGeometry.normPdf(r); val lv = a.cloud.coerceIn(1, 3)
+                val pts = if (a.kind == AnnotKind.OVAL) com.smartdocs.editor.core.annot.CloudPath.ellipse(n.left, n.bottom, n.right, n.top, lv, a.strokeWidth)
+                    else listOf(n.left to n.bottom, n.right to n.bottom, n.right to n.top, n.left to n.top)
+                val path = com.smartdocs.editor.ui.reader.annot.polyPath(pts, g, true, lv, a.strokeWidth, a.cloudInward)
                 fill?.let { drawPath(path, it) }
                 if (!a.noBorder) drawPath(path, c, style = Stroke(sw))
             } else if (a.kind == AnnotKind.RECT && a.corner > 0f) {

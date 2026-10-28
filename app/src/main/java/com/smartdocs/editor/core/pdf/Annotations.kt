@@ -53,6 +53,7 @@ data class Annot(
     val created: Long = System.currentTimeMillis(),
     val fillColor: Int? = null,                 // polygon / cloud interior (null = transparent)
     val cloud: Int = 0,                         // cloudy border intensity 0 (none), 1, 2
+    val cloudInward: Boolean = false,           // Foxit 24.33: scallops point into the shape
     val filePath: String? = null,               // FILE_ATTACH / SOUND / VIDEO: file embedded on commit
     val mime: String = "",
     val groupId: Long? = null,                  // pending annotations grouped together (/IRT + /RT /Group on commit)
@@ -290,14 +291,14 @@ object AnnotationWriter {
                 sq.color = rgb(a.color); sq.constantOpacity = a.opacity
                 com.smartdocs.editor.core.annot.AnnotStyle.applyBorder(sq.cosObject, a.strokeWidth, a.dash, a.noBorder)
                 com.smartdocs.editor.core.annot.AnnotStyle.setInterior(sq.cosObject, a.fillColor)
-                if (a.kind == AnnotKind.RECT && a.cloud > 0) com.smartdocs.editor.core.annot.AnnotStyle.setCloudy(sq.cosObject, a.cloud)
+                if (a.cloud > 0 && a.corner <= 0f) com.smartdocs.editor.core.annot.AnnotStyle.setCloudy(sq.cosObject, a.cloud, a.cloudInward)   // Nitro 7.27: ovals too
                 sq.contents = a.text; sq.titlePopup = a.author; sq.setCreationDate(now); sq.setModifiedDate(now)
                 if (a.kind == AnnotKind.RECT && a.corner > 0f) {
                     // nitro-fillsign2 rounded rectangle (its own appearance)
                     sq.cosObject.setFloat(FillSignKeys.ROUND, a.corner)
                     sq.appearance = apDict(roundShapeAppearance(doc, rect, a))
                 } else sq.appearance = apDict(com.smartdocs.editor.core.annot.AnnotStyle.shapeStream(doc, rect.lowerLeftX, rect.lowerLeftY, rect.width, rect.height,
-                    a.kind == AnnotKind.OVAL, a.color, a.fillColor, a.strokeWidth, a.dash, a.noBorder, a.opacity, if (a.kind == AnnotKind.RECT) a.cloud else 0))
+                    a.kind == AnnotKind.OVAL, a.color, a.fillColor, a.strokeWidth, a.dash, a.noBorder, a.opacity, a.cloud, a.cloudInward))
                 annotations.add(sq)
             }
             AnnotKind.STAMP_IMAGE -> {
@@ -654,7 +655,7 @@ object AnnotationWriter {
                 if (sub == "Circle" && base.subject == st.TICKMARK)
                     return base.copy(kind = AnnotKind.OVAL, rects = listOf(rect), text = cos.getString(name("SDTick")) ?: contents, fillColor = st.interiorOf(cos))
                 base.copy(kind = if (sub == "Square") AnnotKind.RECT else AnnotKind.OVAL, rects = listOf(box), fillColor = st.interiorOf(cos),
-                    cloud = if (sub == "Square") st.cloudyOf(cos) else 0,
+                    cloud = st.cloudyOf(cos), cloudInward = st.cloudInwardOf(cos),
                     corner = if (sub == "Square") cos.getFloat(FillSignKeys.ROUND, 0f).coerceAtLeast(0f) else 0f)
             }
             // nitro-fillsign2: our image stamps (placed signatures above all) become editable again

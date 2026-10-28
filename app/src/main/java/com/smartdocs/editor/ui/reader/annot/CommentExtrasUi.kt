@@ -88,11 +88,14 @@ fun CreationExtrasRow(state: ReaderState) {
                     leadingIcon = { Icon(Icons.Default.LineStyle, null, Modifier.size(16.dp)) }, modifier = Modifier.height(30.dp))
             if (shapes || (poly && t != ReaderTool.POLYLINE))
                 FilterChip(h.noBorder, { h.noBorder = !h.noBorder }, label = { Text(stringResource(R.string.cx_no_border)) }, enabled = h.fillColor != null, modifier = Modifier.height(30.dp))
-            if (t == ReaderTool.RECT) {
+            if (t == ReaderTool.RECT || t == ReaderTool.OVAL) {   // Nitro 7.27: cloudy oval as well
                 Text(stringResource(R.string.cx_cloud), style = MaterialTheme.typography.labelSmall)
                 (0..3).forEach { lv -> FilterChip(h.rectCloud == lv, { h.rectCloud = lv }, label = { Text(if (lv == 0) "—" else lv.toString()) }, modifier = Modifier.height(30.dp)) }
             }
             if (t == ReaderTool.CLOUD) FilterChip(h.cloudIntensity == 3, { h.cloudIntensity = 3 }, label = { Text("3") }, modifier = Modifier.height(30.dp))
+            // Foxit 24.33: scallops inward / outward
+            if (t == ReaderTool.CLOUD || ((t == ReaderTool.RECT || t == ReaderTool.OVAL) && h.rectCloud > 0))
+                FilterChip(h.cloudInward, { h.cloudInward = !h.cloudInward }, label = { Text(stringResource(R.string.cf_cloud_inward)) }, modifier = Modifier.height(30.dp))
             if (shapes) FilterChip(h.constrain, { h.constrain = !h.constrain }, label = { Text(stringResource(R.string.cx_square_constraint)) }, modifier = Modifier.height(30.dp))
             if (t == ReaderTool.INK) FilterChip(h.inkToShapes, { h.inkToShapes = !h.inkToShapes }, label = { Text(stringResource(R.string.cx_ink_shapes)) },
                 leadingIcon = { Icon(Icons.Default.AutoFixHigh, null, Modifier.size(16.dp)) }, modifier = Modifier.height(30.dp))
