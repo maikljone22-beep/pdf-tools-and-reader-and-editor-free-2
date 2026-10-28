@@ -52,6 +52,11 @@ class ReaderGuard(private val s: ReaderState) {
     private var hash: String? = null
     private var path: String = ""
     private val scanned = CompletableDeferred<Unit>()
+    /**
+     * Tab audit D8: signature / certification state read on open ([refreshSigned]); a DocMDP or FieldMDP lock with
+     * P < 3 blocks the annotation tools from the first tap (and P = 1 form filling), with a banner.
+     */
+    var signedInfo by mutableStateOf<com.smartdocs.editor.core.pdf.SignedGuard.Info?>(null); private set
 
     /**
      * Called by [ReaderState.open] before the first page shows: origin and Protected View, and for an encrypted file
@@ -74,6 +79,12 @@ class ReaderGuard(private val s: ReaderState) {
             runCatching { PdfOps.loadRaw(f, password).use { SecurityInfoReader.of(it) } }.getOrNull()
         } else info = SecurityInfo.NONE
         s.scope.launch { scan(f, password) }
+        s.scope.launch { refreshSigned(f, password) }
+    }
+
+    /** Tab audit D8: (re)reads the certification and FieldMDP locks of [f] (on open and after the file was replaced). */
+    suspend fun refreshSigned(f: File, password: String?) {
+        signedInfo = withContext(Dispatchers.IO) { runCatching { com.smartdocs.editor.core.pdf.SignedGuard.inspect(f, password) }.getOrNull() }
     }
 
     private suspend fun scan(f: File, password: String?) {
@@ -136,6 +147,7 @@ class ReaderGuard(private val s: ReaderState) {
     // ---------------------------------------------------------------- restrictions
 
     fun blockOf(a: DocAction): Block? = ReaderRestrictions.check(info, protectedView, a)
+        ?: Block.CERTIFIED.takeIf { com.smartdocs.editor.core.security.CertifiedLock.blocks(signedInfo, a) }     // tab audit D8
 
     fun allows(a: DocAction): Boolean = blockOf(a) == null
 
@@ -146,7 +158,11 @@ class ReaderGuard(private val s: ReaderState) {
         return false
     }
 
-    fun message(b: Block): String = s.context.getString(if (b == Block.AUTHOR) R.string.np2_restricted_author else R.string.np2_pv_blocked)
+    fun message(b: Block): String = s.context.getString(when (b) {
+        Block.AUTHOR -> R.string.np2_restricted_author
+        Block.PROTECTED_VIEW -> R.string.np2_pv_blocked
+        Block.CERTIFIED -> R.string.tfr_certified_blocked
+    })
 
     /** Thrown by in-place operations refused by [check] (callers show its message like any failure). */
     class Refused(message: String) : IllegalStateException(message)

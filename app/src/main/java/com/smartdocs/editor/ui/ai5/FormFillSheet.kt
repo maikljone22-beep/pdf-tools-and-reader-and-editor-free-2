@@ -29,7 +29,8 @@ import java.io.File
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun FormFillSheet(file: File, password: String?, onValues: ((Map<String, String>) -> Unit)? = null, onFile: (File) -> Unit = {}, onDismiss: () -> Unit) {
+fun FormFillSheet(file: File, password: String?, onValues: ((Map<String, String>) -> Unit)? = null, onFile: (File) -> Unit = {},
+                  current: Map<String, String>? = null, skip: Set<String> = emptySet(), onDismiss: () -> Unit) {
     val ctx = LocalContext.current
     val app = LocalApp.current
     val settings = LocalSettings.current
@@ -45,7 +46,7 @@ fun FormFillSheet(file: File, password: String?, onValues: ((Map<String, String>
         runCatching {
             val profile = app.db.fillProfile().all().first()
             val idx = runCatching { DocIndexer.get(ctx, file, password) }.getOrNull()
-            FormFillAi.suggest(ctx, client, file, password, profile, idx, useAi)
+            FormFillAi.suggest(ctx, client, file, password, profile, idx, useAi, current, skip)      // tab audit D18
         }.onSuccess { l -> list = l; l.forEach { values[it.field.name] = it.value; on[it.field.name] = true } }
             .onFailure { error = if (AiCalls.isQuota(it)) ctx.getString(R.string.a5_err_quota) else ctx.getString(R.string.a5_err_failed, it.message ?: "") }
         busy = false

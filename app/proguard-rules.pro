@@ -39,3 +39,6 @@
 -dontwarn org.osgi.**
 -dontwarn org.apache.commons.compress.harmony.**
 -keep class com.caverock.androidsvg.** { *; }
+
+# ONNX Runtime (PRO_OCR_r5): JNI looks classes and fields up by name
+-keep class ai.onnxruntime.** { *; }
