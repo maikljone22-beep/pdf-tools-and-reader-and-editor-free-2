@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- edit-text-tools: Search & Remove Text, fonts to outlines fixup, changed-text colour, article boxes, layers filter. Prefix ett_. -->
+<resources>
+    <string name="ett_sr_title">بحث عن نص وإزالته</string>
+    <string name="ett_sr_words">الكلمات أو العبارات (واحدة في كل سطر)</string>
+    <string name="ett_sr_words_n">%d في القائمة</string>
+    <string name="ett_sr_import">استيراد ملف ‎.txt</string>
+    <string name="ett_sr_clear">مسح القائمة</string>
+    <string name="ett_sr_find">بحث</string>
+    <string name="ett_sr_note">يُحذف النص من محتوى الصفحة فعلاً كما في التنقيح، دون رسم مربع فوقه. تبقى التعليقات والصور والأشكال كما هي، وتُحفظ النتيجة نسخةً جديدة.</string>
+    <string name="ett_sr_none">لم يُعثر على أي تطابق</string>
+    <string name="ett_sr_hits">%1$d تطابق في %2$d صفحة</string>
+    <string name="ett_sr_page">الصفحة %1$d (%2$d)</string>
+    <string name="ett_sr_preview">معاينة على الصفحة</string>
+    <string name="ett_sr_remove">إزالة (%d)</string>
+    <string name="ett_sr_confirm">ستُحذف %d من المواضع نهائياً من محتوى الصفحات (لا تُغطّى فقط). تُحفظ النتيجة في نسخة جديدة ويبقى الأصل كما هو.</string>
+    <string name="ett_sr_signed">هذا الملف موقّع أو مصدَّق: لن يُغيَّر الأصل. ستكون النتيجة نسخة جديدة تُزال منها التواقيع.</string>
+    <string name="ett_sr_removing">جارٍ إزالة النص…</string>
+    <string name="ett_sr_done">حُذف %1$d حرفاً من %2$d صفحة</string>
+    <string name="ett_sr_raster">صفحات تحوّلت إلى صور لأن نصها لا يمكن إعادة كتابته: %s</string>
+    <string name="ett_sr_failed">تعذّرت إزالة النص</string>
+</resources>

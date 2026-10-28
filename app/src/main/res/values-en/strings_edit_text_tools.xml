@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- edit-text-tools: Search & Remove Text, fonts to outlines fixup, changed-text colour, article boxes, layers filter. Prefix ett_. -->
+<resources>
+    <string name="ett_sr_title">Search &amp; Remove Text</string>
+    <string name="ett_sr_words">Words or phrases (one per line)</string>
+    <string name="ett_sr_words_n">%d in the list</string>
+    <string name="ett_sr_import">Import .txt</string>
+    <string name="ett_sr_clear">Clear list</string>
+    <string name="ett_sr_find">Find</string>
+    <string name="ett_sr_note">The text is really deleted from the page content, as in redaction, but no box is drawn over it. Comments, pictures and shapes stay. The result is saved as a new copy.</string>
+    <string name="ett_sr_none">No matches found</string>
+    <string name="ett_sr_hits">%1$d matches on %2$d pages</string>
+    <string name="ett_sr_page">Page %1$d (%2$d)</string>
+    <string name="ett_sr_preview">Preview on the page</string>
+    <string name="ett_sr_remove">Remove (%d)</string>
+    <string name="ett_sr_confirm">%d occurrences will be deleted from the page content for good (not just covered). The result is saved as a new copy; the original stays as it is.</string>
+    <string name="ett_sr_signed">This file is signed or certified: the original will not be changed. The result is a new copy, with the signatures removed.</string>
+    <string name="ett_sr_removing">Removing text…</string>
+    <string name="ett_sr_done">%1$d characters removed on %2$d pages</string>
+    <string name="ett_sr_raster">Pages turned into pictures because their text could not be rewritten: %s</string>
+    <string name="ett_sr_failed">Could not remove the text</string>
+</resources>

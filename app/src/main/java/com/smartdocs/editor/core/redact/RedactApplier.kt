@@ -36,6 +36,13 @@ object RedactApplier {
         /** Marks written back as /Redact annotations after applying (Foxit "apply the selected mark" keeps the others pending). */
         val keepPending: List<RedactMark> = emptyList(),
         val author: String = "",
+        /**
+         * Search & Remove Text (#17): only the text under the marks is removed. No box or overlay is drawn, the
+         * /Redact marks already in the file stay, and paths / images / annotations under a mark are kept. A page
+         * whose text cannot be rewritten (text inside a form XObject, vertical fonts) is rasterised with the hits
+         * painted white first, so the words are gone there too.
+         */
+        val removeTextOnly: Boolean = false,
     )
 
     data class Report(
@@ -68,18 +75,21 @@ object RedactApplier {
                     } else {
                         val boxes = list.flatMap { it.boxes() }
                         val fill = list.groupingBy { it.style.fill }.eachCount().maxByOrNull { it.value }?.key ?: 0
-                        val r = TrueRedactor.redactPage(doc, pi, boxes, fill)
+                        val r = TrueRedactor.redactPage(doc, pi, boxes, fill, textOnly = options.removeTextOnly)
                         glyphs += r.glyphsRemoved; objects += r.objectsRemoved; images += r.imagesBlanked; annots += r.annotsRemoved
                         if (r.needsRaster) raster += pi
                         RedactCleanup.stripStructure(doc, page, r.touchedMcids)
                     }
                     if (options.maxSecurity) raster += pi
                 }
-                RedactMarks.removeAll(doc)
+                if (!options.removeTextOnly) RedactMarks.removeAll(doc)
                 for ((pi, list) in byPage) {
                     val page = doc.getPage(pi)
                     val frame = PageFrame.of(page)
-                    list.forEach { m -> runCatching { drawMark(doc, page, frame, m, fontFor, chosen) } }
+                    if (options.removeTextOnly) {
+                        // only pages that will become pictures get the hits painted over (page white, no overlay)
+                        if (pi in raster) list.forEach { m -> runCatching { drawMark(doc, page, frame, removeStyle(m), fontFor, chosen) } }
+                    } else list.forEach { m -> runCatching { drawMark(doc, page, frame, m, fontFor, chosen) } }
                 }
                 if (options.sanitize) sanitized = Sanitizer.clean(doc, options.sanitizeItems, skipped)
                 // after sanitising, which would drop the review replies of the marks kept pending. audit 5 R-6: when
@@ -112,6 +122,9 @@ object RedactApplier {
 
     /** audit 5b D6: pending marks go into the first save only when no page is rasterised (else after [rasterize]). */
     internal fun pendingBeforeRaster(pending: List<RedactMark>, raster: Collection<Int>): List<RedactMark> = if (raster.isEmpty()) pending else emptyList()
+
+    /** A Search & Remove hit drawn before rasterising: white, no outline or overlay text. Pure. */
+    internal fun removeStyle(m: RedactMark): RedactMark = m.copy(style = RedactStyle(fill = 0xFFFFFF, outline = null, overlay = ""), wholePage = false)
 
     private fun rgb(c: Int) = floatArrayOf(((c shr 16) and 0xFF) / 255f, ((c shr 8) and 0xFF) / 255f, (c and 0xFF) / 255f)
 
