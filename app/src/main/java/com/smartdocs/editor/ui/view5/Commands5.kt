@@ -3,6 +3,7 @@ package com.smartdocs.editor.ui.view5
 import android.content.Context
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -106,6 +107,11 @@ object V5Commands {
         v.prefs.edit().putString(K_PINS, (if (id in cur) cur - id else cur + id).joinToString(",")).apply()
         v.pinsVersion++
     }
+    // fc-settings: where the pinned commands (quick access) are shown: "top" (reader top bar) or "bottom" (a row above the bottom toolbar)
+    const val QAT_TOP = "top"; const val QAT_BOTTOM = "bottom"
+    private const val K_QAT_POS = "qat_pos"
+    fun qatPosition(ctx: Context): String = ctx.getSharedPreferences(V5State.PREFS, Context.MODE_PRIVATE).getString(K_QAT_POS, QAT_TOP) ?: QAT_TOP
+    fun setQatPosition(ctx: Context, pos: String) { ctx.getSharedPreferences(V5State.PREFS, Context.MODE_PRIVATE).edit().putString(K_QAT_POS, if (pos == QAT_BOTTOM) QAT_BOTTOM else QAT_TOP).apply() }
     fun recent(v: V5State): List<String> = (v.prefs.getString(K_RECENT, "") ?: "").split(',').filter { it.isNotBlank() }
     fun pushRecent(v: V5State, id: String) { v.prefs.edit().putString(K_RECENT, CommandRank.pushRecent(recent(v), id).joinToString(",")).apply() }
 }
@@ -129,6 +135,14 @@ fun CommandSearchSheet(e: V5Env) {
             OutlinedTextField(q, { q = it }, Modifier.fillMaxWidth().focusRequester(focus), singleLine = true,
                 leadingIcon = { Icon(Icons.Default.Bolt, null) }, placeholder = { Text(stringResource(R.string.v5_tell_me)) })
             Text(stringResource(R.string.v5_pin_hint), style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(vertical = 4.dp))
+            // fc-settings: position of the pinned commands
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(stringResource(R.string.fcs_qat_pos), style = MaterialTheme.typography.labelMedium)
+                val pos = remember(pv) { V5Commands.qatPosition(ctx) }
+                listOf(V5Commands.QAT_TOP to R.string.fcs_qat_top, V5Commands.QAT_BOTTOM to R.string.fcs_qat_bottom).forEach { (k, l) ->
+                    FilterChip(pos == k, { V5Commands.setQatPosition(ctx, k); v.pinsVersion++ }, label = { Text(stringResource(l)) })
+                }
+            }
             val nveAi = com.smartdocs.editor.LocalSettings.current.aiEnabled
             LazyColumn(Modifier.weight(1f)) {
                 items(ranked, key = { it.id }) { c ->
@@ -178,7 +192,11 @@ private fun v5Pinned(s: ReaderState, v: V5State, e: V5Env): List<V5Command> {
     val cmds = remember(e) { V5Commands.all(e) }
     val pv = v.pinsVersion
     val max = if (LocalConfiguration.current.screenWidthDp > 700) 6 else 2
-    return remember(pv, cmds) { V5Commands.pins(v).mapNotNull { id -> cmds.firstOrNull { it.id == id } }.take(max) }
+    // fc-settings: pinned commands sit above the bottom toolbar (V5PinnedBottomRow) when their position is "bottom":
+    // then none are in the top bar or its ⋮ overflow (tab-view-core V-03)
+    val ctx = LocalContext.current
+    val bottom = remember(pv) { V5Commands.qatPosition(ctx) } == V5Commands.QAT_BOTTOM
+    return remember(pv, cmds, bottom) { if (bottom) emptyList() else V5Commands.pins(v).mapNotNull { id -> cmds.firstOrNull { it.id == id } }.take(max) }
 }
 
 /** tab-view-core V-03: the entries of [V5TopActions] with their width (dp), in keep-priority order (tell me first). */
@@ -206,4 +224,22 @@ fun V5TopOverflowItems(s: ReaderState, hidden: Set<String>, close: () -> Unit) {
     pinned.forEach { c -> if (TOP_PIN + c.id in hidden) DropdownMenuItem(text = { Text(stringResource(c.label)) }, leadingIcon = { Icon(c.icon, null) }, onClick = { close(); c.run() }) }
     if (TOP_BACK in hidden && v.history.canBack) DropdownMenuItem(text = { Text(stringResource(R.string.v5_back_position)) }, leadingIcon = { Icon(Icons.AutoMirrored.Filled.ArrowBack, null) }, onClick = { close(); v.back() })
     if (TOP_FORWARD in hidden && v.history.canForward) DropdownMenuItem(text = { Text(stringResource(R.string.v5_forward_position)) }, leadingIcon = { Icon(Icons.AutoMirrored.Filled.ArrowForward, null) }, onClick = { close(); v.forward() })
+}
+
+/** fc-settings: the pinned commands as a scrollable row above the bottom toolbar, when their position is "bottom" (hook in the reader's bottom bar). */
+@Composable
+fun V5PinnedBottomRow(s: ReaderState) {
+    val v = V5State.of(s)
+    val e = v.env ?: return
+    val ctx = LocalContext.current
+    val pv = v.pinsVersion
+    if (remember(pv) { V5Commands.qatPosition(ctx) } != V5Commands.QAT_BOTTOM) return
+    val cmds = remember(e) { V5Commands.all(e) }
+    val pinned = remember(pv, cmds) { V5Commands.pins(v).mapNotNull { id -> cmds.firstOrNull { it.id == id } } }
+    if (pinned.isEmpty()) return
+    Surface(tonalElevation = 2.dp) {
+        Row(Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()).padding(horizontal = 8.dp), horizontalArrangement = Arrangement.Center) {
+            pinned.forEach { c -> IconButton(onClick = c.run) { Icon(c.icon, stringResource(c.label)) } }
+        }
+    }
 }

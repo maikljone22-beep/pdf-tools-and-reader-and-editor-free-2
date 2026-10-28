@@ -68,9 +68,7 @@ object NveFolders {
         }.getOrNull()
     }
 
-    /** Recent list size shown on Home (the database keeps 50). */
-    fun recentSize(ctx: Context): Int = p(ctx).getInt("recent_size", 50)
-    fun setRecentSize(ctx: Context, n: Int) { p(ctx).edit().putInt("recent_size", n.coerceIn(5, 50)).apply(); NveShellPrefs.version.intValue++ }
+    // fc-settings: the recent-list size moved to NpfPrefs.recentLimit (one setting; old "recent_size" migrated in NpfPrefs.init)
 }
 
 /** CreateDocument that starts in the default save folder (for "Save as"; hook for the reader). */

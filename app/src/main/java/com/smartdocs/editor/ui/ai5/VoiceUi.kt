@@ -139,7 +139,7 @@ fun VoiceChatDialog(busy: Boolean, onAsk: (String) -> Unit, latestAnswer: () -> 
                 Box(Modifier.size(120.dp).scale(scale).background(
                     if (phase == 1) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary, CircleShape)
                     .clickable { if (phase == 1) { input.stop(); phase = 0 } else { muted = false; listen() } }, contentAlignment = Alignment.Center) {
-                    Icon(Icons.Default.Mic, null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(48.dp))
+                    Icon(Icons.Default.Mic, stringResource(R.string.a5_tap_to_talk), tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(48.dp))
                 }
                 Text(stringResource(when (phase) { 1 -> R.string.a5_listening; 2 -> R.string.a5_thinking; 3 -> R.string.a5_speaking; else -> R.string.a5_tap_to_talk }),
                     style = MaterialTheme.typography.titleSmall)

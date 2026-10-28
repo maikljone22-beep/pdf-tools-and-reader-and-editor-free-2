@@ -77,6 +77,8 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
         }
         state.initialPageMode = null
     }
+    val fcsChrome = com.smartdocs.editor.ui.nve.NveState.of(state).chromeToggle   // fc-settings: Ctrl+F11 hides / shows the toolbars
+    LaunchedEffect(fcsChrome) { if (fcsChrome > 0) chrome = !chrome }
     var showViewMode by remember { mutableStateOf(false) }
     var showPageColor by remember { mutableStateOf(false) }
     var showAutoFlip by remember { mutableStateOf(false) }
@@ -389,6 +391,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                             onRedact = { s -> com.smartdocs.editor.ui.search.ReaderRedact.markSelection(ctx, state, quick, s) },   // MODULE_search5b
                             onRewrite = { s -> if (state.guard.check(com.smartdocs.editor.core.security.DocAction.COPY)) textTools = s to com.smartdocs.editor.core.ai5.TextAction.REWRITE })   // ai6 (B11)
                     }
+                    if (state.session != null) com.smartdocs.editor.ui.view5.V5PinnedBottomRow(state)   // fc-settings: pinned commands at the bottom
                     if (state.session != null) BottomToolbar(state, actions)
                 }
                 // tab-view-core V-29: in full screen the read-aloud controls stay reachable

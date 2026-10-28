@@ -299,7 +299,7 @@ class ReaderState(
                     if (pw != null) throw e
                     markChecked = true
                     val mark = withContext(Dispatchers.IO) { com.smartdocs.editor.core.connected.ConnectedDocs.markOf(f) }
-                    if (mark?.protected != true) throw e
+                    if (mark?.protected != true || com.smartdocs.editor.core.data.FcsPrefs.connectedOff) throw e   // fc-settings: ConnectedPDF off → the password prompt
                     val st = com.smartdocs.editor.core.connected.ConnectedDocs.checkOnOpen(context, f)
                     connected = st
                     if (st == null || st.locked) { connectedLocked = true; return@launch }
@@ -321,7 +321,7 @@ class ReaderState(
                 session = s
                 scope.launch { runCatching { s.pageSizes() }.getOrNull()?.let { all -> androidx.compose.runtime.snapshots.Snapshot.withMutableSnapshot { all.forEach { (i, sz) -> pageSizes[i] = sz } } } }
                 needPassword = false; wrongPassword = false; error = null
-                if (!markChecked) scope.launch {
+                if (!markChecked && !com.smartdocs.editor.core.data.FcsPrefs.connectedOff) scope.launch {
                     // after the first render: connected status for the banner; a revoked protected copy still locks
                     val mark = withContext(Dispatchers.IO) { com.smartdocs.editor.core.connected.ConnectedDocs.markOf(f) } ?: return@launch
                     val st = com.smartdocs.editor.core.connected.ConnectedDocs.checkOnOpen(context, f)

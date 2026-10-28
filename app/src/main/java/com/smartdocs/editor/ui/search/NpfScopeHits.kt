@@ -76,5 +76,6 @@ private fun npfKindLabel(k: PartKind): Int = when (k) {
     PartKind.BOOKMARK -> R.string.npf_scope_bookmarks
     PartKind.FIELD -> R.string.npf_scope_fields
     PartKind.ATTACHMENT -> R.string.npf_scope_attachments
+    PartKind.METADATA -> R.string.fcs_m_scope_metadata
     PartKind.TEXT -> R.string.npf_scope_text
 }
