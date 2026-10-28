@@ -14,9 +14,14 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import kotlin.coroutines.coroutineContext
 
-/** What the OCR sheet asks for. [pages] null = all pages (zero-based otherwise). [tuning]: Nitro OCR options. */
+/**
+ * What the OCR sheet asks for. [pages] null = all pages (zero-based otherwise). [tuning]: Nitro OCR options. [redo]:
+ * recognise every chosen page again, even with text, after removing the old invisible OCR text on them
+ * ([com.smartdocs.editor.core.ocr.OcrRedo]; visible content is kept).
+ */
 data class OcrOptions(val pages: List<Int>?, val langs: List<String>, val editable: Boolean,
-                      val tuning: com.smartdocs.editor.core.ocr.OcrTuning = com.smartdocs.editor.core.ocr.OcrTuning())
+                      val tuning: com.smartdocs.editor.core.ocr.OcrTuning = com.smartdocs.editor.core.ocr.OcrTuning(),
+                      val redo: Boolean = false)
 
 /** Languages offered in the sheet (Tesseract codes) with their label resource. */
 val OCR_LANGUAGES = listOf(
@@ -73,16 +78,19 @@ suspend fun runOcrToFile(
     // Arabic fonts with a wrong ToUnicode map are repaired first: those pages then have good text and need no OCR layer
     // (which used to duplicate them, reversed, on copy). Everything below works on the repaired copy.
     val input = com.smartdocs.editor.core.ocr.RepairedInput.of(ctx.cacheDir, src0, password, opt.pages)
+    var stripped: File? = null
     try {
     input.result?.takeIf { input.repaired }?.let(onRepaired)
-    val src = input.file
+    // redo: the old invisible OCR text of the chosen pages goes first (a copy; visible content untouched)
+    if (opt.redo) stripped = com.smartdocs.editor.core.ocr.OcrRedo.strippedCopy(input.file, password, opt.pages, ctx.cacheDir).first
+    val src = stripped ?: input.file
     val session = PdfSession.open(ctx, src, password)
     try {
         val range = (opt.pages ?: (0 until session.pageCount).toList()).filter { it in 0 until session.pageCount }
         // pages without text, and pages mixing text with scanned pictures (only the new words are added there)
         val plan = com.smartdocs.editor.core.ocr.MixedPageOcr.plan(session, src, password, range)
         // a single page the user picked is always recognised (on a digital page only words that are new get added)
-        val todo = if (opt.pages?.size == 1) range else plan.pages
+        val todo = if (opt.redo || opt.pages?.size == 1) range else plan.pages
         if (todo.isEmpty()) {
             // nothing to recognise, but the text layer was repaired: that is the result
             if (input.repaired) { withContext(Dispatchers.IO) { src.copyTo(out, overwrite = true) }; return@cancelling 0 }
@@ -123,7 +131,7 @@ suspend fun runOcrToFile(
         com.smartdocs.editor.core.ocr.OcrPipeline.shrinkOutput(out, password, t)
         todo.size
     } finally { withContext(kotlinx.coroutines.NonCancellable) { session.closeAsync() } }   // closed also after a cancel
-    } finally { input.close() }
+    } finally { input.close(); stripped?.delete() }
     } } catch (e: CancellationException) { throw e
     } catch (e: QuickInfo) { throw e
     } catch (e: Exception) { throw QuickInfo(ocrErrorText(ctx, e))

@@ -220,6 +220,9 @@ class OrganizeState(
         } finally { busy = false; progress = null }
     }
 
+    /** Thumbnail menu: redact the whole page (audit FINAL_CHECK: acts on the tapped page). */
+    fun redactPage(p: Int) = apply(keepSelection = true) { src, out -> com.smartdocs.editor.core.edit5.PageOrganize.redactPages(src, out, password, listOf(p)) }
+
     fun undo() {
         if (history.isEmpty() || busy) return
         busy = true

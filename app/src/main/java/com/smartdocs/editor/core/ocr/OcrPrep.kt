@@ -14,6 +14,14 @@ import java.io.File
 enum class OcrThreshold { NONE, FIXED, ADAPTIVE }
 
 /**
+ * Which recogniser reads the page (PRO_OCR_r5). [AUTO]: Tesseract and the PP-OCRv5 AI model together, word by word
+ * (the AI model is used when its optional download is installed, otherwise Tesseract alone); [AI]: the AI model only;
+ * [TESSERACT]: Tesseract only (the previous behaviour); [CLOUD]: the page image is sent to the app's server ("Pro OCR",
+ * needs internet and a configured server), with the offline engines as fallback.
+ */
+enum class OcrEngineMode { AUTO, AI, TESSERACT, CLOUD }
+
+/**
  * OCR settings shared by the reader OCR, OCR plus and batch OCR (Nitro OCR options): recognition quality ([fast] =
  * tessdata_fast), pre-processing ([deskew] the page, [orientation] = detect text direction and turn the page,
  * [threshold] with [thresholdValue], [smooth] colour images), special recognition ([numericOnly]) and the output
@@ -29,12 +37,13 @@ data class OcrTuning(
     val numericOnly: Boolean = false,
     val outputDpi: Int = 0,
     val outputQuality: Int = 75,
+    val engine: OcrEngineMode = OcrEngineMode.AUTO,
 ) {
     val changesPages: Boolean get() = deskew || orientation
     val filtersImage: Boolean get() = threshold != OcrThreshold.NONE || smooth
 
     fun toJson(): String = JSONObject().put("fast", fast).put("deskew", deskew).put("orient", orientation).put("thr", threshold.name)
-        .put("thrV", thresholdValue).put("smooth", smooth).put("num", numericOnly).put("outDpi", outputDpi).put("outQ", outputQuality).toString()
+        .put("thrV", thresholdValue).put("smooth", smooth).put("num", numericOnly).put("outDpi", outputDpi).put("outQ", outputQuality).put("eng", engine.name).toString()
 
     companion object {
         /** Characters Tesseract may return in numeric-only mode. */
@@ -44,7 +53,8 @@ data class OcrTuning(
             val o = JSONObject(s ?: return OcrTuning())
             OcrTuning(o.optBoolean("fast"), o.optBoolean("deskew"), o.optBoolean("orient"),
                 runCatching { OcrThreshold.valueOf(o.optString("thr")) }.getOrDefault(OcrThreshold.NONE), o.optInt("thrV", 160),
-                o.optBoolean("smooth"), o.optBoolean("num"), o.optInt("outDpi"), o.optInt("outQ", 75))
+                o.optBoolean("smooth"), o.optBoolean("num"), o.optInt("outDpi"), o.optInt("outQ", 75),
+                runCatching { OcrEngineMode.valueOf(o.optString("eng")) }.getOrDefault(OcrEngineMode.AUTO))
         }.getOrDefault(OcrTuning())
 
         fun load(c: Context) = fromJson(c.getSharedPreferences("ocr", Context.MODE_PRIVATE).getString("tuning", null))

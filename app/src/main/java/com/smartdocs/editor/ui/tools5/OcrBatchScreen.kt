@@ -42,6 +42,7 @@ fun OcrBatchScreen(nav: NavHostController, uri: String?) {
     var langs by remember { mutableStateOf((prefs.getString("langs", "ara+eng") ?: "ara+eng").split('+').toSet()) }
     var clean by remember { mutableStateOf(prefs.getBoolean("clean", true)) }
     var review by remember { mutableStateOf(true) }
+    var redo by remember { mutableStateOf(false) }
     var minConf by remember { mutableFloatStateOf(prefs.getFloat("conf", 65f)) }
     var background by remember { mutableStateOf(false) }
     var pendingReview by remember { mutableStateOf<OcrDoc?>(null) }
@@ -59,7 +60,7 @@ fun OcrBatchScreen(nav: NavHostController, uri: String?) {
     val working = stringResource(R.string.t5_ocr_working)
     val nothing = stringResource(R.string.t5_ocr_nothing)
     val queued = stringResource(R.string.t5_batch_queued)
-    fun plan() = OcrPlan(langs = if (auto) null else langs.sorted().joinToString("+").ifBlank { "ara+eng" }, preClean = clean, minConfidence = minConf, tuning = tuning)
+    fun plan() = OcrPlan(langs = if (auto) null else langs.sorted().joinToString("+").ifBlank { "ara+eng" }, preClean = clean, minConfidence = minConf, tuning = tuning, redo = redo)
     fun save() { prefs.edit().putBoolean("auto", auto).putString("langs", langs.joinToString("+")).putBoolean("clean", clean).putFloat("conf", minConf).apply(); com.smartdocs.editor.core.ocr.OcrTuning.save(ctx, tuning) }
     fun pw(f: File): String? = passwords[f.absolutePath]
     fun dropPending() {
@@ -96,6 +97,7 @@ fun OcrBatchScreen(nav: NavHostController, uri: String?) {
                 AssistChip(onClick = { moreLangs = true }, label = { Text(stringResource(R.string.nt_ocr_more_langs)) }, leadingIcon = { Icon(Icons.Default.Language, null) })
             }
             SwitchRow(stringResource(R.string.t5_preclean), clean, stringResource(R.string.t5_preclean_hint)) { clean = it }
+            SwitchRow(stringResource(R.string.qk_ocr_redo), redo, stringResource(R.string.qk_ocr_redo_desc), enabled = !background) { redo = it }
             SwitchRow(stringResource(R.string.t5_review), review, stringResource(R.string.t5_review_hint), enabled = files.size == 1 && !background) { review = it }
             if (review) LabeledSlider(stringResource(R.string.t5_min_conf), minConf, 30f..90f, { minConf = it })
             SwitchRow(stringResource(R.string.t5_run_background), background, stringResource(R.string.t5_run_background_hint)) { background = it }
@@ -119,7 +121,11 @@ fun OcrBatchScreen(nav: NavHostController, uri: String?) {
                 try {
                     if (wantReview) {
                         val src = list[0]; val spw = pws[src]
-                        val fixed = OcrRunner.prepare(ctx, engine, src, spw, p)
+                        val fixed0 = OcrRunner.prepare(ctx, engine, src, spw, p)
+                        // redo: recognise and write from a copy without the old invisible OCR text
+                        val fixed = if (p.redo && !OcrRunner.isImage(src))
+                            com.smartdocs.editor.core.ocr.OcrRedo.strippedCopy(fixed0 ?: src, spw, null, ctx.cacheDir).first.also { fixed0?.delete() }
+                        else fixed0
                         // audit 5 OCR-6: broken Arabic maps of old Word PDFs are repaired first (no duplicated reversed text)
                         val input = try { OcrRunner.repairedInput(ctx, fixed ?: src, spw) } catch (e: Throwable) { fixed?.delete(); throw e }
                         val d = try { OcrRunner.recognize(ctx, engine, input?.file ?: fixed ?: src, spw, p) { a, b -> step(a, b) } }

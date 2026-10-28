@@ -90,7 +90,7 @@ fun CloudFolderPicker(provider: CloudProvider, onDismiss: () -> Unit, onPick: (C
                         scope.launch {
                             runCatching { provider.createFolder(cur.id, newName.trim()) }.onSuccess { stack += it; creating = false; newName = "" }.onFailure { error = it.message }
                         }
-                    }) { Icon(Icons.Default.Check, null) }
+                    }) { Icon(Icons.Default.Check, stringResource(R.string.pa_cd_choose)) }
                 } else TextButton(onClick = { creating = true }) { Icon(Icons.Default.CreateNewFolder, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.new_folder)) }
             }
         },

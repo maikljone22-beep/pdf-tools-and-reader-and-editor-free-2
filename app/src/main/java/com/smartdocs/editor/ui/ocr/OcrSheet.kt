@@ -53,6 +53,7 @@ fun OcrSheet(
     var to by remember { mutableStateOf(pageCount.toString()) }
     val langs = remember { mutableStateListOf<String>().apply { addAll(OcrPrefs.languages(ctx)) } }
     var editable by remember { mutableStateOf(OcrPrefs.editable(ctx)) }
+    var redo by remember { mutableStateOf(false) }
     var tuning by remember { mutableStateOf(com.smartdocs.editor.core.ocr.OcrTuning.load(ctx)) }
     var moreLangs by remember { mutableStateOf(false) }
     // audit 5 OCR-8: "installed" is judged in the folder of the chosen quality (tessdata_fast / tessdata_best); the
@@ -123,6 +124,15 @@ fun OcrSheet(
             ModeCard(Icons.Default.ManageSearch, stringResource(R.string.qk_ocr_searchable), stringResource(R.string.qk_ocr_searchable_desc), !editable) { editable = false }
             Spacer(Modifier.height(8.dp))
             ModeCard(Icons.Default.EditNote, stringResource(R.string.qk_ocr_editable), stringResource(R.string.qk_ocr_editable_desc), editable) { editable = true }
+            Spacer(Modifier.height(8.dp))
+            // FINAL_CHECK K2: recognise pages again that already have (OCR) text, replacing the old invisible layer
+            Row(Modifier.fillMaxWidth().clickable { redo = !redo }, verticalAlignment = Alignment.Top) {
+                Checkbox(redo, { redo = it })
+                Column(Modifier.weight(1f).padding(top = 12.dp)) {
+                    Text(stringResource(R.string.qk_ocr_redo), style = MaterialTheme.typography.bodyMedium)
+                    Text(stringResource(R.string.qk_ocr_redo_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
             Spacer(Modifier.height(12.dp))
             OcrTuningSection(tuning) { tuning = it }
             if (onArea != null) OutlinedButton(onClick = onArea, Modifier.fillMaxWidth().padding(top = 8.dp)) {
@@ -141,7 +151,7 @@ fun OcrSheet(
                         allPages -> null
                         else -> (minOf(fromN, toN) - 1..maxOf(fromN, toN) - 1).toList()
                     }
-                    onRun(OcrOptions(pages, ordered, editable, tuning))
+                    onRun(OcrOptions(pages, ordered, editable, tuning, redo))
                 },
                 enabled = langs.isNotEmpty(), modifier = Modifier.fillMaxWidth().height(52.dp),
             ) { Text(stringResource(R.string.qk_ocr_run), style = MaterialTheme.typography.titleMedium) }

@@ -425,6 +425,30 @@ object PageOrganize {
         n
     }
 
+    /**
+     * Foxit "Redact pages" (thumbnail menu): everything on [pages] goes — content, resources (fonts, images), annotations,
+     * thumbnails, page-piece data — and the page is filled with [rgb]. Nothing of the old page can be recovered.
+     */
+    suspend fun redactPages(src: File, out: File, password: String?, pages: Collection<Int>, rgb: Int = 0x000000) = withContext(Dispatchers.IO) {
+        E5Io.edit(src, out, password) { doc -> redactPagesIn(doc, pages, rgb) }
+    }
+
+    fun redactPagesIn(doc: PDDocument, pages: Collection<Int>, rgb: Int = 0x000000) {
+        pages.filter { it in 0 until doc.numberOfPages }.forEach { i ->
+            val page = doc.getPage(i)
+            // audit 5 R-3: field values, structure ActualText / Alt and every reference go with the page content
+            com.smartdocs.editor.core.redact.PageScrub.wipePage(doc, page)
+            page.annotations = mutableListOf()
+            listOf("Thumb", "PieceInfo", "AA", "StructParents").forEach { page.cosObject.removeItem(COSName.getPDFName(it)) }
+            page.resources = com.tom_roush.pdfbox.pdmodel.PDResources()
+            val box = page.cropBox
+            com.tom_roush.pdfbox.pdmodel.PDPageContentStream(doc, page, com.tom_roush.pdfbox.pdmodel.PDPageContentStream.AppendMode.OVERWRITE, true).use { cs ->
+                cs.setNonStrokingColor(((rgb shr 16) and 0xFF) / 255f, ((rgb shr 8) and 0xFF) / 255f, (rgb and 0xFF) / 255f)
+                cs.addRect(box.lowerLeftX, box.lowerLeftY, box.width, box.height); cs.fill()
+            }
+        }
+    }
+
     /** Pages of [pages] that remain after removing [removed]: their new indexes. Pure (used to re-select after delete). */
     fun remap(count: Int, removed: Set<Int>): Map<Int, Int> {
         val out = HashMap<Int, Int>(); var k = 0

@@ -89,6 +89,8 @@ android {
     // JVM unit tests: android.util.Log (called inside PdfBox-Android, e.g. on a second getAcroForm()) returns defaults instead of throwing
     testOptions { unitTests.isReturnDefaultValues = true }
     packaging {
+        // ONNX Runtime only for the ARM phones/tablets (20 MB each for x86 / x86_64); without it the AI OCR is simply off
+        jniLibs.excludes += setOf("lib/x86/libonnxruntime*.so", "lib/x86_64/libonnxruntime*.so")
         resources.excludes += setOf("META-INF/{AL2.0,LGPL2.1}", "META-INF/DEPENDENCIES", "META-INF/LICENSE*", "META-INF/NOTICE*", "META-INF/versions/9/OSGI-INF/MANIFEST.MF",
             // open-all: commons-io / commons-lang3 / commons-compress are multi-release jars
             "META-INF/versions/**/module-info.class", "module-info.class")
@@ -146,6 +148,8 @@ dependencies {
     // Scanner + OCR
     implementation("com.google.android.gms:play-services-mlkit-document-scanner:16.0.0")
     implementation("com.github.adaptech-cz.Tesseract4Android:tesseract4android-openmp:4.8.0")
+    // PP-OCRv5 "Pro offline" OCR (PRO_OCR_r5): ONNX Runtime, MIT; the models are an optional pinned download
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.20.0")
 
     // Handwriting → text (supports Arabic), Play Billing, in-app review, Google sign-in/authorization (Drive)
     implementation("com.google.mlkit:digital-ink-recognition:19.0.0")

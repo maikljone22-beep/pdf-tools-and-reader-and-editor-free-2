@@ -60,6 +60,8 @@ fun OrganizeScreen(nav: NavHostController, uri: String?) {
     var result by remember { mutableStateOf<File?>(null) }
     var saving by remember { mutableStateOf(false) }
     var snack by remember { mutableStateOf<String?>(null) }
+    var redactAsk by remember { mutableStateOf<Int?>(null) }
+    val ocrHasText = stringResource(R.string.pa_ocr_has_text)
     // thumbnail zoom (Foxit 17 / Nitro 4)
     var cellScale by remember { mutableFloatStateOf(1f) }
 
@@ -258,19 +260,10 @@ fun OrganizeScreen(nav: NavHostController, uri: String?) {
                                     }
                                 }
                             },
-                            // audit 5 G-06: Redact gets a copy of the current version; a change made there comes back as an
-                            // organizer step on return (takeBack), so the grid and undo never go stale
-                            pageAct(R.string.pc_page_redact) { _ ->
-                                requirePermission(com.smartdocs.editor.core.security.DocAction.MODIFY) {
-                                    saving = true
-                                    scope.launch {
-                                        try { state.handOff()?.let { nav.navigate(com.smartdocs.editor.ui.Routes.tool("redact", Uri.fromFile(it).toString())) } }
-                                        catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { snack = state.message(e) } finally { saving = false }
-                                    }
-                                }
-                            },
+                            // redaction acts on the tapped page of the working version (undo brings it back); audit 5 G-03: MODIFY
+                            pageAct(R.string.pc_page_redact) { p -> requirePermission(com.smartdocs.editor.core.security.DocAction.MODIFY) { redactAsk = p } },
                             // audit 5 G-06: OCR of this page in place (one undoable organizer step), no second reader
-                            pageAct(R.string.ttpg_ocr_page) { p -> requirePermission(com.smartdocs.editor.core.security.DocAction.MODIFY) { state.ocrPage(p) } },
+                            pageAct(R.string.pc_page_ocr) { p -> requirePermission(com.smartdocs.editor.core.security.DocAction.MODIFY) { state.ocrPage(p) } },
                         ),
                         dragEnabled = state.filter == PageFilter.ALL && !state.busy,
                         onTap = { p -> if (state.selectMode) state.toggle(p) else { state.selectMode = true; state.selected = setOf(p) } },
@@ -298,6 +291,12 @@ fun OrganizeScreen(nav: NavHostController, uri: String?) {
     }
 
     // audit 5 (PAGES, Low): the exit dialog also offers Save (overwrite the original, then leave)
+    redactAsk?.let { p ->
+        AlertDialog(onDismissRequest = { redactAsk = null }, title = { Text(stringResource(R.string.pa_redact_page_q, p + 1)) },
+            text = { Text(stringResource(R.string.pa_redact_page_sub)) },
+            confirmButton = { TextButton(onClick = { redactAsk = null; state.redactPage(p) }) { Text(stringResource(R.string.pc_page_redact)) } },
+            dismissButton = { TextButton(onClick = { redactAsk = null }) { Text(stringResource(R.string.cancel)) } })
+    }
     if (exitDialog) AlertDialog(
         onDismissRequest = { exitDialog = false },
         title = { Text(stringResource(R.string.tool_organize)) },

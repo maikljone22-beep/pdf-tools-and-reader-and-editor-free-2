@@ -78,8 +78,8 @@ fun BatesScreen(nav: NavHostController, uri: String?) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (unlocker.isLocked(f)) Icon(Icons.Default.Lock, stringResource(R.string.e5_lock_locked), Modifier.size(18.dp))
                     Text("${i + 1}. ${f.name}", Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    IconButton(onClick = { if (i > 0) files = files.toMutableList().apply { add(i - 1, removeAt(i)) } }, enabled = i > 0) { Icon(Icons.Default.ArrowUpward, null) }
-                    IconButton(onClick = { files = files.toMutableList().apply { removeAt(i) }; unlocker.forget(f) }) { Icon(Icons.Default.Close, null) }
+                    IconButton(onClick = { if (i > 0) files = files.toMutableList().apply { add(i - 1, removeAt(i)) } }, enabled = i > 0) { Icon(Icons.Default.ArrowUpward, stringResource(R.string.pc_move_up)) }
+                    IconButton(onClick = { files = files.toMutableList().apply { removeAt(i) }; unlocker.forget(f) }) { Icon(Icons.Default.Close, stringResource(R.string.pc_cd_remove)) }
                 }
             }
             com.smartdocs.editor.ui.tools5.BatchSources(files) { files = it; unlockNew() }

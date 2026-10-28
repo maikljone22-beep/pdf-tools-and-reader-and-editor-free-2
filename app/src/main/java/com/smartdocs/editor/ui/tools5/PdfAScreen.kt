@@ -35,6 +35,13 @@ private fun findingTitle(code: String): String = stringResource(
         "spot" -> R.string.pc_pf_spot; "ppi_low" -> R.string.pc_pf_ppi_low; "invisible" -> R.string.pc_pf_invisible; "courier" -> R.string.pc_pf_courier
         "v_needed" -> R.string.pc_pf_v_needed; "zf_xml" -> R.string.pc_pf_zf_xml; "zf_relationship" -> R.string.pc_pf_zf_relationship; "zf_af" -> R.string.pc_pf_zf_af
         "zf_xmp" -> R.string.pc_pf_zf_xmp; "zf_pdfa3" -> R.string.pc_pf_zf_pdfa3; "zf_ok" -> R.string.pc_pf_zf_ok
+        "ua_claim" -> R.string.pa_ua_claim; "ua_tagged" -> R.string.pa_ua_tagged; "ua_marked" -> R.string.pa_ua_marked; "ua_title" -> R.string.pa_ua_title
+        "ua_display_title" -> R.string.pa_ua_display_title; "ua_lang" -> R.string.pa_ua_lang; "ua_untagged_content" -> R.string.pa_ua_untagged_content
+        "ua_untagged_annots" -> R.string.pa_ua_untagged_annots; "ua_tabs" -> R.string.pa_ua_tabs; "ua_fonts" -> R.string.pa_ua_fonts; "ua_unicode" -> R.string.pa_ua_unicode
+        "ua_alt" -> R.string.pa_ua_alt; "ua_other_alt" -> R.string.pa_ua_other_alt; "ua_table_headers" -> R.string.pa_ua_table_headers; "ua_headings" -> R.string.pa_ua_headings
+        "ua_field_desc" -> R.string.pa_ua_field_desc; "ua_permission" -> R.string.pa_ua_permission; "ua_xfa" -> R.string.pa_ua_xfa; "ua_rolemap" -> R.string.pa_ua_rolemap
+        "ua_note_id" -> R.string.pa_ua_note_id; "ua_ocg_name" -> R.string.pa_ua_ocg_name; "ua_embedded_names" -> R.string.pa_ua_embedded_names
+        "ua_ok" -> R.string.pa_ua_ok; "ua_manual" -> R.string.pa_ua_manual
         else -> R.string.t5_pf_other
     },
 )
@@ -254,4 +261,5 @@ private fun profileLabel(p: PreflightProfile): String = stringResource(when (p) 
     PreflightProfile.PDFA_1B -> R.string.pc_prof_a1b; PreflightProfile.PDFA_2B -> R.string.pc_prof_a2b; PreflightProfile.PDFA_2U -> R.string.pc_prof_a2u
     PreflightProfile.PDFA_3B -> R.string.pc_prof_a3b; PreflightProfile.PDFX_4 -> R.string.pc_prof_x4; PreflightProfile.PDFE_1 -> R.string.pc_prof_e1
     PreflightProfile.PRINT -> R.string.pc_prof_print; PreflightProfile.VERSION -> R.string.pc_prof_version; PreflightProfile.ZUGFERD -> R.string.pc_prof_zugferd
+    PreflightProfile.PDFUA_1 -> R.string.pa_prof_ua1
 })
