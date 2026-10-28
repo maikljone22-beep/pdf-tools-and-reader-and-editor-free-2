@@ -409,6 +409,9 @@ fun PlacementBar(state: ReaderState, modifier: Modifier = Modifier) {
     var sizeOpen by remember { mutableStateOf(false) }
     var opacity by remember(p.image) { mutableFloatStateOf(1f) }
     var opOpen by remember { mutableStateOf(false) }
+    // tabs audit CM-35: copies made by the opacity slider; one that is replaced again is ours to recycle
+    val ownCopies = remember { mutableSetOf<android.graphics.Bitmap>() }
+    val recycleScope = rememberCoroutineScope()
     Surface(modifier, shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp), tonalElevation = 3.dp, shadowElevation = 4.dp) {
         Column(Modifier.padding(4.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -424,7 +427,12 @@ fun PlacementBar(state: ReaderState, modifier: Modifier = Modifier) {
             if (opOpen) Row(Modifier.width(280.dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Slider(opacity, { opacity = it }, Modifier.weight(1f), valueRange = 0.1f..1f, onValueChangeFinished = {
                     val cur = state.placement ?: return@Slider
-                    state.placement = cur.copy(image = com.smartdocs.editor.ui.view5.StampProcess.apply(cur.image.copy(android.graphics.Bitmap.Config.ARGB_8888, true), opacity, false))
+                    val old = cur.image
+                    val made = com.smartdocs.editor.ui.view5.StampProcess.apply(old.copy(android.graphics.Bitmap.Config.ARGB_8888, true), opacity, false)
+                    state.placement = cur.copy(image = made)
+                    ownCopies += made
+                    // the previous slider copy is no longer shown or placed: released after two frames
+                    if (old in ownCopies && old !== made && old !== state.pendingImage) { ownCopies -= old; recycleScope.launch { com.smartdocs.editor.ui.common.recycleLater(old) } }
                     opacity = 1f
                 })
                 Text("${(opacity * 100).toInt()}%", style = MaterialTheme.typography.labelMedium)

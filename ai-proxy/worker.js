@@ -14,6 +14,9 @@
 //   STT_URL / STT_MODEL       OpenAI-compatible /audio/transcriptions (Groq whisper-large-v3-turbo); secret STT_KEY (or PROVIDER_KEY)
 //   EMBED_URL / EMBED_MODEL   OpenAI-compatible /embeddings (OpenAI text-embedding-3-small); secret EMBED_KEY
 //   SEARCH_KEY (secret)       Brave Search API key for /web/search
+//   OCR_PROVIDER              "google" (Cloud Vision DOCUMENT_TEXT_DETECTION, secret OCR_KEY = API key),
+//                             "azure" (Document Intelligence prebuilt-read, OCR_URL = https://<res>.cognitiveservices.azure.com,
+//                             secret OCR_KEY) or "vision" (VISION_MODEL through PROVIDER_URL: text only, no word boxes)
 // A route whose key is missing answers 501 {"error":"not configured"}; the app shows a clear message.
 // Optional KV binding RATE for per-device daily limits (also read back by GET /usage).
 //
@@ -27,6 +30,8 @@
 //   POST /audio/transcriptions  multipart (file, language) -> {text}
 //   POST /embeddings         {input:[...]} -> {data:[{index,embedding}]}
 //   POST /web/search         {query,count} -> {results:[{title,url,snippet}]}
+//   POST /ocr                {image: base64 JPEG/PNG, languages:["ar","en"]} -> {provider,width,height,
+//                            words:[{text,x0,y0,x1,y1,conf,line}] (pixels of the sent image), text}   ("Pro OCR")
 
 const DAILY_LIMIT = 60;          // chat requests per device per day
 const TTS_DAILY_LIMIT = 400;     // speech requests per device per day (one request = one ~1500-char chunk)
@@ -38,6 +43,8 @@ const IMAGE_DAILY_LIMIT = 20;
 const STT_DAILY_LIMIT = 30;
 const EMBED_DAILY_LIMIT = 200;
 const SEARCH_DAILY_LIMIT = 60;
+const OCR_DAILY_LIMIT = 100;     // OCR pages per device per day
+const MAX_OCR_BODY = 8 * 1024 * 1024;      // one page image (base64)
 
 export default {
   async fetch(req, env) {
@@ -53,7 +60,8 @@ export default {
     const isStt = req.method === "POST" && path.endsWith("/audio/transcriptions");
     const isEmbed = req.method === "POST" && path.endsWith("/embeddings");
     const isSearch = req.method === "POST" && path.endsWith("/web/search");
-    if (!isChat && !isSpeech && !isVoices && !isCaps && !isUsage && !isImages && !isStt && !isEmbed && !isSearch) return json({ error: "not found" }, 404);
+    const isOcr = req.method === "POST" && path.endsWith("/ocr");
+    if (!isChat && !isSpeech && !isVoices && !isCaps && !isUsage && !isImages && !isStt && !isEmbed && !isSearch && !isOcr) return json({ error: "not found" }, 404);
     if (req.headers.get("X-App-Token") !== env.APP_TOKEN) return json({ error: "unauthorized" }, 401);
 
     if (isCaps) return json(capabilities(env), 200);
@@ -67,17 +75,18 @@ export default {
 
     const raw = await req.text();
     const hasImages = isChat && raw.includes('"image_url"');
-    if (raw.length > (hasImages ? MAX_VISION_BODY : MAX_BODY)) return json({ error: "request too large" }, 413);
+    if (raw.length > (isOcr ? MAX_OCR_BODY : hasImages ? MAX_VISION_BODY : MAX_BODY)) return json({ error: "request too large" }, 413);
     let body;
     try { body = JSON.parse(raw); } catch { return json({ error: "bad json" }, 400); }
     if (hasImages && !env.VISION_MODEL) return json({ error: "not configured" }, 501);
     if (isImages && !(env.IMAGE_KEY && env.IMAGE_URL)) return json({ error: "not configured" }, 501);
     if (isEmbed && !(env.EMBED_KEY && env.EMBED_URL)) return json({ error: "not configured" }, 501);
     if (isSearch && !env.SEARCH_KEY) return json({ error: "not configured" }, 501);
+    if (isOcr && !ocrConfigured(env)) return json({ error: "not configured" }, 501);
 
     // rate limit per client IP (KV optional); every route kind has its own counter
-    const kind = isSpeech ? "tts" : isImages ? "img" : isEmbed ? "emb" : isSearch ? "web" : "chat";
-    const limit = { tts: TTS_DAILY_LIMIT, img: IMAGE_DAILY_LIMIT, emb: EMBED_DAILY_LIMIT, web: SEARCH_DAILY_LIMIT, chat: DAILY_LIMIT }[kind];
+    const kind = isSpeech ? "tts" : isImages ? "img" : isEmbed ? "emb" : isSearch ? "web" : isOcr ? "ocr" : "chat";
+    const limit = { tts: TTS_DAILY_LIMIT, img: IMAGE_DAILY_LIMIT, emb: EMBED_DAILY_LIMIT, web: SEARCH_DAILY_LIMIT, ocr: OCR_DAILY_LIMIT, chat: DAILY_LIMIT }[kind];
     const limited = await rateLimit(req, env, kind, limit);
     if (limited) return limited;
 
@@ -85,6 +94,7 @@ export default {
     if (isImages) return images(body, env);
     if (isEmbed) return embeddings(body, env);
     if (isSearch) return webSearch(body, env);
+    if (isOcr) return ocr(body, env);
 
     // the server decides the model and caps the answer length
     body.model = (hasImages ? env.VISION_MODEL : env.DEFAULT_MODEL) || body.model;
@@ -126,6 +136,7 @@ function capabilities(env) {
     transcription: !!(env.STT_URL || env.PROVIDER_URL),
     embeddings: !!(env.EMBED_KEY && env.EMBED_URL),
     web_search: !!env.SEARCH_KEY,
+    ocr: ocrConfigured(env),
     usage: !!env.RATE,
   };
 }
@@ -202,6 +213,93 @@ async function webSearch(body, env) {
   const data = await r.json();
   const results = ((data.web && data.web.results) || []).slice(0, count).map((x) => ({ title: x.title || "", url: x.url || "", snippet: (x.description || "").replace(/<[^>]+>/g, "") }));
   return json({ results }, 200);
+}
+
+function ocrConfigured(env) {
+  const p = env.OCR_PROVIDER;
+  if (p === "google") return !!env.OCR_KEY;
+  if (p === "azure") return !!(env.OCR_KEY && env.OCR_URL);
+  if (p === "vision") return !!(env.VISION_MODEL && env.PROVIDER_KEY);
+  return false;
+}
+
+// Page OCR on the server ("Pro OCR", user opt-in). The key never leaves the worker; the answer is normalised to word
+// boxes in the pixels of the image the app sent, so the app writes the same invisible text layer as offline.
+async function ocr(body, env) {
+  const image = typeof body.image === "string" ? body.image.replace(/^data:[^,]*,/, "") : "";
+  if (!image) return json({ error: "image required" }, 400);
+  const langs = Array.isArray(body.languages) ? body.languages.filter((l) => typeof l === "string" && /^[a-z-]{2,8}$/i.test(l)).slice(0, 4) : ["ar", "en"];
+  const p = env.OCR_PROVIDER;
+  if (p === "google") {
+    const r = await fetch(`https://vision.googleapis.com/v1/images:annotate?key=${encodeURIComponent(env.OCR_KEY)}`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ requests: [{ image: { content: image }, features: [{ type: "DOCUMENT_TEXT_DETECTION" }], imageContext: { languageHints: langs } }] }),
+    });
+    if (!r.ok) return json({ error: `provider ${r.status}` }, 502);
+    const res = ((await r.json()).responses || [])[0] || {};
+    const fta = res.fullTextAnnotation || {};
+    const page = (fta.pages || [])[0] || {};
+    const words = [];
+    let line = 0;
+    for (const b of page.blocks || []) for (const par of b.paragraphs || []) {
+      for (const w of par.words || []) {
+        const text = (w.symbols || []).map((s) => s.text).join("");
+        const v = (w.boundingBox && w.boundingBox.vertices) || [];
+        const xs = v.map((q) => q.x || 0), ys = v.map((q) => q.y || 0);
+        if (!text || !xs.length) continue;
+        words.push({ text, x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys), conf: Math.round((w.confidence || 0) * 100), line });
+        const last = (w.symbols || []).slice(-1)[0] || {};
+        const t = last.property && last.property.detectedBreak && last.property.detectedBreak.type;
+        if (t === "EOL_SURE_SPACE" || t === "LINE_BREAK") line++;
+      }
+      line++;
+    }
+    return json({ provider: "google", width: page.width || 0, height: page.height || 0, words, text: fta.text || "" }, 200);
+  }
+  if (p === "azure") {
+    const base = env.OCR_URL.replace(/\/$/, "");
+    const start = await fetch(`${base}/documentintelligence/documentModels/prebuilt-read:analyze?api-version=2024-11-30`, {
+      method: "POST", headers: { "Content-Type": "application/json", "Ocp-Apim-Subscription-Key": env.OCR_KEY },
+      body: JSON.stringify({ base64Source: image }),
+    });
+    if (start.status !== 202) return json({ error: `provider ${start.status}` }, 502);
+    const op = start.headers.get("Operation-Location");
+    for (let i = 0; i < 30; i++) {
+      await new Promise((ok) => setTimeout(ok, 1000));
+      const r = await fetch(op, { headers: { "Ocp-Apim-Subscription-Key": env.OCR_KEY } });
+      const j = await r.json();
+      if (j.status === "failed") return json({ error: "provider failed" }, 502);
+      if (j.status !== "succeeded") continue;
+      const page = ((j.analyzeResult || {}).pages || [])[0] || {};
+      const lines = page.lines || [];
+      const words = [];
+      for (const w of page.words || []) {
+        const poly = w.polygon || [];
+        const xs = poly.filter((_, k) => k % 2 === 0), ys = poly.filter((_, k) => k % 2 === 1);
+        if (!xs.length) continue;
+        const off = (w.span || {}).offset || 0;
+        const li = lines.findIndex((l) => (l.spans || []).some((s) => off >= s.offset && off < s.offset + s.length));
+        words.push({ text: w.content, x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys), conf: Math.round((w.confidence || 0) * 100), line: li });
+      }
+      return json({ provider: "azure", width: page.width || 0, height: page.height || 0, words, text: (j.analyzeResult || {}).content || "" }, 200);
+    }
+    return json({ error: "provider timeout" }, 504);
+  }
+  // a vision chat model: plain text in reading order, no word boxes (the app keeps its own boxes)
+  const r = await fetch(`${env.PROVIDER_URL.replace(/\/$/, "")}/chat/completions`, {
+    method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${env.PROVIDER_KEY}` },
+    body: JSON.stringify({
+      model: env.VISION_MODEL, max_tokens: 4000, temperature: 0,
+      messages: [{ role: "user", content: [
+        { type: "text", text: "Transcribe ALL text on this page exactly, line by line, in reading order (Arabic right-to-left, columns right to left). Keep Arabic-Indic digits (٠١٢٣٤٥٦٧٨٩) as printed and keep chemical formulas and Latin text exactly. Output only the text." },
+        { type: "image_url", image_url: { url: `data:image/jpeg;base64,${image}` } },
+      ] }],
+    }),
+  });
+  if (!r.ok) return json({ error: `provider ${r.status}` }, 502);
+  const j = await r.json();
+  const text = (((j.choices || [])[0] || {}).message || {}).content || "";
+  return json({ provider: "vision", width: 0, height: 0, words: [], text }, 200);
 }
 
 function voices(env) {

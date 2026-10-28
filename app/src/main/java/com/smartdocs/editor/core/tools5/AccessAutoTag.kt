@@ -27,12 +27,39 @@ object AccessAutoTag {
     enum class Kind { H1, H2, H3, P, LI }
 
     /** One text object: its MCID, text, size (pt) and whether its font looks bold. */
-    data class Blk(val mcid: Int, val text: String, val size: Float, val bold: Boolean = false)
+    data class Blk(val mcid: Int, val text: String, val size: Float, val bold: Boolean = false, val x: Float = 0f, val y: Float = 0f)
 
     data class Report(
         val pages: Int, val taggedPages: Int, val headings: Int, val paragraphs: Int, val lists: Int, val listItems: Int,
         val figures: Int, val artifacts: Int, val annotations: Int, val pagesWithoutText: Int, val retagged: Boolean,
+        val tables: Int = 0,
     )
+
+    /**
+     * FINAL_CHECK "Auto Tag tables": runs of 2+ consecutive lines that each hold 2+ text blocks in the same columns
+     * (x within 1.5 × the text size) are a table; rows top to bottom, cells left to right (mcids). Pure.
+     */
+    fun tables(blocks: List<Blk>): List<List<List<Int>>> {
+        val b = blocks.filter { it.text.isNotBlank() }
+        if (b.size < 4) return emptyList()
+        val size = b.map { it.size }.sorted()[b.size / 2].coerceAtLeast(4f)
+        // lines: blocks whose y is within half a text size
+        val lines = ArrayList<MutableList<Blk>>()
+        b.sortedBy { it.y }.forEach { k -> val last = lines.lastOrNull(); if (last != null && kotlin.math.abs(last.first().y - k.y) <= size * 0.5f) last += k else lines += mutableListOf(k) }
+        lines.forEach { it.sortBy { c -> c.x } }
+        fun sameColumns(a: List<Blk>, c: List<Blk>) = a.size == c.size && a.indices.all { kotlin.math.abs(a[it].x - c[it].x) <= size * 1.5f }
+        val out = ArrayList<List<List<Int>>>()
+        var i = 0
+        while (i < lines.size) {
+            if (lines[i].size >= 2) {
+                var j = i + 1
+                while (j < lines.size && sameColumns(lines[i], lines[j])) j++
+                if (j - i >= 2) { out += lines.subList(i, j).map { row -> row.map { it.mcid } }; i = j; continue }
+            }
+            i++
+        }
+        return out
+    }
 
     private val bullet = Regex("""^\s*([•●▪◦‣⁃·*\-–]|\(?[0-9٠-٩]{1,3}[.)\-]|\(?[a-zA-Zأ-ي][.)])\s+""")
 
@@ -109,11 +136,15 @@ object AccessAutoTag {
         return recs to artifacts
     }
 
-    private fun textOf(mc: PDMarkedContent, sizes: MutableList<Float>, bold: BooleanArray): String = buildString {
+    /** Text of a marked content; [pos] gets the position of its first glyph (x, top) when still NaN. */
+    private fun textOf(mc: PDMarkedContent, sizes: MutableList<Float>, bold: BooleanArray, pos: FloatArray = floatArrayOf(Float.NaN, Float.NaN)): String = buildString {
         mc.contents.forEach { c ->
             when (c) {
-                is TextPosition -> { append(c.unicode); sizes += c.fontSizeInPt; if (c.font?.name?.contains("Bold", true) == true) bold[0] = true }
-                is PDMarkedContent -> append(textOf(c, sizes, bold))
+                is TextPosition -> {
+                    append(c.unicode); sizes += c.fontSizeInPt; if (c.font?.name?.contains("Bold", true) == true) bold[0] = true
+                    if (pos[0].isNaN()) { pos[0] = c.xDirAdj; pos[1] = c.yDirAdj }
+                }
+                is PDMarkedContent -> append(textOf(c, sizes, bold, pos))
             }
         }
     }
@@ -155,9 +186,10 @@ object AccessAutoTag {
                 val ex = PDFMarkedContentExtractor(); ex.processPage(page)
                 ex.markedContents.forEach { mc ->
                     val id = mc.mcid; if (id < 0) return@forEach
-                    val sizes = ArrayList<Float>(); val bold = booleanArrayOf(false)
-                    val text = textOf(mc, sizes, bold).replace(Regex("\\s+"), " ").trim()
-                    blocks[id] = Blk(id, text, if (sizes.isEmpty()) 0f else sizes.sorted()[sizes.size / 2], bold[0])
+                    val sizes = ArrayList<Float>(); val bold = booleanArrayOf(false); val pos = floatArrayOf(Float.NaN, Float.NaN)
+                    val text = textOf(mc, sizes, bold, pos).replace(Regex("\\s+"), " ").trim()
+                    blocks[id] = Blk(id, text, if (sizes.isEmpty()) 0f else sizes.sorted()[sizes.size / 2], bold[0],
+                        if (pos[0].isNaN()) 0f else pos[0], if (pos[1].isNaN()) 0f else pos[1])
                 }
             }
             if (r.first.none { it == Rec.TEXT } || blocks.values.none { it.text.isNotBlank() }) pagesWithoutText++
@@ -170,13 +202,26 @@ object AccessAutoTag {
         val root = COSDictionary().apply { setItem(COSName.TYPE, COSName.getPDFName("StructTreeRoot")) }
         val document = elem("Document", root, null); root.setItem(COSName.K, COSArray().also { it.add(document) })
         val nums = COSArray(); var nextKey = 0
-        var headings = 0; var paras = 0; var lists = 0; var items = 0; var figures = 0; var annots = 0; var tagged = 0
+        var headings = 0; var paras = 0; var lists = 0; var items = 0; var figures = 0; var annots = 0; var tagged = 0; var tableCount = 0
         perPage.forEachIndexed { pi, (recs, blocks) ->
             val page = doc.getPage(pi); val pd = page.cosObject
             val sect = elem("Sect", document, pd); kid(document, sect)
             val owners = COSArray()
             var list: COSDictionary? = null
+            // tables of this page: Table > TR > TH (first row) / TD; each cell owns its text block
+            val cellOf = HashMap<Int, COSDictionary>()
+            val tableOfFirst = HashMap<Int, List<List<Int>>>()
+            tables(blocks.values.toList()).forEach { t -> tableOfFirst[t.flatten().min()] = t; t.flatten().forEach { cellOf[it] = COSDictionary() } }
             recs.forEachIndexed { m, rec ->
+                tableOfFirst[m]?.let { t ->
+                    // the table starts at its first text block in content order
+                    val table = elem("Table", sect, pd); kid(sect, table); tableCount++
+                    t.forEachIndexed { ri, row ->
+                        val tr = elem("TR", table, pd); kid(table, tr)
+                        row.forEach { mc -> val cell = elem(if (ri == 0) "TH" else "TD", tr, pd); kid(tr, cell); cellOf[mc] = cell }
+                    }
+                }
+                cellOf[m]?.takeIf { it.containsKey(COSName.S) }?.let { cell -> list = null; kid(cell, COSInteger.get(m.toLong())); owners.add(cell); return@forEachIndexed }
                 val kind = if (rec == Rec.FIGURE) null else kinds[pi to m] ?: Kind.P
                 if (kind != Kind.LI) list = null
                 val owner = when (kind) {
@@ -211,6 +256,6 @@ object AccessAutoTag {
         cat.setItem(COSName.getPDFName("StructTreeRoot"), root)
         cat.setItem(COSName.getPDFName("MarkInfo"), COSDictionary().apply { setItem(COSName.getPDFName("Marked"), COSBoolean.TRUE) })
         if (!cat.containsKey(COSName.LANG) && lang.isNotBlank()) cat.setItem(COSName.LANG, COSString(lang))
-        return Report(doc.numberOfPages, tagged, headings, paras, lists, items, figures, artifacts, annots, pagesWithoutText, wasTagged)
+        return Report(doc.numberOfPages, tagged, headings, paras, lists, items, figures, artifacts, annots, pagesWithoutText, wasTagged, tableCount)
     }
 }

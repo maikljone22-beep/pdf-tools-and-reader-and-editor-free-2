@@ -128,7 +128,7 @@ fun CloudBrowserScreen(nav: NavHostController, providerKey: String) {
                     TextField(query, { query = it }, placeholder = { Text(stringResource(R.string.search)) }, singleLine = true, modifier = Modifier.fillMaxWidth(),
                         colors = TextFieldDefaults.colors(focusedContainerColor = MaterialTheme.colorScheme.surface, unfocusedContainerColor = MaterialTheme.colorScheme.surface),
                         trailingIcon = {
-                            IconButton(onClick = { if (query.isNotBlank()) scope.launch { loading = true; items = guard { provider.search(query.trim()) } ?: emptyList(); loading = false } }) { Icon(Icons.Default.Search, null) }
+                            IconButton(onClick = { if (query.isNotBlank()) scope.launch { loading = true; items = guard { provider.search(query.trim()) } ?: emptyList(); loading = false } }) { Icon(Icons.Default.Search, stringResource(R.string.pa_cd_search)) }
                         })
                 },
             ) else TopAppBar(

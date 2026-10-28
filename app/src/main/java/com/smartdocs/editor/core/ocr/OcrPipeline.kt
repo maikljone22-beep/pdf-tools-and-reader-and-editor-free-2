@@ -15,6 +15,7 @@ object OcrPipeline {
     fun engineFor(ctx: Context, engine: OcrEngine?, t: OcrTuning): OcrEngine {
         val e = if (engine != null && engine.fast == t.fast) engine else OcrEngine(ctx.applicationContext, t.fast)
         e.setCharWhitelist(if (t.numericOnly) OcrTuning.NUMERIC_CHARS else null)
+        e.mode = t.engine
         return e
     }
 
