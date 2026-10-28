@@ -433,8 +433,10 @@ class FormFillState internal constructor(val reader: ReaderState) {
             WKind.COMBO, WKind.LIST -> { if (isReadOnly(w)) return; activeId = w.id; menuFor = if (w.kind == WKind.COMBO && w.editable) null else w.id }
             WKind.TEXT -> {
                 if (isReadOnly(w) || isCalculated(w.name)) return
+                val entering = activeId != w.id
                 activeId = w.id
                 if (w.fileSelect) filePickFor = w.name
+                if (entering && model.generatedFromXfa) fireXfa(w, "enter")      // XFA enter event
             }
             WKind.IMAGE -> if (!isReadOnly(w)) imageTarget = w.name
             WKind.BUTTON -> {
