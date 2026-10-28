@@ -29,6 +29,7 @@ import com.tom_roush.pdfbox.pdmodel.interactive.form.PDCheckBox
 import com.tom_roush.pdfbox.pdmodel.interactive.form.PDComboBox
 import com.tom_roush.pdfbox.pdmodel.interactive.form.PDField
 import com.tom_roush.pdfbox.pdmodel.interactive.form.PDListBox
+import com.tom_roush.pdfbox.pdmodel.interactive.form.PDPushButton
 import com.tom_roush.pdfbox.pdmodel.interactive.form.PDRadioButton
 import com.tom_roush.pdfbox.pdmodel.interactive.form.PDSignatureField
 import com.tom_roush.pdfbox.pdmodel.interactive.form.PDTextField
@@ -215,6 +216,12 @@ internal class XfaRender(private val context: Context, private val doc: PDDocume
                 ch.widgets = listOf(widget(page, w, ph)); acro.fields.add(ch)
                 val stored = if (exports.size == displays.size && exports != displays) exports else displays
                 if (path != null) out += Made(ch.partialName, path, XfaSupport.XType.CHOICE, stored, stored, w.value)
+            }
+            XWKind.BUTTON -> {
+                val pb = PDPushButton(acro); pb.partialName = "xfa_${counter++}"; flags(pb, w)
+                pb.cosObject.setBoolean(COSName.getPDFName(XfaEventRuntime.KEY_CLICK), true)
+                pb.widgets = listOf(widget(page, w, ph)); acro.fields.add(pb)
+                if (path != null) out += Made(pb.partialName, path, XfaSupport.XType.BUTTON, emptyList(), emptyList(), "")
             }
             XWKind.SIGNATURE -> {
                 val sf = PDSignatureField(acro); sf.partialName = "xfa_${counter++}"

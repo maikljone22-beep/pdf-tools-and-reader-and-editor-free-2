@@ -440,6 +440,7 @@ class FormFillState internal constructor(val reader: ReaderState) {
             }
             WKind.IMAGE -> if (!isReadOnly(w)) imageTarget = w.name
             WKind.BUTTON -> {
+                if (w.xfaClick) { fireXfa(w, "click"); return }      // an XFA button: its click scripts
                 // Enter, Mouse Down, Mouse Up (/A + /AA U), Exit: a tap enters and leaves the widget
                 val t = w.triggers
                 val useChain = w.mouseUp.isNotEmpty() && (scripts != null || w.mouseUp.any { it !is PdfAction.JavaScript })

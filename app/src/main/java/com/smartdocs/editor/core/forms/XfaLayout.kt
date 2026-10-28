@@ -14,7 +14,7 @@ object ApproxMetrics : XfaMetrics {
     }.toFloat() * size * (if (bold) 1.06f else 1f)
 }
 
-enum class XWKind { TEXT, CHECK, RADIO, COMBO, LIST, SIGNATURE }
+enum class XWKind { TEXT, CHECK, RADIO, COMBO, LIST, SIGNATURE, BUTTON }
 
 /** Output primitives in page space: points, origin top-left, y down. Colours 0xAARRGGBB. */
 sealed class XItem {
@@ -279,6 +279,9 @@ class XfaLayout(private val t: XTemplate, private val metrics: XfaMetrics = Appr
             XUi.BUTTON -> {
                 out += XItem.Box(cx, cy, cw, ch, List(4) { XEdge(0xFF7F7F7F.toInt(), 0.75f) }, 0xFFD4D0C8.toInt(), 2f)
                 if (label.isNotBlank()) out += XItem.Text(cx, cy, cw, ch, wrap(label, cw, f), f, "center", "middle", isRtl(label))
+                // a button with click scripts gets a (transparent) push button over it, keyed by its SOM path when unbound
+                if (n.scripts.events["click"].orEmpty().isNotEmpty())
+                    out += XItem.Widget(cx, cy, cw, ch, XWKind.BUTTON, i.dataPath ?: i.som, label, "", type = XfaSupport.XType.BUTTON)
             }
             XUi.IMAGE -> (i.image ?: n.image)?.let { out += XItem.Image(cx, cy, cw, ch, it, "fit") }
             // nav-prefs: QR / Code 128 / Code 39 barcodes are drawn; other symbologies show their value

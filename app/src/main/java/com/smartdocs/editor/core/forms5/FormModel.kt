@@ -66,6 +66,8 @@ data class FWidget(
     val triggers: Map<Trigger, List<PdfAction>> = emptyMap(),
     /** Text field with the FileSelect flag: its value is a file path picked by the user. */
     val fileSelect: Boolean = false,
+    /** Push button generated for an XFA button with click scripts (XfaEventRuntime). */
+    val xfaClick: Boolean = false,
     /** XFA picture clauses of a field generated from XFA (XfaPicture): display, edit, validation; null otherwise. */
     val picture: String? = null,
     val editPicture: String? = null,
@@ -358,7 +360,7 @@ object FormModelLoader {
                     action = action, validate = validate,
                     hidden = runCatching { w.isHidden || w.isNoView }.getOrDefault(false),
                     mkRotation = runCatching { AppearanceRotation.rotationOf(w.cosObject) }.getOrDefault(0), pageRotation = FieldRotation.norm(g[4].toInt()),
-                    triggers = trig, fileSelect = fileSelect, picture = picture, editPicture = editPicture, validatePicture = validatePicture, richText = richText, rich = rich,
+                    triggers = trig, fileSelect = fileSelect, xfaClick = f.cosObject.getBoolean(COSName.getPDFName(XfaEventRuntime.KEY_CLICK), false), picture = picture, editPicture = editPicture, validatePicture = validatePicture, richText = richText, rich = rich,
                 )
             }
         }

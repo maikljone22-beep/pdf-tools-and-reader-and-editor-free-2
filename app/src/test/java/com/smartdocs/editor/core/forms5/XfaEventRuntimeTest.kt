@@ -18,6 +18,8 @@ class XfaEventRuntimeTest {
       <event activity="exit"><script contentType="application/x-javascript">Greeting.rawValue = "Hello " + this.rawValue; Extra.presence = this.rawValue == "" ? "hidden" : "visible";</script></event></field>
     <field name="Greeting" w="2in" h="20pt"><ui><textEdit/></ui></field>
     <field name="Extra" w="2in" h="20pt" presence="hidden"><ui><textEdit/></ui></field>
+    <field name="Go" w="1in" h="20pt"><ui><button/></ui><caption><value><text>Go</text></value></caption><bind match="none"/>
+      <event activity="click"><script contentType="application/x-javascript">Greeting.rawValue = "clicked";</script></event></field>
     <field name="Agree" w="2in" h="20pt"><ui><checkButton/></ui><items><integer>1</integer><integer>0</integer></items>
       <event activity="click"><script contentType="application/x-javascript">Greeting.rawValue = this.rawValue == 1 ? "agreed" : "not yet";</script></event></field>
   </subform></subform></template>
@@ -58,5 +60,15 @@ class XfaEventRuntimeTest {
         assertEquals("2", XfaEventRuntime.toXfa(ch, "Two")); assertEquals("One", XfaEventRuntime.toAcro(ch, "1"))
         assertEquals("Off", XfaEventRuntime.toAcro(XfaEventRuntime.Entry("p", "RADIO"), ""))
         assertEquals("xfa_9", XfaEventRuntime.parseMap("""{"xfa_9":{"p":"a.b","t":"TEXT","o":[],"e":[]}}""").keys.single())
+    }
+
+    @Test fun unboundButtonClickByItsSomPath() {
+        val doc = XfaTemplateParser.parseXml(xdp.toByteArray())
+        val t = XfaTemplateParser.parse(doc)!!
+        val data = XfaTemplateParser.findFirst(doc, "data")
+        val som = com.smartdocs.editor.core.forms.XfaMerge.walk(com.smartdocs.editor.core.forms.XfaMerge.merge(t, data).root).first { it.name == "Go" }.som
+        val rt = XfaEventRuntime(t, data, mapOf("xfa_b" to XfaEventRuntime.Entry(som, "BUTTON"), "xfa_1" to XfaEventRuntime.Entry("form1[0].S[0].Greeting[0]", "TEXT")))
+        assertTrue(rt.has("xfa_b", "click"))
+        assertEquals("clicked", rt.fire("xfa_b", "click", mapOf("xfa_1" to ""))!!.values["xfa_1"])
     }
 }

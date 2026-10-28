@@ -167,7 +167,7 @@ fun InPageFormLayer(reader: ReaderState, pageIndex: Int, g: PageGeometry) {
         }
         if (enabled) widgets.forEach { w ->
             if (fs.isReadOnly(w) && w.kind != WKind.BUTTON && w.kind != WKind.SIGNATURE) return@forEach
-            if ((w.kind == WKind.BUTTON && w.action == null && w.triggers.isEmpty()) || fs.isCalculated(w.name) || w.id == editing?.id) return@forEach
+            if ((w.kind == WKind.BUTTON && w.action == null && w.triggers.isEmpty() && !w.xfaClick) || fs.isCalculated(w.name) || w.id == editing?.id) return@forEach
             val r = rects[w.id] ?: return@forEach
             val minPx = if (w.kind == WKind.CHECK || w.kind == WKind.RADIO) with(density) { 36.dp.toPx() } else 0f
             val t = expand(r, minPx)

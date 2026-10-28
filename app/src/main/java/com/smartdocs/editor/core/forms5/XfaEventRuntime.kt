@@ -30,15 +30,18 @@ class XfaEventRuntime(private val template: XTemplate, private val data: Element
     private val byPath: Map<String, List<String>> = fields.entries.groupBy({ it.value.path }, { it.key })
     private val withEvents: Set<String> by lazy {
         val m = XfaMerge.merge(template, data)
-        XfaMerge.walk(m.root).filter { it.node.scripts.events.isNotEmpty() }.mapNotNull { it.dataPath }.toSet()
+        XfaMerge.walk(m.root).filter { it.node.scripts.events.isNotEmpty() }.flatMap { listOfNotNull(it.dataPath, it.som) }.toSet()
     }
+
+    /** The instance a generated field stands for: by data path, or by SOM path for unbound buttons. */
+    private fun XInst.isAt(path: String) = dataPath == path || som == path
 
     /** Whether the field [name] has a script for [activity] (cheap check before [fire]). */
     fun has(name: String, activity: String): Boolean {
         val p = fields[name]?.path ?: return false
         if (p !in withEvents) return false
         val m = XfaMerge.merge(template, data)
-        return XfaMerge.walk(m.root).firstOrNull { it.dataPath == p }?.node?.scripts?.events?.get(activity)?.isNotEmpty() == true
+        return XfaMerge.walk(m.root).firstOrNull { it.isAt(p) }?.node?.scripts?.events?.get(activity)?.isNotEmpty() == true
     }
 
     /** Run [activity] of the field [name] with the form's [current] values (AcroForm names); null when nothing ran. */
@@ -49,7 +52,7 @@ class XfaEventRuntime(private val template: XTemplate, private val data: Element
         val insts = XfaMerge.walk(m.root).toList()
         // the instances get the values the user sees now
         insts.forEach { i -> i.dataPath?.let { p -> byPath[p]?.firstOrNull()?.let { n -> current[n]?.let { v -> i.value = toXfa(fields.getValue(n), v) } } } }
-        val target = insts.firstOrNull { it.dataPath == path } ?: return null
+        val target = insts.firstOrNull { it.isAt(path) } ?: return null
         val before = insts.associateWith { it.value to it.presence }
         XfaJs.runEvent(m, target, activity, newText = target.value, prevText = prevText)
         val values = LinkedHashMap<String, String>(); val presence = LinkedHashMap<String, String>()
@@ -64,6 +67,9 @@ class XfaEventRuntime(private val template: XTemplate, private val data: Element
     }
 
     companion object {
+        /** Key of a generated push button that stands for an XFA button with click scripts (our key). */
+        const val KEY_CLICK = "SDXfaClick"
+
         /** Data value of an AcroForm value (the conventions of XfaGenerated.writeBack). */
         fun toXfa(e: Entry, v: String): String = when (e.type) {
             "RADIO" -> if (v == "Off") "" else v
