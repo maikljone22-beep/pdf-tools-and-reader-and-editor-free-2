@@ -189,12 +189,15 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
         val tmp = app.documents.newTemp("share"); state.exportWithAnnots(tmp); return tmp
     }
 
+    // nitro-protect2: a restricted document is shared as it is (the share sheet's copies would drop its protection);
+    // audit 5 T-02: the same for the Tools-tab Share (quick SHARE)
+    val doShare: () -> Unit = { if (state.guard.allows(com.smartdocs.editor.core.security.DocAction.SAVE_UNPROTECTED)) showShare5 = true else state.file?.let { f -> runCatching { ctx.startActivity(android.content.Intent.createChooser(app.documents.shareIntent(listOf(f), "application/pdf"), null)) } } }
     val actions = ReaderActions(
             viewModeSheet = { showViewMode = true }, pageColor = { showPageColor = true }, autoFlip = { showAutoFlip = true }, goToPage = { showGoTo = true },
             panels = { panel = it }, docInfo = { panel = ReaderPanel.INFO }, search = { state.searchOpen = !state.searchOpen; if (!state.searchOpen) state.closeSearch() },
             readAloud = { if (ReadAloudController.isActive) ReadAloudController.stop() else startReadAloud() },
             // nitro-protect2: a restricted document is shared as it is (the share sheet's copies would drop its protection)
-            share = { if (state.guard.allows(com.smartdocs.editor.core.security.DocAction.SAVE_UNPROTECTED)) showShare5 = true else state.file?.let { f -> runCatching { ctx.startActivity(android.content.Intent.createChooser(app.documents.shareIntent(listOf(f), "application/pdf"), null)) } } },
+            share = doShare,
             print = { com.smartdocs.editor.ui.view5.V5State.of(state).open(com.smartdocs.editor.ui.view5.V5Surface.PRINT) },
             save = { scope.launch { if (state.save()) snack.showSnackbar(ctx.getString(R.string.saved_to, state.file?.name ?: "")) } },
             saveAs = { saveAs.launch(state.file?.name ?: "document.pdf") },
@@ -211,6 +214,8 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                         else -> {
                             // MODULE_history: a change the tool saves into this file becomes one undo step on return
                             val label = ctx.getString(if (id == "organize") R.string.hi_organize else R.string.hi_tool_change)
+                            // audit 5 T-09 / C-4 / C-4b: the tool screen opens the file with the reader's password (no second prompt)
+                            state.file?.let { f -> com.smartdocs.editor.core.pdf.SessionPasswords.put(f, state.password) }
                             scope.launch { state.beforeExternalTool(label); nav.navigate(Routes.tool(id, state.fileUri)) }
                         }
                     }
@@ -222,7 +227,9 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
             ai = { if (com.smartdocs.editor.core.gaps6.AiGate.enabled(settings) && state.guard.check(com.smartdocs.editor.core.security.DocAction.COPY)) { aiText = null; showAi = true } },   // nav-prefs (PREF-8)
             quick = { qa ->
                 quick.open(qa,
-                    onShare = { showShare5 = true },   // share6: Share5Sheet
+                    // audit 5 T-02: the Tools-tab Share honours the restrictions like the View tab / ⋮ Share (a restricted
+                    // document is shared as it is: the share sheet's copies would drop its protection)
+                    onShare = doShare,
                     onPrint = { com.smartdocs.editor.ui.view5.V5State.of(state).open(com.smartdocs.editor.ui.view5.V5Surface.PRINT) })
             },
         )
@@ -283,7 +290,8 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                     if (tablet) com.smartdocs.editor.ui.reader.view.ReaderTabStrip(state, switchTab, alwaysShow = true)
                     if (state.searchOpen) SearchBar(state, quick) { state.closeSearch() }
                     else ReaderTabRow(state) { t ->
-                        if (t == ReaderTab.PAGES) actions.navigateTool("organize")
+                        // audit 5 G-05: the Pages tab opens the organizer; the armed tool / selection go first, like any tab change
+                        if (t == ReaderTab.PAGES) { state.selectTool(null); state.selection = null; actions.navigateTool("organize") }
                         else { state.tab = t; state.selectTool(null); state.selection = null }
                     }
                     state.connected?.let { com.smartdocs.editor.ui.connected.ConnectedBanner(it, nav, connUri) }   // share6: above the pages
@@ -436,7 +444,9 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
     if (state.session != null && !state.needPassword) com.smartdocs.editor.ui.onboarding.ReaderCoachMarks()   // share6
     // share6: share sheet (whole/page/range, compressed, without comments, flattened, images, XFDF, e-mail)
     if (showShare5) { var f by remember { mutableStateOf<java.io.File?>(null) }; LaunchedEffect(Unit) { f = outputFile() }
-        f?.let { com.smartdocs.editor.ui.share5.Share5Sheet(it, if (it == state.file) state.password else null, state.currentPage, nav) { showShare5 = false } } }
+        // audit 5 T-14: the temp copy with pending annotations is protected like the file (PdfOps.load re-protects it),
+        // so it opens with the same password
+        f?.let { com.smartdocs.editor.ui.share5.Share5Sheet(it, state.password, state.currentPage, nav) { showShare5 = false } } }
     com.smartdocs.editor.ui.view5.View5ReaderHost(state, nav, snack, actions) { outputFile() }
     com.smartdocs.editor.ui.nve.NveReaderHost(state, nav, snack, actions)     // NVE (feature/nitro-view-edit)
     com.smartdocs.editor.ui.nve.shell.NveRecoveryEffect(state)

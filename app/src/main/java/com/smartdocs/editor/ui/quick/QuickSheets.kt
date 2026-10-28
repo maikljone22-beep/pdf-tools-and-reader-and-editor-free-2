@@ -33,6 +33,7 @@ import com.smartdocs.editor.core.files.DocumentRepository
 import com.smartdocs.editor.core.pdf.PdfOps
 import com.smartdocs.editor.ui.reader.ReaderState
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.sync.withLock
 import java.io.File
 
 // ======================= shared sheet scaffolding =======================
@@ -114,14 +115,16 @@ fun CompressSheet(c: QuickController, onDismiss: () -> Unit) {
         val out = state.app.documents.newTemp("cmp_${quality.name}")
         try {
             val len = f.length(); val mod = f.lastModified()
-            PdfOps.compress(f, out, quality.jpeg, quality.maxDim, state.password)
+            // audit 5 T-04: switching chips cancels only this coroutine (PdfBox keeps working): one at a time
+            c.compressLock.withLock { PdfOps.compress(f, out, quality.jpeg, quality.maxDim, state.password) }
             estimates[quality] = CompressEstimate(out, len, mod)
         } catch (e: CancellationException) { out.delete(); throw e } catch (e: Throwable) { out.delete(); failed = true }
     }
     val est = estimates[quality]
     val after = est?.file?.length()
     val gain = after != null && after < original
-    QuickSheet(stringResource(R.string.qk_compress_title), stringResource(R.string.qk_compress_btn), primaryEnabled = after == null || gain,
+    // audit 5 T-04: "Compress" waits for the estimate (it reuses it), so a second compression never starts beside it
+    QuickSheet(stringResource(R.string.qk_compress_title), stringResource(R.string.qk_compress_btn), primaryEnabled = gain || failed,
         onPrimary = { estimates.remove(quality); c.compress(est, quality) }, onDismiss = onDismiss) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             CompressQuality.entries.forEach { q -> FilterChip(quality == q, { quality = q }, label = { Text(stringResource(q.label)) }) }

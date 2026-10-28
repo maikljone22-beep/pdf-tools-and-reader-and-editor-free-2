@@ -20,6 +20,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
@@ -86,7 +87,7 @@ fun ReaderTabRow(state: ReaderState, onTab: (ReaderTab) -> Unit) {
 
 /** Rounded tool chip: icon over a tiny label, highlighted when selected. */
 @Composable
-fun ToolChip(icon: ImageVector, label: String, selected: Boolean = false, enabled: Boolean = true, tint: Color? = null, onClick: () -> Unit) {
+fun ToolChip(icon: ImageVector, label: String, selected: Boolean = false, enabled: Boolean = true, tint: Color? = null, maxLines: Int = 1, onClick: () -> Unit) {
     val bg = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
     val fg = if (!enabled) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f) else if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
     Column(
@@ -95,7 +96,7 @@ fun ToolChip(icon: ImageVector, label: String, selected: Boolean = false, enable
     ) {
         Icon(icon, label, Modifier.size(24.dp), tint = tint?.takeIf { enabled } ?: fg)
         Spacer(Modifier.height(3.dp))
-        Text(label, style = MaterialTheme.typography.labelSmall, color = fg, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+        Text(label, style = MaterialTheme.typography.labelSmall, color = fg, maxLines = maxLines, minLines = maxLines, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
     }
 }
 
@@ -117,7 +118,7 @@ fun BottomToolbar(state: ReaderState, actions: ReaderActions) {
                 ReaderTab.FILL_SIGN -> { if (state.tool != null) PropertyBar(state); FillSignToolbar(state, actions) }
                 ReaderTab.SIGN -> SignToolbar(state, actions)
                 ReaderTab.TOOLS -> ToolsToolbar(actions)
-                ReaderTab.PAGES -> {}
+                ReaderTab.PAGES -> Unit   // audit 5 G-05: never shown, the Pages tab opens the organizer (ReaderScreen)
                 ReaderTab.CUSTOM -> { if (state.tool != null) PropertyBar(state); com.smartdocs.editor.ui.reader.annot.CustomToolbar(state, actions) }
             }
         }
@@ -291,54 +292,100 @@ private sealed interface ReaderToolItem {
     data class Screen(val id: String, override val label: Int, override val icon: ImageVector) : ReaderToolItem
 }
 
-private val readerTools: List<ReaderToolItem> = listOf(
-    ReaderToolItem.Quick(QuickAction.COMPRESS, R.string.tool_compress, Icons.Default.Compress),
-    ReaderToolItem.Quick(QuickAction.OCR, R.string.tool_ocr, Icons.Default.DocumentScanner),
-    ReaderToolItem.Quick(QuickAction.FIX_TEXT, R.string.tool_fix_text, Icons.Default.Spellcheck),
-    ReaderToolItem.Quick(QuickAction.WATERMARK, R.string.tool_watermark, Icons.Default.BrandingWatermark),
-    ReaderToolItem.Quick(QuickAction.PAGE_NUMBERS, R.string.tool_page_numbers, Icons.Default.FormatListNumbered),
-    ReaderToolItem.Quick(QuickAction.PROTECT, R.string.tool_protect, Icons.Default.Lock),
-    ReaderToolItem.Quick(QuickAction.UNLOCK, R.string.tool_unlock, Icons.Default.LockOpen),
-    ReaderToolItem.Quick(QuickAction.FLATTEN, R.string.tool_flatten, Icons.Default.Layers),
-    ReaderToolItem.Quick(QuickAction.ROTATE_ALL, R.string.qk_rot_label, Icons.Default.RotateRight),
-    ReaderToolItem.Quick(QuickAction.ADD_BLANK, R.string.qk_blank_label, Icons.Default.NoteAdd),
-    ReaderToolItem.Quick(QuickAction.DELETE_PAGE, R.string.qk_del_label, Icons.Default.DeleteOutline),
-    ReaderToolItem.Quick(QuickAction.EXTRACT, R.string.tool_extract_pages, Icons.Default.ContentCut),
-    ReaderToolItem.Quick(QuickAction.PROPERTIES, R.string.tool_doc_info, Icons.Default.Info),
-    ReaderToolItem.Quick(QuickAction.PRINT, R.string.print, Icons.Default.Print),
-    ReaderToolItem.Quick(QuickAction.SHARE, R.string.share, Icons.Default.Share),
-    ReaderToolItem.Screen("organize", R.string.tool_organize, Icons.Default.AutoAwesomeMotion),
-    ReaderToolItem.Screen("redact", R.string.tool_redact, Icons.Default.Block),
-    ReaderToolItem.Screen("find_replace", R.string.s5_replace_title, Icons.Default.FindReplace),
-    ReaderToolItem.Screen("search_highlight", R.string.s5_mark_title, Icons.Default.BorderColor),
-    ReaderToolItem.Screen("sanitize", R.string.s5_sanitize_title, Icons.Default.CleaningServices),
-    ReaderToolItem.Screen("protect_advanced", R.string.s5_protect_title, Icons.Default.EnhancedEncryption),
-    ReaderToolItem.Screen("forms", R.string.tool_forms, Icons.Default.Checklist),
-    ReaderToolItem.Screen("ai", R.string.tool_ai, Icons.Default.AutoAwesome),
-    ReaderToolItem.Screen("merge", R.string.tool_merge, Icons.Default.CallMerge),
-    ReaderToolItem.Screen("split", R.string.tool_split, Icons.Default.CallSplit),
-    ReaderToolItem.Screen("compare", R.string.tool_compare, Icons.Default.Compare),
-    ReaderToolItem.Screen("pdf_to_images", R.string.tool_pdf_to_images, Icons.Default.Collections),
-    ReaderToolItem.Screen("pdf_to_text", R.string.tool_pdf_to_text, Icons.Default.Subject),
-    ReaderToolItem.Screen("convert_hub", R.string.cv6_title, Icons.Default.SwapHoriz),
-    ReaderToolItem.Screen("extract_images", R.string.cv6_t_extract_images, Icons.Default.Collections),
+/** audit 5 T-08: the Tools tab in groups with a header each (Pages / Protect / Text & OCR / Edit / Convert / More). */
+private class ReaderToolGroup(val title: Int, val items: List<ReaderToolItem>)
+
+/** An edit5 tool of [com.smartdocs.editor.ui.edit5.EDIT5_TOOLS] as a Tools-tab item (label and icon from there). */
+private fun e5(id: String): ReaderToolItem.Screen? =
+    com.smartdocs.editor.ui.edit5.EDIT5_TOOLS.firstOrNull { it.id == id }?.let { ReaderToolItem.Screen(it.id, it.label, it.icon) }
+
+/**
+ * audit 5 T-06 / T-07 / T-13: every tool once (no two chips with the same label: the quick watermark and quick
+ * properties sheets give way to the fuller edit5 tools here, the edit5 organizer is called "advanced organize"),
+ * each with its own icon, and the tools that were only on the home screen (accessibility, PDF/A, optimize, OCR
+ * review, OCR batch, attachments, certificate protection) are here too, all opened through actions.navigateTool.
+ */
+private val readerToolGroups: List<ReaderToolGroup> = listOf(
+    ReaderToolGroup(R.string.tttl_grp_pages, listOfNotNull(
+        ReaderToolItem.Screen("organize", R.string.tool_organize, Icons.Default.AutoAwesomeMotion),
+        ReaderToolItem.Quick(QuickAction.ROTATE_ALL, R.string.qk_rot_label, Icons.Default.RotateRight),
+        ReaderToolItem.Quick(QuickAction.ADD_BLANK, R.string.tttl_blank_after, Icons.Default.NoteAdd),
+        ReaderToolItem.Quick(QuickAction.DELETE_PAGE, R.string.qk_del_label, Icons.Default.DeleteOutline),
+        ReaderToolItem.Quick(QuickAction.EXTRACT, R.string.tool_extract_pages, Icons.Default.ContentCut),
+        ReaderToolItem.Screen("merge", R.string.tool_merge, Icons.Default.CallMerge),
+        ReaderToolItem.Screen("split", R.string.tool_split, Icons.Default.CallSplit),
+        e5("e5_organize"), e5("e5_page_ops"), e5("e5_split_bookmarks"), e5("e5_smart_split"), e5("e5_split_page"),
+        e5("e5_mix"), e5("e5_interleave"), e5("e5_copy_pages"), e5("e5_replace_pages"), e5("e5_insert_blank"), e5("e5_templates"),
+        e5("e5_page_labels"), e5("e5_crop"), e5("e5_resize"), e5("e5_impose"),
+    )),
+    ReaderToolGroup(R.string.tttl_grp_protect, listOfNotNull(
+        ReaderToolItem.Quick(QuickAction.PROTECT, R.string.tool_protect, Icons.Default.Lock),
+        ReaderToolItem.Quick(QuickAction.UNLOCK, R.string.tool_unlock, Icons.Default.LockOpen),
+        ReaderToolItem.Screen("protect_advanced", R.string.s5_protect_title, Icons.Default.EnhancedEncryption),
+        ReaderToolItem.Screen("cert_protect", R.string.ps_cert_protect_title, Icons.Default.Key),
+        ReaderToolItem.Screen("redact", R.string.tool_redact, Icons.Default.Block),
+        ReaderToolItem.Screen("sanitize", R.string.s5_sanitize_title, Icons.Default.CleaningServices),
+        e5("e5_security_wm"),
+    )),
+    ReaderToolGroup(R.string.tttl_grp_text, listOf(
+        ReaderToolItem.Quick(QuickAction.OCR, R.string.tool_ocr, Icons.Default.DocumentScanner),
+        ReaderToolItem.Screen("ocr_review", R.string.nt_ocr_review, Icons.Default.RateReview),
+        ReaderToolItem.Screen("ocr_plus", R.string.t5_ocr_title, Icons.Default.DynamicFeed),
+        ReaderToolItem.Quick(QuickAction.FIX_TEXT, R.string.tool_fix_text, Icons.Default.Spellcheck),
+        ReaderToolItem.Screen("find_replace", R.string.s5_replace_title, Icons.Default.FindReplace),
+        ReaderToolItem.Screen("search_highlight", R.string.s5_mark_title, Icons.Default.BorderColor),
+        ReaderToolItem.Screen("accessibility", R.string.t5_acc_title, Icons.Default.Accessibility),
+    )),
+    ReaderToolGroup(R.string.tttl_grp_edit, listOfNotNull(
+        ReaderToolItem.Quick(QuickAction.PAGE_NUMBERS, R.string.tool_page_numbers, Icons.Default.FormatListNumbered),
+        e5("e5_header_footer"), e5("e5_bates"), e5("e5_watermark"), e5("e5_background"),
+        ReaderToolItem.Quick(QuickAction.FLATTEN, R.string.tool_flatten, Icons.Default.FilterNone),
+        ReaderToolItem.Screen("forms", R.string.tool_forms, Icons.Default.Checklist),
+        e5("e5_links"), e5("e5_bookmarks"), e5("e5_destinations"), e5("e5_xref"), e5("e5_doc_js"), e5("e5_layers"),
+        ReaderToolItem.Screen("attachments", R.string.tool_attachments, Icons.Default.AttachFile),
+        e5("e5_doc_props"),
+    )),
+    ReaderToolGroup(R.string.tttl_grp_convert, listOf(
+        ReaderToolItem.Quick(QuickAction.COMPRESS, R.string.tool_compress, Icons.Default.Compress),
+        ReaderToolItem.Screen("optimize", R.string.t5_opt_title, Icons.Default.Speed),
+        ReaderToolItem.Screen("pdfa", R.string.t5_pdfa_title, Icons.Default.Inventory),
+        ReaderToolItem.Screen("convert_hub", R.string.cv6_title, Icons.Default.SwapHoriz),
+        ReaderToolItem.Screen("pdf_to_images", R.string.tool_pdf_to_images, Icons.Default.Collections),
+        ReaderToolItem.Screen("pdf_to_text", R.string.tool_pdf_to_text, Icons.Default.Subject),
+        ReaderToolItem.Screen("extract_images", R.string.cv6_t_extract_images, Icons.Default.PhotoLibrary),
+    )),
+    ReaderToolGroup(R.string.tttl_grp_more, listOf(
+        ReaderToolItem.Screen("ai", R.string.tool_ai, Icons.Default.AutoAwesome),
+        ReaderToolItem.Screen("compare", R.string.tool_compare, Icons.Default.Compare),
+        ReaderToolItem.Quick(QuickAction.PRINT, R.string.print, Icons.Default.Print),
+        ReaderToolItem.Quick(QuickAction.SHARE, R.string.share, Icons.Default.Share),
+    )),
 )
 
 @Composable
 private fun ToolsToolbar(a: ReaderActions) {
     val g6Settings = com.smartdocs.editor.LocalSettings.current
-    val g6ReaderTools = remember(g6Settings.aiEnabled) { readerTools.filter { it !is ReaderToolItem.Screen || com.smartdocs.editor.core.gaps6.AiGate.allowsTool(g6Settings, it.id) } }
-    LazyHorizontalGrid(rows = GridCells.Fixed(2), modifier = Modifier.fillMaxWidth().height(132.dp), contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)) {
-        items(g6ReaderTools) { t ->
-            ToolChip(t.icon, stringResource(t.label)) {
-                when (t) {
-                    is ReaderToolItem.Quick -> a.quick(t.action)
-                    is ReaderToolItem.Screen -> a.navigateTool(t.id)
+    // audit 5 T-15: not remembered on aiEnabled only: AiGate.allowsTool also depends on offline mode
+    val groups = readerToolGroups.map { g -> g to g.items.filter { it !is ReaderToolItem.Screen || com.smartdocs.editor.core.gaps6.AiGate.allowsTool(g6Settings, it.id) } }
+        .filter { it.second.isNotEmpty() }
+    LazyHorizontalGrid(rows = GridCells.Fixed(2), modifier = Modifier.fillMaxWidth().height(156.dp), contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)) {
+        groups.forEach { (g, list) ->
+            // the group's title as a narrow header column spanning both rows
+            item(key = "grp_" + g.title, span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+                Box(Modifier.width(28.dp).fillMaxHeight().padding(vertical = 4.dp), contentAlignment = Alignment.Center) {
+                    Text(stringResource(g.title), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary,
+                        maxLines = 1, softWrap = false, modifier = Modifier.wrapContentSize(unbounded = true).rotate(-90f))
+                }
+            }
+            items(list) { t ->
+                ToolChip(t.icon, stringResource(t.label), maxLines = 2) {
+                    when (t) {
+                        is ReaderToolItem.Quick -> a.quick(t.action)
+                        is ReaderToolItem.Screen -> a.navigateTool(t.id)
+                    }
                 }
             }
         }
-        // NVE: every edit5 tool (links, bookmarks, header/footer, Bates, watermark, background, labels, crop, resize, impose…) on the open document
-        items(com.smartdocs.editor.ui.edit5.EDIT5_TOOLS.map { it.id }) { id -> com.smartdocs.editor.ui.nve.NveEdit5Chip(id, a) }
     }
 }
 

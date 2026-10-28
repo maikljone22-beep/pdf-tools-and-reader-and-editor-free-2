@@ -15,6 +15,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
 
@@ -55,6 +56,12 @@ class QuickController(val state: ReaderState, private val scope: CoroutineScope,
 
     private var job: Job? = null
     private var engine: OcrEngine? = null
+
+    /** audit 5 T-04: one compression at a time (estimates of several quality chips and the real run are serialised). */
+    val compressLock = kotlinx.coroutines.sync.Mutex()
+
+    /** audit 5 T-12 / P-5: the owner password Protect generated (restrictions set, none typed): shown once with a copy button. */
+    var generatedOwner by mutableStateOf<String?>(null)
     private val docs get() = state.app.documents
 
     // ---------------- dispatch ----------------
@@ -207,7 +214,7 @@ class QuickController(val state: ReaderState, private val scope: CoroutineScope,
             val before = src.length()
             try {
                 if (cached != null && cached.matches(src)) withContext(Dispatchers.IO) { cached.file.copyTo(out, overwrite = true) }
-                else PdfOps.compress(src, out, quality.jpeg, quality.maxDim, pw)
+                else compressLock.withLock { PdfOps.compress(src, out, quality.jpeg, quality.maxDim, pw) }
             } finally { cached?.file?.delete() }
             if (out.length() >= before) { out.delete(); throw QuickInfo(ctx.getString(R.string.qk_no_gain)) }
             sizes = before to out.length()
@@ -224,10 +231,19 @@ class QuickController(val state: ReaderState, private val scope: CoroutineScope,
             PdfOps.addPageNumbers(ctx, src, out, position, start, arabicDigits = arabicDigits, password = pw)
         }
 
-    fun protect(open: String, owner: String, print: Boolean, copy: Boolean, modify: Boolean, annotate: Boolean, forms: Boolean) =
-        apply(ctx.getString(R.string.qk_working), { ctx.getString(R.string.qk_pr_done) }, "protected", newPassword = { open.ifEmpty { null } }) { src, out, pw ->
-            PdfOps.protect(src, out, open, owner, print, copy, modify, annotate, forms, currentPassword = pw)
+    /**
+     * audit 5 T-12 / P-2 / P-5: AES-256 (Arabic passwords work), the owner password is never the open password nor a
+     * fixed word; when restrictions are set and no owner password was typed, the random one is shown afterwards.
+     */
+    fun protect(open: String, owner: String, print: Boolean, copy: Boolean, modify: Boolean, annotate: Boolean, forms: Boolean) {
+        if (owner.isNotEmpty() && owner == open) { message = ctx.getString(R.string.tttl_pr_owner_same); return }
+        val restricted = !(print && copy && modify && annotate && forms)
+        var used: String? = null
+        apply(ctx.getString(R.string.qk_working), { ctx.getString(R.string.qk_pr_done) }, "protected", newPassword = { open.ifEmpty { null } },
+            after = { if (restricted && owner.isEmpty()) generatedOwner = used }) { src, out, pw ->
+            used = PdfOps.protect(src, out, open, owner, print, copy, modify, annotate, forms, currentPassword = pw)
         }
+    }
 
     fun setProperties(info: PdfOps.Info) = apply(ctx.getString(R.string.qk_working), { ctx.getString(R.string.qk_props_done) }, "info") { src, out, pw ->
         PdfOps.setInfo(src, info, out, pw)
@@ -274,6 +290,8 @@ class QuickController(val state: ReaderState, private val scope: CoroutineScope,
     /** Pages → new file; the open document is not changed. */
     fun extract(pages: List<Int>) {
         if (running || pages.isEmpty()) return
+        // audit 5 T-05: extracting content also needs the copy permission (the output keeps the protection)
+        if (!state.guard.check(com.smartdocs.editor.core.security.DocAction.COPY)) return
         val f = state.file ?: return
         sheet = null; dismissDone()
         running = true; progress = null; progressText = ctx.getString(R.string.qk_working); cancellable = false

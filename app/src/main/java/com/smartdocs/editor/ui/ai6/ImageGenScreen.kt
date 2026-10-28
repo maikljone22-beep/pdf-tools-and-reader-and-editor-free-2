@@ -130,7 +130,8 @@ fun ImageGenScreen(nav: NavHostController, uri: String?) {
                                     val (pw, ph) = try { s.pageSize(p) } finally { s.closeAsync() }
                                     val r = ImagePlacement.centred(b.width, b.height, pw, ph)
                                     val out = app.documents.uniqueFile(app.documents.docsDir, doc.nameWithoutExtension + "_image", "pdf")
-                                    PdfOps.stampImage(doc, p, b, r[0], r[1], r[2], r[3], out); out
+                                    PdfOps.stampImage(doc, p, b, r[0], r[1], r[2], r[3], out)
+                                    com.smartdocs.editor.core.pdf.ToolOutputs.record(out, doc)   // audit 5 E-1: the document with the image
                                 }.onSuccess { result = it }.onFailure { error = it.message }
                             }
                         }) { Text(stringResource(R.string.ai6t_insert)) }
