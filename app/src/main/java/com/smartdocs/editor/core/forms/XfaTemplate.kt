@@ -86,6 +86,8 @@ class XFieldT(
     val bind: XBind, val multiline: Boolean, val maxChars: Int, val combCells: Int, val uiBorder: XBorder?, val uiMargin: XMargin,
     val readOnly: Boolean, val required: Boolean, val checkSize: Float, val roundCheck: Boolean, val listOpen: String, val textEntry: Boolean,
     val tooltip: String,
+    /** nav-prefs: `<barcode type="…">` of a barcode field ("" otherwise). */
+    val barcodeType: String = "",
 ) : XNode()
 
 class XDraw(
@@ -309,7 +311,8 @@ object XfaTemplateParser {
             required = e.kid("validate")?.attr("nullTest") == "error",
             checkSize = XfaUnits.pt(uiEl?.attr("size"), 10f), roundCheck = uiEl?.attr("shape") == "round",
             listOpen = uiEl?.attr("open") ?: "userControl", textEntry = uiEl?.attr("textEntry") == "1",
-            tooltip = e.kid("assist")?.kid("toolTip")?.textContent?.trim().orEmpty())
+            tooltip = e.kid("assist")?.kid("toolTip")?.textContent?.trim().orEmpty(),
+            barcodeType = if (uiEl?.local() == "barcode") uiEl.attr("type").orEmpty() else "")
     }
 
     private fun draw(e: Element): XDraw {

@@ -19,10 +19,20 @@ import java.io.FileOutputStream
  */
 object PdfPrint {
 
-    fun print(context: Context, file: File, jobName: String = file.nameWithoutExtension, pageCount: Int = PrintDocumentInfo.PAGE_COUNT_UNKNOWN) {
+    /**
+     * [mono] preselects black and white, [media] the paper ("A4", "Letter", "A3", "A5", "Legal") and [duplex] a
+     * [PrintAttributes] duplex mode (from the document's print preferences); the user can still change them.
+     */
+    fun print(context: Context, file: File, jobName: String = file.nameWithoutExtension, pageCount: Int = PrintDocumentInfo.PAGE_COUNT_UNKNOWN,
+              mono: Boolean = false, media: String? = null, duplex: Int? = null) {
         val pm = context.getSystemService(Context.PRINT_SERVICE) as PrintManager
-        val attrs = PrintAttributes.Builder().setMediaSize(PrintAttributes.MediaSize.ISO_A4).setColorMode(PrintAttributes.COLOR_MODE_COLOR).build()
-        pm.print(jobName, StreamAdapter(file, jobName, pageCount), attrs)
+        val size = when (media?.lowercase()) {
+            "letter" -> PrintAttributes.MediaSize.NA_LETTER; "a3" -> PrintAttributes.MediaSize.ISO_A3; "a5" -> PrintAttributes.MediaSize.ISO_A5
+            "legal" -> PrintAttributes.MediaSize.NA_LEGAL; else -> PrintAttributes.MediaSize.ISO_A4
+        }
+        val b = PrintAttributes.Builder().setMediaSize(size).setColorMode(if (mono) PrintAttributes.COLOR_MODE_MONOCHROME else PrintAttributes.COLOR_MODE_COLOR)
+        if (duplex != null) b.setDuplexMode(duplex)
+        pm.print(jobName, StreamAdapter(file, jobName, pageCount), b.build())
     }
 
     private class StreamAdapter(private val file: File, private val name: String, private val pageCount: Int) : PrintDocumentAdapter() {

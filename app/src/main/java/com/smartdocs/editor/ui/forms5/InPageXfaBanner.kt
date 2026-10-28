@@ -76,6 +76,15 @@ fun InPageXfaBanner(reader: ReaderState, onOpen: (File) -> Unit, modifier: Modif
         }
     }
 
+    // nav-prefs (XFA preferences): open the fillable form of a dynamic XFA document automatically (the generated
+    // copy is reused while it is newer than the original), and hide the banner
+    androidx.compose.runtime.LaunchedEffect(dynamic, reader.file) {
+        val src = reader.file ?: return@LaunchedEffect
+        if (!dynamic || !com.smartdocs.editor.core.data.NpfPrefs.xfaAutoOpen) return@LaunchedEffect
+        val prev = File(app.documents.docsDir, src.nameWithoutExtension + "_xfa_form.pdf")
+        if (prev.isFile && prev.lastModified() >= src.lastModified()) onOpen(prev) else generate(false)
+    }
+    if (!com.smartdocs.editor.core.data.NpfPrefs.xfaBanner && !working && result == null) return
     Card(modifier.padding(horizontal = 12.dp).widthIn(max = 640.dp).fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {

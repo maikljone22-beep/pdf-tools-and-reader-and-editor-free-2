@@ -46,16 +46,19 @@ object ToPdf {
     )
 
     /** Print an HTML string to [out] through the WebView (main thread). */
-    suspend fun html(ctx: Context, html: String, out: File): File {
-        withContext(Dispatchers.Main) { WebPdfWriter.convertHtml(ctx, html, out) }
+    suspend fun html(ctx: Context, html: String, out: File, setup: WebPdfWriter.Setup = WebPdfWriter.Setup()): File {
+        withContext(Dispatchers.Main) { WebPdfWriter.convertHtml(ctx, html, out, setup) }
         if (!out.exists() || out.length() == 0L) throw IllegalStateException("empty PDF")
         return out
     }
 
-    suspend fun url(ctx: Context, url: String, out: File): File {
+    suspend fun url(ctx: Context, url: String, out: File, setup: WebPdfWriter.Setup = WebPdfWriter.Setup(), disableLinks: Boolean = false): File {
+        com.smartdocs.editor.core.data.NpfNet.check()   // nav-prefs: offline mode
         var u = url.trim(); if (!u.startsWith("http://", true) && !u.startsWith("https://", true)) u = "https://$u"
-        withContext(Dispatchers.Main) { WebPdfWriter.convertUrl(ctx, u, out) }
+        try { withContext(Dispatchers.Main) { WebPdfWriter.convertUrl(ctx, u, out, setup) } }
+        catch (e: WebPdfWriter.TimeoutException) { throw java.io.IOException(ctx.getString(com.smartdocs.editor.R.string.cv6_err_web_timeout)) }
         if (!out.exists() || out.length() == 0L) throw IllegalStateException("empty PDF")
+        if (disableLinks) withContext(Dispatchers.IO) { WebCss.stripLinks(out) }
         return out
     }
 
@@ -86,6 +89,9 @@ object ToPdf {
             }
             SourceKind.UNKNOWN -> throw UnsupportedSource(src.extension)
         }
+        // Foxit add-in setting "preserve document properties": title / author / subject / keywords of the Office file
+        if (kind == SourceKind.DOCX || kind == SourceKind.XLSX || kind == SourceKind.PPTX)
+            withContext(Dispatchers.IO) { runCatching { OfficeProps.applyTo(out, OfficeProps.read(src)) } }
         return out
     }
 

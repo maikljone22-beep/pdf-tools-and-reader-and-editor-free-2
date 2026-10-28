@@ -19,6 +19,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Comment
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.IconButton
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -69,6 +73,8 @@ fun PageGrid(
     onLongPress: (Int) -> Unit,
     onReorder: (fromPos: Int, toPos: Int) -> Unit,
     modifier: Modifier = Modifier,
+    /** Per-thumbnail menu (Foxit: redact / OCR / print … one page); null = no menu. */
+    pageActions: List<Pair<Int, (Int) -> Unit>>? = null,
 ) {
     val grid = rememberLazyGridState()
     val drag = remember { DragState() }
@@ -123,7 +129,7 @@ fun PageGrid(
             val dragging = drag.fromPos == pos && drag.moved
             val target = drag.toPos == pos && drag.moved && drag.fromPos != pos
             PageCell(
-                state = state, page = page, dragging = dragging, dropTarget = target,
+                state = state, page = page, dragging = dragging, dropTarget = target, actions = pageActions,
                 modifier = Modifier
                     .zIndex(if (dragging) 1f else 0f)
                     .graphicsLayer {
@@ -136,7 +142,7 @@ fun PageGrid(
 }
 
 @Composable
-private fun PageCell(state: OrganizeState, page: Int, dragging: Boolean, dropTarget: Boolean, modifier: Modifier) {
+private fun PageCell(state: OrganizeState, page: Int, dragging: Boolean, dropTarget: Boolean, modifier: Modifier, actions: List<Pair<Int, (Int) -> Unit>>? = null) {
     val key = state.thumbKey(page)
     val bmp = state.thumbs[key]
     LaunchedEffect(key) { state.requestThumb(page) }
@@ -168,10 +174,19 @@ private fun PageCell(state: OrganizeState, page: Int, dragging: Boolean, dropTar
             }
             if (dragging) Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)))
         }
-        Text(
-            stringResource(R.string.pg_page_n, page + 1), style = MaterialTheme.typography.labelMedium,
-            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = 4.dp),
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                stringResource(R.string.pg_page_n, page + 1), style = MaterialTheme.typography.labelMedium,
+                color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+            if (actions != null && !state.selectMode) Box {
+                var open by remember { mutableStateOf(false) }
+                IconButton(onClick = { open = true }, Modifier.size(28.dp)) { Icon(Icons.Default.MoreVert, stringResource(R.string.pc_page_menu, page + 1), Modifier.size(18.dp)) }
+                DropdownMenu(open, { open = false }) {
+                    actions.forEach { (label, act) -> DropdownMenuItem(text = { Text(stringResource(label)) }, onClick = { open = false; act(page) }) }
+                }
+            }
+        }
     }
 }

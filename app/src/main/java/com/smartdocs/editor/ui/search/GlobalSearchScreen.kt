@@ -31,6 +31,8 @@ import com.smartdocs.editor.core.search.SearchOptions
 import com.smartdocs.editor.core.search.SearchPrefs
 import com.smartdocs.editor.ui.Routes
 import com.smartdocs.editor.ui.common.AppTopBar
+import com.smartdocs.editor.ui.nve.search.searchScope
+import com.smartdocs.editor.ui.nve.search.view
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -38,10 +40,11 @@ import java.io.File
 
 /** Tool `search_all`: search inside every indexed document (FTS index), grouped by file. */
 @Composable
-fun GlobalSearchScreen(nav: NavHostController) {
+/** [initial]: the query typed on Home ("search all files", nav-prefs). */
+fun GlobalSearchScreen(nav: NavHostController, initial: String = "") {
     val ctx = LocalContext.current
     val index = remember { FullTextIndex.get(ctx) }
-    var query by rememberSaveable { mutableStateOf("") }
+    var query by rememberSaveable { mutableStateOf(initial) }
     var options by remember { mutableStateOf(SearchOptions(norm = SearchPrefs.load(ctx))) }
     var kinds by remember { mutableStateOf(PartKind.values().toSet()) }
     var showOptions by remember { mutableStateOf(false) }
@@ -49,19 +52,29 @@ fun GlobalSearchScreen(nav: NavHostController) {
     var searching by remember { mutableStateOf(false) }
     var stats by remember { mutableStateOf<IndexStats?>(null) }
     val progress by FullTextIndex.progressFlow.collectAsState()
+    val nve = remember { com.smartdocs.editor.ui.nve.search.NveGlobalSearchState() }   // NVE-search: scopes, sort, filter, criteria, export
 
     LaunchedEffect(Unit) {
         stats = withContext(Dispatchers.IO) { runCatching { index.stats() }.getOrNull() }
         if ((stats?.docs ?: 0) == 0) IndexWorker.runNow(ctx)
     }
     LaunchedEffect(progress.running) { if (!progress.running) stats = withContext(Dispatchers.IO) { runCatching { index.stats() }.getOrNull() } }
-    LaunchedEffect(query, options, kinds, progress.running) {
+    LaunchedEffect(query, options, kinds, progress.running, nve.scope, nve.folder) {
         if (query.isBlank()) { results = emptyList(); return@LaunchedEffect }
         delay(300)
         searching = true
-        results = runCatching { index.search(query, options, kinds) }.getOrDefault(emptyList())
+        results = runCatching {
+            if (nve.scope == com.smartdocs.editor.ui.nve.search.NveScope.INDEX) index.search(query, options, kinds)
+            else nve.searchScope(ctx, query, options, kinds)
+        }.getOrDefault(emptyList())
         searching = false
     }
+    // NVE-search: metadata for "additional criteria" and the date sort
+    LaunchedEffect(results, nve.sort, nve.criteria) {
+        if (results.isNotEmpty() && (nve.criteria.active || nve.sort == com.smartdocs.editor.core.nve.NveSearchCore.Sort.DATE))
+            nve.meta = com.smartdocs.editor.ui.nve.search.NveScopeSearch.metaOf(results.filter { it.path !in nve.meta }, nve.local) + nve.meta
+    }
+    val shown = remember(results, nve.sort, nve.nameFilter, nve.criteria, nve.meta, kinds) { nve.view(results, kinds) }
 
     Scaffold(topBar = {
         AppTopBar(stringResource(R.string.s5_global_title), onBack = { nav.popBackStack() }) {
@@ -79,6 +92,7 @@ fun GlobalSearchScreen(nav: NavHostController) {
                     FilterChip(k in kinds, { kinds = if (k in kinds) (kinds - k).ifEmpty { setOf(k) } else kinds + k }, label = { Text(kindLabel(k)) })
                 }
             }
+            com.smartdocs.editor.ui.nve.search.NveGlobalSearchBar(nve, query, shown)   // NVE-search
             if (showOptions) SearchOptionsPanel(options, { options = it }, Modifier.padding(horizontal = 16.dp))
             if (progress.running) {
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
@@ -91,13 +105,13 @@ fun GlobalSearchScreen(nav: NavHostController) {
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             if (searching) LinearProgressIndicator(Modifier.fillMaxWidth())
-            if (query.isNotBlank() && !searching && results.isEmpty()) {
+            if (query.isNotBlank() && !searching && shown.isEmpty()) {
                 Text(stringResource(R.string.pg_redact_no_hits), Modifier.padding(24.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             val bg = MaterialTheme.colorScheme.tertiaryContainer
             LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
                 // file position in the keys: two index rows for one path (re-indexed copy) must not produce duplicate keys
-                results.forEachIndexed { fi, fr ->
+                shown.forEachIndexed { fi, fr ->
                     item(key = "h:$fi:" + fr.path) {
                         Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
                             Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -111,7 +125,7 @@ fun GlobalSearchScreen(nav: NavHostController) {
                     items(fr.hits.mapIndexed { i, h -> i to h }, key = { "r:$fi:" + fr.path + ":" + it.first }) { (_, h) ->
                         ListItem(
                             modifier = Modifier.clickable {
-                                nav.navigate(Routes.reader(Uri.fromFile(File(fr.path)).toString(), h.page.coerceAtLeast(0)))
+                                nav.navigate(Routes.reader(if (fr.path.startsWith("content:")) fr.path else Uri.fromFile(File(fr.path)).toString(), h.page.coerceAtLeast(0)))
                             },
                             headlineContent = { Text(highlighted(h.snippet, h.highlights, bg), maxLines = 3, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium) },
                             supportingContent = {

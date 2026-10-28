@@ -91,7 +91,9 @@ android {
     packaging {
         // ONNX Runtime only for the ARM phones/tablets (20 MB each for x86 / x86_64); without it the AI OCR is simply off
         jniLibs.excludes += setOf("lib/x86/libonnxruntime*.so", "lib/x86_64/libonnxruntime*.so")
-        resources.excludes += setOf("META-INF/{AL2.0,LGPL2.1}", "META-INF/DEPENDENCIES", "META-INF/LICENSE*", "META-INF/NOTICE*", "META-INF/versions/9/OSGI-INF/MANIFEST.MF")
+        resources.excludes += setOf("META-INF/{AL2.0,LGPL2.1}", "META-INF/DEPENDENCIES", "META-INF/LICENSE*", "META-INF/NOTICE*", "META-INF/versions/9/OSGI-INF/MANIFEST.MF",
+            // open-all: commons-io / commons-lang3 / commons-compress are multi-release jars
+            "META-INF/versions/**/module-info.class", "module-info.class")
     }
 }
 
@@ -161,6 +163,10 @@ dependencies {
 
     // Images + network
     implementation("io.coil-kt:coil-compose:2.7.0")
+    // open-all (gaps/OPEN_ALL_FILES.md): SVG rendering (Apache 2.0), archives 7z/tar/bz2/xz (Apache 2.0) + LZMA for 7z/xz (0BSD)
+    implementation("com.caverock:androidsvg-aar:1.4")
+    implementation("org.apache.commons:commons-compress:1.27.1")
+    implementation("org.tukaani:xz:1.10")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
     // Digital signatures

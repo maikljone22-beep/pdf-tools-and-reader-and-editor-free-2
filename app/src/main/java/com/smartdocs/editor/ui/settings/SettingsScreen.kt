@@ -12,6 +12,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import com.smartdocs.editor.ui.nve.shell.nveSettingsAnchor
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -52,9 +53,11 @@ fun SettingsScreen(nav: NavHostController) {
             )
         },
     ) { pad ->
-        Column(Modifier.padding(pad).verticalScroll(rememberScrollState()).padding(bottom = 32.dp)) {
+        val nveScroll = rememberScrollState()   // NVE-shell: settings search scrolls to a card
+        val nveAnchors = remember { androidx.compose.runtime.mutableStateMapOf<String, Float>() }
+        Column(Modifier.padding(pad).verticalScroll(nveScroll).padding(bottom = 32.dp)) {
             // ---- General ----
-            GroupCard(stringResource(R.string.ds_set_general)) {
+            GroupCard(stringResource(R.string.ds_set_general), Modifier.nveSettingsAnchor(nveAnchors, "general")) {
                 SwitchRow(stringResource(R.string.settings_autosave), s.autoSave, icon = Icons.Default.Save, tile = tiles.blue) { v -> upd { it.copy(autoSave = v) } }
                 GroupDivider()
                 GroupRow(stringResource(R.string.settings_appearance), icon = Icons.Default.Palette, tile = tiles.purple)
@@ -66,10 +69,11 @@ fun SettingsScreen(nav: NavHostController) {
                 GroupRow(stringResource(R.string.settings_language), icon = Icons.Default.Language, tile = tiles.teal)
                 Choice(listOf("ar" to "العربية", "en" to "English"), s.language) { v -> upd { it.copy(language = v) } }
                 G6GeneralRows(s) { b -> upd(b) }   // gaps6: layout direction, product improvement
+                com.smartdocs.editor.ui.nve.shell.NveShellSettingsRows()   // NVE-shell: accent / themes, auto recovery, toolbar, Custom tab name
             }
 
             // ---- PDF view ----
-            GroupCard(stringResource(R.string.ds_set_pdf_view)) {
+            GroupCard(stringResource(R.string.ds_set_pdf_view), Modifier.nveSettingsAnchor(nveAnchors, "view")) {
                 SwitchRow(stringResource(R.string.settings_restore_session), s.restoreSession, icon = Icons.Default.Restore) { v -> upd { it.copy(restoreSession = v) } }
                 SwitchRow(stringResource(R.string.settings_highlight_fields), s.highlightFields, icon = Icons.Default.EditNote) { v -> upd { it.copy(highlightFields = v) } }
                 SwitchRow(stringResource(R.string.settings_highlight_links), s.highlightLinks, icon = Icons.Default.Link) { v -> upd { it.copy(highlightLinks = v) } }
@@ -91,7 +95,7 @@ fun SettingsScreen(nav: NavHostController) {
             com.smartdocs.editor.ui.cloud.SyncSettingsSection()   // share6: near-real-time, sync after save, cloud transfers over Wi-Fi only
 
             // ---- Annotations ----
-            GroupCard(stringResource(R.string.ds_set_annotations)) {
+            GroupCard(stringResource(R.string.ds_set_annotations), Modifier.nveSettingsAnchor(nveAnchors, "annotations")) {
                 var author by remember(s.authorName) { mutableStateOf(s.authorName) }
                 OutlinedTextField(
                     author, { author = it }, Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
@@ -103,16 +107,21 @@ fun SettingsScreen(nav: NavHostController) {
             }
             FormRunSettings()      // forms: auto-calculate, autocomplete, highlight colours, fillable banner
 
+            // ---- More preferences (nav-prefs): retain markup tools, offline mode, and the full preferences screen ----
+            NpfSettingsCard(nav)
+
             // ---- Read aloud ----
-            GroupCard(stringResource(R.string.settings_tts)) {
+            GroupCard(stringResource(R.string.settings_tts), Modifier.nveSettingsAnchor(nveAnchors, "tts")) {
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
                     com.smartdocs.editor.ui.common.LabeledSlider(stringResource(R.string.tts_speed), s.ttsRate, 0.5f..2f, { v -> upd { it.copy(ttsRate = v) } }) { "%.1fx".format(it) }
+                    com.smartdocs.editor.ui.common.LabeledSlider(stringResource(R.string.ns_tts_pitch), s.ttsPitch, 0.5f..2f, { v -> upd { it.copy(ttsPitch = v) } }) { "%.1f".format(it) }   // NVE-tts
                 }
+                com.smartdocs.editor.ui.nve.tts.NveReadAloudPrefs(Modifier.padding(horizontal = 16.dp, vertical = 4.dp), showPitch = false)   // NVE-tts
                 com.smartdocs.editor.ui.voice.ReadAloudVoiceSection(Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
             }
 
             // ---- AI ----
-            GroupCard(stringResource(R.string.settings_ai)) {
+            GroupCard(stringResource(R.string.settings_ai), Modifier.nveSettingsAnchor(nveAnchors, "ai")) {
                 G6AiSwitch(s) { b -> upd(b) }      // gaps6: AI master switch
                 if (s.aiEnabled) {
                 var key by remember(s.aiApiKey) { mutableStateOf(s.aiApiKey) }
@@ -130,13 +139,13 @@ fun SettingsScreen(nav: NavHostController) {
             }
 
             // ---- OCR ----
-            GroupCard(stringResource(R.string.tool_ocr)) {
+            GroupCard(stringResource(R.string.tool_ocr), Modifier.nveSettingsAnchor(nveAnchors, "ocr")) {
                 GroupRow(stringResource(R.string.ocr_language), icon = Icons.Default.Translate, tile = tiles.amber)
                 Choice(listOf("ara+eng" to "عربي + إنجليزي", "ara" to "عربي", "eng" to "إنجليزي"), s.ocrLanguages) { v -> upd { it.copy(ocrLanguages = v) } }
             }
 
             // ---- Notifications ----
-            GroupCard(stringResource(R.string.ds_set_notifications)) {
+            GroupCard(stringResource(R.string.ds_set_notifications), Modifier.nveSettingsAnchor(nveAnchors, "notifications")) {
                 GroupRow(stringResource(R.string.ds_set_notifications_sub), icon = Icons.Default.Notifications, tile = tiles.rose, onClick = {
                     val i = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, ctx.packageName).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     runCatching { ctx.startActivity(i) }
@@ -144,7 +153,7 @@ fun SettingsScreen(nav: NavHostController) {
             }
 
             // ---- About ----
-            GroupCard(stringResource(R.string.settings_about)) {
+            GroupCard(stringResource(R.string.settings_about), Modifier.nveSettingsAnchor(nveAnchors, "about")) {
                 GroupRow(stringResource(R.string.v5_help_center), icon = Icons.Default.HelpOutline, tile = tiles.green, onClick = { nav.navigate(com.smartdocs.editor.ui.view5.V5Routes.HELP) })
                 GroupRow(stringResource(R.string.v5_trash), icon = Icons.Default.DeleteSweep, tile = tiles.purple, onClick = { nav.navigate(com.smartdocs.editor.ui.view5.V5Routes.TRASH) })
                 GroupRow(stringResource(R.string.v5_whats_new), icon = Icons.Default.NewReleases, tile = tiles.teal, onClick = { nav.navigate(com.smartdocs.editor.ui.view5.V5Routes.WHATS_NEW) })

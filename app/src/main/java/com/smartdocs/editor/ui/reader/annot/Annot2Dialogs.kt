@@ -165,7 +165,8 @@ private fun Prompt2Dialog(p: Prompt2, onOk: (String) -> Unit, onDismiss: () -> U
                 if (p.kind == AnnotKind.REPLACE && p.original.isNotBlank())
                     Text(stringResource(R.string.an_replace_orig, p.original.take(120)), style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(bottom = 8.dp))
-                OutlinedTextField(text, { text = it }, Modifier.fillMaxWidth(), minLines = 2)
+                OutlinedTextField(text, { text = it }, Modifier.fillMaxWidth(), minLines = 2,   // NVE: spell check
+                    visualTransformation = com.smartdocs.editor.ui.nve.spellTransformation(com.smartdocs.editor.ui.nve.rememberSpellIssues(text)), trailingIcon = { com.smartdocs.editor.ui.nve.SpellCheckButton(text, { text = it }) })
             }
         },
         confirmButton = { Button(onClick = { onOk(text) }) { Text(stringResource(R.string.ok)) } },
@@ -278,6 +279,16 @@ private fun SnapshotSheet(state: ReaderState, snap: Snapshot2, onDismiss: () -> 
                     Icon(Icons.Default.SaveAlt, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.an_save_png))
                 }
             }
+            // nav-batch: Foxit "Snapshot → Print" (print a portion of a page)
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(onClick = {
+                scope.launch {
+                    runCatching {
+                        val pdf = com.smartdocs.editor.core.tools5.ToPdf.convert(ctx, snap.file, state.app.documents.newTemp("snapshot"))
+                        com.smartdocs.editor.core.util.PdfPrint.print(ctx, pdf, "snapshot", 1)
+                    }.onFailure { state.error = it.message }
+                }
+            }) { Icon(Icons.Default.Print, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.print)) }
             Spacer(Modifier.height(24.dp))
         }
     }

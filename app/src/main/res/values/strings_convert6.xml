@@ -175,4 +175,5 @@
     <string name="cv6_ex_gallery">المعرض</string>
     <string name="cv6_ex_saved_n">تم حفظ %1$d صورة</string>
     <string name="cv6_ex_gallery_n">تمت إضافة %1$d صورة إلى المعرض (Pictures/SmartDocs)</string>
+    <string name="cv6_err_web_timeout">الصفحة لم تكتمل خلال دقيقة. تحقق من الاتصال أو جرّب رابطاً آخر.</string>
 </resources>

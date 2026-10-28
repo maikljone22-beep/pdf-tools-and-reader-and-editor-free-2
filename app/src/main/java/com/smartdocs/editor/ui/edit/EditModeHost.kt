@@ -57,6 +57,7 @@ fun EditModeHost(state: com.smartdocs.editor.ui.reader.ReaderState, onExit: () -
                         Text(stringResource(it), Modifier.padding(horizontal = 14.dp, vertical = 6.dp), style = MaterialTheme.typography.labelMedium)
                     }
                 }
+                com.smartdocs.editor.ui.nve.shapes.ShapesFab(c, Modifier.align(Alignment.BottomEnd))   // NVE-shape: vector shapes / gradients
                 c.message?.let { msg ->
                     Snackbar(Modifier.align(Alignment.BottomCenter).padding(12.dp), action = {
                         TextButton(onClick = { c.message = null }) { Text(stringResource(R.string.ok)) }
@@ -64,13 +65,19 @@ fun EditModeHost(state: com.smartdocs.editor.ui.reader.ReaderState, onExit: () -
                 }
             }
             when {
+                c.mode == EditMode.IMAGE && c.tools5.multi -> MultiAlignBar5(c)      // NVE-img: align / distribute
                 c.mode == EditMode.TEXT && c.editingText -> TextFormatBar(c)
+                c.mode == EditMode.IMAGE && c.tools5.isVector(c.image) -> ShapeActionBar5(c)  // NVE-img: shapes / shadings
                 c.mode == EditMode.IMAGE && c.image != null -> ImageActionBar(c)
                 c.mode == EditMode.IMAGE && c.insertAt != null -> InsertImageBar(c)
+                c.mode == EditMode.TEXT -> NoTextBar5(c)      // NVE-text: scanned page -> OCR
+                c.mode == EditMode.IMAGE -> ImageIdleBar5(c)                        // NVE-img: select multiple / smart alignment
             }
         }
     }
     if (showOutline) OutlineEditorSheet(state) { showOutline = false }
+    TextTools5Host(c)      // NVE-text: text tool sheets, "edit text" request from the reader
+    ImageTools5Host(c)      // NVE-img: image sheets / dialogs + layers prompt
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -88,6 +95,7 @@ private fun EditTopBar(c: EditController, onExit: () -> Unit, onOutline: () -> U
                         Icon(Icons.Default.ZoomIn, stringResource(R.string.ed_zoom))
                     }
                 }
+                TextTopActions5(c)      // NVE-text: reflow page, edit preferences
                 IconButton(onClick = onOutline) { Icon(Icons.Default.Toc, stringResource(R.string.ed_outline_title)) }
             }
             Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {

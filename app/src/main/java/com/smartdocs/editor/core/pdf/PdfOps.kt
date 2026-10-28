@@ -144,9 +144,11 @@ object PdfOps {
         }
     }
 
+    /** Delete [pages]; bookmarks and links that pointed at them are removed too (they would lead nowhere). */
     suspend fun deletePages(src: File, pages: Set<Int>, out: File, password: String? = null) = withContext(Dispatchers.IO) {
         load(src, password).use { doc ->
-            pages.sortedDescending().forEach { doc.removePage(it) }
+            // nav-prefs: Preferences → bookmarks "remove related bookmarks when deleting pages" (links to them always go)
+            com.smartdocs.editor.core.edit5.PageOrganize.deleteIn(doc, pages, removeBookmarks = com.smartdocs.editor.core.data.NpfPrefs.removeBookmarksOnDelete)
             saveTo(doc, out)
         }
     }
@@ -292,24 +294,9 @@ object PdfOps {
         }
     }
 
-    /** Insert all pages of [other] into [src] at [atIndex]. */
-    suspend fun insertPagesFrom(src: File, other: File, atIndex: Int, out: File, password: String? = null) = withContext(Dispatchers.IO) {
-        load(src, password).use { doc ->
-            load(other).use { od ->
-                // importPage appends to the end; when inserting at the end that is already the right place
-                val imported = od.pages.map { doc.importPage(it) }
-                val originalCount = doc.numberOfPages - imported.size
-                val at = atIndex.coerceIn(0, originalCount)
-                if (at < originalCount) {
-                    // move: detach the appended copies, then re-insert before the page that is now at [at]
-                    imported.forEach { doc.removePage(it) }
-                    var idx = at
-                    imported.forEach { p -> if (idx >= doc.numberOfPages) doc.addPage(p) else doc.pages.insertBefore(p, doc.getPage(idx)); idx++ }
-                }
-                saveTo(doc, out)
-            }
-        }
-    }
+    /** Insert all pages of [other] into [src] at [atIndex], with its bookmarks and attachments. */
+    suspend fun insertPagesFrom(src: File, other: File, atIndex: Int, out: File, password: String? = null, keepBookmarks: Boolean = true, keepAttachments: Boolean = true) =
+        com.smartdocs.editor.core.edit5.PageOrganize.insertFile(src, out, password, other, null, atIndex, keepBookmarks, keepAttachments)
 
     /** Build a PDF from images; each image becomes a page sized to the image (A4-fitted when [fitA4]). */
     suspend fun imagesToPdf(images: List<File>, out: File, fitA4: Boolean = true, jpegQuality: Int = 85) = withContext(Dispatchers.IO) {

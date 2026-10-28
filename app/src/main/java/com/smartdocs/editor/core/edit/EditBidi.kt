@@ -13,13 +13,13 @@ import com.smartdocs.editor.core.pdf.ArabicShaper
  *   The inverse is not unique ("Hello 123" and "123 Hello" after Arabic draw the same); Latin-first is assumed.
  *
  * [com.smartdocs.editor.core.pdf.ArabicShaper.shape] alone is NOT used for reordering here: it reverses
- * Arabic-Indic digits ("١٢" → "٢١") and Latin phrases inside Arabic. It is only used to pick the contextual
+ * Arabic-Indic digits ("\u0661\u0662" → "\u0662\u0661") and Latin phrases inside Arabic. It is only used to pick the contextual
  * presentation forms of runs that contain nothing but Arabic letters and neutrals.
  */
 object Bidi {
     private enum class T { L, R, EN, AN, ES, ET, CS, NSM, WS, ON }
 
-    private val mirrored = mapOf('(' to ')', ')' to '(', '[' to ']', ']' to '[', '{' to '}', '}' to '{', '<' to '>', '>' to '<', '«' to '»', '»' to '«')
+    private val mirrored = mapOf('(' to ')', ')' to '(', '[' to ']', ']' to '[', '{' to '}', '}' to '{', '<' to '>', '>' to '<', '\u00AB' to '\u00BB', '\u00BB' to '\u00AB')
 
     fun mirror(c: Char): Char = mirrored[c] ?: c
 
@@ -36,7 +36,7 @@ object Bidi {
             isArabicMark(c) || Character.getType(c) == Character.NON_SPACING_MARK.toInt() -> T.NSM
             k in 0x0590..0x08FF || k in 0xFB1D..0xFDFF || k in 0xFE70..0xFEFE -> T.R
             c == '+' || c == '-' -> T.ES
-            c == '%' || c == '$' || c == '#' || c == '°' || k == 0x066A || c == '€' || c == '£' -> T.ET
+            c == '%' || c == '$' || c == '#' || c == '\u00B0' || k == 0x066A || c == '\u20AC' || c == '\u00A3' -> T.ET
             c == ',' || c == '.' || c == ':' || c == '/' || k == 0x00A0 -> T.CS
             c == ' ' || c == '\t' -> T.WS
             c.isLetter() -> T.L
@@ -143,6 +143,21 @@ object Bidi {
             i = j
         }
         return logicalToVisual(sb.toString(), rtl)
+    }
+
+    /** NVE-text: [line] with its Arabic letter runs shaped into presentation forms, still in logical order. */
+    fun shapeLogicalRuns(line: String): String {
+        if (line.none { isShapable(it) }) return line
+        val sb = StringBuilder(line.length)
+        var i = 0
+        while (i < line.length) {
+            val c = line[i]
+            if (!isShapable(c)) { sb.append(c); i++; continue }
+            var j = i; while (j < line.length && isShapable(line[j])) j++
+            sb.append(shapeLogical(line.substring(i, j)))
+            i = j
+        }
+        return sb.toString()
     }
 
     private fun isShapable(c: Char) = c.code in 0x0621..0x064A || c.code in 0x064B..0x065F || c.code == 0x0670 || c.code == 0x0640 ||

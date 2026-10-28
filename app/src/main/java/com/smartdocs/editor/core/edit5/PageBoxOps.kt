@@ -107,6 +107,7 @@ object PageBoxOps {
 
     /** Paper sizes in points (portrait). */
     val PAPERS: List<Pair<String, Pair<Float, Float>>> = listOf(
+        "A0" to (2383.94f to 3370.39f), "A1" to (1683.78f to 2383.94f), "A2" to (1190.55f to 1683.78f),
         "A3" to (841.89f to 1190.55f), "A4" to (595.28f to 841.89f), "A5" to (419.53f to 595.28f), "A6" to (297.64f to 419.53f),
         "B5" to (498.9f to 708.66f), "Letter" to (612f to 792f), "Legal" to (612f to 1008f), "Tabloid" to (792f to 1224f),
     )

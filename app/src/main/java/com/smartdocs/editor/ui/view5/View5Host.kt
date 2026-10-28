@@ -80,6 +80,7 @@ fun View5ViewChips(s: ReaderState) {
     ToolChip(Icons.Default.ZoomIn, stringResource(R.string.v5_lens), selected = v.lens) { v.lens = !v.lens }
     ToolChip(Icons.Default.Tune, stringResource(R.string.v5_overlay_settings)) { v.open(V5Surface.OVERLAY_SETTINGS) }
     ToolChip(Icons.Default.Repeat, stringResource(R.string.v5_read_aloud_options)) { v.open(V5Surface.READ_ALOUD) }
+    com.smartdocs.editor.ui.nve.NveViewChips(s)      // NVE
 }
 
 /** Chips added to the Comment toolbar after Annot2CommentChips (hook). */
@@ -183,6 +184,7 @@ fun ReadAloudOptionsSheet(v: V5State) {
                 Switch(memory, { memory = it; v.prefs.edit().putBoolean("tool_memory", it).apply() })
                 Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.v5_tool_memory))
             }
+            com.smartdocs.editor.ui.nve.tts.NveReadAloudPrefs()   // NVE: pitch, read comments / fields / alt text, reading order
             Spacer(Modifier.height(24.dp))
         }
     }
@@ -200,6 +202,7 @@ fun OverlaySettingsSheet(v: V5State) {
             SwitchRow(stringResource(R.string.v5_grid), v.grid) { v.grid = it }
             Text(stringResource(R.string.v5_grid_spacing, v.gridMm.toInt()), style = MaterialTheme.typography.labelMedium)
             Slider(v.gridMm, { v.gridMm = it }, valueRange = 2f..50f)
+            NpfGridSettings()   // nav-prefs: snap, subdivisions, offsets, colour, guides
             HorizontalDivider()
             SwitchRow(stringResource(R.string.v5_reading_ruler), v.readingRuler) { v.readingRuler = it }
             SwitchRow(stringResource(R.string.v5_dim_outside), v.rulerDim) { v.rulerDim = it }

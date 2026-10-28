@@ -2,6 +2,7 @@ package com.smartdocs.editor.ui
 
 import com.smartdocs.editor.ui.webdav.webDavRoutes
 import com.smartdocs.editor.ui.view5.view5Routes
+import com.smartdocs.editor.ui.openall.openAllRoutes
 import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
@@ -151,11 +152,10 @@ fun AppNavHost(nav: NavHostController) {
                         Routes.READER,
                         arguments = listOf(navArgument("uri") { type = NavType.StringType }, navArgument("page") { type = NavType.IntType; defaultValue = -1 }),
                     ) { e ->
-                        // office5: one central dispatch — Office files opened through Routes.reader(...) go to the Office editor
+                        // open-all: one central dispatch by content type — PDFs → reader, editable Office files → Office editors,
+                        // every other type → the in-app universal viewer (gaps/OPEN_ALL_FILES.md)
                         val u = Uri.decode(e.arguments?.getString("uri") ?: "")
-                        val office = androidx.compose.runtime.remember(u) { com.smartdocs.editor.ui.office.OfficeRoutes.isOffice(u) }
-                        if (office) com.smartdocs.editor.ui.office.OfficeScreen(nav, u)
-                        else ReaderScreen(nav, uri = u, startPage = e.arguments?.getInt("page") ?: -1)
+                        com.smartdocs.editor.ui.openall.OpenDispatch(nav, u, e.arguments?.getInt("page") ?: -1)
                     }
                     composable(
                         Routes.TOOL,
@@ -174,6 +174,7 @@ fun AppNavHost(nav: NavHostController) {
                     webDavRoutes(nav)   // nav-attach: WebDAV places
                     connRoutes(nav)     // share6: signature requests, connected / protected documents
                     view5Routes(nav)
+                    openAllRoutes(nav)   // open-all: archive entries / attachments → viewer
                 }
             }
         }
@@ -186,14 +187,15 @@ private fun CrashReportDialog() {
     val ctx = androidx.compose.ui.platform.LocalContext.current
     var report by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(com.smartdocs.editor.core.util.CrashLog.pending(ctx)) }
     val r = report ?: return
+    var nveAttach by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     AlertDialog(
         onDismissRequest = { com.smartdocs.editor.core.util.CrashLog.clear(ctx); report = null },
         title = { Text(stringResource(R.string.crash_title)) },
-        text = { Text(stringResource(R.string.crash_text)) },
+        // NVE-shell: optionally attach the PDF that was open when the app crashed
+        text = { androidx.compose.foundation.layout.Column { Text(stringResource(R.string.crash_text)); com.smartdocs.editor.ui.nve.shell.NveCrashAttachRow(nveAttach) { nveAttach = it } } },
         confirmButton = {
             TextButton(onClick = {
-                val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(android.content.Intent.EXTRA_SUBJECT, "SmartDocs crash report"); putExtra(android.content.Intent.EXTRA_TEXT, r) }
-                runCatching { ctx.startActivity(android.content.Intent.createChooser(send, null)) }
+                runCatching { ctx.startActivity(com.smartdocs.editor.ui.nve.shell.NveCrash.shareIntent(ctx, r, nveAttach)) }
                 com.smartdocs.editor.core.util.CrashLog.clear(ctx); report = null
             }) { Text(stringResource(R.string.crash_send)) }
         },

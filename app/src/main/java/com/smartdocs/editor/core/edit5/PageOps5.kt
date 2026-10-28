@@ -182,6 +182,11 @@ object PageOps5 {
                 }
                 olds.take(news.size).forEach { doc.pages.remove(it) }
                 repoint(doc, map)
+                // nav-prefs: Preferences → bookmarks "import bookmarks when replacing pages"
+                if (com.smartdocs.editor.core.data.NpfPrefs.importBookmarksOnReplace) runCatching {
+                    val srcPages = with.filter { it in 0 until od.numberOfPages }.map { od.getPage(it).cosObject }
+                    com.smartdocs.editor.core.pdf.NpfOutline.importFrom(doc, od, srcPages.zip(news).toMap(), other.nameWithoutExtension)
+                }
                 E5Io.save(doc, out)
             }
         }

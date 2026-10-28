@@ -37,12 +37,13 @@ object ShareImport {
     /** Set by MainActivity.handleIntent, consumed by ShareToPdfScreen. */
     @Volatile var pending: SharePayload? = null
 
-    /** True for share intents this module should take (everything except one shared PDF, which the reader opens). */
+    /** True for share intents this module should take: several files, or shared text / links (one shared file is opened in-app). */
     fun handles(intent: Intent?): Boolean {
         intent ?: return false
         return when (intent.action) {
             Intent.ACTION_SEND_MULTIPLE -> true
-            Intent.ACTION_SEND -> intent.type != "application/pdf"
+            // open-all: one shared file opens in the in-app viewer (which offers Convert to PDF); text / links still go here
+            Intent.ACTION_SEND -> intent.type != "application/pdf" && streams(intent).isEmpty()
             else -> false
         }
     }
@@ -132,7 +133,14 @@ class T5PrintService : PrintService() {
                     val base = TextNorm.safeFileName(label.removeSuffix(".pdf"), 80).ifBlank { "print" } + "_" + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
                     val out = File(dir, "$base.pdf")
                     android.os.ParcelFileDescriptor.AutoCloseInputStream(data).use { input -> out.outputStream().use { input.copyTo(it) } }
-                    out
+                    // nav-batch: the printer's "conversion settings" are a recipe (security, watermark, header/footer, PDF/A…)
+                    val recipe = RecipeStore.printerRecipe(this@T5PrintService)
+                    if (recipe == null) out else {
+                        val tmp = File(cacheDir, "t5_print_tmp").apply { mkdirs() }
+                        val runner = RecipeRunner(this@T5PrintService, tmp)
+                        val e = try { runner.run(out, null, recipe.copy(output = recipe.output.copy(pattern = "{name}", sameFolder = false, conflict = Conflict.RENAME)), recipe.name, dir, 0) } finally { runner.close() }
+                        e.output?.let(::File)?.takeIf { e.ok && it.exists() }?.also { out.delete() } ?: out
+                    }
                 }
             }
             result.onSuccess { f -> printJob.complete(); notifySaved(f) }.onFailure { e -> printJob.fail(e.message ?: "error") }
@@ -145,6 +153,7 @@ class T5PrintService : PrintService() {
 
     private fun notifySaved(f: File) = runCatching {
         val nm = getSystemService(NotificationManager::class.java) ?: return@runCatching
+        if (!com.smartdocs.editor.core.data.NpfPrefs.notifyTasks) return@runCatching   // nav-prefs: notification toggle
         if (Build.VERSION.SDK_INT >= 26) nm.createNotificationChannel(NotificationChannel(CHANNEL, "SmartDocs PDF", NotificationManager.IMPORTANCE_DEFAULT))
         // a content:// URI (file:// in an intent trips FileUriExposedException); MainActivity copies it like any shared PDF
         val uri = androidx.core.content.FileProvider.getUriForFile(this, "$packageName.fileprovider", f)

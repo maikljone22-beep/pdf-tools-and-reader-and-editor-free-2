@@ -37,6 +37,7 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
         val force = inputData.getBoolean(KEY_FORCE, false)
         val expedited = inputData.getBoolean(KEY_EXPEDITED, false)
         val deletes = runCatching { DeleteGuard.Policy.valueOf(inputData.getString(KEY_DELETES) ?: "") }.getOrDefault(DeleteGuard.Policy.GUARD)
+        if (!com.smartdocs.editor.core.data.NpfNet.allowed()) return Result.success()   // nav-prefs: offline mode
         // automatic runs honour Settings → auto sync (AppSettings.autoSync) and the sync screen's master switch; "sync now" ignores both
         if (!force) {
             val app = runCatching { (ctx as com.smartdocs.editor.SmartDocsApp).settings.settings.first() }.getOrNull()
@@ -56,6 +57,9 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
             targets.forEach { enqueue(ctx, it, force = false, expedited = false, policy = ExistingWorkPolicy.KEEP) }
             return Result.success()
         }
+        // Android 12+: a long sync keeps running as a dataSync foreground service with the "syncing" notification
+        // (Settings → notifications can turn it off; refused while the app is in the background, then it runs as plain work)
+        if (targets.isNotEmpty()) showForeground(applicationContext)
         var retry = false
         for (p in targets) {
             try { SyncRuntime.runPair(ctx, p.id, force, if (only != null) deletes else DeleteGuard.Policy.GUARD) }
@@ -68,7 +72,13 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
     }
 
     /** Needed for expedited work on Android 11 and older, which runs as a short foreground service. */
-    override suspend fun getForegroundInfo(): ForegroundInfo = ForegroundInfo(NOTIF_ID, notification(applicationContext))
+    override suspend fun getForegroundInfo(): ForegroundInfo = foregroundInfo(applicationContext, NOTIF_ID)
+
+    /** nav-prefs (old plan): show the sync notification as a foreground service while files are transferred. */
+    private suspend fun showForeground(c: Context) {
+        if (!com.smartdocs.editor.core.data.NpfPrefs.notifySync) return
+        runCatching { setForeground(foregroundInfo(c, NOTIF_ID)) }
+    }
 
     companion object {
         const val KEY_PAIR = "pair"
@@ -89,6 +99,11 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
             .setRequiredNetworkType(if (wifi || SyncPrefs.appTransferWifiOnly) NetworkType.UNMETERED else NetworkType.CONNECTED)
             .setRequiresBatteryNotLow(battery)
             .build()
+
+        /** The sync notification typed as dataSync (required for a foreground service on Android 10+ / 14+). */
+        fun foregroundInfo(c: Context, id: Int): ForegroundInfo =
+            if (Build.VERSION.SDK_INT >= 29) ForegroundInfo(id, notification(c), android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+            else ForegroundInfo(id, notification(c))
 
         fun notification(c: Context): android.app.Notification {
             if (Build.VERSION.SDK_INT >= 26) {

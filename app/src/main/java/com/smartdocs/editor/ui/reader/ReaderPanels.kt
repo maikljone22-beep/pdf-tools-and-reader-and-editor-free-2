@@ -70,7 +70,7 @@ fun PanelsContent(state: ReaderState, panel: ReaderPanel, onPanel: (ReaderPanel)
                 ReaderPanel.ANNOTATIONS -> com.smartdocs.editor.ui.reader.annot.CommentsPanel(state, onJump)
                 ReaderPanel.THUMBNAILS -> ThumbnailsPanel(state, onJump)
                 ReaderPanel.ATTACHMENTS -> com.smartdocs.editor.ui.attachments.ReaderAttachmentsPanel(state, onJump, onOpenPdf)   // nav-attach
-                ReaderPanel.INFO -> DocInfoContent(state)
+                ReaderPanel.INFO -> NpfInfoPanels(state, onJump)   // nav-prefs: + layers, security, fields, destinations, tags, articles, standards, …
             }
         }
     }
@@ -139,7 +139,12 @@ private fun OutlinePanel(state: ReaderState, onJump: (Int) -> Unit, onAiOutline:
                                 Icon(if (expanded[key] != false) Icons.Default.ExpandMore else Icons.Default.ChevronRight, null)
                             } else Spacer(Modifier.size(28.dp))
                         },
-                        trailingContent = { if (item.page >= 0) Text((item.page + 1).toString(), style = MaterialTheme.typography.labelMedium) },
+                        trailingContent = {
+                            if (item.page >= 0) Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text((item.page + 1).toString(), style = MaterialTheme.typography.labelMedium)
+                                OutlinePrintMenu(state, flat, idx)   // nav-batch: print this page / section
+                            }
+                        },
                         colors = ListItemDefaults.colors(containerColor = if (key == current) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface),
                         modifier = Modifier.padding(start = (item.level * 16).dp).clickable {
                             current = key
@@ -148,6 +153,35 @@ private fun OutlinePanel(state: ReaderState, onJump: (Int) -> Unit, onAiOutline:
                     )
                 }
             }
+        }
+    }
+}
+
+/** nav-batch: Foxit "Print Page(s)" / "Print Section(s)" from a bookmark (the section ends before the next one of its level). */
+@Composable
+private fun OutlinePrintMenu(state: ReaderState, flat: List<Pair<OutlineItem, List<String>>>, index: Int) {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val scope = rememberCoroutineScope()
+    var open by remember { mutableStateOf(false) }
+    fun print(range: IntRange) {
+        val f = state.file ?: return
+        scope.launch {
+            runCatching {
+                val (out, n) = com.smartdocs.editor.core.view5.PrintPipeline.prepare(ctx, f, state.password,
+                    com.smartdocs.editor.core.view5.PrintOptions(range = "${range.first + 1}-${range.last + 1}"), com.smartdocs.editor.core.view5.PrintExtras(), state.app.documents.tempDir)
+                com.smartdocs.editor.core.util.PdfPrint.print(ctx, out, f.nameWithoutExtension, n)
+            }
+        }
+    }
+    Box {
+        IconButton(onClick = { open = true }, Modifier.size(32.dp)) { Icon(Icons.Default.Print, stringResource(R.string.print), Modifier.size(18.dp)) }
+        DropdownMenu(open, { open = false }) {
+            val item = flat.getOrNull(index)?.first
+            DropdownMenuItem(text = { Text(stringResource(R.string.nbt_print_bm_page)) }, onClick = { open = false; item?.let { print(it.page..it.page) } })
+            DropdownMenuItem(text = { Text(stringResource(R.string.nbt_print_bm_section)) }, onClick = {
+                open = false
+                if (index >= 0) print(com.smartdocs.editor.core.view5.PrintLayout.section(flat.map { it.first.level }, flat.map { it.first.page }, index, state.pageCount))
+            })
         }
     }
 }

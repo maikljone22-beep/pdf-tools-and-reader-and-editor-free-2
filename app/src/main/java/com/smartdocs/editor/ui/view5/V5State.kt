@@ -53,7 +53,7 @@ class V5State private constructor(val s: ReaderState) {
     var showHistoryPill by mutableStateOf(false)
 
     // ---- measuring ----
-    var scale by mutableStateOf(MeasureScale.parse(prefs.getString("scale", "") ?: "") ?: MeasureScale(1.0, MUnit.CM, 1.0, MUnit.CM))
+    var scale by mutableStateOf(MeasureScale.parse(prefs.getString("scale", "") ?: "") ?: defaultScale())
     var precision by mutableIntStateOf(prefs.getInt("precision", 2))
     var snap by mutableStateOf(prefs.getBoolean("snap", true))
     /** Snap points to the overlay grid ([gridMm] spacing), for every workbench tool (7.14). */
@@ -67,6 +67,12 @@ class V5State private constructor(val s: ReaderState) {
     // ---- command search / pins (set by View5ReaderHost) ----
     var env by mutableStateOf<V5Env?>(null)
     var pinsVersion by mutableIntStateOf(0)
+
+    /** nav-prefs: a document without a saved scale measures in the default units of Settings. */
+    private fun defaultScale(): MeasureScale {
+        val u = MUnit.values().firstOrNull { it.code == com.smartdocs.editor.core.data.NpfPrefs.units } ?: MUnit.CM
+        return MeasureScale(1.0, u, 1.0, u)
+    }
 
     fun open(x: V5Surface) {
         // nitro-protect2: printing follows the document's print permission

@@ -133,7 +133,7 @@ class OcrEngine(private val context: Context, val fast: Boolean = false) : AutoC
         val git = when { sha != null -> null; fastPack -> OcrModels.FAST[lang]; else -> OcrModels.BEST[lang] }
         if (sha == null && git == null) throw IllegalStateException("no verified language pack for $lang")
         val url = if (sha != null) modelUrl(lang) else OcrModels.url(fastPack, lang)
-        val client = OkHttpClient.Builder().connectTimeout(30, TimeUnit.SECONDS).readTimeout(120, TimeUnit.SECONDS).followRedirects(true).build()
+        val client = OkHttpClient.Builder().addInterceptor(com.smartdocs.editor.core.data.NpfNet.interceptor).connectTimeout(30, TimeUnit.SECONDS).readTimeout(120, TimeUnit.SECONDS).followRedirects(true).build()
         val ctx = coroutineContext
         onProgress(lang, 0f)
         client.newCall(Request.Builder().url(url).build()).execute().use { resp ->
