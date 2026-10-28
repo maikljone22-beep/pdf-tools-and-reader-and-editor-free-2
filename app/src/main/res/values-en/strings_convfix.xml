@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Convert-section audit fixes (gaps/convert-audit): errors, notes, password prompts, job notification. -->
+<resources>
+    <string name="cvf_e_generic">The conversion could not be completed. Try another file or try again.</string>
+    <string name="cvf_e_memory">The file is too large for the memory of this device. Try a smaller page range or a lower resolution.</string>
+    <string name="cvf_e_too_large">The document is too large to lay out and print at once. Split it or try a part of it.</string>
+    <string name="cvf_e_timeout">The operation took longer than allowed. Try again or try a smaller file.</string>
+    <string name="cvf_e_network">No internet connection. Check the connection and try again.</string>
+    <string name="cvf_e_http">The site answered with an error (%1$d). Check the link.</string>
+    <string name="cvf_e_damaged">The file is damaged or is not the type its name suggests.</string>
+    <string name="cvf_e_damaged_pdf">The PDF file is damaged or incomplete.</string>
+    <string name="cvf_e_disk_full">There is not enough storage space. Free some space and try again.</string>
+    <string name="cvf_e_name_long">The file name is too long. Rename it to a shorter name.</string>
+    <string name="cvf_e_empty">The conversion produced no page.</string>
+    <string name="cvf_e_image_write">The picture could not be saved (it exceeds the limits of the format, or there is no space).</string>
+    <string name="cvf_e_img_fax">A fax (CCITT) picture that cannot be opened here</string>
+    <string name="cvf_e_img_tiff">A TIFF picture with an unsupported compression</string>
+    <string name="cvf_e_img_generic">The picture could not be opened: unsupported format or damaged file</string>
+    <string name="cvf_e_restricted">“%1$s” is protected: its owner does not allow this conversion. Open it with the owner password.</string>
+    <string name="cvf_e_range_file">The page range does not match “%1$s”.</string>
+    <string name="cvf_pw_for">Password of “%1$s”</string>
+    <string name="cvf_pw_wrong">Wrong password for “%1$s”</string>
+    <string name="cvf_pw_wrong_short">Wrong password</string>
+    <string name="cvf_encrypted_files">Password-protected files that cannot be opened: %1$s</string>
+    <string name="cvf_failed_n">%1$d file(s) could not be converted:</string>
+    <string name="cvf_info_skipped">Pages or pictures that could not be read: %1$s</string>
+    <string name="cvf_info_equations">%1$d equation(s) rendered as linear text</string>
+    <string name="cvf_info_unrendered">%1$d chart(s) or diagram(s) could not be rendered (a marker shows where)</string>
+    <string name="cvf_info_images_dropped">%1$d picture(s) were left out (unsupported format or too large)</string>
+    <string name="cvf_info_sheet_cut">Sheet “%1$s” was cut (too many rows or columns)</string>
+    <string name="cvf_info_rows_cut">Sheet “%1$s”: the first %2$d of %3$d rows were printed</string>
+    <string name="cvf_info_doc_text">Word 97 file (.doc): text only, without tables, pictures or formatting</string>
+    <string name="cvf_info_signed">“%1$s” is digitally signed: the result is an unsigned copy</string>
+    <string name="cvf_info_capped">The picture was larger than %1$d pixels and was made smaller</string>
+    <string name="cvf_info_first_sheet">The file has %1$d sheets: only the first was exported (turn on “All sheets” to export them all)</string>
+    <string name="cvf_info_long_parts">The long picture was split into %1$d pictures (format or memory limit)</string>
+    <string name="cvf_info_gray_raster">%1$d page(s) with colour shadings or patterns were turned into grey pictures</string>
+    <string name="cvf_ex_skipped">%1$d picture(s) could not be extracted (unsupported format or too large)</string>
+    <string name="cvf_ex_gallery_perm">Saving to the gallery on this Android version needs the storage permission</string>
+    <string name="cvf_lbl_image">[picture]</string>
+    <string name="cvf_lbl_chart">[chart or diagram]</string>
+    <string name="cvf_job_channel">Running conversions</string>
+    <string name="cvf_job_running">Converting…</string>
+    <string name="cvf_job_done">Conversion finished</string>
+    <string name="cvf_job_failed">Conversion failed</string>
+    <string name="cvf_print_channel">SmartDocs PDF printer</string>
+    <string name="cvf_print_label">print</string>
+    <string name="cvf_print_failed">Nothing to print</string>
+    <string name="cvf_print_saved">PDF saved in %1$s</string>
+</resources>

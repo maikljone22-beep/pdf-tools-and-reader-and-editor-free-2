@@ -224,18 +224,20 @@ private fun closeTab(ctx: Context, t: DocTab, current: String, switchTo: (DocTab
 
 /** Phone: top-bar icon with the number of open documents; opens the "recently viewed files" list. */
 @Composable
-fun ReaderTabsAction(state: ReaderState, switchTo: (DocTab?) -> Unit) {
+fun ReaderTabsAction(state: ReaderState, switchTo: (DocTab?) -> Unit, showIcon: Boolean = true, externalOpen: Boolean = false, onExternalClose: () -> Unit = {}) {
     val ctx = LocalContext.current
     LaunchedEffect(Unit) { ReaderTabs.load(ctx) }
+    // tab-view-core V-03: without room in the top bar the icon is hidden and the ⋮ menu opens this menu ([externalOpen])
     var open by remember { mutableStateOf(false) }
+    fun closeMenu() { open = false; onExternalClose() }
     val pick = rememberPdfPicker { files -> files.firstOrNull()?.let { switchTo(DocTab(Uri.fromFile(it).toString(), it.name, page = -1)) } }
     val tabs = ReaderTabs.tabs
     val current = state.fileUri
     Box(Modifier.coachTarget(CoachIds.READER_DOC_TABS)) {
-        IconButton(onClick = { open = true }) {
+        if (showIcon) IconButton(onClick = { open = true }) {
             BadgedBox(badge = { if (tabs.size > 1) Badge { Text(tabs.size.toString()) } }) { Icon(Icons.Default.Tab, stringResource(R.string.vw_tabs)) }
         }
-        DropdownMenu(open, { open = false }) {
+        DropdownMenu(open || externalOpen, { closeMenu() }) {
             Text(stringResource(R.string.vw_tabs_recent), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
             tabs.toList().forEachIndexed { i, t ->
@@ -243,18 +245,18 @@ fun ReaderTabsAction(state: ReaderState, switchTo: (DocTab?) -> Unit) {
                 DropdownMenuItem(
                     text = { Text("${i + 1}. ${t.name}", maxLines = 1, overflow = TextOverflow.Ellipsis) },
                     leadingIcon = { if (sel) Icon(Icons.Default.Check, null) else Icon(Icons.Default.PictureAsPdf, null) },
-                    trailingIcon = { IconButton(onClick = { open = false; closeTab(ctx, t, current, switchTo) }) { Icon(Icons.Default.Close, stringResource(R.string.vw_close_tab)) } },
-                    onClick = { open = false; if (!sel) switchTo(t) },
+                    trailingIcon = { IconButton(onClick = { closeMenu(); closeTab(ctx, t, current, switchTo) }) { Icon(Icons.Default.Close, stringResource(R.string.vw_close_tab)) } },
+                    onClick = { closeMenu(); if (!sel) switchTo(t) },
                 )
             }
             HorizontalDivider()
             // nav-prefs (SHL-7): close the other tabs / all tabs
             if (tabs.size > 1) DropdownMenuItem(text = { Text(stringResource(R.string.npf_tabs_close_others)) }, leadingIcon = { Icon(Icons.Default.Close, null) },
-                onClick = { open = false; tabs.toList().filter { it.uri != current }.forEach { ReaderTabs.close(ctx, it.uri) } })
+                onClick = { closeMenu(); tabs.toList().filter { it.uri != current }.forEach { ReaderTabs.close(ctx, it.uri) } })
             if (tabs.isNotEmpty()) DropdownMenuItem(text = { Text(stringResource(R.string.npf_tabs_close_all)) }, leadingIcon = { Icon(Icons.Default.Close, null) },
-                onClick = { open = false; tabs.toList().filter { it.uri != current }.forEach { ReaderTabs.close(ctx, it.uri) }; tabs.firstOrNull { it.uri == current }?.let { closeTab(ctx, it, current, switchTo) } })
-            DropdownMenuItem(text = { Text(stringResource(R.string.vw_open_another)) }, leadingIcon = { Icon(Icons.Default.FileOpen, null) }, onClick = { open = false; pick() })
-            com.smartdocs.editor.ui.nve.NveTabsMenuItems(state, switchTo) { open = false }   // NVE: close others / all, pin, new window, copy path
+                onClick = { closeMenu(); tabs.toList().filter { it.uri != current }.forEach { ReaderTabs.close(ctx, it.uri) }; tabs.firstOrNull { it.uri == current }?.let { closeTab(ctx, it, current, switchTo) } })
+            DropdownMenuItem(text = { Text(stringResource(R.string.vw_open_another)) }, leadingIcon = { Icon(Icons.Default.FileOpen, null) }, onClick = { closeMenu(); pick() })
+            com.smartdocs.editor.ui.nve.NveTabsMenuItems(state, switchTo) { closeMenu() }   // NVE: close others / all, pin, new window, copy path
         }
     }
 }

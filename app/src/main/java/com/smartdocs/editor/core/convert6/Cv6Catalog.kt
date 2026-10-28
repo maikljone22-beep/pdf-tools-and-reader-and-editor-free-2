@@ -45,7 +45,7 @@ object Cv6Catalog {
         Conv("pdf_pptx", listOf(Cv6Group.FROM_PDF, Cv6Group.OFFICE), Fmt.PDF, Fmt.PPT, PDF, opts = setOf(Opt.RANGE, Opt.AUTO_OCR, Opt.PPT_MODE, Opt.TABLES, Opt.INCLUDE_IMAGES), outExt = "pptx", keywords = "powerpoint pptx"),
         Conv("pdf_images", listOf(Cv6Group.FROM_PDF, Cv6Group.IMAGES), Fmt.PDF, Fmt.IMAGES_OUT, PDF, opts = setOf(Opt.RANGE, Opt.IMG_FORMAT, Opt.DPI, Opt.QUALITY, Opt.IMG_OUTPUT, Opt.GRAY), outExt = "jpg", keywords = "jpg png webp zip"),
         Conv("pdf_long_image", listOf(Cv6Group.FROM_PDF, Cv6Group.IMAGES), Fmt.PDF, Fmt.LONG_IMAGE, PDF, opts = setOf(Opt.RANGE, Opt.IMG_FORMAT, Opt.DPI, Opt.QUALITY), outExt = "jpg", keywords = "long stitch"),
-        Conv("extract_images", listOf(Cv6Group.FROM_PDF, Cv6Group.IMAGES), Fmt.PDF, Fmt.IMAGE, PDF + setOf(Kind6.DOCX, Kind6.PPTX, Kind6.XLSX, Kind6.EPUB, Kind6.ODT, Kind6.ODP), multi = false, route = "extract_images", keywords = "extract images"),
+        Conv("extract_images", listOf(Cv6Group.FROM_PDF, Cv6Group.IMAGES), Fmt.PDF, Fmt.IMAGE, PDF + setOf(Kind6.DOCX, Kind6.PPTX, Kind6.XLSX, Kind6.EPUB, Kind6.ODT, Kind6.ODP, Kind6.ODS), multi = false, route = "extract_images", keywords = "extract images استخراج"),
         Conv("pdf_txt", listOf(Cv6Group.FROM_PDF, Cv6Group.TEXT_BOOKS), Fmt.PDF, Fmt.TXT, PDF, opts = setOf(Opt.RANGE, Opt.AUTO_OCR, Opt.TABLES), outExt = "txt", keywords = "text txt"),
         Conv("pdf_html", listOf(Cv6Group.FROM_PDF), Fmt.PDF, Fmt.HTML, PDF, opts = setOf(Opt.RANGE, Opt.AUTO_OCR, Opt.TABLES, Opt.INCLUDE_IMAGES), outExt = "html", keywords = "html web"),
         Conv("pdf_rtf", listOf(Cv6Group.FROM_PDF), Fmt.PDF, Fmt.RTF, PDF, opts = setOf(Opt.RANGE, Opt.AUTO_OCR), outExt = "rtf", keywords = "rtf"),
@@ -127,6 +127,73 @@ object Cv6Catalog {
 
     fun byId(id: String): Conv? = all.firstOrNull { it.id == id }
 
+    /** Good defaults per conversion (the hub sheet and the recipes use the same, convert audit C47). */
+    fun defaultsFor(c: Conv): Cv6Opts = when (c.id) {
+        "img_convert" -> Cv6Opts(imgFormat = ImgFmt.PNG, quality = 90)
+        "img_resize" -> Cv6Opts(imgFormat = null, quality = 80, resizePercent = 50)
+        "heic_jpg" -> Cv6Opts(imgFormat = ImgFmt.JPG, quality = 92)
+        "pdf_compress" -> Cv6Opts(quality = 70, dpi = 150)
+        "pdf_flatten" -> Cv6Opts(dpi = 200)
+        "pdf_odp", "pptx_odp" -> Cv6Opts(dpi = 150)
+        "pdf_svg" -> Cv6Opts(dpi = 150, zip = true)
+        "pdf_long_image" -> Cv6Opts(imgFormat = ImgFmt.JPG, dpi = 110, quality = 85)
+        "pdf_tiff", "pdf_ps", "pdf_eps", "pdf_xps" -> Cv6Opts(dpi = 200)
+        "pdf_bmp" -> Cv6Opts(dpi = 150, zip = true)
+        "images_pdf", "tiff_pdf" -> Cv6Opts(quality = 88)
+        "ocr_pdf_docx" -> Cv6Opts(keepLayout = null)
+        else -> Cv6Opts()
+    }
+
+    /**
+     * Arabic (and common English) names of the formats for search (convert audit C15: «وورد», «اكسل», «بوربوينت»,
+     * «كتاب», «ضغط» found nothing because the format labels are Latin). Normalised by [norm] when matched.
+     */
+    fun fmtWords(f: Fmt): String = when (f) {
+        Fmt.PDF -> "pdf بي دي اف بدف ملف"
+        Fmt.WORD -> "word docx doc وورد ورد مستند مايكروسوفت"
+        Fmt.EXCEL -> "excel xlsx xls اكسل إكسل اكسيل جدول جداول بيانات"
+        Fmt.PPT -> "powerpoint pptx بوربوينت باوربوينت بوربوينت عرض عروض شرائح شريحة تقديمي"
+        Fmt.IMAGE, Fmt.IMAGES_OUT -> "image images صورة صور الصور صوره"
+        Fmt.JPG -> "jpg jpeg صورة صور جي بي جي"
+        Fmt.PNG -> "png صورة صور"
+        Fmt.WEBP -> "webp صورة صور"
+        Fmt.HEIC -> "heic heif ايفون آيفون صورة صور"
+        Fmt.TIFF -> "tiff tif فاكس تيف صورة صور"
+        Fmt.ZIP -> "zip ضغط مضغوط ارشيف"
+        Fmt.LONG_IMAGE -> "long صورة طويلة صور"
+        Fmt.TXT -> "text txt نص نصوص نصي"
+        Fmt.HTML -> "html web ويب صفحة موقع"
+        Fmt.RTF -> "rtf نص منسق"
+        Fmt.MD -> "markdown md ماركداون"
+        Fmt.EPUB -> "epub ebook book كتاب كتب كتاب الكتروني إلكتروني"
+        Fmt.CSV -> "csv جدول جداول بيانات"
+        Fmt.ODT -> "odt مستند ليبر اوفيس"
+        Fmt.ODS -> "ods جدول ليبر اوفيس"
+        Fmt.ODP -> "odp عرض شرائح ليبر اوفيس"
+        Fmt.SVG -> "svg فيكتور متجه صورة"
+        Fmt.PDFA -> "pdf/a ارشفة أرشفة ارشيف"
+        Fmt.GRAY -> "gray grayscale رمادي ابيض واسود أبيض وأسود"
+        Fmt.SMALL -> "compress small ضغط مضغوط تصغير تقليل الحجم حجم"
+        Fmt.SEARCHABLE -> "ocr searchable بحث قابل للبحث التعرف الضوئي"
+        Fmt.FLAT -> "flatten تسطيح دمج الطبقات"
+        Fmt.WEB -> "web url رابط موقع صفحة ويب"
+        Fmt.EMAIL -> "email eml بريد رسالة ايميل إيميل"
+        Fmt.CAMERA -> "camera scan كاميرا مسح ماسح تصوير"
+        Fmt.CLIPBOARD -> "clipboard حافظة نسخ لصق"
+        Fmt.ANY -> "any اي ملف أي ملف دمج مختلط"
+        Fmt.OCR -> "ocr ممسوح مسح ضوئي التعرف الضوئي"
+        Fmt.HANDOUT -> "handout نشرة شرائح في صفحة"
+        Fmt.RESIZE -> "resize تصغير تغيير الحجم ضغط صورة"
+        Fmt.BMP -> "bmp صورة صور"
+        Fmt.PS -> "postscript ps طباعة"
+        Fmt.EPS -> "eps صورة متجهة"
+        Fmt.XPS -> "xps"
+        Fmt.XML -> "xml بيانات"
+        Fmt.ACCESS_TXT -> "accessible نص ميسر برايل قارئ الشاشة"
+        Fmt.HTML_SET -> "html صفحات ويب موقع"
+        Fmt.XML_2003 -> "excel 2003 xml اكسل جدول"
+    }
+
     fun inGroup(g: Cv6Group): List<Conv> = all.filter { g in it.groups }
 
     /** Conversions that accept [kind] (for the reader's current file: the hub puts them first). */
@@ -140,7 +207,7 @@ object Cv6Catalog {
         val words = norm(query).split(' ').filter { it.isNotEmpty() }
         if (words.isEmpty()) return all
         return all.filter { c ->
-            val hay = norm(c.id.replace('_', ' ') + " " + c.keywords + " " + label(c) + " " + c.from.name + " " + c.to.name)
+            val hay = norm(c.id.replace('_', ' ') + " " + c.keywords + " " + label(c) + " " + c.from.name + " " + c.to.name + " " + fmtWords(c.from) + " " + fmtWords(c.to))
             words.all { hay.contains(it) }
         }
     }

@@ -35,7 +35,35 @@ private fun chipLabel(id: String): String = stringResource(when (id) {
     "reflow" -> R.string.reflow; "auto_flip" -> R.string.auto_flip; "rotate" -> R.string.rotate_view; "crop" -> R.string.crop_mode
     "magnifier" -> R.string.vw_magnifier; "search" -> R.string.search; "panels" -> R.string.rd_panels; "bookmarks" -> R.string.panel_bookmarks
     "thumbnails" -> R.string.panel_thumbnails; "read_aloud" -> R.string.tool_read_aloud; "ai" -> R.string.tool_ai; "share" -> R.string.share
-    "print" -> R.string.print; else -> R.string.tool_doc_info
+    "print" -> R.string.print; "attachments" -> R.string.panel_attachments
+    // tab-view-core V-26
+    "v5_tell_me" -> R.string.v5_tell_me
+    "v5_split" -> R.string.v5_split_view
+    "v5_compare" -> R.string.v5_compare
+    "v5_present" -> R.string.v5_presentation
+    "v5_auto_scroll" -> R.string.v5_auto_scroll
+    "v5_rulers" -> R.string.v5_rulers
+    "v5_grid" -> R.string.v5_grid
+    "v5_reading_ruler" -> R.string.v5_reading_ruler
+    "v5_overlay" -> R.string.v5_overlay_settings
+    "v5_tts_options" -> R.string.v5_read_aloud_options
+    "nv_zoom" -> R.string.nv_zoom
+    "nv_marquee" -> R.string.nv_marquee
+    "nv_fit_height" -> R.string.nv_fit_height
+    "nv_actual" -> R.string.nv_actual_size
+    "nv_cont_facing" -> R.string.nv_continuous_facing
+    "nv_reverse" -> R.string.nv_reverse_view
+    "nv_word_count" -> R.string.nv_word_count
+    "nv_text_viewer" -> R.string.nv_text_viewer
+    "nv_quad" -> R.string.nv_quad_split
+    "nv_transitions" -> R.string.nv_transitions
+    "nv_page_snap" -> R.string.nv_page_snapshot
+    "nv_area_snap" -> R.string.nv_area_snapshot
+    "nv_paste" -> R.string.nv_paste
+    "nv_select_all" -> R.string.nv_select_all
+    "nv_signatures" -> R.string.nv_pane_signatures
+    "nv_spell" -> R.string.nv_spell_doc
+    else -> R.string.tvc_info_panel
 })
 
 /** SHL-3: show / hide and reorder the reader tabs, hide View-tab chips (prefs "nve_shell", read by the reader). */

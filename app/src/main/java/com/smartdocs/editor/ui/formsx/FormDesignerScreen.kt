@@ -76,6 +76,8 @@ fun FormDesignerScreen(nav: NavHostController, uri: String?) {
     DisposableEffect(Unit) { onDispose { st.dispose() } }
     val initial = remember(uri) { uri?.let { runCatching { File(android.net.Uri.parse(it).path!!) }.getOrNull()?.takeIf { f -> f.exists() } } }
     LaunchedEffect(initial) { initial?.let { st.open(it) } }
+    // selmenu-rest: the reader's field menu opened the designer on one field (select it; duplicate / delete / tab order)
+    LaunchedEffect(st.specs) { com.smartdocs.editor.ui.selmenu.SelFieldHandoff.apply(ctx, st) }
     val pick = rememberPdfPicker { f -> f.firstOrNull()?.let { st.open(it) } }
 
     var kind by remember { mutableStateOf(NewKind.TEXT) }
@@ -315,6 +317,8 @@ fun FormDesignerScreen(nav: NavHostController, uri: String?) {
         confirmButton = { TextButton(onClick = { leaveAsk = false; nav.popBackStack() }) { Text(stringResource(R.string.fx_leave)) } },
         dismissButton = { TextButton(onClick = { leaveAsk = false }) { Text(stringResource(R.string.cancel)) } })
     st.message?.let { m -> AlertDialog(onDismissRequest = { st.message = null }, text = { Text(m) }, confirmButton = { TextButton(onClick = { st.message = null }) { Text(stringResource(R.string.ok)) } }) }
+    // tab-view-core E-03: password prompt for an encrypted document
+    st.needPassword?.let { f -> com.smartdocs.editor.ui.reader.PasswordDialog(st.wrongPassword, onOk = { pw -> st.open(f, pw) }, onCancel = { st.needPassword = null }) }
     st.error?.let { e -> AlertDialog(onDismissRequest = { st.error = null }, text = { Text(e) }, confirmButton = { TextButton(onClick = { st.error = null }) { Text(stringResource(R.string.ok)) } }) }
     if (runner.running) ProgressDialog(runner.message)
     runner.result?.let { f -> ResultSheet(f, nav, onDismiss = { runner.result = null }) }

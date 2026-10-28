@@ -175,7 +175,10 @@ fun InPageFormLayer(reader: ReaderState, pageIndex: Int, g: PageGeometry) {
                 Modifier
                     .absoluteOffset { IntOffset(t.left.roundToInt(), t.top.roundToInt()) }
                     .size(with(density) { t.width.toDp() }, with(density) { t.height.toDp() })
-                    .pointerInput(w) { detectTapGestures(onTap = { fs.tap(w) }) },
+                    // selmenu-rest: a long-press opens the field menu (copy value, clear, reset, properties, designer...);
+                    // a tap while that menu is open only closes it
+                    .pointerInput(w) { detectTapGestures(onTap = { if (!com.smartdocs.editor.ui.selmenu.SelHooks.onPageTap(reader)) fs.tap(w) },
+                        onLongPress = { com.smartdocs.editor.ui.selmenu.SelHooks.longPressField(reader, w) }) },
             )
         }
         if (editing != null) rects[editing.id]?.let { ActiveTextEditor(fs, editing, it, g.scale, accent, FieldRotation.textAngle(editing.pageRotation, editing.mkRotation, g.rotation)) }

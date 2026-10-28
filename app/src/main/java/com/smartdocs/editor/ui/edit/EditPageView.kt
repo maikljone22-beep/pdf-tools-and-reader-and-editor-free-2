@@ -88,7 +88,11 @@ internal fun EditPageView(c: EditController, modifier: Modifier = Modifier) {
         Box(Modifier.fillMaxSize().verticalScroll(vScroll).horizontalScroll(hScroll)) {
             Box(Modifier.padding(with(density) { pad.toDp() }).size(wDp, hDp).shadow(2.dp).background(Color.White)
                 .pointerInput(c.mode, scale, pageH, c.model, c.busy) {
-                    detectTapGestures { o -> c.onTap(o.x / scale, pageH - o.y / scale) }
+                    // selmenu-rest: long-press on a picture / shape opens its menu at the finger; a tap closes it
+                    detectTapGestures(
+                        onLongPress = { o -> if (!c.tools5.multi) com.smartdocs.editor.ui.selmenu.SelEditImage.longPress(c, o.x / scale, pageH - o.y / scale, o) },
+                        onTap = { o -> com.smartdocs.editor.ui.selmenu.SelEditImage.dismiss(c); c.onTap(o.x / scale, pageH - o.y / scale) },
+                    )
                 }
                 .pointerInput(c.tools5.multi, scale, pageH) {
                     // NVE-img: marquee selection in multi-select
@@ -177,6 +181,7 @@ internal fun EditPageView(c: EditController, modifier: Modifier = Modifier) {
                 }
 
                 if (c.mode == EditMode.TEXT && c.editingText) InlineEditor(c, scale, pageH, rtlUi)
+                com.smartdocs.editor.ui.selmenu.SelEditImageMenu(c)      // selmenu-rest: page-image menu (registry IMAGE context)
             }
         }
         }

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- fix/reflow-plus: §14d reflow editing of a page range -->
+    <string name="rfp_note">نص هذه الصفحات تدفق واحد بترتيب القراءة: تبقى الأعمدة بترتيبها، والفقرة التي تعبر حد الصفحة تبقى فقرة واحدة. يبقى الغامق والمائل والحجم واللون كما في الأصل. النص الذي لا يتسع يُكمَل في صفحات جديدة بعد النطاق.</string>
+    <string name="rfp_from">من صفحة</string>
+    <string name="rfp_to">إلى صفحة</string>
+    <string name="rfp_earlier">صفحة أسبق</string>
+    <string name="rfp_later">صفحة لاحقة</string>
+    <string name="rfp_loading">جارٍ قراءة النص…</string>
+    <string name="rfp_areas">%1$d مناطق نص في %2$d صفحات</string>
+    <string name="rfp_failed">تعذرت قراءة النص: %1$s</string>
+</resources>

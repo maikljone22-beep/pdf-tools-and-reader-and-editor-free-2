@@ -55,7 +55,8 @@ object NpfReader {
         "continuous" -> ViewMode.CONTINUOUS
         "facing" -> ViewMode.FACING
         "cover" -> ViewMode.COVER
-        else -> if (continuous) ViewMode.CONTINUOUS else ViewMode.SINGLE
+        // tab-view-core V-17: "auto" remembers the layout itself (facing / cover were saved as "not continuous" = single)
+        else -> runCatching { ViewMode.valueOf(NpfPrefs.lastLayout) }.getOrNull() ?: if (continuous) ViewMode.CONTINUOUS else ViewMode.SINGLE
     }
 
     /** PREF-6: default zoom — fit page, or a zoom relative to fit width. */
@@ -106,9 +107,10 @@ fun NpfReaderEffects(state: ReaderState, settings: AppSettings, nav: NavHostCont
     LaunchedEffect(opened) {
         if (!opened) return@LaunchedEffect
         val f = state.file ?: return@LaunchedEffect
-        // a recovery copy newer than the file: the previous session ended before its edits were saved
+        // tab-view-core V-12: one crash-recovery system (NveRecovery). A copy the old one left is handed over to it
+        // (offered by its banner) instead of a second, modal "recovered" prompt.
         val rec = NpfReader.recoveryFile(state, f)
-        if (rec.isFile) { if (rec.lastModified() > f.lastModified() && rec.length() > 0) recovered = rec else rec.delete() }
+        if (rec.isFile) withContext(Dispatchers.IO) { if (rec.lastModified() > f.lastModified() && rec.length() > 0) com.smartdocs.editor.ui.nve.shell.NveRecovery.adoptLegacy(state.context, f, rec) else rec.delete() }
         recChecked = true
         when (NpfPrefs.panelOnOpen) {
             "outline" -> onPanel(ReaderPanel.OUTLINE)
@@ -121,21 +123,7 @@ fun NpfReaderEffects(state: ReaderState, settings: AppSettings, nav: NavHostCont
     androidx.compose.runtime.DisposableEffect(state) {
         onDispose { if (state.discarded) state.file?.let { NpfReader.recoveryFile(state, it).delete() } }   // "discard" leaves nothing to recover
     }
-    val recMin = NpfPrefs.recoveryMinutes
-    LaunchedEffect(state.dirty, recMin, recChecked) {
-        val f = state.file
-        if (!recChecked) return@LaunchedEffect
-        if (!state.dirty) { if (f != null && recovered == null) NpfReader.recoveryFile(state, f).delete(); return@LaunchedEffect }
-        if (recMin <= 0 || f == null) return@LaunchedEffect
-        while (isActive && state.dirty) {
-            delay(recMin * 60_000L)
-            if (!state.dirty || state.saving) continue
-            val out = NpfReader.recoveryFile(state, f)
-            val tmp = File(out.parentFile, out.name + ".part")
-            runCatching { state.exportWithAnnots(tmp); if (tmp.length() > 0) { out.delete(); tmp.renameTo(out) } }
-            tmp.delete()
-        }
-    }
+    // tab-view-core V-12: the periodic recovery copies are written by NveRecoveryEffect only (one interval, one folder)
     val saveMin = NpfPrefs.autoSaveMinutes
     LaunchedEffect(state.dirty, saveMin, settings.autoSave) {
         if (!state.dirty || saveMin <= 0 || !settings.autoSave) return@LaunchedEffect
@@ -143,25 +131,6 @@ fun NpfReaderEffects(state: ReaderState, settings: AppSettings, nav: NavHostCont
             delay(saveMin * 60_000L)
             state.saveInBackground()
         }
-    }
-    recovered?.let { rec ->
-        AlertDialog(onDismissRequest = { },
-            title = { Text(stringResource(R.string.npf_recover_title)) },
-            text = { Text(stringResource(R.string.npf_recover_text)) },
-            confirmButton = {
-                TextButton(onClick = {
-                    recovered = null
-                    val f = state.file ?: return@TextButton
-                    scope.launch {
-                        val docs = state.app.documents
-                        val out = withContext(Dispatchers.IO) {
-                            runCatching { docs.uniqueFile(docs.docsDir, f.nameWithoutExtension + " " + state.context.getString(R.string.npf_recovered_suffix)).also { rec.copyTo(it); rec.delete() } }.getOrNull()
-                        }
-                        if (out != null) nav.navigate(Routes.reader(Uri.fromFile(out).toString()))
-                    }
-                }) { Text(stringResource(R.string.npf_recover_open)) }
-            },
-            dismissButton = { TextButton(onClick = { rec.delete(); recovered = null }) { Text(stringResource(R.string.npf_recover_discard)) } })
     }
 }
 

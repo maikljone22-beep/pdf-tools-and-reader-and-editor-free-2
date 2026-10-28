@@ -322,12 +322,14 @@ fun rememberPdfPicker(multiple: Boolean = false, mimes: Array<String> = arrayOf(
 }
 
 @Composable
-fun rememberImagePicker(multiple: Boolean = true, onPicked: (List<File>) -> Unit): () -> Unit {
+fun rememberImagePicker(multiple: Boolean = true, onCancel: (() -> Unit)? = null, onPicked: (List<File>) -> Unit): () -> Unit {
     val app = LocalApp.current
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
-    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(if (multiple) 50 else 2)) { uris ->
-        if (uris.isNotEmpty()) scope.launch(Dispatchers.IO) {
+    val cancel by rememberUpdatedState(onCancel)
+    fun copyIn(uris: List<android.net.Uri>) {
+        if (uris.isEmpty()) { cancel?.invoke(); return }      // tab-view-core E-13: the caller can leave its pick mode
+        scope.launch(Dispatchers.IO) {
             val files = uris.mapIndexedNotNull { i, u ->
                 runCatching {
                     val f = app.documents.newTemp("img_$i", "jpg")
@@ -337,7 +339,15 @@ fun rememberImagePicker(multiple: Boolean = true, onPicked: (List<File>) -> Unit
             withContext(Dispatchers.Main) { onPicked(files) }
         }
     }
-    return { launcher.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
+    // tab-view-core E-16: one image means the single picker (a second pick is no longer silently dropped)
+    val many = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(50)) { uris -> copyIn(uris) }
+    val one = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri -> copyIn(listOfNotNull(uri)) }
+    return {
+        // tab-view-core E-16: picked copies older than a day are removed (callers may still use the recent ones)
+        scope.launch(Dispatchers.IO) { val old = System.currentTimeMillis() - 24 * 3600_000L; app.documents.tempDir.listFiles { f -> f.name.startsWith("img_") && f.lastModified() < old }?.forEach { it.delete() } }
+        val req = androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+        if (multiple) many.launch(req) else one.launch(req)
+    }
 }
 
 @Composable
@@ -363,7 +373,10 @@ fun FilePickRow(file: File?, label: String, onPick: () -> Unit) {
 
 @Composable
 fun PageRangeField(value: String, onChange: (String) -> Unit) {
-    OutlinedTextField(value, onChange, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.page_range)) }, placeholder = { Text(stringResource(R.string.pages_hint)) }, singleLine = true, shape = RoundedCornerShape(16.dp))
+    // Arabic-Indic digits and «،» are accepted; anything else is flagged before converting (convert audit B17 / A-M12)
+    val bad = !com.smartdocs.editor.core.pdf.PdfOps.rangeSyntaxOk(value)
+    OutlinedTextField(value, onChange, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.page_range)) }, placeholder = { Text(stringResource(R.string.pages_hint)) }, singleLine = true, shape = RoundedCornerShape(16.dp),
+        isError = bad, supportingText = if (bad) ({ Text(stringResource(R.string.cv6_err_range)) }) else null)
 }
 
 @Composable

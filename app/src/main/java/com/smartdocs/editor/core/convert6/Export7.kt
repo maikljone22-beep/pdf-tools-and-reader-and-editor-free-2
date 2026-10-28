@@ -83,6 +83,82 @@ object TiffWriter {
 
     fun write(pages: List<Raster>, color: TiffColor, out: OutputStream) = writeEncoded(pages.map { encode(it, color) }, color, out)
 
+    /**
+     * Multi-page TIFF written page by page straight into [file] (convert audit B07: all pages' strips were kept in
+     * memory, then copied twice into one byte array). Each [add] encodes one page, appends its IFD + data and patches
+     * the previous page's next-IFD offset. Same layout as [writeEncoded].
+     */
+    class Stream(file: java.io.File, private val color: TiffColor) : java.io.Closeable {
+        private val raf = java.io.RandomAccessFile(file, "rw")
+        private var prevNextPos = 4L
+        var pages = 0; private set
+
+        init { raf.setLength(0); raf.write(byteArrayOf('I'.code.toByte(), 'I'.code.toByte(), 42, 0, 0, 0, 0, 0)) }
+
+        fun add(r: Raster) = addEncoded(encode(r, color))
+
+        fun addEncoded(e: Encoded) {
+            val one = ByteArrayOutputStream()
+            writeEncoded(listOf(e), color, one)
+            val b = one.toByteArray()
+            // [b] is a one-page TIFF whose IFD starts at offset 8: move it to the end of the file
+            var start = raf.length()
+            if (start and 1L == 1L) { raf.seek(start); raf.write(0); start++ }
+            val shift = start - 8
+            val body = b.copyOfRange(8, b.size)
+            val n = (body[0].toInt() and 0xFF) or ((body[1].toInt() and 0xFF) shl 8)
+            for (k in 0 until n) {
+                val o = 2 + k * 12
+                val tag = (body[o].toInt() and 0xFF) or ((body[o + 1].toInt() and 0xFF) shl 8)
+                val type = (body[o + 2].toInt() and 0xFF) or ((body[o + 3].toInt() and 0xFF) shl 8)
+                val count = CfbReader.le32(body, o + 4)
+                val isOffset = tag == 273 || type == 5 || (tag == 258 && count == 3)
+                if (isOffset) {
+                    val v = (CfbReader.le32(body, o + 8).toLong() and 0xFFFFFFFFL) + shift
+                    for (q in 0 until 4) body[o + 8 + q] = (v shr (8 * q)).toByte()
+                }
+            }
+            raf.seek(start); raf.write(body)
+            raf.seek(prevNextPos); for (q in 0 until 4) raf.write(((start shr (8 * q)) and 0xFF).toInt())
+            prevNextPos = start + 2 + n * 12L
+            pages++
+        }
+
+        override fun close() = raf.close()
+    }
+
+    /**
+     * A one-page TIFF around a CCITT fax stream taken from a PDF as it is (convert audit B18: big 1-bit scans were
+     * decoded to ARGB and ran out of memory). [k] is the PDF /K (< 0 = G4, 0 = G3 1-D, > 0 = G3 2-D); [blackIs1] the
+     * PDF /BlackIs1 (the TIFF photometric follows it). Pure.
+     */
+    fun ccitt(raw: ByteArray, w: Int, h: Int, k: Int, blackIs1: Boolean, dpi: Int = 200): ByteArray {
+        val buf = ByteArrayOutputStream()
+        fun u16(v: Int) { buf.write(v and 0xFF); buf.write((v shr 8) and 0xFF) }
+        fun u32(v: Long) { for (q in 0 until 4) buf.write(((v shr (8 * q)) and 0xFF).toInt()) }
+        val comp = if (k < 0) 4 else 3
+        // (tag, type, value); offsets of the resolution and the data are filled in below
+        val tags = ArrayList<Triple<Int, Int, Long>>()
+        tags += Triple(256, 4, w.toLong()); tags += Triple(257, 4, h.toLong()); tags += Triple(258, 3, 1L)
+        tags += Triple(259, 3, comp.toLong()); tags += Triple(262, 3, if (blackIs1) 0L else 1L)
+        tags += Triple(273, 4, -1L); tags += Triple(277, 3, 1L); tags += Triple(278, 4, h.toLong()); tags += Triple(279, 4, raw.size.toLong())
+        tags += Triple(282, 5, -1L); tags += Triple(283, 5, -1L); tags += Triple(296, 3, 2L)
+        if (comp == 3) tags += Triple(292, 4, if (k > 0) 1L else 0L)   // T4Options: 2-D coding
+        val sorted = tags.sortedBy { it.first }
+        val extra = 8L + 2 + sorted.size * 12 + 4
+        buf.write('I'.code); buf.write('I'.code); u16(42); u32(8)
+        u16(sorted.size)
+        sorted.forEach { (tag, type, v0) ->
+            val v = when (tag) { 282 -> extra; 283 -> extra + 8; 273 -> extra + 16; else -> v0 }
+            u16(tag); u16(type); u32(1)
+            if (type == 3) { u16(v.toInt()); u16(0) } else u32(v)
+        }
+        u32(0)
+        u32(dpi.toLong()); u32(1); u32(dpi.toLong()); u32(1)
+        buf.write(raw)
+        return buf.toByteArray()
+    }
+
     /** Multi-page baseline TIFF (little endian, one strip per page, PackBits). */
     fun writeEncoded(pages: List<Encoded>, color: TiffColor, out: OutputStream) {
         val buf = ByteArrayOutputStream()
@@ -156,8 +232,11 @@ object PsWriter {
     class Page(val jpeg: ByteArray, val pxW: Int, val pxH: Int, val ptW: Float, val ptH: Float, val gray: Boolean = false)
 
     /** ASCII85 with the `~>` end marker, lines of 76. */
-    fun ascii85(data: ByteArray): String {
-        val sb = StringBuilder(data.size * 5 / 4 + 16); var col = 0
+    fun ascii85(data: ByteArray): String = StringBuilder(data.size * 5 / 4 + 16).also { ascii85To(data, it) }.toString()
+
+    /** ASCII85 of [data] appended to [sb] (a Writer for streamed output, audit B08). */
+    fun ascii85To(data: ByteArray, sb: Appendable) {
+        var col = 0
         fun emit(s: String) { for (c in s) { sb.append(c); if (++col == 76) { sb.append('\n'); col = 0 } } }
         var i = 0
         while (i < data.size) {
@@ -171,39 +250,87 @@ object PsWriter {
             }
             i += 4
         }
-        sb.append("~>\n"); return sb.toString()
+        sb.append("~>\n")
     }
 
-    fun write(pages: List<Page>, eps: Boolean, title: String): String = buildString {
-        val first = pages.firstOrNull()
-        append(if (eps) "%!PS-Adobe-3.0 EPSF-3.0\n" else "%!PS-Adobe-3.0\n")
-        append("%%Creator: SmartDocs\n%%Title: ").append(title.replace(Regex("[\\r\\n()]"), " ")).append('\n')
-        append("%%Pages: ").append(if (eps) 1 else pages.size).append('\n')
-        if (first != null) append("%%BoundingBox: 0 0 ").append(Math.ceil(first.ptW.toDouble()).toInt()).append(' ').append(Math.ceil(first.ptH.toDouble()).toInt()).append('\n')
-        append("%%LanguageLevel: 2\n%%EndComments\n")
-        (if (eps) pages.take(1) else pages).forEachIndexed { i, p ->
-            append("%%Page: ").append(i + 1).append(' ').append(i + 1).append('\n')
-            if (!eps) append("<< /PageSize [").append(p.ptW).append(' ').append(p.ptH).append("] >> setpagedevice\n")
-            append("gsave\n").append(p.ptW).append(' ').append(p.ptH).append(" scale\n")
-            append(if (p.gray) "/DeviceGray" else "/DeviceRGB").append(" setcolorspace\n")
-            append("<< /ImageType 1 /Width ").append(p.pxW).append(" /Height ").append(p.pxH).append(" /BitsPerComponent 8")
-            append(" /Decode [").append(if (p.gray) "0 1" else "0 1 0 1 0 1").append("] /ImageMatrix [").append(p.pxW).append(" 0 0 -").append(p.pxH).append(" 0 ").append(p.pxH).append(']')
-            append(" /DataSource currentfile /ASCII85Decode filter /DCTDecode filter >> image\n")
-            append(ascii85(p.jpeg))
-            append("grestore\n")
-            if (!eps) append("showpage\n")
+    private fun ceil(v: Float) = Math.ceil(v.toDouble()).toInt()
+
+    fun write(pages: List<Page>, eps: Boolean, title: String): String {
+        val sw = java.io.StringWriter()
+        Stream(sw, eps, title, if (eps) 1 else pages.size, pages.firstOrNull()).use { s -> (if (eps) pages.take(1) else pages).forEach { s.page(it) } }
+        return sw.toString()
+    }
+
+    /**
+     * PostScript / EPS written page by page into [w] (convert audit B08: every page JPEG and one giant String were
+     * kept in memory). [pageCount] for %%Pages; [first] gives the EPS %%BoundingBox (a PS file gets the largest page
+     * at the end). Every page has its own %%PageBoundingBox and page size (audit B26).
+     */
+    class Stream(private val w: Appendable, private val eps: Boolean, title: String, pageCount: Int, first: Page?) : java.io.Closeable {
+        private var n = 0
+        private var maxW = 0
+        private var maxH = 0
+
+        init {
+            w.append(if (eps) "%!PS-Adobe-3.0 EPSF-3.0\n" else "%!PS-Adobe-3.0\n")
+            w.append("%%Creator: SmartDocs\n%%Title: ").append(title.replace(Regex("[\\r\\n()]"), " ")).append('\n')
+            w.append("%%Pages: ").append((if (eps) 1 else pageCount).toString()).append('\n')
+            if (eps && first != null) w.append("%%BoundingBox: 0 0 ").append(ceil(first.ptW).toString()).append(' ').append(ceil(first.ptH).toString()).append('\n')
+            else if (!eps) w.append("%%BoundingBox: (atend)\n")
+            w.append("%%LanguageLevel: 2\n%%EndComments\n")
         }
-        append("%%EOF\n")
+
+        fun page(p: Page) {
+            if (eps && n >= 1) return
+            n++
+            maxW = maxOf(maxW, ceil(p.ptW)); maxH = maxOf(maxH, ceil(p.ptH))
+            w.append("%%Page: ").append(n.toString()).append(' ').append(n.toString()).append('\n')
+            w.append("%%PageBoundingBox: 0 0 ").append(ceil(p.ptW).toString()).append(' ').append(ceil(p.ptH).toString()).append('\n')
+            if (!eps) w.append("<< /PageSize [").append(p.ptW.toString()).append(' ').append(p.ptH.toString()).append("] >> setpagedevice\n")
+            w.append("gsave\n").append(p.ptW.toString()).append(' ').append(p.ptH.toString()).append(" scale\n")
+            w.append(if (p.gray) "/DeviceGray" else "/DeviceRGB").append(" setcolorspace\n")
+            w.append("<< /ImageType 1 /Width ").append(p.pxW.toString()).append(" /Height ").append(p.pxH.toString()).append(" /BitsPerComponent 8")
+            w.append(" /Decode [").append(if (p.gray) "0 1" else "0 1 0 1 0 1").append("] /ImageMatrix [").append(p.pxW.toString()).append(" 0 0 -").append(p.pxH.toString()).append(" 0 ").append(p.pxH.toString()).append(']')
+            w.append(" /DataSource currentfile /ASCII85Decode filter /DCTDecode filter >> image\n")
+            ascii85To(p.jpeg, w)
+            w.append("grestore\n")
+            if (!eps) w.append("showpage\n")
+        }
+
+        override fun close() {
+            if (!eps) w.append("%%Trailer\n%%BoundingBox: 0 0 ").append(maxW.toString()).append(' ').append(maxH.toString()).append('\n')
+            w.append("%%EOF\n")
+            (w as? java.io.Flushable)?.flush()
+        }
     }
 }
 
 /** XPS (OpenXPS-compatible) package whose pages are pictures. */
 object XpsWriter {
-    class Page(val jpeg: ByteArray, val ptW: Float, val ptH: Float)
+    /** [pxW]×[pxH] = the picture's pixel size (the ImageBrush viewbox, audit B05); 0 = unknown (the page size is used). */
+    class Page(val jpeg: ByteArray, val ptW: Float, val ptH: Float, val pxW: Int = 0, val pxH: Int = 0)
 
-    fun write(pages: List<Page>, out: OutputStream) {
-        ZipOutputStream(out).use { z ->
-            fun put(n: String, s: String) { z.putNextEntry(ZipEntry(n)); z.write(s.toByteArray(Charsets.UTF_8)); z.closeEntry() }
+    /**
+     * Viewbox of a page picture: JPEGs without a density are 96 dpi to XPS consumers, so the picture's own size in
+     * 1/96" units is its pixel size (convert audit B05: the page size in 1/96" mapped only ~48% of a 200-dpi picture).
+     */
+    fun viewbox(p: Page): String = if (p.pxW > 0 && p.pxH > 0) "0,0,${p.pxW},${p.pxH}" else "0,0,${p.ptW * 96f / 72f},${p.ptH * 96f / 72f}"
+
+    fun write(pages: List<Page>, out: OutputStream) { Stream(out).use { s -> pages.forEach { s.page(it) } } }
+
+    /** XPS written page by page (convert audit B09: every page JPEG was kept until the end); the page list goes last. */
+    class Stream(out: OutputStream) : java.io.Closeable {
+        private val z = ZipOutputStream(out)
+        private var count = 0
+        private fun put(n: String, s: String) { z.putNextEntry(ZipEntry(n)); z.write(s.toByteArray(Charsets.UTF_8)); z.closeEntry() }
+
+        override fun close() {
+            put("Documents/1/FixedDoc.fdoc", """<FixedDocument xmlns="http://schemas.microsoft.com/xps/2005/06">""" +
+                (0 until count).joinToString("") { """<PageContent Source="/Documents/1/Pages/${it + 1}.fpage"/>""" } + "</FixedDocument>")
+            z.close()
+        }
+
+        init {
             put("[Content_Types].xml", """<?xml version="1.0" encoding="utf-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">""" +
                 """<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="jpg" ContentType="image/jpeg"/>""" +
                 """<Default Extension="fdseq" ContentType="application/vnd.ms-package.xps-fixeddocumentsequence+xml"/><Default Extension="fdoc" ContentType="application/vnd.ms-package.xps-fixeddocument+xml"/>""" +
@@ -211,14 +338,15 @@ object XpsWriter {
             put("_rels/.rels", """<?xml version="1.0" encoding="utf-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">""" +
                 """<Relationship Id="R0" Type="http://schemas.microsoft.com/xps/2005/06/fixedrepresentation" Target="/FixedDocSeq.fdseq"/></Relationships>""")
             put("FixedDocSeq.fdseq", """<FixedDocumentSequence xmlns="http://schemas.microsoft.com/xps/2005/06"><DocumentReference Source="/Documents/1/FixedDoc.fdoc"/></FixedDocumentSequence>""")
-            put("Documents/1/FixedDoc.fdoc", """<FixedDocument xmlns="http://schemas.microsoft.com/xps/2005/06">""" +
-                pages.indices.joinToString("") { """<PageContent Source="/Documents/1/Pages/${it + 1}.fpage"/>""" } + "</FixedDocument>")
-            pages.forEachIndexed { i, p ->
-                val n = i + 1
+        }
+
+        fun page(p: Page) {
+            run {
+                val n = ++count
                 // XPS units are 1/96 inch
                 val w = p.ptW * 96f / 72f; val h = p.ptH * 96f / 72f
                 put("Documents/1/Pages/$n.fpage", """<FixedPage xmlns="http://schemas.microsoft.com/xps/2005/06" Width="$w" Height="$h" xml:lang="und">""" +
-                    """<Path Data="M 0,0 L $w,0 $w,$h 0,$h Z"><Path.Fill><ImageBrush ImageSource="/Resources/Images/$n.jpg" Viewbox="0,0,$w,$h" ViewboxUnits="Absolute" Viewport="0,0,$w,$h" ViewportUnits="Absolute"/></Path.Fill></Path></FixedPage>""")
+                    """<Path Data="M 0,0 L $w,0 $w,$h 0,$h Z"><Path.Fill><ImageBrush ImageSource="/Resources/Images/$n.jpg" Viewbox="${viewbox(p)}" ViewboxUnits="Absolute" Viewport="0,0,$w,$h" ViewportUnits="Absolute"/></Path.Fill></Path></FixedPage>""")
                 put("Documents/1/Pages/_rels/$n.fpage.rels", """<?xml version="1.0" encoding="utf-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">""" +
                     """<Relationship Id="I$n" Type="http://schemas.microsoft.com/xps/2005/06/required-resource" Target="/Resources/Images/$n.jpg"/></Relationships>""")
                 z.putNextEntry(ZipEntry("Resources/Images/$n.jpg")); z.write(p.jpeg); z.closeEntry()
@@ -232,9 +360,14 @@ object PdfXml {
     class Line(val page: Int, val text: String, val x: Float?, val y: Float?, val size: Float, val font: String)
     class Mark(val title: String, val page: Int, val level: Int)
 
-    fun write(title: String, info: Map<String, String>, pageSizes: List<Pair<Float, Float>>, marks: List<Mark>, lines: List<Line>): String = buildString {
+    /**
+     * [pages] = (zero-based source page index, width, height) of the exported pages; [lines] carry their source page
+     * index. Page numbers in the output are the source numbers (convert audit B04: with a range the text of the
+     * selected pages was looked up by the position in the selection and got lost).
+     */
+    fun write(title: String, info: Map<String, String>, pages: List<Triple<Int, Float, Float>>, marks: List<Mark>, lines: List<Line>): String = buildString {
         fun x(s: String) = Text6.xml(s)
-        append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<document title=\"").append(x(title)).append("\" pages=\"").append(pageSizes.size).append("\">\n")
+        append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<document title=\"").append(x(title)).append("\" pages=\"").append(pages.size).append("\">\n")
         if (info.isNotEmpty()) { append("  <info>\n"); info.forEach { (k, v) -> append("    <").append(k).append('>').append(x(v)).append("</").append(k).append(">\n") }; append("  </info>\n") }
         if (marks.isNotEmpty()) {
             append("  <bookmarks>\n")
@@ -242,7 +375,7 @@ object PdfXml {
             append("  </bookmarks>\n")
         }
         val byPage = lines.groupBy { it.page }
-        pageSizes.forEachIndexed { i, (w, h) ->
+        pages.forEach { (i, w, h) ->
             append("  <page number=\"").append(i + 1).append("\" width=\"").append(w).append("\" height=\"").append(h).append("\">\n")
             byPage[i].orEmpty().forEach { l ->
                 append("    <line")
@@ -275,8 +408,9 @@ object Xml2003 {
             rows.forEach { r ->
                 append("      <Row>")
                 r.forEach { c ->
-                    val num = c.trim().replace(",", "").toDoubleOrNull()
-                    if (num != null && c.isNotBlank()) append("<Cell><Data ss:Type=\"Number\">").append(c.trim().replace(",", "")).append("</Data></Cell>")
+                    // strict numbers only (convert audit B13): "NaN", "12d", "0x1p3", "1e400", "1,5" and "007" stay text
+                    val num = Csv6.cellNumber(c)
+                    if (num != null) append("<Cell><Data ss:Type=\"Number\">").append(num).append("</Data></Cell>")
                     else append("<Cell><Data ss:Type=\"String\">").append(Text6.xml(c)).append("</Data></Cell>")
                 }
                 append("</Row>\n")
@@ -290,14 +424,20 @@ object Xml2003 {
 /** HTML set: one page per chapter plus index.html with the navigation pane (Foxit "multiple HTML pages"). */
 object HtmlSet {
     /** File name of chapter [i]. Pure. */
-    fun pageName(i: Int) = "page_%03d.html".format(i + 1)
+    fun pageName(i: Int) = "page_" + (i + 1).toString().padStart(3, '0') + ".html"   // never locale digits (audit B12)
 
+    /**
+     * Pages share the converter's CSS (table borders, picture width) with lang / dir; pictures are separate files in
+     * images/ instead of base64 in every page (convert audit B30 / B10).
+     */
     fun write(doc: FlowDoc, out: OutputStream) {
         val chapters = doc.chapters()
         val rtl = Text6.rtlDominant(doc.blocks.joinToString(" ") { FlowDoc.textOf(it).orEmpty() }.take(4000))
         val dir = if (rtl) "rtl" else "ltr"
-        fun page(title: String, body: String) = "<!DOCTYPE html>\n<html dir=\"$dir\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">" +
-            "<title>${Text6.xml(title)}</title><style>body{font-family:sans-serif;max-width:860px;margin:auto;padding:16px;line-height:1.6}nav a{display:block;padding:4px 0}</style></head><body>$body</body></html>\n"
+        val lang = if (rtl) "ar" else "en"
+        fun page(title: String, body: String) = "<!DOCTYPE html>\n<html lang=\"$lang\" dir=\"$dir\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">" +
+            "<title>${Text6.xml(title)}</title><style>" + FlowHtml.CSS + "nav a{display:block;padding:4px 0}</style></head><body>$body</body></html>\n"
+        var imageNo = 0
         ZipOutputStream(out).use { z ->
             fun put(n: String, s: String) { z.putNextEntry(ZipEntry(n)); z.write(s.toByteArray(Charsets.UTF_8)); z.closeEntry() }
             val nav = chapters.mapIndexed { i, (t, _) -> "<a href=\"${pageName(i)}\">${Text6.xml(t.ifBlank { "${i + 1}" })}</a>" }.joinToString("")
@@ -305,7 +445,14 @@ object HtmlSet {
             chapters.forEachIndexed { i, (t, blocks) ->
                 val prev = if (i > 0) "<a href=\"${pageName(i - 1)}\">&larr;</a> " else ""
                 val next = if (i < chapters.lastIndex) " <a href=\"${pageName(i + 1)}\">&rarr;</a>" else ""
-                put(pageName(i), page(t, "<p>$prev<a href=\"index.html\">☰</a>$next</p>" + FlowHtml.body(blocks) + "<p>$prev<a href=\"index.html\">☰</a>$next</p>"))
+                val pics = ArrayList<Pair<String, FBlock.Image>>()
+                val body = FlowHtml.body(blocks) { img ->
+                    val ext = (Images6.sniffExt(img.head) ?: img.ext).let { if (it == "jpeg") "jpg" else it }
+                    if (ext !in setOf("jpg", "png", "gif", "webp", "svg", "bmp")) null
+                    else ("images/img" + (++imageNo).toString().padStart(4, '0') + "." + ext).also { pics += it to img }
+                }
+                put(pageName(i), page(t, "<p>$prev<a href=\"index.html\">☰</a>$next</p>" + body + "<p>$prev<a href=\"index.html\">☰</a>$next</p>"))
+                pics.forEach { (n, img) -> z.putNextEntry(ZipEntry(n)); z.write(img.bytes); z.closeEntry() }
             }
         }
     }

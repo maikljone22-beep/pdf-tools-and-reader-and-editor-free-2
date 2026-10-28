@@ -34,6 +34,7 @@ import androidx.compose.ui.text.style.BaselineShift
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.smartdocs.editor.R
 import com.smartdocs.editor.core.edit.EditFonts
 import com.smartdocs.editor.core.edit.EditTextStyle
@@ -101,10 +102,45 @@ internal object TextLinks {
         RectF(r[0], r[1], r[2], r[3]) to LinkTarget(t[0].toInt(), t[1], t[2], t[3], t[4])
     }
 
-    /** Same box: top-start corner within a few points (the box re-wraps, its corner stays). */
-    private fun near(a: RectF, b: RectF) = abs(a.left - b.left) < 6f && abs(a.top - b.top) < 6f
+    /** Same box (tab-view-core E-07: start corner = left edge for LTR boxes, right edge for RTL ones; see [LinkBoxMatch]). */
+    private fun near(a: RectF, b: RectF) = LinkBoxMatch.same(a.left, a.top, a.right, b.left, b.top, b.right)
 
     fun target(ctx: Context, file: String, page: Int, r: RectF): LinkTarget? = all(ctx, file, page).firstOrNull { near(it.first, r) }?.second
+
+    /**
+     * tab-view-core E-07: links of [page] whose source box no longer exists (after an undo / redo or another edit)
+     * are dropped, so a stale link never flows text into a box it was not made for.
+     */
+    fun prune(ctx: Context, file: String, page: Int, boxes: List<RectF>) {
+        val stale = all(ctx, file, page).filter { (src, _) -> boxes.none { near(src, it) } }
+        if (stale.isEmpty()) return
+        val e = p(ctx).edit(); stale.forEach { (src, _) -> e.remove(key(file, page, src)) }; e.apply()
+    }
+
+    private val ids = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+    /**
+     * tab-view-core E-07: links belong to the document (its permanent /ID), not to whatever file is later saved at the
+     * same path. [prime] reads the ID off the main thread; [docKey] falls back to the path until then.
+     */
+    fun docKey(f: java.io.File): String = ids[f.absolutePath] ?: f.absolutePath
+
+    fun prime(f: java.io.File, password: String?) {
+        if (ids.containsKey(f.absolutePath)) return
+        val id = runCatching {
+            com.smartdocs.editor.core.pdf.PdfOps.loadRaw(f, password).use { d ->
+                (d.document.documentID?.getObject(0) as? com.tom_roush.pdfbox.cos.COSString)?.toHexString()
+            }
+        }.getOrNull()
+        if (!id.isNullOrBlank()) ids[f.absolutePath] = "id:$id"
+    }
+}
+
+/** tab-view-core E-07: pure "same linked box" test (unit-tested). */
+object LinkBoxMatch {
+    /** Same top edge and the same left (LTR start) or right (RTL start) edge within [tol] points. */
+    fun same(l1: Float, t1: Float, r1: Float, l2: Float, t2: Float, r2: Float, tol: Float = 6f): Boolean =
+        abs(t1 - t2) < tol && (abs(l1 - l2) < tol || abs(r1 - r2) < tol)
 }
 
 internal enum class TSheet { MORE, FONTS, COLOR, STROKE_COLOR, PREFS, REFLOW }
@@ -229,7 +265,7 @@ internal class TextTools5(val c: EditController) {
     fun commitBlock(b: TextBlock, text: String, st: EditTextStyle, done: Int): Boolean {
         val f = c.state.file ?: return false
         val p = c.page; val pw = c.state.password
-        val link = TextLinks.target(ctx, f.absolutePath, p, b.rect)
+        val link = TextLinks.target(ctx, TextLinks.docKey(f), p, b.rect)
         val mx = dx; val my = dy; val mw = dw
         when {
             link != null && text.isNotBlank() && st.list == ListKind.NONE -> c.runNve(done) { src, out ->
@@ -270,7 +306,7 @@ internal class TextTools5(val c: EditController) {
                 val f = c.state.file ?: return true
                 val (sp, a) = src
                 val r = hit?.rect ?: RectF(x, y, x + a.rect.width(), y - (a.rect.top - a.rect.bottom))
-                TextLinks.set(ctx, f.absolutePath, sp, a.rect, LinkTarget(c.page, r.left, r.top, r.right, r.bottom))
+                TextLinks.set(ctx, TextLinks.docKey(f), sp, a.rect, LinkTarget(c.page, r.left, r.top, r.right, r.bottom))
                 c.message = ctx.getString(R.string.nt_linked, c.page + 1)
             }
             Pick.NONE -> {}
@@ -287,8 +323,8 @@ internal class TextTools5(val c: EditController) {
         c.message = ctx.getString(if (mode == Pick.LINK) R.string.nt_pick_link else R.string.nt_pick_join)
     }
 
-    fun unlink() { val b = c.block ?: return; val f = c.state.file ?: return; TextLinks.set(ctx, f.absolutePath, c.page, b.rect, null); c.message = ctx.getString(R.string.nt_unlinked) }
-    fun linked(): LinkTarget? { val b = c.block ?: return null; val f = c.state.file ?: return null; return TextLinks.target(ctx, f.absolutePath, c.page, b.rect) }
+    fun unlink() { val b = c.block ?: return; val f = c.state.file ?: return; TextLinks.set(ctx, TextLinks.docKey(f), c.page, b.rect, null); c.message = ctx.getString(R.string.nt_unlinked) }
+    fun linked(): LinkTarget? { val b = c.block ?: return null; val f = c.state.file ?: return null; return TextLinks.target(ctx, TextLinks.docKey(f), c.page, b.rect) }
 
     fun split() {
         val b = c.block ?: return
@@ -325,6 +361,13 @@ internal class TextTools5(val c: EditController) {
         val p = c.page; val pw = c.state.password
         sheet = null
         c.runNve(R.string.ed_saved) { s, o -> TextEdit5.reflowPage(ctx, s, o, pw, p, text, st) }
+    }
+
+    /** §14d: write the edited flow of a page range back (signed files: the reader's save-a-copy path). */
+    fun reflowRange(flow: com.smartdocs.editor.core.edit.Flow, text: String, runs: List<RunStyle>) {
+        val pw = c.state.password
+        sheet = null
+        c.runNve(R.string.ed_saved) { s, o -> TextEdit5.reflowRange(ctx, s, o, pw, flow, text, runs) }
     }
 
     /** Pages auto-OCR already ran on in this edit session (never twice: a page OCR finds no text on stays as it is). */
@@ -710,28 +753,73 @@ private fun PrefsSheet(c: EditController, t: TextTools5) {
     }
 }
 
-/** Reflow editing: the page's text in reading order as one editable text, written back as flowing text. */
+/**
+ * Reflow editing (§14d): the text of a page range as one flow in column reading order, paragraphs joined across
+ * page breaks, with the source's bold / italic / size / colour shown and kept; written back frame by frame.
+ */
 @Composable
 private fun ReflowSheet(c: EditController, t: TextTools5) {
-    val m = c.model ?: run { t.sheet = null; return }
-    val blocks = m.blocks.filter { it.angle == 0f && !it.unreadable }
-    var text by remember { mutableStateOf(blocks.joinToString("\n") { it.text }) }
-    val first = blocks.firstOrNull()
+    val pages = c.state.pageCount.coerceAtLeast(1)
+    var from by remember { mutableIntStateOf(c.page) }
+    var to by remember { mutableIntStateOf(c.page) }
+    var flow by remember { mutableStateOf<com.smartdocs.editor.core.edit.Flow?>(null) }
+    var text by remember { mutableStateOf(androidx.compose.ui.text.input.TextFieldValue("")) }
+    var runs by remember { mutableStateOf<List<RunStyle>>(emptyList()) }
+    var error by remember { mutableStateOf<String?>(null) }
+    val file = c.state.file
+    LaunchedEffect(from, to, file, c.state.renderVersion) {
+        flow = null; error = null
+        val f = file ?: return@LaunchedEffect
+        try {
+            val fl = TextEdit5.loadFlow(f, c.state.password, from..to)
+            flow = fl; runs = fl.runs; text = androidx.compose.ui.text.input.TextFieldValue(fl.text)
+        } catch (e: kotlinx.coroutines.CancellationException) { throw e
+        } catch (e: Throwable) { error = e.message ?: e.javaClass.simpleName }
+    }
     AlertDialog(
         onDismissRequest = { t.sheet = null },
         title = { Text(stringResource(R.string.nt_reflow)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(stringResource(R.string.nt_reflow_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                OutlinedTextField(text, { text = it }, Modifier.fillMaxWidth().heightIn(min = 200.dp, max = 420.dp))
-                com.smartdocs.editor.ui.nve.SpellCheckButton(text, onFixed = { text = it })
+                Text(stringResource(R.string.rfp_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                // page range: from / to steppers, at most FLOW_MAX_PAGES pages
+                val max = TextEdit5.FLOW_MAX_PAGES
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(stringResource(R.string.rfp_from), style = MaterialTheme.typography.labelLarge)
+                    IconButton(onClick = { from = (from - 1).coerceAtLeast(0) }, enabled = from > 0) { Icon(Icons.Default.Remove, stringResource(R.string.rfp_earlier)) }
+                    Text("${from + 1}")
+                    IconButton(onClick = { from = (from + 1).coerceAtMost(to) }, enabled = from < to) { Icon(Icons.Default.Add, stringResource(R.string.rfp_later)) }
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.rfp_to), style = MaterialTheme.typography.labelLarge)
+                    IconButton(onClick = { to = (to - 1).coerceAtLeast(from) }, enabled = to > from) { Icon(Icons.Default.Remove, stringResource(R.string.rfp_earlier)) }
+                    Text("${to + 1}")
+                    IconButton(onClick = { to = (to + 1).coerceAtMost(minOf(pages - 1, from + max - 1)) }, enabled = to < minOf(pages - 1, from + max - 1)) { Icon(Icons.Default.Add, stringResource(R.string.rfp_later)) }
+                }
+                val fl = flow
+                when {
+                    error != null -> Text(stringResource(R.string.rfp_failed, error ?: ""), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    fl == null -> Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.rfp_loading))
+                    }
+                    else -> {
+                        Text(stringResource(R.string.rfp_areas, fl.frames.size, fl.pages.last - fl.pages.first + 1), style = MaterialTheme.typography.labelSmall)
+                        val tr = remember(runs, fl) { richTransformation(fl.base.copy(runs = runs), emptyList()) { pt -> (15f * pt / fl.base.size.coerceAtLeast(1f)).sp } }
+                        OutlinedTextField(text, { v ->
+                            // the source's formatting follows the edits (common prefix / suffix)
+                            runs = RichText.normalize(RichText.shiftRuns(runs, text.text, v.text), v.text.length); text = v
+                        }, Modifier.fillMaxWidth().heightIn(min = 200.dp, max = 420.dp), visualTransformation = tr)
+                        com.smartdocs.editor.ui.nve.SpellCheckButton(text.text, onFixed = { fixed ->
+                            runs = RichText.normalize(RichText.shiftRuns(runs, text.text, fixed), fixed.length); text = androidx.compose.ui.text.input.TextFieldValue(fixed)
+                        })
+                    }
+                }
             }
         },
         confirmButton = {
             Button(onClick = {
-                val st = first?.let { EditTextStyle(size = it.size, color = it.color, bold = it.bold, italic = it.italic, align = it.align, family = it.family) } ?: EditTextStyle()
-                t.reflow(NveDigits.apply(c.state.context, text), st)
-            }, enabled = first != null && !c.busy) { Text(stringResource(R.string.done)) }
+                val fl = flow ?: return@Button
+                t.reflowRange(fl, NveDigits.apply(c.state.context, text.text), runs)
+            }, enabled = flow != null && text.text.isNotBlank() && !c.busy) { Text(stringResource(R.string.done)) }
         },
         dismissButton = { TextButton(onClick = { t.sheet = null }) { Text(stringResource(R.string.cancel)) } },
     )

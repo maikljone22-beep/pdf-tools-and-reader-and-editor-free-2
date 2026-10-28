@@ -12,6 +12,7 @@ import com.tom_roush.pdfbox.pdmodel.PDPageContentStream
 import com.tom_roush.pdfbox.pdmodel.common.PDRectangle
 import com.tom_roush.pdfbox.pdmodel.graphics.image.JPEGFactory
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import java.io.File
 
@@ -41,9 +42,14 @@ object ScanPdfBuilder {
     }
 
     /** Decode [images] (EXIF-rotated, downscaled), apply colour mode, and write one page per image into [out]. */
+    /**
+     * Scanned pages → PDF. Cancel stops between pages, picture streams spill to a temp file, a page that cannot be read
+     * is skipped and none at all is an error instead of an empty PDF (convert audit A-L10 / A-M15).
+     */
     suspend fun build(images: List<File>, out: File, paper: PaperSize, mode: ColorMode, quality: Int, onProgress: ((Int) -> Unit)? = null) = withContext(Dispatchers.IO) {
-        PDDocument().use { doc ->
+        PDDocument(com.tom_roush.pdfbox.io.MemoryUsageSetting.setupTempFileOnly()).use { doc ->
             images.forEachIndexed { i, f ->
+                kotlin.coroutines.coroutineContext.ensureActive()
                 onProgress?.invoke(i)
                 val raw = PdfOps.decodeScaled(f, 2200) ?: return@forEachIndexed
                 val bmp = applyColorMode(raw, mode)
@@ -62,6 +68,8 @@ object ScanPdfBuilder {
                 PDPageContentStream(doc, page).use { it.drawImage(img, (rect.width - w) / 2, (rect.height - h) / 2, w, h) }
                 bmp.recycle()
             }
+            if (doc.numberOfPages == 0) throw com.smartdocs.editor.core.convert6.UnsupportedImage("empty")
+            kotlin.coroutines.coroutineContext.ensureActive()
             doc.save(out)
         }
     }

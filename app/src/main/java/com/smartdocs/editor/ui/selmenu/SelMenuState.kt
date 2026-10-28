@@ -12,6 +12,9 @@ import androidx.compose.ui.geometry.Rect
 import com.smartdocs.editor.core.pdf.PageLink
 import com.smartdocs.editor.core.security.Block
 import com.smartdocs.editor.core.security.DocAction
+import com.smartdocs.editor.core.selmenu.AnnotFacts
+import com.smartdocs.editor.core.selmenu.FieldFacts
+import com.smartdocs.editor.core.selmenu.ImageFacts
 import com.smartdocs.editor.core.selmenu.Need
 import com.smartdocs.editor.core.selmenu.SelCtx
 import com.smartdocs.editor.core.selmenu.SelEnv
@@ -25,8 +28,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.WeakHashMap
 
-/** A long-press / right-click target that is not a text selection: a link or an empty spot of a page (PDF space). */
-data class SelObject(val ctx: SelCtx, val page: Int, val x: Float, val y: Float, val link: PageLink? = null)
+/** A long-press / right-click target that is not a text selection: a link, an empty spot or a form field of a page (PDF space). */
+data class SelObject(val ctx: SelCtx, val page: Int, val x: Float, val y: Float, val link: PageLink? = null, val widget: com.smartdocs.editor.core.forms5.FWidget? = null)
 
 /**
  * Per-reader state of the selection menus (feature/selection-menus). The page canvas publishes where the selection
@@ -46,22 +49,29 @@ class SelMenuState private constructor(val s: ReaderState) {
     var dropdownAt by mutableStateOf<Offset?>(null)
     /** Whether the open file carries a digital signature (null until known). */
     var signed by mutableStateOf<Boolean?>(null)
+    /** fix/selmenu-rest: the reader's actions, published by SelMenuLayer for the annotation bar (Reply opens the comments panel). */
+    var actions: com.smartdocs.editor.ui.reader.ReaderActions? = null
+    /** "Sign here": the point the signature chooser places the picked signature at. */
+    var signAt by mutableStateOf<SelObject?>(null)
+    /** Field menu dialog (properties / spell check) and the field it is for. */
+    var fieldDialog by mutableStateOf<Pair<com.smartdocs.editor.core.selmenu.SelAction, com.smartdocs.editor.core.forms5.FWidget>?>(null)
 
     fun closeObject() { target = null; objectAnchor = null }
 
     fun closeAll() { closeObject(); moreOpen = false; dropdownAt = null }
 
     /** The registry environment for the current tab and context. */
-    fun env(ctx: SelCtx, text: String, aiEnabled: Boolean, hasRects: Boolean = true, link: PageLink? = null): SelEnv {
+    fun env(ctx: SelCtx, text: String, aiEnabled: Boolean, hasRects: Boolean = true, link: PageLink? = null,
+            annot: AnnotFacts? = null, field: FieldFacts? = null, image: ImageFacts? = null): SelEnv {
         val g = s.guard
         val blocked = HashMap<Need, Why>()
-        for ((need, act) in listOf(Need.COPY to DocAction.COPY, Need.ANNOTATE to DocAction.ANNOTATE, Need.MODIFY to DocAction.MODIFY, Need.PRINT to DocAction.PRINT)) {
+        for ((need, act) in listOf(Need.COPY to DocAction.COPY, Need.ANNOTATE to DocAction.ANNOTATE, Need.MODIFY to DocAction.MODIFY, Need.PRINT to DocAction.PRINT, Need.FILL to DocAction.FILL_FORMS)) {
             g.blockOf(act)?.let { blocked[need] = if (it == Block.AUTHOR) Why.AUTHOR else Why.PROTECTED_VIEW }
         }
         return SelEnv(
             tab = tabOf(s.tab), ctx = ctx, text = text, blocked = blocked, signed = signed == true, aiEnabled = aiEnabled,
             clipboardHasContent = clipboardHasContent(s.context), stampOnClipboard = StampClipboard.annot != null,
-            hasRects = hasRects, linkIsWeb = link?.uri?.isNotBlank() == true,
+            hasRects = hasRects, linkIsWeb = link?.uri?.isNotBlank() == true, annot = annot, field = field, image = image,
         )
     }
 
@@ -104,6 +114,38 @@ object SelHooks {
         // the empty-area menu carries "Paste here" itself (nitro-fillsign2's separate bar would duplicate it)
         StampClipboard.offer = null
         m.target = SelObject(SelCtx.EMPTY, page, x, y)
+    }
+
+    /** fix/selmenu-rest: long-press on a form field of the in-page form layer opens the field menu at the finger. */
+    fun longPressField(state: ReaderState, w: com.smartdocs.editor.core.forms5.FWidget) {
+        val m = SelMenuState.of(state)
+        state.selection = null
+        state.edit.clear()
+        m.target = SelObject(SelCtx.FIELD, w.page, (w.box.left + w.box.right) / 2f, maxOf(w.box.top, w.box.bottom), widget = w)
+    }
+
+    /**
+     * PageCanvas long-press: a form field under the finger that has no touch box of its own (read-only or calculated
+     * fields) opens the field menu too (returns true). Fields with a box handle their long-press in InPageFormLayer.
+     */
+    fun longPressFieldAt(state: ReaderState, page: Int, x: Float, y: Float): Boolean {
+        val fs = com.smartdocs.editor.ui.forms5.FormFill.of(state)
+        if (!fs.enabled) return false
+        val w = fs.model.onPage(page).lastOrNull { w ->
+            val b = w.box
+            !fs.isHidden(w) && x >= minOf(b.left, b.right) && x <= maxOf(b.left, b.right) && y >= minOf(b.top, b.bottom) && y <= maxOf(b.top, b.bottom)
+        } ?: return false
+        longPressField(state, w); return true
+    }
+
+    /**
+     * fix/selmenu-rest: a tap on a page (or a form field) while a link / empty-area / field menu is open closes it and
+     * is used up (true). The menus draw no full-screen catcher, so the page keeps scrolling and zooming meanwhile.
+     */
+    fun onPageTap(state: ReaderState): Boolean {
+        val m = SelMenuState.of(state)
+        if (m.target == null || m.dropdownAt != null) return false
+        m.closeObject(); return true
     }
 
     /** The old horizontal chip row in the bottom bar (ReaderOverlays.SelectionMenu); kept compiling, not shown. */

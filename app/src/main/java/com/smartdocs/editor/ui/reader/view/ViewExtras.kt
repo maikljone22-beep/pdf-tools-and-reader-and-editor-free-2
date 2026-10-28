@@ -67,13 +67,7 @@ class ViewExtras(private val state: ReaderState) {
     fun spread(): PageSpread = PageSpread(state.viewMode)
 
     /** First page of the screen [delta] screens away from the current one, or null when out of range. */
-    fun flipTarget(delta: Int): Int? {
-        if (state.pageCount <= 0) return null
-        val sp = spread()
-        val item = sp.pageToItem(state.currentPage) + delta
-        if (item < 0 || item >= sp.itemCount(state.pageCount)) return null
-        return sp.firstPage(item)
-    }
+    fun flipTarget(delta: Int): Int? = spread().step(state.currentPage, delta, state.pageCount)
 
     fun canFlip(delta: Int): Boolean = flipTarget(delta) != null
 
@@ -143,6 +137,17 @@ class PageSpread(val mode: ViewMode) {
         ViewMode.FACING -> item * 2
         ViewMode.COVER -> if (item <= 0) 0 else item * 2 - 1
         else -> item
+    }
+
+    /**
+     * First page of the screen [delta] screens away from the screen showing [current], or null when out of range
+     * (pure: unit-tested; tab-view-core V-09 routes Space / Ctrl+PgDn / Ctrl+PgUp through it).
+     */
+    fun step(current: Int, delta: Int, pageCount: Int): Int? {
+        if (pageCount <= 0) return null
+        val item = pageToItem(current) + delta
+        if (item < 0 || item >= itemCount(pageCount)) return null
+        return firstPage(item)
     }
 
     fun pages(item: Int, pageCount: Int): List<Int> {

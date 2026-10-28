@@ -6,6 +6,7 @@ import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import kotlin.math.abs
+import androidx.compose.ui.draw.drawWithContent
 
 /** A page colour preset: background replaces white, text replaces black (linear colour mapping). */
 data class PageColorPreset(val background: Long, val text: Long)
@@ -59,3 +60,11 @@ object PageTintDraw {
         }
     }
 }
+
+/**
+ * tab-view-core V-38: the reader's page colour on a secondary page renderer (thumbnails, split / compare panes,
+ * presentation), drawn over the bitmap like PageCanvas does; nothing in night mode (the render is already inverted).
+ */
+fun androidx.compose.ui.Modifier.pageTint(background: Long, night: Boolean): androidx.compose.ui.Modifier =
+    if (night || isPlainPage(background)) this
+    else this.then(androidx.compose.ui.Modifier.drawWithContent { drawContent(); with(PageTintDraw) { drawPageTint(background, size.width, size.height) } })

@@ -162,7 +162,7 @@ object XlsReader {
     }
 
     /** Sheets: name → rows (dense, trailing empties trimmed). */
-    fun read(bytes: ByteArray, maxRows: Int = 20000, maxCols: Int = 256): List<Pair<String, List<List<String>>>> {
+    fun read(bytes: ByteArray, maxRows: Int = 65536, maxCols: Int = 256): List<Pair<String, List<List<String>>>> {   // the whole BIFF8 grid (audit C5)
         val cfb = CfbReader(bytes)
         val wb = cfb.stream("Workbook") ?: cfb.stream("Book") ?: throw IllegalArgumentException("no Workbook stream")
         val recs = records(wb)

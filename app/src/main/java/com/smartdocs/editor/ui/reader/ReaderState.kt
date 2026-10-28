@@ -243,6 +243,39 @@ class ReaderState(
     suspend fun guardSigned(change: com.smartdocs.editor.core.pdf.SignedGuard.Change, incremental: Boolean? = null): com.smartdocs.editor.core.pdf.SignedGuard.Decision =
         com.smartdocs.editor.core.pdf.SignedGuard.decide(signedInfo(), change, incremental)
 
+    /**
+     * tab-view-core E-12: a protected file opened without its owner (permissions) password gets a new random owner
+     * password on every full save (PdfOps.keepProtection), so the author's password would no longer lift its
+     * restrictions. Before the first interactive write the screen asks once ([ownerPrompt]): the owner password (then
+     * kept), continue anyway (""), or cancel (null).
+     */
+    var ownerPrompt by mutableStateOf<kotlinx.coroutines.CompletableDeferred<String?>?>(null); private set
+    private var ownerAsked = false
+
+    fun answerOwnerPrompt(answer: String?) { ownerPrompt?.complete(answer) }
+
+    /** False when the user cancelled (or typed a wrong owner password): nothing is written. */
+    suspend fun confirmOwnerPassword(): Boolean {
+        val i = guard.info ?: return true
+        if (!i.encrypted || i.ownerAccess || ownerAsked || disposed) return true
+        val f = file ?: return true
+        val d = kotlinx.coroutines.CompletableDeferred<String?>()
+        ownerPrompt = d
+        val ans = try { d.await() } finally { ownerPrompt = null }
+        if (ans == null) return false
+        if (ans.isEmpty()) { ownerAsked = true; return true }
+        val owner = withContext(Dispatchers.IO) { runCatching { com.smartdocs.editor.core.pdf.PdfOps.loadRaw(f, ans).use { it.currentAccessPermission?.isOwnerPermission == true } }.getOrDefault(false) }
+        if (!owner) { error = str(R.string.tvc_owner_wrong); return false }
+        ownerAsked = true
+        saveMutex.withLock { withContext(NonCancellable) {
+            password = ans
+            com.smartdocs.editor.core.pdf.OpenPasswords.put(f, ans)
+            runCatching { guard.prepare(f, ans) }
+            runCatching { reopen() }
+        } }
+        return true
+    }
+
     /** Why the document could not be opened; stays until [retryOpen] (the snackbar clears [error], not this). */
     var openError by mutableStateOf<OpenError?>(null)
 
@@ -278,7 +311,7 @@ class ReaderState(
                 }
                 if (disposed) { runCatching { s.closeAsync() }; return@launch }
                 password = openPw
-                com.smartdocs.editor.core.pdf.OpenPasswords.put(f, openPw)   // audit D4: tool screens open it too
+                com.smartdocs.editor.core.pdf.OpenPasswords.put(f, openPw)   // audit D4 / tab-view-core E-03 / E-20: tool screens open it too
                 pageCount = s.pageCount
                 val recent = app.db.docs().get(Uri.fromFile(f).toString())
                 initialPage = (if (startPage >= 0) startPage else recent?.lastPage ?: 0).coerceIn(0, (s.pageCount - 1).coerceAtLeast(0))
@@ -400,11 +433,37 @@ class ReaderState(
     fun discardChanges() { discarded = true; autosaveRefused = false; edit.discardOnClose(); forms5.discard() }
 
     /**
+     * tab-view-core V-07: "Revert to saved" in place. The old way (close this reader, open a new one on the same file)
+     * let the new session load the file before the closing reader had put the stored-annotation backup back. Now the
+     * pending changes are dropped and the backup is restored here, under [saveMutex], then the session is reopened.
+     */
+    suspend fun revertToSaved() {
+        saveMutex.withLock {
+            withContext(NonCancellable) {
+                val f = file ?: return@withContext
+                edit.clear(); selection = null; placement = null; measure = null
+                forms5.discard()
+                annots.clear(); history.removeOwner(OWNER_ANNOTS)
+                val b = edit.backupFile?.takeIf { it.exists() }
+                if (b != null) {
+                    runCatching { session?.closeAsync() }
+                    withContext(Dispatchers.IO) { if (!b.renameTo(f)) { b.copyTo(f, overwrite = true); b.delete() } }
+                }
+                edit.committed()
+                dirty = false
+                if (b != null) reopen() else renderVersion++
+            }
+        }
+    }
+
+    /**
      * The document is closed for good (its back-stack entry was removed, see [ReaderHolder]). Pending edits the user
      * did not discard are saved first (audit AN-01 / DI-10): no way out of the reader drops them silently.
      */
     fun close() {
         disposed = true
+        ReaderAi6.stopTtsOf(file?.absolutePath)     // tab-view-core V-08: read aloud never outlives its document
+        com.smartdocs.editor.core.pdf.OpenPasswords.remove(file)
         guard.release()
         runCatching { video.release() }      // player + extracted video copies
         val saveFirst = dirty && !discarded
@@ -532,6 +591,16 @@ class ReaderState(
 
     /** Unified redo. */
     fun redo() { scope.launch { runHistory(false, listOfNotNull(history.peekRedo())) { history.redo() } } }
+
+    /**
+     * tab-view-core E-05: undo / redo that waits for the result and goes through the same guards as the reader's
+     * buttons (stored annotations taken out, saving in progress); returns the event (label or error), consumed.
+     */
+    suspend fun historyStepAwait(undo: Boolean): HistoryEvent? {
+        historyEvent = null
+        runHistory(undo, listOfNotNull(if (undo) history.peekUndo() else history.peekRedo())) { if (undo) history.undo() else history.redo() }
+        return historyEvent.also { historyEvent = null }
+    }
 
     /** History sheet: undo back to before step [id]. */
     fun undoTo(id: Long) { scope.launch { runHistory(true, history.undoStepsTo(id)) { history.undoTo(id) } } }
@@ -825,6 +894,7 @@ class ReaderState(
                              op: suspend (src: File, out: File, pw: String?) -> Unit): File? {
         // nitro-protect2: the author's restrictions / Protected View ([action] = what the change needs; null = none)
         action?.let { guard.require(it) }
+        if (!confirmOwnerPassword()) return null      // tab-view-core E-12
         if (dirty && !save()) return null
         selection = null
         return saveMutex.withLock {
@@ -921,7 +991,7 @@ class ReaderState(
     fun runSearch(query: String) {
         searchQuery = query
         searchJob?.cancel()
-        if (query.isBlank()) { searchHits = emptyList(); searchIndex = -1; return }
+        if (query.isBlank()) { searchHits = emptyList(); searchIndex = -1; searching = false; return }   // tab-view-core V-20
         val s = session ?: return
         searchJob = scope.launch {
             searching = true
@@ -947,7 +1017,7 @@ class ReaderState(
         jumpTo(searchHits[searchIndex].page)
     }
 
-    fun closeSearch() { searchOpen = false; searchHits = emptyList(); searchIndex = -1; searchQuery = "" }
+    fun closeSearch() { searchJob?.cancel(); searching = false; searchOpen = false; searchHits = emptyList(); searchIndex = -1; searchQuery = "" }   // tab-view-core V-20
 
     // ================= tools =================
 

@@ -127,6 +127,54 @@ object Images6 {
         return floatArrayOf(cell[0] + (cell[2] - fw) / 2, cell[1] + (cell[3] - fh) / 2, fw, fh)
     }
 
+    /** Density of a JPEG from its JFIF APP0 header (dots per inch, or per cm × 2.54), or null. [head] = first bytes. */
+    fun jfifDpi(head: ByteArray): Float? {
+        fun u8(i: Int) = if (i < head.size) head[i].toInt() and 0xFF else -1
+        if (u8(0) != 0xFF || u8(1) != 0xD8 || u8(2) != 0xFF || u8(3) != 0xE0) return null
+        if (String(head, 6, minOf(4, maxOf(0, head.size - 6)), Charsets.ISO_8859_1) != "JFIF") return null
+        val unit = u8(13); val x = (u8(14) shl 8) or u8(15)
+        return when { x <= 1 -> null; unit == 1 -> x.toFloat(); unit == 2 -> x * 2.54f; else -> null }
+    }
+
+    /**
+     * Resolution of a photo on an "image size" page (convert audit A-L11): the density the file declares (50..1200),
+     * else 96 dpi for small pictures and, for camera photos, what makes the long side about an A4 page long
+     * (a 4000×3000 photo was a 42×31 inch page at 96 dpi).
+     */
+    fun pageDpi(w: Int, h: Int, declared: Float?): Float {
+        if (declared != null && declared in 50f..1200f) return declared
+        val long = maxOf(w, h)
+        return (long / 11.69f).coerceIn(96f, 600f)
+    }
+
+    /** Scale (pixels per point) of a page render: [dpi], lowered so the page stays within [maxPixels] (memory). */
+    fun renderScale(ptW: Float, ptH: Float, dpi: Int, maxPixels: Long): Float {
+        var k = dpi / 72f
+        val px = ptW.toDouble() * k * ptH * k
+        if (px > maxPixels) k = Math.sqrt(maxPixels / (ptW.toDouble() * ptH)).toFloat()
+        return k.coerceAtLeast(0.05f)
+    }
+
+    /** Height limit of one stitched picture per format (codec limits: WebP 16383 px, JPEG 65535 px). */
+    fun maxSide(fmt: ImgFmt): Int = when (fmt) { ImgFmt.WEBP -> 16383; ImgFmt.JPG -> 65500; ImgFmt.PNG -> 100_000 }
+
+    /**
+     * "Long image" split into parts (convert audit B06): page heights at a common width, grouped greedily so every
+     * part stays within [maxHeight] px and [maxPixels] (memory); a page taller than a part on its own is a part by
+     * itself (scaled into it by the caller). Returns the page index ranges of the parts.
+     */
+    fun longParts(heights: List<Int>, width: Int, maxHeight: Int, maxPixels: Long): List<IntRange> {
+        val limit = minOf(maxHeight.toLong(), maxOf(1L, maxPixels / maxOf(1, width))).toInt()
+        val out = ArrayList<IntRange>()
+        var start = 0; var sum = 0
+        heights.forEachIndexed { i, h ->
+            if (i > start && sum + h > limit) { out += start until i; start = i; sum = 0 }
+            sum += h
+        }
+        if (start < heights.size) out += start until heights.size
+        return out
+    }
+
     /** "Long image" stitch: pages scaled to a common width (≤ [width]) so the total stays under [maxPixels]. Returns (width, per-page heights). */
     fun stitch(sizes: List<Pair<Float, Float>>, width: Int, maxPixels: Long): Pair<Int, List<Int>> {
         var w = width

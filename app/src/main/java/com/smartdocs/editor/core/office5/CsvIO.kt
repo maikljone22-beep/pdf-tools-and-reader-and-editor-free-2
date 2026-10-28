@@ -90,6 +90,44 @@ object CsvIO {
         if (!tmp.renameTo(target)) { tmp.copyTo(target, overwrite = true); tmp.delete() }
     }
 
+    /**
+     * A CSV value that a conversion to Excel keeps as text (convert audit C18): formulas ("=…", "+…", "@…" are data in a
+     * CSV, not commands), numbers with a leading zero (IDs, phone numbers), more than 15 digits (national IDs, accounts)
+     * and short tokens such as "3-4" or "1/2" that are not dates. Pure.
+     */
+    fun keepAsText(v: String): Boolean {
+        val t = v.trim()
+        if (t.isEmpty()) return false
+        if (t[0] == '=' || t[0] == '@' || (t[0] == '+' && t.length > 1 && !t[1].isDigit())) return true
+        val d = com.smartdocs.editor.core.office5.FxCoerce.normalizeDigits(t)
+        if (Regex("""^[+-]?0\d+$""").matches(d)) return true
+        if (d.count { it.isDigit() } > 15 && Regex("""^[+-]?[\d\s]+$""").matches(d)) return true
+        if (Regex("""^\d{1,2}[-/]\d{1,2}$""").matches(d)) return true
+        return false
+    }
+
+    /**
+     * CSV text → a new .xlsx workbook for "CSV → Excel" (convert audit C18): numbers keep the format they were typed in
+     * (percent, thousands, dates as dates), and [keepAsText] values stay text. The in-app CSV editor is unchanged.
+     */
+    fun toXlsxFromText(text: String, delim: Char, name: String, rtl: Boolean): Workbook5 {
+        val x = XlsxIO5.blank(name.take(31).ifBlank { "Sheet1" }, rtl)
+        val s = x.book.sheets.first()
+        parse(text, delim).forEachIndexed { r, row ->
+            row.forEachIndexed { c, v ->
+                if (v.isEmpty() || r >= MAX_ROWS || c >= MAX_COLS) return@forEachIndexed
+                s.cells[Sheet5.key(r, c)] = if (keepAsText(v)) Cell5(null, FV.Str(v)) else {
+                    val p = x.book.parseInput(v)
+                    if (p.formula != null) Cell5(null, FV.Str(v))
+                    else Cell5(null, p.literal, if (p.impliedFormat != null) x.styles.styleFor(x.styles.format(0).copy(numFmt = p.impliedFormat), 0) else 0)
+                }
+            }
+        }
+        s.dirty = true
+        x.book.recalcAll()
+        return x
+    }
+
     /** Converts a CSV workbook into a new .xlsx workbook (for "save as xlsx"). */
     fun toXlsx(w: Workbook5, rtl: Boolean): Workbook5 {
         val x = XlsxIO5.blank(w.book.sheets.first().name, rtl)
