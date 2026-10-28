@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="fsg_expired_ts">اعتبار الأختام الزمنية ذات الشهادة المنتهية صالحة</string>
+    <string name="fsg_link_as_pdf">فتح كملف PDF</string>
+    <string name="fsg_link_current_view">استخدام العرض الحالي</string>
+    <string name="fsg_link_pdf_working">جارٍ تحويل الصفحة إلى PDF…</string>
+    <string name="fsg_ltv_ask">السؤال إذا تجاوزت معلومات التحقق (LTV)</string>
+    <string name="fsg_ltv_big_text">أضافت معلومات التحقق طويلة الأمد %1$d كيلوبايت إلى الملف الموقّع. إبقاؤها يجعل التوقيع قابلًا للتحقق بعد انتهاء الشهادات، وإزالتها تُبقي الملف أصغر.</string>
+    <string name="fsg_ltv_big_title">معلومات تحقق كبيرة</string>
+    <string name="fsg_ltv_keep">إبقاء</string>
+    <string name="fsg_ltv_never">لا تسأل</string>
+    <string name="fsg_ltv_remove">إزالة</string>
+    <string name="fsg_policies">السياسات</string>
+    <string name="fsg_policy_apply">تطبيق</string>
+    <string name="fsg_policy_name">اسم السياسة</string>
+    <string name="fsg_policy_none">لا توجد سياسات محفوظة</string>
+    <string name="fsg_policy_save">حفظ كسياسة</string>
+    <string name="fsg_prompt_trust">اقتراح الوثوق بالموقّع غير الموثوق عند فتح المستند</string>
+    <string name="fsg_trust_signer">الوثوق بـ %1$s</string>
+    <string name="fsg_use_dss">استخدام معلومات التحقق المضمّنة في المستند</string>
+</resources>

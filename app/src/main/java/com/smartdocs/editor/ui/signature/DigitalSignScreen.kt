@@ -234,7 +234,8 @@ private fun SignTab(nav: NavHostController, vm: DigitalSignVm, password: String?
     fun doSignUnlocked(f: File, id: DigitalSignature.Identity, outName: String) {
         localError = null
         adv.persist()
-        val opts = adv.options(DigitalSignature.SignOptions(name.trim(), location.trim(), reason.trim(), contact.trim())).copy(lock = lock(), digest = digest)
+        val opts = adv.options(DigitalSignature.SignOptions(name.trim(), location.trim(), reason.trim(), contact.trim()))
+            .copy(lock = lock(), digest = digest, ltvAskAboveBytes = SignPrefs.ltvAskKb(ctx) * 1024L)
         val seal = if (adv.seal) adv.sealOptions() ?: run { localError = sealMissing; return } else null
         val field = targetField?.let { n -> emptyFields.firstOrNull { it.name == n } }
         runner.run(signingMsg) {
@@ -264,7 +265,8 @@ private fun SignTab(nav: NavHostController, vm: DigitalSignVm, password: String?
         val id = identity ?: run { onNeedCert(); return }
         val files = batchFiles.takeIf { it.isNotEmpty() } ?: return
         adv.persist()
-        val opts = adv.options(DigitalSignature.SignOptions(name.trim(), location.trim(), reason.trim(), contact.trim())).copy(lock = lock(), digest = digest)
+        val opts = adv.options(DigitalSignature.SignOptions(name.trim(), location.trim(), reason.trim(), contact.trim()))
+            .copy(lock = lock(), digest = digest, ltvAskAboveBytes = SignPrefs.ltvAskKb(ctx) * 1024L)
         val okFmt = ctx.getString(R.string.ns2_batch_done)
         runner.run(signingMsg) {
             val outs = ArrayList<File>(); val failed = ArrayList<String>()
@@ -404,6 +406,15 @@ private fun SignTab(nav: NavHostController, vm: DigitalSignVm, password: String?
         }
         if (digest.name.startsWith("SHA3")) Text(stringResource(R.string.ns2_digest_sha3_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         AdvancedSignOptions(adv, signatures, canCertify = report?.canCertify ?: true)
+        if (adv.ltv) {
+            var askKb by remember { mutableIntStateOf(SignPrefs.ltvAskKb(ctx)) }
+            Text(stringResource(R.string.fsg_ltv_ask), style = MaterialTheme.typography.labelLarge)
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf(0, 256, 512, 1024, 4096).forEach { kb ->
+                    FilterChip(askKb == kb, { askKb = kb; SignPrefs.setLtvAskKb(ctx, kb) }, label = { Text(if (kb == 0) stringResource(R.string.fsg_ltv_never) else "$kb KB") })
+                }
+            }
+        }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Checkbox(askName, { askName = it; SignPrefs.setAskFileName(ctx, it) }); Text(stringResource(R.string.ns_ask_file_name), style = MaterialTheme.typography.bodyMedium)
         }
@@ -424,7 +435,21 @@ private fun SignTab(nav: NavHostController, vm: DigitalSignVm, password: String?
     val docTsDone = stringResource(R.string.ps_sign_result_doc_ts)
     val warnLabel = stringResource(R.string.ps_sign_result_warnings)
     val encRemoved = stringResource(R.string.ns3_encryption_removed)
-    if (showResult) runner.result?.let {
+    // Foxit "ask if verification info is too big": keep the embedded DSS, or use the copy without it
+    val bigLtv = vm.signReport?.withoutLtv?.takeIf { showResult && it.exists() }
+    if (bigLtv != null) runner.result?.let { signed ->
+        AlertDialog(onDismissRequest = {},
+            title = { Text(stringResource(R.string.fsg_ltv_big_title)) },
+            text = { Text(stringResource(R.string.fsg_ltv_big_text, (vm.signReport?.ltvBytes ?: 0L) / 1024)) },
+            confirmButton = { TextButton(onClick = { bigLtv.delete(); vm.signReport = vm.signReport?.copy(withoutLtv = null) }) { Text(stringResource(R.string.fsg_ltv_keep)) } },
+            dismissButton = {
+                TextButton(onClick = {
+                    runCatching { bigLtv.copyTo(signed, overwrite = true) }; bigLtv.delete()
+                    vm.signReport = vm.signReport?.copy(withoutLtv = null, ltv = null)
+                }) { Text(stringResource(R.string.fsg_ltv_remove)) }
+            })
+    }
+    if (showResult && bigLtv == null) runner.result?.let {
         val rep = vm.signReport
         val extra = buildString {
             append(signedInfo)
@@ -508,6 +533,9 @@ private fun VerifyTab(nav: NavHostController, file: File?, password: String?, fo
     var revocation by remember { mutableStateOf(SignPrefs.checkRevocation(ctx)) }
     var systemRoots by remember { mutableStateOf(SignPrefs.trustSystemRoots(ctx)) }
     var sigIcons by remember { mutableStateOf(SignPrefs.showSignatureIcons(ctx)) }
+    var expiredTs by remember { mutableStateOf(SignPrefs.acceptExpiredTimestamps(ctx)) }
+    var useDss by remember { mutableStateOf(SignPrefs.useDocumentValidationInfo(ctx)) }
+    var promptTrust by remember { mutableStateOf(SignPrefs.promptTrust(ctx)) }
     var clearing by remember { mutableStateOf<String?>(null) }
     var verifyTime by rememberSaveable { mutableStateOf(DigitalSignature.VerifyTime.SECURE_TIME) }
     var showOptions by rememberSaveable { mutableStateOf(false) }
@@ -532,7 +560,7 @@ private fun VerifyTab(nav: NavHostController, file: File?, password: String?, fo
         val f = file ?: return
         scope.launch {
             busy = true; error = null
-            runCatching { DigitalSignature.verify(f, revocation = revocation, password = password) }.onSuccess { results = it }.onFailure { error = it.message ?: it.toString() }
+            runCatching { DigitalSignature.verify(f, revocation = revocation, password = password, acceptExpiredTimestamps = expiredTs, useDocumentValidationInfo = useDss) }.onSuccess { results = it }.onFailure { error = it.message ?: it.toString() }
             certs = runCatching { com.smartdocs.editor.core.sign.CertInspector.inspect(ctx, f, password, system = systemRoots) }.getOrDefault(emptyList())   // gaps6
             busy = false
         }
@@ -548,6 +576,15 @@ private fun VerifyTab(nav: NavHostController, file: File?, password: String?, fo
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Checkbox(sigIcons, { sigIcons = it; SignPrefs.setShowSignatureIcons(ctx, it) }); Text(stringResource(R.string.ns_show_sig_icons), style = MaterialTheme.typography.bodySmall)
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(expiredTs, { expiredTs = it; SignPrefs.setAcceptExpiredTimestamps(ctx, it) }); Text(stringResource(R.string.fsg_expired_ts), style = MaterialTheme.typography.bodySmall)
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(useDss, { useDss = it; SignPrefs.setUseDocumentValidationInfo(ctx, it) }); Text(stringResource(R.string.fsg_use_dss), style = MaterialTheme.typography.bodySmall)
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(promptTrust, { promptTrust = it; SignPrefs.setPromptTrust(ctx, it) }); Text(stringResource(R.string.fsg_prompt_trust), style = MaterialTheme.typography.bodySmall)
         }
         Button(onClick = { verify() }, Modifier.fillMaxWidth(), enabled = file != null && !busy) { Text(stringResource(R.string.sa_verify_now)) }
         TextButton(onClick = { showOptions = !showOptions }) { Text(stringResource(R.string.ns2_verify_more)) }

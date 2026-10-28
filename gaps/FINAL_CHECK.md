@@ -37,7 +37,7 @@
 ## Where the check disagrees with a DONE file
 - **PAGES_CONVERT_LOG stage A, Organize per-page Redact and OCR:** these do not act on the tapped page. Redact opens the whole-document tool, and OCR only opens the reader (`OrganizeScreen.kt:203-204`). → STILL MISSING.
 - **DONE_view_edit §9, reading ruler vertical / opacity / reset:** the `rulerVertical` / `rulerOpacity` settings belong to the measurement rulers. The reading band still has only on/off, dim, height and colour. → STILL MISSING.
-- **DONE_pdf3c_nav, reading order preference:** `NpfPrefs.readingOrder` is never read, so it is code-only. → STILL MISSING.
+- ~~DONE_pdf3c_nav, reading order preference: never read~~ **Correction (pdf-3c):** it is read in `ReaderAi6.orderedPage` (ReaderAi6.kt:86), which read-aloud calls; the preference is DONE. Only a *per-document* reading option (34.27) is open.
 - **DONE_comments_forms 24.33, cloud scallops:** marked not feasible there, but the app draws its own cloud path (`CloudPath`). → STILL MISSING.
 - **DONE_view_edit.md:** its header still says "Not merged", but it was merged in 315a67b.
 
@@ -2150,7 +2150,7 @@ Paths are under `app/src/main/java/com/smartdocs/editor/`. Only rows that were P
 | 34.24 Nested alt / alt hiding annotations fix | MISSING | STILL MISSING | only explanations (pc_accx_nested_alt, pc_accx_alt_hides); no fix |
 | 34.25 Tables / lists / headings fixes | MISSING | DONE | auto-tag headings/lists (`AccessAutoTag.classify`); manual fix in tags editor (type, Scope/Headers/RowSpan/ColSpan/Summary). No automatic table recognition |
 | 34.26 Setup Assistant | MISSING | STILL MISSING | OPEN in PAGES_CONVERT_LOG |
-| 34.27 Reading Option (per document) | MISSING | STILL MISSING | `NpfPrefs.readingOrder` (`core/data/NpfPrefs.kt:162`) has no reader (0 callers) — code-only; per-document option OPEN |
+| 34.27 Reading Option (per document) | MISSING | STILL MISSING | the preference is DONE (`ReaderAi6.orderedPage` reads `NpfPrefs.readingOrder`); only the per-document option is OPEN |
 | 34.29 TalkBack labels | PARTIAL | DONE | 41 `pc_cd_*` descriptions (PAGES_CONVERT_LOG stage F); not device-tested |
 | 34.34 Autotag headings/lists, re-tag | PARTIAL | DONE | `AccessibilityScreen.kt:226` → `AccessAutoTag.tag(d, lang, retag)` |
 | 34.35 Autotag form fields separately | PARTIAL | DONE | `AccessTags.tagAnnotations` (Widget → Form OBJR, `AccessTags.kt:285-305`) |
@@ -2798,3 +2798,19 @@ Low
 | NOT-FEASIBLE | 0 | 0 | 1 | 2 | 3 |
 | OWNER-ACTION | 1 | 1 | 0 | 0 | 2 |
 | N/A | 0 | 0 | 0 | 0 | 0 |
+
+
+## Status update — fix/fc-sign (pdf-3c)
+
+| Row (part / section) | Now | How / files |
+|---|---|---|
+| §28 Certificate protection saved as a policy | DONE | `core/sign/CertPolicies.kt` (recipients' certificates + permissions + cipher + metadata, JSON); `ui/security/CertPolicyUi.kt` in the certificate-protect tool (save / apply / delete); test `CertPoliciesTest` |
+| §37 Prompt to trust untrusted signers on open | DONE | the signed bar offers "Trust <signer>" for the first valid, untrusted signature (`SigFieldActions.kt` SignedBar, CertInspector); switch in Verify options (`SignPrefs.promptTrust`) |
+| §37 "Use expired timestamps" | DONE | `DigitalSignature.verify(acceptExpiredTimestamps)`: a time-stamp whose TSA certificate expired counts only when on (`SignPrefs.acceptExpiredTimestamps`, default on) |
+| §37 "Ignore document validation info" | DONE | `verify(useDocumentValidationInfo = false)` ignores the embedded DSS for revocation (`SignPrefs.useDocumentValidationInfo`) |
+| §37 "Ask if verification info is too big" | DONE | `SignOptions.ltvAskAboveBytes`: when the DSS adds more than the limit (chips 256 KB–4 MB / never), a copy without it is kept and the result asks Keep / Remove (`SignReport.ltvBytes / withoutLtv`) |
+| 26.68 Signing / verifying dynamic-XFA XML signatures (XAdES) | NOT-FEASIBLE | Android has no XML Digital Signature API (`javax.xml.crypto` is absent) and no bundled XAdES library; PDF signatures over XFA forms are done with the normal PDF signature |
+| §15 Link destination "Set this position" | DONE | link editor "Use current view" (page + zoom from the reader) — `ui/edit5/LinkEditor.kt` `currentView`, passed by `ReaderLinks` |
+| §16 Bookmark action: named destination picked from a list | DONE | `LocalDestNames` chips in `NavUi.ActionDialog` (GoTo), provided by `BookmarksScreen` and the link editor's action lists; link "named" kind also picks from the list |
+| §15 Link menu "convert the linked page to PDF" | DONE | link preview "Open as PDF" (`ui/nve/NveLinks.kt`, `ToPdf.url`, opens the result in the reader) |
+| 34.27 reading-order preference | DONE (correction) | `NpfPrefs.readingOrder` is read by `ReaderAi6.orderedPage`; the per-document option stays STILL MISSING |

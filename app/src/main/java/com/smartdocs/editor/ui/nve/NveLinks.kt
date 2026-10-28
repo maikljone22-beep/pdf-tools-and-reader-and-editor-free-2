@@ -61,7 +61,7 @@ object NveLinks {
 
 /** The address of a tapped link with Open / Copy / Share and "don't ask again". */
 @Composable
-fun NveLinkPreview(s: ReaderState) {
+fun NveLinkPreview(s: ReaderState, nav: androidx.navigation.NavHostController? = null) {
     val n = NveState.of(s)
     val url = n.linkPreview ?: return
     val ctx = LocalContext.current
@@ -80,6 +80,20 @@ fun NveLinkPreview(s: ReaderState) {
         dismissButton = {
             Row {
                 TextButton(onClick = { ReaderIntents.copy(ctx, url, "url"); NveSelectionOps.toast(ctx, ctx.getString(R.string.nv_copied)); n.linkPreview = null }) { Text(stringResource(R.string.nv_copy_url)) }
+                // Foxit §15 "convert the linked page to PDF": capture the web page and open it in the reader
+                if (nav != null && (url.startsWith("http://") || url.startsWith("https://"))) TextButton(onClick = {
+                    n.linkPreview = null
+                    NveSelectionOps.toast(ctx, ctx.getString(R.string.fsg_link_pdf_working))
+                    s.scope.launch {
+                        val out = runCatching {
+                            val name = (runCatching { android.net.Uri.parse(url).host }.getOrNull() ?: "web").replace(Regex("[^A-Za-z0-9._-]"), "_")
+                            val f = s.app.documents.uniqueFile(s.app.documents.docsDir, name)
+                            com.smartdocs.editor.core.tools5.ToPdf.url(ctx, url, f)
+                        }
+                        out.onSuccess { nav.navigate(com.smartdocs.editor.ui.Routes.reader(android.net.Uri.fromFile(it).toString())) }
+                            .onFailure { NveSelectionOps.toast(ctx, it.message ?: ctx.getString(R.string.error_generic)) }
+                    }
+                }) { Text(stringResource(R.string.fsg_link_as_pdf)) }
                 TextButton(onClick = { n.linkPreview = null }) { Text(stringResource(R.string.cancel)) }
             }
         })
