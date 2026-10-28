@@ -109,6 +109,7 @@ object Annot2Writer {
             // /I is 0..2 (ISO 32000): cloud levels 1..3 of the picker
             m.borderEffect = PDBorderEffectDictionary().apply { style = PDBorderEffectDictionary.STYLE_CLOUDY; intensity = (cloud - 1).toFloat() }
             m.intent = "PolygonCloud"
+            AnnotStyle.setCloudInward(m.cosObject, a.cloudInward)
         }
         val f = form(doc, rect)
         PDPageContentStream(doc, f).use { cs ->
@@ -118,7 +119,7 @@ object Annot2Writer {
                 ?.let { if (!noBorder) cs.setLineDashPattern(it, 0f) }
             val ox = rect.lowerLeftX; val oy = rect.lowerLeftY
             if (cloud > 0) {
-                val segs = CloudPath.build(pts, cloud, a.strokeWidth)
+                val segs = CloudPath.build(pts, cloud, a.strokeWidth, a.cloudInward)
                 segs.forEachIndexed { i, c ->
                     if (i == 0) cs.moveTo(c.x0 - ox, c.y0 - oy)
                     cs.curveTo(c.x1 - ox, c.y1 - oy, c.x2 - ox, c.y2 - oy, c.x3 - ox, c.y3 - oy)
@@ -353,7 +354,7 @@ object Annot2Writer {
                 val cloudy = be?.getNameAsString(COSName.S) == "C"
                 val intensity = if (cloudy) (be!!.getFloat(COSName.getPDFName("I"), 0f).toInt() + 1).coerceIn(1, 3) else 0
                 val kind = when { an.subtype == "PolyLine" -> AnnotKind.POLYLINE; cloudy -> AnnotKind.CLOUD; else -> AnnotKind.POLYGON }
-                base.copy(kind = kind, points = pts, cloud = intensity, fillColor = colorOf(floats(cos, "IC")))
+                base.copy(kind = kind, points = pts, cloud = intensity, cloudInward = cloudy && AnnotStyle.cloudInwardOf(cos), fillColor = colorOf(floats(cos, "IC")))
             }
             "Caret" -> base.copy(kind = AnnotKind.CARET, rects = listOf(rect), color = base.color)
             "FileAttachment" -> {

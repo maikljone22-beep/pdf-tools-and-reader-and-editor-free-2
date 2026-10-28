@@ -53,6 +53,7 @@ data class Annot(
     val created: Long = System.currentTimeMillis(),
     val fillColor: Int? = null,                 // polygon / cloud interior (null = transparent)
     val cloud: Int = 0,                         // cloudy border intensity 0 (none), 1, 2
+    val cloudInward: Boolean = false,           // Foxit 24.33: scallops point into the shape
     val filePath: String? = null,               // FILE_ATTACH / SOUND / VIDEO: file embedded on commit
     val mime: String = "",
     val groupId: Long? = null,                  // pending annotations grouped together (/IRT + /RT /Group on commit)
@@ -77,6 +78,7 @@ data class Annot(
     val wordSpacing: Float = 0f,                // Tw, points
     val hScale: Float = 1f,                     // Tz / 100
     val bullets: Boolean = false,
+    val script: Int = 0,                        // Foxit 24.102: 0 normal, 1 superscript, 2 subscript
     // ---- LINE / ARROW: show the note text on the line (/Cap, Foxit 24.42) ----
     val caption: Boolean = false,
     val video: com.smartdocs.editor.core.annot.VideoPdf.Options? = null,   // VIDEO: in-page player options
@@ -256,7 +258,7 @@ object AnnotationWriter {
                 if (a.kind == AnnotKind.STAMP_TEXT) ft.cosObject.setName(name("IT"), "FreeTextStamp")
                 else if (a.comb <= 0) com.smartdocs.editor.core.annot.AnnotStyle.applyRich(ft.cosObject, a.text,
                     com.smartdocs.editor.core.annot.AnnotStyle.Rich(a.fontSize, a.color, a.bold, a.italic, a.underline, a.strike, a.fontFamily, a.align,
-                        a.lineSpacing, a.charSpacing, a.wordSpacing, a.bullets), ArabicShaper.isArabic(a.text))
+                        a.lineSpacing, a.charSpacing, a.wordSpacing, a.bullets, a.script), ArabicShaper.isArabic(a.text))
                 // Acrobat's /Rotate of a FreeText on a turned page (viewers that rebuild the appearance from /DA)
                 if (rot != 0) ft.cosObject.setInt(COSName.ROTATE, rot)
                 ft.appearance = apDict(if (a.comb > 0) combAppearance(context, doc, rect, a, rot) else textAppearance(context, doc, rect, a, rot))
@@ -294,14 +296,14 @@ object AnnotationWriter {
                 sq.color = rgb(a.color); sq.constantOpacity = a.opacity
                 com.smartdocs.editor.core.annot.AnnotStyle.applyBorder(sq.cosObject, a.strokeWidth, a.dash, a.noBorder)
                 com.smartdocs.editor.core.annot.AnnotStyle.setInterior(sq.cosObject, a.fillColor)
-                if (a.kind == AnnotKind.RECT && a.cloud > 0) com.smartdocs.editor.core.annot.AnnotStyle.setCloudy(sq.cosObject, a.cloud)
+                if (a.cloud > 0 && a.corner <= 0f) com.smartdocs.editor.core.annot.AnnotStyle.setCloudy(sq.cosObject, a.cloud, a.cloudInward)   // Nitro 7.27: ovals too
                 sq.contents = a.text; sq.titlePopup = a.author; sq.setCreationDate(now); sq.setModifiedDate(now)
                 if (a.kind == AnnotKind.RECT && a.corner > 0f) {
                     // nitro-fillsign2 rounded rectangle (its own appearance)
                     sq.cosObject.setFloat(FillSignKeys.ROUND, a.corner)
                     sq.appearance = apDict(roundShapeAppearance(doc, rect, a))
                 } else sq.appearance = apDict(com.smartdocs.editor.core.annot.AnnotStyle.shapeStream(doc, rect.lowerLeftX, rect.lowerLeftY, rect.width, rect.height,
-                    a.kind == AnnotKind.OVAL, a.color, a.fillColor, a.strokeWidth, a.dash, a.noBorder, a.opacity, if (a.kind == AnnotKind.RECT) a.cloud else 0))
+                    a.kind == AnnotKind.OVAL, a.color, a.fillColor, a.strokeWidth, a.dash, a.noBorder, a.opacity, a.cloud, a.cloudInward))
                 annotations.add(sq)
             }
             AnnotKind.STAMP_IMAGE -> {
@@ -436,11 +438,13 @@ object AnnotationWriter {
                 setColors(cs, a.color); cs.setLineWidth(2f)
                 cs.addRect(1f, 1f, rect.width - 2, rect.height - 2); cs.stroke()
             }
-            val size = a.fontSize
+            // 24.102: super- / subscript text is smaller and raised / lowered; lines keep the full line height
+            val full = a.fontSize
+            val size = com.smartdocs.editor.core.annot.AnnotStyle.scriptSize(full, a.script)
             val lines = a.text.split('\n').map { if (a.bullets && it.isNotBlank()) "\u2022 $it" else it }
             val rtl = ArabicShaper.isArabic(a.text)
             val avail = rect.width - 8f
-            var y = rect.height - size - 4f
+            var y = rect.height - full - 4f + com.smartdocs.editor.core.annot.AnnotStyle.scriptRise(full, a.script)
             val decorations = ArrayList<FloatArray>()      // x0, x1, y of underline / strike
             lines.forEachIndexed { li, raw ->
                 val line = com.smartdocs.editor.core.view5.V5Pdf.sanitize(font, raw)
@@ -470,7 +474,7 @@ object AnnotationWriter {
                 cs.endText()
                 if (a.underline) decorations += floatArrayOf(x, x + w, y - size * 0.15f)
                 if (a.strike) decorations += floatArrayOf(x, x + w, y + size * 0.3f)
-                y -= size * a.lineSpacing.coerceIn(0.8f, 4f)
+                y -= full * a.lineSpacing.coerceIn(0.8f, 4f)
             }
             if (decorations.isNotEmpty()) {
                 setColors(cs, a.color); cs.setLineWidth((size / 16f).coerceAtLeast(0.6f))
@@ -676,7 +680,7 @@ object AnnotationWriter {
                 if (sub == "Circle" && base.subject == st.TICKMARK)
                     return base.copy(kind = AnnotKind.OVAL, rects = listOf(rect), text = cos.getString(name("SDTick")) ?: contents, fillColor = st.interiorOf(cos))
                 base.copy(kind = if (sub == "Square") AnnotKind.RECT else AnnotKind.OVAL, rects = listOf(box), fillColor = st.interiorOf(cos),
-                    cloud = if (sub == "Square") st.cloudyOf(cos) else 0,
+                    cloud = st.cloudyOf(cos), cloudInward = st.cloudInwardOf(cos),
                     corner = if (sub == "Square") cos.getFloat(FillSignKeys.ROUND, 0f).coerceAtLeast(0f) else 0f)
             }
             // nitro-fillsign2: our image stamps (placed signatures above all) become editable again
@@ -692,7 +696,7 @@ object AnnotationWriter {
                 base.copy(kind = if (stamp) AnnotKind.STAMP_TEXT else AnnotKind.FREETEXT, rects = listOf(rect), fontSize = size, color = rgb ?: 0x212121,
                     bold = rich?.bold ?: false, italic = rich?.italic ?: false, underline = rich?.underline ?: false,
                     strike = rich?.strike ?: false, fontFamily = rich?.family ?: 0, align = rich?.align ?: -1, lineSpacing = rich?.lineHeight ?: 1.3f,
-                    charSpacing = rich?.letterSpacing ?: 0f, wordSpacing = rich?.wordSpacing ?: 0f, bullets = rich?.bullets ?: false,
+                    charSpacing = rich?.letterSpacing ?: 0f, wordSpacing = rich?.wordSpacing ?: 0f, bullets = rich?.bullets ?: false, script = rich?.script ?: 0,
                     text = rich?.takeIf { it.bullets }?.let { contents.split('\n').joinToString("\n") { l -> l.removePrefix("\u2022 ") } } ?: contents,
                     comb = if (stamp) 0 else cos.getInt(FillSignKeys.COMB, 0).coerceIn(0, CombLayout.MAX_CELLS))
             }

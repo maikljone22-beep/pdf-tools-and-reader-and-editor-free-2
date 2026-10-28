@@ -257,7 +257,7 @@ fun FormsScreen(nav: NavHostController, uri: String?) {
                     IconButton(onClick = { dataMenu = true }) { Icon(Icons.Default.ImportExport, stringResource(R.string.f8_data_menu)) }
                     DropdownMenu(dataMenu, { dataMenu = false }) {
                         listOf(com.smartdocs.editor.core.formsx.DataFormat.FDF, com.smartdocs.editor.core.formsx.DataFormat.XFDF, com.smartdocs.editor.core.formsx.DataFormat.XML,
-                            com.smartdocs.editor.core.formsx.DataFormat.CSV).forEach { fm ->
+                            com.smartdocs.editor.core.formsx.DataFormat.CSV, com.smartdocs.editor.core.formsx.DataFormat.XDP).forEach { fm ->
                             DropdownMenuItem(text = { Text(stringResource(R.string.f8_export_as, fm.ext.uppercase())) }, onClick = {
                                 dataMenu = false; dataFormat = fm; dataExporter.launch((file?.nameWithoutExtension ?: "form") + "." + fm.ext)
                             })

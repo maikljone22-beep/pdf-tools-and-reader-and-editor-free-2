@@ -17,6 +17,12 @@ object FieldRecognition {
     data class Seg(val x0: Float, val y0: Float, val x1: Float, val y1: Float)
     data class Suggestion(val type: FxType, val rect: FxRect, val name: String, val label: String)
 
+    /** OLD I1: the suggestion under PDF point ([x], [y]) — the smallest one when boxes overlap. */
+    fun at(list: List<Suggestion>?, x: Float, y: Float): Suggestion? = list?.filter { s ->
+        val r = s.rect
+        x >= minOf(r.left, r.right) && x <= maxOf(r.left, r.right) && y >= minOf(r.bottom, r.top) && y <= maxOf(r.bottom, r.top)
+    }?.minByOrNull { kotlin.math.abs((it.rect.right - it.rect.left) * (it.rect.top - it.rect.bottom)) }
+
     private val BOX_CHARS = setOf("\u2610", "\u25A1", "\u274F", "\u2751", "\u25A2", "\u25FB", "\u2B1C", "\u274E", "\u2612", "\u2611")
     private const val MIN_LINE = 36f
 

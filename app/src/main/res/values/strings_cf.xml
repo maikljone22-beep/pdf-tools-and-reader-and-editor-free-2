@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cf_cloud_inward">سحابة للداخل</string>
+    <string name="cf_script_normal">عادي</string>
+    <string name="cf_superscript">نص مرتفع</string>
+    <string name="cf_subscript">نص منخفض</string>
+    <string name="cf_id_shared">الاسم هو نفسه اسم كاتب التعليقات.</string>
+    <string name="cf_sum_connectors">خطوط ربط بين التعليقات والصفحة</string>
+    <string name="cf_ink_merge_off">دمج ضربات القلم: متوقف</string>
+    <string name="cf_ink_merge_s">دمج ضربات القلم خلال %1$d ث</string>
+    <string name="cf_mail_defaults">البريد الإلكتروني الافتراضي</string>
+    <string name="cf_mail_subject">الموضوع</string>
+    <string name="cf_mail_body">نص الرسالة</string>
+    <string name="cf_mail_hint">يُستعمل عند إرسال مستند بالبريد من قائمة المشاركة. ‏{file} يصبح اسم المستند.</string>
+    <string name="cf_show_note">عرض الملاحظة</string>
+    <string name="cf_auto_popup">فتح ملاحظة التعليق تلقائيًا</string>
+    <string name="cf_auto_popup_sub">تظهر ملاحظة التعليق المحدد مباشرة؛ عند الإيقاف تُفتح بزر «عرض الملاحظة».</string>
+</resources>

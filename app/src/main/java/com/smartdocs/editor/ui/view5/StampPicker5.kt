@@ -62,8 +62,9 @@ enum class SignHere(val ar: Int, val en: String, val color: Int) {
 object StampIdentity {
     fun load(ctx: Context, fallbackName: String): StampTokens.Identity {
         val p = ctx.getSharedPreferences(V5State.PREFS, Context.MODE_PRIVATE)
-        return StampTokens.Identity(p.getString("id_name", null)?.takeIf { it.isNotBlank() } ?: fallbackName, p.getString("id_title", "") ?: "", p.getString("id_org", "") ?: "",
+        val stored = StampTokens.Identity(p.getString("id_name", null) ?: "", p.getString("id_title", "") ?: "", p.getString("id_org", "") ?: "",
             p.getString("id_unit", "") ?: "", p.getString("id_email", "") ?: "")
+        return StampTokens.shared(stored, fallbackName)   // fallbackName is the comment author
     }
     fun save(ctx: Context, id: StampTokens.Identity) {
         ctx.getSharedPreferences(V5State.PREFS, Context.MODE_PRIVATE).edit().putString("id_name", id.name).putString("id_title", id.title).putString("id_org", id.org).putString("id_unit", id.unit).putString("id_email", id.email).apply()
@@ -253,7 +254,11 @@ fun V5StampPicker(onPicked: (Bitmap) -> Unit, onDismiss: () -> Unit) {
                 OutlinedTextField(u, { u = it }, label = { Text(stringResource(R.string.cx_id_unit)) }, singleLine = true)
                 OutlinedTextField(e, { e = it }, label = { Text(stringResource(R.string.cx_id_email)) }, singleLine = true)
             } },
-            confirmButton = { TextButton(onClick = { identity = StampTokens.Identity(n, t, o, u, e); StampIdentity.save(ctx, identity); editId = false }) { Text(stringResource(R.string.ok)) } },
+            confirmButton = { TextButton(onClick = {
+                identity = StampTokens.Identity(n.trim(), t, o, u, e); StampIdentity.save(ctx, identity); editId = false
+                // 7.73: one identity, so the name is also the comment author
+                if (identity.name.isNotBlank() && identity.name != settings.authorName) scope.launch { app.settings.update { it.copy(authorName = identity.name) } }
+            }) { Text(stringResource(R.string.ok)) } },
             dismissButton = { TextButton(onClick = { editId = false }) { Text(stringResource(R.string.cancel)) } })
     }
     newTpl?.let { cur ->

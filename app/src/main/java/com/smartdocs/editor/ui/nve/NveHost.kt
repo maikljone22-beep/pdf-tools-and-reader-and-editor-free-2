@@ -67,7 +67,7 @@ fun NveReaderHost(s: ReaderState, nav: NavHostController, snack: SnackbarHostSta
         NveExternal.pane(s, pane, nav, onJump = { s.jumpTo(it); n.pane = null }, onClose = { n.pane = null })
     }
     NveContextMenu(s, actions)
-    NveLinkPreview(s)
+    NveLinkPreview(s, nav)
     NveLinkPrefetch(s)
     // "Edit text" from the selection bar: the reader opens Edit mode (hook reads requestEdit)
 }
