@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ns3_encryption_removed">تعذّر التوقيع مع إبقاء الحماية، فالنسخة الموقّعة غير محمية بكلمة مرور</string>
+    <string name="ns3_field_added_copy">أُضيف الحقل في نسخة جديدة: %1$s</string>
+    <string name="ns3_field_edit_step">تعديل حقل توقيع</string>
+    <string name="ns3_saved_sig">توقيع محفوظ</string>
+    <string name="ns3_saved_sig_locked">توقيع محفوظ مقفل</string>
+</resources>

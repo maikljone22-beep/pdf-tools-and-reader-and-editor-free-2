@@ -270,7 +270,9 @@ class DocumentRepository(private val context: Context, private val db: AppDataba
      * to its source. A copy of the old [target] goes to the trash first (audit UX-02): if that copy cannot be made the
      * document is left untouched and this throws. Returns the trash entry holding the previous version.
      */
-    suspend fun replaceOriginal(target: File, result: File): com.smartdocs.editor.core.view5.Trash.Entry = withContext(Dispatchers.IO) {
+    suspend fun replaceOriginal(target: File, result: File, password: String? = null): com.smartdocs.editor.core.view5.Trash.Entry = withContext(Dispatchers.IO) {
+        // tab-view-core E-01 / T-01: a signed / certified original is never replaced by a full rewrite (save a copy instead)
+        com.smartdocs.editor.core.pdf.SignedGuard.checkWrite(target, result, password)
         val backup = com.smartdocs.editor.core.view5.Trash(File(context.filesDir, "trash")).copyToTrash(target)
             ?: throw java.io.IOException("cannot keep a copy of ${target.name} (storage full?)")
         val tmp = File(target.parentFile, ".${target.name}.replace")

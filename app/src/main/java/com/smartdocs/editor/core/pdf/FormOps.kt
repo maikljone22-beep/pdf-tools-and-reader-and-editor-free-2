@@ -182,28 +182,38 @@ object FormOps {
         context: android.content.Context? = null, display: Map<String, String> = emptyMap(), dropXfa: Boolean = false,
     ): Int = withContext(Dispatchers.IO) {
         load(src, password).use { doc ->
-            val acro = doc.documentCatalog.acroForm ?: throw IllegalStateException("no form")
-            var applied = 0
-            var needViewer = false
-            acro.needAppearances = false
-            (values.keys + display.keys).distinct().forEach { name ->
-                val f = acro.getField(name) ?: return@forEach
-                if (f.isReadOnly && name !in display) return@forEach
-                val value = values[name] ?: valueOf(f)
-                val shown = display[name]
-                val ok = runCatching {
-                    if (f is PDTextField && ((shown != null && shown != value) || ArabicShaper.isArabic(shown ?: value)))
-                        applyTextAppearance(context, doc, acro, f, value, shown ?: value)
-                    else applyValue(acro, f, value)
-                }.isSuccess
-                if (!ok) { needViewer = true; runCatching { acro.needAppearances = true; applyValue(acro, f, value); acro.needAppearances = false } }
-                if (name in values) applied++
-            }
-            if (needViewer) acro.needAppearances = true
-            if (dropXfa && acro.hasXFA()) acro.cosObject.removeItem(com.tom_roush.pdfbox.cos.COSName.XFA)
+            val applied = fillIn(doc, values, context, display, dropXfa)
             doc.save(out)
             applied
         }
+    }
+
+    /** [fillFields] on an open document, without saving (the signed-file path saves it incrementally). */
+    fun fillIn(
+        doc: PDDocument, values: Map<String, String>, context: android.content.Context? = null,
+        display: Map<String, String> = emptyMap(), dropXfa: Boolean = false, fixup: Boolean = true,
+    ): Int {
+        // signed files skip PdfBox's AcroForm fix-up (it would add /DR and /DA to the form in the update)
+        val acro = (if (fixup) doc.documentCatalog.acroForm else doc.documentCatalog.getAcroForm(null)) ?: throw IllegalStateException("no form")
+        var applied = 0
+        var needViewer = false
+        acro.needAppearances = false
+        (values.keys + display.keys).distinct().forEach { name ->
+            val f = acro.getField(name) ?: return@forEach
+            if (f.isReadOnly && name !in display) return@forEach
+            val value = values[name] ?: valueOf(f)
+            val shown = display[name]
+            val ok = runCatching {
+                if (f is PDTextField && ((shown != null && shown != value) || ArabicShaper.isArabic(shown ?: value)))
+                    applyTextAppearance(context, doc, acro, f, value, shown ?: value)
+                else applyValue(acro, f, value)
+            }.isSuccess
+            if (!ok) { needViewer = true; runCatching { acro.needAppearances = true; applyValue(acro, f, value); acro.needAppearances = false } }
+            if (name in values) applied++
+        }
+        if (needViewer) acro.needAppearances = true
+        if (dropXfa && acro.hasXFA()) acro.cosObject.removeItem(com.tom_roush.pdfbox.cos.COSName.XFA)
+        return applied
     }
 
     /** Clear every field to its empty state. */

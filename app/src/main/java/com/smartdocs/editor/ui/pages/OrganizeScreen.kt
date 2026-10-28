@@ -118,7 +118,7 @@ fun OrganizeScreen(nav: NavHostController, uri: String?) {
                         DropdownMenu(menu, { menu = false }) {
                             DropdownMenuItem(text = { Text(stringResource(R.string.pg_save_overwrite)) }, enabled = state.dirty, onClick = {
                                 menu = false; saving = true
-                                scope.launch { try { result = state.saveOverwrite(); result?.let { writeBackOrganize(it) } } catch (e: Exception) { snack = e.message } finally { saving = false } }
+                                scope.launch { try { result = state.saveOverwrite(); result?.let { writeBackOrganize(it) } } catch (e: Exception) { snack = com.smartdocs.editor.ui.common.signedOrMessage(ctx, e) } finally { saving = false } }
                             })
                             DropdownMenuItem(text = { Text(stringResource(R.string.pg_save_copy)) }, onClick = {
                                 menu = false; saving = true
