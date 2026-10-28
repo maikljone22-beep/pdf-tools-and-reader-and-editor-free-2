@@ -76,6 +76,9 @@ fun PageGrid(
     modifier: Modifier = Modifier,
     /** Per-thumbnail menu (Foxit: redact / OCR / print … one page); null = no menu. */
     pageActions: List<Pair<Int, (Int) -> Unit>>? = null,
+    /** fix/thumbs-panel: the page whose long-press menu is open, and that menu (anchored to its cell). */
+    menuPage: Int? = null,
+    menu: @Composable (Int) -> Unit = {},
 ) {
     val grid = rememberLazyGridState()
     val drag = remember { DragState() }
@@ -131,6 +134,7 @@ fun PageGrid(
             val target = drag.toPos == pos && drag.moved && drag.fromPos != pos
             PageCell(
                 state = state, page = page, dragging = dragging, dropTarget = target, actions = pageActions,
+                extra = { if (menuPage == page) menu(page) },
                 modifier = Modifier
                     .zIndex(if (dragging) 1f else 0f)
                     .graphicsLayer {
@@ -143,7 +147,8 @@ fun PageGrid(
 }
 
 @Composable
-private fun PageCell(state: OrganizeState, page: Int, dragging: Boolean, dropTarget: Boolean, modifier: Modifier, actions: List<Pair<Int, (Int) -> Unit>>? = null) {
+private fun PageCell(state: OrganizeState, page: Int, dragging: Boolean, dropTarget: Boolean, modifier: Modifier, actions: List<Pair<Int, (Int) -> Unit>>? = null,
+                     extra: @Composable () -> Unit = {}) {
     val key = state.thumbKey(page)
     val bmp = state.thumbs[key]
     // audit 5 G-07: rendered at the cell's width; asked again when the LRU dropped it or the cell grew
@@ -192,5 +197,6 @@ private fun PageCell(state: OrganizeState, page: Int, dragging: Boolean, dropTar
                 }
             }
         }
+        extra()
     }
 }

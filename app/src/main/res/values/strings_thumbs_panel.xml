@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- fix/thumbs-panel: reader thumbnails panel (organise, multi-select, size) and the thumbnail long-press menu. Prefix tpn_. -->
+<resources>
+    <string name="tpn_go_to_page">الانتقال إلى الصفحة</string>
+    <string name="tpn_select">تحديد</string>
+    <string name="tpn_deselect">إلغاء التحديد</string>
+    <string name="tpn_rotate_left">تدوير لليسار</string>
+    <string name="tpn_rotate_right">تدوير لليمين</string>
+    <string name="tpn_duplicate">تكرار</string>
+    <string name="tpn_delete">حذف</string>
+    <string name="tpn_extract">استخراج إلى ملف جديد</string>
+    <string name="tpn_insert_blank">إدراج صفحة فارغة بعدها</string>
+    <string name="tpn_insert_file">إدراج صفحات من ملف بعدها</string>
+    <string name="tpn_replace">استبدال بصفحات من ملف</string>
+    <string name="tpn_print">طباعة</string>
+    <string name="tpn_g_pages">الصفحات</string>
+    <string name="tpn_menu_page">الصفحة %1$d</string>
+    <string name="tpn_menu_pages">%1$d صفحات</string>
+    <string name="tpn_failed">تعذّرت عملية الصفحات</string>
+    <string name="tpn_hi_rotate">تدوير الصفحات</string>
+    <string name="tpn_hi_delete">حذف الصفحات</string>
+    <string name="tpn_hi_duplicate">تكرار الصفحات</string>
+    <string name="tpn_hi_blank">إدراج صفحة فارغة</string>
+    <string name="tpn_hi_move">نقل الصفحات</string>
+    <string name="tpn_hi_insert">إدراج صفحات من ملف</string>
+    <string name="tpn_hi_replace">استبدال الصفحات</string>
+    <string name="tpn_extracted">استُخرجت الصفحات إلى %1$s</string>
+    <string name="tpn_select_mode">تحديد الصفحات</string>
+    <string name="tpn_select_all">تحديد الكل</string>
+    <string name="tpn_n_selected">%1$d محددة</string>
+    <string name="tpn_smaller">مصغرات أصغر</string>
+    <string name="tpn_larger">مصغرات أكبر</string>
+    <string name="tpn_delete_one_q">حذف الصفحة %1$d؟</string>
+    <string name="tpn_delete_many_q">حذف %1$d صفحات؟</string>
+</resources>

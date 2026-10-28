@@ -68,7 +68,7 @@ fun PanelsContent(state: ReaderState, panel: ReaderPanel, onPanel: (ReaderPanel)
                 ReaderPanel.BOOKMARKS -> BookmarksPanel(state, onJump)
                 // threads, review status, type + author filters, sorting, export / import (MODULE_annot2)
                 ReaderPanel.ANNOTATIONS -> com.smartdocs.editor.ui.reader.annot.CommentsPanel(state, onJump)
-                ReaderPanel.THUMBNAILS -> ThumbnailsPanel(state, onJump)
+                ReaderPanel.THUMBNAILS -> ReaderThumbnailsPanel(state, onJump)   // fix/thumbs-panel: organise, multi-select, size (ReaderThumbs.kt)
                 ReaderPanel.ATTACHMENTS -> com.smartdocs.editor.ui.attachments.ReaderAttachmentsPanel(state, onJump, onOpenPdf)   // nav-attach
                 ReaderPanel.INFO -> NpfInfoPanels(state, onJump)   // nav-prefs: + layers, security, fields, destinations, tags, articles, standards, …
             }
@@ -281,40 +281,4 @@ private fun subtypeLabel(sub: String): String = when (sub) {
     "Ink" -> stringResource(R.string.annot_ink); "Text" -> stringResource(R.string.annot_note); "FreeText" -> stringResource(R.string.annot_text)
     "Line" -> stringResource(R.string.annot_line); "Square" -> stringResource(R.string.annot_rect); "Circle" -> stringResource(R.string.annot_oval)
     "Stamp" -> stringResource(R.string.annot_stamp); else -> sub
-}
-
-@Composable
-private fun ThumbnailsPanel(state: ReaderState, onJump: (Int) -> Unit) {
-    val session = state.session ?: return
-    // audit 5 G-15: opens at the current page, shows page labels, and keeps rendered thumbnails while scrolling
-    val grid = androidx.compose.foundation.lazy.grid.rememberLazyGridState(initialFirstVisibleItemIndex = state.currentPage.coerceIn(0, (state.pageCount - 1).coerceAtLeast(0)))
-    val labels = com.smartdocs.editor.ui.edit5.rememberPageLabels(state)
-    val cache = remember(session, state.renderVersion, state.nightMode) {
-        object : android.util.LruCache<Int, Bitmap>(12 shl 20) { override fun sizeOf(key: Int, value: Bitmap): Int = value.byteCount }
-    }
-    LazyVerticalGrid(GridCells.Adaptive(96.dp), Modifier.fillMaxWidth().heightIn(max = 560.dp), state = grid, contentPadding = PaddingValues(12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        items((0 until state.pageCount).toList(), key = { it }) { page ->
-            // keyed on the session too: after a save the old session is closed and a fresh one replaces it
-            val bmp by produceState<Bitmap?>(cache.get(page), page, session, state.renderVersion, state.nightMode) {
-                if (value != null) return@produceState
-                if (session.isClosed || page >= session.pageCount) return@produceState
-                val (w, h) = state.pageSize(page)
-                value = runCatching { session.render(page, 160, (160 * h / w).toInt().coerceAtLeast(1), state.nightMode, true) }.getOrNull()
-                    ?.also { cache.put(page, it) }
-            }
-            val current = page == state.currentPage
-            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable { onJump(page) }) {
-                Box(
-                    Modifier.fillMaxWidth().aspectRatio(0.72f).clip(RoundedCornerShape(6.dp)).background(Color.White)
-                        .border(if (current) 2.dp else 1.dp, if (current) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(6.dp)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    bmp?.let { Image(it.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Fit) } ?: CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-                }
-                val label = labels?.getOrNull(page)?.takeIf { it.isNotBlank() && it != (page + 1).toString() }
-                Text(if (label != null) "$label (${page + 1})" else (page + 1).toString(), style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    color = if (current) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
-    }
 }

@@ -265,6 +265,23 @@ class OrganizeState(
 
     private fun insertRemap(at: Int): (List<Long>, Int) -> List<Long> = { old, n -> OrganizeLogic.idsAfterInsert(old, at, n - old.size, ::freshId) }
 
+    /** fix/thumbs-panel: one copy of each of [pages] right after it (thumbnail menu; PageOps5 copies inside the document). */
+    fun duplicatePages(pages: Collection<Int>) {
+        val sel = pages.filter { it in 0 until pageCount }.distinct().sorted()
+        if (sel.isEmpty()) return
+        apply { src, out -> com.smartdocs.editor.core.edit5.PageOps5.duplicate(src, out, password, sel, 1, false) }
+    }
+
+    /**
+     * fix/thumbs-panel: replace [pages] pairwise by the first pages of [other] (thumbnail menu). PageOps5.replace
+     * re-points bookmarks and links at the new pages; [otherPassword] opens a protected [other].
+     */
+    fun replacePages(pages: List<Int>, other: File, otherPassword: String?) {
+        val sel = pages.filter { it in 0 until pageCount }.distinct().sorted()
+        if (sel.isEmpty()) return
+        apply(keepSelection = true) { src, out -> com.smartdocs.editor.core.edit5.PageOps5.replace(src, out, password, sel, other, otherPassword, sel.indices.toList()) }
+    }
+
     fun insertBlank(at: Int, style: PdfOps.PageStyle) {
         apply(remap = insertRemap(at)) { src, out -> PdfOps.insertBlankPage(src, at, out, style, password) }
     }
@@ -385,9 +402,12 @@ class OrganizeState(
     }
 
     /** Extract selected pages into a new file in docsDir (the screen checks COPY first, audit 5 G-03). */
-    suspend fun extractSelected(): File? {
+    suspend fun extractSelected(): File? = extractPages(selected.sorted())
+
+    /** fix/thumbs-panel: [pages] into a new file in docsDir (thumbnail menu; the screen checks COPY first). */
+    suspend fun extractPages(pages: List<Int>): File? {
         val src = work ?: return null
-        val sel = selected.sorted()
+        val sel = pages.filter { it in 0 until pageCount }.distinct().sorted()
         if (sel.isEmpty()) return null
         val base = (original?.nameWithoutExtension ?: "pages") + "_pages"
         val out = documents.uniqueFile(documents.docsDir, base)

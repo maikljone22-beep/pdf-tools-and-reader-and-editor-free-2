@@ -28,6 +28,7 @@ import androidx.navigation.NavHostController
 import com.smartdocs.editor.LocalApp
 import com.smartdocs.editor.R
 import com.smartdocs.editor.core.pdf.PdfOps
+import com.smartdocs.editor.core.selmenu.SelAction
 import com.smartdocs.editor.ui.common.*
 import kotlinx.coroutines.launch
 import java.io.File
@@ -141,6 +142,44 @@ fun OrganizeScreen(nav: NavHostController, uri: String?) {
             prev.savedStateHandle["ttpg_open_page"] = p
             nav.popBackStack()
         } else nav.navigate(com.smartdocs.editor.ui.Routes.reader(Uri.fromFile(o).toString(), p))
+    }
+    // fix/thumbs-panel: the thumbnail long-press menu (selection-menu registry, SelCtx.THUMB); a picked PDF is inserted
+    // after the pages (false) or replaces them (true)
+    var thumbMenu by remember { mutableStateOf<Int?>(null) }
+    var thumbPick by remember { mutableStateOf<Pair<Boolean, List<Int>>?>(null) }
+    var thumbLocked by remember { mutableStateOf<Pair<File, Pair<Boolean, List<Int>>>?>(null) }
+    fun useThumbFile(f: File, t: Pair<Boolean, List<Int>>, pw: String?) {
+        if (t.first) state.replacePages(t.second, f, pw) else state.insertFrom(f, t.second.max() + 1, pw)
+    }
+    val pickThumbFile = rememberPdfPicker { files ->
+        val f = files.firstOrNull(); val t = thumbPick; thumbPick = null
+        if (f != null && t != null) scope.launch {
+            if (kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.smartdocs.editor.core.pdf.LockedPdf.needsPassword(f) }) thumbLocked = f to t
+            else useThumbFile(f, t, null)
+        }
+    }
+    fun runThumb(a: SelAction, pages: List<Int>, p: Int) {
+        when (a) {
+            SelAction.THUMB_OPEN -> openPage(p)
+            SelAction.THUMB_SELECT -> { state.selectMode = true; state.selected = state.selected + p }
+            SelAction.THUMB_DESELECT -> state.toggle(p)
+            SelAction.THUMB_ROTATE_LEFT -> state.rotatePages(pages.toSet(), -90, keepSelection = true)
+            SelAction.THUMB_ROTATE_RIGHT -> state.rotatePages(pages.toSet(), 90, keepSelection = true)
+            SelAction.THUMB_DUPLICATE -> state.duplicatePages(pages)
+            SelAction.THUMB_DELETE -> if (pages.size >= state.pageCount) snack = cannotDeleteAll else state.deletePages(pages.toSet(), keepSelection = true)
+            SelAction.THUMB_EXTRACT -> requirePermission(com.smartdocs.editor.core.security.DocAction.COPY) {
+                saving = true
+                scope.launch { try { result = state.extractPages(pages) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { snack = state.message(e) } finally { saving = false } }
+            }
+            SelAction.THUMB_INSERT_BLANK -> state.insertBlank(pages.max() + 1, PdfOps.PageStyle.BLANK)
+            SelAction.THUMB_INSERT_FILE -> { thumbPick = false to pages; pickThumbFile() }
+            SelAction.THUMB_REPLACE -> { thumbPick = true to pages; pickThumbFile() }
+            SelAction.THUMB_PRINT -> requirePermission(com.smartdocs.editor.core.security.DocAction.PRINT) {
+                saving = true
+                scope.launch { try { state.printPages(pages) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { snack = state.message(e) } finally { saving = false } }
+            }
+            else -> Unit
+        }
     }
     BackHandler(enabled = state.selectMode || state.dirty) { if (state.selectMode) { state.selectMode = false; state.selected = emptySet() } else leave() }
 
@@ -267,7 +306,14 @@ fun OrganizeScreen(nav: NavHostController, uri: String?) {
                         ),
                         dragEnabled = state.filter == PageFilter.ALL && !state.busy,
                         onTap = { p -> if (state.selectMode) state.toggle(p) else { state.selectMode = true; state.selected = setOf(p) } },
-                        onLongPress = { p -> state.selectMode = true; state.selected = state.selected + p },
+                        // fix/thumbs-panel: long-press opens the thumbnail menu (Select is one of its items); long-press + drag still moves
+                        onLongPress = { p -> if (!state.busy) thumbMenu = p },
+                        menuPage = thumbMenu,
+                        menu = { p ->
+                            com.smartdocs.editor.ui.selmenu.ThumbSelMenu(
+                                com.smartdocs.editor.ui.selmenu.organizeThumbEnv(state::allows, com.smartdocs.editor.LocalSettings.current.aiEnabled),
+                                p, state.selected, state.pageCount, onDismiss = { thumbMenu = null }, onItem = { a, pages -> runThumb(a, pages, p) })
+                        },
                         onReorder = { from, to ->
                             val order = (0 until state.pageCount).toMutableList()
                             val moved = order.removeAt(from); order.add(to, moved)
@@ -288,6 +334,10 @@ fun OrganizeScreen(nav: NavHostController, uri: String?) {
     // share6 (fid): inserting pages from a password-protected PDF
     lockedInsert?.let { (other, at) ->
         com.smartdocs.editor.ui.tools.FilePasswordDialog(other, onUnlocked = { pw -> lockedInsert = null; state.insertFrom(other, at, pw) }, onRemove = { lockedInsert = null })
+    }
+
+    thumbLocked?.let { (other, t) ->
+        com.smartdocs.editor.ui.tools.FilePasswordDialog(other, onUnlocked = { pw -> thumbLocked = null; useThumbFile(other, t, pw) }, onRemove = { thumbLocked = null })
     }
 
     // audit 5 (PAGES, Low): the exit dialog also offers Save (overwrite the original, then leave)
