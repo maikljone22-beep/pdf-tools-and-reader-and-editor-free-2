@@ -262,6 +262,7 @@ Per item, Auto with the integer model (bag char accuracy):
 | bag | .841 | .946 | .962 | .871 | .901 | .922 | .871 | .818 | .835 | .984 |
 
 - **Digits**: Arabic-Indic number tokens went from 23 % (app before) to 70 %.
+- Training continued to 6,000 iterations, but the training error stopped improving after 3,900 (1.85 %). The 3,000-iteration model is kept; the 6,000 one was not evaluated.
 - **Speed**: one Tesseract pass with an integer model replaces ara+eng plus 27–137 second readings. Page 78 takes 23 s instead of 88 s.
 
 **Hosting (not done).**
@@ -298,6 +299,9 @@ Per item, Auto with the integer model (bag char accuracy):
 | `app/build.gradle.kts`, `proguard-rules.pro` | `com.microsoft.onnxruntime:onnxruntime-android:1.20.0` (MIT; AAR 27.9 MB); x86/x86_64 ONNX libraries excluded; keep rule for `ai.onnxruntime.**` |
 | `ai-proxy/worker.js` | `POST /ocr` (`OCR_PROVIDER` = google / azure / vision, secret `OCR_KEY`, `OCR_URL` for Azure; 100 pages per device per day; 8 MB body), `capabilities.ocr` |
 | `app/src/test/.../ProOcrTest.kt` | 19 JVM tests (listed in §8) |
+| `core/ocr/OcrRedo.kt` (new) + `OcrSheet`, `OcrInPlace.runOcrToFile`, `OcrRunner` / `OcrBatchScreen` | **Redo OCR / replace the text layer** (FINAL_CHECK K2). The OCR sheet and batch OCR have a "Redo OCR and replace the text layer" option (ar + en). On the chosen pages, a copy first loses the app's old OCR layer (`OcrLayerCleanup.removeOurs`) and every text object whose shown text is all invisible (Tr 3: a scanner's or another app's OCR). Then every chosen page is recognised with the current engine. Visible glyphs, pictures and paths are untouched. The text-state operators of a removed object (font, spacing, rendering mode, colours, marked content) stay, so later visible text draws exactly as before. A text object mixing visible and invisible text is kept whole. |
+| `ui/edit/TextTools5.kt` | **OCR in Edit mode.** The existing "Scanned page? Turn it into editable text" bar now runs with `redo`. Before, a scan that already carried a searchable OCR layer stayed a picture: its invisible text made the editable writer add invisible words only. New preference "Recognise scanned pages automatically when editing", off by default: a page without editable text is recognised once per page and session. |
+| `app/src/test/.../OcrRedoTest.kt` | 4 JVM tests (harness: 4/4 with real PdfBox-Android): invisible object removed with its text state kept, mixed object kept, q/Q and cross-stream rendering mode, a page losing its OCR layer while keeping its drawing and visible text |
 
 **Sizes.**
 - ONNX Runtime native code adds about 18.5 MB to the arm64 APK (`libonnxruntime.so` 17.6 MB + JNI 0.9 MB, stored uncompressed), about 13 MB to the armeabi-v7a APK, and about 31 MB to the universal APK.
@@ -334,8 +338,14 @@ Per item, Auto with the integer model (bag char accuracy):
   - cloud answer parsing;
   - fine-tuned model language mapping and pin;
   - engine setting JSON.
-- **GitHub CI** (Build APK = assembleDebug + testDebugUnitTest): CI_SECTION
-- **Not tested on a device**: ONNX Runtime on Android, the model download, real speed and memory, the settings UI, and the cloud route (no server keys).
+- **GitHub CI** (Build APK = assembleDebug + testDebugUnitTest), all green after the first fix:
+  - run 40609519951 (bdc0865): **failure**, a broken string literal in OcrEngine (fixed);
+  - 40610840650 (c62e019): success;
+  - 40614467423 (40e60b0): success;
+  - 40624678088 (271fc98, fine-tuned model wiring): success;
+  - 40625864600 (cd56a99): success;
+  - **40627499766 (5d4b961, redo OCR + auto OCR on edit + OcrRedoTest): success**.
+- **Not tested on a device**: ONNX Runtime on Android, the model download, real speed and memory, the settings UI, redo OCR and auto OCR in Edit mode, and the cloud route (no server keys).
 
 ## 9. Honest remaining errors (Auto)
 
