@@ -112,18 +112,33 @@ class DesignerState(private val context: Context, private val scope: CoroutineSc
     /** Widgets on [p]: (ref, spec, rect). */
     fun widgetsOn(p: Int): List<Triple<FxRef, FieldSpec, FxRect>> = specs.flatMap { s -> s.widgets.mapIndexedNotNull { i, w -> if (w.page == p) Triple(FxRef(s.name, i), s, w.rect) else null } }
 
-    fun open(file: File) {
+    /**
+     * tab-view-core E-03: the document password (from the reader, or typed in [needPassword]'s prompt). The working
+     * copy is loaded with [PdfOps.load], so an encrypted file keeps its protection when saved.
+     */
+    var password: String? = null; private set
+    /** The file waiting for its password (the screen shows the prompt while this is set). */
+    var needPassword by mutableStateOf<File?>(null)
+    var wrongPassword by mutableStateOf(false)
+
+    fun open(file: File, pw: String? = com.smartdocs.editor.core.pdf.OpenPasswords.get(file)) {
         scope.launch {
             busy = true
             try {
                 withContext(Dispatchers.IO) {
+                    // a wrong / missing password fails here, before anything is replaced
+                    com.smartdocs.editor.core.pdf.PdfOps.load(file, pw).close()
                     val copy = File(dir, "work_${System.nanoTime()}.pdf")
                     file.copyTo(copy, overwrite = true)
                     clearStacks()
+                    password = pw
                     source = file
                     swapTo(copy)
                 }
+                needPassword = null; wrongPassword = false
                 page = 0; selection.clear(); suggestions = emptyMap(); dirty = false
+            } catch (e: com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException) {
+                wrongPassword = pw != null; needPassword = file
             } catch (e: Exception) { error = e.message ?: e.toString() } finally { busy = false }
         }
     }
@@ -141,8 +156,8 @@ class DesignerState(private val context: Context, private val scope: CoroutineSc
     /** Make [f] the working copy: reopen the renderer and re-read fields and page geometry. */
     private suspend fun swapTo(f: File) {
         val old = session
-        val fresh = PdfSession.open(context, f)
-        val (sp, pg, tb, co, ly) = PDDocument.load(f).use { d ->
+        val fresh = PdfSession.open(context, f, password)
+        val (sp, pg, tb, co, ly) = com.smartdocs.editor.core.pdf.PdfOps.load(f, password).use { d ->
             val infos = (0 until d.numberOfPages).map { i ->
                 val p = d.getPage(i); val c = p.cropBox
                 PageInfo(c.lowerLeftX, c.lowerLeftY, c.width, c.height, p.rotation)
@@ -172,7 +187,7 @@ class DesignerState(private val context: Context, private val scope: CoroutineSc
                 try {
                     val out = File(dir, "work_${System.nanoTime()}.pdf")
                     val changed = withContext(Dispatchers.IO) {
-                        PDDocument.load(cur).use { d -> if (!block(d)) false else { d.save(out); true } }
+                        com.smartdocs.editor.core.pdf.PdfOps.load(cur, password).use { d -> if (!block(d)) false else { d.save(out); true } }   // tab-view-core E-03: re-protected
                     }
                     if (changed) withContext(NonCancellable + Dispatchers.IO) {
                         undoStack.addLast(label to cur)
@@ -222,7 +237,7 @@ class DesignerState(private val context: Context, private val scope: CoroutineSc
             busy = true
             try {
                 val found = withContext(Dispatchers.IO) {
-                    PDDocument.load(cur).use { d ->
+                    com.smartdocs.editor.core.pdf.PdfOps.load(cur, password).use { d ->
                         (pagesToScan ?: (0 until d.numberOfPages).toList()).filter { it in 0 until d.numberOfPages }
                             .associateWith { runCatching { FieldRecognition.scanPage(d, it) }.getOrDefault(emptyList()) }
                     }

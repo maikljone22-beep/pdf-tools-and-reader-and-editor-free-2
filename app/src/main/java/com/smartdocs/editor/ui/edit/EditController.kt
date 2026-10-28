@@ -85,6 +85,11 @@ class EditController(val state: ReaderState, private val scope: CoroutineScope, 
             try {
                 EditPrefs.apply(ctx)      // NVE-text: line / paragraph mode, word distance
                 val m = PageTextModel.load(f, state.password, p)
+                // tab-view-core E-07: links keyed by the document ID; links of boxes that are gone are dropped
+                kotlinx.coroutines.withContext(Dispatchers.IO) {
+                    TextLinks.prime(f, state.password)
+                    TextLinks.prune(ctx, TextLinks.docKey(f), p, m.blocks.map { it.rect })
+                }
                 if (p == page) {
                     model = m
                     // keep selections that still exist after an edit
@@ -119,7 +124,7 @@ class EditController(val state: ReaderState, private val scope: CoroutineScope, 
         if (busy) return
         when (mode) {
             EditMode.TEXT -> {
-                if (editingText) { clearSelection(); return }       // tap outside closes the editor without saving
+                if (editingText) { guardLeave { clearSelection() }; return }       // tap outside: tab-view-core E-06 asks before dropping typed text
                 if (TextTools5.of(this).onTap(m, x, y)) return       // NVE-text: join / link pick
                 val hit = m.blocks.filter { inflate(it.rect, 2f).let { r -> x in r.left..r.right && y in r.bottom..r.top } }
                     .minByOrNull { it.rect.width() * (it.rect.top - it.rect.bottom) }
@@ -129,7 +134,7 @@ class EditController(val state: ReaderState, private val scope: CoroutineScope, 
                 if (tools5.onTap(m, x, y)) return      // NVE-img: multi-select
                 val hit = m.images.lastOrNull { x in it.rect.left..it.rect.right && y in it.rect.bottom..it.rect.top }
                 if (hit != null) { image = hit; affine = identity(); insertAt = null }
-                else if (image != null) { image = null; affine = identity() }
+                else if (image != null) guardLeave { image = null; affine = identity() }      // tab-view-core E-06
                 else insertAt = x to y
             }
         }
@@ -221,7 +226,13 @@ class EditController(val state: ReaderState, private val scope: CoroutineScope, 
         val p = page
         scope.launch {
             try {
-                applyEdit(state, label = { ctx.getString(R.string.hi_content_edit, p + 1) }) { src, out -> op(src, out) }
+                val r = applyEdit(state, label = { ctx.getString(R.string.hi_content_edit, p + 1) }) { src, out -> op(src, out) }
+                // tab-view-core E-02: nothing was written (pending comments could not be saved first, or the signed-file
+                // gate refused it): the typed text / selection stay and the real reason is shown here, not "Saved"
+                if (r == null) {
+                    message = notWrittenReason()
+                    return@launch
+                }
                 clearSelection()
                 message = ctx.getString(done)
             } catch (e: StalePageException) {
@@ -231,6 +242,44 @@ class EditController(val state: ReaderState, private val scope: CoroutineScope, 
                 message = ctx.getString(R.string.ed_failed, e.message ?: e.javaClass.simpleName)
             } finally { busy = false; reload() }
         }
+    }
+
+    /** tab-view-core E-02: why [applyEdit] returned null (signed gate, failed save of pending comments, other error). */
+    private fun notWrittenReason(): String {
+        val signed = state.signedBlock
+        val err = state.error
+        return when {
+            signed == com.smartdocs.editor.core.pdf.SignedDocumentException.Reason.CERTIFIED_NO_CHANGES -> ctx.getString(R.string.signed_doc_certified_no_changes)
+            signed != null -> ctx.getString(R.string.signed_doc_save_as_copy)
+            !err.isNullOrBlank() -> ctx.getString(R.string.ed_failed, err)
+            else -> ctx.getString(R.string.tvc_edit_not_saved)
+        }
+    }
+
+    // ================= tab-view-core E-06: never drop typed text / a pending move silently =================
+
+    /** Uncommitted changes: typed text, a pending move / resize of a text box, a pending image transform. */
+    val hasPendingChange: Boolean get() {
+        val b = block
+        return when {
+            b != null -> !unreadable && ((replaceWhole && text.isNotBlank()) || text.trimEnd() != shownText.trimEnd() || TextTools5.of(this).movePending ||
+                style != EditTextStyle(b.size, b.color, b.bold, b.italic, b.align, b.family))
+            newAt != null -> text.isNotBlank()
+            image != null -> transformPending
+            else -> false
+        }
+    }
+
+    /** What to do once the user answered "Apply changes?" with Discard (null = no question open). */
+    var confirmLeave by mutableStateOf<(() -> Unit)?>(null)
+
+    /** Run [then] now, or first ask "Apply changes?" when something is not committed yet. */
+    fun guardLeave(then: () -> Unit) { if (hasPendingChange && !busy) confirmLeave = then else then() }
+
+    /** "Apply" in the question: commit what is pending (text or image transform). */
+    fun commitPending(rtlDefault: Boolean) {
+        confirmLeave = null
+        if (editingText) commitText(rtlDefault) else if (image != null && transformPending) applyTransform()
     }
 
     fun commitText(rtlDefault: Boolean) {
@@ -353,9 +402,10 @@ class EditController(val state: ReaderState, private val scope: CoroutineScope, 
         busy = true
         scope.launch {
             try {
-                val st = if (undo) state.history.undo() else state.history.redo()
+                // tab-view-core E-05: through ReaderState's guarded history (no file restore while annotations are taken out)
+                val ev = state.historyStepAwait(undo)
                 clearSelection()
-                if (st != null) message = ctx.getString(if (undo) R.string.hi_undone else R.string.hi_redone, st.label)
+                if (ev != null) message = ev.error?.takeIf { it.isNotBlank() } ?: ctx.getString(if (undo) R.string.hi_undone else R.string.hi_redone, ev.label)
             } catch (e: CancellationException) { throw e
             } catch (e: Throwable) { message = ctx.getString(R.string.ed_failed, e.message ?: "") }
             finally { busy = false; reload() }

@@ -96,6 +96,8 @@ object NpfPrefs {
     // ---- page display ----
     /** "auto" (follows the continuous switch), "single", "continuous", "facing", "cover". */
     val defaultLayout: String get() = s(K.LAYOUT, "auto")
+    /** tab-view-core V-17: the page layout last chosen in the reader (used when the default layout is "auto"). */
+    val lastLayout: String get() = s("last_layout", "")
     /** "width", "page", "z150", "z200" (zoom relative to fit width). */
     val defaultZoom: String get() = s(K.ZOOM, "width")
     /** First open of a document: its own layout / open page / zoom / panel win over the defaults above. */

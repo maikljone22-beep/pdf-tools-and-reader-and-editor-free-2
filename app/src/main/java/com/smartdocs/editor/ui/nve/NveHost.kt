@@ -88,29 +88,32 @@ fun NveSidePane(s: ReaderState, nav: NavHostController) {
 @Composable
 fun NveViewChips(s: ReaderState) {
     val n = NveState.of(s)
+    // tab-view-core V-26: every chip can be hidden in Customise toolbar; V-10: the grid sheet moved to ⋮ (one Grid chip)
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    @Suppress("UNUSED_VARIABLE") val ver = com.smartdocs.editor.ui.nve.shell.NveShellPrefs.version.intValue
+    val hidden = com.smartdocs.editor.ui.nve.shell.NveToolbarPrefs.hiddenChips(ctx)
     VerticalDivider(Modifier.height(36.dp).padding(horizontal = 4.dp))
-    ToolChip(Icons.Default.Search, stringResource(R.string.nv_zoom_short, NveZoom.percent(s).toInt())) { n.open(NveSurface.ZOOM) }
-    ToolChip(Icons.Default.HighlightAlt, stringResource(R.string.nv_marquee), selected = n.dragMode == NveDrag.ZOOM_IN || n.dragMode == NveDrag.ZOOM_OUT) {
+    if ("nv_zoom" !in hidden) ToolChip(Icons.Default.Percent, stringResource(R.string.nv_zoom_short, NveZoom.percent(s).toInt())) { n.open(NveSurface.ZOOM) }
+    if ("nv_marquee" !in hidden) ToolChip(Icons.Default.HighlightAlt, stringResource(R.string.nv_marquee), selected = n.dragMode == NveDrag.ZOOM_IN || n.dragMode == NveDrag.ZOOM_OUT) {
         n.dragMode = if (n.dragMode == NveDrag.ZOOM_IN) null else NveDrag.ZOOM_IN
     }
-    ToolChip(Icons.Default.Height, stringResource(R.string.nv_fit_height)) { NveZoom.preset(s, ZoomPreset.FIT_HEIGHT) }
-    ToolChip(Icons.Default.Fullscreen, stringResource(R.string.nv_actual_size)) { NveZoom.preset(s, ZoomPreset.ACTUAL) }
-    ToolChip(Icons.Default.ChromeReaderMode, stringResource(R.string.nv_continuous_facing), selected = n.continuousFacing && s.viewMode == com.smartdocs.editor.ui.reader.ViewMode.CONTINUOUS) {
+    if ("nv_fit_height" !in hidden) ToolChip(Icons.Default.Height, stringResource(R.string.nv_fit_height)) { NveZoom.preset(s, ZoomPreset.FIT_HEIGHT) }
+    if ("nv_actual" !in hidden) ToolChip(Icons.Default.Fullscreen, stringResource(R.string.nv_actual_size)) { NveZoom.preset(s, ZoomPreset.ACTUAL) }
+    if ("nv_cont_facing" !in hidden) ToolChip(Icons.Default.ChromeReaderMode, stringResource(R.string.nv_continuous_facing), selected = n.continuousFacing && s.viewMode == com.smartdocs.editor.ui.reader.ViewMode.CONTINUOUS) {
         val on = !(n.continuousFacing && s.viewMode == com.smartdocs.editor.ui.reader.ViewMode.CONTINUOUS)
         n.continuousFacing = on; if (on) s.viewMode = com.smartdocs.editor.ui.reader.ViewMode.CONTINUOUS; n.saveView()
     }
-    ToolChip(Icons.Default.SwapVert, stringResource(R.string.nv_reverse_view), selected = n.reverseView) { n.reverseView = !n.reverseView; n.saveView() }
-    ToolChip(Icons.Default.Numbers, stringResource(R.string.nv_word_count)) { n.wordCountText = null; n.open(NveSurface.WORD_COUNT) }
-    ToolChip(Icons.Default.Subject, stringResource(R.string.nv_text_viewer)) { n.open(NveSurface.TEXT_VIEWER) }
-    ToolChip(Icons.Default.GridOn, stringResource(R.string.nv_grid_title)) { n.open(NveSurface.GRID) }
-    ToolChip(Icons.Default.Window, stringResource(R.string.nv_quad_split)) { n.open(NveSurface.QUAD_SPLIT) }
-    ToolChip(Icons.Default.Animation, stringResource(R.string.nv_transitions)) { n.open(NveSurface.TRANSITIONS) }
-    ToolChip(Icons.Default.PhotoCamera, stringResource(R.string.nv_page_snapshot)) { n.open(NveSurface.SNAPSHOT) }
-    ToolChip(Icons.Default.Crop, stringResource(R.string.nv_area_snapshot), selected = n.dragMode == NveDrag.SNAPSHOT) { n.dragMode = if (n.dragMode == NveDrag.SNAPSHOT) null else NveDrag.SNAPSHOT }
-    ToolChip(Icons.Default.ContentPaste, stringResource(R.string.nv_paste)) { n.open(NveSurface.PASTE) }
-    ToolChip(Icons.Default.SelectAll, stringResource(R.string.nv_select_all)) { s.scope.launchSelectAll(s) }
-    ToolChip(Icons.Default.VerifiedUser, stringResource(R.string.nv_pane_signatures)) { n.pane = NvePane.SIGNATURES }
-    ToolChip(Icons.Default.Spellcheck, stringResource(R.string.nv_spell_doc)) { n.open(NveSurface.SPELL_DOC) }
+    if ("nv_reverse" !in hidden) ToolChip(Icons.Default.SwapVert, stringResource(R.string.nv_reverse_view), selected = n.reverseView) { n.reverseView = !n.reverseView; n.saveView() }
+    if ("nv_word_count" !in hidden) ToolChip(Icons.Default.Numbers, stringResource(R.string.nv_word_count)) { n.wordCountText = null; n.open(NveSurface.WORD_COUNT) }
+    if ("nv_text_viewer" !in hidden) ToolChip(Icons.Default.Subject, stringResource(R.string.nv_text_viewer)) { n.open(NveSurface.TEXT_VIEWER) }
+    if ("nv_quad" !in hidden) ToolChip(Icons.Default.Window, stringResource(R.string.nv_quad_split)) { n.open(NveSurface.QUAD_SPLIT) }
+    if ("nv_transitions" !in hidden) ToolChip(Icons.Default.Animation, stringResource(R.string.nv_transitions)) { n.open(NveSurface.TRANSITIONS) }
+    if ("nv_page_snap" !in hidden) ToolChip(Icons.Default.PhotoCamera, stringResource(R.string.nv_page_snapshot)) { n.open(NveSurface.SNAPSHOT) }
+    if ("nv_area_snap" !in hidden) ToolChip(Icons.Default.Crop, stringResource(R.string.nv_area_snapshot), selected = n.dragMode == NveDrag.SNAPSHOT) { n.dragMode = if (n.dragMode == NveDrag.SNAPSHOT) null else NveDrag.SNAPSHOT }
+    if ("nv_paste" !in hidden) ToolChip(Icons.Default.ContentPaste, stringResource(R.string.nv_paste)) { n.open(NveSurface.PASTE) }
+    if ("nv_select_all" !in hidden) ToolChip(Icons.Default.SelectAll, stringResource(R.string.nv_select_all)) { s.scope.launchSelectAll(s) }
+    if ("nv_signatures" !in hidden) ToolChip(Icons.Default.VerifiedUser, stringResource(R.string.nv_pane_signatures)) { n.pane = NvePane.SIGNATURES }
+    if ("nv_spell" !in hidden) ToolChip(Icons.Default.Spellcheck, stringResource(R.string.nv_spell_doc)) { n.open(NveSurface.SPELL_DOC) }
     ToolChip(Icons.Default.DashboardCustomize, stringResource(R.string.nv_customize_toolbar)) { n.open(NveSurface.TOOLBAR_CUSTOMIZE) }
 }
 
@@ -131,7 +134,8 @@ fun NveMoreMenuItems(s: ReaderState, close: () -> Unit) {
     DropdownMenuItem(text = { Text(stringResource(R.string.nv_edit5_tools)) }, leadingIcon = { Icon(Icons.Default.EditNote, null) }, onClick = { close(); n.open(NveSurface.EDIT5) })
     DropdownMenuItem(text = { Text(stringResource(R.string.nv_save_as_more)) }, leadingIcon = { Icon(Icons.Default.SaveAs, null) }, onClick = { close(); n.open(NveSurface.SAVE_AS) })
     DropdownMenuItem(text = { Text(stringResource(R.string.nv_properties)) }, leadingIcon = { Icon(Icons.Default.Description, null) }, onClick = { close(); n.open(NveSurface.DOC_INFO) })
-    DropdownMenuItem(text = { Text(stringResource(R.string.nv_zoom)) }, leadingIcon = { Icon(Icons.Default.Search, null) }, onClick = { close(); n.open(NveSurface.ZOOM) })
+    DropdownMenuItem(text = { Text(stringResource(R.string.nv_zoom)) }, leadingIcon = { Icon(Icons.Default.Percent, null) }, onClick = { close(); n.open(NveSurface.ZOOM) })   // tab-view-core V-10: not a search icon
+    DropdownMenuItem(text = { Text(stringResource(R.string.nv_grid_title)) }, leadingIcon = { Icon(Icons.Default.GridOn, null) }, onClick = { close(); n.open(NveSurface.GRID) })      // tab-view-core V-10: was a second Grid chip
     DropdownMenuItem(text = { Text(stringResource(R.string.nv_word_count)) }, leadingIcon = { Icon(Icons.Default.Numbers, null) }, onClick = { close(); n.wordCountText = null; n.open(NveSurface.WORD_COUNT) })
     DropdownMenuItem(text = { Text(stringResource(R.string.nv_paste)) }, leadingIcon = { Icon(Icons.Default.ContentPaste, null) }, onClick = { close(); n.open(NveSurface.PASTE) })
     DropdownMenuItem(text = { Text(stringResource(R.string.nv_page_snapshot)) }, leadingIcon = { Icon(Icons.Default.PhotoCamera, null) }, onClick = { close(); n.open(NveSurface.SNAPSHOT) })
@@ -149,8 +153,10 @@ private fun NveEdit5Sheet(s: ReaderState, actions: ReaderActions) {
     ModalBottomSheet(onDismissRequest = { n.close() }) {
         Text(stringResource(R.string.nv_edit5_tools), style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = 20.dp))
         androidx.compose.foundation.lazy.LazyColumn(Modifier.fillMaxWidth().heightIn(max = 560.dp)) {
-            items(EDIT5_TOOLS.size) { i ->
-                val t = EDIT5_TOOLS[i]
+            // tab-view-core E-10: the second "Organize pages" (the Edit tab chip and the Pages tab open the organizer)
+            val tools = EDIT5_TOOLS.filter { it.id != "e5_organize" }
+            items(tools.size) { i ->
+                val t = tools[i]
                 ListItem(headlineContent = { Text(stringResource(t.label)) }, supportingContent = t.subtitle?.let { { Text(stringResource(it)) } },
                     leadingContent = { Icon(t.icon, null) }, modifier = Modifier.clickable { n.close(); actions.navigateTool(t.id) })
             }
@@ -244,7 +250,7 @@ fun NveQuadSplit(s: ReaderState) {
                             val i = r * 2 + c
                             val border = if (active == i) Modifier.border(2.dp, MaterialTheme.colorScheme.primary) else Modifier
                             Box(Modifier.weight(1f).fillMaxHeight().then(border).clickable { active = i }) {
-                                PagePane(s.session, s.pageCount, s.pageSizes, lists[i], s.nightMode, zooms[i], Modifier.fillMaxSize(), "${i + 1}")
+                                PagePane(s.session, s.pageCount, s.pageSizes, lists[i], s.nightMode, zooms[i], Modifier.fillMaxSize(), "${i + 1}", s.pageColor)
                             }
                         }
                     }

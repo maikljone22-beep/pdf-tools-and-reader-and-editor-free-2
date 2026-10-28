@@ -287,6 +287,7 @@ private fun ManualCropDialog(state: ReaderState, onDismiss: () -> Unit) {
                     val aspect = bmp.width / bmp.height.toFloat()
                     Canvas(Modifier.fillMaxWidth(0.6f).aspectRatio(aspect).align(Alignment.CenterHorizontally).border(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
                         drawImage(bmp.asImageBitmap(), dstSize = IntSize(size.width.roundToInt(), size.height.roundToInt()))
+                        if (!state.nightMode) with(PageTintDraw) { drawPageTint(state.pageColor, size.width, size.height) }   // tab-view-core V-38
                         val rect = Rect(l * size.width, t * size.height, (1f - r) * size.width, (1f - b) * size.height)
                         val shade = Color(0x88000000)
                         drawRect(shade, Offset.Zero, Size(size.width, rect.top))

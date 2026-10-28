@@ -11,6 +11,8 @@ import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Redo
+import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -83,12 +85,14 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
     var showGoTo by remember { mutableStateOf(false) }
     var showDiscard by remember { mutableStateOf(false) }
     var showStamps by remember { mutableStateOf(false) }
-    var aiText by remember { mutableStateOf<String?>(null) }
     var showAi by remember { mutableStateOf(false) }
     var textTools by remember { mutableStateOf<Pair<TextSelection, com.smartdocs.editor.core.ai5.TextAction?>?>(null) }
     var contentEdit by remember { mutableStateOf(false) }          // MODULE_edit: real text/image editing
     var prompt by remember { mutableStateOf<TextPrompt?>(null) }
     var menu by remember { mutableStateOf(false) }
+    var tabsMenu by remember { mutableStateOf(false) }      // tab-view-core V-03: tabs menu opened from ⋮
+    // tab-view-core V-29: a tool picked in full screen (keyboard shortcut) brings the bars back, so taps keep working
+    LaunchedEffect(state.tool) { if (state.tool != null) chrome = true }
     var showHistory by remember { mutableStateOf(false) }           // MODULE_history: unified undo / redo sheet
     val tts by ReadAloudController.status.collectAsState()
     SideEffect { com.smartdocs.editor.core.voice.AiVoiceEngine.aiSwitchOn = settings.aiEnabled }   // ai6: AI switch off -> no AI voice in read aloud
@@ -125,7 +129,10 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
     LaunchedEffect(state.enterpriseInfo) { if (state.enterpriseInfo != null && connUri != null) { nav.popBackStack(); nav.navigate(com.smartdocs.editor.ui.connected.ConnRoutes.enterprise(connUri)) } }
     LaunchedEffect(state.connectedLocked) { if (state.connectedLocked) { val id = state.connected?.docId ?: state.file?.let { com.smartdocs.editor.core.connected.ConnectedDocs.markOf(it)?.docId }; if (id != null) { nav.popBackStack(); nav.navigate(com.smartdocs.editor.ui.connected.ConnRoutes.connectedOpen(id, connUri)) } } }
     var showShare5 by remember { mutableStateOf(false) }   // share6: share sheet
-    LaunchedEffect(tts.page, tts.state) { if (tts.state != ReadAloudController.State.IDLE && tts.page != state.currentPage && state.pageCount > 0) state.jumpTo(tts.page) }
+    var nveRevert by remember { mutableStateOf(false) }    // tab-view-core V-28: hoisted out of the ⋮ menu
+    // tab-view-core V-08: follow only this document's read aloud; another document coming to the front stops it
+    LaunchedEffect(tts.page, tts.state) { if (tts.state != ReadAloudController.State.IDLE && ReaderAi6.ownsTts(state) && tts.page != state.currentPage && state.pageCount > 0) state.jumpTo(tts.page) }
+    LaunchedEffect(state.file) { val o = ReaderAi6.ttsOwner; if (o != null && state.file != null && o != state.file?.absolutePath) ReaderAi6.stopTtsOf(o) }
 
     fun leave() { nav.popBackStack() }
     // tab-view-core V-02: what leaving (back / tab switch) does once the user chose to discard; set while blocked
@@ -137,8 +144,8 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
         val reason = state.signedBlock; state.signedBlock = null
         leaveFailure = when (reason) {
             com.smartdocs.editor.core.pdf.SignedDocumentException.Reason.CERTIFIED_NO_CHANGES -> ctx.getString(R.string.signed_doc_certified_no_changes)
-            com.smartdocs.editor.core.pdf.SignedDocumentException.Reason.INCREMENTAL_FAILED -> ctx.getString(R.string.signed_doc_save_as_copy)
             com.smartdocs.editor.core.pdf.SignedDocumentException.Reason.CONTENT_CHANGE -> ctx.getString(R.string.tc_signed_content_change)
+            com.smartdocs.editor.core.pdf.SignedDocumentException.Reason.INCREMENTAL_FAILED -> ctx.getString(R.string.signed_doc_save_as_copy)
             null -> state.error ?: ctx.getString(R.string.tvc_save_failed_generic)
         }
         state.error = null
@@ -190,8 +197,12 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                 .onSuccess { snack.showSnackbar(ctx.getString(R.string.success)); if (wasLeaving) offerLeave = true }.onFailure { state.error = it.message }
         }
     }
-    val pickImage = rememberImagePicker(multiple = false) { files ->
-        scope.launch { files.firstOrNull()?.let { ReaderIntents.decode(it) }?.let { state.pendingImage = it; state.tool = ReaderTool.IMAGE } }
+    // tab-view-core E-13: cancelling the picker leaves the image tool (no dead tool mode); E-16: the temp copy goes after decoding
+    val pickImage = rememberImagePicker(multiple = false, onCancel = { if (state.tool == ReaderTool.IMAGE && state.pendingImage == null) state.selectTool(null) }) { files ->
+        scope.launch {
+            val bmp = files.firstOrNull()?.let { f -> ReaderIntents.decode(f).also { f.delete() } }
+            if (bmp != null) { state.pendingImage = bmp; state.tool = ReaderTool.IMAGE } else if (state.tool == ReaderTool.IMAGE && state.pendingImage == null) state.selectTool(null)
+        }
     }
     fun doStartReadAloud(fromChar: Int, page: Int) {
         if (state.pageCount == 0 || state.session == null) return
@@ -199,6 +210,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
         val p0 = page.coerceIn(0, state.pageCount - 1)
         scope.launch {
             val from = ReaderAi6.toReadingOffset(state, p0, fromChar)
+            ReaderAi6.ttsOwner = state.file?.absolutePath      // tab-view-core V-08
             ReadAloudController.start(ctx, state.file?.name ?: "", p0, state.pageCount, settings.ttsRate, settings.ttsPitch, { pg -> state.file?.let { f -> com.smartdocs.editor.ui.nve.tts.NveReadText.pageText(ctx, f, state.password, pg, base = ReaderAi6.readingText(state, pg)) } ?: ReaderAi6.readingText(state, pg) }, from)   // NVE: + comments / alt text per reading prefs
         }
     }
@@ -237,7 +249,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
             // nitro-protect2: a restricted document is shared as it is (the share sheet's copies would drop its protection)
             share = doShare,
             print = { com.smartdocs.editor.ui.view5.V5State.of(state).open(com.smartdocs.editor.ui.view5.V5Surface.PRINT) },
-            save = { scope.launch { if (state.save()) snack.showSnackbar(ctx.getString(R.string.saved_to, state.file?.name ?: "")) } },
+            save = { scope.launch { if (state.confirmOwnerPassword() && state.save()) snack.showSnackbar(ctx.getString(R.string.saved_to, state.file?.name ?: "")) } },   // tab-view-core E-12
             saveAs = { saveAs.launch(state.file?.name ?: "document.pdf") },
             pickImage = { pickImage() }, pickStamp = { showStamps = true },
             pickSignature = { path -> scope.launch { ReaderIntents.decode(File(path))?.let { bmp ->
@@ -272,7 +284,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                 if (state.dirty && !docFree) saveThen(go) else go()      // tools read the file: pending edits go in first
                 }
             },
-            ai = { if (com.smartdocs.editor.core.gaps6.AiGate.enabled(settings) && state.guard.check(com.smartdocs.editor.core.security.DocAction.COPY)) { aiText = null; showAi = true } },   // nav-prefs (PREF-8)
+            ai = { if (com.smartdocs.editor.core.gaps6.AiGate.enabled(settings) && state.guard.check(com.smartdocs.editor.core.security.DocAction.COPY)) { showAi = true } },   // nav-prefs (PREF-8)
             quick = { qa ->
                 quick.open(qa,
                     // audit 5 T-02: the Tools-tab Share honours the restrictions like the View tab / ⋮ Share (a restricted
@@ -292,6 +304,12 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
     var bottomBarPx by remember { mutableIntStateOf(0) }      // tab audit D20
     val focus = remember { FocusRequester() }
     LaunchedEffect(state.session) { if (state.session != null) runCatching { focus.requestFocus() } }
+    // tab-view-core V-25: keys work again once a dialog, sheet, search bar, panel or menu closes (focus back to the pages)
+    val overlayOpen = showGoTo || showViewMode || showPageColor || showAutoFlip || showDiscard || showHistory || showAi || showStamps || menu ||
+        state.searchOpen || panel != null || textTools != null || prompt != null || contentEdit || showShare5 || nveRevert ||
+        com.smartdocs.editor.ui.view5.V5State.of(state).surface != com.smartdocs.editor.ui.view5.V5Surface.NONE ||
+        com.smartdocs.editor.ui.nve.NveState.of(state).surface != com.smartdocs.editor.ui.nve.NveSurface.NONE
+    LaunchedEffect(overlayOpen) { if (!overlayOpen && state.session != null) runCatching { focus.requestFocus() } }
 
     Box(Modifier.fillMaxSize().readerTouchWatcher(state)) {
         Scaffold(
@@ -302,14 +320,31 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                         title = { Text(NpfReader.title(state) ?: state.file?.name ?: stringResource(R.string.loading), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium) },
                         navigationIcon = { IconButton(onClick = { requestLeave() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.back)) } },
                         actions = {
-                            HistoryButtons(state) { showHistory = true }      // MODULE_history: always-visible undo / redo (long press: history)
-                            if (state.dirty) IconButton(onClick = actions.save) { Icon(Icons.Default.Save, stringResource(R.string.save), tint = MaterialTheme.colorScheme.primary) }
-                            if (!tablet) com.smartdocs.editor.ui.reader.view.ReaderTabsAction(state, switchTab)
-                            com.smartdocs.editor.ui.view5.V5TopActions(state)
-                            IconButton(onClick = actions.search) { Icon(Icons.Default.Search, stringResource(R.string.search)) }
+                            // tab-view-core V-03: only what fits stays in the bar (by width); the ⋮ button is always shown
+                            val v5Top = com.smartdocs.editor.ui.view5.v5TopEntries(state)
+                            val topItems = buildList {
+                                add(TOP_UNDO to 80); if (state.dirty) add(TOP_SAVE to 48); add(TOP_SEARCH to 48)
+                                addAll(v5Top.take(1)); if (!tablet) add(TOP_TABS to 48); addAll(v5Top.drop(1))
+                            }
+                            val split = TopBarOverflow.partition(TopBarOverflow.budget(LocalConfiguration.current.screenWidthDp), topItems)
+                            val shown = split.shown.toSet(); val hidden = split.overflow.toSet()
+                            if (TOP_UNDO in shown) HistoryButtons(state) { showHistory = true }      // MODULE_history: always-visible undo / redo (long press: history)
+                            if (state.dirty && TOP_SAVE in shown) IconButton(onClick = actions.save) { Icon(Icons.Default.Save, stringResource(R.string.save), tint = MaterialTheme.colorScheme.primary) }
+                            if (!tablet) com.smartdocs.editor.ui.reader.view.ReaderTabsAction(state, switchTab, showIcon = TOP_TABS in shown, externalOpen = tabsMenu, onExternalClose = { tabsMenu = false })
+                            com.smartdocs.editor.ui.view5.V5TopActions(state) { it in shown }
+                            if (TOP_SEARCH in shown) IconButton(onClick = actions.search) { Icon(Icons.Default.Search, stringResource(R.string.search)) }
                             Box {
                                 IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, stringResource(R.string.more)) }
                                 DropdownMenu(menu, { menu = false }) {
+                                    // tab-view-core V-03: the top-bar actions that did not fit
+                                    if (TOP_UNDO in hidden) {
+                                        DropdownMenuItem(text = { Text(stringResource(R.string.hi_undo)) }, leadingIcon = { Icon(Icons.AutoMirrored.Filled.Undo, null) }, enabled = state.canUndo, onClick = { menu = false; state.undo() })
+                                        DropdownMenuItem(text = { Text(stringResource(R.string.hi_redo)) }, leadingIcon = { Icon(Icons.AutoMirrored.Filled.Redo, null) }, enabled = state.canRedo, onClick = { menu = false; state.redo() })
+                                    }
+                                    if (TOP_SEARCH in hidden) DropdownMenuItem(text = { Text(stringResource(R.string.search)) }, leadingIcon = { Icon(Icons.Default.Search, null) }, onClick = { menu = false; actions.search() })
+                                    if (TOP_TABS in hidden) DropdownMenuItem(text = { Text(stringResource(R.string.vw_tabs)) }, leadingIcon = { Icon(Icons.Default.Tab, null) }, onClick = { menu = false; tabsMenu = true })
+                                    com.smartdocs.editor.ui.view5.V5TopOverflowItems(state, hidden) { menu = false }
+                                    if (hidden.isNotEmpty()) HorizontalDivider()
                                     DropdownMenuItem(text = { Text(stringResource(R.string.save)) }, leadingIcon = { Icon(Icons.Default.Save, null) }, enabled = state.dirty, onClick = { menu = false; actions.save() })
                                     DropdownMenuItem(text = { Text(stringResource(R.string.hi_history)) }, leadingIcon = { Icon(Icons.Default.History, null) }, onClick = { menu = false; showHistory = true })
                                     DropdownMenuItem(text = { Text(stringResource(R.string.save_as)) }, leadingIcon = { Icon(Icons.Default.SaveAlt, null) }, onClick = { menu = false; actions.saveAs() })
@@ -325,7 +360,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                                     DropdownMenuItem(text = { Text(stringResource(R.string.pc_ocr_this_page)) }, leadingIcon = { Icon(Icons.Default.TextFields, null) }, onClick = { menu = false; quick.openOcrForPage(state.currentPage) })
                                     DropdownMenuItem(text = { Text(stringResource(R.string.s5_rd_apply)) }, leadingIcon = { Icon(Icons.Default.Gavel, null) }, onClick = { menu = false; actions.navigateTool("redact") })
                                     DropdownMenuItem(text = { Text(stringResource(R.string.go_to_page)) }, leadingIcon = { Icon(Icons.Default.Numbers, null) }, onClick = { menu = false; showGoTo = true })
-                                    DropdownMenuItem(text = { Text(stringResource(R.string.tool_doc_info)) }, leadingIcon = { Icon(Icons.Default.Info, null) }, onClick = { menu = false; actions.quick(QuickAction.PROPERTIES) })
+                                    // tab-view-core V-21 / E-10: the quick "Document info" item is gone; ⋮ keeps one "Document properties" (NVE)
                                     DropdownMenuItem(text = { Text(stringResource(R.string.keep_screen_on)) }, leadingIcon = { Icon(if (settings.keepScreenOn) Icons.Default.CheckBox else Icons.Default.CheckBoxOutlineBlank, null) },
                                         onClick = { menu = false; scope.launch { app.settings.update { it.copy(keepScreenOn = !it.keepScreenOn) } } })
                                     DropdownMenuItem(text = { Text(stringResource(R.string.settings)) }, leadingIcon = { Icon(Icons.Default.Settings, null) }, onClick = { menu = false; nav.navigate(Routes.SETTINGS) })
@@ -334,11 +369,8 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                                     DropdownMenuItem(text = { Text(stringResource(R.string.cn_register)) }, leadingIcon = { Icon(Icons.Default.Link, null) }, onClick = { menu = false; nav.navigate(com.smartdocs.editor.ui.connected.ConnRoutes.connected(state.fileUri)) })
                                     com.smartdocs.editor.ui.view5.V5MoreMenuItems(state, nav) { menu = false }
                                     com.smartdocs.editor.ui.nve.NveMoreMenuItems(state) { menu = false }     // NVE
-                                    var nveRevert by remember { mutableStateOf(false) }      // NVE-shell: revert to the saved file
-                                    DropdownMenuItem(text = { Text(stringResource(R.string.nl_revert)) }, leadingIcon = { Icon(Icons.Default.Restore, null) }, enabled = state.dirty, onClick = { nveRevert = true })
-                                    if (nveRevert) AlertDialog(onDismissRequest = { nveRevert = false }, text = { Text(stringResource(R.string.nl_revert_confirm)) },
-                                        confirmButton = { TextButton(onClick = { nveRevert = false; menu = false; com.smartdocs.editor.ui.nve.shell.NveRecovery.revert(state) { nav.popBackStack(); nav.navigate(Routes.reader(state.fileUri)) } }) { Text(stringResource(R.string.ok)) } },
-                                        dismissButton = { TextButton(onClick = { nveRevert = false }) { Text(stringResource(R.string.cancel)) } })
+                                    // NVE-shell: revert to the saved file (tab-view-core V-28: the dialog lives outside the menu)
+                                    DropdownMenuItem(text = { Text(stringResource(R.string.nl_revert)) }, leadingIcon = { Icon(Icons.Default.Restore, null) }, enabled = state.dirty, onClick = { menu = false; nveRevert = true })
                                 }
                             }
                         },
@@ -361,7 +393,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
             },
             bottomBar = {
                 if (chrome) Column(Modifier.onSizeChanged { bottomBarPx = it.height }) {      // tab audit D20: measured for the form strip
-                    if (tts.state != ReadAloudController.State.IDLE) TtsBar(tts) { r -> ReadAloudController.setRate(r); scope.launch { app.settings.update { it.copy(ttsRate = r) } } }
+                    if (tts.state != ReadAloudController.State.IDLE && ReaderAi6.ownsTts(state)) TtsBar(tts) { r -> ReadAloudController.setRate(r); scope.launch { app.settings.update { it.copy(ttsRate = r) } } }
                     // selmenu: the floating selection menu (SelMenuLayer below) replaced this bottom bar
                     if (com.smartdocs.editor.ui.selmenu.SelHooks.LEGACY_BAR) state.selection?.let { sel ->
                         SelectionMenu(sel, state,
@@ -376,12 +408,15 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                     if (state.session != null) com.smartdocs.editor.ui.view5.V5PinnedBottomRow(state)   // fc-settings: pinned commands at the bottom
                     if (state.session != null) BottomToolbar(state, actions)
                 }
+                // tab-view-core V-29: in full screen the read-aloud controls stay reachable
+                else if (tts.state != ReadAloudController.State.IDLE && ReaderAi6.ownsTts(state)) TtsBar(tts) { r -> ReadAloudController.setRate(r); scope.launch { app.settings.update { it.copy(ttsRate = r) } } }
             },
         ) { pad ->
             Row(Modifier.fillMaxSize().padding(pad)) {
                 Box(
                     Modifier.weight(1f).fillMaxHeight().focusRequester(focus).focusable().then(com.smartdocs.editor.ui.nve.nveMouseModifier(state)).onPreviewKeyEvent { e ->
                         if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                        if (contentEdit) return@onPreviewKeyEvent false      // tab-view-core E-19: Edit content owns the keyboard
                         // volume (if enabled) / arrows / page keys: spread-aware screen flips (view module)
                         // MODULE_pageflip6: Space / arrows in the document's direction while the page-turn view is shown
                         com.smartdocs.editor.ui.selmenu.SelHooks.onKey(state, e.nativeKeyEvent) ||     // selmenu: Shift+F10 / Menu key
@@ -400,8 +435,8 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                             val openLink: (com.smartdocs.editor.core.pdf.PageLink) -> Unit = { l -> if (l.destPage == null && l.uri.isNullOrBlank()) scope.launch { runCatching { com.smartdocs.editor.ui.edit5.followFileLinkAt(state, state.currentPage, l.bounds.centerX(), l.bounds.centerY()) { f, p -> nav.navigate(Routes.reader(android.net.Uri.fromFile(f).toString(), p)) } } } else if (l.destPage == null && com.smartdocs.editor.ui.nve.NveLinks.openWeb(state, l.uri)) Unit /* NVE: show the URL first */ else ReaderIntents.openLink(ctx, l) { p -> state.jumpTo(p) } }
                             // MODULE_pageflip6: page-turn / horizontal-scroll view modes replace the page list when chosen
                             if (com.smartdocs.editor.ui.pageflip.PageFlipController.of(state).hosts())
-                                com.smartdocs.editor.ui.pageflip.PageFlipHost(state, chrome, onTapCenter = { if (state.tool == null) chrome = !chrome }, onOpenLink = openLink, onPrompt = { prompt = it })
-                            else PageView(state, onTapCenter = { if (state.tool == null) chrome = !chrome }, onOpenLink = openLink, onPrompt = { prompt = it })
+                                com.smartdocs.editor.ui.pageflip.PageFlipHost(state, chrome, onTapCenter = { if (state.tool == null || !chrome) chrome = !chrome }, onOpenLink = openLink, onPrompt = { prompt = it })
+                            else PageView(state, onTapCenter = { if (state.tool == null || !chrome) chrome = !chrome }, onOpenLink = openLink, onPrompt = { prompt = it })
                             com.smartdocs.editor.ui.view5.View5PageOverlays(state)
                             com.smartdocs.editor.ui.nve.NvePageOverlays(state)      // NVE: marquee zoom, column select, snapshot, paste, guides
                             com.smartdocs.editor.ui.nve.articles.NveArticleDrawOverlay(state,      // NVE: article boxes (draw / read)
@@ -482,8 +517,34 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
             confirmButton = { TextButton(onClick = { state.signedBlock = null; exportSignedCopy = state.signedCopy != null; saveAs.launch((state.file?.nameWithoutExtension ?: "document") + "_copy.pdf") }) { Text(stringResource(R.string.signed_doc_save_copy_action)) } },
             dismissButton = { TextButton(onClick = { state.signedBlock = null; state.dropSignedCopy(); leaveAfterCopy = false }) { Text(stringResource(R.string.cancel)) } })
     }
+    // tab-view-core V-07: revert in place (no second reader racing the closing one on the same file)
+    if (nveRevert) AlertDialog(onDismissRequest = { nveRevert = false }, text = { Text(stringResource(R.string.nl_revert_confirm)) },
+        confirmButton = { TextButton(onClick = { nveRevert = false; state.file?.let { com.smartdocs.editor.ui.nve.shell.NveRecovery.discard(ctx, it) }; scope.launch { state.revertToSaved() } }) { Text(stringResource(R.string.ok)) } },
+        dismissButton = { TextButton(onClick = { nveRevert = false }) { Text(stringResource(R.string.cancel)) } })
+    // tab-view-core E-12: keep the author's owner password on save, or continue knowingly
+    state.ownerPrompt?.let { _ ->
+        var ownerPw by remember { mutableStateOf("") }
+        AlertDialog(onDismissRequest = { state.answerOwnerPrompt(null) },
+            icon = { Icon(Icons.Default.Lock, null) },
+            title = { Text(stringResource(R.string.tvc_owner_title)) },
+            text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(stringResource(R.string.tvc_owner_text))
+                OutlinedTextField(ownerPw, { ownerPw = it }, singleLine = true, label = { Text(stringResource(R.string.tvc_owner_field)) },
+                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation())
+            } },
+            confirmButton = { TextButton(onClick = { state.answerOwnerPrompt(ownerPw) }, enabled = ownerPw.isNotEmpty()) { Text(stringResource(R.string.tvc_owner_keep)) } },
+            dismissButton = { Row {
+                TextButton(onClick = { state.answerOwnerPrompt("") }) { Text(stringResource(R.string.tvc_owner_continue)) }
+                TextButton(onClick = { state.answerOwnerPrompt(null) }) { Text(stringResource(R.string.cancel)) }
+            } })
+    }
     if (showGoTo) GoToPageDialog(state.currentPage, state.pageCount, onGo = { state.jumpTo(it); showGoTo = false }, onDismiss = { showGoTo = false }, labels = pageLabels)
-    if (showViewMode) ViewModeSheet(state, tablet = tablet) { showViewMode = false; scope.launch { app.settings.update { it.copy(continuousScroll = state.viewMode == ViewMode.CONTINUOUS, nightMode = state.nightMode) } } }
+    if (showViewMode) ViewModeSheet(state, tablet = tablet) { showViewMode = false; com.smartdocs.editor.core.data.NpfPrefs.setString("last_layout", state.viewMode.name); scope.launch { app.settings.update { it.copy(continuousScroll = state.viewMode == ViewMode.CONTINUOUS, nightMode = state.nightMode) } } }
+    // tab-view-core V-17: night mode is remembered however it is switched (chip, page-colour sheet, reflow, Ctrl+N, command)
+    LaunchedEffect(state) {
+        var first = true
+        snapshotFlow { state.nightMode }.collect { n -> if (first) first = false else app.settings.update { it.copy(nightMode = n) } }
+    }
     com.smartdocs.editor.ui.pageflip.PageFlipSheetHost(state)   // MODULE_pageflip6: page turning settings + remembered reading mode
     if (showPageColor) PageColorSheet(state, onPersist = { c -> scope.launch { app.settings.update { it.copy(pageColor = c) } } }) { showPageColor = false }
     if (showAutoFlip) AutoFlipDialog(state) { showAutoFlip = false }
@@ -514,7 +575,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
     if (showAi) state.file?.let { f -> com.smartdocs.editor.ui.ai5.DocAssistantSheet(agentHost, f, state.password, state.pageCount, { state.pageText(it) },
         onCitation = { c -> showAi = false; if (c.filePath == f.absolutePath) ReaderAi6.highlightQuote(scope, state, c.page, c.quote) else nav.navigate(com.smartdocs.editor.ui.ai5.citationRoute(c)) },   // ai6 (B1): highlight the passage
         onDismiss = { showAi = false },
-        initialQuestion = aiText?.let { "\u0627\u0634\u0631\u062D \u0647\u0630\u0627 \u0627\u0644\u0646\u0635:\n$it" },
+        // tab-view-core V-23: the never-set aiText and its hard-coded Arabic question are gone
         onPodcast = { showAi = false; nav.navigate(Routes.tool("podcast", state.fileUri)) }, currentPage = state.currentPage) }   // ai6: snapshot page
     textTools?.let { (sel, act) -> com.smartdocs.editor.ui.ai5.TextToolsSheet(sel.text, act, docContext = null,
         onReplace = if (sel.rects.isNotEmpty() && state.session != null) ({ t: String -> ReaderAi6.replaceSelection(ctx, state, quick, sel, t) }) else null,   // ai6 (B11): replace in the document, undoable
@@ -529,9 +590,19 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
     com.smartdocs.editor.ui.reader.annot.Annot2Dialogs(state, nav, snack)      // MODULE_annot2 pickers & dialogs
     if (state.session != null && !state.needPassword) com.smartdocs.editor.ui.onboarding.ReaderCoachMarks()   // share6
     // share6: share sheet (whole/page/range, compressed, without comments, flattened, images, XFDF, e-mail)
-    if (showShare5) { var f by remember { mutableStateOf<java.io.File?>(null) }; LaunchedEffect(Unit) { f = outputFile() }
-        // audit 5 T-14: the temp copy with pending annotations is protected like the file (PdfOps.load re-protects it),
-        // so it opens with the same password
+    // tab-view-core V-14: a failed export is an error message (not a crash), Share works again afterwards, and old temp
+    // "share" copies are deleted (not the new one: the receiving app may still be reading it)
+    if (showShare5) { var f by remember { mutableStateOf<java.io.File?>(null) }
+        LaunchedEffect(Unit) {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                val old = System.currentTimeMillis() - 60 * 60_000L
+                app.documents.tempDir.listFiles { x -> x.name.startsWith("share_") && x.lastModified() < old }?.forEach { it.delete() }
+            }
+            val r = runCatching { outputFile() }
+            r.onFailure { e -> if (e is kotlinx.coroutines.CancellationException) throw e; state.error = e.message ?: e.toString(); showShare5 = false }
+            r.onSuccess { out -> if (out == null) showShare5 = false else f = out }
+        }
+        // audit 5 T-14: the temp copy with pending annotations is protected like the file, so it opens with the same password
         f?.let { com.smartdocs.editor.ui.share5.Share5Sheet(it, state.password, state.currentPage, nav) { showShare5 = false } } }
     com.smartdocs.editor.ui.view5.View5ReaderHost(state, nav, snack, actions) { outputFile() }
     com.smartdocs.editor.ui.nve.NveReaderHost(state, nav, snack, actions)     // NVE (feature/nitro-view-edit)
@@ -541,6 +612,11 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
     ReaderAi6.ReadAloudHighlight(state)   // ai6 (C1): sentence highlight while reading aloud
 }
 
+// tab-view-core V-03: ids of the reader's own top-bar actions for TopBarOverflow
+private const val TOP_UNDO = "undo"
+private const val TOP_SAVE = "save"
+private const val TOP_SEARCH = "search"
+private const val TOP_TABS = "tabs"
 /** Tab audit D25 / D32: tool screens that never read the open document (no permission check, no save first). */
 private val DOC_FREE_TOOLS = setOf("signatures", "fill_profile", "digital_ids")
 
@@ -557,7 +633,8 @@ private fun ToolHint(tool: ReaderTool, modifier: Modifier = Modifier) {
             ReaderTool.ERASER -> R.string.rd_hint_eraser
             ReaderTool.MEASURE -> R.string.rd_hint_measure
             ReaderTool.LINK -> R.string.rd_hint_link
-            ReaderTool.SIGNATURE, ReaderTool.STAMP, ReaderTool.IMAGE -> R.string.sig_tap_to_place
+            ReaderTool.SIGNATURE, ReaderTool.STAMP -> R.string.sig_tap_to_place
+            ReaderTool.IMAGE -> R.string.tvc_tap_to_place_image      // tab-view-core E-13: not "the signature"
             else -> R.string.rd_hint_tap
         }
     )

@@ -152,7 +152,6 @@ fun NveSelectionChips(sel: TextSelection, s: ReaderState) {
     val app = com.smartdocs.editor.LocalApp.current
     val scope = rememberCoroutineScope()
     val n = NveState.of(s)
-    var rewrite by remember { mutableStateOf(false) }
     val export = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
         if (uri != null) scope.launch {
             val ok = withContext(Dispatchers.IO) { runCatching { ctx.contentResolver.openOutputStream(uri)?.use { it.write(sel.text.toByteArray()) } != null }.getOrDefault(false) }
@@ -168,7 +167,8 @@ fun NveSelectionChips(sel: TextSelection, s: ReaderState) {
         }
         s.selection = null
     }
-    ToolChip(Icons.Default.BookmarkAdd, stringResource(R.string.add_bookmark)) {
+    // tab-view-core V-11: an app reading bookmark, named apart from the selection bar's "Bookmark in PDF" (outline item)
+    ToolChip(Icons.Default.BookmarkBorder, stringResource(R.string.tvc_reading_bookmark)) {
         scope.launch { app.db.bookmarks().insert(ReadingBookmark(uri = s.fileUri, page = sel.page, title = sel.text.replace('\n', ' ').take(80))); NveSelectionOps.toast(ctx, ctx.getString(R.string.nv_bookmark_added)) }
         s.selection = null
     }
@@ -178,11 +178,7 @@ fun NveSelectionChips(sel: TextSelection, s: ReaderState) {
     ToolChip(Icons.Default.ViewColumn, stringResource(R.string.nv_column_select)) { s.selection = null; n.dragMode = NveDrag.COLUMN_SELECT }
     ToolChip(Icons.Default.Output, stringResource(R.string.nv_export_selection)) { if (s.guard.check(com.smartdocs.editor.core.security.DocAction.COPY)) export.launch((s.file?.nameWithoutExtension ?: "selection") + "_p${sel.page + 1}.txt") }
     ToolChip(Icons.Default.EditNote, stringResource(R.string.nv_edit_text)) { if (s.guard.check(com.smartdocs.editor.core.security.DocAction.MODIFY)) n.requestEdit = sel.page to sel.rects.firstOrNull()?.let { PageGeometry.normPdf(it) } }
-    if (LocalSettings.current.aiEnabled) ToolChip(Icons.Default.AutoFixHigh, stringResource(R.string.nv_rewrite)) { if (s.guard.check(com.smartdocs.editor.core.security.DocAction.COPY)) rewrite = true }
-    if (rewrite) com.smartdocs.editor.ui.ai5.TextToolsSheet(sel.text, com.smartdocs.editor.core.ai5.TextAction.REWRITE, docContext = null,
-        onReplace = { t -> scope.launch { if (!NveSelectionOps.replaceInContent(ctx, s, sel, t)) NveSelectionOps.toast(ctx, ctx.getString(R.string.nv_replace_failed)) } },
-        onAddNote = { t -> sel.rects.firstOrNull()?.let { r -> val top = maxOf(r.top, r.bottom); s.addAnnot(s.newAnnot(AnnotKind.NOTE, sel.page, rects = listOf(RectF(r.left, top, r.left + 20f, top - 20f)), text = t)) } },
-        onShare = { com.smartdocs.editor.ui.reader.ReaderIntents.shareText(ctx, it) }, onDismiss = { rewrite = false })
+    // tab-view-core V-11: the second AI "Rewrite" chip is gone; the selection bar's ai6 Rewrite (font / lossy warnings) is the one
 }
 
 /** Paste from the system clipboard into the open PDF: an image is placed with the image tool, text as a text box. */

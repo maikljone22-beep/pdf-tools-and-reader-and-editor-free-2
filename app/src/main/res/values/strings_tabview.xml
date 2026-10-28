@@ -5,4 +5,21 @@
     <string name="tvc_save_failed_generic">حدث خطأ أثناء الحفظ.</string>
     <string name="tvc_copy_saved_leave">حُفظت النسخة. هل تغلق هذا المستند؟ ستُتجاهَل تعديلاته غير المحفوظة في الملف الأصلي.</string>
     <string name="tvc_leave">إغلاق المستند</string>
+    <string name="tvc_reading_bookmark">إشارة قراءة</string>
+    <string name="tvc_info_panel">لوحة المعلومات</string>
+    <string name="tvc_notices_more">إشعارات أخرى (%1$d)</string>
+    <string name="tvc_notices_less">إخفاء الإشعارات الأخرى</string>
+    <string name="tvc_collapse">تصغير</string>
+    <string name="tvc_apply_changes">هل تطبّق التعديلات غير المحفوظة؟ النص المكتوب أو النقل غير المطبّق سيضيع إن تجاهلته.</string>
+    <string name="tvc_edit_not_saved">لم يُحفظ التعديل؛ النص ما زال في المحرر.</string>
+    <string name="tvc_tap_to_place_image">اضغط على الصفحة لوضع الصورة</string>
+    <string name="tvc_add_text_comment">مربع نص (تعليق)</string>
+    <string name="tvc_add_image_stamp">صورة (ختم تعليق)</string>
+    <string name="tvc_owner_title">كلمة مرور الأذونات</string>
+    <string name="tvc_owner_text">هذا الملف محمي وفُتح دون كلمة مرور المالك (الأذونات). الحفظ يمنح الملف المحفوظ كلمة مرور أذونات جديدة، فلن تعود كلمة المرور الأصلية ترفع قيوده. أدخل كلمة مرور المالك للاحتفاظ بها، أو تابع.</string>
+    <string name="tvc_owner_field">كلمة مرور المالك</string>
+    <string name="tvc_owner_keep">استخدام كلمة مرور المالك</string>
+    <string name="tvc_owner_continue">متابعة على أي حال</string>
+    <string name="tvc_owner_wrong">هذه ليست كلمة مرور المالك.</string>
+    <string name="tvc_quick_busy">عملية أخرى قيد التنفيذ؛ انتظر حتى تنتهي.</string>
 </resources>

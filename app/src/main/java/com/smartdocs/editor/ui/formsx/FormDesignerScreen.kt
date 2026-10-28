@@ -315,6 +315,8 @@ fun FormDesignerScreen(nav: NavHostController, uri: String?) {
         confirmButton = { TextButton(onClick = { leaveAsk = false; nav.popBackStack() }) { Text(stringResource(R.string.fx_leave)) } },
         dismissButton = { TextButton(onClick = { leaveAsk = false }) { Text(stringResource(R.string.cancel)) } })
     st.message?.let { m -> AlertDialog(onDismissRequest = { st.message = null }, text = { Text(m) }, confirmButton = { TextButton(onClick = { st.message = null }) { Text(stringResource(R.string.ok)) } }) }
+    // tab-view-core E-03: password prompt for an encrypted document
+    st.needPassword?.let { f -> com.smartdocs.editor.ui.reader.PasswordDialog(st.wrongPassword, onOk = { pw -> st.open(f, pw) }, onCancel = { st.needPassword = null }) }
     st.error?.let { e -> AlertDialog(onDismissRequest = { st.error = null }, text = { Text(e) }, confirmButton = { TextButton(onClick = { st.error = null }) { Text(stringResource(R.string.ok)) } }) }
     if (runner.running) ProgressDialog(runner.message)
     runner.result?.let { f -> ResultSheet(f, nav, onDismiss = { runner.result = null }) }
