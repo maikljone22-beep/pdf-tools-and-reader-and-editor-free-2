@@ -148,14 +148,28 @@ class ReaderGuard(private val s: ReaderState) {
 
     // ---------------------------------------------------------------- restrictions
 
-    fun blockOf(a: DocAction): Block? = ReaderRestrictions.check(info, protectedView || pdfaView, a)
+    /**
+     * Why [a] is refused, or null. [pdfaAs] is what PDF/A view mode weighs instead (reader-prefs: Fill & Sign counts as
+     * form filling there, see [com.smartdocs.editor.core.rpf.PdfaViewRule]).
+     */
+    fun blockOf(a: DocAction, pdfaAs: DocAction = a): Block? = ReaderRestrictions.check(info, protectedView, a)
+        ?: Block.PROTECTED_VIEW.takeIf { com.smartdocs.editor.core.rpf.PdfaViewRule.blocks(pdfaView, pdfaAs) }
         ?: Block.CERTIFIED.takeIf { com.smartdocs.editor.core.security.CertifiedLock.blocks(signedInfo, a) }     // tab audit D8
 
     fun allows(a: DocAction): Boolean = blockOf(a) == null
 
+    /** reader-prefs: picking reader tool [t] (Fill & Sign tools are form filling for PDF/A view mode). */
+    fun checkTool(t: ReaderTool): Boolean {
+        val a = actionFor(t) ?: return true
+        return check(a, com.smartdocs.editor.core.rpf.PdfaViewRule.toolAction(t.name, a))
+    }
+
+    /** reader-prefs: a pending-annotation change; on the Fill & Sign tab / with a Fill & Sign tool it is form filling for PDF/A view mode. */
+    fun checkAnnot(): Boolean = check(DocAction.ANNOTATE, com.smartdocs.editor.core.rpf.PdfaViewRule.annotAction(s.tab == ReaderTab.FILL_SIGN, s.tool?.name))
+
     /** True when [a] is allowed; otherwise tells the user why ("restricted by the author" / Protected View). */
-    fun check(a: DocAction): Boolean {
-        val b = blockOf(a) ?: return true
+    fun check(a: DocAction, pdfaAs: DocAction = a): Boolean {
+        val b = blockOf(a, pdfaAs) ?: return true
         Toast.makeText(s.context, message(b), Toast.LENGTH_SHORT).show()
         return false
     }
