@@ -89,3 +89,41 @@ Strings: `strings_pc.xml` (prefix `pc_`). Tests: `PageOrganizeTest`.
 | Text: line width / discard headers & footers | OPEN | |
 | Export a selected area as Word / Excel | OPEN | |
 | Per-file page range / output folder in batch | OPEN | |
+
+## Stage D — portfolio / binder
+
+| Row | Status | Where |
+|---|---|---|
+| Portfolio opened in the reader → portfolio view | DONE | reader banner (`NveDocBanners` PORTFOLIO) → tool `portfolio` → `PortfolioEditor` |
+| View modes (details / tiles), default view (details / layout / cover sheet) | DONE | `PortfolioEditor`, `PortfolioEdit.setView`, `Portfolio.create(view)` |
+| Preview pane | DONE | `PortfolioEditor` preview card (PDF first page, images) |
+| Search across portfolio files | DONE | `PortfolioOps.search` (hits open the part at that page) |
+| Create: blank portfolio, sort, default view | DONE | `PortfolioScreen` create card |
+| Add files / a folder (with sub-folders) to an existing portfolio; create folders | DONE | `PortfolioEdit.add` / `ensureFolder` (/Folders + "<id>" keys) |
+| Delete a component; rename; edit description; custom field values | DONE | `PortfolioEdit.remove` / `rename` / `setDescription` / `setValue` (/CI) |
+| Portfolio properties: fields (add / delete / order / show), sort field and order, initial file | DONE | `PortfolioEdit.setFields` (/Schema), `setSort` (/Sort), `setInitial` (/D) |
+| Move files between folders | DONE | `PortfolioEdit.move` (menu "move to folder"; no drag) |
+| Convert a component to PDF inside the portfolio | DONE | `PortfolioOps.convertPart` |
+| Reduce file size of component PDFs | DONE | `PortfolioOps.compressParts` |
+| Cover sheet table of contents (clickable, by folder) / regenerate | DONE | `PortfolioOps.regenerateCover` (GoToE links) |
+| Binder: ordered files, TOC, save / reopen as a project | DONE | `CombineTab` binder card, `BinderProject` / `BinderStore` |
+| Binder: include a file as an attachment instead of converting | DONE | `CombineEntry.attach` |
+| Edit a part and save it back into the portfolio | OPEN | parts open as extracted copies |
+| Binder: Word TOC template with field codes; metadata columns from Office properties | OPEN | |
+
+## Stage E — layers
+
+| Row | Status | Where |
+|---|---|---|
+| Layers pane: show / hide (with preview), show all / hide all | DONE | `LayersScreen` (tool `e5_layers`), `Layers.setOn` / `showAll`; reader INFO › Layers links to it |
+| Reset to initial visibility | DONE | `Layers.reset` (states captured on open) |
+| Expand / collapse (groups of the layer order) | DONE | `Layers.list` depth / group from /Order |
+| Layers listed with the pages they appear on | DONE | `Layers.pagesOf` |
+| Layer properties: name, intent (View / Design), default state, locked | DONE | `Layers.rename` / `setIntent` / `setOn` / `setLocked` |
+| Visibility / Print / Export usage (when visible / never / always) | DONE | `Layers.setUse` (/Usage + /D /AS) |
+| Apply print / export overrides | DONE | `Layers.applyOverrides` |
+| Set OCG state action | DONE | `Layers.setStateAction`, "bookmark that shows only this layer" |
+| Import as layer (picture / PDF page; page range) | DONE | `Layers.importImage` / `importPage` |
+| Merge layers / flatten layers / delete layer / reorder | DONE | `Layers.merge` / `flatten` / `delete` (content via the sanitizer's hidden-layer pass) / `move` |
+| New layer | DONE | `Layers.create` |
+| Image-editor layers palette (opacity, blending) | OPEN | belongs to the image editor (nve) |

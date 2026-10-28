@@ -24,6 +24,12 @@ data class Glyph(
     val color: Int = 0,
     /** Common font family name ([FontMap]), null = unknown. */
     val font: String? = null,
+    /**
+     * Text of an OCR layer, not typeset text: invisible (rendering mode 3/7) or the visible re-typed words of a page an older
+     * OCR build rebuilt ([OcrText]). Its size, baseline and box come from recognised word boxes, so they are normalised
+     * per line, it never counts as a duplicate of real text, and the OCR junk rules apply to it.
+     */
+    val ocr: Boolean = false,
 ) {
     val right get() = x + w
     val cx get() = x + w / 2f
@@ -36,8 +42,11 @@ data class Segment(val x1: Float, val y1: Float, val x2: Float, val y2: Float) {
     val vertical get() = kotlin.math.abs(x1 - x2) < 1.5f && kotlin.math.abs(y2 - y1) >= 4f
 }
 
-/** An image drawn on the page with its placement and encoded bytes (`ext` = "png" or "jpeg"). */
-class PageImage(val x: Float, val top: Float, val w: Float, val h: Float, val bytes: ByteArray, val ext: String)
+/**
+ * An image drawn on the page with its placement and encoded bytes (`ext` = "png" or "jpeg"). [maskText]: a tiny
+ * solid-colour image drawn through a soft mask that holds glyphs (Word "text with effects"): a picture of text.
+ */
+class PageImage(val x: Float, val top: Float, val w: Float, val h: Float, val bytes: ByteArray, val ext: String, val maskText: Boolean = false)
 
 /** A filled (shaded) rectangle painted on the page, colour 0xRRGGBB. */
 class Fill(val rect: Rect, val color: Int)
@@ -51,6 +60,8 @@ class PageContent(
     val segments: List<Segment> = emptyList(),
     val images: List<PageImage> = emptyList(),
     val fills: List<Fill> = emptyList(),
+    /** The page is one an older OCR build rebuilt (page picture + visible re-typed OCR words, [OcrText.ourVisibleLayer]). */
+    val rebuiltByOcr: Boolean = false,
 )
 
 data class Rect(val x0: Float, val y0: Float, val x1: Float, val y1: Float) {
@@ -76,6 +87,8 @@ class Word(val glyphs: List<Glyph>, val text: String, val rtl: Boolean) {
     var underline = false
     var strike = false
     var bg: Int? = null
+    /** Recognised (OCR) text, see [Glyph.ocr]. */
+    val ocr: Boolean = glyphs.count { it.ocr } * 2 > glyphs.size
 }
 
 /** A text line. [words] are in LOGICAL (reading) order; [visual] keeps them left → right. */
@@ -92,6 +105,10 @@ class Line(val visual: List<Word>, val words: List<Word>, val rtl: Boolean, val 
     val bold = words.sumOf { if (it.bold) it.text.length else 0 } * 2 > words.sumOf { it.text.length }
     val text: String get() = words.joinToString(" ") { it.text }
     val rect get() = Rect(x0, top, x1, bottom)
+    /** Every word is recognised (OCR) text. */
+    val ocr: Boolean get() = words.all { it.ocr }
+    /** No strong letter at all (digits, punctuation, symbols): such a line takes the direction of its paragraph. */
+    val neutral: Boolean get() = BidiText.strongCounts(text).let { it[0] == 0 && it[1] == 0 }
 }
 
 enum class Align { START, CENTER, END }
@@ -142,6 +159,10 @@ class PageLayout(
     val footer: List<Line> = emptyList(),
     /** The PDF painted its own fills (cell / paragraph backgrounds): writers skip synthetic header shading. */
     val hasFills: Boolean = false,
+    /** See [PageContent.rebuiltByOcr]. */
+    val rebuiltByOcr: Boolean = false,
+    /** Recognised (OCR) characters kept on the page. */
+    val ocrChars: Int = 0,
 ) {
     /** Strong RTL / LTR letter counts of the page text. */
     fun strongCounts(): IntArray {

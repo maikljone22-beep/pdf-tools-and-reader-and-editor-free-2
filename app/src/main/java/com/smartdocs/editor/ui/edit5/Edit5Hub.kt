@@ -41,6 +41,7 @@ val EDIT5_TOOLS: List<E5Tool> = listOf(
     E5Tool("e5_impose", R.string.e5_impose_title, Icons.Default.ViewModule, 1, R.string.e5_impose_sub),
     E5Tool("e5_page_ops", R.string.e5_pageops_title, Icons.Default.SwapVert, 1, R.string.e5_pageops_sub),
     E5Tool("e5_organize", R.string.pc_organize_title, Icons.Default.ViewModule, 1, R.string.pc_organize_sub),
+    E5Tool("e5_layers", R.string.pc_ly_title, Icons.Default.Layers, 1, R.string.pc_ly_sub),
     E5Tool("e5_split_bookmarks", R.string.pc_op_split_bookmarks, Icons.Default.CallSplit, 1),
     E5Tool("e5_mix", R.string.pc_op_mix, Icons.Default.Shuffle, 1),
     E5Tool("e5_replace_pages", R.string.e5_op_replace, Icons.Default.FindReplace, 1),
@@ -76,6 +77,7 @@ fun Edit5Screens(nav: NavHostController, id: String, uri: String?) {
         "e5_impose" -> ImposeScreen(nav, uri)
         "e5_page_ops" -> PageOpsScreen(nav, uri, PageOp.REVERSE)
         "e5_organize" -> PageOrganizeScreen(nav, uri, OrgOp.DELETE)
+        "e5_layers" -> LayersScreen(nav, uri)
         "e5_split_bookmarks" -> PageOrganizeScreen(nav, uri, OrgOp.SPLIT_BOOKMARKS)
         "e5_mix" -> PageOrganizeScreen(nav, uri, OrgOp.MIX)
         "e5_replace_pages" -> PageOpsScreen(nav, uri, PageOp.REPLACE)

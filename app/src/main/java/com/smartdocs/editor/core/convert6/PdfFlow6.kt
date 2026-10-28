@@ -77,6 +77,74 @@ object PdfFlow6 {
     }
 
     /**
+     * The PDF a Word conversion reads (PDF_TO_WORD_r5). [file] is [src] when nothing had to change; [ocrPages] pages got
+     * a fresh OCR layer; [repaired]: fonts with a wrong ToUnicode map were repaired. Close it to delete temporary copies.
+     */
+    class WordInput(val file: File, val ocrPages: Int, val repaired: Boolean, val ocrUnavailable: Boolean, private val parts: List<AutoCloseable>,
+                    /** The document's text is mostly Arabic-script (judged on the recognised copy when OCR ran). */
+                    val rtl: Boolean = false) : AutoCloseable {
+        override fun close() { parts.forEach { runCatching { it.close() } } }
+    }
+
+    /**
+     * Prepares [src] for PDF → Word:
+     *  1. always a repaired copy ([RepairedInput]: Arabic fonts with a wrong ToUnicode map fixed, so Word gets real letters
+     *     instead of «اٌىُُّبء»). With [ocr] the app's own earlier OCR layer is removed from the pages of [pages] too
+     *     (older builds wrote it reversed, with border junk; it is replaced by a fresh one below);
+     *  2. with [ocr], the pages that need it ([MixedPageOcr.plan]: no text, unusable text, pictures of text such as Word's
+     *     2x2 soft-mask word images, scanned regions) are recognised with the current pipeline ([OcrEngine.recognize]:
+     *     second readings and junk cleanup) and get an invisible layer of the words that are not on the page yet
+     *     ([MixedPageOcr.dropExisting]). Digital pages are not recognised at all.
+     * OCR that cannot run (no language data offline) leaves the repaired copy: the conversion goes on without it.
+     * [pages]: zero-based pages to convert (empty = all). [langs] null = from the document's text.
+     */
+    suspend fun wordInput(ctx: Context, src: File, password: String?, pages: List<Int>, langs: String?, tempDir: File, ocr: Boolean, onProgress: (Int, Int) -> Unit): WordInput {
+        val input = com.smartdocs.editor.core.ocr.RepairedInput.of(tempDir, src, password, rerun = if (!ocr) emptyList() else pages.ifEmpty { null })
+        if (!ocr) return WordInput(input.file, 0, input.repaired, false, listOf(input))
+        val out = File(tempDir, src.nameWithoutExtension + "_wordocr_" + System.nanoTime() + ".pdf")
+        var engine: OcrEngine? = null
+        try {
+            val session = com.smartdocs.editor.core.pdf.PdfSession.open(ctx, input.file, password)
+            try {
+                val range = pages.filter { it in 0 until session.pageCount }.ifEmpty { (0 until session.pageCount).toList() }
+                val plan = com.smartdocs.editor.core.ocr.MixedPageOcr.plan(session, input.file, password, range)
+                if (plan.pages.isEmpty()) return WordInput(input.file, 0, input.repaired, false, listOf(input))
+                val sample = StringBuilder()
+                for (pi in range) { if (sample.length > 20000) break; sample.append(runCatching { session.text(pi) }.getOrDefault("")).append('\n') }
+                val lang = langs ?: com.smartdocs.editor.core.tools5.LangDetect.forOcr(sample.toString()).joinToString("+").ifBlank { "ara+eng" }
+                // a page of pictures has no text to judge by: the OCR languages decide then
+                val rtl = com.smartdocs.editor.core.convert.BidiText.strongCounts(sample.toString()).let { it[0] > it[1] || (it[0] + it[1] < 200 && "ara" in lang) }
+                val e = OcrEngine(ctx.applicationContext).also { engine = it }
+                val ready = try { e.ensureLanguages(lang); e.init(lang) } catch (x: kotlinx.coroutines.CancellationException) { throw x } catch (x: Exception) { false }
+                if (!ready) return WordInput(input.file, 0, input.repaired, true, listOf(input))
+                val writer = withContext(Dispatchers.IO) { com.smartdocs.editor.core.ocr.SearchablePdfWriter(ctx, input.file, password) }
+                try {
+                    plan.pages.forEachIndexed { n, pi ->
+                        coroutineContext.ensureActive()
+                        onProgress(n, plan.pages.size)
+                        // the reader OCR's render: 300 dpi, at most 3500 px, no annotations
+                        val (w, h) = session.pageSize(pi)
+                        var scale = 300f / 72f
+                        if (maxOf(w, h) * scale > 3500f) scale = 3500f / maxOf(w, h)
+                        val bmp = session.render(pi, (w * scale).toInt().coerceAtLeast(1), (h * scale).toInt().coerceAtLeast(1), annotations = false)
+                        session.invalidateCache()
+                        val page = try { e.recognize(bmp, wantWords = true) } finally { bmp.recycle() }
+                        writer.addLayer(pi, com.smartdocs.editor.core.ocr.MixedPageOcr.dropExisting(session, pi, page, plan))
+                    }
+                    onProgress(plan.pages.size, plan.pages.size)
+                    writer.save(out)
+                } finally { writer.close() }
+                return WordInput(out, plan.pages.size, input.repaired, false, listOf(AutoCloseable { out.delete() }, input), rtl)
+            } finally { session.closeAsync() }
+        } catch (x: kotlinx.coroutines.CancellationException) {
+            out.delete(); input.close(); throw x
+        } catch (x: Exception) {
+            out.delete()
+            return WordInput(input.file, 0, input.repaired, true, listOf(input))
+        } finally { engine?.close() }
+    }
+
+    /**
      * A searchable copy for scanned input. [force] = OCR every page without a text layer (scanned → editable);
      * otherwise only when at least half of the pages are scanned ([AutoOcr]). Returns null when nothing was done.
      */

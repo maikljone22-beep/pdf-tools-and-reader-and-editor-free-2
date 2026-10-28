@@ -147,6 +147,10 @@ object TableDetector {
         val hits = IntArray(nc)
         block.forEach { (_, cs) -> cs.forEach { c -> val cx = (c.first().x0 + c.last().x1) / 2f; val k = cols.indexOfFirst { cx >= it[0] && cx <= it[1] }; if (k >= 0) hits[k]++ } }
         if (hits.any { it < 2 }) return null
+        // a column of stray marks («(», «:», «١») beside running text is decoration or OCR noise, not a table column
+        val colChars = IntArray(nc); val colCells = IntArray(nc)
+        block.forEach { (_, cs) -> cs.forEach { c -> val cx = (c.first().x0 + c.last().x1) / 2f; val k = cols.indexOfFirst { cx >= it[0] && cx <= it[1] }; if (k >= 0) { colChars[k] += c.sumOf { it.text.length }; colCells[k]++ } } }
+        if (nc == 2 && (0 until nc).any { colChars[it] <= 2 * colCells[it] }) return null
         // two columns of running text are a page layout, not a table
         if (nc == 2) {
             val avg = block.flatMap { it.second }.map { c -> c.sumOf { it.text.length } + c.size - 1 }.average()
