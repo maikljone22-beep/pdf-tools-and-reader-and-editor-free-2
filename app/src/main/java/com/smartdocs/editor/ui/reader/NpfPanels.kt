@@ -194,6 +194,8 @@ private fun NpfPanelBody(state: ReaderState, panel: NpfPanel, onJump: (Int) -> U
                     NpfRow("PDF", s.pdfVersion)
                     NpfRow("PDF/A", s.pdfa ?: "—"); NpfRow("PDF/UA", s.pdfua ?: "—"); NpfRow("PDF/X", s.pdfx ?: "—"); NpfRow("PDF/E", s.pdfe ?: "—")
                     NpfRow(stringResource(R.string.npf_tagged), stringResource(if (s.tagged) R.string.npf_yes else R.string.npf_no))
+                    // FINAL_CHECK: the output intents (PDF/A, PDF/X colour target and its ICC profile)
+                    NpfRow(stringResource(R.string.cmp_output_intent), if (s.outputIntents.isEmpty()) "—" else s.outputIntents.joinToString("\n"))
                     if (s.pdfa != null) Text(stringResource(R.string.npf_pdfa_claim), style = MaterialTheme.typography.bodySmall)
                     OutlinedButton(onClick = { openTool("pdfa") }) { Text(stringResource(R.string.npf_open_preflight)) }
                 }
