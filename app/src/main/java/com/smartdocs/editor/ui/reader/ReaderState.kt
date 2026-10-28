@@ -121,6 +121,8 @@ class ReaderState(
     var reflowFontSize by mutableFloatStateOf(18f)
     var autoFlipSeconds by mutableIntStateOf(0)
     var pendingJump by mutableStateOf<Int?>(null)
+    /** With [pendingJump]: how far down the page to scroll (0 = top, 1 = bottom; continuous view), e.g. JS doc.scroll. */
+    var pendingJumpTop by mutableStateOf<Float?>(null)
     /** Crop, magnifier, auto-flip interval, orientation lock, screen timeout, reflow scale (ui/reader/view). */
     val vx = com.smartdocs.editor.ui.reader.view.ViewExtras(this)
 
@@ -405,6 +407,9 @@ class ReaderState(
     fun fsTargetAt(page: Int, x: Float, y: Float) = com.smartdocs.editor.core.formsx.FieldRecognition.at(fsTargets[page], x, y)
 
     fun jumpTo(page: Int) { pendingJump = page.coerceIn(0, (pageCount - 1).coerceAtLeast(0)) }
+
+    /** Jump to [page] and scroll [topFraction] of its height down (0..1). */
+    fun jumpTo(page: Int, topFraction: Float) { pendingJumpTop = topFraction.coerceIn(0f, 1f); jumpTo(page) }
 
     /**
      * The document's initial view (written by Document properties or other producers): direction always; on the first

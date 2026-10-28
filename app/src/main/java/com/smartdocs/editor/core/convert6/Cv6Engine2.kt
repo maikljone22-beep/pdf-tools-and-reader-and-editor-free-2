@@ -108,10 +108,31 @@ internal class Cv6Engine2(private val ctx: Context, private val docs: DocumentRe
     // ---- to PDF ----
 
     private suspend fun toPdf(conv: Conv, inputs: List<File>, o: Cv6Opts, p: (Int, Int) -> Unit): Cv6Result {
+        val r = toPdfFiles(conv, inputs, o, p)
+        if (!o.recognizeFields) return r
+        // form field recognition on creation: likely blanks of the new PDFs become fields
+        val n = withContext(Dispatchers.IO) {
+            var total = 0
+            for (f in r.files) {
+                coroutineContext.ensureActive()
+                total += runCatching {
+                    val tmp = File(f.parentFile, ".${f.name}.ff.pdf")
+                    val made = PdfOps.loadRaw(f, null).use { d -> com.smartdocs.editor.core.formsx.FieldRecognition.recognizeAll(d).also { if (it > 0) d.save(tmp) } }
+                    if (made > 0 && !tmp.renameTo(f)) { tmp.copyTo(f, overwrite = true); tmp.delete() }
+                    made
+                }.getOrDefault(0)
+            }
+            total
+        }
+        val note = if (n > 0) ctx.getString(R.string.cv9_fields_made, n) else ctx.getString(R.string.cv9_fields_none)
+        return Cv6Result(r.files, listOfNotNull(r.info, note).joinToString("\n"), r.failures)
+    }
+
+    private suspend fun toPdfFiles(conv: Conv, inputs: List<File>, o: Cv6Opts, p: (Int, Int) -> Unit): Cv6Result {
         val notes = ArrayList<String>()
         suspend fun one(f: File, target: File): File =
             if (conv.id == "md_pdf") ToPdf6.flowToPdf(ctx, withContext(Dispatchers.IO) { MdFlow.parse(ToPdf.readText(f), f.nameWithoutExtension, resolve = ToPdf6.siblingResolver(f)) }, target)
-            else ToPdf6.convert(ctx, f, target, o.setup, o.quality) { notes += it }
+            else ToPdf6.convert(ctx, f, target, o.setup, o.quality, bookmarks = o.bookmarks, speakerNotes = o.speakerNotes && conv.id == "ppt_pdf") { notes += it }
         if (inputs.size > 1 && o.merge) {
             val target = out(inputs.first().nameWithoutExtension + "_" + ctx.getString(R.string.cv6_combined_suffix), "pdf")
             if (conv.id == "images_pdf" || conv.id == "tiff_pdf") {
@@ -124,7 +145,7 @@ internal class Cv6Engine2(private val ctx: Context, private val docs: DocumentRe
                 withContext(Dispatchers.IO) { ToPdf.merge(temps, target, tempDir) }
                 return Cv6Result(listOf(target))
             }
-            ToPdf6.combine(ctx, inputs, target, tempDir, o.setup, o.quality, p, passwords = { engine.pwOf(it) }, info = { notes += it })
+            ToPdf6.combine(ctx, inputs, target, tempDir, o.setup, o.quality, p, passwords = { engine.pwOf(it) }, info = { notes += it }, bookmarks = o.bookmarks)
             return Cv6Result(listOf(target), notes.distinct().joinToString("\n").ifBlank { null })
         }
         return each(inputs, p) { f ->

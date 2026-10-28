@@ -41,10 +41,10 @@ object Cv6Defaults {
         put("keepLayout", o.keepLayout?.toString() ?: "auto")
         put("imgFormat", o.imgFormat?.name ?: "keep")
         put("dpi", o.dpi); put("quality", o.quality); put("zip", o.zip); put("gray", o.gray)
-        put("size", o.setup.size.name); put("orient", o.setup.orient.name); put("fit", o.setup.fit.name); put("margin", o.setup.marginPt.toDouble())
+        put("size", o.setup.size.name); put("orient", o.setup.orient.name); put("fit", o.setup.fit.name); put("margin", o.setup.marginPt.toDouble()); put("customW", o.setup.customW.toDouble()); put("customH", o.setup.customH.toDouble())
         put("merge", o.merge); put("nUp", o.nUp); put("resizePercent", o.resizePercent); put("maxSide", o.maxSide)
         put("csvAllSheets", o.csvAllSheets); put("ocrLangs", o.ocrLangs ?: "auto"); put("pdfaStrict", o.pdfaStrict)
-        put("attachSource", o.attachSource); put("bw", o.bw); put("perTable", o.perTable)
+        put("attachSource", o.attachSource); put("bw", o.bw); put("perTable", o.perTable); put("bookmarks", o.bookmarks); put("recognizeFields", o.recognizeFields); put("recoverAllPages", o.recoverAllPages); put("exactLayout", o.exactLayout); put("speakerNotes", o.speakerNotes)
     }
 
     /** [j] over [base]: missing or unreadable keys keep the base value. */
@@ -57,14 +57,16 @@ object Cv6Defaults {
         val langs = if (!j.has("ocrLangs")) base.ocrLangs else j.optString("ocrLangs").takeIf { it.isNotBlank() && it != "auto" }
         val s = base.setup
         val setup = s.copy(size = e("size", PageSize6.values(), s.size), orient = e("orient", Orient6.values(), s.orient), fit = e("fit", Fit6.values(), s.fit),
-            marginPt = if (j.has("margin")) j.optDouble("margin", s.marginPt.toDouble()).toFloat() else s.marginPt)
+            marginPt = if (j.has("margin")) j.optDouble("margin", s.marginPt.toDouble()).toFloat() else s.marginPt,
+            customW = if (j.has("customW")) j.optDouble("customW", s.customW.toDouble()).toFloat() else s.customW,
+            customH = if (j.has("customH")) j.optDouble("customH", s.customH.toDouble()).toFloat() else s.customH)
         return base.copy(
             autoOcr = b("autoOcr", base.autoOcr), tables = b("tables", base.tables), includeImages = b("includeImages", base.includeImages),
             singleSheet = b("singleSheet", base.singleSheet), pptEditable = b("pptEditable", base.pptEditable), keepLayout = keep, imgFormat = fmt,
             dpi = i("dpi", base.dpi), quality = i("quality", base.quality).coerceIn(1, 100), zip = b("zip", base.zip), gray = b("gray", base.gray), setup = setup,
             merge = b("merge", base.merge), nUp = i("nUp", base.nUp), resizePercent = i("resizePercent", base.resizePercent), maxSide = i("maxSide", base.maxSide),
             csvAllSheets = b("csvAllSheets", base.csvAllSheets), ocrLangs = langs, pdfaStrict = b("pdfaStrict", base.pdfaStrict),
-            attachSource = b("attachSource", base.attachSource), bw = b("bw", base.bw), perTable = b("perTable", base.perTable),
+            attachSource = b("attachSource", base.attachSource), bw = b("bw", base.bw), perTable = b("perTable", base.perTable), bookmarks = b("bookmarks", base.bookmarks), recognizeFields = b("recognizeFields", base.recognizeFields), recoverAllPages = b("recoverAllPages", base.recoverAllPages), exactLayout = b("exactLayout", base.exactLayout), speakerNotes = b("speakerNotes", base.speakerNotes),
         )
     }
 }

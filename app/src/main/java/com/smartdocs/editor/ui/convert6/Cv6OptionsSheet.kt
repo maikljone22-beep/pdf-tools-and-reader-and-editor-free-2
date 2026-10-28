@@ -23,6 +23,7 @@ import com.smartdocs.editor.core.convert6.Conv
 import com.smartdocs.editor.core.convert6.Cv6Catalog
 import com.smartdocs.editor.core.convert6.Cv6Opts
 import com.smartdocs.editor.core.convert6.Fit6
+import com.smartdocs.editor.core.convert6.Images6
 import com.smartdocs.editor.core.convert6.ImgFmt
 import com.smartdocs.editor.core.convert6.Opt
 import com.smartdocs.editor.core.convert6.Orient6
@@ -36,6 +37,7 @@ import com.smartdocs.editor.ui.tools.PrimaryButton
 import com.smartdocs.editor.ui.tools5.FileListEditor
 import com.smartdocs.editor.ui.tools5.SwitchRow
 import java.io.File
+import kotlin.math.roundToInt
 
 /** Good defaults per conversion (shared with the recipes, see [Cv6Catalog.defaultsFor]). */
 fun defaultsFor(c: Conv): Cv6Opts = Cv6Catalog.defaultsFor(c)
@@ -102,14 +104,27 @@ private fun OptionsBody(conv: Conv, inputCount: Int, o: Cv6Opts, onChange: (Cv6O
         FieldLabel(stringResource(R.string.cv6_output))
         ChoiceChips(listOf(true, false), o.merge, { if (it) stringResource(R.string.cv6_merge_one) else stringResource(R.string.cv6_merge_separate) }) { onChange(o.copy(merge = it)) }
     }
-    if (Opt.AUTO_OCR in opts) SwitchRow(stringResource(R.string.cv6_auto_ocr), o.autoOcr, stringResource(R.string.cv6_auto_ocr_sub)) { onChange(o.copy(autoOcr = it)) }
-    if (Opt.OCR_LANG in opts) {
+    if (Opt.TEXT_RECOVERY in opts) {
+        // row 51: text recovery off / problem pages only / all pages (problem pages = no text, unusable text, pictures of text)
+        FieldLabel(stringResource(R.string.cv9_recovery))
+        val mode = if (!o.autoOcr) 0 else if (o.recoverAllPages) 2 else 1
+        ChoiceChips(listOf(0, 1, 2), mode, { when (it) { 0 -> stringResource(R.string.cv9_recovery_off); 1 -> stringResource(R.string.cv9_recovery_problem); else -> stringResource(R.string.cv9_recovery_all) } }) {
+            onChange(o.copy(autoOcr = it > 0, recoverAllPages = it == 2))
+        }
+    } else if (Opt.AUTO_OCR in opts) SwitchRow(stringResource(R.string.cv6_auto_ocr), o.autoOcr, stringResource(R.string.cv6_auto_ocr_sub)) { onChange(o.copy(autoOcr = it)) }
+    if (Opt.OCR_LANG in opts && (Opt.TEXT_RECOVERY !in opts || o.autoOcr)) {
         FieldLabel(stringResource(R.string.cv6_ocr_lang))
         ChoiceChips(listOf<String?>(null, "ara", "eng", "ara+eng"), o.ocrLangs, { when (it) { null -> stringResource(R.string.cv6_lang_auto); "ara" -> stringResource(R.string.cv6_lang_ar); "eng" -> stringResource(R.string.cv6_lang_en); else -> stringResource(R.string.cv6_lang_both) } }) { onChange(o.copy(ocrLangs = it)) }
     }
     if (Opt.LAYOUT in opts) {
         FieldLabel(stringResource(R.string.cv6_layout))
-        ChoiceChips(listOf<Boolean?>(null, true, false), o.keepLayout, { when (it) { null -> stringResource(R.string.cv6_lang_auto); true -> stringResource(R.string.cv6_layout_keep); false -> stringResource(R.string.cv6_layout_flow) } }) { onChange(o.copy(keepLayout = it)) }
+        // row 46: auto / page layout / flowing / precisely laid out (text boxes)
+        val choice = if (o.exactLayout) "exact" else when (o.keepLayout) { null -> "auto"; true -> "keep"; false -> "flow" }
+        ChoiceChips(listOf("auto", "keep", "flow", "exact"), choice, { when (it) { "auto" -> stringResource(R.string.cv6_lang_auto); "keep" -> stringResource(R.string.cv6_layout_keep)
+            "flow" -> stringResource(R.string.cv6_layout_flow); else -> stringResource(R.string.cv9_layout_exact) } }) {
+            onChange(when (it) { "exact" -> o.copy(exactLayout = true); "keep" -> o.copy(keepLayout = true, exactLayout = false)
+                "flow" -> o.copy(keepLayout = false, exactLayout = false); else -> o.copy(keepLayout = null, exactLayout = false) })
+        }
     }
     if (Opt.PPT_MODE in opts) {
         FieldLabel(stringResource(R.string.cv_ppt_mode))
@@ -144,6 +159,9 @@ private fun OptionsBody(conv: Conv, inputCount: Int, o: Cv6Opts, onChange: (Cv6O
     }
     if (Opt.GRAY in opts && !o.bw) SwitchRow(stringResource(R.string.cv6_gray), o.gray) { onChange(o.copy(gray = it)) }
     if (Opt.BW in opts) SwitchRow(stringResource(R.string.pc_bw), o.bw, stringResource(R.string.pc_bw_sub)) { onChange(o.copy(bw = it)) }
+    if (Opt.FORM_FIELDS in opts) SwitchRow(stringResource(R.string.cv9_form_fields), o.recognizeFields, stringResource(R.string.cv9_form_fields_sub)) { onChange(o.copy(recognizeFields = it)) }
+    if (Opt.SPEAKER_NOTES in opts) SwitchRow(stringResource(R.string.cv9_speaker_notes), o.speakerNotes) { onChange(o.copy(speakerNotes = it)) }
+    if (Opt.BOOKMARKS in opts) SwitchRow(stringResource(R.string.cv9_bookmarks), o.bookmarks, stringResource(R.string.cv9_bookmarks_sub)) { onChange(o.copy(bookmarks = it)) }
     if (Opt.SHEET_PER_TABLE in opts) SwitchRow(stringResource(R.string.pc_sheet_per_table), o.perTable) { onChange(o.copy(perTable = it)) }
     if (Opt.PAGE_SETUP in opts) PageSetupOptions(o, onChange)
     if (Opt.NUP in opts) {
@@ -178,7 +196,22 @@ private fun OptionsBody(conv: Conv, inputCount: Int, o: Cv6Opts, onChange: (Cv6O
 private fun PageSetupOptions(o: Cv6Opts, onChange: (Cv6Opts) -> Unit) {
     val s = o.setup
     FieldLabel(stringResource(R.string.cv6_page_size))
-    ChoiceChips(PageSize6.entries, s.size, { if (it == PageSize6.IMAGE) stringResource(R.string.cv6_size_image) else it.name.lowercase().replaceFirstChar { c -> c.uppercase() } }) { onChange(o.copy(setup = s.copy(size = it))) }
+    ChoiceChips(PageSize6.entries, s.size, { when (it) { PageSize6.IMAGE -> stringResource(R.string.cv6_size_image); PageSize6.CUSTOM -> stringResource(R.string.cv9_size_custom)
+        else -> it.name.lowercase().replaceFirstChar { c -> c.uppercase() } } }) { onChange(o.copy(setup = s.copy(size = it))) }
+    // row 27: custom page size in millimetres
+    if (s.size == PageSize6.CUSTOM) androidx.compose.foundation.layout.Row(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
+        listOf(true, false).forEach { isW ->
+            val pt = if (isW) s.customW else s.customH
+            var text by androidx.compose.runtime.remember(isW) { androidx.compose.runtime.mutableStateOf(Images6.ptToMm(pt).roundToInt().toString()) }
+            androidx.compose.material3.OutlinedTextField(text, { v ->
+                text = v.filter { it.isDigit() }.take(4)
+                text.toFloatOrNull()?.let { mm -> val p = Images6.mmToPt(mm).coerceIn(Images6.MIN_PAGE_PT, Images6.MAX_PAGE_PT)
+                    onChange(o.copy(setup = if (isW) s.copy(customW = p) else s.copy(customH = p))) }
+            }, androidx.compose.ui.Modifier.width(120.dp), singleLine = true,
+                label = { Text(stringResource(if (isW) R.string.cv9_width_mm else R.string.cv9_height_mm)) },
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number))
+        }
+    }
     if (s.size != PageSize6.IMAGE) {
         FieldLabel(stringResource(R.string.cv6_orientation))
         ChoiceChips(Orient6.entries, s.orient, { when (it) { Orient6.AUTO -> stringResource(R.string.cv6_or_auto); Orient6.PORTRAIT -> stringResource(R.string.cv6_or_portrait); Orient6.LANDSCAPE -> stringResource(R.string.cv6_or_landscape) } }) { onChange(o.copy(setup = s.copy(orient = it))) }

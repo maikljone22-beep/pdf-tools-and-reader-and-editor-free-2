@@ -10,7 +10,7 @@ enum class Fmt { PDF, WORD, EXCEL, PPT, IMAGE, JPG, PNG, WEBP, HEIC, TIFF, ZIP, 
 
 /** Options a conversion shows in its sheet. */
 enum class Opt { RANGE, AUTO_OCR, TABLES, INCLUDE_IMAGES, SINGLE_SHEET, PPT_MODE, LAYOUT, IMG_FORMAT, DPI, QUALITY, IMG_OUTPUT, GRAY,
-    PAGE_SETUP, MERGE, NUP, RESIZE, CSV_SHEETS, OCR_LANG, URL, TEXT, PDFA_STRICT, BW, SHEET_PER_TABLE }
+    PAGE_SETUP, MERGE, NUP, RESIZE, CSV_SHEETS, OCR_LANG, URL, TEXT, PDFA_STRICT, BW, SHEET_PER_TABLE, BOOKMARKS, FORM_FIELDS, TEXT_RECOVERY, SPEAKER_NOTES }
 
 /**
  * One hub conversion. [inputs] = accepted kinds (empty = no file: URL / clipboard / camera); [multi] = several inputs at once
@@ -40,7 +40,7 @@ object Cv6Catalog {
 
     val all: List<Conv> = listOf(
         // ---- from PDF ----
-        Conv("pdf_docx", listOf(Cv6Group.FROM_PDF, Cv6Group.OFFICE), Fmt.PDF, Fmt.WORD, PDF, opts = setOf(Opt.RANGE, Opt.AUTO_OCR, Opt.LAYOUT, Opt.TABLES, Opt.INCLUDE_IMAGES), outExt = "docx", keywords = "word docx"),
+        Conv("pdf_docx", listOf(Cv6Group.FROM_PDF, Cv6Group.OFFICE), Fmt.PDF, Fmt.WORD, PDF, opts = setOf(Opt.RANGE, Opt.AUTO_OCR, Opt.TEXT_RECOVERY, Opt.OCR_LANG, Opt.LAYOUT, Opt.TABLES, Opt.INCLUDE_IMAGES), outExt = "docx", keywords = "word docx"),
         Conv("pdf_xlsx", listOf(Cv6Group.FROM_PDF, Cv6Group.OFFICE), Fmt.PDF, Fmt.EXCEL, PDF, opts = setOf(Opt.RANGE, Opt.AUTO_OCR, Opt.SINGLE_SHEET, Opt.TABLES), outExt = "xlsx", keywords = "excel xlsx"),
         Conv("pdf_pptx", listOf(Cv6Group.FROM_PDF, Cv6Group.OFFICE), Fmt.PDF, Fmt.PPT, PDF, opts = setOf(Opt.RANGE, Opt.AUTO_OCR, Opt.PPT_MODE, Opt.TABLES, Opt.INCLUDE_IMAGES), outExt = "pptx", keywords = "powerpoint pptx"),
         Conv("pdf_images", listOf(Cv6Group.FROM_PDF, Cv6Group.IMAGES), Fmt.PDF, Fmt.IMAGES_OUT, PDF, opts = setOf(Opt.RANGE, Opt.IMG_FORMAT, Opt.DPI, Opt.QUALITY, Opt.IMG_OUTPUT, Opt.GRAY), outExt = "jpg", keywords = "jpg png webp zip"),
@@ -72,19 +72,19 @@ object Cv6Catalog {
         Conv("pdf_searchable", listOf(Cv6Group.OCR, Cv6Group.FROM_PDF), Fmt.PDF, Fmt.SEARCHABLE, PDF + IMG, opts = setOf(Opt.OCR_LANG), keywords = "ocr searchable"),
         Conv("pdf_flatten", listOf(Cv6Group.FROM_PDF, Cv6Group.OTHER), Fmt.PDF, Fmt.FLAT, PDF, opts = setOf(Opt.DPI), keywords = "flatten image only"),
         // ---- to PDF ----
-        Conv("word_pdf", listOf(Cv6Group.TO_PDF, Cv6Group.OFFICE), Fmt.WORD, Fmt.PDF, WORDS, opts = setOf(Opt.MERGE), keywords = "docx doc odt rtf"),
-        Conv("excel_pdf", listOf(Cv6Group.TO_PDF, Cv6Group.OFFICE), Fmt.EXCEL, Fmt.PDF, SHEETS, opts = setOf(Opt.MERGE), keywords = "xlsx xls csv ods"),
-        Conv("ppt_pdf", listOf(Cv6Group.TO_PDF, Cv6Group.OFFICE), Fmt.PPT, Fmt.PDF, SLIDES, opts = setOf(Opt.MERGE), keywords = "pptx odp slides"),
-        Conv("images_pdf", listOf(Cv6Group.TO_PDF, Cv6Group.IMAGES), Fmt.IMAGE, Fmt.PDF, IMG, opts = setOf(Opt.PAGE_SETUP, Opt.MERGE, Opt.QUALITY), keywords = "jpg png heic tiff gif bmp webp"),
-        Conv("text_pdf", listOf(Cv6Group.TO_PDF, Cv6Group.TEXT_BOOKS), Fmt.TXT, Fmt.PDF, setOf(Kind6.TEXT, Kind6.CSV), opts = setOf(Opt.MERGE), keywords = "txt"),
-        Conv("md_pdf", listOf(Cv6Group.TO_PDF, Cv6Group.TEXT_BOOKS), Fmt.MD, Fmt.PDF, setOf(Kind6.MARKDOWN, Kind6.TEXT), opts = setOf(Opt.MERGE), keywords = "markdown"),
-        Conv("html_pdf", listOf(Cv6Group.TO_PDF), Fmt.HTML, Fmt.PDF, setOf(Kind6.HTML), opts = setOf(Opt.MERGE), keywords = "html"),
-        Conv("url_pdf", listOf(Cv6Group.TO_PDF, Cv6Group.OTHER), Fmt.WEB, Fmt.PDF, emptySet(), multi = false, opts = setOf(Opt.URL), keywords = "web url link"),
+        Conv("word_pdf", listOf(Cv6Group.TO_PDF, Cv6Group.OFFICE), Fmt.WORD, Fmt.PDF, WORDS, opts = setOf(Opt.MERGE, Opt.BOOKMARKS, Opt.FORM_FIELDS), keywords = "docx doc odt rtf"),
+        Conv("excel_pdf", listOf(Cv6Group.TO_PDF, Cv6Group.OFFICE), Fmt.EXCEL, Fmt.PDF, SHEETS, opts = setOf(Opt.MERGE, Opt.BOOKMARKS, Opt.FORM_FIELDS), keywords = "xlsx xls csv ods"),
+        Conv("ppt_pdf", listOf(Cv6Group.TO_PDF, Cv6Group.OFFICE), Fmt.PPT, Fmt.PDF, SLIDES + Kind6.PPT, opts = setOf(Opt.MERGE, Opt.BOOKMARKS, Opt.SPEAKER_NOTES, Opt.FORM_FIELDS), keywords = "pptx odp slides"),
+        Conv("images_pdf", listOf(Cv6Group.TO_PDF, Cv6Group.IMAGES), Fmt.IMAGE, Fmt.PDF, IMG, opts = setOf(Opt.PAGE_SETUP, Opt.MERGE, Opt.QUALITY, Opt.FORM_FIELDS), keywords = "jpg png heic tiff gif bmp webp"),
+        Conv("text_pdf", listOf(Cv6Group.TO_PDF, Cv6Group.TEXT_BOOKS), Fmt.TXT, Fmt.PDF, setOf(Kind6.TEXT, Kind6.CSV), opts = setOf(Opt.MERGE, Opt.FORM_FIELDS), keywords = "txt"),
+        Conv("md_pdf", listOf(Cv6Group.TO_PDF, Cv6Group.TEXT_BOOKS), Fmt.MD, Fmt.PDF, setOf(Kind6.MARKDOWN, Kind6.TEXT), opts = setOf(Opt.MERGE, Opt.FORM_FIELDS), keywords = "markdown"),
+        Conv("html_pdf", listOf(Cv6Group.TO_PDF), Fmt.HTML, Fmt.PDF, setOf(Kind6.HTML), opts = setOf(Opt.MERGE, Opt.BOOKMARKS, Opt.FORM_FIELDS), keywords = "html"),
+        Conv("url_pdf", listOf(Cv6Group.TO_PDF, Cv6Group.OTHER), Fmt.WEB, Fmt.PDF, emptySet(), multi = false, opts = setOf(Opt.URL, Opt.BOOKMARKS), keywords = "web url link"),
         Conv("epub_pdf", listOf(Cv6Group.TO_PDF, Cv6Group.TEXT_BOOKS), Fmt.EPUB, Fmt.PDF, setOf(Kind6.EPUB), opts = setOf(Opt.MERGE), keywords = "ebook"),
         Conv("eml_pdf", listOf(Cv6Group.TO_PDF, Cv6Group.OTHER), Fmt.EMAIL, Fmt.PDF, setOf(Kind6.EML), opts = setOf(Opt.MERGE), keywords = "email eml mail"),
         Conv("scan_pdf", listOf(Cv6Group.TO_PDF, Cv6Group.OCR), Fmt.CAMERA, Fmt.PDF, emptySet(), multi = false, route = "scan", keywords = "camera scan"),
         Conv("clipboard_pdf", listOf(Cv6Group.TO_PDF, Cv6Group.OTHER), Fmt.CLIPBOARD, Fmt.PDF, emptySet(), multi = false, opts = setOf(Opt.TEXT), keywords = "clipboard paste"),
-        Conv("any_pdf", listOf(Cv6Group.TO_PDF, Cv6Group.OTHER), Fmt.ANY, Fmt.PDF, Kind6.entries.toSet() - setOf(Kind6.UNKNOWN, Kind6.ZIP, Kind6.PPT), opts = setOf(Opt.MERGE), keywords = "combine merge mixed"),
+        Conv("any_pdf", listOf(Cv6Group.TO_PDF, Cv6Group.OTHER), Fmt.ANY, Fmt.PDF, Kind6.entries.toSet() - setOf(Kind6.UNKNOWN, Kind6.ZIP), opts = setOf(Opt.MERGE, Opt.FORM_FIELDS), keywords = "combine merge mixed"),
         // ---- images ----
         Conv("img_convert", listOf(Cv6Group.IMAGES), Fmt.IMAGE, Fmt.IMAGE, IMG, opts = setOf(Opt.IMG_FORMAT, Opt.QUALITY), outExt = "jpg", keywords = "jpg png webp convert"),
         Conv("heic_jpg", listOf(Cv6Group.IMAGES), Fmt.HEIC, Fmt.JPG, setOf(Kind6.HEIC), opts = setOf(Opt.QUALITY), outExt = "jpg", keywords = "heic heif iphone"),

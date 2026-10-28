@@ -143,6 +143,13 @@ object FormActions {
                 r.scope.launch { if (r.save()) r.scriptSaveAs = name }
             }
             "close" -> fs.reader.scriptClose = true
+            "scroll" -> {
+                val r = fs.reader
+                val page = r.currentPage
+                val h = runCatching { r.session?.pageSize(page)?.second }.getOrNull()
+                val y = q["y"].toFloatOrNull() ?: 0f
+                if (h != null && h > 0f) r.jumpTo(page, com.smartdocs.editor.core.forms5.NamedActions.scrollFraction(y, h)) else r.jumpTo(page)
+            }
             "addscript" -> fs.addDocScript(q["n"], q["s"])
             "lock" -> fs.setSigLock(q["n"], com.smartdocs.editor.core.forms5.ScriptDocChanges.lockOf(q["a"], q["f"].split('\n').filter { it.isNotBlank() }))
             "addfield" -> {

@@ -27,6 +27,8 @@ data class ConvertOptions(
     val detectHeaders: Boolean = true,
     /** DOCX: flowing text (no page breaks, running headers / footers left out) instead of one Word page per PDF page. */
     val docxFlowing: Boolean = false,
+    /** DOCX "precisely laid out": paragraphs, pictures and tables placed where they are on the PDF page (frames). */
+    val docxExact: Boolean = false,
 )
 
 /** Where page content comes from (PdfBox on Android, desktop PdfBox in the test harness). */
@@ -72,7 +74,7 @@ object ConvertPipeline {
         fun step(k: Int) { if (cancelled()) throw ConvertCancelled(); progress(k, total) }
         progress(0, total)
         when (opts.format) {
-            TargetFormat.DOCX -> DocxBuilder(out, title, furniture, opts.docxFlowing).use { b ->
+            TargetFormat.DOCX -> DocxBuilder(out, title, furniture, opts.docxFlowing, exact = opts.docxExact).use { b ->
                 pages.forEachIndexed { k, i -> b.addPage(layout(i, opts.includeImages)); step(k + 1) }
                 b.finish()
             }

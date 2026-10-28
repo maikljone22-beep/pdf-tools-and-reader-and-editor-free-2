@@ -236,7 +236,8 @@ G.addScript = function () {
   rq({ k: "addscript", n: name, s: str(src) });     // kept as a document-level script on save
   (0, eval)(str(src));
 };
-["scroll"].forEach(function (m) { G[m] = function () { rq({ k: "unsupported", m: m }); }; });
+// 8.84: scroll the view to a point (default user space) of the current page
+G.scroll = function (nX, nY) { rq({ k: "scroll", x: String(Number(nX) || 0), y: String(Number(nY) || 0) }); };
 function wordsOf(p) { var w = S.words[p]; return w ? w : []; }
 G.getPageNthWord = function (p, n, strip) {
   var w = wordsOf(p === undefined ? 0 : Number(p))[n === undefined ? 0 : Number(n)];

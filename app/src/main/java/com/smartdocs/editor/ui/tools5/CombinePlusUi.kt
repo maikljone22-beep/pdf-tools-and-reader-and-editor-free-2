@@ -168,6 +168,15 @@ fun CombineTab(initial: List<File>, job: T5Job, attachSrc: Boolean, srcDesc: Str
                 if (!e.attach) OutlinedTextField(e.pages, { entries[i] = e.copy(pages = it) }, Modifier.weight(1f), singleLine = true, label = { Text(stringResource(R.string.page_range)) }, placeholder = { Text(stringResource(R.string.e5_all_pages)) },
                     isError = !com.smartdocs.editor.core.pdf.PdfOps.rangeSyntaxOk(e.pages))
             }
+            // row 111: pick the pages of a PDF on thumbnails
+            if (!e.attach && ToPdf.kindOf(e.file.name) == SourceKind.PDF) {
+                var picking by remember(e.file) { mutableStateOf(false) }
+                TextButton(onClick = { picking = true }) { Icon(Icons.Default.GridView, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.cv9_pick_pages)) }
+                if (picking) CombinePagePicker(e.file, e.password, e.pages, onDismiss = { picking = false }) { r ->
+                    picking = false
+                    entries.indexOfFirst { it.file == e.file }.takeIf { it >= 0 }?.let { k -> entries[k] = entries[k].copy(pages = r) }
+                }
+            }
             // PDF Binder: a non-PDF file can travel as an attachment instead of being converted
             if (ToPdf.kindOf(e.file.name) != SourceKind.PDF) Row(verticalAlignment = Alignment.CenterVertically) {
                 Checkbox(e.attach, { entries[i] = e.copy(attach = it) })

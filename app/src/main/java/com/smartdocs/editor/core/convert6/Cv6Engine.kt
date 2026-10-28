@@ -62,6 +62,16 @@ data class Cv6Opts(
     val bw: Boolean = false,
     /** Excel 2003 XML: one worksheet per table (else per page). */
     val perTable: Boolean = true,
+    /** Office → PDF: bookmarks from Word headings, Excel sheet names, PowerPoint slides. */
+    val bookmarks: Boolean = true,
+    /** To PDF: turn likely blanks (lines, boxes) into form fields (form field recognition on creation). */
+    val recognizeFields: Boolean = false,
+    /** PDF → Word text recovery (row 51): with [autoOcr], recognise every page instead of only the problem pages. */
+    val recoverAllPages: Boolean = false,
+    /** PDF → Word "precisely laid out" (row 46): text boxes at their PDF position; wins over [keepLayout]. */
+    val exactLayout: Boolean = false,
+    /** PowerPoint → PDF (row 103): speaker notes become note comments on their slide's page. */
+    val speakerNotes: Boolean = true,
 )
 
 enum class Stage { WORK, OCR }
@@ -132,7 +142,10 @@ class Cv6Engine(private val ctx: Context, private val docs: DocumentRepository) 
             // ---- no-file sources ----
             "url_pdf" -> {
                 val host = runCatching { android.net.Uri.parse(if (o.url.contains("://")) o.url else "https://" + o.url).host }.getOrNull()?.ifBlank { null } ?: "webpage"
-                Cv6Result(listOf(ToPdf.url(ctx, o.url, out(host, "pdf"))))
+                val pdf = ToPdf.url(ctx, o.url, out(host, "pdf"))
+                // row 93: bookmarks from the page's headings (detected by size in the printed pages)
+                if (o.bookmarks) runCatching { OfficeOutline.applyDetected(pdf) }
+                Cv6Result(listOf(pdf))
             }
             "clipboard_pdf" -> {
                 // Markdown only with strong signs, and line breaks are always kept (convert audit A-M9)
@@ -247,10 +260,11 @@ class Cv6Engine(private val ctx: Context, private val docs: DocumentRepository) 
     private suspend fun word(f: File, base: String, pw: String?, o: Cv6Opts, ocr: Boolean, p: (Int, Int) -> Unit, ocrProgress: (Int, Int) -> Unit): Cv6Result {
         val pages = pagesOf(f, pw, o.range)
         val cancelled = cancelCheck()
-        return PdfFlow6.wordInput(ctx, f, pw, pages, o.ocrLangs, tempDir, ocr, ocrProgress).use { inp ->
+        return PdfFlow6.wordInput(ctx, f, pw, pages, o.ocrLangs, tempDir, ocr, ocrProgress, allPages = ocr && o.recoverAllPages).use { inp ->
             val flowing = o.keepLayout?.not() ?: (inp.ocrPages > 0 && inp.rtl)
             val out = out(base, "docx")
-            val opts = ConvertOptions(format = TargetFormat.DOCX, pages = pages, detectTables = o.tables, includeImages = o.includeImages, docxFlowing = flowing)
+            val opts = ConvertOptions(format = TargetFormat.DOCX, pages = pages, detectTables = o.tables, includeImages = o.includeImages, docxFlowing = flowing && !o.exactLayout,
+                docxExact = o.exactLayout)
             val stats = ConvertEngine.convert(ctx, inp.file, pw, opts, out, p, cancelled)
             val info = ArrayList<String>()
             info += if (stats.textPages == 0) ctx.getString(R.string.cv_scanned_warning) else ctx.getString(R.string.cv6_info_pages, stats.pages, stats.tables, stats.images)

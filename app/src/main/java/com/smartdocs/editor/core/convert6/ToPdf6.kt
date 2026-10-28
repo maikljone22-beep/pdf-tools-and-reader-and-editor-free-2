@@ -174,11 +174,13 @@ object ToPdf6 {
      * Convert one file to [out]. [info] receives notes for the result sheet (rows not printed, equations as text,
      * pictures left out, pages that could not be read …).
      */
-    suspend fun convert(ctx: Context, f: File, out: File, setup: PageSetup = PageSetup(), quality: Int = 88, info: (String) -> Unit = {}): File {
+    suspend fun convert(ctx: Context, f: File, out: File, setup: PageSetup = PageSetup(), quality: Int = 88, bookmarks: Boolean = false,
+                        speakerNotes: Boolean = false, info: (String) -> Unit = {}): File {
         coroutineContext.ensureActive()
         val kind = FileKind6.of(f)
         val title = f.nameWithoutExtension
         val tmp = File(ctx.cacheDir, "tmp").apply { mkdirs() }
+        val pptM = if (kind == Kind6.PPT) withContext(Dispatchers.IO) { pptModel(f) } else null
         val res = when {
             kind == Kind6.PDF -> withContext(Dispatchers.IO) { f.copyTo(out, overwrite = true) }
             kind.isImage -> {
@@ -192,10 +194,14 @@ object ToPdf6 {
                 if (model.equations > 0) info(ctx.getString(R.string.cvf_info_equations, model.equations))
                 if (model.unrendered > 0) info(ctx.getString(R.string.cvf_info_unrendered, model.unrendered))
                 ToPdf.html(ctx, OfficeHtml.docx(model, title, forPrint = true), out, docxSetup(model.page))
+                // Word headings → bookmarks (found by their text in the printed pages)
+                if (bookmarks) runCatching { OfficeOutline.applyByText(out, OfficeOutline.docxTitles(model)) }
+                out
             }
-            kind == Kind6.XLSX -> xlsx(ctx, f, out, tmp, info)
-            kind == Kind6.PPTX -> {
-                val model = withContext(Dispatchers.IO) { OoxmlReader.readPptx(f) }
+            kind == Kind6.XLSX -> xlsx(ctx, f, out, tmp, info, bookmarks)
+            kind == Kind6.PPTX || pptM != null -> {
+                val model = pptM ?: withContext(Dispatchers.IO) { OoxmlReader.readPptx(f) }
+                if (pptM != null) info(ctx.getString(R.string.cv9_info_ppt_layout))
                 val s = model.slides.firstOrNull()
                 // the paper is the slide (convert audit A-M3: 16:9 slides sat in the top third of A4 portrait pages)
                 val wMils = ((s?.width ?: 12192000L) * 1000 / 914400).toInt().coerceIn(1000, 50_000)
@@ -203,6 +209,12 @@ object ToPdf6 {
                 val media = runCatching { PrintAttributes.MediaSize("slide", "Slide", minOf(wMils, hMils), maxOf(wMils, hMils)) }.getOrDefault(PrintAttributes.MediaSize.ISO_A4)
                 val setupW = WebPdfWriter.Setup(media = media, landscape = wMils > hMils, marginMils = 0, javaScript = false)
                 ToPdf.html(ctx, OfficeHtml.pptx(model, forPrint = true, pageWidthPx = wMils * 96 / 1000), out, setupW)
+                // one bookmark per slide (its title, else "Slide n")
+                if (bookmarks) runCatching { OfficeOutline.applyPerPage(out, OfficeOutline.slideTitles(model) { n -> ctx.getString(R.string.cv9_slide_n, n) }) }
+                // row 103: speaker notes → note comments on the slide's page
+                if (speakerNotes) runCatching { SlideNotes.apply(out, model.slides.map { it.notes }, ctx.getString(R.string.cv9_notes_author)) }
+                    .getOrNull()?.takeIf { it > 0 }?.let { info(ctx.getString(R.string.cv9_info_notes, it)) }
+                out
             }
             kind == Kind6.EPUB -> {
                 val book = withContext(Dispatchers.IO) { EpubReader.readBook(f) }
@@ -224,12 +236,23 @@ object ToPdf6 {
                 out
             }
             kind == Kind6.MARKDOWN -> ToPdf.html(ctx, FlowHtml.write(withContext(Dispatchers.IO) { MdFlow.parse(ToPdf.readText(f), title, resolve = siblingResolver(f)) }), out)
-            kind == Kind6.HTML -> ToPdf.html(ctx, withContext(Dispatchers.IO) { HtmlBits.sanitize(ToPdf.readHtml(f)) }, out)
+            kind == Kind6.HTML -> ToPdf.html(ctx, withContext(Dispatchers.IO) { HtmlBits.sanitize(ToPdf.readHtml(f)) }, out).also {
+                if (bookmarks) runCatching { OfficeOutline.applyDetected(out) }      // row 93: headings → bookmarks
+            }
             kind == Kind6.TEXT -> ToPdf.htmlParts(ctx, ToPdf.textChunks(f).map { HtmlBits.page(title, TextHtml.body(it), HtmlBits.rtlDominant(it.take(20000)), TextHtml.CSS) }, out, tmp)
             kind.isSheetLike -> {
                 val sheets = withContext(Dispatchers.IO) { readSheetsInfo(f, kind, maxRows = 65_536, maxCols = 512) }
                 sheets.cut.forEach { info(ctx.getString(R.string.cvf_info_sheet_cut, it)) }
                 ToPdf.htmlParts(ctx, sheetParts(title, sheets.list) { name, shown, all -> ctx.getString(R.string.cvf_info_rows_cut, name, shown, all).also { info(it) } }, out, tmp)
+            }
+            // row 19: PowerPoint 97-2003 — the slide texts (one page per slide, title as heading); pictures and layout are not read
+            // PowerPoint 97-2003 that the binary reader could not lay out: the slide texts only
+            kind == Kind6.PPT -> {
+                val slides = withContext(Dispatchers.IO) { com.smartdocs.editor.core.openall.PptText.slides(f.readBytes()) }
+                info(ctx.getString(R.string.cv9_info_ppt_text))
+                flowToPdf(ctx, slidesFlow(title, slides), out)
+                if (bookmarks) runCatching { OfficeOutline.applyByText(out, slides.mapNotNull { (t, _) -> t.takeIf { it.isNotBlank() }?.let { OfficeOutline.Title(1, it) } }) }
+                out
             }
             kind == Kind6.ODP -> ToPdf.html(ctx, FlowHtml.write(withContext(Dispatchers.IO) { odpFlow(title, OdfReader.readOdpSlides(OdfReader.zipEntry(f))) }), out,
                 WebPdfWriter.Setup(media = PrintAttributes.MediaSize.ISO_A4, landscape = true, javaScript = false))
@@ -245,6 +268,14 @@ object ToPdf6 {
         return res
     }
 
+    /** Row 19: a .ppt read into the PPTX model (shapes, text boxes, pictures) when it has any shape, else null. Cached per file. */
+    private val pptCache = java.util.Collections.synchronizedMap(object : LinkedHashMap<String, com.smartdocs.editor.core.office.PresentationModel?>(4, 0.75f, true) {
+        override fun removeEldestEntry(e: MutableMap.MutableEntry<String, com.smartdocs.editor.core.office.PresentationModel?>) = size > 2
+    })
+    private fun pptModel(f: File): com.smartdocs.editor.core.office.PresentationModel? = pptCache.getOrPut(f.path + ":" + f.length() + ":" + f.lastModified()) {
+        runCatching { PptReader.read(f.readBytes()) }.getOrNull()?.takeIf { m -> m.slides.any { it.shapes.isNotEmpty() } }
+    }
+
     /** Book chapters grouped into print parts of about [PART_CHARS] characters. */
     private fun chapterParts(title: String, chapters: List<String>, rtl: Boolean, css: String): Sequence<String> = sequence {
         val sb = StringBuilder()
@@ -258,7 +289,7 @@ object ToPdf6 {
     }
 
     /** Excel → PDF: clean printable sheets (no grid chrome), landscape for wide sheets, printed in parts (A-H9 / A-M1). */
-    private suspend fun xlsx(ctx: Context, f: File, out: File, tmp: File, info: (String) -> Unit): File {
+    private suspend fun xlsx(ctx: Context, f: File, out: File, tmp: File, info: (String) -> Unit, bookmarks: Boolean = false): File {
         val book = withContext(Dispatchers.IO) { OoxmlReader.readXlsx(f, MAX_PRINT_ROWS, 500) }
         val landscape = OfficeHtml.xlsxLandscape(book)
         val pageW = if (landscape) 1020 else 700
@@ -274,7 +305,12 @@ object ToPdf6 {
                 }
             }
         }.ifEmpty { sequenceOf(FlowHtml.write(FlowDoc(f.nameWithoutExtension, emptyList()))) }
-        return ToPdf.htmlParts(ctx, parts, out, tmp, WebPdfWriter.Setup(landscape = landscape, marginMils = 400, javaScript = false))
+        val res = ToPdf.htmlParts(ctx, parts, out, tmp, WebPdfWriter.Setup(landscape = landscape, marginMils = 400, javaScript = false))
+        // a bookmark per sheet: each printed sheet starts with its name when the workbook has several
+        if (bookmarks && book.sheets.size > 1) runCatching {
+            OfficeOutline.applyByText(out, book.sheets.filter { !OfficeHtml.xlsxUsedRows(it).isEmpty() }.map { OfficeOutline.Title(1, it.name) })
+        }
+        return res
     }
 
     /**
@@ -282,13 +318,13 @@ object ToPdf6 {
      * audit A-H4); [info] gets notes (signed inputs, rows not printed …).
      */
     suspend fun combine(ctx: Context, files: List<File>, out: File, tempDir: File, setup: PageSetup, quality: Int, onProgress: (Int, Int) -> Unit,
-                        passwords: (File) -> String? = { null }, info: (String) -> Unit = {}): File {
+                        passwords: (File) -> String? = { null }, info: (String) -> Unit = {}, bookmarks: Boolean = false): File {
         val temps = ArrayList<File>()
         try {
             val items = files.mapIndexed { i, f ->
                 onProgress(i, files.size + 1)
                 if (FileKind6.of(f) == Kind6.PDF) ToPdf.Item(f, f.nameWithoutExtension, passwords(f))
-                else ToPdf.Item(File(tempDir, "cv6c_${i}_${System.nanoTime()}.pdf").also { temps += it; convert(ctx, f, it, setup, quality, info) }, f.nameWithoutExtension)
+                else ToPdf.Item(File(tempDir, "cv6c_${i}_${System.nanoTime()}.pdf").also { temps += it; convert(ctx, f, it, setup, quality, bookmarks = bookmarks, info = info) }, f.nameWithoutExtension)
             }
             return ToPdf.combine(ctx, items, out, tempDir, bookmarks = files.size > 1, onProgress = { _, _ -> onProgress(files.size, files.size + 1) },
                 signed = { s -> info(ctx.getString(R.string.cvf_info_signed, s.name)) })
