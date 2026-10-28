@@ -162,9 +162,10 @@ fun PageCanvas(
                         if (state.placement == null && state.edit.selectAt(page, x, y, 8f / g.scale.coerceAtLeast(0.1f))) return@detectTapGestures
                         // nitro-fillsign2: a stamp on the clipboard can be pasted where the finger is
                         if (state.placement == null && StampClipboard.annot != null) StampClipboard.offer = StampClipboard.Offer(state, page, x, y)
+                        if (state.placement == null && com.smartdocs.editor.ui.selmenu.SelHooks.longPressLink(state, page, x, y, linksNow)) return@detectTapGestures   // selmenu: link menu
                         state.scope.launch {
                             val boxes = state.charBoxes(page); val text = state.pageText(page)
-                            val i = TextSelectionLogic.charAt(boxes, x, y) ?: return@launch
+                            val i = TextSelectionLogic.charAt(boxes, x, y) ?: run { if (state.placement == null) com.smartdocs.editor.ui.selmenu.SelHooks.longPressEmpty(state, page, x, y); return@launch }   // selmenu: empty-area menu
                             val r = TextSelectionLogic.wordAt(text, i)
                             state.selection = TextSelection(page, r.first, r.last, TextSelectionLogic.rects(boxes, r.first, r.last), TextSelectionLogic.text(text, r.first, r.last, boxes))
                         }
@@ -314,6 +315,7 @@ fun PageCanvas(
     }
     com.smartdocs.editor.ui.reader.annot.MultiActionBar(state, page, g)
     PasteHereBar(state, page, g)      // nitro-fillsign2: long-press "Paste here"
+    com.smartdocs.editor.ui.selmenu.SelAnchor(state, page, g)      // selmenu: where the selection / long-pressed spot is on screen
     }
 }
 
