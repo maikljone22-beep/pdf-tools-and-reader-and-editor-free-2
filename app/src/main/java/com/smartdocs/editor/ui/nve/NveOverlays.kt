@@ -72,6 +72,8 @@ fun NvePageOverlays(s: ReaderState) {
     val scope = rememberCoroutineScope()
     StatusPill(s, n)
     val mode = n.dragMode ?: return
+    // tabs audit CM-10: an active annotation tool gets the touches, not a left-over View drag mode
+    if (s.tool != null) return
     var start by remember(mode) { mutableStateOf<Offset?>(null) }
     var end by remember(mode) { mutableStateOf<Offset?>(null) }
     var snapshot by remember { mutableStateOf<Bitmap?>(null) }
@@ -170,6 +172,7 @@ private suspend fun columnSelect(s: ReaderState, r: Rect) {
 
 /** Render the area [r] (viewport px) of the page under it at 2x screen resolution. */
 private suspend fun areaSnapshot(s: ReaderState, r: Rect): Bitmap? {
+    if (!s.guard.check(com.smartdocs.editor.core.security.DocAction.COPY)) return null     // tabs audit CM-32: same rule as the Comment snapshot tool
     val n = NveState.of(s)
     val vp = n.visiblePages().firstOrNull { it.rect.overlaps(r) } ?: return null
     val sess = s.session ?: return null
@@ -185,6 +188,7 @@ private suspend fun areaSnapshot(s: ReaderState, r: Rect): Bitmap? {
 
 /** A whole page rendered at about [maxPx] on its long side (page snapshot). */
 internal suspend fun pageSnapshot(s: ReaderState, page: Int, maxPx: Int = 2400): Bitmap? {
+    if (!s.guard.check(com.smartdocs.editor.core.security.DocAction.COPY)) return null     // tabs audit CM-32
     val sess = s.session ?: return null
     val (w, h) = s.pageSize(page)
     val k = maxPx / max(w, h).coerceAtLeast(1f)

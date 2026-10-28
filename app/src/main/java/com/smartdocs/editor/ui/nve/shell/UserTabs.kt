@@ -14,6 +14,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -44,6 +45,7 @@ object NveUserTabs {
     fun current(ctx: Context) = Customization(
         tabOrder = NveToolbarPrefs.tabOrder(ctx), hiddenTabs = NveToolbarPrefs.hiddenTabs(ctx), hiddenChips = NveToolbarPrefs.hiddenChips(ctx),
         userTabs = tabs(ctx), favorites = NveShellPrefs.favorites(ctx), favoritesTitle = NveShellPrefs.favoritesTitle(ctx), customTabName = NveShellPrefs.customTabName(ctx),
+        readerToolset = com.smartdocs.editor.ui.reader.annot.ToolsetStore.load(ctx).map { it.name },
     )
 
     /** Replace the customisation with an imported one. */
@@ -53,6 +55,9 @@ object NveUserTabs {
         NveShellPrefs.setFavorites(ctx, c.favorites)
         NveShellPrefs.setFavoritesTitle(ctx, c.favoritesTitle ?: "")
         NveShellPrefs.setCustomTabName(ctx, c.customTabName ?: "")
+        c.readerToolset?.let { names ->
+            com.smartdocs.editor.ui.reader.annot.ToolsetStore.save(ctx, names.mapNotNull { n -> runCatching { com.smartdocs.editor.ui.reader.ReaderTool.valueOf(n) }.getOrNull() })
+        }
     }
 }
 
@@ -61,11 +66,16 @@ object NveUserTabs {
  * tabs; [navigateTool] = ReaderActions.navigateTool).
  */
 @Composable
-fun NveUserTabToolbar(tabId: String, navigateTool: (String) -> Unit) {
+fun NveUserTabToolbar(tabId: String, navigateTool: (String) -> Unit, onMissing: () -> Unit = {}) {
     val ctx = LocalContext.current
-    val tab = remember(NveShellPrefs.version.intValue, tabId) { NveUserTabs.tabs(ctx).firstOrNull { it.id == tabId } } ?: return
+    val settings = com.smartdocs.editor.LocalSettings.current
+    val tab = remember(NveShellPrefs.version.intValue, tabId) { NveUserTabs.tabs(ctx).firstOrNull { it.id == tabId } }
+    // tabs audit CM-22: the tab was deleted (or imported away): back to the built-in toolbar
+    if (tab == null) { LaunchedEffect(tabId) { onMissing() }; return }
     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 6.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-        tab.tools.mapNotNull { id -> allTools.firstOrNull { it.id == id } }.forEach { t -> ToolChip(t.icon, stringResource(t.label)) { navigateTool(t.id) } }
+        // tabs audit CM-21: AI tools follow the AI switch like the Tools toolbar
+        tab.tools.mapNotNull { id -> allTools.firstOrNull { it.id == id } }.filter { com.smartdocs.editor.core.gaps6.AiGate.allowsTool(settings, it.id) }
+            .forEach { t -> ToolChip(t.icon, stringResource(t.label)) { navigateTool(t.id) } }
         if (tab.tools.isEmpty()) Text(stringResource(R.string.nl_user_tab_empty), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(8.dp))
     }
 }
@@ -81,10 +91,18 @@ fun NveUserTabsEditor() {
         if (uri != null) runCatching { ctx.contentResolver.openOutputStream(uri)?.use { it.write(NveUserTabs.current(ctx).toJson().toByteArray()) } }
             .onSuccess { Toast.makeText(ctx, ctx.getString(R.string.nl_cust_exported), Toast.LENGTH_SHORT).show() }
     }
+    val importScope = rememberCoroutineScope()
     val import = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) runCatching { Customization.fromJson(ctx.contentResolver.openInputStream(uri)!!.use { it.readBytes().decodeToString() }) }
-            .onSuccess { NveUserTabs.apply(ctx, it); Toast.makeText(ctx, ctx.getString(R.string.nl_cust_imported), Toast.LENGTH_SHORT).show() }
-            .onFailure { Toast.makeText(ctx, ctx.getString(R.string.nl_cust_import_failed), Toast.LENGTH_SHORT).show() }
+        // tabs audit CM-37: at most 256 KB, read on the IO dispatcher
+        if (uri != null) importScope.launch {
+            runCatching {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    val bytes = ctx.contentResolver.openInputStream(uri)!!.use { s -> val b = s.readNBytesCompat(256 * 1024 + 1); require(b.size <= 256 * 1024) { "too large" }; b }
+                    Customization.fromJson(bytes.decodeToString())
+                }
+            }.onSuccess { NveUserTabs.apply(ctx, it); Toast.makeText(ctx, ctx.getString(R.string.nl_cust_imported), Toast.LENGTH_SHORT).show() }
+                .onFailure { Toast.makeText(ctx, ctx.getString(R.string.nl_cust_import_failed), Toast.LENGTH_SHORT).show() }
+        }
     }
     Column(Modifier.fillMaxWidth()) {
         Text(stringResource(R.string.nl_user_tabs), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(8.dp, 16.dp, 8.dp, 4.dp))
@@ -118,8 +136,9 @@ private fun UserTabDialog(tab: UserTab, onSave: (UserTab) -> Unit, onDismiss: ()
                     Customization.ICONS.forEach { i -> IconToggleButton(icon == i, { icon = i }) { Icon(NveUserTabs.icon(i), i, tint = if (icon == i) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) } }
                 }
                 Text(stringResource(R.string.nl_user_tab_tools, tools.size, Customization.MAX_TOOLS_PER_TAB), style = MaterialTheme.typography.labelMedium)
+                val settings = com.smartdocs.editor.LocalSettings.current
                 LazyColumn(Modifier.weight(1f, fill = false)) {
-                    items(allTools, key = { it.id }) { t ->
+                    items(allTools.filter { com.smartdocs.editor.core.gaps6.AiGate.allowsTool(settings, it.id) }, key = { it.id }) { t ->   // CM-21
                         val on = t.id in tools
                         Row(Modifier.fillMaxWidth().clickable { if (on) tools.remove(t.id) else if (tools.size < Customization.MAX_TOOLS_PER_TAB) tools.add(t.id) }.padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                             Checkbox(on, null); Icon(t.icon, null, Modifier.size(20.dp)); Spacer(Modifier.width(8.dp)); Text(stringResource(t.label))
@@ -133,4 +152,11 @@ private fun UserTabDialog(tab: UserTab, onSave: (UserTab) -> Unit, onDismiss: ()
             }
         }
     }
+}
+
+/** Up to [max] bytes of the stream (InputStream.readNBytes needs API 33). */
+private fun java.io.InputStream.readNBytesCompat(max: Int): ByteArray {
+    val out = java.io.ByteArrayOutputStream(); val buf = ByteArray(8192); var total = 0
+    while (total < max) { val n = read(buf, 0, minOf(buf.size, max - total)); if (n < 0) break; out.write(buf, 0, n); total += n }
+    return out.toByteArray()
 }
