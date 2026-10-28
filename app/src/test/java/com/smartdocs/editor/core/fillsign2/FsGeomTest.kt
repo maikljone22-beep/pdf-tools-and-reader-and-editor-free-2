@@ -172,7 +172,7 @@ class FsGeomTest {
         assertEquals("12/28/2026", FsDate.format("MM/dd/yyyy", t, Locale.US, utc))
         assertEquals("28 December 2026", FsDate.format("d MMMM yyyy", t, Locale.US, utc))
         // numeric patterns keep Latin digits whatever the locale (the digits option converts them)
-        assertEquals("28/12/2026", FsDate.format("dd/MM/yyyy", t, Locale("ar"), utc))
+        assertEquals("28/12/2026", FsDate.format("dd/MM/yyyy", t, Locale.forLanguageTag("ar"), utc))
         assertEquals(FsDate.DEFAULT, FsDate.valid("bogus"))
     }
 }
