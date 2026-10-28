@@ -135,6 +135,22 @@ object FormActions {
             "flatten" -> flatten(fs)
             "remove" -> { fs.removeFieldByScript(q["n"]); unsupported += "removeField -> hidden" }
             "menu" -> named(fs, q["n"])
+            // 8.84 document API
+            "saveas" -> {
+                val r = fs.reader
+                val name = q["p"].substringAfterLast('/').substringAfterLast('\\').ifBlank { r.file?.name ?: "document.pdf" }
+                    .let { if (it.endsWith(".pdf", true)) it else "$it.pdf" }
+                r.scope.launch { if (r.save()) r.scriptSaveAs = name }
+            }
+            "close" -> fs.reader.scriptClose = true
+            "addscript" -> fs.addDocScript(q["n"], q["s"])
+            "lock" -> fs.setSigLock(q["n"], com.smartdocs.editor.core.forms5.ScriptDocChanges.lockOf(q["a"], q["f"].split('\n').filter { it.isNotBlank() }))
+            "addfield" -> {
+                val type = com.smartdocs.editor.core.forms5.ScriptDocChanges.typeOf(q["t"])
+                val rect = com.smartdocs.editor.core.forms5.ScriptDocChanges.rectOf(q["r"])
+                if (type != null && rect != null) fs.addScriptField(com.smartdocs.editor.core.forms5.ScriptDocChanges.NewField(q["n"], type, q["p"].toIntOrNull() ?: 0, rect))
+                else unsupported += "addField(" + q["t"] + ")"
+            }
             "dataobj" -> exportDataObject(fs, q["n"])
             "unsupported" -> unsupported += q["m"]
         }

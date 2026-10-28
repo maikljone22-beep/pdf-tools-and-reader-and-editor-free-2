@@ -190,6 +190,9 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                 .onSuccess { snack.showSnackbar(ctx.getString(R.string.success)); if (wasLeaving) offerLeave = true }.onFailure { state.error = it.message }
         }
     }
+    // 8.84: the form's JavaScript asked for saveAs / closeDoc
+    LaunchedEffect(state.scriptSaveAs) { state.scriptSaveAs?.let { n -> state.scriptSaveAs = null; saveAs.launch(n) } }
+    LaunchedEffect(state.scriptClose) { if (state.scriptClose) { state.scriptClose = false; requestLeave() } }
     val pickImage = rememberImagePicker(multiple = false) { files ->
         scope.launch { files.firstOrNull()?.let { ReaderIntents.decode(it) }?.let { state.pendingImage = it; state.tool = ReaderTool.IMAGE } }
     }

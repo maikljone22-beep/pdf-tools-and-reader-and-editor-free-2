@@ -185,6 +185,9 @@ class ReaderState(
     private var openedStamp: Pair<Long, Long> = 0L to 0L
 
     // ---- search ----
+    /** 8.84 JavaScript doc.saveAs / closeDoc: carried out by the reader screen (file name for "Save a copy"; leave). */
+    var scriptSaveAs by mutableStateOf<String?>(null)
+    var scriptClose by mutableStateOf(false)
     var searchOpen by mutableStateOf(false)
     var searchQuery by mutableStateOf("")
     var searchHits by mutableStateOf<List<SearchHit>>(emptyList())

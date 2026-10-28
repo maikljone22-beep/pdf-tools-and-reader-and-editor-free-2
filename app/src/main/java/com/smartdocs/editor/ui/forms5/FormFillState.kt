@@ -564,6 +564,15 @@ class FormFillState internal constructor(val reader: ReaderState) {
         return values to display
     }
 
+    /** 8.84: document changes asked for by the form's JavaScript (addScript, setLock, addField), written on save. */
+    private val addedScripts = LinkedHashMap<String, String>()
+    private val addedLocks = LinkedHashMap<String, com.smartdocs.editor.core.formsx.FxSigLock>()
+    private val addedFields = ArrayList<com.smartdocs.editor.core.forms5.ScriptDocChanges.NewField>()
+    fun scriptChanges() = com.smartdocs.editor.core.forms5.ScriptDocChanges(addedScripts.toMap(), addedLocks.toMap(), addedFields.toList())
+    fun addDocScript(name: String, code: String) { addedScripts[name] = code; markDirty() }
+    fun setSigLock(name: String, lock: com.smartdocs.editor.core.formsx.FxSigLock) { addedLocks[name] = lock; markDirty() }
+    fun addScriptField(f: com.smartdocs.editor.core.forms5.ScriptDocChanges.NewField) { if (addedFields.none { it.name == f.name }) { addedFields += f; markDirty() } }
+
     /** 8.28: fill-time style of rich-text fields (bold / italic / underline), written to /RV and /DS on save. */
     val richStyles = mutableStateMapOf<String, com.smartdocs.editor.core.annot.AnnotStyle.Rich>()
     fun richStyle(w: FWidget): com.smartdocs.editor.core.annot.AnnotStyle.Rich? = richStyles[w.name] ?: w.rich
@@ -581,11 +590,15 @@ class FormFillState internal constructor(val reader: ReaderState) {
         // audit V-01: a full rewrite would invalidate the signatures of a signed form; it is appended instead
         if (com.smartdocs.editor.core.pdf.SignedSave.isSigned(src, password)) {
             FormValueWriter.writeSigned(reader.context, src, values, display, images.toMap(), hiddenOverride.toMap(), out, password, rich = richStyles.toMap())
+            // a full rewrite would break the signatures: script-requested document changes are not applied here
+            if (!scriptChanges().isEmpty) consoleLog += "! addScript / setLock / addField are not saved into a signed document"
             return
         }
         FormValueWriter.write(reader.context, src, values, display, images.toMap(), out, password, dropXfa = model.xfa == XfaSupport.Kind.STATIC, rich = richStyles.toMap())
         // field visibility changed by Hide actions + barcode fields re-encoded from the new values
         FieldVisibility.applyTo(out, password, hiddenOverride.toMap())
+        // 8.84: addScript / setLock / addField of the form's scripts
+        scriptChanges().takeIf { !it.isEmpty }?.applyTo(out, password)
     }
 
     /**
