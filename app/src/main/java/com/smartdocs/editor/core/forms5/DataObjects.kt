@@ -47,5 +47,5 @@ object DataObjects {
     }
 
     /** A file name safe for the temp folder. */
-    fun safeName(s: String): String = s.substringAfterLast('/').substringAfterLast('\').replace(Regex("[^\p{L}\p{N}._ -]"), "_").ifBlank { "attachment" }
+    fun safeName(s: String): String = s.substringAfterLast('/').substringAfterLast('\\').replace(Regex("""[^\p{L}\p{N}._ -]"""), "_").ifBlank { "attachment" }
 }
