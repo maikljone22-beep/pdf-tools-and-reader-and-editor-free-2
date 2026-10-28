@@ -292,10 +292,13 @@ private fun IdentityRows() {
     OutlinedTextField(id.unit, { id = id.copy(unit = it); saved = false }, field, label = { Text(stringResource(R.string.npf_id_unit)) }, singleLine = true)
     OutlinedTextField(id.email, { id = id.copy(email = it); saved = false }, field, label = { Text(stringResource(R.string.npf_id_email)) }, singleLine = true)
     Row(Modifier.padding(horizontal = 16.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Button(enabled = !saved, onClick = { com.smartdocs.editor.ui.view5.StampIdentity.save(ctx, id); saved = true }) { Text(stringResource(R.string.save)) }
-        OutlinedButton(enabled = id.name.isNotBlank() && id.name != author, onClick = { scope.launch { app.settings.update { it.copy(authorName = id.name.trim()) } } }) { Text(stringResource(R.string.npf_id_as_author)) }
+        // 7.73: one shared identity — saving also makes the name the comment author
+        Button(enabled = !saved, onClick = {
+            val v = id.copy(name = id.name.trim()); com.smartdocs.editor.ui.view5.StampIdentity.save(ctx, v); saved = true
+            if (v.name.isNotBlank() && v.name != author) scope.launch { app.settings.update { it.copy(authorName = v.name) } }
+        }) { Text(stringResource(R.string.save)) }
     }
-    Hint(stringResource(R.string.npf_id_hint))
+    Hint(stringResource(R.string.npf_id_hint) + " " + stringResource(R.string.cf_id_shared))
 }
 
 @Composable

@@ -4,4 +4,5 @@
     <string name="cf_script_normal">Normal</string>
     <string name="cf_superscript">Superscript</string>
     <string name="cf_subscript">Subscript</string>
+    <string name="cf_id_shared">The name is also your comment author name.</string>
 </resources>
