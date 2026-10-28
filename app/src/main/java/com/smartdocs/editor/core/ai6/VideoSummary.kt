@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.media.MediaCodec
 import android.media.MediaCodecInfo
+import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.media.MediaMuxer
 import android.os.Bundle
@@ -64,6 +65,16 @@ object WavPcm {
         }
     }
 
+    /** Joins mono tracks (all at the same rate) into one. */
+    fun concat(parts: List<ShortArray>): ShortArray {
+        val out = ShortArray(parts.sumOf { it.size }); var at = 0
+        parts.forEach { System.arraycopy(it, 0, out, at, it.size); at += it.size }
+        return out
+    }
+
+    /** Little-endian 16-bit PCM bytes to samples (an odd trailing byte is dropped). */
+    fun shorts(b: ByteArray, len: Int = b.size): ShortArray = ShortArray(len / 2) { i -> ((b[i * 2].toInt() and 0xFF) or (b[i * 2 + 1].toInt() shl 8)).toShort() }
+
     /** Seconds a slide stays on screen: its narration plus a pause, never shorter than [min]. */
     fun slideSeconds(samples: Int, rate: Int, pause: Double = 0.7, min: Double = 3.0): Double = maxOf(min, samples.toDouble() / rate + pause)
 
@@ -86,7 +97,9 @@ object WavPcm {
 
 /**
  * ai6 (B15): narrated video summary. Each slide of a [SlideDeck] is drawn by [SlideRender], its narration is
- * synthesised offline with the system [TextToSpeech] (WAV), then the video is encoded with [MediaCodec]
+ * synthesised with an AI voice through the speech route of the AI client / proxy when `aiVoice` is set (aor: MP3 /
+ * WAV decoded to PCM with [MediaExtractor] + [MediaCodec]); any slide the server cannot voice, or every slide when
+ * offline / not configured, falls back to the offline system [TextToSpeech] (WAV). Then the video is encoded with [MediaCodec]
  * (H.264, two frames per slide — the frame is held for the narration's length) and the audio with AAC, and both
  * are muxed into an MP4 with [MediaMuxer]. No new dependencies; no network.
  */
@@ -97,15 +110,29 @@ object VideoSummary {
 
     class Progress(val step: Int, val total: Int)
 
-    suspend fun make(ctx: Context, deck: SlideDeck, out: File, speechRate: Float = 1f, progress: (Progress) -> Unit = {}): File = withContext(Dispatchers.IO) {
+    /**
+     * [aiVoice] = voice name for the AI speech route (blank = the provider default), or null for the device voice only.
+     * [usedAi] is told whether at least one slide was voiced by the server.
+     */
+    suspend fun make(ctx: Context, deck: SlideDeck, out: File, speechRate: Float = 1f, aiVoice: String? = null,
+                     usedAi: (Boolean) -> Unit = {}, progress: (Progress) -> Unit = {}): File = withContext(Dispatchers.IO) {
         val n = SlideRender.count(deck)
         val all = listOf(SlideSpec(deck.title, emptyList())) + deck.slides
         val tmp = File(ctx.cacheDir, "ai6_video").apply { deleteRecursively(); mkdirs() }
-        // 1. narration per slide
-        val voice = synthAll(ctx, all.mapIndexed { i, s -> if (i == 0) deck.title else SlidesGen.narration(s) }, tmp, deck.rtl, speechRate) { i -> progress(Progress(i, n * 2)) }
-        val tracks = voice.map { f ->
-            val pcm = f?.let { runCatching { WavPcm.parse(it.readBytes()) }.getOrNull() }
-            if (pcm == null) ShortArray(0) else WavPcm.resample(WavPcm.toMono(pcm), pcm.sampleRate, AUDIO_RATE)
+        val texts = all.mapIndexed { i, s -> if (i == 0) deck.title else SlidesGen.narration(s) }
+        // 1. narration per slide: AI voice first (aor, B15), the system TTS for what is still missing
+        val ai: List<ShortArray?> = if (aiVoice != null) aiTracks(ctx, texts, aiVoice, speechRate) { i -> progress(Progress(i, n * 2)) } else texts.map { null }
+        usedAi(ai.any { it != null })
+        val missing = texts.indices.filter { ai[it] == null }
+        val device: Map<Int, File?> = if (missing.isEmpty()) emptyMap() else {
+            val files = synthAll(ctx, missing.map { texts[it] }, tmp, deck.rtl, speechRate) { k -> progress(Progress(missing[k], n * 2)) }
+            missing.mapIndexed { k, i -> i to files[k] }.toMap()
+        }
+        val tracks = texts.indices.map { i ->
+            ai[i] ?: run {
+                val pcm = device[i]?.let { runCatching { WavPcm.parse(it.readBytes()) }.getOrNull() }
+                if (pcm == null) ShortArray(0) else WavPcm.resample(WavPcm.toMono(pcm), pcm.sampleRate, AUDIO_RATE)
+            }
         }
         val seconds = tracks.map { WavPcm.slideSeconds(it.size, AUDIO_RATE) }
         // 2. one continuous audio track with each slide's narration at its slide start
@@ -118,6 +145,95 @@ object VideoSummary {
         encodeVideoAndMux(deck, seconds, audioFormat, audioSamples, out) { i -> progress(Progress(n + i, n * 2)) }
         tmp.deleteRecursively()
         out
+    }
+
+    /**
+     * aor (B15): each text through [com.smartdocs.editor.core.voice.AiSpeech] (split by the provider's limit), decoded
+     * to mono [AUDIO_RATE] PCM. A failed slide is null; when nothing has worked yet and a slide fails (offline, route
+     * missing), the rest is skipped so the device voice takes over at once.
+     */
+    private suspend fun aiTracks(ctx: Context, texts: List<String>, voice: String, rate: Float, step: (Int) -> Unit): List<ShortArray?> {
+        val sp = com.smartdocs.editor.core.voice.AiSpeech
+        val settings = runCatching { sp.settings(ctx) }.getOrNull() ?: return texts.map { null }
+        if (!sp.available(settings)) return texts.map { null }
+        val prof = runCatching { sp.profile(ctx, settings) }.getOrNull() ?: return texts.map { null }
+        val out = ArrayList<ShortArray?>()
+        var anyOk = false
+        for ((i, t) in texts.withIndex()) {
+            step(i)
+            val pieces = sp.split(t, prof.maxChars)
+            val track: ShortArray? = try {
+                if (pieces.isEmpty()) ShortArray(0)
+                else WavPcm.concat(pieces.map { p ->
+                    val f = sp.synthesize(ctx, p, voice, rate.coerceIn(0.25f, 4f), settings = settings)
+                    decodeToMono(f) ?: throw IllegalStateException("decode")
+                })
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { null }
+            if (track != null) anyOk = true
+            out += track
+            if (!anyOk && track == null) { while (out.size < texts.size) out += null; break }
+        }
+        return out
+    }
+
+    /** Any audio file (WAV directly, MP3 / AAC / Opus through the platform decoder) to mono [AUDIO_RATE] samples. */
+    fun decodeToMono(f: File): ShortArray? {
+        val pcm = WavPcm.parse(f.readBytes()) ?: decodeCompressed(f) ?: return null
+        return WavPcm.resample(WavPcm.toMono(pcm), pcm.sampleRate, AUDIO_RATE)
+    }
+
+    private fun decodeCompressed(f: File): Pcm? {
+        val ex = MediaExtractor()
+        var dec: MediaCodec? = null
+        try {
+            ex.setDataSource(f.absolutePath)
+            val track = (0 until ex.trackCount).firstOrNull { ex.getTrackFormat(it).getString(MediaFormat.KEY_MIME)?.startsWith("audio/") == true } ?: return null
+            ex.selectTrack(track)
+            val fmt = ex.getTrackFormat(track)
+            var rate = fmt.getInteger(MediaFormat.KEY_SAMPLE_RATE)
+            var ch = fmt.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
+            val codec = MediaCodec.createDecoderByType(fmt.getString(MediaFormat.KEY_MIME)!!)
+            dec = codec
+            codec.configure(fmt, null, null, 0)
+            codec.start()
+            val pcm = java.io.ByteArrayOutputStream()
+            val info = MediaCodec.BufferInfo()
+            var inputDone = false; var done = false; var idle = 0
+            while (!done && idle < 500) {
+                if (!inputDone) {
+                    val idx = codec.dequeueInputBuffer(10_000)
+                    if (idx >= 0) {
+                        val buf = codec.getInputBuffer(idx)!!
+                        val n = ex.readSampleData(buf, 0)
+                        if (n < 0) { codec.queueInputBuffer(idx, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM); inputDone = true }
+                        else { codec.queueInputBuffer(idx, 0, n, ex.sampleTime, 0); ex.advance() }
+                    }
+                }
+                val o = codec.dequeueOutputBuffer(info, 10_000)
+                when {
+                    o == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
+                        val of = codec.outputFormat
+                        rate = of.getInteger(MediaFormat.KEY_SAMPLE_RATE); ch = of.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
+                    }
+                    o >= 0 -> {
+                        idle = 0
+                        val buf = codec.getOutputBuffer(o)!!
+                        if (info.size > 0) { val b = ByteArray(info.size); buf.position(info.offset); buf.get(b, 0, info.size); pcm.write(b) }
+                        codec.releaseOutputBuffer(o, false)
+                        if ((info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) done = true
+                    }
+                    else -> idle++
+                }
+            }
+            val b = pcm.toByteArray()
+            if (b.isEmpty() || rate <= 0 || ch <= 0) return null
+            return Pcm(rate, ch, WavPcm.shorts(b))
+        } catch (e: Exception) {
+            return null
+        } finally {
+            runCatching { dec?.stop() }; runCatching { dec?.release() }
+            ex.release()
+        }
     }
 
     private suspend fun synthAll(ctx: Context, texts: List<String>, dir: File, rtl: Boolean, rate: Float, step: (Int) -> Unit): List<File?> {

@@ -325,6 +325,9 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
         val p = orgPage?.value ?: -1
         if (p >= 0) { state.jumpTo(p); nav.currentBackStackEntry?.savedStateHandle?.set("ttpg_open_page", -1) }
     }
+    // aor (AI-8): an AI image sent from the image screen is placed on its page as one undoable content edit
+    val aiImage = com.smartdocs.editor.ui.ai6.AiImageInsert.pending
+    LaunchedEffect(aiImage, state.session) { if (aiImage != null) com.smartdocs.editor.ui.ai6.AiImageInsert.consume(ctx, state) }
     var bottomBarPx by remember { mutableIntStateOf(0) }      // tab audit D20
     val focus = remember { FocusRequester() }
     LaunchedEffect(state.session) { if (state.session != null) runCatching { focus.requestFocus() } }
