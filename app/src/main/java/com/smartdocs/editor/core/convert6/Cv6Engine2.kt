@@ -111,7 +111,7 @@ internal class Cv6Engine2(private val ctx: Context, private val docs: DocumentRe
         val notes = ArrayList<String>()
         suspend fun one(f: File, target: File): File =
             if (conv.id == "md_pdf") ToPdf6.flowToPdf(ctx, withContext(Dispatchers.IO) { MdFlow.parse(ToPdf.readText(f), f.nameWithoutExtension, resolve = ToPdf6.siblingResolver(f)) }, target)
-            else ToPdf6.convert(ctx, f, target, o.setup, o.quality) { notes += it }
+            else ToPdf6.convert(ctx, f, target, o.setup, o.quality, bookmarks = o.bookmarks) { notes += it }
         if (inputs.size > 1 && o.merge) {
             val target = out(inputs.first().nameWithoutExtension + "_" + ctx.getString(R.string.cv6_combined_suffix), "pdf")
             if (conv.id == "images_pdf" || conv.id == "tiff_pdf") {
@@ -124,7 +124,7 @@ internal class Cv6Engine2(private val ctx: Context, private val docs: DocumentRe
                 withContext(Dispatchers.IO) { ToPdf.merge(temps, target, tempDir) }
                 return Cv6Result(listOf(target))
             }
-            ToPdf6.combine(ctx, inputs, target, tempDir, o.setup, o.quality, p, passwords = { engine.pwOf(it) }, info = { notes += it })
+            ToPdf6.combine(ctx, inputs, target, tempDir, o.setup, o.quality, p, passwords = { engine.pwOf(it) }, info = { notes += it }, bookmarks = o.bookmarks)
             return Cv6Result(listOf(target), notes.distinct().joinToString("\n").ifBlank { null })
         }
         return each(inputs, p) { f ->

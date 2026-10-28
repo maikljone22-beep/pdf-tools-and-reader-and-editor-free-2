@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cv9_bookmarks">Add bookmarks</string>
+    <string name="cv9_bookmarks_sub">Word headings, Excel sheet names, PowerPoint slides</string>
+    <string name="cv9_slide_n">Slide %1$d</string>
+</resources>

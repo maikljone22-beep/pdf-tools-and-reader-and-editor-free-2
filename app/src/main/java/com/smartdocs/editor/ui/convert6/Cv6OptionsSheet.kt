@@ -144,6 +144,7 @@ private fun OptionsBody(conv: Conv, inputCount: Int, o: Cv6Opts, onChange: (Cv6O
     }
     if (Opt.GRAY in opts && !o.bw) SwitchRow(stringResource(R.string.cv6_gray), o.gray) { onChange(o.copy(gray = it)) }
     if (Opt.BW in opts) SwitchRow(stringResource(R.string.pc_bw), o.bw, stringResource(R.string.pc_bw_sub)) { onChange(o.copy(bw = it)) }
+    if (Opt.BOOKMARKS in opts) SwitchRow(stringResource(R.string.cv9_bookmarks), o.bookmarks, stringResource(R.string.cv9_bookmarks_sub)) { onChange(o.copy(bookmarks = it)) }
     if (Opt.SHEET_PER_TABLE in opts) SwitchRow(stringResource(R.string.pc_sheet_per_table), o.perTable) { onChange(o.copy(perTable = it)) }
     if (Opt.PAGE_SETUP in opts) PageSetupOptions(o, onChange)
     if (Opt.NUP in opts) {

@@ -62,6 +62,8 @@ data class Cv6Opts(
     val bw: Boolean = false,
     /** Excel 2003 XML: one worksheet per table (else per page). */
     val perTable: Boolean = true,
+    /** Office → PDF: bookmarks from Word headings, Excel sheet names, PowerPoint slides. */
+    val bookmarks: Boolean = true,
 )
 
 enum class Stage { WORK, OCR }

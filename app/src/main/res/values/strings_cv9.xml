@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cv9_bookmarks">إضافة إشارات مرجعية</string>
+    <string name="cv9_bookmarks_sub">عناوين Word وأسماء أوراق Excel وشرائح PowerPoint</string>
+    <string name="cv9_slide_n">شريحة %1$d</string>
+</resources>
