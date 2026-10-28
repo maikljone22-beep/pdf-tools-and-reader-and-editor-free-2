@@ -29,7 +29,7 @@ enum class PdfALevel(val part: Int, val conformance: String) {
 data class Claims(val pdfa: String?, val pdfua: String?, val pdfx: String?, val pdfe: String?, val pdfvt: String?, val facturX: String?)
 
 /** Preflight profiles (Foxit "Profiles" tab); [code] maps to "pc_prof_<code>". */
-enum class PreflightProfile(val code: String) { PDFA_1B("a1b"), PDFA_2B("a2b"), PDFA_2U("a2u"), PDFA_3B("a3b"), PDFX_4("x4"), PDFE_1("e1"), PRINT("print"), VERSION("version"), ZUGFERD("zugferd") }
+enum class PreflightProfile(val code: String) { PDFA_1B("a1b"), PDFA_2B("a2b"), PDFA_2U("a2u"), PDFA_3B("a3b"), PDFX_4("x4"), PDFE_1("e1"), PRINT("print"), VERSION("version"), ZUGFERD("zugferd"), PDFUA_1("ua1") }
 
 /** Print-production facts of a page range (Foxit preflight print checks). */
 data class PrintFacts(
@@ -225,8 +225,64 @@ object Standards {
                 if (facts.version > 1.7f) add("version", Severity.WARNING, detail = facts.version.toString())
             }
             PreflightProfile.ZUGFERD -> out += zugferd(doc, claims)
+            PreflightProfile.PDFUA_1 -> out += pdfUa(doc, claims, facts)
         }
         return PreflightReport(facts, out)
+    }
+
+    /**
+     * PDF/UA-1 machine checks (the automatable Matterhorn checkpoints): identifier, tags and MarkInfo, title shown,
+     * language, untagged content / annotations, tab order, fonts embedded and mapped to Unicode, alt text, table headers,
+     * heading levels, field descriptions, role map to standard types, Note IDs, layer names, attachment names, XFA,
+     * accessibility permission. The human checkpoints (reading order, contrast, meaning of alt text) stay manual.
+     */
+    fun pdfUa(doc: PDDocument, claims: Claims, pdf: PdfFacts): List<Finding> {
+        val out = ArrayList<Finding>()
+        fun add(code: String, n: Int = 0, sev: Severity = Severity.ERROR, detail: String = "") { out += Finding(code, sev, n, emptyList(), false, detail) }
+        val f = AccessInspect.facts(doc, pdf)
+        if (claims.pdfua == null) add("ua_claim")                                   // 06-002
+        if (!f.tagged) add("ua_tagged"); if (!f.marked) add("ua_marked")            // 01-001..
+        if (f.title.isNullOrBlank()) add("ua_title"); if (!f.displayDocTitle) add("ua_display_title")   // 07-001 / 07-002
+        if (f.lang.isNullOrBlank()) add("ua_lang", sev = Severity.WARNING)          // 11-006
+        if (f.pagesWithUntaggedContent > 0) add("ua_untagged_content", f.pagesWithUntaggedContent)   // 01-005
+        if (f.annotationsUntagged > 0) add("ua_untagged_annots", f.annotationsUntagged)              // 28-002
+        if (f.pagesWithoutTabsS > 0) add("ua_tabs", f.pagesWithoutTabsS)                            // 28-011
+        if (pdf.fontsNotEmbedded.isNotEmpty()) add("ua_fonts", pdf.fontsNotEmbedded.size, detail = pdf.fontsNotEmbedded.joinToString { it.name }.take(200))   // 31-011
+        if (f.fontsWithoutUnicode > 0) add("ua_unicode", f.fontsWithoutUnicode)     // 31-027
+        if (f.figuresWithoutAlt > 0) add("ua_alt", f.figuresWithoutAlt)              // 13-004
+        if (f.otherWithoutAlt > 0) add("ua_other_alt", f.otherWithoutAlt)            // 17-002 …
+        if (f.tablesWithoutHeaders > 0) add("ua_table_headers", f.tablesWithoutHeaders)   // 15-003
+        if (f.headingSkips > 0) add("ua_headings", f.headingSkips)                   // 14-003
+        if (f.formFieldsWithoutTU > 0) add("ua_field_desc", f.formFieldsWithoutTU)  // 28-005
+        if (!f.accessibilityAllowed) add("ua_permission")                           // 26-001
+        if (pdf.xfa) add("ua_xfa")                                                  // 25-001
+        val root = doc.documentCatalog.cosObject.getDictionaryObject(COSName.getPDFName("StructTreeRoot")) as? COSDictionary
+        // 02-001: custom tags must map to a standard type
+        val roles = (root?.getDictionaryObject(COSName.getPDFName("RoleMap")) as? COSDictionary)
+        val standard = AccessTags.TYPES.toSet()
+        val used = HashSet<String>(); var notesWithoutId = 0
+        fun walk(b: COSBase?, d: Int) {
+            val e = deref(b) as? COSDictionary ?: return
+            if (d > 60) return
+            e.getNameAsString(COSName.S)?.let { t -> used += t; if (t == "Note" && e.getString(COSName.getPDFName("ID")) == null) notesWithoutId++ }
+            when (val k = deref(e.getDictionaryObject(COSName.K))) { is COSArray -> for (i in 0 until k.size()) walk(k.get(i), d + 1); is COSDictionary -> walk(k, d + 1); else -> {} }
+        }
+        root?.let { walk(it.getDictionaryObject(COSName.K), 0) }
+        fun resolves(t: String): Boolean { var x = t; var n = 0; while (n++ < 8) { if (x in standard) return true; x = (roles?.getDictionaryObject(COSName.getPDFName(x)) as? COSName)?.name ?: return false }; return false }
+        val unmapped = used.filterNot { resolves(it) }
+        if (unmapped.isNotEmpty()) add("ua_rolemap", unmapped.size, detail = unmapped.joinToString().take(200))
+        if (notesWithoutId > 0) add("ua_note_id", notesWithoutId)                   // 19-003
+        // 20-001: every optional content configuration has a Name
+        (doc.documentCatalog.cosObject.getDictionaryObject(COSName.getPDFName("OCProperties")) as? COSDictionary)?.let { oc ->
+            val d = oc.getDictionaryObject(COSName.D) as? COSDictionary
+            if (d != null && d.getString(COSName.NAME).isNullOrBlank()) add("ua_ocg_name")
+        }
+        // 21-001: embedded files have /F and /UF
+        val noNames = Embed.all(doc).values.count { it.file.isNullOrBlank() || it.fileUnicode.isNullOrBlank() }
+        if (noNames > 0) add("ua_embedded_names", noNames)
+        if (out.isEmpty()) out += Finding("ua_ok", Severity.INFO)
+        out += Finding("ua_manual", Severity.INFO)
+        return out
     }
 
     /** Extra PDF/A rules of a level over the PDF/A-2b preflight. */

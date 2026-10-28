@@ -137,7 +137,7 @@ private fun OutlinePanel(state: ReaderState, onJump: (Int) -> Unit, onAiOutline:
                         headlineContent = { Text(item.title, maxLines = if (wrap) 6 else 1, overflow = TextOverflow.Ellipsis, fontSize = fs) },
                         leadingContent = {
                             if (hasKids && matches == null) IconButton(onClick = { expanded[key] = !(expanded[key] ?: true) }, Modifier.size(28.dp)) {
-                                Icon(if (expanded[key] != false) Icons.Default.ExpandMore else Icons.Default.ChevronRight, null)
+                                Icon(if (expanded[key] != false) Icons.Default.ExpandMore else Icons.Default.ChevronRight, stringResource(if (expanded[key] != false) R.string.pc_cd_collapse else R.string.pc_cd_expand))
                             } else Spacer(Modifier.size(28.dp))
                         },
                         trailingContent = {

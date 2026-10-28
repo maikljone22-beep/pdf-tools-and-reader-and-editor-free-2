@@ -70,6 +70,8 @@ internal object EditPrefs {
     fun systemFonts(ctx: Context) = p(ctx).getBoolean("system_fonts", true)
     fun alertNoText(ctx: Context) = p(ctx).getBoolean("alert_no_text", true)
     fun liveSpell(ctx: Context) = p(ctx).getBoolean("live_spell", true)
+    /** Run OCR by itself when Edit mode opens a page with no editable text (a scan). Off by default. */
+    fun autoOcr(ctx: Context) = p(ctx).getBoolean("auto_ocr", false)
     fun set(ctx: Context, key: String, v: Boolean) { p(ctx).edit().putBoolean(key, v).apply() }
     fun setFloat(ctx: Context, key: String, v: Float) { p(ctx).edit().putFloat(key, v).apply() }
 
@@ -360,14 +362,21 @@ internal class TextTools5(val c: EditController) {
         c.runNve(R.string.ed_saved) { s, o -> TextEdit5.reflowPage(ctx, s, o, pw, p, text, st) }
     }
 
-    /** Recognise the text of this (scanned) page as editable text (the app's OCR, editable mode), then reload. */
+    /** Pages auto-OCR already ran on in this edit session (never twice: a page OCR finds no text on stays as it is). */
+    val autoOcrDone = HashSet<Int>()
+
+    /**
+     * Recognise the text of this (scanned) page as editable text (the app's OCR, editable mode), then reload. [redo]:
+     * an old invisible OCR layer (a searchable copy made earlier) is removed first, else the page keeps its picture.
+     */
     fun ocrPage() {
         val p = c.page; val pw = c.state.password
         c.runNve(R.string.nt_ocr_done) { s, o ->
             val engine = com.smartdocs.editor.core.ocr.OcrEngine(ctx.applicationContext)
             try {
                 com.smartdocs.editor.ui.ocr.runOcrToFile(ctx, engine, s, o, pw,
-                    com.smartdocs.editor.ui.ocr.OcrOptions(listOf(p), com.smartdocs.editor.ui.ocr.OcrPrefs.languages(ctx), editable = true)) { _, _ -> }
+                    com.smartdocs.editor.ui.ocr.OcrOptions(listOf(p), com.smartdocs.editor.ui.ocr.OcrPrefs.languages(ctx), editable = true,
+                        tuning = com.smartdocs.editor.core.ocr.OcrTuning.load(ctx), redo = true)) { _, _ -> }
             } finally { runCatching { engine.close() } }
         }
     }
@@ -483,7 +492,11 @@ internal fun TextTools5Host(c: EditController) {
     }
     LaunchedEffect(c.model) {
         val m = c.model ?: return@LaunchedEffect
-        if (m.blocks.isEmpty() && c.mode == EditMode.TEXT && EditPrefs.alertNoText(ctx)) c.message = ctx.getString(R.string.nt_no_text_alert)
+        if (m.blocks.isEmpty() && c.mode == EditMode.TEXT) {
+            // auto OCR on edit (preference): a page without editable text is recognised once per page and session
+            if (EditPrefs.autoOcr(ctx) && !c.busy && t.autoOcrDone.add(c.page)) { c.message = ctx.getString(R.string.nt_auto_ocr_running); t.ocrPage() }
+            else if (EditPrefs.alertNoText(ctx)) c.message = ctx.getString(R.string.nt_no_text_alert)
+        }
     }
     LaunchedEffect(c.block, c.newAt) { if (!c.editingText) t.reset() }
     when (t.sheet) {
@@ -699,6 +712,7 @@ private fun PrefsSheet(c: EditController, t: TextTools5) {
     var sys by remember { mutableStateOf(EditPrefs.systemFonts(ctx)) }
     var alert by remember { mutableStateOf(EditPrefs.alertNoText(ctx)) }
     var live by remember { mutableStateOf(EditPrefs.liveSpell(ctx)) }
+    var autoOcr by remember { mutableStateOf(EditPrefs.autoOcr(ctx)) }
     var digits by remember { mutableStateOf(NveDigits.mode(ctx)) }
     ModalBottomSheet(onDismissRequest = { t.sheet = null; c.reload() }) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
@@ -717,6 +731,7 @@ private fun PrefsSheet(c: EditController, t: TextTools5) {
             Sw(R.string.nt_pref_warn_fonts, warn, "warn_fonts") { warn = it }
             Sw(R.string.nt_pref_system_fonts, sys, "system_fonts") { sys = it }
             Sw(R.string.nt_pref_alert_no_text, alert, "alert_no_text") { alert = it }
+            Sw(R.string.nt_pref_auto_ocr, autoOcr, "auto_ocr") { autoOcr = it }
             Sw(R.string.nt_pref_live_spell, live, "live_spell") { live = it }
             Label(R.string.nt_digits)
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {

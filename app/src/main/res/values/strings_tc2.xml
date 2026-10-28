@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="tc2_g_markup">تمييز النص</string>
+    <string name="tc2_g_text">نص</string>
+    <string name="tc2_g_draw">رسم</string>
+    <string name="tc2_g_shapes">أشكال</string>
+    <string name="tc2_g_media">وسائط</string>
+    <string name="tc2_selected">محدد</string>
+    <string name="tc2_more_options">خيارات أخرى للأداة</string>
+</resources>

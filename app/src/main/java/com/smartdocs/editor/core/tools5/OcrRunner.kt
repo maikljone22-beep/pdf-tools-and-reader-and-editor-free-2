@@ -29,6 +29,8 @@ data class OcrPlan(
     val minConfidence: Float = 65f,
     /** Nitro OCR options (quality, de-skew, orientation, threshold, smoothing, numbers only, output images). */
     val tuning: com.smartdocs.editor.core.ocr.OcrTuning = com.smartdocs.editor.core.ocr.OcrTuning(),
+    /** Recognise every page again, also pages with text, after removing their old invisible OCR text (FINAL_CHECK K2). */
+    val redo: Boolean = false,
 )
 
 /** A low-confidence word to review; [crop] is a small picture of the word (may be null). */
@@ -83,7 +85,7 @@ object OcrRunner {
         try {
             // pages without text + pages mixing text with scanned pictures; on mixed pages only new words are kept
             val mixed = com.smartdocs.editor.core.ocr.MixedPageOcr.plan(s, src, password, (0 until s.pageCount).toList())
-            val todo = mixed.pages
+            val todo = if (plan.redo) (0 until s.pageCount).toList() else mixed.pages
             val dedupe: suspend (Int, OcrPage) -> OcrPage = { pi, p -> com.smartdocs.editor.core.ocr.MixedPageOcr.dropExisting(s, pi, p, mixed) }
             todo.forEachIndexed { n, pi ->
                 coroutineContext.ensureActive()
@@ -166,11 +168,13 @@ object OcrRunner {
     /** Recognise + write without review (batch). Returns null when nothing needed OCR. */
     suspend fun ocrFile(ctx: Context, engine: OcrEngine, src: File, password: String?, plan: OcrPlan, out: File, onProgress: (Int, Int) -> Unit = { _, _ -> }): File? {
         val fixed = prepare(ctx, engine, src, password, plan)
+        // redo: a copy without the old invisible OCR text (recognised and written from it; visible content unchanged)
+        val stripped = if (plan.redo && !isImage(src)) com.smartdocs.editor.core.ocr.OcrRedo.strippedCopy(fixed ?: src, password, null, ctx.cacheDir).first else null
         try {
-            val d = recognize(ctx, engine, fixed ?: src, password, plan, onProgress)
+            val d = recognize(ctx, engine, stripped ?: fixed ?: src, password, plan, onProgress)
             if (d.pages.isEmpty()) return null
             return write(ctx, d, out).also { com.smartdocs.editor.core.ocr.OcrPipeline.shrinkOutput(it, password, plan.tuning) }
-        } finally { fixed?.delete() }
+        } finally { fixed?.delete(); stripped?.delete() }
     }
 
     /**
