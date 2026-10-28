@@ -1,0 +1,1 @@
+{"@odata.context":"https://graph.microsoft.com/v1.0/$metadata#Collection(driveItem)","@odata.nextLink":"https://graph.microsoft.com/v1.0/me/drive/root/delta?token=abc","value":[{"id":"ROOT1","name":"root","root":{}},{"id":"F1","name":"report.pdf","file":{"mimeType":"application/pdf"}}]}
