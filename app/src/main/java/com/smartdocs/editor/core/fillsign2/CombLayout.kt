@@ -32,6 +32,14 @@ object CombLayout {
         return chars(text).take(n).mapIndexed { i, c -> (if (rtl) n - 1 - i else i) to c }
     }
 
+    /**
+     * Tab audit D29: characters of [text] that do not fit into [cells] cells (they would be dropped). 0 when all fit.
+     */
+    fun overflow(text: String, cells: Int): Int = (chars(text).size - cells.coerceIn(1, MAX_CELLS)).coerceAtLeast(0)
+
+    /** Cells to use for [text] when the user asked for [requested]: grown so no character is dropped (up to [MAX_CELLS]). */
+    fun cellsFor(text: String, requested: Int?): Int = maxOf(requested ?: 0, chars(text).size).coerceIn(1, MAX_CELLS)
+
     /** Left edge of cell [i] of a box starting at [left] that is [width] wide. */
     fun cellLeft(left: Float, width: Float, cells: Int, i: Int): Float = left + width * i / cells.coerceAtLeast(1)
 
