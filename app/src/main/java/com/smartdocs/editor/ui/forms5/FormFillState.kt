@@ -277,8 +277,9 @@ class FormFillState internal constructor(val reader: ReaderState) {
             val parts = raw.split('\n').filter { it.isNotEmpty() }.map { v -> w.exports.indexOf(v).takeIf { it >= 0 }?.let { w.options.getOrNull(it) } ?: v }
             return Display(parts.joinToString(", "))
         }
-        // XFA picture clause of a generated XFA form (values that do not match it show as stored)
-        w.picture?.let { pic -> com.smartdocs.editor.core.forms.XfaPicture.format(pic, raw)?.let { return Display(it) } }
+        // XFA picture clause of a generated XFA form: typed text is read back to its canonical value first
+        // (edit / display pattern), then shown in the display pattern; values that match neither show as typed
+        w.picture?.let { pic -> com.smartdocs.editor.core.forms.XfaPicture.format(pic, canonical(w, raw))?.let { return Display(it) } }
         scripts?.takeIf { it.hasFormat(w.name) }?.let { sc -> runCatching { sc.format(w.name, raw) }.getOrNull()?.let { return Display(it.first, it.second) } }
         val spec = model.calc.scripts[w.name]?.format ?: return Display(raw)
         return AfFormat.format(spec, raw)
@@ -510,11 +511,26 @@ class FormFillState internal constructor(val reader: ReaderState) {
         if (FormPrefs.autocomplete && w.kind == WKind.TEXT && !w.password && !w.fileSelect && w.name in edits) runCatching { acFile.store().record(w.name, value(w.name)); acFile.save() }
     }
 
+    /** XFA: [v] as typed → its canonical value through the field's edit or display picture (unchanged when neither reads it). */
+    fun canonical(w: FWidget, v: String): String {
+        if (v.isEmpty()) return v
+        for (p in listOfNotNull(w.editPicture, w.picture)) com.smartdocs.editor.core.forms.XfaPicture.parse(p, v)?.let { return it }
+        return v
+    }
+
+    /** XFA: the text the editor starts with — the value in the edit picture when the field has one. */
+    fun editText(w: FWidget): String {
+        val raw = value(w.name)
+        val p = w.editPicture ?: return raw
+        return com.smartdocs.editor.core.forms.XfaPicture.format(p, canonical(w, raw)) ?: raw
+    }
+
     fun validate(w: FWidget, requiredToo: Boolean): Issue? {
         val sc = model.calc.scripts[w.name]
         val rules = FieldRules(required = requiredToo && (w.required || props(w.name)?.required == true), maxLen = w.maxLen, keystroke = sc?.keystroke ?: com.smartdocs.editor.core.forms.KeystrokeKind.NONE,
             format = sc?.format, validate = w.validate)
-        val issue = if (w.kind == WKind.TEXT || (requiredToo && w.required)) FieldValidation.check(value(w.name), rules) else null
+        val issue = (if (w.kind == WKind.TEXT || (requiredToo && w.required)) FieldValidation.check(value(w.name), rules) else null)
+            ?: w.validatePicture?.takeIf { !com.smartdocs.editor.core.forms.XfaPicture.conforms(it, canonical(w, value(w.name))) }?.let { Issue.Picture(it) }
         if (issue == null) errors.remove(w.name) else errors[w.name] = issue
         return issue
     }
@@ -535,6 +551,8 @@ class FormFillState internal constructor(val reader: ReaderState) {
         val m = model
         val values = LinkedHashMap<String, String>(edits)
         computed.forEach { (k, v) -> values[k] = v }
+        // XFA picture fields store their canonical value (/V), whatever pattern it was typed in
+        m.widgets.forEach { w -> if (w.picture != null || w.editPicture != null) values[w.name]?.let { values[w.name] = canonical(w, it) } }
         val all = m.values.keys.associateWith { values[it] ?: m.values[it].orEmpty() }
         val display = HashMap(m.calc.displayMap(all).filterKeys { it in values })
         // format (F) scripts on the JS runtime give the appearance text; the pattern formatter is the fallback

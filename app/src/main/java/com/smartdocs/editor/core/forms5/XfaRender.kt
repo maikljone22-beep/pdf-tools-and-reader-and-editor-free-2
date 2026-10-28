@@ -228,12 +228,15 @@ internal class XfaRender(private val context: Context, private val doc: PDDocume
                 if (w.comb > 0) { tf.maxLen = w.comb; tf.isComb = true }
                 tf.q = when (w.hAlign) { "center" -> PDTextField.QUADDING_CENTERED; "right" -> PDTextField.QUADDING_RIGHT; else -> PDTextField.QUADDING_LEFT }
                 // XFA picture clause: kept on the field, applied when the value is shown (FormFillState.display)
-                if (w.picture.isNotBlank()) tf.cosObject.setString(COSName.getPDFName(com.smartdocs.editor.core.forms.XfaPicture.KEY),
-                    com.smartdocs.editor.core.forms.XfaPicture.withCategory(w.picture, when (w.type) {
-                        XfaSupport.XType.NUMBER -> com.smartdocs.editor.core.forms.XfaPicture.Hint.NUMBER
-                        XfaSupport.XType.DATE -> com.smartdocs.editor.core.forms.XfaPicture.Hint.DATE
-                        else -> com.smartdocs.editor.core.forms.XfaPicture.Hint.TEXT
-                    }))
+                val hint = when (w.type) {
+                    XfaSupport.XType.NUMBER -> com.smartdocs.editor.core.forms.XfaPicture.Hint.NUMBER
+                    XfaSupport.XType.DATE -> com.smartdocs.editor.core.forms.XfaPicture.Hint.DATE
+                    else -> com.smartdocs.editor.core.forms.XfaPicture.Hint.TEXT
+                }
+                listOf(com.smartdocs.editor.core.forms.XfaPicture.KEY to w.picture, com.smartdocs.editor.core.forms.XfaPicture.KEY_EDIT to w.editPicture,
+                    com.smartdocs.editor.core.forms.XfaPicture.KEY_VALIDATE to w.validatePicture).forEach { (k, p) ->
+                    if (p.isNotBlank()) tf.cosObject.setString(COSName.getPDFName(k), com.smartdocs.editor.core.forms.XfaPicture.withCategory(p, hint, w.locale))
+                }
                 tf.widgets = listOf(widget(page, w, ph)); acro.fields.add(tf)
                 if (path != null) out += Made(tf.partialName, path, w.type, emptyList(), emptyList(), w.value)
             }

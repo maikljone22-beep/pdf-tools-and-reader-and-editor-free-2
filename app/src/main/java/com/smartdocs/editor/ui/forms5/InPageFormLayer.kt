@@ -305,8 +305,10 @@ private fun ActiveTextEditor(fs: FormFillState, w: FWidget, screen: Rect, scale:
     val density = LocalDensity.current
     val focus = remember(w.id) { FocusRequester() }
     val external = fs.value(w.name)
-    var tfv by remember(w.id) { mutableStateOf(TextFieldValue(external, TextRange(external.length))) }
-    LaunchedEffect(external) { if (external != tfv.text) tfv = TextFieldValue(external, TextRange(external.length)) }
+    // XFA edit picture: the editor starts with the value in that pattern; later outside changes replace the text
+    var tfv by remember(w.id) { val t = fs.editText(w); mutableStateOf(TextFieldValue(t, TextRange(t.length))) }
+    var seen by remember(w.id) { mutableStateOf(external) }
+    LaunchedEffect(external) { if (external != seen) { seen = external; if (external != tfv.text) tfv = TextFieldValue(external, TextRange(external.length)) } }
     LaunchedEffect(w.id) { runCatching { focus.requestFocus() } }
     val px = if (w.fontSize > 0f) w.fontSize * scale else if (w.multiline) 11f * scale else (r.height * 0.6f).coerceAtMost(14f * scale)
     val minPx = with(density) { minEditorTextPx() }

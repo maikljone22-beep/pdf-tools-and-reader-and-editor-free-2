@@ -91,6 +91,11 @@ class XFieldT(
     val barcodeType: String = "",
     /** `<format><picture>`: how the value is displayed (XfaPicture); "" = as stored. */
     val picture: String = "",
+    /** `<ui><picture>` (how it is typed) and `<validate><picture>` (what it must match); "" = none. */
+    val editPicture: String = "",
+    val validatePicture: String = "",
+    /** `locale` of the field or its nearest container ("" = default). */
+    val locale: String = "",
 ) : XNode()
 
 class XDraw(
@@ -320,7 +325,18 @@ object XfaTemplateParser {
             listOpen = uiEl?.attr("open") ?: "userControl", textEntry = uiEl?.attr("textEntry") == "1",
             tooltip = e.kid("assist")?.kid("toolTip")?.textContent?.trim().orEmpty(),
             barcodeType = if (uiEl?.local() == "barcode") uiEl.attr("type").orEmpty() else "",
-            picture = e.kid("format")?.kid("picture")?.textContent?.trim().orEmpty())
+            picture = e.kid("format")?.kid("picture")?.textContent?.trim().orEmpty(),
+            editPicture = e.kid("ui")?.kid("picture")?.textContent?.trim().orEmpty(),
+            validatePicture = e.kid("validate")?.kid("picture")?.textContent?.trim().orEmpty(),
+            locale = localeOf(e))
+    }
+
+    /** The `locale` attribute of [e] or of its nearest ancestor that has one. */
+    private fun localeOf(e: Element): String {
+        var n: org.w3c.dom.Node? = e
+        var depth = 0
+        while (n is Element && depth++ < 64) { n.attr("locale")?.takeIf { it.isNotBlank() }?.let { return it }; n = n.parentNode }
+        return ""
     }
 
     private fun draw(e: Element): XDraw {

@@ -19,4 +19,5 @@
     <string name="cf_float_note">نافذة الملاحظة العائمة</string>
     <string name="cf_float_select">حُدِّد التعليق؛ اضغط حفظ مرة أخرى.</string>
     <string name="cf_float_gone">لم يعد هذا التعليق موجودًا.</string>
+    <string name="cf_err_picture">القيمة لا تطابق النمط %1$s</string>
 </resources>
