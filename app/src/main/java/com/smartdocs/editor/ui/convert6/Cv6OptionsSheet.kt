@@ -160,6 +160,11 @@ private fun OptionsBody(conv: Conv, inputCount: Int, o: Cv6Opts, onChange: (Cv6O
     if (Opt.GRAY in opts && !o.bw) SwitchRow(stringResource(R.string.cv6_gray), o.gray) { onChange(o.copy(gray = it)) }
     if (Opt.BW in opts) SwitchRow(stringResource(R.string.pc_bw), o.bw, stringResource(R.string.pc_bw_sub)) { onChange(o.copy(bw = it)) }
     if (Opt.FORM_FIELDS in opts) SwitchRow(stringResource(R.string.cv9_form_fields), o.recognizeFields, stringResource(R.string.cv9_form_fields_sub)) { onChange(o.copy(recognizeFields = it)) }
+    if (Opt.XLSX_CELLS in opts) {
+        // s6 Excel: split multi-line text into rows; reduce merged cells
+        SwitchRow(stringResource(R.string.cv9_xlsx_split), o.xlsxSplitLines) { onChange(o.copy(xlsxSplitLines = it)) }
+        SwitchRow(stringResource(R.string.cv9_xlsx_nomerge), o.xlsxNoMerge) { onChange(o.copy(xlsxNoMerge = it)) }
+    }
     if (Opt.HEADERS in opts) {
         // s6: running headers / footers: automatic / keep as text / delete
         FieldLabel(stringResource(R.string.cv9_headers))

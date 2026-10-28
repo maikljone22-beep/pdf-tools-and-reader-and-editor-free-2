@@ -45,4 +45,6 @@
     <string name="cv9_txt_width">طول السطر (حروف)</string>
     <string name="cv9_txt_nowrap">بلا التفاف</string>
     <string name="cv9_ex_original">الصيغة الأصلية</string>
+    <string name="cv9_xlsx_split">تقسيم النص متعدد الأسطر إلى صفوف</string>
+    <string name="cv9_xlsx_nomerge">تقليل الخلايا المدمجة</string>
 </resources>

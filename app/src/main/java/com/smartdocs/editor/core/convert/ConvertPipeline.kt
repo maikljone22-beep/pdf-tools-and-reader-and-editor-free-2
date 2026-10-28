@@ -34,6 +34,9 @@ data class ConvertOptions(
     /** TXT: keep the PDF's line breaks (else one line per paragraph) and wrap lines at this many characters (0 = no). */
     val txtKeepLines: Boolean = false,
     val txtWrap: Int = 0,
+    /** XLSX: one sheet row per line of multi-line table cells; no merged cells. */
+    val xlsxSplitLines: Boolean = false,
+    val xlsxNoMerge: Boolean = false,
 )
 
 /** Where page content comes from (PdfBox on Android, desktop PdfBox in the test harness). */
@@ -83,7 +86,7 @@ object ConvertPipeline {
                 pages.forEachIndexed { k, i -> b.addPage(layout(i, opts.includeImages)); step(k + 1) }
                 b.finish()
             }
-            TargetFormat.XLSX -> XlsxBuilder(out, title).use { b ->
+            TargetFormat.XLSX -> XlsxBuilder(out, title, opts.xlsxSplitLines, opts.xlsxNoMerge).use { b ->
                 if (opts.xlsxSingleSheet) {
                     val all = pages.mapIndexed { k, i -> layout(i, false).also { step(k + 1) } }
                     b.addSheet(opts.singleSheetName, all)

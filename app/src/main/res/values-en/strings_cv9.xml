@@ -45,4 +45,6 @@
     <string name="cv9_txt_width">Line width (characters)</string>
     <string name="cv9_txt_nowrap">No wrapping</string>
     <string name="cv9_ex_original">Original format</string>
+    <string name="cv9_xlsx_split">Split multi-line text into rows</string>
+    <string name="cv9_xlsx_nomerge">Reduce merged cells</string>
 </resources>

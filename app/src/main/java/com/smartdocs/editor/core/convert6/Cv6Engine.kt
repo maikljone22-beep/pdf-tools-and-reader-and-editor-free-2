@@ -82,6 +82,9 @@ data class Cv6Opts(
     /** PDF → Text: keep the PDF's line breaks; wrap at this many characters (0 = no). */
     val txtKeepLines: Boolean = false,
     val txtWrap: Int = 0,
+    /** PDF → Excel (s6): split multi-line cells into rows; reduce merged cells. */
+    val xlsxSplitLines: Boolean = false,
+    val xlsxNoMerge: Boolean = false,
 )
 
 enum class Stage { WORK, OCR }
@@ -290,7 +293,8 @@ class Cv6Engine(private val ctx: Context, private val docs: DocumentRepository) 
         val out = out(base, target.ext)
         val opts = ConvertOptions(format = target, pages = pages, xlsxSingleSheet = o.singleSheet, pptxEditable = o.pptEditable, detectTables = o.tables, includeImages = o.includeImages,
             sheetName = { n -> ctx.getString(R.string.cv_sheet_name).format(n) }, singleSheetName = ctx.getString(R.string.cv_all_pages_sheet),
-            detectHeaders = o.headerMode != 1, dropFurniture = o.headerMode == 2, txtKeepLines = o.txtKeepLines, txtWrap = o.txtWrap)
+            detectHeaders = o.headerMode != 1, dropFurniture = o.headerMode == 2, txtKeepLines = o.txtKeepLines, txtWrap = o.txtWrap,
+            xlsxSplitLines = o.xlsxSplitLines, xlsxNoMerge = o.xlsxNoMerge)
         val stats = ConvertEngine.convert(ctx, f, pw, opts, out, p, cancelCheck())
         val scanned = stats.textPages == 0 && !(target == TargetFormat.PPTX && !o.pptEditable)
         return Cv6Result(listOf(out), if (scanned) ctx.getString(R.string.cv_scanned_warning) else ctx.getString(R.string.cv6_info_pages, stats.pages, stats.tables, stats.images))
