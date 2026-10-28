@@ -160,11 +160,16 @@ fun CombineTab(initial: List<File>, job: T5Job, attachSrc: Boolean, srcDesc: Str
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (perFile) OutlinedTextField(e.title, { entries[i] = e.copy(title = it) }, Modifier.weight(1.4f), singleLine = true, label = { Text(stringResource(R.string.pc_bookmark_title)) })
-                OutlinedTextField(e.pages, { entries[i] = e.copy(pages = it) }, Modifier.weight(1f), singleLine = true, label = { Text(stringResource(R.string.page_range)) }, placeholder = { Text(stringResource(R.string.e5_all_pages)) })
+                if (!e.attach) OutlinedTextField(e.pages, { entries[i] = e.copy(pages = it) }, Modifier.weight(1f), singleLine = true, label = { Text(stringResource(R.string.page_range)) }, placeholder = { Text(stringResource(R.string.e5_all_pages)) })
+            }
+            // PDF Binder: a non-PDF file can travel as an attachment instead of being converted
+            if (ToPdf.kindOf(e.file.name) != SourceKind.PDF) Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(e.attach, { entries[i] = e.copy(attach = it) })
+                Text(stringResource(R.string.pc_attach_instead), style = MaterialTheme.typography.bodySmall)
             }
         }
     }
-    val unsupported = entries.filter { ToPdf.kindOf(it.file.name) == SourceKind.UNKNOWN }
+    val unsupported = entries.filter { !it.attach && ToPdf.kindOf(it.file.name) == SourceKind.UNKNOWN }
     if (unsupported.isNotEmpty()) Text(stringResource(R.string.t5_unsupported, unsupported.joinToString { it.file.name }), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
 
     // ---- options
@@ -184,6 +189,31 @@ fun CombineTab(initial: List<File>, job: T5Job, attachSrc: Boolean, srcDesc: Str
             if (attach) com.smartdocs.editor.core.pdf.AttachmentOps.attachSources(out, list.map { it.file }, srcDesc)
             runCatching { app.documents.touchRecent(out) }
             result = out
+        }
+    }
+
+    // ---- PDF Binder projects: save this list and its options, reopen later
+    var binders by remember { mutableStateOf(emptyList<Pair<File, com.smartdocs.editor.core.tools5.BinderProject>>()) }
+    LaunchedEffect(Unit) { binders = withContext(Dispatchers.IO) { runCatching { com.smartdocs.editor.core.tools5.BinderStore.list(ctx) }.getOrDefault(emptyList()) } }
+    val binderSaved = stringResource(R.string.pc_binder_saved)
+    T5Card(stringResource(R.string.pc_binders), Icons.Default.Inventory2) {
+        OutlinedButton(enabled = entries.isNotEmpty() && !busy, onClick = {
+            val p = com.smartdocs.editor.core.tools5.BinderProject(name.ifBlank { defaultName }, CombineOpts(perFile, keepBm, headings, toc, tocTitle), entries.toList())
+            work {
+                withContext(Dispatchers.IO) { com.smartdocs.editor.core.tools5.BinderStore.save(ctx, p) }
+                binders = withContext(Dispatchers.IO) { com.smartdocs.editor.core.tools5.BinderStore.list(ctx) }
+                note = binderSaved
+            }
+        }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.Save, null); Spacer(Modifier.width(4.dp)); Text(stringResource(R.string.pc_binder_save)) }
+        binders.take(8).forEach { (dir, b) ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(stringResource(R.string.pc_binder_row, b.name, b.entries.size), Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)
+                TextButton(onClick = {
+                    entries.clear(); entries.addAll(b.entries.filter { it.file.isFile })
+                    perFile = b.opts.bookmarkPerFile; keepBm = b.opts.keepBookmarks; headings = b.opts.headings; toc = b.opts.toc; name = b.name
+                }) { Text(stringResource(R.string.pc_saved_scan_open)) }
+                IconButton(onClick = { com.smartdocs.editor.core.tools5.BinderStore.delete(dir); binders = binders.filter { it.first != dir } }) { Icon(Icons.Default.Delete, stringResource(R.string.pc_preset_delete, b.name)) }
+            }
         }
     }
 }

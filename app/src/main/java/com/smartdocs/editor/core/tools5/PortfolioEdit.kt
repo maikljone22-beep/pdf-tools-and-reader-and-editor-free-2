@@ -222,6 +222,7 @@ object PortfolioEdit {
         while (nk != key && map.containsKey(nk)) nk = keyFor(id, stem + "_" + (n++) + if (ext.isNotEmpty()) ".$ext" else "")
         val out = LinkedHashMap<String, PDComplexFileSpecification>(); map.forEach { (k, v) -> out[if (k == key) nk else k] = v }
         rewrite(doc, out)
+        collection(doc)?.let { c -> if (c.getString(COSName.D) == key) c.setString(COSName.D, nk) }
         return nk
     }
 

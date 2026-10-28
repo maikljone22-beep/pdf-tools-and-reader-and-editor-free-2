@@ -18,6 +18,7 @@ import com.smartdocs.editor.core.files.DocumentRepository
 import com.smartdocs.editor.core.tools5.*
 import com.smartdocs.editor.ui.common.FilePickRow
 import com.smartdocs.editor.ui.common.rememberPdfPicker
+import com.smartdocs.editor.ui.tools.ChoiceChips
 import com.smartdocs.editor.ui.tools.PrimaryButton
 import com.smartdocs.editor.ui.tools.ResultsList
 import com.smartdocs.editor.ui.tools.ToolScaffold
@@ -134,11 +135,17 @@ fun PortfolioScreen(nav: NavHostController, uri: String?) {
     LaunchedEffect(source) { val s = source ?: return@LaunchedEffect; parts = runCatching { Portfolio.parts(s) }.getOrDefault(emptyList()) }
     val creating = stringResource(R.string.t5_pf_creating)
     val defaultTitle = stringResource(R.string.t5_portfolio_default)
+    // Foxit 7: a portfolio opens in the editor (the reader banner sends it here); "editing" = editor shown
+    var editing by remember { mutableStateOf<File?>(null) }
+    var view by remember { mutableStateOf(PfView.DETAILS) }
+    LaunchedEffect(source) { val s = source ?: return@LaunchedEffect; if (uri != null && s == fileOf(uri) && runCatching { Portfolio.isPortfolio(s) }.getOrDefault(false)) editing = s }
+    editing?.let { e -> PortfolioEditor(nav, e) { editing = null }; return }
 
     ToolScaffold(stringResource(R.string.t5_portfolio_title), nav, snackbar = snackbar) {
         T5Card(stringResource(R.string.t5_portfolio_open), Icons.Default.FolderOpen) {
             FilePickRow(source, stringResource(R.string.t5_input_pdf), pickPortfolio)
             if (source != null && parts.isEmpty()) Text(stringResource(R.string.t5_portfolio_none), style = MaterialTheme.typography.bodySmall)
+            source?.let { s -> OutlinedButton(onClick = { editing = s }, Modifier.fillMaxWidth()) { Icon(Icons.Default.Edit, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.pc_pf_edit)) } }
             parts.forEach { p ->
                 ListItem(
                     headlineContent = { Text(p.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
@@ -172,12 +179,18 @@ fun PortfolioScreen(nav: NavHostController, uri: String?) {
         T5Card(stringResource(R.string.t5_portfolio_create), Icons.Default.CreateNewFolder) {
             OutlinedTextField(title, { title = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.t5_portfolio_name)) })
             OutlinedButton(onClick = pickFiles, Modifier.fillMaxWidth()) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.t5_add_files)) }
+            if (files.size > 1) ChoiceChips(FileSort.entries, null as FileSort?, { stringResource(when (it) { FileSort.NAME -> R.string.pc_sort_name; FileSort.TIME -> R.string.pc_sort_time; else -> R.string.pc_sort_size }) }) { s ->
+                if (s != null) files = CombinePlus.sortFiles(files, s, false)
+            }
             if (files.isNotEmpty()) FileListEditor(files, { files = it })
-            PrimaryButton(stringResource(R.string.t5_portfolio_make), enabled = files.isNotEmpty() && !job.running, icon = Icons.Default.FolderZip) {
-                val list = files.toList(); val t = title.ifBlank { defaultTitle }
+            Text(stringResource(R.string.pc_pf_default_view), style = MaterialTheme.typography.labelLarge)
+            ChoiceChips(PfView.entries, view, { stringResource(when (it) { PfView.DETAILS -> R.string.pc_pf_details; PfView.TILES -> R.string.pc_pf_tiles; PfView.COVER -> R.string.pc_pf_cover }) }) { view = it }
+            // a blank portfolio is allowed: files are added in the editor afterwards
+            PrimaryButton(stringResource(if (files.isEmpty()) R.string.pc_pf_make_blank else R.string.t5_portfolio_make), enabled = !job.running, icon = Icons.Default.FolderZip) {
+                val list = files.toList(); val t = title.ifBlank { defaultTitle }; val v = view
                 job.launch(creating) {
                     val out = app.documents.uniqueFile(app.documents.docsDir, t)
-                    result = Portfolio.create(ctx, t, list, out, coverHeader = ctx.getString(R.string.t5_portfolio_cover, list.size))
+                    result = Portfolio.create(ctx, t, list, out, coverHeader = ctx.getString(R.string.t5_portfolio_cover, list.size), view = v)
                 }
             }
         }

@@ -24,7 +24,7 @@ import kotlin.coroutines.coroutineContext
 enum class FileSort { NAME, TIME, SIZE }
 
 /** One file of a combine job: its bookmark title and the pages to take ("" = all, "1-3, 7"). */
-data class CombineEntry(val file: File, val title: String, val pages: String = "")
+data class CombineEntry(val file: File, val title: String, val pages: String = "", val attach: Boolean = false)
 
 /** Options of [CombinePlus.combine] (Nitro 5 / Foxit 4 Combine settings). */
 data class CombineOpts(
@@ -76,7 +76,9 @@ object CombinePlus {
                         onProgress: (Int, Int) -> Unit = { _, _ -> }): File {
         val temps = ArrayList<File>()
         try {
-            val parts = entries.mapIndexed { i, e ->
+            // PDF Binder: files marked "attach" are embedded in the result instead of converted
+            val attached = entries.filter { it.attach }
+            val parts = entries.filterNot { it.attach }.mapIndexed { i, e ->
                 coroutineContext.ensureActive()
                 onProgress(i, entries.size)
                 val pdf = if (ToPdf.kindOf(e.file.name) == SourceKind.PDF) e.file
@@ -115,6 +117,7 @@ object CombinePlus {
                             if (o.keepBookmarks) runCatching { PageOrganize.copyAttachments(sd, nd) }
                         }
                         if (outline.firstChild != null) nd.documentCatalog.documentOutline = outline
+                        if (attached.isNotEmpty()) Embed.addFiles(nd, attached.map { Attachment(it.file.name, Embed.mimeOf(it.file.name), it.file.readBytes()) })
                         nd.documentInformation.creator = "SmartDocs"
                         if (nd.numberOfPages == 0) throw IllegalArgumentException("no pages")
                         E5Io.save(nd, tmp)
@@ -167,4 +170,59 @@ object OfficeProps {
             d.documentInformation = info
         }
     }
+}
+
+/**
+ * PDF Binder project (Foxit .bdr): the ordered entries and options of a combine job, kept to rebuild the binder later.
+ * Text format (pure, JVM-tested): first line "opts=…", then one line per entry "file|title|pages|attach".
+ */
+data class BinderProject(val name: String, val opts: CombineOpts, val entries: List<CombineEntry>) {
+    fun encode(): String = buildString {
+        fun esc(v: String) = v.replace("%", "%25").replace("|", "%7C").replace("\n", " ")
+        append("name=").append(esc(name)).append('\n')
+        append("opts=").append(listOf(opts.bookmarkPerFile, opts.keepBookmarks, opts.headings, opts.toc).joinToString(",")).append('|').append(esc(opts.tocTitle)).append('|').append(opts.tocLevels).append('\n')
+        entries.forEach { e -> append(esc(e.file.name)).append('|').append(esc(e.title)).append('|').append(esc(e.pages)).append('|').append(e.attach).append('\n') }
+    }
+
+    companion object {
+        private fun unesc(v: String) = v.replace("%7C", "|").replace("%25", "%")
+
+        /** [dir] holds the entries' files. */
+        fun decode(text: String, dir: File): BinderProject {
+            val lines = text.lines().filter { it.isNotBlank() }
+            val name = lines.firstOrNull { it.startsWith("name=") }?.removePrefix("name=")?.let(::unesc).orEmpty()
+            val o = lines.firstOrNull { it.startsWith("opts=") }?.removePrefix("opts=")?.split('|')
+            val flags = o?.getOrNull(0)?.split(',')?.map { it == "true" }.orEmpty()
+            val opts = CombineOpts(flags.getOrElse(0) { true }, flags.getOrElse(1) { true }, flags.getOrElse(2) { false }, flags.getOrElse(3) { false },
+                o?.getOrNull(1)?.let(::unesc).orEmpty(), o?.getOrNull(2)?.toIntOrNull() ?: 2)
+            val entries = lines.filterNot { it.startsWith("name=") || it.startsWith("opts=") }.mapNotNull { l ->
+                val p = l.split('|'); if (p.size < 4) return@mapNotNull null
+                CombineEntry(File(dir, unesc(p[0])), unesc(p[1]), unesc(p[2]), p[3] == "true")
+            }
+            return BinderProject(name, opts, entries)
+        }
+    }
+}
+
+/** Saved binder projects in files/binders/<id>/ (manifest + copies of the files). */
+object BinderStore {
+    fun root(ctx: Context) = File(ctx.filesDir, "binders").apply { mkdirs() }
+
+    fun save(ctx: Context, p: BinderProject): File {
+        val dir = File(root(ctx), System.currentTimeMillis().toString()).apply { mkdirs() }
+        val used = HashSet<String>()
+        val copied = p.entries.map { e ->
+            var n = e.file.name; var k = 2
+            while (!used.add(n)) n = e.file.nameWithoutExtension + "_" + (k++) + "." + e.file.extension
+            e.file.copyTo(File(dir, n), true); e.copy(file = File(dir, n))
+        }
+        File(dir, "binder.txt").writeText(p.copy(entries = copied).encode())
+        return dir
+    }
+
+    fun list(ctx: Context): List<Pair<File, BinderProject>> = (root(ctx).listFiles() ?: emptyArray())
+        .filter { File(it, "binder.txt").isFile }.sortedByDescending { it.name }
+        .mapNotNull { d -> runCatching { d to BinderProject.decode(File(d, "binder.txt").readText(), d) }.getOrNull() }
+
+    fun delete(dir: File) { dir.deleteRecursively() }
 }
