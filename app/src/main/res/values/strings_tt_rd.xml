@@ -20,4 +20,11 @@
     <string name="ttrd_skip_rewrite">صفحة %1$d: تعذّرت إعادة كتابة المحتوى (%2$d من العناصر)</string>
     <string name="ttrd_skip_hint">لإزالة ما بقي حوِّل هذه الصفحات إلى صور (التنقيح بأقصى أمان).</string>
     <string name="ttrd_draft_restored">استُعيدت %1$d من العلامات غير المحفوظة.</string>
+    <!-- audit 5b -->
+    <string name="ttrd_nothing_to_protect">لا شيء للحماية: أدخل كلمة مرور للفتح أو امنع إذنًا واحدًا على الأقل.</string>
+    <string name="ttrd_apply_one_title">تطبيق هذه العلامة؟</string>
+    <string name="ttrd_apply_one_pending">تُطبَّق هذه العلامة فقط، وتبقى العلامات الأخرى معلّقة في الناتج.</string>
+    <string name="ttrd_marks_load_failed">تعذّرت قراءة علامات التنقيح الموجودة في هذا الملف، لذلك لا تظهر هنا.</string>
+    <string name="ttrd_image_failed">تعذّر فحص هذه الصفحة بحثًا عن صور.</string>
+    <string name="ttrd_batch_no_hits">%1$d ملف بلا نتائج مطابقة (لم يُنشأ له ناتج):</string>
 </resources>

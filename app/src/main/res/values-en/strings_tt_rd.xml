@@ -20,4 +20,11 @@
     <string name="ttrd_skip_rewrite">Page %1$d: the content could not be rewritten (%2$d item(s))</string>
     <string name="ttrd_skip_hint">To remove what is left, turn these pages into images (maximum-security redaction).</string>
     <string name="ttrd_draft_restored">%1$d unsaved mark(s) restored.</string>
+    <!-- audit 5b -->
+    <string name="ttrd_nothing_to_protect">Nothing to protect: set an open password or turn off at least one permission.</string>
+    <string name="ttrd_apply_one_title">Apply this mark?</string>
+    <string name="ttrd_apply_one_pending">Only this mark is applied; the other marks stay pending in the result.</string>
+    <string name="ttrd_marks_load_failed">The redaction marks already in this file could not be read, so they are not shown here.</string>
+    <string name="ttrd_image_failed">This page could not be inspected for images.</string>
+    <string name="ttrd_batch_no_hits">%1$d file(s) had no matches (no output made):</string>
 </resources>
