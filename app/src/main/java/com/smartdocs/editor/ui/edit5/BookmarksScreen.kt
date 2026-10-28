@@ -198,7 +198,7 @@ fun BookmarksScreen(nav: NavHostController, uri: String?) {
                                 val cur = OutlineStore.load(s, p).first
                                 withContext(Dispatchers.IO) {
                                     NavIo.edit(s, o, p) { d, changed ->
-                                        pages.sortedDescending().forEach { d.removePage(it) }
+                                        com.smartdocs.editor.core.edit5.PageLabelRemap.keep(d) { pages.sortedDescending().forEach { d.removePage(it) } }   // audit 5 E-5
                                         OutlineStore.write(d, OutlineNav.afterDelete(cur, pages))
                                         d.pages.forEach { changed += it }
                                     }

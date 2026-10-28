@@ -136,6 +136,7 @@ object OutlineTools {
             val tocPages = if (rows.size <= perFirst) 1 else 1 + (rows.size - perFirst + perNext - 1) / perNext
             val targets = rows.map { doc.getPage(it.page) }            // page objects before inserting
             val insertAt = at.coerceIn(0, doc.numberOfPages)
+            val labelSnap = PageLabelRemap.snapshot(doc)   // audit 5 E-5: the other pages keep their labels
             var idx = 0
             val created = ArrayList<PDPage>()
             for (p in 0 until tocPages) {
@@ -182,6 +183,7 @@ object OutlineTools {
                 }
                 page.annotations = links.toMutableList()
             }
+            PageLabelRemap.restore(doc, labelSnap)
             if (addBookmark) {
                 // entries were read from this file, so item indexes still match (kept actions)
                 val shifted = entries.map { b -> if (b.page >= insertAt) b.copy(page = b.page + tocPages) else b }

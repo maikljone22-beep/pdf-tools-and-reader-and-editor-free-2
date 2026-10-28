@@ -140,10 +140,16 @@ fun LinksScreen(nav: NavHostController, uri: String?) {
                     Text(stringResource(R.string.nbm_move_by, step.toInt()))
                     ChoiceChips(listOf(1f, 5f, 10f, 36f), step, { it.toInt().toString() }) { step = it }
                     Row {
-                        IconButton(onClick = { moveSelected { l -> l.map { it.moved(-step, 0f) } } }, enabled = one) { Icon(Icons.Default.KeyboardArrowLeft, stringResource(R.string.nbm_move_left)) }
-                        IconButton(onClick = { moveSelected { l -> l.map { it.moved(step, 0f) } } }, enabled = one) { Icon(Icons.Default.KeyboardArrowRight, stringResource(R.string.nbm_move_right)) }
-                        IconButton(onClick = { moveSelected { l -> l.map { it.moved(0f, step) } } }, enabled = one) { Icon(Icons.Default.KeyboardArrowUp, stringResource(R.string.nbm_move_up)) }
-                        IconButton(onClick = { moveSelected { l -> l.map { it.moved(0f, -step) } } }, enabled = one) { Icon(Icons.Default.KeyboardArrowDown, stringResource(R.string.nbm_move_down)) }
+                        // audit 5 E-19: the nudge arrows move the link on the page (physical left / right), so they are laid
+                        // out left to right in an RTL UI too (the left arrow on the left)
+                        androidx.compose.runtime.CompositionLocalProvider(androidx.compose.ui.platform.LocalLayoutDirection provides androidx.compose.ui.unit.LayoutDirection.Ltr) {
+                            Row {
+                                IconButton(onClick = { moveSelected { l -> l.map { it.moved(-step, 0f) } } }, enabled = one) { Icon(Icons.Default.KeyboardArrowLeft, stringResource(R.string.nbm_move_left)) }
+                                IconButton(onClick = { moveSelected { l -> l.map { it.moved(step, 0f) } } }, enabled = one) { Icon(Icons.Default.KeyboardArrowRight, stringResource(R.string.nbm_move_right)) }
+                                IconButton(onClick = { moveSelected { l -> l.map { it.moved(0f, step) } } }, enabled = one) { Icon(Icons.Default.KeyboardArrowUp, stringResource(R.string.nbm_move_up)) }
+                                IconButton(onClick = { moveSelected { l -> l.map { it.moved(0f, -step) } } }, enabled = one) { Icon(Icons.Default.KeyboardArrowDown, stringResource(R.string.nbm_move_down)) }
+                            }
+                        }
                         Spacer(Modifier.weight(1f))
                         IconButton(onClick = { val idx = selected.toSet(); selected = emptyList(); run({ s, o, p -> LinkOps.delete(s, o, p, mapOf(page to idx)) }) }, enabled = one) {
                             Icon(Icons.Default.Delete, stringResource(R.string.delete))

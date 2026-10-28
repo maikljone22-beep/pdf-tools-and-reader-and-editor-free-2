@@ -170,7 +170,8 @@ object PdfOps {
     /** Delete [pages]; bookmarks and links that pointed at them are removed too (they would lead nowhere). */
     suspend fun deletePages(src: File, pages: Set<Int>, out: File, password: String? = null) = withContext(Dispatchers.IO) {
         load(src, password).use { doc ->
-            // nav-prefs: Preferences → bookmarks "remove related bookmarks when deleting pages" (links to them always go)
+            // nav-prefs: Preferences → bookmarks "remove related bookmarks when deleting pages" (links to them always go).
+            // audit 5 E-5 / E-7: deleteIn also keeps the page labels of the remaining pages and prunes orphan fields
             com.smartdocs.editor.core.edit5.PageOrganize.deleteIn(doc, pages, removeBookmarks = com.smartdocs.editor.core.data.NpfPrefs.removeBookmarksOnDelete)
             saveTo(doc, out)
         }
@@ -207,17 +208,20 @@ object PdfOps {
         val pages = (0 until doc.numberOfPages).map { doc.getPage(it).cosObject }
         // every page stays (deleting is [deletePages]); indexes may repeat (paste)
         require(order.all { it in pages.indices } && order.toSet().size == pages.size) { "bad page order" }
-        val root = doc.pages.cosObject
-        for (p in pages) for (key in INHERITABLE) if (!p.containsKey(key)) inherited(p, key)?.let { p.setItem(key, it) }
-        val used = HashSet<Int>()
-        val kids = COSArray()
-        for (i in order) {
-            val page = if (used.add(i)) pages[i] else copyPage(pages[i])
-            page.setItem(COSName.PARENT, root)
-            kids.add(page)
+        // audit 5 E-5: every page keeps its page label (a pasted copy continues the run before it)
+        com.smartdocs.editor.core.edit5.PageLabelRemap.keep(doc) {
+            val root = doc.pages.cosObject
+            for (p in pages) for (key in INHERITABLE) if (!p.containsKey(key)) inherited(p, key)?.let { p.setItem(key, it) }
+            val used = HashSet<Int>()
+            val kids = COSArray()
+            for (i in order) {
+                val page = if (used.add(i)) pages[i] else copyPage(pages[i])
+                page.setItem(COSName.PARENT, root)
+                kids.add(page)
+            }
+            root.setItem(COSName.KIDS, kids)
+            root.setInt(COSName.COUNT, kids.size())
         }
-        root.setItem(COSName.KIDS, kids)
-        root.setInt(COSName.COUNT, kids.size())
     }
 
     private fun inherited(page: COSDictionary, key: COSName): COSBase? {
@@ -326,7 +330,10 @@ object PdfOps {
             val ref = refPage?.cropBox ?: PDRectangle.A4
             val p = stylePage(doc, PDRectangle(ref.width, ref.height), false, style, 0xFFFFFF)
             refPage?.let { p.rotation = ((it.rotation % 360) + 360) % 360 }
-            if (atIndex >= doc.numberOfPages) doc.addPage(p) else doc.pages.insertBefore(p, doc.getPage(atIndex))
+            // audit 5 E-5: the other pages keep their labels; the blank page continues the run before it
+            com.smartdocs.editor.core.edit5.PageLabelRemap.keep(doc) {
+                if (atIndex >= doc.numberOfPages) doc.addPage(p) else doc.pages.insertBefore(p, doc.getPage(atIndex))
+            }
             saveTo(doc, out)
         }
     }
@@ -422,7 +429,7 @@ object PdfOps {
                 val place = DisplayPlace.of(page)
                 PDPageContentStream(doc, page, PDPageContentStream.AppendMode.APPEND, true, true).use { cs ->
                     // audit 5 E-16: tagged like the edit5 watermark, so the edit5 watermark "Remove" finds it
-                    cs.appendRawCommands(com.smartdocs.editor.core.edit5.Marked.open("quick_watermark", "Watermark"))
+                    cs.appendRawCommands(com.smartdocs.editor.core.edit5.Marked.open("wm", "Watermark"))
                     val gs = PDExtendedGraphicsState(); gs.nonStrokingAlphaConstant = opacity; cs.setGraphicsStateParameters(gs)
                     val tw = runCatching { font.getStringWidth(shaped) / 1000f * fontSize }.getOrDefault(fontSize * text.length * 0.5f)
                     cs.beginText(); cs.setFont(font, fontSize)
