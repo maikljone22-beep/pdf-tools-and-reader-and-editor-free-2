@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- fix/selmenu-rest (ui/selmenu, core/selmenu): annotation, form-field and page-image menus of the selection registry. Prefix smr_. -->
+<resources>
+    <string name="smr_g_annot_style">Appearance</string>
+    <string name="smr_g_annot_action">Comment</string>
+    <string name="smr_g_annot_arrange">Arrange</string>
+    <string name="smr_g_annot_export">Export</string>
+    <string name="smr_g_field_value">Field value</string>
+    <string name="smr_g_field_form">Form</string>
+    <string name="smr_g_image_out">Copy &amp; share</string>
+    <string name="smr_g_image_edit">Edit image</string>
+    <string name="smr_g_image_arrange">Arrange</string>
+
+    <string name="smr_range_start_less">Start one word back</string>
+    <string name="smr_range_start_more">Start one word on</string>
+    <string name="smr_range_end_less">End one word back</string>
+    <string name="smr_range_end_more">End one word on</string>
+    <string name="smr_reply">Reply</string>
+
+    <string name="smr_f_copy_value">Copy value</string>
+    <string name="smr_f_paste">Paste</string>
+    <string name="smr_f_clear">Clear</string>
+    <string name="smr_f_reset">Reset field</string>
+    <string name="smr_f_pick_image">Choose picture</string>
+    <string name="smr_f_sign">Sign / verify</string>
+    <string name="smr_f_spell">Check spelling</string>
+    <string name="smr_f_calculate">Calculate now</string>
+    <string name="smr_f_props">Field properties</string>
+    <string name="smr_f_designer">Edit in form designer</string>
+    <string name="smr_f_duplicate">Duplicate field</string>
+    <string name="smr_f_delete">Delete field</string>
+    <string name="smr_f_tab_order">Set tab order</string>
+
+    <string name="smr_fp_name">Name</string>
+    <string name="smr_fp_tooltip">Tooltip</string>
+    <string name="smr_fp_type">Type</string>
+    <string name="smr_fp_page">Page</string>
+    <string name="smr_fp_value">Value</string>
+    <string name="smr_fp_required">Required</string>
+    <string name="smr_fp_readonly">Read only</string>
+    <string name="smr_fp_calculated">Calculated</string>
+    <string name="smr_fp_maxlen">Maximum length</string>
+    <string name="smr_fp_options">Options</string>
+
+    <string name="smr_fk_text">Text field</string>
+    <string name="smr_fk_check">Check box</string>
+    <string name="smr_fk_radio">Radio button</string>
+    <string name="smr_fk_combo">Drop-down list</string>
+    <string name="smr_fk_list">List box</string>
+    <string name="smr_fk_image">Image field</string>
+    <string name="smr_fk_signature">Signature field</string>
+    <string name="smr_fk_button">Button</string>
+
+    <string name="smr_sign_pick">Sign here with</string>
+</resources>

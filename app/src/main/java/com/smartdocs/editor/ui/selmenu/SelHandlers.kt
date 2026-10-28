@@ -54,6 +54,11 @@ class SelRunner(
     private val onPrompt: (TextPrompt) -> Unit,
     private val onOpenLink: (PageLink) -> Unit,
     private val openDialog: (SelDialog, TextSelection) -> Unit,
+    /** fix/selmenu-rest: "Sign" / "Insert image" of the empty-area menu place at the pressed point. */
+    private val onSignAt: (SelObject) -> Unit = {},
+    private val onImageAt: (SelObject) -> Unit = {},
+    /** fix/selmenu-rest: the form-field menu (FieldMenu.run); returns true when the menu should close. */
+    private val onField: (SelItem, SelObject) -> Boolean = { _, _ -> true },
 ) {
     private val m get() = SelMenuState.of(s)
 
@@ -63,6 +68,7 @@ class SelRunner(
         Need.ANNOTATE -> s.guard.check(DocAction.ANNOTATE)
         Need.MODIFY -> s.guard.check(DocAction.MODIFY)
         Need.PRINT -> s.guard.check(DocAction.PRINT)
+        Need.FILL -> s.guard.check(DocAction.FILL_FORMS)
     }
 
     private fun copy(text: String, label: String = "text") {
@@ -186,8 +192,9 @@ class SelRunner(
             SelAction.NOTE_HERE -> obj?.let { onPrompt(TextPrompt(ReaderTool.NOTE, it.page, it.x, it.y)) }
             SelAction.TEXT_HERE -> obj?.let { onPrompt(TextPrompt(ReaderTool.FREETEXT, it.page, it.x, it.y)) }
             SelAction.FILL_TEXT_HERE -> obj?.let { onPrompt(TextPrompt(ReaderTool.FS_TEXT, it.page, it.x, it.y)) }
-            SelAction.IMAGE_HERE -> actions.pickImage()
-            SelAction.SIGN_HERE -> { if (s.tab != ReaderTab.SIGN) s.tab = ReaderTab.SIGN; toast(ctx.getString(R.string.sm_sign_hint)) }
+            // fix/selmenu-rest: both drop their result at the pressed point (FsGeom: rotation and crop box)
+            SelAction.IMAGE_HERE -> obj?.let { onImageAt(it) } ?: actions.pickImage()
+            SelAction.SIGN_HERE -> obj?.let { onSignAt(it) } ?: run { if (s.tab != ReaderTab.SIGN) s.tab = ReaderTab.SIGN; toast(ctx.getString(R.string.sm_sign_hint)) }
             SelAction.SNAPSHOT -> NveState.of(s).open(NveSurface.SNAPSHOT)
             SelAction.READ_PAGE -> onReadAloud(obj?.page ?: s.currentPage, 0)
             SelAction.SEARCH -> actions.search()
@@ -197,6 +204,14 @@ class SelRunner(
             SelAction.ROTATE_VIEW -> s.rotation = (s.rotation + 90) % 360
             SelAction.PRINT -> actions.print()
             SelAction.DOC_INFO -> actions.docInfo()
+
+            // ---- form field (fix/selmenu-rest)
+            SelAction.F_COPY_VALUE, SelAction.F_PASTE, SelAction.F_CLEAR, SelAction.F_RESET, SelAction.F_PICK_IMAGE, SelAction.F_SIGN,
+            SelAction.F_SPELL, SelAction.F_CALCULATE, SelAction.F_PROPS, SelAction.F_DESIGNER, SelAction.F_DUPLICATE, SelAction.F_DELETE,
+            SelAction.F_TAB_ORDER -> return obj?.let { onField(item, it) } ?: true
+
+            // ---- annotation / page-content picture: run by their own bars (AnnotMenu, EditImageMenu)
+            else -> return false
         }
         return true
     }

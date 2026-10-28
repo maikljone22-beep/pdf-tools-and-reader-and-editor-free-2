@@ -1,7 +1,7 @@
 package com.smartdocs.editor.ui.selmenu
 
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.smartdocs.editor.R
@@ -76,6 +76,77 @@ object SelBindings {
         SelAction.ROTATE_VIEW -> R.string.rotate_view
         SelAction.PRINT -> R.string.print
         SelAction.DOC_INFO -> R.string.tool_doc_info
+        // fix/selmenu-rest: annotation (labels of the former AnnotActionBar / SelectionMoreButton)
+        SelAction.A_COLOR -> R.string.ae_color
+        SelAction.A_OPACITY -> R.string.ae_opacity
+        SelAction.A_THICKNESS -> R.string.ae_thickness
+        SelAction.A_EDIT_TEXT -> R.string.ae_edit_text
+        SelAction.A_TEXT_FORMAT -> R.string.cx_text_format
+        SelAction.A_FLOAT_NOTE -> R.string.cf_float_note
+        SelAction.A_COPY -> R.string.ae_copy
+        SelAction.A_PLAY, SelAction.A_OPEN_FILE -> R.string.an_open
+        SelAction.A_STAMP_CUT -> R.string.nf2_cut
+        SelAction.A_STAMP_COPY -> R.string.nf2_copy_clip
+        SelAction.A_STAMP_DEFAULT_SIZE -> R.string.nf2_set_default_size
+        SelAction.A_STAMP_PAGES -> R.string.nf2_multi_pages
+        SelAction.A_VIDEO_PLAY -> R.string.vid_play
+        SelAction.A_VIDEO_OPTIONS -> R.string.vid_options
+        SelAction.A_VIDEO_SHARE -> R.string.vid_share
+        SelAction.A_VIDEO_SAVE -> R.string.vid_save
+        SelAction.A_RECOGNIZE -> R.string.an_recognize
+        SelAction.A_IMAGE_PROPS -> R.string.ni_ia_title
+        SelAction.A_DELETE -> R.string.ae_delete
+        SelAction.A_RANGE_START_LESS -> R.string.smr_range_start_less
+        SelAction.A_RANGE_START_MORE -> R.string.smr_range_start_more
+        SelAction.A_RANGE_END_LESS -> R.string.smr_range_end_less
+        SelAction.A_RANGE_END_MORE -> R.string.smr_range_end_more
+        SelAction.A_REPLY -> R.string.smr_reply
+        SelAction.A_PROPS -> R.string.cx_props
+        SelAction.A_LOCK -> R.string.cx_lock
+        SelAction.A_UNLOCK -> R.string.cx_unlock
+        SelAction.A_CUT -> R.string.cx_cut
+        SelAction.A_CLIP_COPY -> R.string.cx_copy
+        SelAction.A_PASTE_IN_PLACE -> R.string.cx_paste_in_place
+        SelAction.A_ROTATE_LEFT -> R.string.cx_rotate_left
+        SelAction.A_ROTATE_RIGHT -> R.string.cx_rotate_right
+        SelAction.A_ROTATE_CUSTOM -> R.string.cx_rotate_custom
+        SelAction.A_PLACE_PAGES -> R.string.cx_place_pages
+        SelAction.A_FLATTEN -> R.string.cx_flatten
+        SelAction.A_EXPORT_XFDF -> R.string.cx_export_sel_xfdf
+        SelAction.A_EXPORT_FDF -> R.string.cx_export_sel_fdf
+        SelAction.A_EMAIL_FDF -> R.string.cx_email_fdf
+        // form field
+        SelAction.F_COPY_VALUE -> R.string.smr_f_copy_value
+        SelAction.F_PASTE -> R.string.smr_f_paste
+        SelAction.F_CLEAR -> R.string.smr_f_clear
+        SelAction.F_RESET -> R.string.smr_f_reset
+        SelAction.F_PICK_IMAGE -> R.string.smr_f_pick_image
+        SelAction.F_SIGN -> R.string.smr_f_sign
+        SelAction.F_SPELL -> R.string.smr_f_spell
+        SelAction.F_CALCULATE -> R.string.smr_f_calculate
+        SelAction.F_PROPS -> R.string.smr_f_props
+        SelAction.F_DESIGNER -> R.string.smr_f_designer
+        SelAction.F_DUPLICATE -> R.string.smr_f_duplicate
+        SelAction.F_DELETE -> R.string.smr_f_delete
+        SelAction.F_TAB_ORDER -> R.string.smr_f_tab_order
+        // page-content picture (labels of the content-edit image bars)
+        SelAction.I_COPY -> R.string.ni_copy
+        SelAction.I_CUT -> R.string.ni_cut
+        SelAction.I_SAVE -> R.string.ed_img_export
+        SelAction.I_SHARE -> R.string.ed_img_share
+        SelAction.I_REPLACE -> R.string.ed_img_replace
+        SelAction.I_CROP -> R.string.ni_crop
+        SelAction.I_ROTATE_LEFT -> R.string.ed_img_rotate_left
+        SelAction.I_ROTATE_RIGHT -> R.string.ed_img_rotate_right
+        SelAction.I_FLIP_H -> R.string.ni_flip_h
+        SelAction.I_FLIP_V -> R.string.ni_flip_v
+        SelAction.I_EDITOR -> R.string.ni_image_editor
+        SelAction.I_PROPS -> R.string.ni_props
+        SelAction.I_MORE_TOOLS -> R.string.ni_more
+        SelAction.I_DELETE -> R.string.delete
+        SelAction.I_FRONT -> R.string.ni_front
+        SelAction.I_BACK -> R.string.ni_back
+        SelAction.I_DUPLICATE -> R.string.ni_duplicate
     }
 
     fun icon(a: SelAction): ImageVector = when (a) {
@@ -138,6 +209,69 @@ object SelBindings {
         SelAction.ROTATE_VIEW -> Icons.Default.RotateRight
         SelAction.PRINT -> Icons.Default.Print
         SelAction.DOC_INFO -> Icons.Default.Info
+        // fix/selmenu-rest: annotation
+        SelAction.A_COLOR -> Icons.Default.Palette
+        SelAction.A_OPACITY -> Icons.Default.Opacity
+        SelAction.A_THICKNESS -> Icons.Default.LineWeight
+        SelAction.A_EDIT_TEXT -> Icons.Default.Edit
+        SelAction.A_TEXT_FORMAT -> Icons.Default.FormatSize
+        SelAction.A_COPY, SelAction.A_CLIP_COPY -> Icons.Default.ContentCopy
+        SelAction.A_PLAY, SelAction.A_VIDEO_PLAY -> Icons.Default.PlayArrow
+        SelAction.A_STAMP_CUT, SelAction.A_CUT -> Icons.Default.ContentCut
+        SelAction.A_STAMP_COPY -> Icons.Default.CopyAll
+        SelAction.A_STAMP_DEFAULT_SIZE -> Icons.Default.AspectRatio
+        SelAction.A_STAMP_PAGES, SelAction.A_PLACE_PAGES -> Icons.Default.FileCopy
+        SelAction.A_OPEN_FILE, SelAction.A_FLOAT_NOTE -> Icons.Default.OpenInNew
+        SelAction.A_VIDEO_OPTIONS, SelAction.A_IMAGE_PROPS -> Icons.Default.Tune
+        SelAction.A_VIDEO_SHARE -> Icons.Default.Share
+        SelAction.A_VIDEO_SAVE -> Icons.Default.SaveAlt
+        SelAction.A_RECOGNIZE -> Icons.Default.Gesture
+        SelAction.A_DELETE -> Icons.Default.Delete
+        SelAction.A_RANGE_START_LESS, SelAction.A_RANGE_END_LESS -> Icons.Default.KeyboardDoubleArrowLeft
+        SelAction.A_RANGE_START_MORE, SelAction.A_RANGE_END_MORE -> Icons.Default.KeyboardDoubleArrowRight
+        SelAction.A_REPLY -> Icons.AutoMirrored.Filled.Reply
+        SelAction.A_PROPS -> Icons.Default.Info
+        SelAction.A_LOCK -> Icons.Default.Lock
+        SelAction.A_UNLOCK -> Icons.Default.LockOpen
+        SelAction.A_PASTE_IN_PLACE -> Icons.Default.ContentPaste
+        SelAction.A_ROTATE_LEFT -> Icons.AutoMirrored.Filled.RotateLeft
+        SelAction.A_ROTATE_RIGHT -> Icons.AutoMirrored.Filled.RotateRight
+        SelAction.A_ROTATE_CUSTOM -> Icons.Default.Rotate90DegreesCcw
+        SelAction.A_FLATTEN -> Icons.Default.Layers
+        SelAction.A_EXPORT_XFDF, SelAction.A_EXPORT_FDF -> Icons.Default.Upload
+        SelAction.A_EMAIL_FDF -> Icons.Default.Email
+        // form field
+        SelAction.F_COPY_VALUE -> Icons.Default.ContentCopy
+        SelAction.F_PASTE -> Icons.Default.ContentPaste
+        SelAction.F_CLEAR -> Icons.AutoMirrored.Filled.Backspace
+        SelAction.F_RESET -> Icons.Default.RestartAlt
+        SelAction.F_PICK_IMAGE -> Icons.Default.AddPhotoAlternate
+        SelAction.F_SIGN -> Icons.Default.Draw
+        SelAction.F_SPELL -> Icons.Default.Spellcheck
+        SelAction.F_CALCULATE -> Icons.Default.Calculate
+        SelAction.F_PROPS -> Icons.Default.Info
+        SelAction.F_DESIGNER -> Icons.Default.DesignServices
+        SelAction.F_DUPLICATE -> Icons.Default.LibraryAdd
+        SelAction.F_DELETE -> Icons.Default.Delete
+        SelAction.F_TAB_ORDER -> Icons.Default.FormatListNumbered
+        // page-content picture
+        SelAction.I_COPY -> Icons.Default.ContentCopy
+        SelAction.I_CUT -> Icons.Default.ContentCut
+        SelAction.I_SAVE -> Icons.Default.SaveAlt
+        SelAction.I_SHARE -> Icons.Default.Share
+        SelAction.I_REPLACE -> Icons.Default.FindReplace
+        SelAction.I_CROP -> Icons.Default.Crop
+        SelAction.I_ROTATE_LEFT -> Icons.AutoMirrored.Filled.RotateLeft
+        SelAction.I_ROTATE_RIGHT -> Icons.AutoMirrored.Filled.RotateRight
+        SelAction.I_FLIP_H -> Icons.Default.FlipToBack
+        SelAction.I_FLIP_V -> Icons.Default.Flip
+        SelAction.I_EDITOR -> Icons.Default.Brush
+        SelAction.I_PROPS -> Icons.Default.Info
+        SelAction.I_MORE_TOOLS -> Icons.Default.Tune
+        SelAction.I_DELETE -> Icons.Default.Delete
+        SelAction.I_FRONT -> Icons.Default.FlipToFront
+        SelAction.I_BACK -> Icons.Default.FlipToBack
+        SelAction.I_DUPLICATE -> Icons.Default.LibraryAdd
     }
 
     fun group(g: SelGroup): Int = when (g) {
@@ -154,6 +288,15 @@ object SelBindings {
         SelGroup.LINK -> R.string.sm_g_link
         SelGroup.INSERT -> R.string.sm_g_insert
         SelGroup.PAGE -> R.string.sm_g_page
+        SelGroup.ANNOT_STYLE -> R.string.smr_g_annot_style
+        SelGroup.ANNOT_ACTION -> R.string.smr_g_annot_action
+        SelGroup.ANNOT_ARRANGE -> R.string.smr_g_annot_arrange
+        SelGroup.ANNOT_EXPORT -> R.string.smr_g_annot_export
+        SelGroup.FIELD_VALUE -> R.string.smr_g_field_value
+        SelGroup.FIELD_FORM -> R.string.smr_g_field_form
+        SelGroup.IMAGE_OUT -> R.string.smr_g_image_out
+        SelGroup.IMAGE_EDIT -> R.string.smr_g_image_edit
+        SelGroup.IMAGE_ARRANGE -> R.string.smr_g_image_arrange
     }
 
     fun why(w: Why): Int = when (w) {

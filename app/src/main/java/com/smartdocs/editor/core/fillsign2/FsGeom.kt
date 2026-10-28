@@ -100,6 +100,18 @@ object FsGeom {
         return displayRectToUser(b, dx - w / 2f, dy - h / 2f, dx + w / 2f, dy + h / 2f)
     }
 
+    /**
+     * fix/selmenu-rest: [stampBox] for a point picked from a menu ("Sign here" / "Insert image here"): centred on the
+     * point but moved (not shrunk, unless larger than the page) so the whole image stays on the visible crop box.
+     */
+    fun stampBoxInside(b: PageBox, x: Float, y: Float, w: Float, h: Float): MultiPage.Box {
+        val (dx, dy) = toDisplay(b, x, y)
+        val ww = w.coerceAtMost(b.dispW); val hh = h.coerceAtMost(b.dispH)
+        val left = (dx - ww / 2f).coerceIn(0f, b.dispW - ww)
+        val top = (dy - hh / 2f).coerceIn(0f, b.dispH - hh)
+        return displayRectToUser(b, left, top, left + ww, top + hh)
+    }
+
     /** Upright (display) size of an appearance for a user space rect of [w] x [h] on a page turned by [rotate]. */
     fun uprightSize(rotate: Int, w: Float, h: Float): Pair<Float, Float> = if (norm(rotate) % 180 == 0) w to h else h to w
 
