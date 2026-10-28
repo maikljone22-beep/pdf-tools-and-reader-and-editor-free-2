@@ -56,7 +56,8 @@ import java.io.File
 class E5Doc(initial: File?) {
     var source by mutableStateOf(initial); private set
     var work by mutableStateOf<File?>(null); private set
-    var password by mutableStateOf<String?>(null)
+    // tab-view-core E-20: the reader's password for this file (no second prompt)
+    var password by mutableStateOf<String?>(com.smartdocs.editor.core.pdf.OpenPasswords.get(initial))
     var needPassword by mutableStateOf(false)
     var infos by mutableStateOf<List<PageInfo>>(emptyList()); private set
     var version by mutableIntStateOf(0); private set
@@ -66,7 +67,7 @@ class E5Doc(initial: File?) {
     val canUndo get() = undo.isNotEmpty()
     val pageCount get() = infos.size
 
-    fun pick(f: File) { source = f; work = null; password = null; error = null; infos = emptyList(); undo.clear(); changed = false; version++ }
+    fun pick(f: File) { source = f; work = null; password = com.smartdocs.editor.core.pdf.OpenPasswords.get(f); error = null; infos = emptyList(); undo.clear(); changed = false; version++ }
 
     /** Open (or reopen after a password was typed): copy to a temp working file and read page geometry. */
     suspend fun open(tempDir: File) {

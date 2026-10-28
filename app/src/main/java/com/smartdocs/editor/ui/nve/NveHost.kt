@@ -153,8 +153,10 @@ private fun NveEdit5Sheet(s: ReaderState, actions: ReaderActions) {
     ModalBottomSheet(onDismissRequest = { n.close() }) {
         Text(stringResource(R.string.nv_edit5_tools), style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = 20.dp))
         androidx.compose.foundation.lazy.LazyColumn(Modifier.fillMaxWidth().heightIn(max = 560.dp)) {
-            items(EDIT5_TOOLS.size) { i ->
-                val t = EDIT5_TOOLS[i]
+            // tab-view-core E-10: the second "Organize pages" (the Edit tab chip and the Pages tab open the organizer)
+            val tools = EDIT5_TOOLS.filter { it.id != "e5_organize" }
+            items(tools.size) { i ->
+                val t = tools[i]
                 ListItem(headlineContent = { Text(stringResource(t.label)) }, supportingContent = t.subtitle?.let { { Text(stringResource(it)) } },
                     leadingContent = { Icon(t.icon, null) }, modifier = Modifier.clickable { n.close(); actions.navigateTool(t.id) })
             }

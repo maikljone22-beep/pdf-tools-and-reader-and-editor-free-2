@@ -117,6 +117,8 @@ fun FormsScreen(nav: NavHostController, uri: String?) {
             val out = if (overwrite) app.documents.newTemp("form") else app.documents.uniqueFile(app.documents.docsDir, src.nameWithoutExtension + "_filled")
             if (dyn) XfaSupport.saveValues(src, xValues, out, password)
             else FormOps.fillFields(src, values, out, password, ctx, display, dropXfa)
+            // tab-view-core E-01: a signed / certified form is never overwritten by a full rewrite (saved as a copy instead)
+            if (overwrite) runCatching { com.smartdocs.editor.core.pdf.SignedGuard.checkWrite(src, out, password, com.smartdocs.editor.core.pdf.SignedGuard.Change.FORM_FILL) }.onFailure { out.delete(); throw it }
             if (overwrite) { out.copyTo(src, overwrite = true); out.delete(); runCatching { app.documents.touchRecent(src) }; src } else { runCatching { app.documents.touchRecent(out) }; out }
         }
     }

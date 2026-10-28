@@ -193,8 +193,12 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                 .onSuccess { snack.showSnackbar(ctx.getString(R.string.success)); if (wasLeaving) offerLeave = true }.onFailure { state.error = it.message }
         }
     }
-    val pickImage = rememberImagePicker(multiple = false) { files ->
-        scope.launch { files.firstOrNull()?.let { ReaderIntents.decode(it) }?.let { state.pendingImage = it; state.tool = ReaderTool.IMAGE } }
+    // tab-view-core E-13: cancelling the picker leaves the image tool (no dead tool mode); E-16: the temp copy goes after decoding
+    val pickImage = rememberImagePicker(multiple = false, onCancel = { if (state.tool == ReaderTool.IMAGE && state.pendingImage == null) state.selectTool(null) }) { files ->
+        scope.launch {
+            val bmp = files.firstOrNull()?.let { f -> ReaderIntents.decode(f).also { f.delete() } }
+            if (bmp != null) { state.pendingImage = bmp; state.tool = ReaderTool.IMAGE } else if (state.tool == ReaderTool.IMAGE && state.pendingImage == null) state.selectTool(null)
+        }
     }
     fun doStartReadAloud(fromChar: Int, page: Int) {
         if (state.pageCount == 0 || state.session == null) return
@@ -238,7 +242,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
             // nitro-protect2: a restricted document is shared as it is (the share sheet's copies would drop its protection)
             share = { if (state.guard.allows(com.smartdocs.editor.core.security.DocAction.SAVE_UNPROTECTED)) showShare5 = true else state.file?.let { f -> runCatching { ctx.startActivity(android.content.Intent.createChooser(app.documents.shareIntent(listOf(f), "application/pdf"), null)) } } },
             print = { com.smartdocs.editor.ui.view5.V5State.of(state).open(com.smartdocs.editor.ui.view5.V5Surface.PRINT) },
-            save = { scope.launch { if (state.save()) snack.showSnackbar(ctx.getString(R.string.saved_to, state.file?.name ?: "")) } },
+            save = { scope.launch { if (state.confirmOwnerPassword() && state.save()) snack.showSnackbar(ctx.getString(R.string.saved_to, state.file?.name ?: "")) } },   // tab-view-core E-12
             saveAs = { saveAs.launch(state.file?.name ?: "document.pdf") },
             pickImage = { pickImage() }, pickStamp = { showStamps = true },
             pickSignature = { path -> scope.launch { ReaderIntents.decode(File(path))?.let { state.pendingImage = it; state.tool = ReaderTool.SIGNATURE; state.pendingText = path; state.selection = null } } },
@@ -470,6 +474,23 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
     if (nveRevert) AlertDialog(onDismissRequest = { nveRevert = false }, text = { Text(stringResource(R.string.nl_revert_confirm)) },
         confirmButton = { TextButton(onClick = { nveRevert = false; state.file?.let { com.smartdocs.editor.ui.nve.shell.NveRecovery.discard(ctx, it) }; scope.launch { state.revertToSaved() } }) { Text(stringResource(R.string.ok)) } },
         dismissButton = { TextButton(onClick = { nveRevert = false }) { Text(stringResource(R.string.cancel)) } })
+    // tab-view-core E-12: keep the author's owner password on save, or continue knowingly
+    state.ownerPrompt?.let { _ ->
+        var ownerPw by remember { mutableStateOf("") }
+        AlertDialog(onDismissRequest = { state.answerOwnerPrompt(null) },
+            icon = { Icon(Icons.Default.Lock, null) },
+            title = { Text(stringResource(R.string.tvc_owner_title)) },
+            text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(stringResource(R.string.tvc_owner_text))
+                OutlinedTextField(ownerPw, { ownerPw = it }, singleLine = true, label = { Text(stringResource(R.string.tvc_owner_field)) },
+                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation())
+            } },
+            confirmButton = { TextButton(onClick = { state.answerOwnerPrompt(ownerPw) }, enabled = ownerPw.isNotEmpty()) { Text(stringResource(R.string.tvc_owner_keep)) } },
+            dismissButton = { Row {
+                TextButton(onClick = { state.answerOwnerPrompt("") }) { Text(stringResource(R.string.tvc_owner_continue)) }
+                TextButton(onClick = { state.answerOwnerPrompt(null) }) { Text(stringResource(R.string.cancel)) }
+            } })
+    }
     if (showGoTo) GoToPageDialog(state.currentPage, state.pageCount, onGo = { state.jumpTo(it); showGoTo = false }, onDismiss = { showGoTo = false }, labels = pageLabels)
     if (showViewMode) ViewModeSheet(state, tablet = tablet) { showViewMode = false; com.smartdocs.editor.core.data.NpfPrefs.setString("last_layout", state.viewMode.name); scope.launch { app.settings.update { it.copy(continuousScroll = state.viewMode == ViewMode.CONTINUOUS, nightMode = state.nightMode) } } }
     // tab-view-core V-17: night mode is remembered however it is switched (chip, page-colour sheet, reflow, Ctrl+N, command)
@@ -562,7 +583,8 @@ private fun ToolHint(tool: ReaderTool, modifier: Modifier = Modifier) {
             ReaderTool.ERASER -> R.string.rd_hint_eraser
             ReaderTool.MEASURE -> R.string.rd_hint_measure
             ReaderTool.LINK -> R.string.rd_hint_link
-            ReaderTool.SIGNATURE, ReaderTool.STAMP, ReaderTool.IMAGE -> R.string.sig_tap_to_place
+            ReaderTool.SIGNATURE, ReaderTool.STAMP -> R.string.sig_tap_to_place
+            ReaderTool.IMAGE -> R.string.tvc_tap_to_place_image      // tab-view-core E-13: not "the signature"
             else -> R.string.rd_hint_tap
         }
     )

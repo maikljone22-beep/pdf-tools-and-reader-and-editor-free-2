@@ -97,9 +97,11 @@ fun ToolChip(icon: ImageVector, label: String, selected: Boolean = false, enable
         Modifier.width(64.dp).clip(RoundedCornerShape(14.dp)).background(bg).clickable(enabled = enabled, onClick = onClick).padding(vertical = 6.dp, horizontal = 2.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Icon(icon, label, Modifier.size(24.dp), tint = tint?.takeIf { enabled } ?: fg)
+        // tab-view-core E-15: the label is read once (icon without its own description) and may take two lines
+        Icon(icon, null, Modifier.size(24.dp), tint = tint?.takeIf { enabled } ?: fg)
         Spacer(Modifier.height(3.dp))
-        Text(label, style = MaterialTheme.typography.labelSmall, color = fg, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+        Text(label, style = MaterialTheme.typography.labelSmall, color = fg, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center,
+            lineHeight = MaterialTheme.typography.labelSmall.fontSize * 1.1f)
     }
 }
 
@@ -203,17 +205,23 @@ private fun CommentToolbar(state: ReaderState, a: ReaderActions) {
 private fun EditToolbar(state: ReaderState, a: ReaderActions) {
     ToolRow {
         ToolChip(Icons.Default.EditNote, stringResource(R.string.ed_content_edit)) { a.navigateTool("content_edit") }
-        ToolChip(Icons.Default.TextFields, stringResource(R.string.rd_add_text), selected = state.tool == ReaderTool.TEXTBOX) { state.selectTool(ReaderTool.TEXTBOX) }
-        ToolChip(Icons.Default.Image, stringResource(R.string.rd_add_image), selected = state.tool == ReaderTool.IMAGE) { state.selectTool(ReaderTool.IMAGE); if (state.tool == ReaderTool.IMAGE) a.pickImage() }
+        // tab-view-core E-15: "Edit tools" (own icon) and "Edit form fields" come early, so they are not hidden off-screen
+        ToolChip(Icons.Default.Handyman, stringResource(R.string.nv_edit5_tools)) { com.smartdocs.editor.ui.nve.NveState.of(state).open(com.smartdocs.editor.ui.nve.NveSurface.EDIT5) }   // NVE
+        ToolChip(Icons.Default.AddBox, stringResource(R.string.fx_edit_fields)) { a.navigateTool("form_builder") }   // formsx: form designer
+        VerticalDivider(Modifier.height(36.dp).padding(horizontal = 4.dp))
+        // tab-view-core E-09: these two make comment annotations (text box / image stamp); page content is added in Edit content
+        ToolChip(Icons.Default.TextFields, stringResource(R.string.tvc_add_text_comment), selected = state.tool == ReaderTool.TEXTBOX) { state.selectTool(ReaderTool.TEXTBOX) }
+        ToolChip(Icons.Default.Image, stringResource(R.string.tvc_add_image_stamp), selected = state.tool == ReaderTool.IMAGE) { state.selectTool(ReaderTool.IMAGE); if (state.tool == ReaderTool.IMAGE) a.pickImage() }
         ToolChip(Icons.Default.Link, stringResource(R.string.annot_link), selected = state.tool == ReaderTool.LINK) { state.selectTool(ReaderTool.LINK) }
         VerticalDivider(Modifier.height(36.dp).padding(horizontal = 4.dp))
         ToolChip(Icons.Default.DocumentScanner, stringResource(R.string.tool_ocr)) { a.quick(QuickAction.OCR) }
-        ToolChip(Icons.Default.BrandingWatermark, stringResource(R.string.tool_watermark)) { a.quick(QuickAction.WATERMARK) }
-        ToolChip(Icons.Default.FormatListNumbered, stringResource(R.string.tool_page_numbers)) { a.quick(QuickAction.PAGE_NUMBERS) }
-        ToolChip(Icons.Default.Info, stringResource(R.string.tool_doc_info)) { a.quick(QuickAction.PROPERTIES) }
+        // tab-view-core E-04 / E-10: the edit5 watermark and header & footer (page numbers preset): rotation / crop-box
+        // aware, tagged, updatable and removable — the same screens as in Edit tools
+        ToolChip(Icons.Default.BrandingWatermark, stringResource(R.string.tool_watermark)) { a.navigateTool("e5_watermark") }
+        ToolChip(Icons.Default.FormatListNumbered, stringResource(R.string.tool_page_numbers)) { a.navigateTool("e5_header_footer") }
+        // tab-view-core E-10 / E-17: one Document properties (full editor, XMP kept in step)
+        ToolChip(Icons.Default.Info, stringResource(R.string.e5_props_title)) { a.navigateTool("e5_doc_props") }
         ToolChip(Icons.Default.AutoAwesomeMotion, stringResource(R.string.tool_organize)) { a.navigateTool("organize") }
-        ToolChip(Icons.Default.EditNote, stringResource(R.string.nv_edit5_tools)) { com.smartdocs.editor.ui.nve.NveState.of(state).open(com.smartdocs.editor.ui.nve.NveSurface.EDIT5) }   // NVE
-        ToolChip(Icons.Default.AddBox, stringResource(R.string.fx_edit_fields)) { a.navigateTool("form_builder") }   // formsx: form designer
     }
 }
 
@@ -359,20 +367,27 @@ fun PropertyBar(state: ReaderState) {
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             IconButton(onClick = { state.undo() }, enabled = state.canUndo, modifier = Modifier.size(32.dp)) { Icon(Icons.AutoMirrored.Filled.Undo, stringResource(R.string.undo)) }
             IconButton(onClick = { state.redo() }, enabled = state.canRedo, modifier = Modifier.size(32.dp)) { Icon(Icons.AutoMirrored.Filled.Redo, stringResource(R.string.redo)) }
-            VerticalDivider(Modifier.height(24.dp))
-            PALETTE.forEach { c -> ColorDot(c, state.color == c) { state.color = c } }
-            Box(Modifier.size(28.dp).clip(CircleShape).border(1.dp, MaterialTheme.colorScheme.outline, CircleShape).clickable { showMore = !showMore }, contentAlignment = Alignment.Center) {
-                Icon(Icons.Default.Tune, stringResource(R.string.rd_custom_color), Modifier.size(16.dp))
+            // tab-view-core E-14: only the controls the tool uses (IMAGE: opacity; LINK: none)
+            val colorT = t != ReaderTool.IMAGE && t != ReaderTool.LINK
+            val opacityT = t != ReaderTool.LINK
+            if (colorT) {
+                VerticalDivider(Modifier.height(24.dp))
+                PALETTE.forEach { c -> ColorDot(c, state.color == c) { state.color = c } }
+                Box(Modifier.size(28.dp).clip(CircleShape).border(1.dp, MaterialTheme.colorScheme.outline, CircleShape).clickable { showMore = !showMore }, contentAlignment = Alignment.Center) {
+                    Icon(Icons.Default.Tune, stringResource(R.string.rd_custom_color), Modifier.size(16.dp))
+                }
             }
-            VerticalDivider(Modifier.height(24.dp))
-            listOf(0.25f, 0.5f, 0.75f, 1f).forEach { o ->
-                FilterChip(selected = state.opacity == o, onClick = { state.opacity = o }, label = { Text("${(o * 100).toInt()}%") }, modifier = Modifier.height(30.dp))
+            if (opacityT) {
+                VerticalDivider(Modifier.height(24.dp))
+                listOf(0.25f, 0.5f, 0.75f, 1f).forEach { o ->
+                    FilterChip(selected = state.opacity == o, onClick = { state.opacity = o }, label = { Text("${(o * 100).toInt()}%") }, modifier = Modifier.height(30.dp))
+                }
             }
             VerticalDivider(Modifier.height(24.dp))
             FilterChip(selected = state.continueCreating, onClick = { state.continueCreating = !state.continueCreating; com.smartdocs.editor.core.data.NpfPrefs.setBool(com.smartdocs.editor.core.data.NpfPrefs.K.RETAIN_TOOLS, state.continueCreating) },
                 label = { Text(stringResource(R.string.rd_continue_creating)) }, leadingIcon = { Icon(Icons.Default.Repeat, null, Modifier.size(16.dp)) }, modifier = Modifier.height(30.dp))
         }
-        if (showMore) {
+        if (showMore && t != ReaderTool.IMAGE && t != ReaderTool.LINK) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(hex, { v -> hex = v.take(7); v.removePrefix("#").toIntOrNull(16)?.let { if (v.removePrefix("#").length == 6) state.color = it } },
                     label = { Text(stringResource(R.string.rd_custom_color)) }, placeholder = { Text("#FF5722") }, singleLine = true, modifier = Modifier.width(140.dp))

@@ -61,7 +61,8 @@ class QuickController(val state: ReaderState, private val scope: CoroutineScope,
 
     /** Entry point of every tool button: one tap, then (at most) a compact sheet or a confirmation. */
     fun open(action: QuickAction, onShare: () -> Unit = {}, onPrint: () -> Unit = {}) {
-        if (running || state.session == null) return
+        if (running) { message = ctx.getString(R.string.tvc_quick_busy); return }   // tab-view-core E-21: say why nothing happens
+        if (state.session == null) return
         // nitro-protect2: the document's restrictions / Protected View decide first
         val need = com.smartdocs.editor.core.security.ReaderRestrictions.actionForQuick(action.name)
         if (need != null && !state.guard.check(need)) return

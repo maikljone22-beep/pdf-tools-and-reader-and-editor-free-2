@@ -541,6 +541,13 @@ object PdfOps {
     suspend fun setInfo(src: File, info: Info, out: File, password: String? = null) = withContext(Dispatchers.IO) {
         load(src, password).use { doc ->
             doc.documentInformation.apply { title = info.title; author = info.author; subject = info.subject; keywords = info.keywords; creator = info.creator; producer = info.producer }
+            // tab-view-core E-17: an existing XMP packet gets the same values (apps reading XMP show the new title)
+            runCatching {
+                val meta = doc.documentCatalog.metadata ?: return@runCatching
+                val xml = meta.exportXMPMetadata().use { String(it.readBytes(), Charsets.UTF_8) }
+                val upd = XmpSync.update(xml, XmpSync.Values(info.title, info.author, info.subject, info.keywords, info.creator, info.producer))
+                if (upd != xml) doc.documentCatalog.metadata = com.tom_roush.pdfbox.pdmodel.common.PDMetadata(doc).also { it.importXMPMetadata(upd.toByteArray(Charsets.UTF_8)) }
+            }
             saveTo(doc, out)
         }
     }

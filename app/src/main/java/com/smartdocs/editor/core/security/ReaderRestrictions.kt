@@ -95,12 +95,17 @@ object ReaderRestrictions {
     /** The permission a reader tool screen (Routes.tool id) needs on the open document; null = none (read only). */
     fun actionForTool(id: String): DocAction? = when (id) {
         "organize", "merge", "split" -> DocAction.ASSEMBLE
+        // tab-view-core E-11: Edit tools that insert, remove, reorder or split pages need page assembly, not modify
+        "e5_organize", "e5_page_ops", "e5_insert_blank", "e5_split_page", "e5_replace_pages", "e5_copy_pages", "e5_interleave",
+        "e5_mix", "e5_impose", "e5_split_bookmarks", "e5_smart_split", "e5_templates" -> DocAction.ASSEMBLE
         "forms", "digital_sign" -> DocAction.FILL_FORMS
         "search_highlight" -> DocAction.ANNOTATE
         "protect_advanced", "protect", "cert_protect" -> DocAction.CHANGE_SECURITY
         "unlock" -> DocAction.SAVE_UNPROTECTED
         "ai", "compare", "pdf_to_images", "pdf_to_text", "convert_hub", "extract_images", "podcast" -> DocAction.COPY
         "info", "properties", "signatures" -> null
+        // tab-view-core E-11: viewers (they edit only a working copy; writing back goes through the reader's checks)
+        "e5_xref", "e5_destinations", "e5_doc_props" -> null
         else -> DocAction.MODIFY
     }
 
