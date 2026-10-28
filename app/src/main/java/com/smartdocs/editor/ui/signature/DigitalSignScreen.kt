@@ -21,6 +21,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.viewModelScope
 import com.smartdocs.editor.core.pdf.OpenPasswords
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.ui.semantics.semantics
@@ -62,7 +63,7 @@ class DigitalSignVm : androidx.lifecycle.ViewModel() {
     var identity by mutableStateOf<DigitalSignature.Identity?>(null)
     var request: SigFieldRequest.Request? = null
     var initialized = false
-    val runner = ToolRunner(androidx.lifecycle.viewModelScope)
+    val runner = ToolRunner(viewModelScope)
     var signReport by mutableStateOf<DigitalSignature.SignReport?>(null)
 }
 
