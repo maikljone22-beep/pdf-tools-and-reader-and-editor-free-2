@@ -185,7 +185,7 @@ fun ToolsetEditSheet(tools: List<ReaderTool>, onChange: (List<ReaderTool>) -> Un
                             leadingContent = { Icon(e.icon, null) },
                             trailingContent = {
                                 IconButton(onClick = { if (added) list.remove(e.tool) else list.add(e.tool); commit() }) {
-                                    Icon(if (added) Icons.Default.CheckCircle else Icons.Default.AddCircleOutline, null,
+                                    Icon(if (added) Icons.Default.CheckCircle else Icons.Default.AddCircleOutline, stringResource(if (added) R.string.ai6h_remove else R.string.ai6h_add),
                                         tint = if (added) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                             },

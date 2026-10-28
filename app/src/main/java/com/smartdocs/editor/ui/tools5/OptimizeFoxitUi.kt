@@ -144,7 +144,7 @@ fun OptimizeBatchSection(batch: OptimizeBatch, title: String? = null, help: Stri
         batch.files.forEachIndexed { i, f ->
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("${i + 1}. ${f.name}", Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                IconButton(onClick = { batch.files = batch.files.toMutableList().apply { add(i - 1, removeAt(i)) } }, enabled = i > 0) { Icon(Icons.Default.ArrowUpward, null) }
+                IconButton(onClick = { batch.files = batch.files.toMutableList().apply { add(i - 1, removeAt(i)) } }, enabled = i > 0) { Icon(Icons.Default.ArrowUpward, stringResource(R.string.ed_outline_up)) }
                 IconButton(onClick = { batch.files = batch.files - f }) { Icon(Icons.Default.Close, stringResource(R.string.pc_cd_remove)) }
             }
         }
