@@ -20,6 +20,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.smartdocs.editor.R
 import com.smartdocs.editor.core.convert6.Conv
+import com.smartdocs.editor.core.convert6.Cv6Catalog
 import com.smartdocs.editor.core.convert6.Cv6Opts
 import com.smartdocs.editor.core.convert6.Fit6
 import com.smartdocs.editor.core.convert6.ImgFmt
