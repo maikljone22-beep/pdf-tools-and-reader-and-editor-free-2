@@ -284,6 +284,13 @@
     <string name="nt_ocr_quality">جودة التعرف</string>
     <string name="nt_ocr_quality_best">عالية (أبطأ)</string>
     <string name="nt_ocr_quality_fast">سريعة (أقل دقة)</string>
+    <string name="nt_ocr_engine">محرك التعرف</string>
+    <string name="nt_ocr_engine_auto">تلقائي (Tesseract + الذكاء الاصطناعي)</string>
+    <string name="nt_ocr_engine_ai">الذكاء الاصطناعي فقط</string>
+    <string name="nt_ocr_engine_tess">Tesseract فقط</string>
+    <string name="nt_ocr_engine_cloud">OCR احترافي سحابي</string>
+    <string name="nt_ocr_engine_note">تلقائي يقرأ كل كلمة بالمحركين ويختار الأدق (نموذج PP-OCRv5 للعربية، تنزيل اختياري 12.8 ميجابايت مع حزمة العربية). السحابي يرسل صورة الصفحة إلى خادم التطبيق ويحتاج إنترنت؛ إن لم يكن متاحاً يُستعمل التعرف دون اتصال.</string>
+    <string name="nt_ocr_engine_ai_missing">نموذج الذكاء الاصطناعي غير منزّل بعد: سيُنزّل مع حزمة العربية عند أول تعرف.</string>
     <string name="nt_ocr_review">مراجعة كلمات التعرف المشكوك فيها</string>
     <string name="nt_ocr_review_accept">قبول</string>
     <string name="nt_ocr_review_accept_all">قبول الكل كما هي</string>
