@@ -58,7 +58,18 @@ object OcrEnsemble {
         val out = ArrayList<OcrRefine.Tok>()
         tess.forEachIndexed { i, t -> out += replace[i] ?: listOf(t.copy(text = fold(t.text))) }
         val maxLine = (tess.maxOfOrNull { it.line } ?: -1) + 1
-        pp.forEachIndexed { j, p -> if (!used[j] && p.conf >= ADD_CONF) out += p.copy(text = fold(p.text), line = maxLine + p.line) }
+        pp.forEachIndexed { j, p ->
+            if (used[j] || p.conf < ADD_CONF) return@forEachIndexed
+            val w = p.copy(text = fold(p.text))
+            // into the Tesseract line on the same row, at its reading position (right to left in Arabic lines)
+            val row = out.indices.filter { k -> val o = out[k]; minOf(o.bottom, w.bottom) - maxOf(o.top, w.top) > 0.5f * minOf(o.bottom - o.top, w.bottom - w.top) }
+            if (row.isEmpty()) { out += w.copy(line = maxLine + p.line); return@forEachIndexed }
+            val line = out[row.first()].line
+            val inLine = row.filter { out[it].line == line }
+            val rtl = inLine.any { k -> out[k].text.any { OcrRefine.isArabicLetter(it) } }
+            val before = inLine.lastOrNull { k -> if (rtl) out[k].right >= w.right else out[k].left <= w.left }
+            out.add(if (before == null) inLine.first() else before + 1, w.copy(line = line))
+        }
         return out
     }
 }

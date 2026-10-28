@@ -119,8 +119,12 @@ class ProOcrTest {
         val tess = listOf(t("جرام", 800, 100, 900, 140, 95f, line = 0))
         val pp = listOf(t("١٦", 950, 100, 990, 140, 96f, line = 0), t("xx", 10, 500, 40, 540, 50f, line = 3))
         val out = OcrEnsemble.combine(tess, pp, lex)
-        assertEquals(listOf("جرام", "١٦"), out.map { it.text })
-        assertTrue(out[1].line > 0)
+        // «١٦» lies right of «جرام» on the same row: in a right-to-left line it is read first
+        assertEquals(listOf("١٦", "جرام"), out.map { it.text })
+        assertEquals(listOf(0, 0), out.map { it.line })
+        // a sure word on a row Tesseract did not read becomes a new line
+        val alone = OcrEnsemble.combine(tess, listOf(t("١٤", 950, 400, 990, 440, 97f, line = 2)), lex)
+        assertEquals(listOf("جرام", "١٤"), alone.map { it.text }); assertTrue(alone[1].line > 0)
     }
 
     @Test fun withoutAiWordsTesseractIsUnchanged() {
