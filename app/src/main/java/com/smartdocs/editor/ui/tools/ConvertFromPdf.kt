@@ -106,7 +106,7 @@ internal fun ConvertFromPdfPanel(nav: NavHostController, uri: String?, snackbar:
     var format by remember { mutableStateOf<CvFormat?>(null) }
     var showSheet by remember { mutableStateOf(false) }
     val options = remember { mutableStateMapOf<CvFormat, CvOptions>() }
-    var password by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf(com.smartdocs.editor.core.pdf.SessionPasswords.get(file).orEmpty()) }   // audit 5 T-09
     var needPassword by remember { mutableStateOf(false) }
     var result by remember { mutableStateOf<File?>(null) }
     var resultInfo by remember { mutableStateOf<String?>(null) }

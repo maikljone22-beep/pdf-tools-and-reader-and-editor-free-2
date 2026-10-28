@@ -67,9 +67,19 @@ fun LayersScreen(nav: NavHostController, uri: String?) {
         withContext(Dispatchers.IO) { runCatching { E5Io.load(w, doc.password).use { d -> if (initial == null) initial = Layers.states(d); Layers.list(d, initial.orEmpty()) } } }
             .onSuccess { rows = it }.onFailure { message = it.message }
     }
+    // audit 5 E-12: one change at a time on the work file (fast toggles used to run concurrently); controls are
+    // disabled while [busy]
+    var busy by remember { mutableStateOf(false) }
     fun edit(block: (com.tom_roush.pdfbox.pdmodel.PDDocument) -> Unit) {
-        scope.launch { runCatching { doc.apply(app.documents.tempDir) { s, o, p -> withContext(Dispatchers.IO) { E5Io.edit(s, o, p) { block(it) } } } }.onFailure { message = it.message ?: it.toString() } }
+        if (busy) return
+        busy = true
+        scope.launch {
+            try { runCatching { doc.apply(app.documents.tempDir) { s, o, p -> withContext(Dispatchers.IO) { E5Io.edit(s, o, p) { block(it) } } } }.onFailure { message = it.message ?: it.toString() } }
+            finally { busy = false }
+        }
     }
+    // audit 5 E-11: a locked PDF to import as a layer asks for its password
+    val unlocker = rememberE5Unlocker()
     val pickImage = rememberImagePicker(multiple = false) { fs ->
         val f = fs.firstOrNull() ?: return@rememberImagePicker
         val name = importName.ifBlank { f.nameWithoutExtension }; val rg = importRange; val n = doc.pageCount
@@ -85,15 +95,22 @@ fun LayersScreen(nav: NavHostController, uri: String?) {
     val pickPdf = rememberPdfPicker { fs ->
         val f = fs.firstOrNull() ?: return@rememberPdfPicker
         val name = importName.ifBlank { f.nameWithoutExtension }; val rg = importRange; val n = doc.pageCount
-        edit { d -> E5Io.load(f, null).use { src -> Layers.importPage(d, src, 0, name, PageSet.parse(rg, n)) } }
+        scope.launch {
+            val ok = runCatching { unlocker.unlock(f) }.getOrElse { message = it.message ?: it.toString(); false }
+            if (!ok) return@launch
+            val pw = unlocker.password(f)
+            edit { d -> E5Io.load(f, pw).use { src -> Layers.importPage(d, src, 0, name, PageSet.parse(rg, n)) } }
+        }
     }
     val processing = stringResource(R.string.processing)
     val showOnly = stringResource(R.string.pc_ly_show_only_bm)
 
     ToolScaffold(stringResource(R.string.pc_ly_title), nav, runner, actions = {
-        IconButton(onClick = { scope.launch { doc.undo() } }, enabled = doc.canUndo) { Icon(Icons.AutoMirrored.Filled.Undo, stringResource(R.string.e5_undo)) }
+        IconButton(onClick = { scope.launch { doc.undo() } }, enabled = doc.canUndo && !busy) { Icon(Icons.AutoMirrored.Filled.Undo, stringResource(R.string.e5_undo)) }
     }) {
         E5FileRow(doc)
+        E5UnlockDialog(unlocker)
+        if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
         message?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
         val info = doc.infos.getOrNull(page)
         if (doc.work != null && info != null) {
@@ -103,13 +120,13 @@ fun LayersScreen(nav: NavHostController, uri: String?) {
         if (doc.work != null && rows.isEmpty()) Text(stringResource(R.string.pc_ly_none), style = MaterialTheme.typography.bodySmall)
         if (rows.isNotEmpty()) E5Section(stringResource(R.string.pc_ly_title)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                AssistChip(onClick = { edit { Layers.showAll(it, true) } }, label = { Text(stringResource(R.string.pc_ly_all_on)) })
-                AssistChip(onClick = { edit { Layers.showAll(it, false) } }, label = { Text(stringResource(R.string.pc_ly_all_off)) })
-                AssistChip(onClick = { val i = initial ?: return@AssistChip; edit { Layers.reset(it, i) } }, label = { Text(stringResource(R.string.pc_ly_reset)) })
+                AssistChip(onClick = { edit { Layers.showAll(it, true) } }, enabled = !busy, label = { Text(stringResource(R.string.pc_ly_all_on)) })
+                AssistChip(onClick = { edit { Layers.showAll(it, false) } }, enabled = !busy, label = { Text(stringResource(R.string.pc_ly_all_off)) })
+                AssistChip(onClick = { val i = initial ?: return@AssistChip; edit { Layers.reset(it, i) } }, enabled = !busy, label = { Text(stringResource(R.string.pc_ly_reset)) })
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                AssistChip(onClick = { edit { Layers.applyOverrides(it, "Print") } }, label = { Text(stringResource(R.string.pc_ly_apply_print)) })
-                AssistChip(onClick = { edit { Layers.applyOverrides(it, "Export") } }, label = { Text(stringResource(R.string.pc_ly_apply_export)) })
+                AssistChip(onClick = { edit { Layers.applyOverrides(it, "Print") } }, enabled = !busy, label = { Text(stringResource(R.string.pc_ly_apply_print)) })
+                AssistChip(onClick = { edit { Layers.applyOverrides(it, "Export") } }, enabled = !busy, label = { Text(stringResource(R.string.pc_ly_apply_export)) })
             }
             var lastGroup: String? = null
             rows.forEach { r ->
@@ -130,7 +147,7 @@ fun LayersScreen(nav: NavHostController, uri: String?) {
                         val pages = if (r.pages.isEmpty()) stringResource(R.string.pc_ly_no_pages) else stringResource(R.string.pc_ly_pages, r.pages.take(8).joinToString(", ") { "${it + 1}" } + if (r.pages.size > 8) "…" else "")
                         Text(pages + (if (r.on != r.initialOn) " · " + stringResource(R.string.pc_ly_changed) else ""), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    Switch(r.on, { v -> edit { Layers.setOn(it, r.index, v) } }, enabled = !r.locked)
+                    Switch(r.on, { v -> edit { Layers.setOn(it, r.index, v) } }, enabled = !r.locked && !busy)
                     Box {
                         IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, stringResource(R.string.pc_pf_actions, r.name)) }
                         DropdownMenu(menu, { menu = false }) {
@@ -163,7 +180,7 @@ fun LayersScreen(nav: NavHostController, uri: String?) {
                 OutlinedButton(onClick = pickPdf, Modifier.weight(1f)) { Icon(Icons.Default.PictureAsPdf, null); Spacer(Modifier.width(4.dp)); Text(stringResource(R.string.pc_ly_import_pdf)) }
             }
         }
-        PrimaryButton(stringResource(R.string.e5_save_copy), enabled = doc.changed, icon = Icons.Default.Save) {
+        PrimaryButton(stringResource(R.string.e5_save_copy), enabled = doc.changed && !busy, icon = Icons.Default.Save) {
             runner.run(processing) { doc.export(app.documents.docsDir, { d, b -> app.documents.uniqueFile(d, b) }, "layers") }
         }
     }

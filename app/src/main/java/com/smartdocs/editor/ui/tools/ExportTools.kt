@@ -25,6 +25,7 @@ import com.smartdocs.editor.ui.common.FilePickRow
 import com.smartdocs.editor.ui.common.PageRangeField
 import com.smartdocs.editor.ui.common.rememberPdfPicker
 import com.smartdocs.editor.ui.common.rememberToolRunner
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -40,6 +41,9 @@ fun PdfToImagesScreen(nav: NavHostController, uri: String?) {
     var range by remember { mutableStateOf("") }
     val pick = rememberPdfPicker { file = it.firstOrNull() }
     val processing = stringResource(R.string.processing)
+    val wrongPw = stringResource(R.string.password_wrong)
+    // audit 5 C-4: a protected input is opened with the reader's password or asks for one
+    val lock = rememberToolPassword(file) { file = null }
 
     ToolScaffold(stringResource(R.string.tool_pdf_to_images), nav, runner) {
         FilePickRow(file, stringResource(R.string.tl_input_file), pick)
@@ -48,39 +52,65 @@ fun PdfToImagesScreen(nav: NavHostController, uri: String?) {
         FieldLabel(stringResource(R.string.tl_dpi))
         ChoiceChips(listOf(72, 150, 300), dpi, { "$it" }) { dpi = it }
         PageRangeField(range) { range = it }
-        PrimaryButton(stringResource(R.string.tl_export), enabled = file != null, icon = Icons.Default.Collections) {
+        PrimaryButton(stringResource(R.string.tl_export), enabled = file != null && lock.ready, icon = Icons.Default.Collections) {
             val src = file ?: return@PrimaryButton
-            val usePng = png; val d = dpi; val spec = range
-            runner.runMany(processing) { renderPages(ctx, app.documents.docsDir, src, usePng, d, spec) }
+            val usePng = png; val d = dpi; val spec = range; val pw = lock.password
+            runner.runMany(processing) { withPasswordMessage(wrongPw) { renderPages(ctx, app.documents.docsDir, src, usePng, d, spec, pw) } }
         }
         ResultsList(runner.results, nav, "image/*")
     }
 }
 
-/** Render [spec] pages of [src] at [dpi] into `<docsDir>/<name>_images/`. */
-suspend fun renderPages(ctx: android.content.Context, docsDir: File, src: File, png: Boolean, dpi: Int, spec: String): List<File> {
-    val dir = File(docsDir, src.nameWithoutExtension + "_images").apply { mkdirs() }
-    val s = PdfSession.open(ctx, src)
+/** A directory "[base]" in [parent] that does not exist yet ("[base] (2)", …): an export never overwrites an earlier one. */
+internal fun uniqueDir(parent: File, base: String): File {
+    var d = File(parent, base); var k = 2
+    while (d.exists()) d = File(parent, "$base ($k)").also { k++ }
+    return d
+}
+
+/**
+ * Render [spec] pages of [src] at [dpi] into a new `<docsDir>/<name>_images/` folder. audit 5 C-4 / C-13: opens with
+ * [password]; each page bitmap is dropped from the session cache and recycled once written (300 dpi ≈ 35 MB a
+ * page); an earlier export is never overwritten (a new folder each time).
+ */
+suspend fun renderPages(ctx: android.content.Context, docsDir: File, src: File, png: Boolean, dpi: Int, spec: String, password: String? = null): List<File> {
+    val s = PdfSession.open(ctx, src, password)
     try {
         val pages = PdfOps.parseRange(spec, s.pageCount)
+        val dir = uniqueDir(docsDir, src.nameWithoutExtension + "_images").apply { mkdirs() }
         return pages.map { i ->
+            kotlinx.coroutines.currentCoroutineContext().ensureActive()
             val (w, h) = s.pageSize(i)
             val bmp = s.render(i, (w * dpi / 72f).toInt().coerceAtLeast(1), (h * dpi / 72f).toInt().coerceAtLeast(1))
             val out = File(dir, "page_${i + 1}." + if (png) "png" else "jpg")
-            out.outputStream().use { bmp.compress(if (png) Bitmap.CompressFormat.PNG else Bitmap.CompressFormat.JPEG, 92, it) }
+            try {
+                out.outputStream().use { bmp.compress(if (png) Bitmap.CompressFormat.PNG else Bitmap.CompressFormat.JPEG, 92, it) }
+            } finally {
+                s.invalidateCache()     // the cache must not hand out the recycled bitmap
+                bmp.recycle()
+            }
             out
         }
     } finally { s.closeAsync() }
 }
 
-/** Extract all text of a PDF (PDFium first, PdfBox as fallback). */
-suspend fun extractAllText(ctx: android.content.Context, src: File): List<String> {
-    val viaPdfium = runCatching {
-        val s = PdfSession.open(ctx, src)
+/**
+ * Extract all text of a PDF (PDFium first, PdfBox as fallback). audit 5 C-5: a missing / wrong [password] is
+ * not swallowed (it used to show "No text found"): it throws [PdfSession.Companion.PasswordRequiredException]; other
+ * failures of both readers throw too.
+ */
+suspend fun extractAllText(ctx: android.content.Context, src: File, password: String? = null): List<String> {
+    val viaPdfium = try {
+        val s = PdfSession.open(ctx, src, password)
         try { s.allText() } finally { s.closeAsync() }
-    }.getOrNull()
+    } catch (e: kotlinx.coroutines.CancellationException) { throw e
+    } catch (e: PdfSession.Companion.PasswordRequiredException) { throw e
+    } catch (e: Exception) { null }
     if (viaPdfium != null && viaPdfium.any { it.isNotBlank() }) return viaPdfium
-    return runCatching { PdfOps.extractText(src).split("\u000C") }.getOrDefault(viaPdfium ?: emptyList())
+    return try { PdfOps.extractText(src, password).split("\u000C") }
+    catch (e: kotlinx.coroutines.CancellationException) { throw e }
+    catch (e: com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException) { throw PdfSession.Companion.PasswordRequiredException() }
+    catch (e: Exception) { viaPdfium ?: throw e }
 }
 
 /** Tool "pdf_to_text": extract text, copy / share / save as .txt. */
@@ -99,18 +129,26 @@ fun PdfToTextScreen(nav: NavHostController, uri: String?) {
     val processing = stringResource(R.string.processing)
     val copied = stringResource(R.string.tl_copied)
     val needPassword = stringResource(R.string.password_enter)
+    val failed = stringResource(R.string.ttcx_text_failed)
+    // audit 5 C-4 / C-5: a protected input is opened with the reader's password or asks for one
+    val lock = rememberToolPassword(file) { file = null; text = null }
 
     fun extract() {
         val f = file ?: return
+        val pw = lock.password
         extracting = true
         scope.launch {
-            runCatching { extractAllText(ctx, f) }
-                .onSuccess { pages -> text = pages.mapIndexed { i, t -> if (pages.size > 1) "— ${i + 1} —\n$t" else t }.joinToString("\n\n") }
-                .onFailure { runner.error = if (it is PdfSession.Companion.PasswordRequiredException) needPassword else (it.message ?: it.toString()) }
-            extracting = false
+            try {
+                val pages = extractAllText(ctx, f, pw)
+                text = pages.mapIndexed { i, t -> if (pages.size > 1) "— ${i + 1} —\n$t" else t }.joinToString("\n\n")
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e
+            } catch (e: Throwable) {
+                if (e is PdfSession.Companion.PasswordRequiredException) { runner.error = needPassword; lock.reask() }
+                else runner.error = failed
+            } finally { extracting = false }
         }
     }
-    LaunchedEffect(file) { if (file != null && text == null) extract() }
+    LaunchedEffect(file, lock.ready, lock.password) { if (file != null && lock.ready && text == null) extract() }
 
     ToolScaffold(stringResource(R.string.tool_pdf_to_text), nav, runner, snackbar = snackbar, scrollable = false, actions = {
         val t = text

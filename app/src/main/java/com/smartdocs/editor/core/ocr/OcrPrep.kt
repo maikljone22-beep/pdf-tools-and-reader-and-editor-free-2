@@ -6,6 +6,7 @@ import com.smartdocs.editor.core.tools5.PixelOps
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDPage
 import com.tom_roush.pdfbox.pdmodel.PDPageContentStream
+import kotlinx.coroutines.ensureActive
 import org.json.JSONObject
 import java.io.File
 
@@ -149,6 +150,10 @@ object OcrPrep {
         return Bitmap.createBitmap(IntArray(w * h) { argbGray(g[it]) }, w, h, Bitmap.Config.ARGB_8888)
     }
 
+    /** audit 5 OCR-2: [filter] on Dispatchers.Default (callers may run on the main thread); [src] itself when nothing filters. */
+    suspend fun filterAsync(src: Bitmap, t: OcrTuning): Bitmap =
+        if (!t.filtersImage) src else kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { filter(src, t) }
+
     /** Grey values of a bitmap scaled to at most [maxSide] px. Returns (gray, w, h). */
     fun smallGray(bmp: Bitmap, maxSide: Int = 1200): Triple<IntArray, Int, Int> {
         val k = minOf(1f, maxSide.toFloat() / maxOf(bmp.width, bmp.height))
@@ -182,10 +187,13 @@ object OcrPrep {
      * Returns the corrected file and the number of pages changed. [onPage] reports progress.
      */
     suspend fun correctPages(src: File, password: String?, out: File, pages: List<Int>, t: OcrTuning,
-                             render: suspend (Int) -> Bitmap?, score: suspend (Bitmap) -> Float, onPage: (Int, Int) -> Unit = { _, _ -> }): Int {
+                             render: suspend (Int) -> Bitmap?, score: suspend (Bitmap) -> Float, onPage: (Int, Int) -> Unit = { _, _ -> }): Int =
+        // audit 5 OCR-2: rotations, de-skew measuring (CPU) on Default, the PdfBox load / save on IO — never the main thread
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
         val turns = HashMap<Int, Int>(); val angles = HashMap<Int, Float>()
         pages.forEachIndexed { n, pi ->
             onPage(n, pages.size)
+            ensureActive()
             val b = render(pi) ?: return@forEachIndexed
             try {
                 if (t.orientation) {
@@ -207,12 +215,14 @@ object OcrPrep {
                 }
             } finally { b.recycle() }
         }
-        if (turns.isEmpty() && angles.isEmpty()) return 0
-        com.smartdocs.editor.core.pdf.PdfOps.load(src, password).use { doc ->
-            angles.forEach { (pi, a) -> straighten(doc, doc.getPage(pi), a) }
-            turns.forEach { (pi, rot) -> val p = doc.getPage(pi); p.rotation = ((p.rotation + rot) % 360 + 360) % 360 }
-            doc.save(out)
+        if (turns.isEmpty() && angles.isEmpty()) return@withContext 0
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            com.smartdocs.editor.core.pdf.PdfOps.load(src, password).use { doc ->
+                angles.forEach { (pi, a) -> straighten(doc, doc.getPage(pi), a) }
+                turns.forEach { (pi, rot) -> val p = doc.getPage(pi); p.rotation = ((p.rotation + rot) % 360 + 360) % 360 }
+                doc.save(out)
+            }
         }
-        return (turns.keys + angles.keys).size
+        (turns.keys + angles.keys).size
     }
 }

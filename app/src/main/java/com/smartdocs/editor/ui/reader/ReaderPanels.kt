@@ -249,13 +249,21 @@ fun kindLabel(k: AnnotKind): String = stringResource(
 @Composable
 private fun ThumbnailsPanel(state: ReaderState, onJump: (Int) -> Unit) {
     val session = state.session ?: return
-    LazyVerticalGrid(GridCells.Adaptive(96.dp), Modifier.fillMaxWidth().heightIn(max = 560.dp), contentPadding = PaddingValues(12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    // audit 5 G-15: opens at the current page, shows page labels, and keeps rendered thumbnails while scrolling
+    val grid = androidx.compose.foundation.lazy.grid.rememberLazyGridState(initialFirstVisibleItemIndex = state.currentPage.coerceIn(0, (state.pageCount - 1).coerceAtLeast(0)))
+    val labels = com.smartdocs.editor.ui.edit5.rememberPageLabels(state)
+    val cache = remember(session, state.renderVersion, state.nightMode) {
+        object : android.util.LruCache<Int, Bitmap>(12 shl 20) { override fun sizeOf(key: Int, value: Bitmap): Int = value.byteCount }
+    }
+    LazyVerticalGrid(GridCells.Adaptive(96.dp), Modifier.fillMaxWidth().heightIn(max = 560.dp), state = grid, contentPadding = PaddingValues(12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         items((0 until state.pageCount).toList(), key = { it }) { page ->
             // keyed on the session too: after a save the old session is closed and a fresh one replaces it
-            val bmp by produceState<Bitmap?>(null, page, session, state.renderVersion, state.nightMode) {
+            val bmp by produceState<Bitmap?>(cache.get(page), page, session, state.renderVersion, state.nightMode) {
+                if (value != null) return@produceState
                 if (session.isClosed || page >= session.pageCount) return@produceState
                 val (w, h) = state.pageSize(page)
                 value = runCatching { session.render(page, 160, (160 * h / w).toInt().coerceAtLeast(1), state.nightMode, true) }.getOrNull()
+                    ?.also { cache.put(page, it) }
             }
             val current = page == state.currentPage
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable { onJump(page) }) {
@@ -266,7 +274,9 @@ private fun ThumbnailsPanel(state: ReaderState, onJump: (Int) -> Unit) {
                 ) {
                     bmp?.let { Image(it.asImageBitmap(), null, Modifier.fillMaxSize().pageTint(state.pageColor, state.nightMode), contentScale = ContentScale.Fit) } ?: CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)   // tab-view-core V-38
                 }
-                Text((page + 1).toString(), style = MaterialTheme.typography.labelMedium, color = if (current) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                val label = labels?.getOrNull(page)?.takeIf { it.isNotBlank() && it != (page + 1).toString() }
+                Text(if (label != null) "$label (${page + 1})" else (page + 1).toString(), style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    color = if (current) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }

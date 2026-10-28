@@ -121,6 +121,10 @@ private fun NpfPanelBody(state: ReaderState, panel: NpfPanel, onJump: (Int) -> U
         }
     }
     val nav = com.smartdocs.editor.ui.view5.V5State.of(state).env?.nav
+    // audit 5 T-06 / OCR-7: the panel buttons open their tool like the Tools tab does (actions.navigateTool): the
+    // tool's restriction check, pending edits saved first, one undo step on return — never a bare nav.navigate
+    val navigateTool = com.smartdocs.editor.ui.view5.V5State.of(state).env?.actions?.navigateTool
+    fun openTool(id: String) { if (navigateTool != null) navigateTool(id) else nav?.navigate(Routes.tool(id, state.fileUri)) }
     Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
         message?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
         when (panel) {
@@ -132,7 +136,7 @@ private fun NpfPanelBody(state: ReaderState, panel: NpfPanel, onJump: (Int) -> U
                     }
                 }
                 // Nitro 18 / Foxit 22: properties, order, merge, delete, import … in the Layers tool
-                androidx.compose.material3.TextButton(onClick = { nav?.navigate(Routes.tool("e5_layers", state.fileUri)) }) { Text(stringResource(R.string.pc_ly_more)) }
+                androidx.compose.material3.TextButton(onClick = { openTool("e5_layers") }) { Text(stringResource(R.string.pc_ly_more)) }
             }
             NpfPanel.SECURITY -> (data as? NpfDocPanels.Security)?.let { s ->
                 Column {
@@ -191,7 +195,7 @@ private fun NpfPanelBody(state: ReaderState, panel: NpfPanel, onJump: (Int) -> U
                     NpfRow("PDF/A", s.pdfa ?: "—"); NpfRow("PDF/UA", s.pdfua ?: "—"); NpfRow("PDF/X", s.pdfx ?: "—"); NpfRow("PDF/E", s.pdfe ?: "—")
                     NpfRow(stringResource(R.string.npf_tagged), stringResource(if (s.tagged) R.string.npf_yes else R.string.npf_no))
                     if (s.pdfa != null) Text(stringResource(R.string.npf_pdfa_claim), style = MaterialTheme.typography.bodySmall)
-                    OutlinedButton(onClick = { nav?.navigate(Routes.tool("pdfa", state.fileUri)) }) { Text(stringResource(R.string.npf_open_preflight)) }
+                    OutlinedButton(onClick = { openTool("pdfa") }) { Text(stringResource(R.string.npf_open_preflight)) }
                 }
             } ?: NpfLoading()
             NpfPanel.ACCESS -> {
@@ -200,14 +204,14 @@ private fun NpfPanelBody(state: ReaderState, panel: NpfPanel, onJump: (Int) -> U
                     NpfRow(stringResource(R.string.npf_acc_pass), (counts[com.smartdocs.editor.core.tools5.AccStatus.PASS] ?: 0).toString())
                     NpfRow(stringResource(R.string.npf_acc_fail), (counts[com.smartdocs.editor.core.tools5.AccStatus.FAIL] ?: 0).toString())
                     NpfRow(stringResource(R.string.npf_acc_manual), (counts[com.smartdocs.editor.core.tools5.AccStatus.MANUAL] ?: 0).toString())
-                    OutlinedButton(onClick = { nav?.navigate(Routes.tool("accessibility", state.fileUri)) }) { Text(stringResource(R.string.npf_acc_open)) }
+                    OutlinedButton(onClick = { openTool("accessibility") }) { Text(stringResource(R.string.npf_acc_open)) }
                 }
             }
-            NpfPanel.OCR -> OcrReport(state, onJump, onOcr = { nav?.navigate(Routes.tool("ocr", state.fileUri)) })
+            NpfPanel.OCR -> OcrReport(state, onJump, onOcr = { openTool("ocr") })
             NpfPanel.CONNECTED -> Column {
                 val c = state.connected
                 Text(stringResource(if (c == null) R.string.npf_conn_none else R.string.npf_conn_yes), style = MaterialTheme.typography.bodyMedium)
-                OutlinedButton(onClick = { nav?.navigate(Routes.tool("connected", state.fileUri)) }) { Text(stringResource(R.string.npf_conn_open)) }
+                OutlinedButton(onClick = { openTool("connected") }) { Text(stringResource(R.string.npf_conn_open)) }
             }
             NpfPanel.INFO -> Unit
         }

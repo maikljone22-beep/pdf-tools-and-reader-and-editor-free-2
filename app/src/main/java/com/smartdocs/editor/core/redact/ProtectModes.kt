@@ -170,7 +170,10 @@ class ScopedSecurityHandler(policy: ScopedProtectionPolicy) : SecurityHandler() 
         /** R4 with /EncryptMetadata false: file key and /U from the public algorithms with encryptMetadata = false. */
         private fun recomputeR4(std: StandardSecurityHandler, p: StandardProtectionPolicy, e: PDEncryption, doc: PDDocument): ByteArray {
             val id = (doc.document.documentID?.getObject(0) as? COSString)?.bytes ?: ByteArray(0)
-            val user = p.userPassword.orEmpty().toByteArray(Charsets.ISO_8859_1)
+            // audit 5 P-2: revision 4 squeezes the password through ISO-8859-1; never let '?' replace characters silently
+            val userPw = p.userPassword.orEmpty()
+            if (!Charsets.ISO_8859_1.newEncoder().canEncode(userPw) || !Charsets.ISO_8859_1.newEncoder().canEncode(p.ownerPassword.orEmpty())) throw NonLatinPasswordException()
+            val user = userPw.toByteArray(Charsets.ISO_8859_1)
             val len = e.length / 8
             val o = e.ownerKey
             val u = std.computeUserPassword(user, o, e.permissions, id, 4, len, false)

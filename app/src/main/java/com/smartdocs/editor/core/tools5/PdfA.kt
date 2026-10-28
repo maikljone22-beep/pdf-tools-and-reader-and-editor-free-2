@@ -31,7 +31,11 @@ class PreflightReport(val facts: PdfFacts, val findings: List<Finding>) {
 }
 
 data class PdfAOptions(
-    /** Pages using fonts that are not embedded (or DeviceCMYK without a CMYK intent) are replaced by a 200 dpi picture. */
+    /**
+     * Pages using fonts that are not embedded (or DeviceCMYK without a CMYK intent) are replaced by a 200 dpi picture.
+     * audit 5 A-02: the PDF/A screen starts with this OFF and lists the pages ([PdfA.rasterPages]); the default here
+     * stays for the other callers (convert hub, recipes), whose behaviour is not changed.
+     */
     val rasterizeProblemPages: Boolean = true,
     /** Also rasterise pages with transparency (not required by PDF/A-2b; for strict PDF/A-1-style consumers). */
     val flattenTransparency: Boolean = false,
@@ -153,14 +157,11 @@ object PdfA {
         val doc = if (password.isNullOrEmpty()) PDDocument.load(src) else PDDocument.load(src, password)
         doc.use { d ->
             val before = PdfInspect.inspect(d)
+            // a PDF/A file cannot be encrypted: the protection may only be dropped with owner access (audit 5 E-3 rule)
+            if (d.isEncrypted && d.currentAccessPermission?.isOwnerPermission != true) throw OwnerRequired()
             if (d.isEncrypted) { d.isAllSecurityToBeRemoved = true; fixed += "encrypted" }
             // pages to rasterise
-            val bad = HashSet<Int>()
-            if (opt.rasterizeProblemPages && before.fontsNotEmbedded.isNotEmpty()) bad += pagesWithFonts(d, before.fontsNotEmbedded.map { it.name }.toSet())
-            if (opt.rasterizeProblemPages) bad += before.cmykPages
-            if (opt.flattenTransparency || opt.level.strict1) bad += before.transparencyPages
-            // "u" / "a" levels: text must map to Unicode; pages with fonts that do not are pictures afterwards
-            if (opt.rasterizeProblemPages && opt.level.needsUnicode && before.fontsWithoutUnicode.isNotEmpty()) bad += pagesWithFonts(d, before.fontsWithoutUnicode.map { it.name }.toSet())
+            val bad = badPages(d, before, opt)
             if (bad.isNotEmpty()) {
                 rasterize(ctx, src, password, d, bad, opt.dpi)
                 if (before.fontsNotEmbedded.isNotEmpty()) fixed += "fonts"
@@ -238,6 +239,22 @@ object PdfA {
     }
 
     /** Pages whose resources (directly or in forms) use one of [fontNames]. */
+    /** The PDF/A result would have to drop the protection of a file opened without owner access. */
+    class OwnerRequired : Exception("owner password required")
+
+    private fun badPages(d: PDDocument, before: PdfFacts, opt: PdfAOptions): Set<Int> {
+        val bad = HashSet<Int>()
+        if (opt.rasterizeProblemPages && before.fontsNotEmbedded.isNotEmpty()) bad += pagesWithFonts(d, before.fontsNotEmbedded.map { it.name }.toSet())
+        if (opt.rasterizeProblemPages) bad += before.cmykPages
+        if (opt.flattenTransparency || opt.level.strict1) bad += before.transparencyPages
+        // "u" / "a" levels: text must map to Unicode; pages with fonts that do not are pictures afterwards
+        if (opt.rasterizeProblemPages && opt.level.needsUnicode && before.fontsWithoutUnicode.isNotEmpty()) bad += pagesWithFonts(d, before.fontsWithoutUnicode.map { it.name }.toSet())
+        return bad
+    }
+
+    /** audit 5 A-02: the pages (zero-based, sorted) that [convert] with [opt] would replace by pictures. */
+    fun rasterPages(d: PDDocument, opt: PdfAOptions): List<Int> = badPages(d, PdfInspect.inspect(d), opt).sorted()
+
     private fun pagesWithFonts(doc: PDDocument, fontNames: Set<String>): Set<Int> {
         val res = HashSet<Int>()
         fun uses(r: PDResources?, depth: Int): Boolean {

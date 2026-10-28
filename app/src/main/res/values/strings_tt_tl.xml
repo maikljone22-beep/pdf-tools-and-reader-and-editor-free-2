@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- audit 5 (reader Tools / Pages tabs): Tools tab groups and names -->
+    <string name="tttl_grp_pages">الصفحات</string>
+    <string name="tttl_grp_protect">الحماية</string>
+    <string name="tttl_grp_text">النص وOCR</string>
+    <string name="tttl_grp_edit">إضافات</string>
+    <string name="tttl_grp_convert">تحويل</string>
+    <string name="tttl_grp_more">المزيد</string>
+    <string name="tttl_blank_after">صفحة فارغة بعد الحالية</string>
+    <string name="tttl_e5_organize">تنظيم متقدم</string>
+    <string name="tttl_pr_owner_same">يجب أن تختلف كلمة مرور المالك عن كلمة مرور الفتح، وإلا يستطيع كل من يفتح الملف رفع القيود</string>
+    <string name="tttl_pr_owner_hint">اتركها فارغة لتوليد كلمة مرور مالك عشوائية تُعرض لك بعد الحماية</string>
+    <string name="tttl_pr_owner_title">كلمة مرور المالك</string>
+    <string name="tttl_pr_owner_text">لم تُدخل كلمة مرور للمالك فأنشأنا واحدة عشوائية. احفظها: هي وحدها ترفع قيود الطباعة والنسخ والتعديل عن هذا الملف.</string>
+    <string name="tttl_pr_owner_copied">نُسخت كلمة مرور المالك</string>
+    <string name="tttl_copy">نسخ</string>
+    <string name="tttl_out_of_memory">الملف كبير على ذاكرة الجهاز. أغلق تطبيقات أخرى أو جرّب ملفًا أصغر.</string>
+</resources>

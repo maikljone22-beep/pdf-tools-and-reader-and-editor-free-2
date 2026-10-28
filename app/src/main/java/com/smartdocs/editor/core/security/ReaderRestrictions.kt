@@ -103,9 +103,9 @@ object ReaderRestrictions {
     fun actionForTool(id: String): DocAction? = when (id) {
         in DOCUMENT_FREE -> null
         "organize", "merge", "split" -> DocAction.ASSEMBLE
-        // tab-view-core E-11: Edit tools that insert, remove, reorder or split pages need page assembly, not modify
-        "e5_organize", "e5_page_ops", "e5_insert_blank", "e5_split_page", "e5_replace_pages", "e5_copy_pages", "e5_interleave",
-        "e5_mix", "e5_impose", "e5_split_bookmarks", "e5_smart_split", "e5_templates" -> DocAction.ASSEMBLE
+        // audit 5 E-3: page tools that build new documents or rearrange pages (their outputs keep the protection)
+        "e5_organize", "e5_page_ops", "e5_split_bookmarks", "e5_smart_split", "e5_split_page", "e5_mix", "e5_interleave",
+        "e5_copy_pages", "e5_replace_pages", "e5_insert_blank", "e5_impose" -> DocAction.ASSEMBLE
         "forms", "digital_sign" -> DocAction.FILL_FORMS
         "search_highlight" -> DocAction.ANNOTATE
         "protect_advanced", "protect", "cert_protect" -> DocAction.CHANGE_SECURITY

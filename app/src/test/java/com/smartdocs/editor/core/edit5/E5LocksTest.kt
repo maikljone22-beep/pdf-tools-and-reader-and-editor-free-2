@@ -93,7 +93,14 @@ class E5LocksTest {
             assertTrue(d.isEncrypted)
             assertFalse(d.currentAccessPermission.canPrint())        // permissions copied from the source
         }
-        assertEquals(LockState.OPEN, E5Locks.probeNow(open, null))
+        // audit 5 E-3: opened with the USER password, "remove protection" is not allowed: the output stays protected
+        assertEquals(LockState.NEEDS_PASSWORD, E5Locks.probeNow(open, null))
+        // with the owner password it is
+        val open2 = tmp("open2")
+        PDDocument.load(src, "owner").use { s ->
+            PDDocument().use { nd -> nd.addPage(PDPage(PDRectangle.A5)); E5Locks.protectLike(nd, s, "owner", OutProtection.REMOVE); nd.save(open2) }
+        }
+        assertEquals(LockState.OPEN, E5Locks.probeNow(open2, null))
     }
 
     @Test fun keepProtectionOfEditedSource() {
@@ -111,13 +118,21 @@ class E5LocksTest {
     @Test fun removeProtectionFromEditedSource() {
         val src = locked("u3")
         val out = tmp("out")
-        PDDocument.load(src, "u3").use { d ->
-            // what PdfOps.load does for an encrypted file, then the REMOVE choice
-            d.protect(StandardProtectionPolicy("u3", "u3", d.currentAccessPermission))
+        PDDocument.load(src, "owner").use { d ->
+            // what PdfOps.load does for an encrypted file, then the REMOVE choice (owner access: allowed)
+            d.protect(StandardProtectionPolicy("owner", "u3", d.currentAccessPermission))
             E5Locks.applyTo(d, OutProtection.REMOVE)
             d.save(out)
         }
         assertEquals(LockState.OPEN, E5Locks.probeNow(out, null))
+        // audit 5 E-3: opened with the user password, REMOVE keeps the protection
+        val out2 = tmp("out2")
+        PDDocument.load(src, "u3").use { d ->
+            d.protect(StandardProtectionPolicy("u3", "u3", d.currentAccessPermission))
+            E5Locks.applyTo(d, OutProtection.REMOVE, "u3")
+            d.save(out2)
+        }
+        assertEquals(LockState.NEEDS_PASSWORD, E5Locks.probeNow(out2, null))
     }
 
     // ---------------- live watermark script (pure) ----------------

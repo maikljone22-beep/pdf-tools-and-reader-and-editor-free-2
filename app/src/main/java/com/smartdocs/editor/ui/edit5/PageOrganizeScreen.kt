@@ -35,6 +35,7 @@ import com.smartdocs.editor.ui.tools.PrimaryButton
 import com.smartdocs.editor.ui.tools.ResultsList
 import com.smartdocs.editor.ui.tools.ToolScaffold
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 
@@ -100,8 +101,12 @@ fun PageOrganizeScreen(nav: NavHostController, uri: String?, initial: OrgOp = Or
     }
     val processing = stringResource(R.string.processing)
     val n = doc.pageCount
+    // audit 5 E-11: locked files to insert / mix ask for their password (once per file) before the operation runs
+    val unlocker = rememberE5Unlocker()
+    val scope = rememberCoroutineScope()
     ToolScaffold(stringResource(R.string.pc_organize_title), nav, runner) {
         E5FileRow(doc)
+        E5UnlockDialog(unlocker)
         ChoiceChips(OrgOp.values().toList(), op, { stringResource(orgLabel(it)) }) { op = it }
         val needsRange = op in setOf(OrgOp.DELETE, OrgOp.ROTATE, OrgOp.REVERSE, OrgOp.EXTRACT, OrgOp.INSERT_INTO, OrgOp.FLATTEN, OrgOp.MOVE)
         E5Section(stringResource(orgLabel(op))) {
@@ -186,6 +191,24 @@ fun PageOrganizeScreen(nav: NavHostController, uri: String?, initial: OrgOp = Or
             val srcs = sources.toList(); val rev = reversed.toList()
             val base = doc.source?.nameWithoutExtension ?: "document"
             val unique: (File, String) -> File = { d, s -> app.documents.uniqueFile(d, s) }
+            // audit 5 E-15: a typed range that selects no page is an error (not a "success" with an unchanged copy)
+            if (needsRange && !(o == OrgOp.EXTRACT && md == PageOrganize.ExtractMode.GROUPS) && rg.isNotBlank() && sel.isEmpty()) {
+                runner.error = ctx.getString(R.string.tte5_bad_range); return@PrimaryButton
+            }
+            /** Runs [block] with the passwords of the source files once every locked one is unlocked (cancelled files leave the list). */
+            fun withSources(block: ((File) -> String?) -> Unit) {
+                scope.launch {
+                    val skipped = runCatching { unlocker.unlockAll(srcs.map { it.file }) }.getOrElse { runner.error = ctx.getString(R.string.tte5_open_failed); return@launch }
+                    if (skipped.isNotEmpty()) {
+                        val gone = skipped.map { it.absolutePath }.toSet()
+                        val keep = sources.indices.filter { sources[it].file.absolutePath !in gone }
+                        val ks = keep.map { sources[it] }; val kr = keep.map { reversed.getOrElse(it) { false } }
+                        sources.clear(); sources.addAll(ks); reversed.clear(); reversed.addAll(kr)
+                        return@launch
+                    }
+                    block(unlocker.book.lookup())
+                }
+            }
             fun edit(suffix: String, block: suspend (File, File, String?) -> Unit) = runner.run(processing) {
                 doc.apply(app.documents.tempDir, block); doc.export(app.documents.docsDir, unique, suffix)
             }
@@ -212,17 +235,17 @@ fun PageOrganizeScreen(nav: NavHostController, uri: String?, initial: OrgOp = Or
                     doc.export(app.documents.docsDir, unique, "by_bookmarks")
                 }
                 OrgOp.THUMBS -> edit(if (em) "thumbs" else "no_thumbs") { s, out, p -> if (em) PageOrganize.embedThumbnails(ctx, s, out, p) else PageOrganize.removeThumbnails(s, out, p) }
-                OrgOp.INSERT -> edit("inserted") { s, out, p ->
+                OrgOp.INSERT -> withSources { pwOf -> edit("inserted") { s, out, p ->
                     // insert the files in list order, one after the other, at the same place
                     var cur = s; var at = bf
                     srcs.forEachIndexed { k, src ->
                         val dst = if (k == srcs.lastIndex) out else app.documents.newTemp("ins_$k")
-                        PageOrganize.insertFile(cur, dst, p, src.file, null, at, kb, ka, src.name.substringBeforeLast('.'))
-                        at += PdfOps.pageCount(src.file, null)
+                        PageOrganize.insertFile(cur, dst, p, src.file, pwOf(src.file), at, kb, ka, src.name.substringBeforeLast('.'))
+                        at += PdfOps.pageCount(src.file, pwOf(src.file))
                         if (cur != s) cur.delete()
                         cur = dst
                     }
-                }
+                } }
                 OrgOp.EXTRACT -> runner.runMany(processing) {
                     val w = doc.work!!; val pw = doc.password
                     val groups = when (md) { PageOrganize.ExtractMode.ONE -> listOf(sel); PageOrganize.ExtractMode.GROUPS -> PageOrganize.rangeGroups(rg, n); PageOrganize.ExtractMode.EACH -> sel.map { listOf(it) } }
@@ -242,14 +265,14 @@ fun PageOrganizeScreen(nav: NavHostController, uri: String?, initial: OrgOp = Or
                     require(groups.isNotEmpty()) { ctx.getString(R.string.pc_err_range) }
                     PageOrganize.writeParts(doc.work!!, doc.password, groups, app.documents.docsDir, base, nm, kn, unique)
                 }
-                OrgOp.INSERT_INTO -> runner.runMany(processing) {
-                    PageOrganize.insertInto(doc.work!!, doc.password, sel, srcs.map { it.file to null }, ip, bf + 1) { t -> unique(app.documents.docsDir, t.nameWithoutExtension + "_with_" + base) }
-                }
-                OrgOp.MIX -> runner.run(processing) {
-                    val all = listOf(doc.work!! to doc.password) + srcs.map { it.file to null }
+                OrgOp.INSERT_INTO -> withSources { pwOf -> runner.runMany(processing) {
+                    PageOrganize.insertInto(doc.work!!, doc.password, sel, srcs.map { it.file to pwOf(it.file) }, ip, bf + 1) { t -> unique(app.documents.docsDir, t.nameWithoutExtension + "_with_" + base) }
+                } }
+                OrgOp.MIX -> withSources { pwOf -> runner.run(processing) {
+                    val all = listOf(doc.work!! to doc.password) + srcs.map { it.file to pwOf(it.file) }
                     val out = unique(app.documents.docsDir, base + "_mixed")
                     PageOrganize.mix(all, listOf(false) + rev, out); out
-                }
+                } }
             }
         }
         ResultsList(runner.results, nav, "application/pdf")

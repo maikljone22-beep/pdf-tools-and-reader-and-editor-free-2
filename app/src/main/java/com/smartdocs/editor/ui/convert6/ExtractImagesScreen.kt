@@ -8,6 +8,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
@@ -27,6 +28,8 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
@@ -74,17 +77,21 @@ fun ExtractImagesScreen(nav: NavHostController, uri: String?) {
     var selected by remember { mutableStateOf<Set<Int>>(emptySet()) }
     var overrides by remember { mutableStateOf<Map<Int, String>>(emptyMap()) }
     var renaming by remember { mutableStateOf<Int?>(null) }
-    var password by remember { mutableStateOf("") }
+    // audit 5 T-09: start from the reader's password for the file
+    var password by remember { mutableStateOf(com.smartdocs.editor.core.pdf.SessionPasswords.get(file).orEmpty()) }
     val job = rememberT5Job()
-    val pick = rememberAnyFilePicker(false, FileKind6.mimes(EXTRACT_KINDS)) { fs -> fs.firstOrNull()?.let { file = it; items = emptyList() } }
+    val pick = rememberAnyFilePicker(false, FileKind6.mimes(EXTRACT_KINDS)) { fs -> fs.firstOrNull()?.let { file = it; items = emptyList(); password = com.smartdocs.editor.core.pdf.SessionPasswords.get(it).orEmpty() } }
     val docName = file?.nameWithoutExtension ?: "images"
+    // audit 5 C-17 / C-23 (verified): ImageExtract6.names sanitises renamed entries (ImageNaming.sanitize: no "/" in ZIP
+    // paths) and makes every name unique, case-insensitively (ImageNaming.dedupe: no duplicate ZIP entry)
     val names = remember(items, mode, overrides, docName) { ImageExtract6.names(items, mode, docName, overrides) }
     fun chosen(): List<Pair<File, String>> = items.indices.filter { it in selected }.map { items[it].file to names[it] }
+    val failedMsg = stringResource(R.string.ttcx_save_failed)
 
     val tree = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { t ->
         if (t != null) scope.launch {
-            val n = Cv6Save.toTree(ctx, t, chosen())
-            snackbar.showSnackbar(ctx.getString(R.string.cv6_ex_saved_n, n))
+            val n = try { Cv6Save.toTree(ctx, t, chosen()) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Throwable) { -1 }
+            snackbar.showSnackbar(if (n < 0) failedMsg else ctx.getString(R.string.cv6_ex_saved_n, n))
         }
     }
 
@@ -92,12 +99,20 @@ fun ExtractImagesScreen(nav: NavHostController, uri: String?) {
         val f = file ?: return
         val r = range; val m = minSide; val pw = password.ifBlank { null }
         job.launch(ctx.getString(R.string.cv6_ex_running)) {
-            val work = File(app.documents.tempDir, "cv6_extract").also { it.deleteRecursively(); it.mkdirs() }
-            val kind = FileKind6.of(f)
-            val list = if (kind == Kind6.PDF) {
-                val pages = if (r.isBlank()) emptyList() else PdfOps.parseRange(r, PdfOps.pageCount(f, pw))
-                ImageExtract6.fromPdf(f, pw, pages, m, work) { d, t -> step(d, t) }
-            } else ImageExtract6.fromPackage(f, kind, m, work)
+            // audit 5 C-18: the work folder is cleared off the main thread; password failures get a localized message
+            val list = try {
+                withContext(Dispatchers.IO) {
+                    val work = File(app.documents.tempDir, "cv6_extract").also { it.deleteRecursively(); it.mkdirs() }
+                    val kind = FileKind6.of(f)
+                    if (kind == Kind6.PDF) {
+                        val pages = if (r.isBlank()) emptyList() else PdfOps.parseRange(r, PdfOps.pageCount(f, pw))
+                        ImageExtract6.fromPdf(f, pw, pages, m, work) { d, t -> step(d, t) }
+                    } else ImageExtract6.fromPackage(f, kind, m, work)
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e
+            } catch (e: Exception) {
+                throw IllegalStateException(ctx.getString(if (com.smartdocs.editor.ui.tools.isPasswordError(e)) R.string.password_wrong else R.string.ttcx_extract_failed), e)
+            }
             items = list; selected = list.indices.toSet(); overrides = emptyMap()
             if (list.isEmpty()) error = ctx.getString(R.string.cv6_ex_none)
         }
@@ -112,21 +127,27 @@ fun ExtractImagesScreen(nav: NavHostController, uri: String?) {
                     val any = selected.isNotEmpty()
                     Button(enabled = any, onClick = {
                         job.launch(ctx.getString(R.string.processing)) {
-                            result = Cv6Save.zip(chosen(), app.documents.uniqueFile(app.documents.docsDir, docName + "_images", "zip"))
+                            val out = app.documents.uniqueFile(app.documents.docsDir, docName + "_images", "zip")
+                            // audit 5 C-17: a failed ZIP (full disk) leaves no partial file and a localized message
+                            result = try { Cv6Save.zip(chosen(), out) } catch (e: java.io.IOException) { out.delete(); throw IllegalStateException(failedMsg, e) }
                         }
                     }) { Icon(Icons.Default.FolderZip, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.cv6_ex_zip)) }
                     OutlinedButton(enabled = any, onClick = { runCatching { tree.launch(null) } }) { Icon(Icons.Default.Folder, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.cv6_ex_folder)) }
+                    // audit 5 C-17: a full disk / failed copy shows a message instead of crashing the app
                     OutlinedButton(enabled = any, onClick = {
                         scope.launch {
-                            val files = Cv6Save.named(chosen(), File(app.documents.tempDir, "cv6_share"))
-                            runCatching { ctx.startActivity(Intent.createChooser(app.documents.shareIntent(files, "image/*"), null)) }
+                            try {
+                                val files = Cv6Save.named(chosen(), File(app.documents.tempDir, "cv6_share"))
+                                runCatching { ctx.startActivity(Intent.createChooser(app.documents.shareIntent(files, "image/*"), null)) }
+                            } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Throwable) { snackbar.showSnackbar(failedMsg) }
                         }
                     }) { Icon(Icons.Default.Share, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.share)) }
                     OutlinedButton(enabled = any, onClick = {
                         scope.launch {
-                            val list = chosen().filter { Cv6Save.galleryOk(it.first.extension) }
-                            val n = Cv6Save.toGallery(ctx, list)
-                            snackbar.showSnackbar(ctx.getString(R.string.cv6_ex_gallery_n, n))
+                            val n = try {
+                                Cv6Save.toGallery(ctx, chosen().filter { Cv6Save.galleryOk(it.first.extension) })
+                            } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Throwable) { -1 }
+                            snackbar.showSnackbar(if (n < 0) failedMsg else ctx.getString(R.string.cv6_ex_gallery_n, n))
                         }
                     }) { Icon(Icons.Default.PhotoLibrary, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.cv6_ex_gallery)) }
                 }
@@ -192,11 +213,14 @@ private fun ImageCell(e: Extracted, name: String, checked: Boolean, onToggle: ()
     Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceContainerLow,
         border = BorderStroke(if (checked) 2.dp else 1.dp, if (checked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))) {
         Column {
-            Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)).background(MaterialTheme.colorScheme.surfaceContainerHighest).clickable(onClick = onToggle), contentAlignment = Alignment.Center) {
+            // audit 5 C-22: the thumbnail is one toggleable element named after the image, with the checkbox state
+            Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)).background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                .toggleable(value = checked, role = androidx.compose.ui.semantics.Role.Checkbox, onValueChange = { onToggle() })
+                .semantics { contentDescription = name }, contentAlignment = Alignment.Center) {
                 val b = thumb
                 if (b != null) Image(b.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
                 else Icon(Icons.Default.Image, null, Modifier.size(40.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                Checkbox(checked, { onToggle() }, Modifier.align(Alignment.TopEnd))
+                Checkbox(checked, null, Modifier.align(Alignment.TopEnd))
                 Text(e.ext.uppercase(), style = MaterialTheme.typography.labelSmall, modifier = Modifier.align(Alignment.BottomStart).padding(6.dp)
                     .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.8f), RoundedCornerShape(6.dp)).padding(horizontal = 4.dp))
             }

@@ -135,7 +135,7 @@ fun BatesScreen(nav: NavHostController, uri: String?) {
             SwitchRow(stringResource(R.string.nt_bates_log), writeLog) { writeLog = it }
             SwitchRow(stringResource(R.string.nt_opt_replace_same), replaceSame) { replaceSame = it }
         }
-        if (files.any { unlocker.isLocked(it) }) E5Section(stringResource(R.string.e5_lock_section)) { ProtectionChoice(protection) { protection = it } }
+        if (files.any { unlocker.isLocked(it) }) E5Section(stringResource(R.string.e5_lock_section)) { ProtectionChoice(protection, files.filter { unlocker.isLocked(it) }.all { unlocker.canRemove(it) }) { protection = it } }
         E5UnlockDialog(unlocker)
         PrimaryButton(stringResource(R.string.e5_bates_apply), enabled = files.isNotEmpty(), icon = Icons.Default.Numbers) {
             val list = files; val sp = spec; val lay = layout; val pr = protection; val nm = naming; val log = writeLog

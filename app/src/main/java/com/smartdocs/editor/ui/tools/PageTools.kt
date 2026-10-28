@@ -35,6 +35,9 @@ fun CompressScreen(nav: NavHostController, uri: String?) {
     val processing = stringResource(R.string.processing)
     val before = file?.length() ?: 0L
     val extra = runner.result?.let { stringResource(R.string.size_before_after, DocumentRepository.formatSize(before), DocumentRepository.formatSize(it.length())) }
+    val wrongPw = stringResource(R.string.password_wrong)
+    // audit 5 T-09 / C-4: the reader's password, or a prompt
+    val lock = rememberToolPassword(file) { file = null }
 
     ToolScaffold(stringResource(R.string.tool_compress), nav, runner, resultExtra = extra) {
         FilePickRow(file, stringResource(R.string.tl_input_file), pick)
@@ -44,14 +47,15 @@ fun CompressScreen(nav: NavHostController, uri: String?) {
             when (it) { CompressPreset.LOW -> stringResource(R.string.compress_low); CompressPreset.MEDIUM -> stringResource(R.string.compress_medium); CompressPreset.HIGH -> stringResource(R.string.compress_high) }
         }) { preset = it }
         Text(stringResource(R.string.tl_compress_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        PrimaryButton(stringResource(R.string.tl_compress), enabled = file != null, icon = Icons.Default.Compress) {
+        PrimaryButton(stringResource(R.string.tl_compress), enabled = file != null && lock.ready, icon = Icons.Default.Compress) {
             val src = file ?: return@PrimaryButton
-            val p = preset
-            runner.run(processing) {
+            val p = preset; val pw = lock.password
+            runner.run(processing) { withPasswordMessage(wrongPw) {
                 val out = app.documents.uniqueFile(app.documents.docsDir, outName(src, "compressed"))
-                PdfOps.compress(src, out, p.quality, p.maxDim)
-                out
-            }
+                try { PdfOps.compress(src, out, p.quality, p.maxDim, pw) } catch (e: Exception) { out.delete(); throw e }
+                // audit 5 E-1 / C-2: the result is the source transformed, so "Save in original" may replace it
+                com.smartdocs.editor.core.pdf.ToolOutputs.record(out, src)
+            } }
         }
     }
 }
@@ -69,6 +73,8 @@ fun PageNumbersScreen(nav: NavHostController, uri: String?) {
     var arabicDigits by remember { mutableStateOf(false) }
     val pick = rememberPdfPicker { file = it.firstOrNull() }
     val processing = stringResource(R.string.processing)
+    val wrongPw = stringResource(R.string.password_wrong)
+    val lock = rememberToolPassword(file) { file = null }
 
     ToolScaffold(stringResource(R.string.tool_page_numbers), nav, runner) {
         FilePickRow(file, stringResource(R.string.tl_input_file), pick)
@@ -86,14 +92,14 @@ fun PageNumbersScreen(nav: NavHostController, uri: String?) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(stringResource(R.string.tl_arabic_digits), Modifier.weight(1f)); Switch(arabicDigits, { arabicDigits = it })
         }
-        PrimaryButton(stringResource(R.string.tl_add_numbers), enabled = file != null, icon = Icons.Default.FormatListNumbered) {
+        PrimaryButton(stringResource(R.string.tl_add_numbers), enabled = file != null && lock.ready, icon = Icons.Default.FormatListNumbered) {
             val src = file ?: return@PrimaryButton
-            val pos = position; val st = start.toIntOrNull() ?: 1; val fs = fontSize; val ar = arabicDigits
-            runner.run(processing) {
+            val pos = position; val st = start.toIntOrNull() ?: 1; val fs = fontSize; val ar = arabicDigits; val pw = lock.password
+            runner.run(processing) { withPasswordMessage(wrongPw) {
                 val out = app.documents.uniqueFile(app.documents.docsDir, outName(src, "numbered"))
-                PdfOps.addPageNumbers(ctx, src, out, pos, st, fs, ar)
-                out
-            }
+                PdfOps.addPageNumbers(ctx, src, out, pos, st, fs, ar, pw)
+                com.smartdocs.editor.core.pdf.ToolOutputs.record(out, src)
+            } }
         }
     }
 }
@@ -112,12 +118,15 @@ fun DocInfoScreen(nav: NavHostController, uri: String?) {
     val pick = rememberPdfPicker { file = it.firstOrNull() }
     val processing = stringResource(R.string.processing)
     val needPassword = stringResource(R.string.password_enter)
+    val wrongPw = stringResource(R.string.password_wrong)
+    val lock = rememberToolPassword(file) { file = null }
 
-    LaunchedEffect(file) {
+    LaunchedEffect(file, lock.ready, lock.password) {
         val f = file ?: return@LaunchedEffect
         meta = null; loadError = null
+        if (!lock.ready) return@LaunchedEffect
         runCatching {
-            val s = PdfSession.open(ctx, f)
+            val s = PdfSession.open(ctx, f, lock.password)
             try { pages = s.pageCount; val m = s.meta(); meta = m; info = PdfOps.Info(m.title, m.author, m.subject, m.keywords, m.creator, m.producer) } finally { s.closeAsync() }
         }.onFailure { loadError = if (it is PdfSession.Companion.PasswordRequiredException) needPassword else (it.message ?: it.toString()) }
     }
@@ -145,12 +154,12 @@ fun DocInfoScreen(nav: NavHostController, uri: String?) {
             OutlinedTextField(info.creator, { info = info.copy(creator = it) }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.info_creator)) }, singleLine = true)
             OutlinedTextField(info.producer, { info = info.copy(producer = it) }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.info_producer)) }, singleLine = true)
             PrimaryButton(stringResource(R.string.tl_doc_info_save), icon = Icons.Default.Save) {
-                val i = info.copy()
-                runner.run(processing) {
+                val i = info.copy(); val pw = lock.password
+                runner.run(processing) { withPasswordMessage(wrongPw) {
                     val out = app.documents.uniqueFile(app.documents.docsDir, outName(f, "info"))
-                    PdfOps.setInfo(f, i, out)
-                    out
-                }
+                    PdfOps.setInfo(f, i, out, pw)
+                    com.smartdocs.editor.core.pdf.ToolOutputs.record(out, f)
+                } }
             }
         }
     }

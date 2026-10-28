@@ -51,16 +51,33 @@ fun SearchMarkScreen(nav: NavHostController, uri: String?) {
     var kind by remember { mutableStateOf(AnnotKind.HIGHLIGHT) }
     var color by remember { mutableIntStateOf(0xFFEB3B) }
     var result by remember { mutableStateOf<File?>(null) }
+    var range by remember { mutableStateOf("") }
     val snack = remember { SnackbarHostState() }
-    val pick = rememberPdfPicker { it.firstOrNull()?.let { f -> doc.file = f; found = emptyList(); checked = emptySet(); searched = false } }
+    val pick = rememberPdfPicker { it.firstOrNull()?.let { f -> doc.open(f); found = emptyList(); checked = emptySet(); searched = false } }
+    val canSearch = query.isNotBlank() || patterns.isNotEmpty()
 
     fun doSearch() {
         val s = doc.session ?: return
+        if (query.isBlank() && patterns.isEmpty()) return      // audit 5 C-21: an empty search is not "no hits"
         scope.launch {
             searching = true
-            found = runCatching { TextSearch.search(s, SearchRequest(query = query, options = options, patterns = patterns)) }.getOrDefault(emptyList())
-            checked = found.map(::foundId).toSet()
-            searching = false; searched = true
+            // audit 5 C-21: optional page range (searched as its span, then filtered to the listed pages)
+            val pages = runCatching { com.smartdocs.editor.core.pdf.PdfOps.parseRange(range, s.pageCount) }.getOrDefault(emptyList())
+                .ifEmpty { (0 until s.pageCount).toList() }
+            val wanted = pages.toHashSet()
+            // audit 5 C-9: a failure is reported, not shown as "no hits"
+            try {
+                found = TextSearch.search(s, SearchRequest(query = query, options = options, patterns = patterns), (pages.minOrNull() ?: 0)..(pages.maxOrNull() ?: -1))
+                    .filter { it.hit.page in wanted }
+                searched = true
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e
+            } catch (e: Throwable) {
+                found = emptyList(); searched = false
+                snack.showSnackbar(searchErrorMessage(ctx, e))
+            } finally {
+                checked = found.map(::foundId).toSet()
+                searching = false
+            }
         }
     }
     val msg = stringResource(R.string.s5_marking)
@@ -74,7 +91,8 @@ fun SearchMarkScreen(nav: NavHostController, uri: String?) {
             val out = app.documents.uniqueFile(app.documents.docsDir, src.nameWithoutExtension + "_marked")
             AnnotationWriter.commit(ctx, src, annots, out, doc.password).orThrow()
             runCatching { app.documents.touchRecent(out) }
-            out
+            // the source with markup added: "Save in original" may replace it (audit 5 E-1 / C-2)
+            com.smartdocs.editor.core.pdf.ToolOutputs.record(out, src)
         }
     }
     LaunchedEffect(runner.result) { runner.result?.let { result = it; runner.result = null } }
@@ -112,14 +130,15 @@ fun SearchMarkScreen(nav: NavHostController, uri: String?) {
                     Spacer(Modifier.height(8.dp))
                     OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth(), singleLine = true,
                         placeholder = { Text(stringResource(R.string.s5_query_hint)) },
-                        trailingIcon = { IconButton(onClick = ::doSearch, enabled = doc.session != null) { Icon(Icons.Default.Search, stringResource(R.string.search)) } })
+                        trailingIcon = { IconButton(onClick = ::doSearch, enabled = doc.session != null && canSearch && !searching) { Icon(Icons.Default.Search, stringResource(R.string.search)) } })
                     SearchOptionsPanel(options, { options = it })
                     TextButton(onClick = { showPatterns = !showPatterns }) {
                         Icon(if (showPatterns) Icons.Default.ExpandLess else Icons.Default.ExpandMore, null)
                         Text(stringResource(R.string.s5_patterns) + if (patterns.isNotEmpty()) " (${patterns.size})" else "")
                     }
                     if (showPatterns) PatternChips(patterns, { patterns = it })
-                    Button(onClick = ::doSearch, enabled = doc.session != null && (query.isNotBlank() || patterns.isNotEmpty()) && !searching, modifier = Modifier.fillMaxWidth()) {
+                    PageRangeField(range) { range = it }
+                    Button(onClick = ::doSearch, enabled = doc.session != null && canSearch && !searching, modifier = Modifier.fillMaxWidth()) {
                         if (searching) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Icon(Icons.Default.Search, null)
                         Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.search))
                     }

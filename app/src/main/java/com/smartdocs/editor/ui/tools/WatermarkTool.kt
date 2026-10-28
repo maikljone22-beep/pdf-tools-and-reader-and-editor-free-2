@@ -50,12 +50,16 @@ fun WatermarkScreen(nav: NavHostController, uri: String?) {
     val pick = rememberPdfPicker { file = it.firstOrNull() }
     val processing = stringResource(R.string.processing)
     val needPassword = stringResource(R.string.password_enter)
+    val wrongPw = stringResource(R.string.password_wrong)
+    // audit 5 T-09 / C-4: the reader's password, or a prompt
+    val lock = rememberToolPassword(file) { file = null }
 
-    LaunchedEffect(file) {
+    LaunchedEffect(file, lock.ready, lock.password) {
         val f = file ?: return@LaunchedEffect
         preview = null; previewError = null
+        if (!lock.ready) return@LaunchedEffect
         runCatching {
-            val s = PdfSession.open(ctx, f)
+            val s = PdfSession.open(ctx, f, lock.password)
             try {
                 pages = s.pageCount
                 val (w, h) = s.pageSize(0); pageSize = w to h
@@ -76,16 +80,17 @@ fun WatermarkScreen(nav: NavHostController, uri: String?) {
                 WatermarkPreview(preview, previewError, pageSize, text, fontSize, opacity, rotation, color)
             }
         }
-        PrimaryButton(stringResource(R.string.tl_add_watermark), enabled = file != null && text.isNotBlank(), icon = Icons.Default.BrandingWatermark) {
+        PrimaryButton(stringResource(R.string.tl_add_watermark), enabled = file != null && text.isNotBlank() && lock.ready, icon = Icons.Default.BrandingWatermark) {
             val src = file ?: return@PrimaryButton
-            val t = text; val fs = fontSize; val op = opacity; val rot = rotation; val col = color; val spec = range; val total = pages
-            runner.run(processing) {
+            val t = text; val fs = fontSize; val op = opacity; val rot = rotation; val col = color; val spec = range; val total = pages; val pw = lock.password
+            runner.run(processing) { withPasswordMessage(wrongPw) {
                 val out = app.documents.uniqueFile(app.documents.docsDir, outName(src, "watermark"))
-                val count = if (total > 0) total else PdfOps.pageCount(src)
+                val count = if (total > 0) total else PdfOps.pageCount(src, pw)
                 val target = if (spec.isBlank()) null else PdfOps.parseRange(spec, count)
-                PdfOps.watermark(ctx, src, t, out, fs, col, op, rot, target)
-                out
-            }
+                PdfOps.watermark(ctx, src, t, out, fs, col, op, rot, target, pw)
+                // audit 5 E-1 / C-2: the source transformed, so "Save in original" may replace it
+                com.smartdocs.editor.core.pdf.ToolOutputs.record(out, src)
+            } }
         }
     }
 }

@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- audit 5 (reader Tools tab, sub-audit c): tools / search / forms / compare / AI hub -->
+    <string name="ttcx_locked_msg">“%1$s” is protected. Enter its password to open it.</string>
+    <string name="ttcx_text_failed">Could not extract the text of this file</string>
+    <string name="ttcx_owner_same">The permissions password must differ from the open password; otherwise everyone who opens the file gets full rights</string>
+    <string name="ttcx_owner_generated">Permissions password created for this file (keep it to change the restrictions later):</string>
+    <string name="ttcx_copy_owner">Copy the permissions password</string>
+    <string name="ttcx_copied">Copied</string>
+    <string name="ttcx_search_failed">Could not search this file</string>
+    <string name="ttcx_out_of_memory">The file is too large for the available memory. Try a smaller page range.</string>
+    <string name="ttcx_open_failed">Could not open this file</string>
+    <string name="ttcx_signed_replace_warning">This document is digitally signed. Replacing rewrites the file, so its signatures become invalid; the result is saved as a new copy.</string>
+    <string name="ttcx_relayout_note">The whole paragraph that contains each match is rewritten in a substitute font, so its look may change more than the replaced words.</string>
+    <string name="ttcx_missing_glyphs">No font can draw these characters; they will be left out of the written text: %1$s</string>
+    <string name="ttcx_nothing_replaced">Nothing was replaced: the selected blocks changed or could not be located</string>
+    <string name="ttcx_skipped_n">%1$d selected blocks were skipped because they could not be located after the earlier changes</string>
+    <string name="ttcx_export_failed">Export failed: the file was not written</string>
+    <string name="ttcx_extract_failed">Could not extract the images of this file</string>
+    <string name="ttcx_save_failed">Could not save (the storage may be full)</string>
+    <string name="ttcx_color_black">Black</string>
+    <string name="ttcx_color_white">White</string>
+    <string name="ttcx_color_gray">Grey</string>
+    <string name="ttcx_color_red">Red</string>
+    <string name="ttcx_color_orange">Orange</string>
+    <string name="ttcx_color_yellow">Yellow</string>
+    <string name="ttcx_color_green">Green</string>
+    <string name="ttcx_color_cyan">Light blue</string>
+    <string name="ttcx_color_blue">Blue</string>
+    <string name="ttcx_color_purple">Purple</string>
+    <string name="ttcx_color_pink">Pink</string>
+</resources>

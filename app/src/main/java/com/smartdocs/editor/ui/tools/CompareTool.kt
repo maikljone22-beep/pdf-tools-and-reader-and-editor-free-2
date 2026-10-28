@@ -59,7 +59,9 @@ fun CompareScreen(nav: NavHostController, uri: String?) {
             working = true
             scope.launch {
                 runCatching {
-                    val ta = extractAllText(ctx, a).joinToString("\n"); val tb = extractAllText(ctx, b).joinToString("\n")
+                    // audit 5 T-09: a file the reader opened keeps its password
+                    val ta = extractAllText(ctx, a, com.smartdocs.editor.core.pdf.SessionPasswords.get(a)).joinToString("\n")
+                    val tb = extractAllText(ctx, b, com.smartdocs.editor.core.pdf.SessionPasswords.get(b)).joinToString("\n")
                     TextDiff.diff(ta, tb)
                 }.onSuccess { result = it }
                     .onFailure { snackbar.showSnackbar(if (it is PdfSession.Companion.PasswordRequiredException) needPassword else (it.message ?: it.toString())) }
