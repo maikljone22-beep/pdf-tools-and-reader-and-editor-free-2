@@ -88,11 +88,14 @@ fun CreationExtrasRow(state: ReaderState) {
                     leadingIcon = { Icon(Icons.Default.LineStyle, null, Modifier.size(16.dp)) }, modifier = Modifier.height(30.dp))
             if (shapes || (poly && t != ReaderTool.POLYLINE))
                 FilterChip(h.noBorder, { h.noBorder = !h.noBorder }, label = { Text(stringResource(R.string.cx_no_border)) }, enabled = h.fillColor != null, modifier = Modifier.height(30.dp))
-            if (t == ReaderTool.RECT) {
+            if (t == ReaderTool.RECT || t == ReaderTool.OVAL) {   // Nitro 7.27: cloudy oval as well
                 Text(stringResource(R.string.cx_cloud), style = MaterialTheme.typography.labelSmall)
                 (0..3).forEach { lv -> FilterChip(h.rectCloud == lv, { h.rectCloud = lv }, label = { Text(if (lv == 0) "—" else lv.toString()) }, modifier = Modifier.height(30.dp)) }
             }
             if (t == ReaderTool.CLOUD) FilterChip(h.cloudIntensity == 3, { h.cloudIntensity = 3 }, label = { Text("3") }, modifier = Modifier.height(30.dp))
+            // Foxit 24.33: scallops inward / outward
+            if (t == ReaderTool.CLOUD || ((t == ReaderTool.RECT || t == ReaderTool.OVAL) && h.rectCloud > 0))
+                FilterChip(h.cloudInward, { h.cloudInward = !h.cloudInward }, label = { Text(stringResource(R.string.cf_cloud_inward)) }, modifier = Modifier.height(30.dp))
             if (shapes) FilterChip(h.constrain, { h.constrain = !h.constrain }, label = { Text(stringResource(R.string.cx_square_constraint)) }, modifier = Modifier.height(30.dp))
             if (t == ReaderTool.INK) FilterChip(h.inkToShapes, { h.inkToShapes = !h.inkToShapes }, label = { Text(stringResource(R.string.cx_ink_shapes)) },
                 leadingIcon = { Icon(Icons.Default.AutoFixHigh, null, Modifier.size(16.dp)) }, modifier = Modifier.height(30.dp))
@@ -194,6 +197,9 @@ fun CommentExtrasMenuItems(h: Annot2Host, close: () -> Unit) {
     DropdownMenuItem(text = { Text(stringResource(R.string.cx_copy_encircled)) }, leadingIcon = { Icon(if (cx.copyEncircled) Icons.Default.CheckBox else Icons.Default.CheckBoxOutlineBlank, null) },
         onClick = { close(); cx.toggleCopyEncircled() })
     DropdownMenuItem(text = { Text(stringResource(R.string.cx_note_prefs)) }, leadingIcon = { Icon(Icons.Default.TextFormat, null) }, onClick = { close(); cx.notePrefsOpen = true })
+    // pencil stroke merge timeout: off / 1 s / 2 s / 3 s (tap cycles; the menu stays open to show the new value)
+    DropdownMenuItem(text = { Text(if (cx.inkMergeMs <= 0L) stringResource(R.string.cf_ink_merge_off) else stringResource(R.string.cf_ink_merge_s, (cx.inkMergeMs / 1000L).toInt())) },
+        leadingIcon = { Icon(Icons.Default.Gesture, null) }, onClick = { cx.cycleInkMerge() })
     DropdownMenuItem(text = { Text(stringResource(R.string.cx_prev_comment)) }, leadingIcon = { Icon(Icons.AutoMirrored.Filled.NavigateBefore, null) }, onClick = { close(); cx.stepComment(false) })
     DropdownMenuItem(text = { Text(stringResource(R.string.cx_next_comment)) }, leadingIcon = { Icon(Icons.AutoMirrored.Filled.NavigateNext, null) }, onClick = { close(); cx.stepComment(true) })
     DropdownMenuItem(text = { Text(stringResource(R.string.cx_popups_open)) }, leadingIcon = { Icon(Icons.Default.OpenInFull, null) }, onClick = { close(); cx.popupsOpen(true) })
@@ -483,6 +489,7 @@ fun SummaryOptionsFields(o: com.smartdocs.editor.core.annot.SummaryOptions, page
     }
     SwRow(o.thumbnails, R.string.cx_sum_thumbs) { onChange(o.copy(thumbnails = it)) }
     SwRow(o.includeEmptyPages, R.string.cx_sum_empty_pages) { onChange(o.copy(includeEmptyPages = it)) }
+    if (o.thumbnails) SwRow(o.connectors, R.string.cf_sum_connectors) { onChange(o.copy(connectors = it)) }   // 24.87
     SwRow(o.replies, R.string.cx_sum_replies) { onChange(o.copy(replies = it)) }
     SwRow(o.status, R.string.cx_sum_status) { onChange(o.copy(status = it)) }
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -529,6 +536,12 @@ fun TextFormatDialog(initial: TextFmt, onDismiss: () -> Unit, showBiu: Boolean =
                     FilterChip(f.underline, { f = f.copy(underline = !f.underline) }, label = { Text("U", textDecoration = TextDecoration.Underline) })
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(f.strike, { f = f.copy(strike = it) }); Text(stringResource(R.string.cx_strike)) }
+                // Foxit 24.102: superscript / subscript
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    listOf(R.string.cf_script_normal, R.string.cf_superscript, R.string.cf_subscript).forEachIndexed { i, r ->
+                        FilterChip(f.script == i, { f = f.copy(script = i) }, label = { Text(stringResource(r)) })
+                    }
+                }
                 Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(f.bullets, { f = f.copy(bullets = it) }); Text(stringResource(R.string.cx_bullets)) }
                 Text(stringResource(R.string.cx_line_spacing, "%.2f".format(java.util.Locale.US, f.lineSpacing)), style = MaterialTheme.typography.labelMedium)
                 Slider(f.lineSpacing, { f = f.copy(lineSpacing = it) }, valueRange = 0.9f..3f)

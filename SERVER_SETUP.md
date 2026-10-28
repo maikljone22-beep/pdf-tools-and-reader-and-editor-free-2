@@ -194,6 +194,29 @@ Redirect URIs: the app receives `smartdocs://oauth/<provider>`; the intent filte
 - **Play Billing products:** create the in-app products / subscriptions with the same ids the app uses (see `core/billing/BillingManager.kt`). For server checks, link the service account from section 6.
 - **Data safety form:** declare the optional servers you deploy: AI text sent to your AI proxy, review/share/esign documents stored on your workers, ads/consent.
 
+## 9b. Verified invite links (https://smartdocs.app/invite/…) — OPTIONAL
+The app declares an auto-verified link for `https://smartdocs.app/invite` (added with fix/fc-settings). Android opens such links directly in the app only after it has verified that you own the domain; without it, the link opens in the browser (the in-app `smartdocs://` links keep working).
+1. Get the SHA-256 fingerprints of the keys that sign the installed app:
+   - Play App Signing key: Play Console → *Test and release → App integrity → App signing* → "SHA-256 certificate fingerprint".
+   - Your upload / local release key (for side-loaded builds): `keytool -list -v -keystore release.jks -alias <keyAlias>` → the `SHA256:` line (it asks for the store password).
+   - Optional, for debug builds: `keytool -list -v -keystore ~/.android/debug.keystore -alias androiddebugkey -storepass android`.
+2. Create the file `assetlinks.json` with this content (one entry, several fingerprints allowed):
+   ```json
+   [{
+     "relation": ["delegate_permission/common.handle_all_urls"],
+     "target": {
+       "namespace": "android_app",
+       "package_name": "com.smartdocs.editor",
+       "sha256_cert_fingerprints": ["AA:BB:…:FF", "11:22:…:99"]
+     }
+   }]
+   ```
+3. Publish it at exactly `https://smartdocs.app/.well-known/assetlinks.json`:
+   - served over HTTPS with a valid certificate, HTTP 200, no redirect, `Content-Type: application/json`;
+   - on Cloudflare Pages / Workers, a static file at `.well-known/assetlinks.json` works; on other hosts make sure `.well-known` is not blocked.
+4. Check it: `https://digitalassetlinks.googleapis.com/v1/statements:list?source.web.site=https://smartdocs.app&relation=delegate_permission/common.handle_all_urls` must list your package; on a device, `adb shell pm verify-app-links --re-verify com.smartdocs.editor` then `adb shell pm get-app-links com.smartdocs.editor` should show `smartdocs.app: verified`.
+5. If you use another domain, change the `android:host` of the invite `<intent-filter>` in `AndroidManifest.xml` to it and publish the file there.
+
 ## 10. Summary: the app-side files
 All are in the project root, git-ignored. **Keys only, never commit them.**
 

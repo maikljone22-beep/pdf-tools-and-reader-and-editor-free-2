@@ -119,7 +119,7 @@ fun ConvertHubScreen(nav: NavHostController, uri: String?) {
     fun open(c: Conv) {
         Cv6Recent.push(ctx, c.id); recentVersion++
         c.route?.let { r -> nav.navigate(Routes.tool(r, if (currentKind != null && currentKind in c.inputs) uri else null)); return }
-        s.reset(c, defaultsFor(c))
+        s.reset(c, com.smartdocs.editor.core.convert6.Cv6Defaults.load(ctx, c.id, defaultsFor(c)))   // fc-settings: saved per-conversion defaults
         when {
             c.inputs.isEmpty() -> { s.inputs = emptyList(); s.sheet = true }
             current != null && currentKind in c.inputs -> { s.inputs = listOf(current); s.sheet = true }

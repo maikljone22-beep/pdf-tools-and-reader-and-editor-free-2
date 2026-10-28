@@ -70,6 +70,8 @@ object DigitalSignature {
         val docTimestamp: Boolean = false,
         /** FieldMDP lock of an approval signature (Nitro "lock document after signing"); null = the field's own /Lock, if any. */
         val lock: com.smartdocs.editor.core.sign.SigFields.Lock? = null,
+        /** Keep a copy without the verification info when the DSS adds more than this many bytes (0 = never ask). */
+        val ltvAskAboveBytes: Long = 0,
         /** Message digest of the CMS signature (ISO/TS 32001: SHA-2 and SHA-3 families); EdDSA keys use their own. */
         val digest: Digest = Digest.SHA256,
     )
@@ -90,7 +92,13 @@ object DigitalSignature {
     data class PagingSealOptions(val image: Bitmap, val sizePt: Float = 110f, val yFraction: Float = 0.5f)
 
     /** Outcome of the optional post-signing steps. */
-    data class SignReport(val timestamped: Boolean, val ltv: com.smartdocs.editor.core.sign.LtvSupport.Report?, val docTimestamped: Boolean, val warnings: List<String>)
+    data class SignReport(
+        val timestamped: Boolean, val ltv: com.smartdocs.editor.core.sign.LtvSupport.Report?, val docTimestamped: Boolean, val warnings: List<String>,
+        /** Bytes the embedded verification info (DSS) added; with [withoutLtv] set when that was over the "ask" limit. */
+        val ltvBytes: Long = 0,
+        /** The same signed document without the verification info (Foxit "ask if verification info is too big"). */
+        val withoutLtv: File? = null,
+    )
 
     /** Optional visible appearance drawn on [page] before the cryptographic signature is applied. */
     data class VisibleSignature(
@@ -340,12 +348,24 @@ object DigitalSignature {
 
             var current = signedOut
             var ltvReport: com.smartdocs.editor.core.sign.LtvSupport.Report? = null
+            var ltvBytes = 0L
+            var withoutLtv: File? = null
             if (options.ltv) {
                 val t = if (options.docTimestamp) tmp("dss") else out
+                val before = current.length()
+                // signedOut is a temp file when post-steps run, so the version without DSS is still there to keep
+                val beforeCopy = if (options.ltvAskAboveBytes > 0) tmp("noltv").also { current.copyTo(it, overwrite = true) } else null
                 ltvReport = try {
                     com.smartdocs.editor.core.sign.LtvSupport.addDss(current, t, online = true).also { current = t }
                 } catch (e: Exception) {
                     warnings += "LTV: ${e.message ?: e.javaClass.simpleName}"; null
+                }
+                if (ltvReport != null) {
+                    ltvBytes = current.length() - before
+                    if (beforeCopy != null && ltvBytes > options.ltvAskAboveBytes) {
+                        withoutLtv = File(out.parentFile, out.nameWithoutExtension + "_noltv.pdf")
+                        beforeCopy.copyTo(withoutLtv, overwrite = true)
+                    }
                 }
             }
             var docTs = false
@@ -356,7 +376,7 @@ object DigitalSignature {
                 } catch (e: Exception) { warnings += "DocTimeStamp: ${e.message ?: e.javaClass.simpleName}" }
             }
             if (current != out) current.copyTo(out, overwrite = true)
-            SignReport(timestamped, ltvReport, docTs, warnings + (ltvReport?.problems ?: emptyList()))
+            SignReport(timestamped, ltvReport, docTs, warnings + (ltvReport?.problems ?: emptyList()), ltvBytes, withoutLtv)
         } finally {
             temps.forEach { runCatching { it.delete() } }
         }
@@ -440,6 +460,14 @@ object DigitalSignature {
     }
 
     /** Validate an RFC 3161 token over [data]; returns (genTime, valid). */
+    /** Whether the time-stamp authority certificate of [tokenCms] has expired now (Foxit "use expired timestamps"). */
+    private fun tsaExpired(tokenCms: CMSSignedData): Boolean = runCatching {
+        val token = org.bouncycastle.tsp.TimeStampToken(tokenCms)
+        @Suppress("UNCHECKED_CAST")
+        val h = token.certificates.getMatches(token.sid as org.bouncycastle.util.Selector<X509CertificateHolder>).firstOrNull() as? X509CertificateHolder
+        h != null && Date().after(h.notAfter)
+    }.getOrDefault(false)
+
     private fun checkToken(tokenCms: CMSSignedData, data: ByteArray): Pair<Date?, Boolean> = runCatching {
         val token = org.bouncycastle.tsp.TimeStampToken(tokenCms)
         val info = token.timeStampInfo
@@ -457,18 +485,33 @@ object DigitalSignature {
      * Validates every signature of [file]. With [revocation], the signer chain is also checked for revocation
      * (embedded DSS responses first; [online] allows OCSP/CRL requests).
      */
-    suspend fun verify(file: File, revocation: Boolean = false, online: Boolean = true, password: String? = null): List<VerifyResult> =
-        withContext(Dispatchers.IO) { verifyBlocking(file, password, revocation, online) }
+    suspend fun verify(
+        file: File, revocation: Boolean = false, online: Boolean = true, password: String? = null,
+        acceptExpiredTimestamps: Boolean = true, useDocumentValidationInfo: Boolean = true,
+    ): List<VerifyResult> = withContext(Dispatchers.IO) { verifyBlocking(file, password, revocation, online, acceptExpiredTimestamps, useDocumentValidationInfo) }
 
     /** [verify] on the calling thread ([password] opens an encrypted file; the signed byte ranges are read raw). */
-    internal fun verifyBlocking(file: File, password: String?, revocation: Boolean = false, online: Boolean = true): List<VerifyResult> {
+    internal fun verifyBlocking(
+        file: File, password: String?, revocation: Boolean = false, online: Boolean = true,
+        acceptExpiredTimestamps: Boolean = true, useDocumentValidationInfo: Boolean = true,
+        /**
+         * Tabs audit D22: results of an earlier check of the same file before an append. A signature with the same
+         * signed length and name is not checked again (its signed bytes are unchanged); only its coverage changes.
+         */
+        reuse: List<VerifyResult> = emptyList(),
+    ): List<VerifyResult> {
         ensureProvider()
-        val bytes = file.readBytes()
-        val revEnds = com.smartdocs.editor.core.sign.RevisionDiff.revisionEnds(bytes)
+        // the file is never read into memory as a whole: revisions are found by streaming, and each signature reads
+        // only its own contents / signed ranges
+        val fileLength = file.length()
+        val revEnds = com.smartdocs.editor.core.sign.RevisionDiff.revisionEnds(file)
         val results = ArrayList<VerifyResult>()
         (if (password.isNullOrEmpty()) PDDocument.load(file) else PDDocument.load(file, password)).use { doc ->
             val ltv = com.smartdocs.editor.core.sign.LtvSupport.hasDss(doc)
-            val material = if (revocation) com.smartdocs.editor.core.sign.Revocation.dssMaterial(doc) else null
+            // Foxit "ignore document validation info": the embedded DSS responses are not used for revocation
+            val material = if (!revocation) null
+                else if (useDocumentValidationInfo) com.smartdocs.editor.core.sign.Revocation.dssMaterial(doc)
+                else com.smartdocs.editor.core.sign.Revocation.Material(emptyList(), emptyList())
             for (sig in doc.signatureDictionaries) {
                 val name = sig.name.orEmpty()
                 val reason = sig.reason.orEmpty()
@@ -476,7 +519,7 @@ object DigitalSignature {
                 val date = sig.signDate?.time
                 val subFilter = sig.subFilter.orEmpty()
                 val range = sig.byteRange
-                val covers = range != null && range.size == 4 && range[0] == 0 && (range[2].toLong() + range[3].toLong()) == bytes.size.toLong()
+                val covers = range != null && range.size == 4 && range[0] == 0 && (range[2].toLong() + range[3].toLong()) == fileLength
                 val signedLen = if (range != null && range.size == 4) range[2].toLong() + range[3].toLong() else 0L
                 val revision = revEnds.indexOfFirst { it >= signedLen }.let { if (it < 0) revEnds.size else it + 1 }
                 val common = VerifyResult(
@@ -486,9 +529,13 @@ object DigitalSignature {
                     revision = revision, revisionCount = revEnds.size, signedLength = signedLen, lock = SigFields.lockOf(doc, sig),
                 )
                 val isDocTs = subFilter == "ETSI.RFC3161"
+                reuse.firstOrNull { it.signedLength == signedLen && it.fieldName == common.fieldName && it.error == null && it.isDocTimestamp == isDocTs }?.let { old ->
+                    results += old.copy(coversWholeDocument = covers, revision = revision, revisionCount = revEnds.size, ltvData = ltv)
+                    continue
+                }
                 try {
-                    val contents = sig.getContents(bytes)
-                    val signedContent = sig.getSignedContent(bytes)
+                    val contents = file.inputStream().buffered().use { sig.getContents(it) }
+                    val signedContent = file.inputStream().buffered().use { sig.getSignedContent(it) }
                     if (isDocTs) {
                         val (genTime, ok) = checkToken(CMSSignedData(contents), signedContent)
                         val tokenCms = CMSSignedData(contents)
@@ -510,7 +557,7 @@ object DigitalSignature {
                         val v = attr.attrValues.getObjectAt(0)
                         val tokenCms = CMSSignedData(org.bouncycastle.asn1.cms.ContentInfo.getInstance(v))
                         val r = checkToken(tokenCms, signerInfo.signature)
-                        tsDate = r.first; tsOk = r.second
+                        tsDate = r.first; tsOk = r.second && (acceptExpiredTimestamps || !tsaExpired(tokenCms))
                         tsCert = runCatching { tokenCms.signerInfos.signers.firstOrNull()?.let { signerCert(tokenCms, it) } }.getOrNull()
                     }
                     val counter = signerInfo.counterSignatures.signers.map { cs ->

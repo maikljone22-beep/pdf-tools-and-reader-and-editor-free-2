@@ -33,6 +33,7 @@ object ConnectedDocs {
 
     /** Contacts the server (short timeouts); falls back to the offline key cache. Null when the file is not connected. */
     suspend fun checkOnOpen(context: Context, file: File): ConnectedStatus? = withContext(Dispatchers.IO) {
+        if (com.smartdocs.editor.core.data.FcsPrefs.connectedOff) return@withContext null   // fc-settings: ConnectedPDF turned off
         val mark = markOf(file) ?: return@withContext null
         statusById(context, mark.docId, mark.protected, file)
     }

@@ -261,6 +261,11 @@ private fun CertEncryptTab(fileState: MutableState<java.io.File?>, runner: com.s
     FieldLabel(stringResource(R.string.ps_cert_cipher))
     ChoiceChips(listOf(true, false), aes256, { if (it) "AES-256" else "AES-128" }) { aes256 = it }
     SwitchRow(stringResource(R.string.np2_cert_no_meta), noMeta) { noMeta = it }
+    // Foxit §28: certificate-protection policies (recipients + permissions + cipher + metadata)
+    com.smartdocs.editor.ui.security.CertPolicyRow(recipients.toList(), aes256, !noMeta) { p ->
+        recipients.clear(); p.members.forEach { m -> recipients += CertEncryption.Recipient(m.certificate, m.perms) }
+        aes256 = p.aes256; noMeta = !p.encryptMetadata
+    }
     Text(stringResource(R.string.np2_cert_no_meta_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     localError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
     PrimaryButton(stringResource(if (certSource) R.string.np2_cert_change else R.string.ps_cert_encrypt), enabled = file != null && recipients.isNotEmpty() && (!certSource || unlock.ready), icon = Icons.Default.EnhancedEncryption) {

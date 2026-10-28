@@ -3,6 +3,7 @@ package com.smartdocs.editor.ui.forms5
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateListOf
@@ -96,6 +97,12 @@ class FormFillState internal constructor(val reader: ReaderState) {
     var sigTapped by mutableStateOf<FWidget?>(null)
     /** Validity of each signed signature field by full name (true = valid), for the status badges. */
     var sigStatus by mutableStateOf<Map<String, Boolean>>(emptyMap())
+    /** Validation results and the untrusted signer of the open document, for the signed bar (tabs audit D21). */
+    var sigResults by mutableStateOf<List<com.smartdocs.editor.core.pdf.DigitalSignature.VerifyResult>>(emptyList())
+    var sigUntrusted by mutableStateOf<java.security.cert.X509Certificate?>(null)
+    /** Path of the document whose signed bar the user closed (kept with the reader, so a rotation keeps it closed). */
+    var sigBarClosedFor by mutableStateOf<String?>(null)
+    var sigTrustRound by mutableIntStateOf(0)
     /** Date picker request for the active field. */
     var datePickerFor by mutableStateOf<String?>(null)
     /** Short feedback for the field bar (submit result, required fields\u2026), cleared by the UI. */

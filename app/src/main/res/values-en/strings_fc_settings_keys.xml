@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- fc-settings (§39): names of the added keyboard shortcuts in the customise sheet -->
+    <string name="fcs_key_export_comments">Export comments</string>
+    <string name="fcs_key_reply">Reply to the selected comment</string>
+    <string name="fcs_key_deselect">Deselect</string>
+    <string name="fcs_key_duplicate_page">Duplicate the current page</string>
+    <string name="fcs_key_read_to_end">Read aloud to the end of the document</string>
+    <string name="fcs_key_read_pause">Pause / resume reading</string>
+    <string name="fcs_key_read_toggle">Turn read aloud on or off</string>
+    <string name="fcs_key_toolbars">Hide / show the toolbars</string>
+    <string name="fcs_key_email_tabs">E-mail all open tabs</string>
+</resources>

@@ -3,6 +3,7 @@ package com.smartdocs.editor.ui.view5
 import android.content.Context
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -107,6 +108,11 @@ object V5Commands {
         v.prefs.edit().putString(K_PINS, (if (id in cur) cur - id else cur + id).joinToString(",")).apply()
         v.pinsVersion++
     }
+    // fc-settings: where the pinned commands (quick access) are shown: "top" (reader top bar) or "bottom" (a row above the bottom toolbar)
+    const val QAT_TOP = "top"; const val QAT_BOTTOM = "bottom"
+    private const val K_QAT_POS = "qat_pos"
+    fun qatPosition(ctx: Context): String = ctx.getSharedPreferences(V5State.PREFS, Context.MODE_PRIVATE).getString(K_QAT_POS, QAT_TOP) ?: QAT_TOP
+    fun setQatPosition(ctx: Context, pos: String) { ctx.getSharedPreferences(V5State.PREFS, Context.MODE_PRIVATE).edit().putString(K_QAT_POS, if (pos == QAT_BOTTOM) QAT_BOTTOM else QAT_TOP).apply() }
     fun recent(v: V5State): List<String> = (v.prefs.getString(K_RECENT, "") ?: "").split(',').filter { it.isNotBlank() }
     fun pushRecent(v: V5State, id: String) { v.prefs.edit().putString(K_RECENT, CommandRank.pushRecent(recent(v), id).joinToString(",")).apply() }
 }
@@ -130,6 +136,14 @@ fun CommandSearchSheet(e: V5Env) {
             OutlinedTextField(q, { q = it }, Modifier.fillMaxWidth().focusRequester(focus), singleLine = true,
                 leadingIcon = { Icon(Icons.Default.Bolt, null) }, placeholder = { Text(stringResource(R.string.v5_tell_me)) })
             Text(stringResource(R.string.v5_pin_hint), style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(vertical = 4.dp))
+            // fc-settings: position of the pinned commands
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(stringResource(R.string.fcs_qat_pos), style = MaterialTheme.typography.labelMedium)
+                val pos = remember(pv) { V5Commands.qatPosition(ctx) }
+                listOf(V5Commands.QAT_TOP to R.string.fcs_qat_top, V5Commands.QAT_BOTTOM to R.string.fcs_qat_bottom).forEach { (k, l) ->
+                    FilterChip(pos == k, { V5Commands.setQatPosition(ctx, k); v.pinsVersion++ }, label = { Text(stringResource(l)) })
+                }
+            }
             val nveAi = com.smartdocs.editor.LocalSettings.current.aiEnabled
             LazyColumn(Modifier.weight(1f)) {
                 items(ranked, key = { it.id }) { c ->
@@ -167,6 +181,25 @@ fun V5TopActions(s: ReaderState) {
     @Suppress("UNUSED_VARIABLE") val hv = v.historyVersion
     if (v.history.canBack) IconButton(onClick = { v.back() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.v5_back_position)) }
     if (v.history.canForward) IconButton(onClick = { v.forward() }) { Icon(Icons.AutoMirrored.Filled.ArrowForward, stringResource(R.string.v5_forward_position)) }
-    pinned.forEach { c -> IconButton(onClick = c.run) { Icon(c.icon, stringResource(c.label)) } }
+    val ctx = LocalContext.current
+    if (remember(pv) { V5Commands.qatPosition(ctx) } != V5Commands.QAT_BOTTOM) pinned.forEach { c -> IconButton(onClick = c.run) { Icon(c.icon, stringResource(c.label)) } }
     IconButton(onClick = { v.open(V5Surface.COMMANDS) }) { Icon(Icons.Default.Bolt, stringResource(R.string.v5_tell_me)) }
+}
+
+/** fc-settings: the pinned commands as a scrollable row above the bottom toolbar, when their position is "bottom" (hook in the reader's bottom bar). */
+@Composable
+fun V5PinnedBottomRow(s: ReaderState) {
+    val v = V5State.of(s)
+    val e = v.env ?: return
+    val ctx = LocalContext.current
+    val pv = v.pinsVersion
+    if (remember(pv) { V5Commands.qatPosition(ctx) } != V5Commands.QAT_BOTTOM) return
+    val cmds = remember(e) { V5Commands.all(e) }
+    val pinned = remember(pv, cmds) { V5Commands.pins(v).mapNotNull { id -> cmds.firstOrNull { it.id == id } } }
+    if (pinned.isEmpty()) return
+    Surface(tonalElevation = 2.dp) {
+        Row(Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()).padding(horizontal = 8.dp), horizontalArrangement = Arrangement.Center) {
+            pinned.forEach { c -> IconButton(onClick = c.run) { Icon(c.icon, stringResource(c.label)) } }
+        }
+    }
 }

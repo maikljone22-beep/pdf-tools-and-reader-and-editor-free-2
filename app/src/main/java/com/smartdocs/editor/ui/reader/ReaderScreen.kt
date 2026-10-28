@@ -75,6 +75,8 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
         }
         state.initialPageMode = null
     }
+    val fcsChrome = com.smartdocs.editor.ui.nve.NveState.of(state).chromeToggle   // fc-settings: Ctrl+F11 hides / shows the toolbars
+    LaunchedEffect(fcsChrome) { if (fcsChrome > 0) chrome = !chrome }
     var showViewMode by remember { mutableStateOf(false) }
     var showPageColor by remember { mutableStateOf(false) }
     var showAutoFlip by remember { mutableStateOf(false) }
@@ -253,7 +255,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                     when (id) {
                         "signatures" -> nav.navigate(Routes.tool("signatures"))
                         "fill_profile" -> nav.navigate(Routes.tool("fill_profile"))
-                        "digital_ids" -> nav.navigate(Routes.tool("digital_sign"))      // no file: the Digital IDs tab is one tap away
+                        "digital_ids" -> { com.smartdocs.editor.ui.signature.SigFieldRequest.openTab = 2; nav.navigate(Routes.tool("digital_sign")) }   // D25: opens on Digital IDs
                         else -> {
                             // MODULE_history: a change the tool saves into this file becomes one undo step on return
                             val label = ctx.getString(if (id == "organize") R.string.hi_organize else R.string.hi_tool_change)
@@ -357,6 +359,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                             onRedact = { s -> com.smartdocs.editor.ui.search.ReaderRedact.markSelection(ctx, state, quick, s) },   // MODULE_search5b
                             onRewrite = { s -> if (state.guard.check(com.smartdocs.editor.core.security.DocAction.COPY)) textTools = s to com.smartdocs.editor.core.ai5.TextAction.REWRITE })   // ai6 (B11)
                     }
+                    if (state.session != null) com.smartdocs.editor.ui.view5.V5PinnedBottomRow(state)   // fc-settings: pinned commands at the bottom
                     if (state.session != null) BottomToolbar(state, actions)
                 }
             },
@@ -392,15 +395,21 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                                 onShowRect = { p, r -> com.smartdocs.editor.ui.nve.NveZoom.zoomToPageRect(state, p, r[0], r[1], r[2], r[3]) })
                             if (state.reflow) com.smartdocs.editor.ui.view5.ReflowReader(state)
                             PageIndicator(state.currentPage, state.pageCount, { showGoTo = true }, Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp), labels = pageLabels)
-                            if (state.tool != null && state.placement == null) ToolHint(state.tool!!, Modifier.align(Alignment.TopCenter).padding(top = 8.dp))
-                            else if (state.placement != null) com.smartdocs.editor.ui.reader.annot.PlacementBar(state, Modifier.align(Alignment.TopCenter).padding(top = 8.dp))   // section 7.40 / 24.54
-                            else OcrSuggestionBanner(state, onOcr = { actions.quick(QuickAction.OCR) }, modifier = Modifier.align(Alignment.TopCenter))
+                            // tabs audit D21: the top banners are one column, so they stack instead of covering each other
+                            Column(Modifier.align(Alignment.TopCenter).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                            if (state.tool != null && state.placement == null) ToolHint(state.tool!!, Modifier.padding(top = 8.dp))
+                            else if (state.placement != null) com.smartdocs.editor.ui.reader.annot.PlacementBar(state, Modifier.padding(top = 8.dp))   // section 7.40 / 24.54
+                            else OcrSuggestionBanner(state, onOcr = { actions.quick(QuickAction.OCR) }, modifier = Modifier)
+                            com.smartdocs.editor.ui.signature.SignedBarSlot(state, nav)   // Nitro / Foxit signed-document bar
                             com.smartdocs.editor.ui.forms5.InPageXfaBanner(state, onOpen = { f -> nav.navigate(Routes.reader(android.net.Uri.fromFile(f).toString(), 0)) },
-                                modifier = Modifier.align(Alignment.TopCenter).padding(top = 48.dp))   // MODULE_forms5
+                                modifier = Modifier)   // MODULE_forms5
+                            // NVE: document notifications (forms, JavaScript, PDF/A, redactions, 3D, portfolio)
+                            com.smartdocs.editor.ui.nve.panes.NveDocBanners(state, onOpenTool = { actions.navigateTool(it) }, modifier = Modifier)
+                            }
                             com.smartdocs.editor.ui.search.RedactMarksBanner(state, onApply = { actions.navigateTool("redact") },
                                 modifier = Modifier.align(Alignment.BottomEnd).padding(bottom = 44.dp))   // MODULE_search5b
                             // NVE: document notifications (forms, JavaScript, PDF/A, redactions, 3D, portfolio) + crash-recovery copy
-                            com.smartdocs.editor.ui.nve.panes.NveDocBanners(state, onOpenTool = { actions.navigateTool(it) }, modifier = Modifier.align(Alignment.TopCenter).padding(top = 96.dp))
+                            
                             com.smartdocs.editor.ui.nve.shell.NveRecoveryBanner(state, onOpen = { f -> nav.navigate(Routes.reader(android.net.Uri.fromFile(f).toString())) }, modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 48.dp))
                             // selmenu: floating selection / long-press / right-click menus (one registry, core/selmenu)
                             com.smartdocs.editor.ui.selmenu.SelMenuLayer(state, actions, quick, snack,
