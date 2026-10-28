@@ -293,3 +293,9 @@ object Layers {
         outline.addLast(item)
     }
 }
+
+/** pdf39 §22 #270: the layers list filtered to the layers used on some pages (visible / current page). Pure. */
+object LayerPageFilter {
+    /** Keep a layer used on [pages] when [only] is null (all pages) or it is used on one of [only]. */
+    fun keep(pages: List<Int>, only: Set<Int>?): Boolean = only == null || pages.any { it in only }
+}

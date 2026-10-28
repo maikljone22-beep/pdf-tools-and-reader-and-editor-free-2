@@ -13,7 +13,7 @@ class NamedActionsTest {
         assertEquals(NamedOp.FIT_WIDTH, NamedActions.resolve("FitWidth"))
         assertEquals(NamedOp.FULL_SCREEN, NamedActions.resolve("FullScreen"))
         assertEquals(NamedOp.TWO_COLUMNS, NamedActions.resolve("TwoColumns"))
-        assertEquals(NamedOp.UNSUPPORTED, NamedActions.resolve("Quit"))
+        assertEquals(NamedOp.UNSUPPORTED, NamedActions.resolve("GeneralInfo"))
     }
 
     @Test fun zoomSteps() {

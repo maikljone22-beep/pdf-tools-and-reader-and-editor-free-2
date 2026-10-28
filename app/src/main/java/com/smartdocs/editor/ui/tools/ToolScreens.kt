@@ -87,6 +87,7 @@ private fun ToolScreensInner(nav: NavHostController, id: String, uri: String?) {
         "search_all" -> com.smartdocs.editor.ui.search.GlobalSearchScreen(nav, uri?.takeIf { it.startsWith("q:") }?.drop(2).orEmpty())
         "search_highlight" -> com.smartdocs.editor.ui.search.SearchMarkScreen(nav, uri)
         "find_replace" -> com.smartdocs.editor.ui.search.FindReplaceScreen(nav, uri)
+        "search_remove" -> com.smartdocs.editor.ui.search.SearchRemoveScreen(nav, uri)      // edit-text-tools #17
         "sanitize" -> com.smartdocs.editor.ui.security.SanitizeScreen(nav, uri)
         "protect_advanced" -> com.smartdocs.editor.ui.security.ProtectAdvancedScreen(nav, uri)
         "forms" -> FormsScreen(nav, uri)

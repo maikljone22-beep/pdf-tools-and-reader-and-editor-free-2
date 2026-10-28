@@ -41,6 +41,8 @@ class ReaderGuard(private val s: ReaderState) {
     var origin by mutableStateOf<DocOrigin?>(null); private set
     var privileged by mutableStateOf(false); private set
     var protectedView by mutableStateOf(false); private set
+    /** reader-prefs (§37 / PREF-5): the file claims PDF/A and is shown in PDF/A view mode (read-only until enabled). */
+    var pdfaView by mutableStateOf(false)
     var safeActive by mutableStateOf(false); private set
     var findings by mutableStateOf<ActionFindings?>(null); private set
     var banner by mutableStateOf(false); private set
@@ -146,7 +148,7 @@ class ReaderGuard(private val s: ReaderState) {
 
     // ---------------------------------------------------------------- restrictions
 
-    fun blockOf(a: DocAction): Block? = ReaderRestrictions.check(info, protectedView, a)
+    fun blockOf(a: DocAction): Block? = ReaderRestrictions.check(info, protectedView || pdfaView, a)
         ?: Block.CERTIFIED.takeIf { com.smartdocs.editor.core.security.CertifiedLock.blocks(signedInfo, a) }     // tab audit D8
 
     fun allows(a: DocAction): Boolean = blockOf(a) == null
@@ -160,7 +162,7 @@ class ReaderGuard(private val s: ReaderState) {
 
     fun message(b: Block): String = s.context.getString(when (b) {
         Block.AUTHOR -> R.string.np2_restricted_author
-        Block.PROTECTED_VIEW -> R.string.np2_pv_blocked
+        Block.PROTECTED_VIEW -> if (pdfaView && !protectedView) R.string.rpf_pdfa_blocked else R.string.np2_pv_blocked
         Block.CERTIFIED -> R.string.tfr_certified_blocked
     })
 

@@ -6,6 +6,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
@@ -51,6 +52,8 @@ fun SpacesScreen(nav: NavHostController) {
     val app = com.smartdocs.editor.LocalApp.current
     val scope = rememberCoroutineScope()
     var notice by remember { mutableStateOf<String?>(null) }
+    var crafts by remember { mutableStateOf<Space?>(null) }   // aor (B13 / §35): slides, infographics, web pages
+    val aiOn = com.smartdocs.editor.LocalSettings.current.aiEnabled
     // ai6 (B9): import a shared Space (.sdspace)
     val importBundle = rememberPdfPicker(mimes = arrayOf("application/zip", "application/octet-stream", "*/*")) { picked ->
         val f = picked.firstOrNull()
@@ -85,14 +88,16 @@ fun SpacesScreen(nav: NavHostController) {
                             Text(s.name.ifBlank { "…" }, style = MaterialTheme.typography.titleSmall)
                             Text(s.files.joinToString("، ") { sourceLabel(it) }, style = MaterialTheme.typography.bodySmall, maxLines = 2, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
+                        if (aiOn) IconButton(onClick = { crafts = s }) { Icon(Icons.Default.AutoAwesome, stringResource(R.string.aor_crafts)) }   // aor
                         IconButton(onClick = { shareSpace(s) }) { Icon(Icons.Default.Share, stringResource(R.string.ai6h_space_share)) }   // ai6 (B9)
                         IconButton(onClick = { editing = s }) { Icon(Icons.Default.Edit, stringResource(R.string.a5_edit)) }
-                        IconButton(onClick = { store.deleteSpace(s.id); spaces = store.spaces() }) { Icon(Icons.Default.Delete, stringResource(R.string.a5_delete)) }
+                        IconButton(onClick = { store.deleteSpace(s.id); com.smartdocs.editor.core.ai6.SpaceCrafts(File(ctx.filesDir, "ai6/crafts")).clear(s.id); spaces = store.spaces() }) { Icon(Icons.Default.Delete, stringResource(R.string.a5_delete)) }
                     }
                 }
             }
         }
     }
+    crafts?.let { sp -> com.smartdocs.editor.ui.ai6.SpaceCraftsSheet(nav, sp, onDismiss = { crafts = null }) }
     editing?.let { sp -> SpaceEditor(sp, onSave = { store.saveSpace(it); spaces = store.spaces(); editing = null }, onDismiss = { editing = null }) }
     notice?.let { m -> AlertDialog(onDismissRequest = { notice = null }, text = { Text(m) }, confirmButton = { TextButton(onClick = { notice = null }) { Text(stringResource(R.string.a5_close)) } }) }
 }

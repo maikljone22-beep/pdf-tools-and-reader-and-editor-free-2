@@ -32,6 +32,9 @@ data class AutoBmLevel(
 
 enum class LeadingNumbers { KEEP, STRIP, REQUIRE }
 
+/** fix/links-bookmarks (Nitro auto bookmarks "text case"): how the title's letters are cased. */
+enum class TitleCase { KEEP, UPPER, LOWER, TITLE, SENTENCE }
+
 /**
  * Auto-bookmark settings: up to five levels, the automatic size ratio, leading numbers (keep, strip, only headings
  * that start with one), [exactText] (keywords must match the whole line, no wrapped-line merging), the view the new
@@ -47,6 +50,13 @@ data class AutoBmSettings(
     val insert: AutoInsert = AutoInsert.REPLACE,
     val collapse: Boolean = false,
     val pages: String = "",
+    // fix/links-bookmarks: title clean-up (Nitro "text case", "text before / after", "remove non-alphanumeric", stop words)
+    val titleCase: TitleCase = TitleCase.KEEP,
+    val prefix: String = "",
+    val suffix: String = "",
+    val alnumOnly: Boolean = false,
+    /** Comma-separated words removed from the titles (whole words, any case). */
+    val stopWords: String = "",
 ) {
     companion object { const val MAX_LEVELS = 5 }
 }
@@ -133,6 +143,28 @@ object AutoBookmarks {
         return if (s.leadingNumbers == LeadingNumbers.STRIP) out.map { (h, l) -> h.copy(text = stripLeadingNumber(h.text).ifBlank { h.text }) to l } else out
     }
 
+    /**
+     * The bookmark title of heading text [t]: stop words removed, non-alphanumeric characters dropped (letters, digits
+     * and spaces stay; Arabic letters and digits count), the case changed, then the text before / after added.
+     * A title that would become empty keeps the original text.
+     */
+    fun formatTitle(t: String, s: AutoBmSettings): String {
+        var x = t
+        val stops = words(s.stopWords)
+        if (stops.isNotEmpty()) x = x.split(Regex("""\s+""")).filter { w -> stops.none { it.equals(w.trim { c -> !c.isLetterOrDigit() }, true) } }.joinToString(" ")
+        if (s.alnumOnly) x = x.filter { it.isLetterOrDigit() || it.isWhitespace() }
+        x = x.replace(Regex("""\s+"""), " ").trim()
+        if (x.isEmpty()) x = t.trim()
+        x = when (s.titleCase) {
+            TitleCase.KEEP -> x
+            TitleCase.UPPER -> x.uppercase()
+            TitleCase.LOWER -> x.lowercase()
+            TitleCase.TITLE -> x.lowercase().split(' ').joinToString(" ") { w -> w.replaceFirstChar { it.titlecase() } }
+            TitleCase.SENTENCE -> x.lowercase().replaceFirstChar { it.titlecase() }
+        }
+        return s.prefix + x + s.suffix
+    }
+
     /** New bookmarks for [found] with the settings' view and open / collapsed state. */
     fun toBookmarks(found: List<Pair<TextLine, Int>>, s: AutoBmSettings): List<E5Bookmark> {
         val list = found.map { (h, l) ->
@@ -142,7 +174,7 @@ object AutoBookmarks {
                 DestFit.FITH, DestFit.FITBH -> v.copy(top = h.top)
                 else -> v
             }
-            E5Bookmark(OutlineModel.newKey(), h.text, h.page, l, bold = l == 0, open = !s.collapse).withView(if (view.fit == DestFit.XYZ && h.top == null) DestView(DestFit.FIT) else view)
+            E5Bookmark(OutlineModel.newKey(), formatTitle(h.text, s), h.page, l, bold = l == 0, open = !s.collapse).withView(if (view.fit == DestFit.XYZ && h.top == null) DestView(DestFit.FIT) else view)
         }
         return OutlineModel.normalize(list.map { it.row() }).let { n -> list.mapIndexed { i, b -> b.copy(level = n[i].level) } }
     }
@@ -162,6 +194,8 @@ object AutoBookmarks {
         "minRatio" to JsonPrimitive(s.minRatio), "leadingNumbers" to JsonPrimitive(s.leadingNumbers.name), "exactText" to JsonPrimitive(s.exactText),
         "skipRepeated" to JsonPrimitive(s.skipRepeated), "fit" to JsonPrimitive(s.view.fit.name), "zoom" to JsonPrimitive(s.view.zoom),
         "insert" to JsonPrimitive(s.insert.name), "collapse" to JsonPrimitive(s.collapse), "pages" to JsonPrimitive(s.pages),
+        "titleCase" to JsonPrimitive(s.titleCase.name), "prefix" to JsonPrimitive(s.prefix), "suffix" to JsonPrimitive(s.suffix),
+        "alnumOnly" to JsonPrimitive(s.alnumOnly), "stopWords" to JsonPrimitive(s.stopWords),
     )).toString()
 
     /** Parse a settings file written by [toJson]; unknown or missing keys take the defaults. */
@@ -187,6 +221,9 @@ object AutoBookmarks {
             view = DestView(runCatching { DestFit.valueOf(str(o["fit"])!!) }.getOrDefault(DestFit.XYZ), zoom = p(o["zoom"])?.floatOrNull ?: 0f),
             insert = runCatching { AutoInsert.valueOf(str(o["insert"])!!) }.getOrDefault(d.insert),
             collapse = p(o["collapse"])?.booleanOrNull ?: d.collapse, pages = str(o["pages"]) ?: "",
+            titleCase = runCatching { TitleCase.valueOf(str(o["titleCase"])!!) }.getOrDefault(d.titleCase),
+            prefix = str(o["prefix"]) ?: "", suffix = str(o["suffix"]) ?: "",
+            alnumOnly = p(o["alnumOnly"])?.booleanOrNull ?: d.alnumOnly, stopWords = str(o["stopWords"]) ?: "",
         )
     }
 }

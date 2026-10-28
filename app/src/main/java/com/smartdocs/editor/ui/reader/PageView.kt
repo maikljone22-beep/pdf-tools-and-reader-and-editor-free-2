@@ -67,19 +67,22 @@ fun PageView(
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
     val vx = state.vx
-    val gapPx = with(density) { 8.dp.toPx() }
+    // reader-prefs (§37): gap between pages and 2-up / 3-up facing layouts
+    val gapDp = com.smartdocs.editor.core.rpf.RpfPrefs.pageGapDp.dp
+    val facingN = com.smartdocs.editor.core.rpf.RpfPrefs.facingCount
+    val gapPx = with(density) { gapDp.toPx() }
     val pairGapPx = if (vx.facingSeparator) gapPx else 0f
-    val pairGapDp = if (vx.facingSeparator) 8.dp else 0.dp
+    val pairGapDp = if (vx.facingSeparator) gapDp else 0.dp
     var viewport by remember { mutableStateOf(Size.Zero) }
     var viewportOrigin by remember { mutableStateOf(Offset.Zero) }
     var panX by remember { mutableFloatStateOf(0f) }
     var panY by remember { mutableFloatStateOf(0f) }     // only used by the pager modes
     val mode = state.viewMode
-    val spread = remember(mode) { PageSpread(mode) }
+    val spread = remember(mode, facingN) { PageSpread(mode, facingN) }
     // NVE: continuous facing (two-up scrolling list, optional cover page) and reverse view (last page first)
     val nve = com.smartdocs.editor.ui.nve.NveState.of(state)
-    val contSpread = remember(mode, nve.continuousFacing, nve.continuousCover) {
-        if (mode == ViewMode.CONTINUOUS && nve.continuousFacing) PageSpread(if (nve.continuousCover) ViewMode.COVER else ViewMode.FACING) else null
+    val contSpread = remember(mode, nve.continuousFacing, nve.continuousCover, facingN) {
+        if (mode == ViewMode.CONTINUOUS && nve.continuousFacing) PageSpread(if (nve.continuousCover) ViewMode.COVER else ViewMode.FACING, facingN) else null
     }
     val rev = nve.reverseView
     /** Display position <-> page (an involution: the same mapping both ways). */
@@ -91,7 +94,7 @@ fun PageView(
     val cropOn = state.vx.crop.enabled
     // fresh scroll states per mode, starting at the page the user is on
     val listState = key(mode, contSpread, rev) { rememberLazyListState(initialFirstVisibleItemIndex = contItemOf(state.currentPage.coerceIn(0, (state.pageCount - 1).coerceAtLeast(0)))) }
-    val pagerState = key(mode, rev) { rememberPagerState(initialPage = spread.pageToItem(dp(state.currentPage))) { spread.itemCount(state.pageCount) } }
+    val pagerState = key(mode, rev, facingN) { rememberPagerState(initialPage = spread.pageToItem(dp(state.currentPage))) { spread.itemCount(state.pageCount) } }
 
     // page size from the preloaded table (never suspends, never 0) so list items keep a stable height
     fun sizeOf(page: Int): Pair<Float, Float> = state.pageSizes[page] ?: state.pageSizes[state.currentPage] ?: state.pageSizes[0] ?: (595f to 842f)
@@ -106,7 +109,7 @@ fun PageView(
     }
     // displayed page width (layout px) at zoom 1 — fit width unless "fit page"
     fun baseWidth(page: Int): Float {
-        val avail = (viewport.width - gapPx * 2) / perItem - (if (perItem == 2) pairGapPx / 2 else 0f)
+        val avail = (viewport.width - gapPx * 2 - pairGapPx * (perItem - 1)) / perItem
         if (!state.fitPage) return avail.coerceAtLeast(1f)
         return min(avail, (viewport.height - gapPx * 2) * aspectOf(page)).coerceAtLeast(1f)
     }
@@ -185,6 +188,8 @@ fun PageView(
     fun overflowY(): Boolean = mode != ViewMode.CONTINUOUS && pagerContentSize().height > viewport.height + 1f
 
     fun applyZoom(zc: Float, centroid: Offset, pan: Offset) {
+        // reader-prefs: zooming in past the layout limit continues in the deep-zoom view (up to 6400 %)
+        if (zc > 1.001f && state.zoom >= MAX_ZOOM * 0.999f && com.smartdocs.editor.ui.rpf.RpfDeepZoom.enterAt(state, centroid)) return
         val z0 = state.zoom; val z1 = (z0 * zc).coerceIn(MIN_ZOOM, MAX_ZOOM); val r = z1 / z0
         val cx = centroid.x - viewport.width / 2f
         panX = cx - (cx - panX) * r + pan.x
@@ -221,7 +226,14 @@ fun PageView(
             // a point inside the page (JS doc.scroll): scroll that share of the page's height further
             state.pendingJumpTop?.let { f -> listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == contItemOf(p) }?.let { item -> listState.scrollBy(item.size * f) } }
         } else pagerState.animateScrollToPage(spread.pageToItem(dp(p)))
-        state.pendingJump = null; state.pendingJumpTop = null
+        // JS doc.scroll x: the point goes to the left edge when the zoomed page is wider than the view (unrotated pages)
+        state.pendingJumpLeft?.let { x ->
+            if (state.rotation % 360 == 0) {
+                panX = com.smartdocs.editor.core.forms5.NamedActions.scrollPanX(x, sizeOf(p).first, baseWidth(p) * state.zoom, viewport.width)
+                clampPan()
+            }
+        }
+        state.pendingJump = null; state.pendingJumpTop = null; state.pendingJumpLeft = null
     }
     // keep the current page in sync with what the user sees
     if (mode == ViewMode.CONTINUOUS) {
@@ -231,6 +243,14 @@ fun PageView(
                 val center = (info.viewportStartOffset + info.viewportEndOffset) / 2
                 info.visibleItemsInfo.minByOrNull { abs(it.offset + it.size / 2 - center) }?.index ?: -1
             }.collect { item -> val pg = if (item >= 0) contPages(item).firstOrNull() ?: -1 else -1; if (pg >= 0 && pg != state.currentPage) state.rememberPage(pg) }
+        }
+        // fix/links-bookmarks: how far the current page is scrolled (bookmark / link "current view" destinations)
+        LaunchedEffect(listState) {
+            snapshotFlow {
+                val info = listState.layoutInfo
+                val item = info.visibleItemsInfo.firstOrNull { it.index == contItemOf(state.currentPage) }
+                if (item == null || item.size <= 0) 0f else ((info.viewportStartOffset - item.offset).toFloat() / item.size).coerceIn(0f, 1f)
+            }.collect { state.viewTopFraction = it }
         }
     } else {
         LaunchedEffect(pagerState, spread) { snapshotFlow { itemPages(pagerState.currentPage).firstOrNull() ?: dp(spread.firstPage(pagerState.currentPage)) }.collect { if (it != state.currentPage) state.rememberPage(it) } }
@@ -366,8 +386,8 @@ fun PageView(
                         state = listState,
                         modifier = Modifier.absoluteOffset { IntOffset(panX.roundToInt(), 0) }.requiredWidth(with(density) { contentW.toDp() }).fillMaxHeight(),
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        contentPadding = PaddingValues(vertical = 8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        contentPadding = PaddingValues(vertical = gapDp),
+                        verticalArrangement = Arrangement.spacedBy(gapDp),
                         userScrollEnabled = state.zoom <= 1.01f || toolBusy(),
                     ) {
                         items(contItemCount(), key = { it }) { item ->

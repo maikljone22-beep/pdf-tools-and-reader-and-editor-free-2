@@ -42,7 +42,7 @@ import kotlinx.coroutines.launch
  */
 @Composable
 fun PanelsContent(state: ReaderState, panel: ReaderPanel, onPanel: (ReaderPanel) -> Unit, onJump: (Int) -> Unit, onAiOutline: () -> Unit, onClose: () -> Unit, modifier: Modifier = Modifier,
-                  onOpenPdf: ((java.io.File) -> Unit)? = null) {
+                  onOpenPdf: ((java.io.File) -> Unit)? = null, onOpenPdfAt: ((java.io.File, Int) -> Unit)? = null) {
     val tabs = listOf(
         ReaderPanel.OUTLINE to Icons.Default.FormatListBulleted, ReaderPanel.BOOKMARKS to Icons.Default.Bookmark,
         ReaderPanel.ANNOTATIONS to Icons.Default.Comment, ReaderPanel.THUMBNAILS to Icons.Default.GridView,
@@ -65,7 +65,7 @@ fun PanelsContent(state: ReaderState, panel: ReaderPanel, onPanel: (ReaderPanel)
         Text(panelTitle(panel), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
         Box(Modifier.fillMaxWidth().weight(1f, fill = false)) {
             when (panel) {
-                ReaderPanel.OUTLINE -> OutlinePanel(state, onJump, onAiOutline)
+                ReaderPanel.OUTLINE -> OutlinePanel(state, onJump, onAiOutline, onOpenPdfAt)
                 ReaderPanel.BOOKMARKS -> BookmarksPanel(state, onJump)
                 // threads, review status, type + author filters, sorting, export / import (MODULE_annot2)
                 ReaderPanel.ANNOTATIONS -> com.smartdocs.editor.ui.reader.annot.CommentsPanel(state, onJump)
@@ -88,7 +88,7 @@ fun panelTitle(p: ReaderPanel): String = stringResource(
 )
 
 @Composable
-private fun OutlinePanel(state: ReaderState, onJump: (Int) -> Unit, onAiOutline: () -> Unit) {
+private fun OutlinePanel(state: ReaderState, onJump: (Int) -> Unit, onAiOutline: () -> Unit, onOpenPdfAt: ((java.io.File, Int) -> Unit)? = null) {
     val outline by produceState<List<OutlineItem>?>(null, state.session, state.renderVersion) { value = runCatching { state.session?.outline() }.getOrNull() ?: emptyList() }
     val flat = remember(outline) { outline?.let { flatten(it) } ?: emptyList() }
     val expanded = remember { mutableStateMapOf<String, Boolean>() }
@@ -141,15 +141,15 @@ private fun OutlinePanel(state: ReaderState, onJump: (Int) -> Unit, onAiOutline:
                             } else Spacer(Modifier.size(28.dp))
                         },
                         trailingContent = {
-                            if (item.page >= 0) Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text((item.page + 1).toString(), style = MaterialTheme.typography.labelMedium)
-                                OutlinePrintMenu(state, flat, idx)   // nav-batch: print this page / section
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                if (item.page >= 0) Text((item.page + 1).toString(), style = MaterialTheme.typography.labelMedium)
+                                OutlinePrintMenu(state, flat, idx)   // nav-batch: print this page / section; fix/links-bookmarks: set destination
                             }
                         },
                         colors = ListItemDefaults.colors(containerColor = if (key == current) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface),
                         modifier = Modifier.padding(start = (item.level * 16).dp).clickable {
                             current = key
-                            if (item.page >= 0) onJump(item.page) else com.smartdocs.editor.ui.edit5.runOutlineActions(state, idx, onJump)
+                            if (item.page >= 0) onJump(item.page) else com.smartdocs.editor.ui.edit5.runOutlineActions(state, idx, onJump, onOpenPdfAt)
                         },
                     )
                 }
@@ -176,14 +176,19 @@ private fun OutlinePrintMenu(state: ReaderState, flat: List<Pair<OutlineItem, Li
         }
     }
     Box {
-        IconButton(onClick = { open = true }, Modifier.size(32.dp)) { Icon(Icons.Default.Print, stringResource(R.string.print), Modifier.size(18.dp)) }
+        IconButton(onClick = { open = true }, Modifier.size(32.dp)) { Icon(Icons.Default.MoreVert, stringResource(R.string.nbm_more), Modifier.size(18.dp)) }
         DropdownMenu(open, { open = false }) {
             val item = flat.getOrNull(index)?.first
-            DropdownMenuItem(text = { Text(stringResource(R.string.nbt_print_bm_page)) }, onClick = { open = false; item?.let { print(it.page..it.page) } })
-            DropdownMenuItem(text = { Text(stringResource(R.string.nbt_print_bm_section)) }, onClick = {
-                open = false
-                if (index >= 0) print(com.smartdocs.editor.core.view5.PrintLayout.section(flat.map { it.first.level }, flat.map { it.first.page }, index, state.pageCount))
-            })
+            // fix/links-bookmarks (Foxit §16): the bookmark now goes to the page, zoom and position on screen
+            DropdownMenuItem(text = { Text(stringResource(R.string.lbm_bm_set_view)) }, leadingIcon = { Icon(Icons.Default.MyLocation, null) },
+                onClick = { open = false; if (index >= 0) com.smartdocs.editor.ui.edit5.setBookmarkToCurrentView(state, index) })
+            if (item != null && item.page >= 0) {
+                DropdownMenuItem(text = { Text(stringResource(R.string.nbt_print_bm_page)) }, leadingIcon = { Icon(Icons.Default.Print, null) }, onClick = { open = false; print(item.page..item.page) })
+                DropdownMenuItem(text = { Text(stringResource(R.string.nbt_print_bm_section)) }, leadingIcon = { Icon(Icons.Default.Print, null) }, onClick = {
+                    open = false
+                    if (index >= 0) print(com.smartdocs.editor.core.view5.PrintLayout.section(flat.map { it.first.level }, flat.map { it.first.page }, index, state.pageCount))
+                })
+            }
         }
     }
 }

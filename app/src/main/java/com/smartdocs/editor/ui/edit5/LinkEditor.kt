@@ -42,6 +42,8 @@ fun LinkEditorSheet(
     currentView: (() -> Pair<Int, Float>)? = null,
     /** FINAL_CHECK: the document's named destinations, picked from a list instead of typed. */
     destNames: List<String> = emptyList(),
+    /** fix/links-bookmarks: the document's embedded files, for destinations inside an attachment (GoToE). */
+    attachments: NavAttachments? = null,
     onSave: (LinkSpec) -> Unit,
 ) {
     val ctx = androidx.compose.ui.platform.LocalContext.current
@@ -68,9 +70,14 @@ fun LinkEditorSheet(
             run {
                 ChoiceChips(listOf(LinkKind.URI, LinkKind.PAGE, LinkKind.MAIL, LinkKind.REMOTE, LinkKind.LAUNCH, LinkKind.NAMED, LinkKind.OTHER), s.kind,
                     { if (it == LinkKind.OTHER) stringResource(R.string.nbm_action_list) else stringResource(kindLabel(it)) }) { s = s.copy(kind = it) }
+                // fix/links-bookmarks: shortcuts into the action list for a destination inside an attachment, media and sound
+                if (s.kind != LinkKind.OTHER) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    if (!attachments?.keys.isNullOrEmpty()) AssistChip(onClick = { s = s.copy(kind = LinkKind.OTHER, actions = listOf(com.smartdocs.editor.core.edit5.NavAction.GoToE(attachments!!.keys.first()))) },
+                        label = { Text(stringResource(R.string.lbm_act_embedded)) })
+                    AssistChip(onClick = { s = s.copy(kind = LinkKind.OTHER, actions = listOf(com.smartdocs.editor.core.edit5.NavAction.Media(""))) }, label = { Text(stringResource(R.string.lbm_act_media)) })
+                }
                 when (s.kind) {
-                    LinkKind.URI -> OutlinedTextField(s.uri, { s = s.copy(uri = it) }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.e5_link_url)) },
-                        placeholder = { Text("https://") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))
+                    LinkKind.URI -> RecentUrlField(s.uri, { s = s.copy(uri = it) })   // fix/links-bookmarks: recently used URLs
                     LinkKind.MAIL -> {
                         OutlinedTextField(mailTo, { mailTo = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.e5_link_mail_to)) }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email))
                         OutlinedTextField(mailSubject, { mailSubject = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.e5_link_mail_subject)) })
@@ -106,7 +113,7 @@ fun LinkEditorSheet(
                             destNames.take(40).forEach { n -> FilterChip(s.named == n, { s = s.copy(named = n) }, label = { Text(n, maxLines = 1) }) }
                         }
                     }
-                    LinkKind.OTHER -> CompositionLocalProvider(LocalDestNames provides destNames) { ActionListEditor(s.actions, pageCount) { s = s.copy(actions = it) } }
+                    LinkKind.OTHER -> CompositionLocalProvider(LocalDestNames provides destNames, LocalNavAttachments provides attachments) { ActionListEditor(s.actions, pageCount) { s = s.copy(actions = it) } }
                 }
             }
             HorizontalDivider()
@@ -131,14 +138,14 @@ fun LinkEditorSheet(
                 TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
                 val valid = when (s.kind) {
                     LinkKind.URI -> s.uri.isNotBlank(); LinkKind.MAIL -> mailTo.contains('@'); LinkKind.PAGE -> pageText.toIntOrNull()?.let { it in 1..pageCount } == true
-                    LinkKind.REMOTE, LinkKind.LAUNCH -> s.file.isNotBlank(); LinkKind.NAMED -> s.named.isNotBlank(); LinkKind.OTHER -> s.actions.isNotEmpty()
+                    LinkKind.REMOTE, LinkKind.LAUNCH -> s.file.isNotBlank(); LinkKind.NAMED -> s.named.isNotBlank(); LinkKind.OTHER -> actionsComplete(s.actions)
                 }
                 Button(enabled = valid, onClick = {
                     val p = (pageText.toIntOrNull() ?: 1) - 1
                     val z = zoomText.toIntOrNull()?.let { it / 100f } ?: 0f
                     onSave(when (s.kind) {
                         LinkKind.MAIL -> s.copy(uri = LinkDetect.mailto(mailTo, mailSubject, mailBody))
-                        LinkKind.URI -> s.copy(uri = LinkDetect.normalizeUrl(s.uri))
+                        LinkKind.URI -> s.copy(uri = LinkDetect.normalizeUrl(s.uri)).also { com.smartdocs.editor.core.edit5.RecentUrls.add(ctx, it.uri) }
                         LinkKind.PAGE, LinkKind.REMOTE -> s.copy(page = p.coerceAtLeast(0), zoom = z)
                         else -> s
                     })
@@ -146,6 +153,11 @@ fun LinkEditorSheet(
             }
         }
     }
+}
+
+/** fix/links-bookmarks: an action list that can be written (no attachment / clip left unchosen). */
+fun actionsComplete(l: List<com.smartdocs.editor.core.edit5.NavAction>): Boolean = l.isNotEmpty() && l.none {
+    (it is com.smartdocs.editor.core.edit5.NavAction.GoToE && it.attachment.isBlank()) || (it is com.smartdocs.editor.core.edit5.NavAction.Media && it.file.isBlank() && it.index < 0)
 }
 
 @Composable

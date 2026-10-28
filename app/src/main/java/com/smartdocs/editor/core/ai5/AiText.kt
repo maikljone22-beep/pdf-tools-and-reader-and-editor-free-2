@@ -97,6 +97,7 @@ object AiLang {
     val NAMES = linkedMapOf(
         "ar" to "العربية", "en" to "الإنجليزية", "fr" to "الفرنسية", "de" to "الألمانية", "es" to "الإسبانية", "tr" to "التركية",
         "ur" to "الأردية", "fa" to "الفارسية", "id" to "الإندونيسية", "ms" to "الملايوية", "hi" to "الهندية", "zh" to "الصينية", "ru" to "الروسية",
+        "da" to "الدنماركية",
     )
 
     fun name(code: String): String = NAMES[code] ?: code

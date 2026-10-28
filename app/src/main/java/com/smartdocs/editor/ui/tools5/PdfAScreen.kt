@@ -108,6 +108,7 @@ fun PdfAScreen(nav: NavHostController, uri: String?) {
     }
     val checking = stringResource(R.string.t5_pf_checking)
     val convertingMsg = stringResource(R.string.t5_pdfa_converting)
+    val outliningMsg = stringResource(R.string.ett_fx_running)
 
     fun check() {
         val f = file ?: return
@@ -210,6 +211,34 @@ fun PdfAScreen(nav: NavHostController, uri: String?) {
                     }
                 }
             }
+        }
+        // edit-text-tools: fixup "convert fonts to outlines" (DONE_pdf39 #187): every visible glyph of the page range
+        // becomes a filled path (the edit-mode "text to outlines" engine), written to a new copy
+        T5Card(stringResource(R.string.ett_fx_title), Icons.Default.Build) {
+            Text(stringResource(R.string.ett_fx_outlines_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            OutlinedButton(onClick = {
+                val f = file ?: return@OutlinedButton
+                val pw = password.ifBlank { null }; val src = origin; val rg = range
+                job.launch(outliningMsg) {
+                    val out = app.documents.uniqueFile(app.documents.docsDir, f.nameWithoutExtension + "_outlined")
+                    val r = try {
+                        val n = io { com.smartdocs.editor.core.pdf.PdfOps.loadRaw(f, pw).use { it.numberOfPages } }
+                        val pages = com.smartdocs.editor.core.edit5.PageSet.parse(rg, n)
+                        com.smartdocs.editor.core.edit.TextEdit5.outlineAll(f, out, pw, pages) { p -> step(pages.indexOf(p), pages.size) }
+                    } catch (e: kotlinx.coroutines.CancellationException) { out.delete(); throw e } catch (e: Exception) {
+                        out.delete()
+                        error = ctx.getString(when {
+                            e is IllegalArgumentException && e.message == "no outlines" -> R.string.ett_fx_none
+                            com.smartdocs.editor.core.edit5.E5Locks.isPasswordError(e) -> R.string.tte5_pdfa_password
+                            else -> R.string.ett_fx_failed
+                        })
+                        return@launch
+                    }
+                    com.smartdocs.editor.core.pdf.ToolOutputs.record(out, src)
+                    info = ctx.getString(R.string.ett_fx_done, r.first, r.second)
+                    result = out
+                }
+            }, enabled = file != null && !job.running) { Icon(Icons.Default.Gesture, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.ett_fx_outlines)) }
         }
         T5Card(stringResource(R.string.t5_options), Icons.Default.Tune) {
             SwitchRow(stringResource(R.string.t5_pdfa_raster), raster, stringResource(R.string.t5_pdfa_raster_hint)) { raster = it }

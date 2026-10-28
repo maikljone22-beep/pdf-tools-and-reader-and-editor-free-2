@@ -168,10 +168,20 @@ S.rq = rq;
 Field.prototype.setFocus = function () { rq({ k: "focus", n: this._n }); };
 Field.prototype.buttonImportIcon = function () { rq({ k: "image", n: this._n }); return 0; };
 Field.prototype.browseForFileToSubmit = function () { rq({ k: "file", n: this._n }); };
-["setAction", "buttonSetIcon", "signatureSign"].forEach(function (m) { Field.prototype[m] = function () { rq({ k: "unsupported", m: "Field." + m }); return 0; }; });
+// 27.10: setAction keeps the script for the trigger (runs from now on, written on save); signatureSign opens the
+// signing screen with this field chosen (never signs silently); buttonSetIcon copies another button's / a named icon
+Field.prototype.setAction = function (cTrigger, cScript) {
+  var a = arguments, t = arg(a, "cTrigger", 0), sc = arg(a, "cScript", 1);
+  rq({ k: "setaction", n: this._n, t: str(t), s: str(sc) });
+};
+Field.prototype.signatureSign = function () { rq({ k: "sign", n: this._n }); return false; };
+Field.prototype.buttonSetIcon = function (oIcon) {
+  if (!oIcon || !oIcon.__sdIcon) return;
+  rq({ k: "seticon", n: this._n, f: str(oIcon.f || ""), nm: str(oIcon.nm || "") });
+};
 // 8.84: the signature field's lock (SigFieldLock) for when it is signed; written on save
 Field.prototype.setLock = function (o) { o = o || {}; rq({ k: "lock", n: this._n, a: str(o.action || "All"), f: names(o.fields) }); return true; };
-Field.prototype.buttonGetIcon = function () { return null; };
+Field.prototype.buttonGetIcon = function () { return st(this) || kidsOf(this._n).length ? { __sdIcon: true, f: this._n, toString: function () { return "[object Icon]"; } } : null; };
 Field.prototype.signatureInfo = function () { return { status: 0 }; };
 Field.prototype.signatureValidate = function () { return 0; };
 Field.prototype.getLock = function () { return null; };
@@ -226,7 +236,17 @@ G.getURL = function (u) { rq({ k: "url", u: str(u) }); };
 G.saveAs = function () { rq({ k: "saveas", p: str(arg(arguments, "cPath", 0)) }); return 0; };
 G.closeDoc = function () { rq({ k: "close" }); return true; };
 G.flattenPages = function () { rq({ k: "flatten" }); };
-G.removeField = function (n) { rq({ k: "remove", n: str(n) }); };
+// 8.84: the field (and its kids) is gone for the scripts at once; the viewer hides it and deletes it on save
+G.removeField = function (n) {
+  n = str(n); var gone = S.fields[n] ? [n] : [];
+  gone = gone.concat(kidsOf(n));
+  if (!gone.length) return;
+  for (var i = 0; i < gone.length; i++) delete S.fields[gone[i]];
+  S.names = S.names.filter(function (x) { return gone.indexOf(x) < 0; });
+  rq({ k: "remove", n: n });
+};
+// a named icon of the document (/Names /AP) for buttonSetIcon
+G.getIcon = function (n) { return { __sdIcon: true, nm: str(n), toString: function () { return "[object Icon]"; } }; };
 // 8.84: an embedded file shared by name; annotation scanning needs no sync here; addScript runs the script now (not saved)
 G.exportDataObject = function () { rq({ k: "dataobj", n: str(arg(arguments, "cName", 0)) }); };
 G.syncAnnotScan = function () {};
@@ -269,7 +289,7 @@ var app = {
   beep: function () {}, response: function () { return null; }, launchURL: function (u) { rq({ k: "url", u: str(u) }); }, execMenuItem: function (m) { rq({ k: "menu", n: str(m) }); },
   setTimeOut: function () { return {}; }, clearTimeOut: function () {}, setInterval: function () { return {}; }, clearInterval: function () {},
   popUpMenu: function () { return null; }, popUpMenuEx: function () { return null; }, openDoc: function () { return null; },
-  goBack: function () {}, goForward: function () {}, mailMsg: function () {}, newDoc: function () { return null; },
+  goBack: function () { rq({ k: "menu", n: "GoBack" }); }, goForward: function () { rq({ k: "menu", n: "GoForward" }); }, mailMsg: function () {}, newDoc: function () { return null; },
   thermometer: { begin: function () {}, end: function () {}, value: 0, duration: 0, cancelled: false, text: "" },
   fs: { isFullScreen: false }, media: {}, monitors: [], printerNames: [],
 };

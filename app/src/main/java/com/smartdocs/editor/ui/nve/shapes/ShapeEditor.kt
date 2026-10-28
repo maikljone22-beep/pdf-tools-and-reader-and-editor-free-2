@@ -244,6 +244,22 @@ private fun PageSurface(
                             when {
                                 t == STool.SELECT -> {
                                     val sel = curSel
+                                    // §14d: a gradient handle of the selected shape is dragged freely (the reference line)
+                                    val grad = sel?.style?.gradient
+                                    val gh = if (sel != null && grad != null) com.smartdocs.editor.core.nve.shapes.GradientHandles.hit(grad, sel.bounds(), x0, y0, handle / scale.coerceAtLeast(0.05f)) else -1
+                                    if (sel != null && grad != null && gh >= 0) {
+                                        down.consume()
+                                        val bb = sel.bounds()
+                                        while (true) {
+                                            val ev = awaitPointerEvent()
+                                            val ch = ev.changes.firstOrNull { it.id == down.id } ?: break
+                                            if (!ch.pressed) break
+                                            ch.consume()
+                                            val (x, y) = pt(ch.position)
+                                            onPreview(sel.copy(style = sel.style.copy(gradient = com.smartdocs.editor.core.nve.shapes.GradientHandles.drag(grad, bb, gh, x, y))))
+                                        }
+                                        return@awaitEachGesture
+                                    }
                                     val b = sel?.bounds()
                                     val corner = b?.let { Offset(it[2] * scale, (pageH - it[1]) * scale) }
                                     val resizing = corner != null && (down.position - corner).getDistance() < handle
@@ -322,6 +338,17 @@ private fun PageSurface(
                             val b = s.bounds()
                             drawCircle(primary, 10.dp.toPx(), Offset(px(b[2]), py(b[1])))
                             drawCircle(Color.White, 4.dp.toPx(), Offset(px(b[2]), py(b[1])))
+                            // §14d: the gradient's reference line with its two free handles
+                            s.style.gradient?.let { g ->
+                                val (p0, p1) = com.smartdocs.editor.core.nve.shapes.GradientHandles.points(g, b)
+                                val a = Offset(px(p0.first), py(p0.second)); val e = Offset(px(p1.first), py(p1.second))
+                                val ref = Color(0xFF6A1B9A)
+                                drawLine(Color.White, a, e, 4.dp.toPx()); drawLine(ref, a, e, 2.dp.toPx(), pathEffect = dash)
+                                if (g.radial) drawCircle(ref, (e - a).getDistance(), a, style = Stroke(1.5.dp.toPx(), pathEffect = dash))
+                                listOf(a, e).forEachIndexed { i, o ->
+                                    drawCircle(ref, 9.dp.toPx(), o); drawCircle(if (i == 0) Color.White else Color(0xFFFFD54F), 4.dp.toPx(), o)
+                                }
+                            }
                         }
                         val k = tool.kind
                         if (k != null && draft.size >= 2) {

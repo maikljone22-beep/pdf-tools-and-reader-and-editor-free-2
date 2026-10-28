@@ -74,6 +74,7 @@ val allTools = listOf(
     ToolDef("search_all", R.string.s5_global_title, Icons.Default.Search, 3),
     ToolDef("search_highlight", R.string.s5_mark_title, Icons.Default.BorderColor, 3),
     ToolDef("find_replace", R.string.s5_replace_title, Icons.Default.FindReplace, 3),
+    ToolDef("search_remove", R.string.ett_sr_title, Icons.Default.DeleteSweep, 3),      // edit-text-tools #17
     ToolDef("compare", R.string.tool_compare, Icons.Default.Compare, 3),
     ToolDef("scan_studio", R.string.t5_scan_title, Icons.Default.DocumentScanner, 0),
     ToolDef("to_pdf_plus", R.string.t5_topdf_title, Icons.Default.PictureAsPdf, 0),

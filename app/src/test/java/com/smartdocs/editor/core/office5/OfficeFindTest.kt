@@ -83,6 +83,22 @@ class OfficeFindTest {
         assertEquals(2, SlideFind.find(d, "hello").size)
     }
 
+    @Test fun slideFindSpansTwoRuns() {
+        val d = deck()
+        // "Hello " + "world & co" are two runs of one paragraph
+        val hits = SlideFind.find(d, "o w")
+        assertEquals(1, hits.size)
+        val h = hits[0]
+        assertEquals(0, h.ordinal); assertEquals(1, h.endOrdinal); assertEquals(4, h.start); assertEquals(1, h.end)
+        assertTrue(SlideFind.replace(d, h, "o, w"))
+        assertTrue(SlideFind.slideText(d, 0).startsWith("Hello, world & co"))
+        // across runs on both slides: "hello a" (slide 2) and "Hello, w" no longer matches "o w"
+        assertEquals(1, SlideFind.replaceAll(d, "lo ag", "LO AG", FindOptions()))
+        assertTrue(SlideFind.slideText(d, 1).contains("helLO AGain"))
+        assertTrue(d.undo())
+        assertTrue(SlideFind.slideText(d, 1).contains("hello again"))
+    }
+
     @Test fun commandCatalogueParsesAiAnswers() {
         val calls = OfficeCommandCatalog.parse("Sure:\n```json\n[{\"id\":\"word.bold\"},{\"id\":\"word.font_size\",\"args\":{\"size\":\"18\"}},{\"id\":\"nope\"},{\"id\":\"sheet.sum\"}]\n```", OfficeKind.WORD)
         assertEquals(listOf("word.bold", "word.font_size"), calls.map { it.id })

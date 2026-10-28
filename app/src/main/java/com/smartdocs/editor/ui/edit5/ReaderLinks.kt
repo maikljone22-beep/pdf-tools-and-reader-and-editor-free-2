@@ -44,7 +44,7 @@ private fun applyLinks(state: ReaderState, msgOk: String, op: suspend (File, Fil
 fun ReaderLinkCreateSheet(state: ReaderState, page: Int, rect: RectF, onDismiss: () -> Unit) {
     val ok = stringResource(R.string.e5_link_saved)
     LinkEditorSheet(LinkSpec(rect = rect.normalized()), state.pageCount, isNew = true, onDismiss = onDismiss,
-        currentView = { state.currentPage to state.zoom }, destNames = rememberDestNames(state)) { spec ->
+        currentView = { state.currentPage to state.zoom }, destNames = rememberDestNames(state), attachments = rememberNavAttachments(state.file, state.password, state.renderVersion)) { spec ->
         onDismiss()
         applyLinks(state, ok) { s, o, p -> LinkOps.add(s, o, p, mapOf(page to listOf(spec))) }
     }
@@ -66,7 +66,7 @@ fun ReaderLinkFromSelection(state: ReaderState, onDismiss: () -> Unit) {
         }
     }
     LinkEditorSheet(initial, state.pageCount, isNew = true, onDismiss = onDismiss,
-        currentView = { state.currentPage to state.zoom }, destNames = rememberDestNames(state)) { spec ->
+        currentView = { state.currentPage to state.zoom }, destNames = rememberDestNames(state), attachments = rememberNavAttachments(state.file, state.password, state.renderVersion)) { spec ->
         onDismiss(); state.selection = null
         applyLinks(state, ok) { s, o, p -> LinkOps.add(s, o, p, mapOf(sel.page to listOf(spec))) }
     }
@@ -92,7 +92,7 @@ fun ReaderPageLinksSheet(state: ReaderState, page: Int, initial: PageLinkInfo? =
     val e = editing
     if (e != null) {
         LinkEditorSheet(e.spec, state.pageCount, isNew = false, onDismiss = { if (initial != null) onDismiss() else editing = null },
-            currentView = { state.currentPage to state.zoom }, destNames = rememberDestNames(state),
+            currentView = { state.currentPage to state.zoom }, destNames = rememberDestNames(state), attachments = rememberNavAttachments(state.file, state.password, state.renderVersion),
             onDelete = { onDismiss(); applyLinks(state, deleted) { s, o, p -> LinkOps.delete(s, o, p, mapOf(e.page to setOf(e.index))) } }) { spec ->
             onDismiss()
             applyLinks(state, ok) { s, o, p -> LinkOps.update(s, o, p, e.page, e.index, movedLink(spec, e.spec)) }
@@ -125,6 +125,19 @@ fun ReaderPageLinksSheet(state: ReaderState, page: Int, initial: PageLinkInfo? =
  */
 suspend fun followFileLinkAt(state: ReaderState, page: Int, x: Float, y: Float, openPdf: (File, Int) -> Unit): Boolean {
     val l = linkAt(state, page, x, y) ?: return false
+    // fix/links-bookmarks: a destination inside an attachment (GoToE) or a media / sound clip
+    if (l.spec.kind == LinkKind.OTHER) {
+        val i = l.spec.actions.indexOfFirst { it is com.smartdocs.editor.core.edit5.NavAction.GoToE || it is com.smartdocs.editor.core.edit5.NavAction.Media }
+        val a = l.spec.actions.getOrNull(i) ?: return false
+        if (a is com.smartdocs.editor.core.edit5.NavAction.GoToE) {
+            if (!openEmbedded(state, a, openPdf)) Toast.makeText(state.context, state.context.getString(R.string.e5_link_file_missing, a.attachment), Toast.LENGTH_LONG).show()
+        } else {
+            val f = state.file ?: return true
+            val clip = runCatching { com.smartdocs.editor.core.edit5.NavFollow.linkMedia(f, state.password, page, l.index, i, File(state.context.cacheDir, "lbm_media/" + System.nanoTime())) }.getOrNull()
+            if (clip == null) Toast.makeText(state.context, state.context.getString(R.string.lbm_media_missing), Toast.LENGTH_SHORT).show() else playMedia(state, clip.first, clip.second)
+        }
+        return true
+    }
     if (l.spec.kind != LinkKind.REMOTE && l.spec.kind != LinkKind.LAUNCH) return false
     val base = state.file?.parentFile
     val target = File(l.spec.file).let { if (it.isAbsolute) it else File(base, l.spec.file) }

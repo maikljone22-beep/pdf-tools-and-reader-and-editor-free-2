@@ -41,6 +41,16 @@ class V5State private constructor(val s: ReaderState) {
     var rulerHeightDp by mutableFloatStateOf(prefs.getFloat("rr_h", 56f))
     var rulerDim by mutableStateOf(prefs.getBoolean("rr_dim", true))
     var rulerColor by mutableIntStateOf(prefs.getInt("rr_c", 0xFFEB3B))
+    // reader-prefs §9: vertical band (a column across the page), shade opacity, reset
+    var rulerVertical by mutableStateOf(prefs.getBoolean("rr_v", false))
+    var rulerX by mutableFloatStateOf(0.5f)              // band centre (vertical), fraction of the page area width
+    var rulerOpacity by mutableFloatStateOf(prefs.getFloat("rr_o", RULER_OPACITY))
+
+    /** The reading ruler's settings back to their defaults (position, size, colour, shade, orientation). */
+    fun resetRuler() {
+        rulerY = 0.4f; rulerX = 0.5f; rulerHeightDp = 56f; rulerDim = true; rulerColor = 0xFFEB3B; rulerVertical = false; rulerOpacity = RULER_OPACITY
+        saveOverlays()
+    }
     var lens by mutableStateOf(false)
     var lensZoom by mutableFloatStateOf(prefs.getFloat("lens_z", 2.5f))
 
@@ -94,7 +104,7 @@ class V5State private constructor(val s: ReaderState) {
 
     fun saveOverlays() {
         prefs.edit().putBoolean("rulers", rulers).putBoolean("grid", grid).putFloat("grid_mm", gridMm).putFloat("rr_h", rulerHeightDp)
-            .putBoolean("rr_dim", rulerDim).putInt("rr_c", rulerColor).putFloat("lens_z", lensZoom).putInt("as_speed", autoSpeed).apply()
+            .putBoolean("rr_dim", rulerDim).putInt("rr_c", rulerColor).putBoolean("rr_v", rulerVertical).putFloat("rr_o", rulerOpacity).putFloat("lens_z", lensZoom).putInt("as_speed", autoSpeed).apply()
     }
 
     fun saveMeasure() { prefs.edit().putString("scale", scale.label()).putInt("precision", precision).putBoolean("snap", snap).putBoolean("snap_grid", snapGrid).putString("scale_desc", scaleDescription).apply() }
@@ -129,6 +139,8 @@ class V5State private constructor(val s: ReaderState) {
 
     companion object {
         const val PREFS = "view5"
+        /** Default shade of the reading ruler (outside the band; the band itself is tinted at 40 % of it). */
+        const val RULER_OPACITY = 0.53f
         private val map = WeakHashMap<ReaderState, V5State>()
         fun of(s: ReaderState): V5State = synchronized(map) { map.getOrPut(s) { V5State(s) } }
         /** The reader was closed: drop its state (the value holds the reader, so the weak key alone never clears it). */

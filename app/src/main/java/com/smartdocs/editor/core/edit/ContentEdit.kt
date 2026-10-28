@@ -48,7 +48,7 @@ object ContentEdit {
             val a = PageTextModel.analyze(doc, page)
             val block = findBlock(a, ops)
             // NVE-text: rotated rows and form XObject text are rewritten in their own frame / stream
-            if (block.angle != 0f || block.inForm) { TextEdit5.replaceIn(context, doc, page, a, block, text, style); return }
+            if (block.framed || block.inForm) { TextEdit5.replaceIn(context, doc, page, a, block, text, style); return }
             val p = doc.getPage(page)
             val rw = ContentRewriter(doc, p)
             block.ops.forEach { rw.removeText(it, a.scanner.textOps[it]) }

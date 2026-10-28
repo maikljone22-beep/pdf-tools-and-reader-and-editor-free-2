@@ -123,6 +123,10 @@ class ReaderState(
     var pendingJump by mutableStateOf<Int?>(null)
     /** With [pendingJump]: how far down the page to scroll (0 = top, 1 = bottom; continuous view), e.g. JS doc.scroll. */
     var pendingJumpTop by mutableStateOf<Float?>(null)
+    /** fix/links-bookmarks: share of the current page scrolled above the view's top (0..1; continuous view), for "current view" destinations. */
+    var viewTopFraction by mutableFloatStateOf(0f)
+    /** x (page user space) of a JS doc.scroll, applied with [pendingJumpTop] by the page view. */
+    var pendingJumpLeft by mutableStateOf<Float?>(null)
     /** Crop, magnifier, auto-flip interval, orientation lock, screen timeout, reflow scale (ui/reader/view). */
     val vx = com.smartdocs.editor.ui.reader.view.ViewExtras(this)
 
@@ -189,7 +193,11 @@ class ReaderState(
     // ---- search ----
     /** 8.84 JavaScript doc.saveAs / closeDoc: carried out by the reader screen (file name for "Save a copy"; leave). */
     var scriptSaveAs by mutableStateOf<String?>(null)
+    /** closeDoc / named action Close: close this document's tab; Quit: leave the reader (both ask about changes). */
     var scriptClose by mutableStateOf(false)
+    var scriptQuit by mutableStateOf(false)
+    /** 27.10 field.signatureSign: the signature field the screen opens the signing flow for. */
+    var scriptSign by mutableStateOf<String?>(null)
     var searchOpen by mutableStateOf(false)
     var searchQuery by mutableStateOf("")
     var searchHits by mutableStateOf<List<SearchHit>>(emptyList())
@@ -217,6 +225,12 @@ class ReaderState(
     var signedCopy by mutableStateOf<File?>(null); private set
 
     fun dropSignedCopy() { signedCopy?.delete(); signedCopy = null }
+
+    /**
+     * 27.10: a change written into [out] (a full copy) that the signed / certified original must not take: kept as
+     * [signedCopy] and the "signed - save a copy" dialog shows with [reason].
+     */
+    fun offerSignedCopy(out: File, reason: com.smartdocs.editor.core.pdf.SignedDocumentException.Reason) { keepSignedCopy(out); if (signedCopy != null) signedBlock = reason }
 
     private fun keepSignedCopy(out: File) {
         dropSignedCopy()
@@ -411,6 +425,9 @@ class ReaderState(
     /** Jump to [page] and scroll [topFraction] of its height down (0..1). */
     fun jumpTo(page: Int, topFraction: Float) { pendingJumpTop = topFraction.coerceIn(0f, 1f); jumpTo(page) }
 
+    /** JS doc.scroll: also put [leftPoint] (page user space x) at the left edge when the page is wider than the view. */
+    fun jumpTo(page: Int, topFraction: Float, leftPoint: Float) { pendingJumpLeft = leftPoint; jumpTo(page, topFraction) }
+
     /**
      * The document's initial view (written by Document properties or other producers): direction always; on the first
      * open also the open page and zoom (OpenAction), the page layout and the page mode, over the default layout / zoom /
@@ -481,6 +498,7 @@ class ReaderState(
         com.smartdocs.editor.ui.nve.NveState.forget(this)      // NVE
         com.smartdocs.editor.ui.nve.articles.NveArticlesState.forget(this)
         com.smartdocs.editor.ui.pageflip.PageFlipController.forget(this)
+        com.smartdocs.editor.ui.rpf.RpfState.forget(this)      // reader-prefs
         StampClipboard.release(this)      // tab audit D31: the "Paste here" offer held this reader
         // PdfSession.closeAsync waits for in-flight renders, so no delay is needed
         ioScope.launch {

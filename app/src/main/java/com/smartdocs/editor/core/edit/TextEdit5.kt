@@ -87,12 +87,23 @@ object TextEdit5 {
     internal fun removeOps(doc: PDDocument, pageIndex: Int, a: PageAnalysis, ops: IntArray, rw: ContentRewriter = ContentRewriter(doc, doc.getPage(pageIndex)), commit: Boolean = true): ContentRewriter {
         val page = doc.getPage(pageIndex)
         ops.filter { !FormOps.isForm(it) }.forEach { rw.removeText(it, a.scanner.textOps[it]) }
-        ops.filter { FormOps.isForm(it) }.groupBy { FormOps.doOp(it) }.forEach { (doOp, list) ->
-            val form = a.scanner.forms[doOp] ?: return@forEach
-            val copy = cloneForm(doc, form)
-            val frw = ContentRewriter(doc, copy)
-            list.forEach { frw.removeText(FormOps.formOp(it), a.scanner.textOps[it]) }
-            frw.commit()
+        // E10: first-level and nested form operators as one tree of forms to copy (page Do → form → inner Do → …)
+        val roots = HashMap<Int, FormEdit>()
+        for (op in ops.filter { FormOps.isForm(it) }) {
+            val info = a.scanner.textOps[op]
+            if (FormOps.isNested(op)) {
+                val n = a.scanner.nested[op] ?: continue
+                var node = roots.getOrPut(n.path[0]) { FormEdit(n.forms[0]) }
+                for (i in 1 until n.path.size) node = node.children.getOrPut(n.path[i]) { FormEdit(n.forms[i]) }
+                node.remove[n.formOp] = info
+            } else {
+                val doOp = FormOps.doOp(op)
+                val form = a.scanner.forms[doOp] ?: continue
+                roots.getOrPut(doOp) { FormEdit(form) }.remove[FormOps.formOp(op)] = info
+            }
+        }
+        for ((doOp, node) in roots) {
+            val copy = commitForm(doc, node)
             val res = page.resources ?: PDResources().also { page.resources = it }
             val name = res.add(copy, "Fm")
             rw.replace(doOp, listOf(name, Operator.getOperator("Do")))
@@ -101,14 +112,50 @@ object TextEdit5 {
         return rw
     }
 
+    /** E10: a form to copy: text operators to remove in it and the forms it paints that change too (by their `Do` operator). */
+    private class FormEdit(val form: PDFormXObject) {
+        val remove = HashMap<Int, TextOpInfo?>()
+        val children = HashMap<Int, FormEdit>()
+    }
+
+    /** Copy of [e]'s form with its text operators removed and its changed inner forms replaced by their copies. */
+    private fun commitForm(doc: PDDocument, e: FormEdit): PDFormXObject {
+        val copy = cloneForm(doc, e.form)
+        val frw = ContentRewriter(doc, copy)
+        e.remove.forEach { (op, info) -> frw.removeText(op, info) }
+        if (e.children.isNotEmpty()) {
+            // the copy gets its own resources dictionary, so the original form keeps its names
+            val res = e.form.resources?.let { PDResources(com.tom_roush.pdfbox.cos.COSDictionary(it.cosObject)) } ?: PDResources()
+            copy.resources = res
+            for ((doOp, child) in e.children) {
+                val name = res.add(commitForm(doc, child), "Fm")
+                frw.replace(doOp, listOf(name, Operator.getOperator("Do")))
+            }
+        }
+        frw.commit()
+        return copy
+    }
+
     // ------------------------------------------------------------------ geometry of a block
 
     /** Frame of a block: display-to-user matrix of its own (rotated) frame, its rect in that frame. */
     private class BlockFrame(val toUser: Matrix, val rect: android.graphics.RectF, val rotated: Boolean)
 
-    private fun frameOf(a: PageAnalysis, b: TextBlock): BlockFrame =
-        if (b.angle != 0f && b.frameRect != null) BlockFrame(Affine.mul(Affine.rotateAround(b.angle, 0f, 0f), a.frame.toUser), b.frameRect, true)
-        else BlockFrame(a.frame.toUser, b.rect, false)
+    private fun frameOf(a: PageAnalysis, b: TextBlock): BlockFrame = when {
+        b.frame != null && b.frameRect != null -> BlockFrame(Affine.mul(frameMatrix(b.frame), a.frame.toUser), b.frameRect, true)
+        b.angle != 0f && b.frameRect != null -> BlockFrame(Affine.mul(Affine.rotateAround(b.angle, 0f, 0f), a.frame.toUser), b.frameRect, true)
+        else -> BlockFrame(a.frame.toUser, b.rect, false)
+    }
+
+    /** E10: block frame → display space of a mirrored / skewed block. */
+    private fun frameMatrix(f: FloatArray) = Affine.of(f[0], f[1], f[2], f[3], 0f, 0f)
+
+    /** A move given in display space ([dx], [dy]) in the block's own frame. */
+    private fun moveInFrame(b: TextBlock, dx: Float, dy: Float): Pair<Float, Float> = when {
+        b.frame != null -> Affine.apply(Affine.inverse(frameMatrix(b.frame)), dx, dy)
+        b.angle != 0f -> Affine.apply(Affine.rotateAround(-b.angle, 0f, 0f), dx, dy)
+        else -> dx to dy
+    }
 
     /** Left / right bounds for rewriting [b] in [style] ([dw]: width change of a resized box, display points). */
     private fun bounds(a: PageAnalysis, b: TextBlock, f: BlockFrame, style: EditTextStyle, dw: Float?): Pair<Float, Float> {
@@ -148,7 +195,7 @@ object TextEdit5 {
         if (text.isNotBlank()) {
             val f = frameOf(a, b)
             // the move is given in display space: into the block's own frame
-            val (mx, my) = if (f.rotated) Affine.apply(Affine.rotateAround(-b.angle, 0f, 0f), dx, dy) else dx to dy
+            val (mx, my) = moveInFrame(b, dx, dy)
             val st = lineHeightFor(b, style)
             val (l, r) = bounds(a, b, f, st, dw)
             val base = b.firstBaseline          // in the block's own frame (rotated blocks too)
@@ -168,7 +215,7 @@ object TextEdit5 {
         edit(src, out, password) { doc ->
             val a = PageTextModel.analyze(doc, page)
             val b1 = findBlock(a, opsA); val b2 = findBlock(a, opsB)
-            require(b1.angle == b2.angle) { "rotation differs" }
+            require(b1.angle == b2.angle && (b1.frame?.toList() == b2.frame?.toList())) { "rotation differs" }
             val (first, second) = if (b1.rect.top >= b2.rect.top) b1 to b2 else b2 to b1
             removeOps(doc, page, a, first.ops + second.ops)
             val f1 = frameOf(a, first); val f2 = frameOf(a, second)
@@ -273,8 +320,30 @@ object TextEdit5 {
     suspend fun toOutlines(src: File, out: File, password: String?, page: Int, ops: IntArray): Int = edit(src, out, password) { doc ->
         val a = PageTextModel.analyze(doc, page)
         val b = findBlock(a, ops)
-        val set = b.ops.toHashSet()
-        val glyphs = (a.scanner.glyphs + a.scanner.rotated.values.flatten()).filter { it.op in set && it.trm != null }
+        val converted = outlineIn(doc, page, a, b.ops.toHashSet())
+        require(converted > 0) { "no outlines" }
+        converted
+    }
+
+    /**
+     * Fixup "convert fonts to outlines" (preflight): every visible glyph of [pages] (all pages when empty) becomes a
+     * filled path, page text and form XObject text alike; invisible text (an OCR layer) and Type 3 glyphs stay text.
+     * Returns (converted glyphs, pages changed).
+     */
+    suspend fun outlineAll(src: File, out: File, password: String?, pages: List<Int>, onPage: (Int) -> Unit = {}): Pair<Int, Int> = edit(src, out, password) { doc ->
+        var total = 0; var changed = 0
+        for (p in pages.ifEmpty { (0 until doc.numberOfPages).toList() }.filter { it in 0 until doc.numberOfPages }.distinct()) {
+            onPage(p)
+            val n = outlineIn(doc, p, PageTextModel.analyze(doc, p), null)
+            total += n; if (n > 0) changed++
+        }
+        require(total > 0) { "no outlines" }
+        total to changed
+    }
+
+    /** Glyphs of the operators [set] (every operator when null) of [page] painted as filled paths, their text removed. */
+    private fun outlineIn(doc: PDDocument, page: Int, a: PageAnalysis, set: Set<Int>?): Int {
+        val glyphs = a.scanner.allGlyphs().filter { (set == null || it.op in set) && it.trm != null }
         val p = doc.getPage(page)
         var converted = 0
         val doneOps = HashSet<Int>()
@@ -287,7 +356,7 @@ object TextEdit5 {
             if (poly.isNotEmpty()) paths += g.color to poly
             doneOps += g.op; converted++
         }
-        require(converted > 0) { "no outlines" }
+        if (converted == 0) return 0
         // an operator is removed only when all its glyphs were converted
         val removable = doneOps.filter { it !in failedOps }.toIntArray()
         removeOps(doc, page, a, removable)
@@ -306,7 +375,7 @@ object TextEdit5 {
             }
             cs.restoreGraphicsState()
         }
-        converted
+        return converted
     }
 
     /** Outline of glyph [code] as polygons in display space ([trm]: the glyph's text rendering matrix in display space). */
@@ -340,7 +409,7 @@ object TextEdit5 {
      */
     suspend fun reflowPage(context: Context, src: File, out: File, password: String?, page: Int, text: String, style: EditTextStyle) = edit(src, out, password) { doc ->
         val a = PageTextModel.analyze(doc, page)
-        val blocks = a.model.blocks.filter { it.angle == 0f && !it.unreadable }
+        val blocks = a.model.blocks.filter { !it.framed && !it.unreadable }
         require(blocks.isNotEmpty()) { "no text" }
         removeOps(doc, page, a, blocks.flatMap { it.ops.toList() }.distinct().toIntArray())
         val left = blocks.minOf { it.rect.left }; val right = blocks.maxOf { it.rect.right }
@@ -354,7 +423,7 @@ object TextEdit5 {
     /** Most pages one reflow edit takes (the whole range is analysed and rewritten in one go). */
     const val FLOW_MAX_PAGES = 30
 
-    private fun flowSources(a: PageAnalysis, page: Int): List<FlowSrc> = a.model.blocks.filter { it.angle == 0f && !it.unreadable }.map { b ->
+    private fun flowSources(a: PageAnalysis, page: Int): List<FlowSrc> = a.model.blocks.filter { !it.framed && !it.unreadable }.map { b ->
         FlowSrc(page, b.text, b.rect.left, b.rect.top, b.rect.right, b.rect.bottom, b.size, b.color, b.bold, b.italic, b.rtl, b.family, b.align,
             b.firstBaseline, if (b.lineCount > 1) b.lineHeight else null)
     }
@@ -380,7 +449,7 @@ object TextEdit5 {
         val analyses = flow.pages.associateWith { PageTextModel.analyze(doc, it) }
         if (ReflowFlow.build(flow.pages, analyses.mapValues { (p, a) -> flowSources(a, p) }).text != flow.text) throw StalePageException()
         for ((p, a) in analyses) {
-            val bs = a.model.blocks.filter { it.angle == 0f && !it.unreadable }
+            val bs = a.model.blocks.filter { !it.framed && !it.unreadable }
             if (bs.isNotEmpty()) removeOps(doc, p, a, bs.flatMap { it.ops.toList() }.distinct().toIntArray())
         }
         val base = flow.base

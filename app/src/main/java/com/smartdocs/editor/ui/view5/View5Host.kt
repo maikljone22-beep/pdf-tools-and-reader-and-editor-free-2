@@ -19,7 +19,6 @@ import com.smartdocs.editor.R
 import com.smartdocs.editor.core.tts.ReadAloudFocus
 import com.smartdocs.editor.ui.reader.ReaderActions
 import com.smartdocs.editor.ui.reader.ReaderState
-import com.smartdocs.editor.ui.reader.ReaderTool
 import com.smartdocs.editor.ui.reader.ToolChip
 import com.smartdocs.editor.ui.reader.ViewMode
 import kotlinx.coroutines.launch
@@ -114,41 +113,6 @@ fun V5MoreMenuItems(s: ReaderState, nav: NavHostController, close: () -> Unit) {
     DropdownMenuItem(text = { Text(stringResource(R.string.v5_help_center)) }, leadingIcon = { Icon(Icons.AutoMirrored.Filled.HelpOutline, null) }, onClick = { close(); nav.navigate(V5Routes.HELP) })
 }
 
-// ---------------------------------------------------------------- remember last settings per tool
-
-private val remembered = setOf(
-    ReaderTool.HIGHLIGHT, ReaderTool.UNDERLINE, ReaderTool.STRIKEOUT, ReaderTool.SQUIGGLY, ReaderTool.NOTE, ReaderTool.FREETEXT, ReaderTool.INK,
-    ReaderTool.LINE, ReaderTool.ARROW, ReaderTool.RECT, ReaderTool.OVAL, ReaderTool.TEXTBOX, ReaderTool.POLYGON, ReaderTool.POLYLINE, ReaderTool.CLOUD,
-    ReaderTool.CARET, ReaderTool.REPLACE, ReaderTool.FS_TEXT, ReaderTool.FS_CHECK, ReaderTool.FS_CROSS, ReaderTool.FS_DOT, ReaderTool.FS_LINE, ReaderTool.FS_DATE,
-    ReaderTool.FS_RRECT, ReaderTool.FS_COMB,
-)
-
-/**
- * Remembers colour, opacity, thickness and font size per annotation tool (prefs "view5_tools") and puts
- * them back when the tool is picked again. Values change → saved for the active tool; tool changes → restored.
- */
-@Composable
-fun ToolMemoryEffect(s: ReaderState) {
-    val ctx = LocalContext.current
-    LaunchedEffect(s) {
-        val p = ctx.getSharedPreferences("view5_tools", Context.MODE_PRIVATE)
-        if (!ctx.getSharedPreferences(V5State.PREFS, Context.MODE_PRIVATE).getBoolean("tool_memory", true)) return@LaunchedEffect
-        var lastTool: ReaderTool? = s.tool
-        snapshotFlow { listOf(s.tool, s.color, s.opacity, s.thickness, s.fontSize) }.collect { l ->
-            val t = l[0] as ReaderTool?
-            if (t != lastTool) {
-                lastTool = t
-                if (t != null && t in remembered && p.contains("${t.name}.c")) {
-                    s.color = p.getInt("${t.name}.c", s.color); s.opacity = p.getFloat("${t.name}.o", s.opacity)
-                    s.thickness = p.getFloat("${t.name}.w", s.thickness); s.fontSize = p.getFloat("${t.name}.f", s.fontSize)
-                }
-            } else if (t != null && t in remembered) {
-                p.edit().putInt("${t.name}.c", s.color).putFloat("${t.name}.o", s.opacity).putFloat("${t.name}.w", s.thickness).putFloat("${t.name}.f", s.fontSize).apply()
-            }
-        }
-    }
-}
-
 // ---------------------------------------------------------------- read aloud options
 
 object ReadAloudOptions {
@@ -189,6 +153,7 @@ fun ReadAloudOptionsSheet(v: V5State) {
                 Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.v5_tool_memory))
             }
             com.smartdocs.editor.ui.nve.tts.NveReadAloudPrefs()   // NVE: pitch, read comments / fields / alt text, reading order
+            com.smartdocs.editor.ui.rpf.RpfReadAloudRows(v.s) { v.close() }   // reader-prefs §10: form fields field by field (Tab-through)
             Spacer(Modifier.height(24.dp))
         }
     }
@@ -213,6 +178,11 @@ fun OverlaySettingsSheet(v: V5State) {
             Text(stringResource(R.string.v5_band_height, v.rulerHeightDp.toInt()), style = MaterialTheme.typography.labelMedium)
             Slider(v.rulerHeightDp, { v.rulerHeightDp = it }, valueRange = 24f..160f)
             Palette(v.rulerColor, allowNone = false) { v.rulerColor = it ?: 0xFFEB3B }
+            // reader-prefs §9: vertical band, shade opacity, reset
+            SwitchRow(stringResource(R.string.rpf_ruler_vertical), v.rulerVertical) { v.rulerVertical = it }
+            Text(stringResource(R.string.rpf_ruler_opacity, (v.rulerOpacity * 100).toInt()), style = MaterialTheme.typography.labelMedium)
+            Slider(v.rulerOpacity, { v.rulerOpacity = it }, valueRange = 0.1f..0.9f)
+            OutlinedButton(onClick = { v.resetRuler() }) { Text(stringResource(R.string.rpf_ruler_reset)) }
             HorizontalDivider()
             SwitchRow(stringResource(R.string.v5_lens), v.lens) { v.lens = it }
             Text(stringResource(R.string.v5_lens_zoom, "%.1f".format(java.util.Locale.US, v.lensZoom)), style = MaterialTheme.typography.labelMedium)

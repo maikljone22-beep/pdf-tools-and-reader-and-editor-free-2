@@ -30,6 +30,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -129,7 +130,21 @@ private fun NpfPanelBody(state: ReaderState, panel: NpfPanel, onJump: (Int) -> U
         message?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
         when (panel) {
             NpfPanel.LAYERS -> {
-                NpfRows(data as? List<*>, R.string.npf_p_none_layers) { l ->
+                // pdf39 §22 #270: all layers, or only those used on the visible pages / the current page
+                var only by remember { mutableIntStateOf(0) }
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf(R.string.ett_ly_all, R.string.ett_ly_visible, R.string.ett_ly_current).forEachIndexed { i, l ->
+                        FilterChip(only == i, { only = i }, label = { Text(stringResource(l)) })
+                    }
+                }
+                val cur = state.currentPage
+                val keep: Set<Int>? = when (only) {
+                    1 -> runCatching { com.smartdocs.editor.ui.nve.NveState.of(state).visiblePages().map { it.page }.toSet() }.getOrNull()?.takeIf { it.isNotEmpty() } ?: setOf(cur)
+                    2 -> setOf(cur)
+                    else -> null
+                }
+                val shown = (data as? List<*>)?.filter { it !is NpfDocPanels.Layer || com.smartdocs.editor.core.edit5.LayerPageFilter.keep(it.pages, keep) }
+                NpfRows(shown, if (keep == null) R.string.npf_p_none_layers else R.string.ett_ly_none_here) { l ->
                     l as NpfDocPanels.Layer
                     Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text(l.name, Modifier.weight(1f)); Switch(l.on, { v -> change { NpfDocPanels.setLayer(it, l.index, v) } })

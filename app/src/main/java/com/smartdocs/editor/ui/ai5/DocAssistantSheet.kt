@@ -1,5 +1,8 @@
 package com.smartdocs.editor.ui.ai5
 
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
@@ -12,6 +15,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.smartdocs.editor.LocalApp
 import com.smartdocs.editor.LocalSettings
@@ -50,17 +55,26 @@ fun DocAssistantSheet(
         if (!docs.ready || !hasAi) return@LaunchedEffect
         if (!initialQuestion.isNullOrBlank() && !asked) { asked = true; chat.send(initialQuestion) } else chat.loadStarters()
     }
-    // ai6 (§35 adjustable panel width): on wide screens the sheet width cycles narrow / medium / wide (remembered)
-    val wideScreen = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp > 700
+    // ai6 (§35 adjustable panel width): on wide screens the button cycles narrow / medium / wide and the side
+    // handle drags the width freely (aor); the width is remembered in dp
+    val conf = androidx.compose.ui.platform.LocalConfiguration.current
+    val wideScreen = conf.screenWidthDp > 700
+    val rtl = androidx.compose.ui.platform.LocalLayoutDirection.current == androidx.compose.ui.unit.LayoutDirection.Rtl
+    val density = androidx.compose.ui.platform.LocalDensity.current
     val prefs = remember { ctx.getSharedPreferences("ai6_ui", android.content.Context.MODE_PRIVATE) }
-    var widthStep by remember { mutableStateOf(prefs.getInt("assistant_width", 1).coerceIn(0, 2)) }
-    val sheetWidth = if (wideScreen) listOf(480.dp, 640.dp, 960.dp)[widthStep] else BottomSheetDefaults.SheetMaxWidth
+    var widthDp by remember {
+        mutableStateOf(prefs.getFloat("assistant_width_dp", PanelWidth.STEPS[prefs.getInt("assistant_width", 1).coerceIn(0, 2)]))
+    }
+    val maxDp = conf.screenWidthDp.toFloat()
+    val sheetWidth = if (wideScreen) PanelWidth.clamp(widthDp, maxDp).dp else BottomSheetDefaults.SheetMaxWidth
+    fun saveWidth() { prefs.edit().putFloat("assistant_width_dp", PanelWidth.clamp(widthDp, maxDp)).apply() }
     ModalBottomSheet(onDismissRequest = { chat.stop(); onDismiss() }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), sheetMaxWidth = sheetWidth) {
+        Box(Modifier.fillMaxWidth()) {
         Column(Modifier.fillMaxWidth().fillMaxHeight(0.92f)) {
             Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.AutoAwesome, null, tint = MaterialTheme.colorScheme.primary); Spacer(Modifier.width(8.dp))
                 Text(stringResource(R.string.a5_hub_title), style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-                if (wideScreen) IconButton(onClick = { widthStep = (widthStep + 1) % 3; prefs.edit().putInt("assistant_width", widthStep).apply() }) {
+                if (wideScreen) IconButton(onClick = { widthDp = PanelWidth.nextStep(PanelWidth.clamp(widthDp, maxDp)); saveWidth() }) {
                     Icon(Icons.Default.SwapHoriz, stringResource(R.string.ai6h_panel_width))
                 }
                 if (tab == 0) IconButton(onClick = { history = true }) { Icon(Icons.Default.History, stringResource(R.string.a5_history)) }
@@ -83,8 +97,44 @@ fun DocAssistantSheet(
                 com.smartdocs.editor.ui.ai.DocAgentPanel(host, Modifier.weight(1f).fillMaxWidth(), null, null)
             }
         }
+        // aor: drag handle on the end edge; the sheet is centred, so the width grows by twice the drag
+        if (wideScreen) {
+            val dragDesc = stringResource(R.string.aor_panel_drag)
+            Box(
+                Modifier.align(Alignment.CenterEnd).width(20.dp).height(72.dp)
+                    .draggable(
+                        orientation = Orientation.Horizontal,
+                        state = rememberDraggableState { px ->
+                            widthDp = PanelWidth.drag(PanelWidth.clamp(widthDp, maxDp), with(density) { px.toDp().value }, rtl, maxDp)
+                        },
+                        onDragStopped = { saveWidth() },
+                    )
+                    .semantics { contentDescription = dragDesc },
+                contentAlignment = Alignment.Center,
+            ) {
+                Surface(Modifier.width(4.dp).height(48.dp), shape = MaterialTheme.shapes.small, color = MaterialTheme.colorScheme.outline) {}
+            }
+        }
+        }
     }
     if (history) ChatHistorySheet(chat, onExportChat = { t -> scope.launch { exportDocxAndShare(ctx, app.documents, file.name, t) } }) { history = false }
     textCitation?.let { c -> com.smartdocs.editor.ui.ai6.TextSourceDialog(c) { textCitation = null } }
     if (voice) VoiceChatDialog(busy = chat.busy, onAsk = { chat.send(it) }, latestAnswer = { chat.lastAnswer()?.answer?.text ?: chat.lastAnswer()?.text }, onDismiss = { voice = false })
+}
+
+/** aor: width rules of the reader AI panel on wide screens (dp). */
+object PanelWidth {
+    val STEPS = floatArrayOf(480f, 640f, 960f)
+    const val MIN = 360f
+
+    fun clamp(w: Float, maxDp: Float): Float = w.coerceIn(MIN, maxOf(MIN, maxDp))
+
+    /** The next preset after [w] (cycling), for the width button. */
+    fun nextStep(w: Float): Float = STEPS.firstOrNull { it > w + 1f } ?: STEPS[0]
+
+    /**
+     * New width after dragging the end-edge handle by [deltaDp] (screen x, + = right). The end edge is on the right
+     * in LTR and on the left in RTL; the sheet is centred, so both sides move.
+     */
+    fun drag(w: Float, deltaDp: Float, rtl: Boolean, maxDp: Float): Float = clamp(w + 2f * (if (rtl) -deltaDp else deltaDp), maxDp)
 }
