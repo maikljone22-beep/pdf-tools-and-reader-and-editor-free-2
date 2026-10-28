@@ -114,11 +114,11 @@ fun MediaViewer(nav: NavHostController, v: ViewFile) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(clock(pos), style = MaterialTheme.typography.labelMedium)
                         Spacer(Modifier.weight(1f))
-                        IconButton(onClick = { player.seekTo((player.currentPosition - 10_000).coerceAtLeast(0)) }) { Icon(Icons.Default.Replay10, null) }
+                        IconButton(onClick = { player.seekTo((player.currentPosition - 10_000).coerceAtLeast(0)) }) { Icon(Icons.Default.Replay10, stringResource(R.string.pc_cd_back10)) }
                         FilledIconButton(onClick = { if (player.isPlaying) player.pause() else { if (player.playbackState == Player.STATE_ENDED) player.seekTo(0); player.play() } }) {
                             Icon(if (playing) Icons.Default.Pause else Icons.Default.PlayArrow, stringResource(if (playing) R.string.oa_pause else R.string.oa_play))
                         }
-                        IconButton(onClick = { player.seekTo(player.currentPosition + 10_000) }) { Icon(Icons.Default.Forward10, null) }
+                        IconButton(onClick = { player.seekTo(player.currentPosition + 10_000) }) { Icon(Icons.Default.Forward10, stringResource(R.string.pc_cd_fwd10)) }
                         Spacer(Modifier.weight(1f))
                         Text((if (speed != 1f) "${speed}x  " else "") + clock(dur), style = MaterialTheme.typography.labelMedium)
                     }

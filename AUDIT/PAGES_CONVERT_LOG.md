@@ -127,3 +127,30 @@ Strings: `strings_pc.xml` (prefix `pc_`). Tests: `PageOrganizeTest`.
 | Merge layers / flatten layers / delete layer / reorder | DONE | `Layers.merge` / `flatten` / `delete` (content via the sanitizer's hidden-layer pass) / `move` |
 | New layer | DONE | `Layers.create` |
 | Image-editor layers palette (opacity, blending) | OPEN | belongs to the image editor (nve) |
+
+## Stage F — accessibility
+
+| Row | Status | Where |
+|---|---|---|
+| Auto-tag with headings (H1–H3), lists (L/LI/LBody), figures, artifacts | DONE | `AccessAutoTag.tag` (one tag per text object, `classify`) |
+| Re-tag an already tagged document | DONE | `AccessAutoTag.tag(retag = true)` (old MCIDs dropped) |
+| Recognition report after auto-tag | DONE | `AccessAutoTag.Report`, report dialog |
+| Tags panel: tree, expand / collapse, properties | DONE | `TagsEditor` / `AccessTags.tree` |
+| New tag (root / child / sibling), delete, delete empty, move, indent / outdent, change type, mark as artifact | DONE | `AccessTags` |
+| Tag properties: Title, Alt, ActualText, Lang, Expansion, ID; Scope / RowSpan / ColSpan / Headers / Summary; list numbering | DONE | `AccessTags.setProps` / `setAttrs` |
+| Role map (view / add / remove) | DONE | `AccessTags.roleMap` / `setRole` |
+| "Document is tagged PDF" flag | DONE | `AccessTags.setTaggedFlag` |
+| Clear page structure (one page; all pages = re-tag) | DONE | `AccessTags.clearPage`, `AccessAutoTag.clearStructure` |
+| Find unmarked annotations / links; tag annotations | DONE | `AccessTags.unmarked` / `tagAnnotations` |
+| Mark as PDF/UA-1 (XMP pdfuaid, MarkInfo, DisplayDocTitle) | DONE | `AccessUa.markUa` (fix dialog), checker shows the flag |
+| AI alt text sees the figure | DONE | `AltTextVision.install` → `T5Hooks.describeImage` (vision route; page-text prompt as fallback) |
+| Checker: rule categories | DONE | group chips → `AccessRules.apply` |
+| Checker: pass / fail manually, skip rule, explain, check again | DONE | rule menu, `pc_accx_*` explanations |
+| Attach the report to the document | DONE | "attach report" (embedded HTML) |
+| Rules: screen flicker, timed responses | DONE | `flicker` / `timed` (manual when media / scripts are present) |
+| TalkBack: icon-only buttons without a description (41) | DONE | `pc_cd_*` labels across ui/ |
+| Checker page range | OPEN | facts are counted over the whole document |
+| Reading order panel by drag; area reading order; Touch-up tool on the page | OPEN | reorder works in the tags tree (move / indent) |
+| Table editor on the page; content panel; recognition of tables | OPEN | |
+| Embed fonts (WCAG) | NOT-FEASIBLE | the original font programs are not available |
+| Accessibility setup assistant; per-document reading option | OPEN | |

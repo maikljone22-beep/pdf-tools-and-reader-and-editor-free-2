@@ -22,7 +22,11 @@ object AltTextAi {
 
     /** Alt text for a figure: the vision hook when available, else a context-based suggestion. Short (≤ 150 chars). */
     suspend fun suggest(ctx: Context, settings: AppSettings, image: Bitmap?, pageText: String, arabic: Boolean): String {
-        T5Hooks.describeImage?.let { hook -> if (image != null) return hook(ctx, image, arabic).trim().take(250) }
+        T5Hooks.describeImage?.let { hook ->
+            // a vision route the endpoint / proxy does not offer falls back to the page-text prompt below
+            if (image != null) try { hook(ctx, image, arabic).trim().takeIf { it.isNotEmpty() }?.let { return it.take(250) } }
+            catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { }
+        }
         val system = if (arabic) "اكتب نصا\u064B بديلا\u064B (Alt text) قصيرا\u064B ودقيقا\u064B لصورة في مستند، بجملة واحدة لا تتجاوز 120 حرفا\u064B، اعتمادا\u064B على نص الصفحة المحيط. لا تبدأ بعبارة «صورة لـ»."
         else "Write one short, precise alt text (max 120 characters) for a figure in a document, based on the surrounding page text. Do not start with \"Image of\"."
         val user = pageText.take(3000).ifBlank { "(no text on the page)" }

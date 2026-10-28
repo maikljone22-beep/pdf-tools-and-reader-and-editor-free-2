@@ -81,8 +81,8 @@ fun NveTextViewer(s: ReaderState) {
                         IconButton(onClick = { persist(); n.close() }) { Icon(Icons.Default.Close, stringResource(R.string.close)) }
                         Text(stringResource(R.string.nv_text_viewer), Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
                         FilterChip(allPages, { allPages = !allPages }, label = { Text(stringResource(if (allPages) R.string.nv_wc_document else R.string.nv_wc_page)) })
-                        IconButton(onClick = { size = (size - 1f).coerceAtLeast(8f) }) { Icon(Icons.Default.TextDecrease, null) }
-                        IconButton(onClick = { size = (size + 1f).coerceAtMost(48f) }) { Icon(Icons.Default.TextIncrease, null) }
+                        IconButton(onClick = { size = (size - 1f).coerceAtLeast(8f) }) { Icon(Icons.Default.TextDecrease, stringResource(R.string.pc_cd_smaller_text)) }
+                        IconButton(onClick = { size = (size + 1f).coerceAtMost(48f) }) { Icon(Icons.Default.TextIncrease, stringResource(R.string.pc_cd_larger_text)) }
                         IconButton(onClick = { settings = true }) { Icon(Icons.Default.Tune, stringResource(R.string.nv_tv_settings)) }
                         IconButton(onClick = { if (s.guard.check(com.smartdocs.editor.core.security.DocAction.COPY)) saveTxt.launch((s.file?.nameWithoutExtension ?: "document") + ".txt") }) { Icon(Icons.Default.SaveAlt, stringResource(R.string.nv_save_txt)) }
                     }

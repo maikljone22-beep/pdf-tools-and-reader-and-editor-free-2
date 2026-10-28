@@ -458,7 +458,7 @@ private fun GradientEditor(g: Gradient?, onChange: (Gradient?) -> Unit) {
         Text(stringResource(R.string.nh_stop, i + 1) + "  " + (s.offset * 100).roundToInt() + "%", style = MaterialTheme.typography.labelMedium)
         Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
             SHAPE_COLORS.forEach { col -> Swatch(col, s.color == col) { onChange(g.copy(stops = g.stops.toMutableList().also { it[i] = s.copy(color = col) })) } }
-            if (g.stops.size > 2) IconButton(onClick = { onChange(g.copy(stops = g.stops.filterIndexed { j, _ -> j != i })) }) { Icon(Icons.Default.Delete, null) }
+            if (g.stops.size > 2) IconButton(onClick = { onChange(g.copy(stops = g.stops.filterIndexed { j, _ -> j != i })) }) { Icon(Icons.Default.Delete, stringResource(R.string.pc_cd_delete)) }
         }
         if (i != 0 && i != g.stops.size - 1) Slider(s.offset, { v -> onChange(g.copy(stops = g.stops.toMutableList().also { it[i] = s.copy(offset = v) })) }, valueRange = 0.01f..0.99f)
     }

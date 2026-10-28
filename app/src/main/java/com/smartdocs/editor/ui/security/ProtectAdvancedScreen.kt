@@ -143,7 +143,7 @@ fun ProtectAdvancedScreen(nav: NavHostController, uri: String?) {
             Section(stringResource(R.string.s5_open_password))
             val vt = if (show) VisualTransformation.None else PasswordVisualTransformation()
             OutlinedTextField(openPw, { openPw = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.password)) }, visualTransformation = vt,
-                trailingIcon = { IconButton(onClick = { show = !show }) { Icon(if (show) Icons.Default.VisibilityOff else Icons.Default.Visibility, null) } })
+                trailingIcon = { IconButton(onClick = { show = !show }) { Icon(if (show) Icons.Default.VisibilityOff else Icons.Default.Visibility, stringResource(if (show) R.string.pc_cd_hide else R.string.pc_cd_show)) } })
             OutlinedTextField(openPw2, { openPw2 = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.s5_confirm_password)) }, visualTransformation = vt,
                 isError = mismatch, supportingText = if (mismatch) { { Text(stringResource(R.string.s5_password_mismatch)) } } else null)
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 12.dp)) {
