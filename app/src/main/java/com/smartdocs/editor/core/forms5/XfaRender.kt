@@ -29,6 +29,7 @@ import com.tom_roush.pdfbox.pdmodel.interactive.form.PDCheckBox
 import com.tom_roush.pdfbox.pdmodel.interactive.form.PDComboBox
 import com.tom_roush.pdfbox.pdmodel.interactive.form.PDField
 import com.tom_roush.pdfbox.pdmodel.interactive.form.PDListBox
+import com.tom_roush.pdfbox.pdmodel.interactive.form.PDPushButton
 import com.tom_roush.pdfbox.pdmodel.interactive.form.PDRadioButton
 import com.tom_roush.pdfbox.pdmodel.interactive.form.PDSignatureField
 import com.tom_roush.pdfbox.pdmodel.interactive.form.PDTextField
@@ -216,6 +217,12 @@ internal class XfaRender(private val context: Context, private val doc: PDDocume
                 val stored = if (exports.size == displays.size && exports != displays) exports else displays
                 if (path != null) out += Made(ch.partialName, path, XfaSupport.XType.CHOICE, stored, stored, w.value)
             }
+            XWKind.BUTTON -> {
+                val pb = PDPushButton(acro); pb.partialName = "xfa_${counter++}"; flags(pb, w)
+                pb.cosObject.setBoolean(COSName.getPDFName(XfaEventRuntime.KEY_CLICK), true)
+                pb.widgets = listOf(widget(page, w, ph)); acro.fields.add(pb)
+                if (path != null) out += Made(pb.partialName, path, XfaSupport.XType.BUTTON, emptyList(), emptyList(), "")
+            }
             XWKind.SIGNATURE -> {
                 val sf = PDSignatureField(acro); sf.partialName = "xfa_${counter++}"
                 sf.widgets = listOf(widget(page, w, ph)); acro.fields.add(sf)
@@ -228,12 +235,15 @@ internal class XfaRender(private val context: Context, private val doc: PDDocume
                 if (w.comb > 0) { tf.maxLen = w.comb; tf.isComb = true }
                 tf.q = when (w.hAlign) { "center" -> PDTextField.QUADDING_CENTERED; "right" -> PDTextField.QUADDING_RIGHT; else -> PDTextField.QUADDING_LEFT }
                 // XFA picture clause: kept on the field, applied when the value is shown (FormFillState.display)
-                if (w.picture.isNotBlank()) tf.cosObject.setString(COSName.getPDFName(com.smartdocs.editor.core.forms.XfaPicture.KEY),
-                    com.smartdocs.editor.core.forms.XfaPicture.withCategory(w.picture, when (w.type) {
-                        XfaSupport.XType.NUMBER -> com.smartdocs.editor.core.forms.XfaPicture.Hint.NUMBER
-                        XfaSupport.XType.DATE -> com.smartdocs.editor.core.forms.XfaPicture.Hint.DATE
-                        else -> com.smartdocs.editor.core.forms.XfaPicture.Hint.TEXT
-                    }))
+                val hint = when (w.type) {
+                    XfaSupport.XType.NUMBER -> com.smartdocs.editor.core.forms.XfaPicture.Hint.NUMBER
+                    XfaSupport.XType.DATE -> com.smartdocs.editor.core.forms.XfaPicture.Hint.DATE
+                    else -> com.smartdocs.editor.core.forms.XfaPicture.Hint.TEXT
+                }
+                listOf(com.smartdocs.editor.core.forms.XfaPicture.KEY to w.picture, com.smartdocs.editor.core.forms.XfaPicture.KEY_EDIT to w.editPicture,
+                    com.smartdocs.editor.core.forms.XfaPicture.KEY_VALIDATE to w.validatePicture).forEach { (k, p) ->
+                    if (p.isNotBlank()) tf.cosObject.setString(COSName.getPDFName(k), com.smartdocs.editor.core.forms.XfaPicture.withCategory(p, hint, w.locale))
+                }
                 tf.widgets = listOf(widget(page, w, ph)); acro.fields.add(tf)
                 if (path != null) out += Made(tf.partialName, path, w.type, emptyList(), emptyList(), w.value)
             }

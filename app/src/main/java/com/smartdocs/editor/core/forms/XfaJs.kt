@@ -26,6 +26,35 @@ object XfaJs {
         if (!com.smartdocs.editor.core.security.JsPolicy.enabled) return Outcome(0, 0, 0)   // "Run JavaScript" off: stored values stay
         val all = XfaMerge.walk(m.root).toList()
         if (all.none { it.node.scripts.initialize != null || it.node.scripts.calculate != null || it.node.scripts.ready.isNotEmpty() }) return Outcome(0, 0, 0)
+        return execute(all, eventMillis, totalMillis) { exec, _ ->
+            all.forEachIndexed { i, n -> n.node.scripts.initialize?.let { exec(i, it, false) } }
+            // form / layout ready and docReady: once, after initialize (the form is open and laid out)
+            all.forEachIndexed { i, n -> n.node.scripts.ready.forEach { exec(i, it, false) } }
+            repeat(2) { all.forEachIndexed { i, n -> n.node.scripts.calculate?.let { exec(i, it, true) } } }
+        }
+    }
+
+    /**
+     * An interactive event while filling: the [activity] scripts (exit, enter, change, click) of [target], with
+     * `xfa.event.newText` / `prevText`, then the calculate scripts (twice, for dependent sums). Values and
+     * presence changed by the scripts are written into the instances of [m] (compare before / after).
+     */
+    fun runEvent(m: XMerged, target: XInst, activity: String, newText: String = target.value, prevText: String = "",
+                 eventMillis: Long = 200, totalMillis: Long = 2000): Outcome {
+        if (!com.smartdocs.editor.core.security.JsPolicy.enabled) return Outcome(0, 0, 0)
+        val scripts = target.node.scripts.events[activity].orEmpty()
+        if (scripts.isEmpty()) return Outcome(0, 0, 0)
+        val all = XfaMerge.walk(m.root).toList()
+        val ti = all.indexOf(target).takeIf { it >= 0 } ?: return Outcome(0, 0, 0)
+        return execute(all, eventMillis, totalMillis) { exec, setEvent ->
+            setEvent(newText, prevText)
+            scripts.forEach { exec(ti, it, false) }
+            repeat(2) { all.forEachIndexed { i, n -> n.node.scripts.calculate?.let { exec(i, it, true) } } }
+        }
+    }
+
+    private fun execute(all: List<XInst>, eventMillis: Long, totalMillis: Long,
+                        plan: (exec: (Int, String, Boolean) -> Unit, setEvent: (String, String) -> Unit) -> Unit): Outcome {
         val ids = HashMap<XInst, Int>(); all.forEachIndexed { i, n -> ids[n] = i }
         val tree = JsonArray(all.map { n ->
             JsonObject(mapOf(
@@ -49,10 +78,13 @@ object XfaJs {
                 try { ScriptableObject.callMethod(cx, x, "exec", arrayOf<Any>(i, src, calc)) }
                 catch (e: Throwable) { if (!JsSandbox.scriptError(e)) throw e; errors++ }
             }
-            all.forEachIndexed { i, n -> n.node.scripts.initialize?.let { exec(i, it, false) } }
-            // form / layout ready and docReady: once, after initialize (the form is open and laid out)
-            all.forEachIndexed { i, n -> n.node.scripts.ready.forEach { exec(i, it, false) } }
-            repeat(2) { all.forEachIndexed { i, n -> n.node.scripts.calculate?.let { exec(i, it, true) } } }
+            fun setEvent(newText: String, prevText: String) {
+                val ev = ScriptableObject.getProperty(ScriptableObject.getProperty(scope, "xfa") as Scriptable, "event") as Scriptable
+                ScriptableObject.putProperty(ev, "newText", newText); ScriptableObject.putProperty(ev, "prevText", prevText)
+                ScriptableObject.putProperty(ev, "change", newText.removePrefix(prevText))
+                ScriptableObject.putProperty(ev, "fullText", newText)
+            }
+            plan(::exec, ::setEvent)
             JsSandbox.deadline(cx, eventMillis)
             Context.toString(ScriptableObject.callMethod(cx, x, "dump", emptyArray()))
         }

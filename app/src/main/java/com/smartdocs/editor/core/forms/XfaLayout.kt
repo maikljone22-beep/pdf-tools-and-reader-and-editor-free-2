@@ -14,7 +14,7 @@ object ApproxMetrics : XfaMetrics {
     }.toFloat() * size * (if (bold) 1.06f else 1f)
 }
 
-enum class XWKind { TEXT, CHECK, RADIO, COMBO, LIST, SIGNATURE }
+enum class XWKind { TEXT, CHECK, RADIO, COMBO, LIST, SIGNATURE, BUTTON }
 
 /** Output primitives in page space: points, origin top-left, y down. Colours 0xAARRGGBB. */
 sealed class XItem {
@@ -29,7 +29,7 @@ sealed class XItem {
         val group: String? = null, val multiline: Boolean = false, val maxChars: Int = 0, val comb: Int = 0, val fontSize: Float = 10f,
         val hAlign: String = "left", val readOnly: Boolean = false, val required: Boolean = false, val password: Boolean = false,
         val type: XfaSupport.XType = XfaSupport.XType.TEXT, val editable: Boolean = false, val round: Boolean = false,
-        val picture: String = "",
+        val picture: String = "", val editPicture: String = "", val validatePicture: String = "", val locale: String = "",
     ) : XItem()
     data class AddRow(val x: Float, val y: Float, val w: Float, val h: Float, val repeat: XRepeatInfo) : XItem()
 }
@@ -279,6 +279,9 @@ class XfaLayout(private val t: XTemplate, private val metrics: XfaMetrics = Appr
             XUi.BUTTON -> {
                 out += XItem.Box(cx, cy, cw, ch, List(4) { XEdge(0xFF7F7F7F.toInt(), 0.75f) }, 0xFFD4D0C8.toInt(), 2f)
                 if (label.isNotBlank()) out += XItem.Text(cx, cy, cw, ch, wrap(label, cw, f), f, "center", "middle", isRtl(label))
+                // a button with click scripts gets a (transparent) push button over it, keyed by its SOM path when unbound
+                if (n.scripts.events["click"].orEmpty().isNotEmpty())
+                    out += XItem.Widget(cx, cy, cw, ch, XWKind.BUTTON, i.dataPath ?: i.som, label, "", type = XfaSupport.XType.BUTTON)
             }
             XUi.IMAGE -> (i.image ?: n.image)?.let { out += XItem.Image(cx, cy, cw, ch, it, "fit") }
             // nav-prefs: QR / Code 128 / Code 39 barcodes are drawn; other symbologies show their value
@@ -286,7 +289,7 @@ class XfaLayout(private val t: XTemplate, private val metrics: XfaMetrics = Appr
                 ?: listOf(XItem.Text(cx, cy, cw, ch, listOf(i.value), f, "center", "middle", false)))
             else -> out += XItem.Widget(cx, cy, cw, ch, XWKind.TEXT, i.dataPath, label, i.value, multiline = n.multiline, maxChars = n.maxChars,
                 comb = n.combCells, fontSize = f.size, hAlign = hAlign, readOnly = n.readOnly, required = n.required, password = n.ui == XUi.PASSWORD, type = type,
-                picture = n.picture)
+                picture = n.picture, editPicture = n.editPicture, validatePicture = n.validatePicture, locale = n.locale)
         }
     }
 

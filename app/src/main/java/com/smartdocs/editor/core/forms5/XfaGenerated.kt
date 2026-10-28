@@ -269,6 +269,7 @@ object XfaGenerated {
             val o = el.jsonObject
             val path = o["p"]?.jsonPrimitive?.content ?: return@forEach
             val type = o["t"]?.jsonPrimitive?.content
+            if (type == "BUTTON") return@forEach        // XFA buttons (click scripts) carry no data
             val opts = o["o"]?.jsonArray?.map { it.jsonPrimitive.content }.orEmpty()
             val exps = o["e"]?.jsonArray?.map { it.jsonPrimitive.content }.orEmpty()
             val v = acro[name] ?: return@forEach

@@ -168,7 +168,9 @@ S.rq = rq;
 Field.prototype.setFocus = function () { rq({ k: "focus", n: this._n }); };
 Field.prototype.buttonImportIcon = function () { rq({ k: "image", n: this._n }); return 0; };
 Field.prototype.browseForFileToSubmit = function () { rq({ k: "file", n: this._n }); };
-["setAction", "buttonSetIcon", "signatureSign", "setLock"].forEach(function (m) { Field.prototype[m] = function () { rq({ k: "unsupported", m: "Field." + m }); return 0; }; });
+["setAction", "buttonSetIcon", "signatureSign"].forEach(function (m) { Field.prototype[m] = function () { rq({ k: "unsupported", m: "Field." + m }); return 0; }; });
+// 8.84: the signature field's lock (SigFieldLock) for when it is signed; written on save
+Field.prototype.setLock = function (o) { o = o || {}; rq({ k: "lock", n: this._n, a: str(o.action || "All"), f: names(o.fields) }); return true; };
 Field.prototype.buttonGetIcon = function () { return null; };
 Field.prototype.signatureInfo = function () { return { status: 0 }; };
 Field.prototype.signatureValidate = function () { return 0; };
@@ -220,14 +222,20 @@ G.importAnFDF = function (p) { rq({ k: "import", p: str(p) }); };
 G.importAnXFDF = function (p) { rq({ k: "import", p: str(p) }); };
 G.gotoNamedDest = function (n) { rq({ k: "dest", n: str(n) }); };
 G.getURL = function (u) { rq({ k: "url", u: str(u) }); };
-G.saveAs = function () { rq({ k: "unsupported", m: "saveAs" }); };
-G.closeDoc = function () { rq({ k: "unsupported", m: "closeDoc" }); };
+// 8.84: saveAs saves and offers "Save a copy" with the script's file name; closeDoc leaves like Back (asks about changes)
+G.saveAs = function () { rq({ k: "saveas", p: str(arg(arguments, "cPath", 0)) }); return 0; };
+G.closeDoc = function () { rq({ k: "close" }); return true; };
 G.flattenPages = function () { rq({ k: "flatten" }); };
 G.removeField = function (n) { rq({ k: "remove", n: str(n) }); };
 // 8.84: an embedded file shared by name; annotation scanning needs no sync here; addScript runs the script now (not saved)
 G.exportDataObject = function () { rq({ k: "dataobj", n: str(arg(arguments, "cName", 0)) }); };
 G.syncAnnotScan = function () {};
-G.addScript = function () { var src = arg(arguments, "cScript", 1); if (src !== undefined && src !== null) (0, eval)(str(src)); };
+G.addScript = function () {
+  var name = str(arg(arguments, "cName", 0)), src = arg(arguments, "cScript", 1);
+  if (src === undefined || src === null) return;
+  rq({ k: "addscript", n: name, s: str(src) });     // kept as a document-level script on save
+  (0, eval)(str(src));
+};
 ["scroll"].forEach(function (m) { G[m] = function () { rq({ k: "unsupported", m: m }); }; });
 function wordsOf(p) { var w = S.words[p]; return w ? w : []; }
 G.getPageNthWord = function (p, n, strip) {
@@ -239,7 +247,13 @@ G.getPageNumWords = function (p) { return wordsOf(p === undefined ? 0 : Number(p
 S.setWords = function (json) { S.words = JSON.parse(json); };
 G.getAnnots = function () { return null; };
 G.getPageRotation = function () { return 0; };
-G.addField = function () { return null; };
+// 8.84: the new field is created on save (it appears after the save); the call returns a Field for its name
+G.addField = function () {
+  var a = arguments, n = str(arg(a, "cName", 0)), t = str(arg(a, "cFieldType", 1)), p = Number(arg(a, "nPageNum", 2) || 0), r = arg(a, "oCoords", 3) || [];
+  if (!n || !(r instanceof Array) || r.length < 4) return null;
+  rq({ k: "addfield", n: n, t: t, p: String(p), r: r.map(Number).join(",") });
+  return new Field(n);
+};
 G.getOCGs = function () { return null; };
 
 // ------------------------------------------------------------------ app, console, global

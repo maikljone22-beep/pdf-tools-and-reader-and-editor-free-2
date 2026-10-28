@@ -197,6 +197,9 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                 .onSuccess { snack.showSnackbar(ctx.getString(R.string.success)); if (wasLeaving) offerLeave = true }.onFailure { state.error = it.message }
         }
     }
+    // 8.84: the form's JavaScript asked for saveAs / closeDoc
+    LaunchedEffect(state.scriptSaveAs) { state.scriptSaveAs?.let { n -> state.scriptSaveAs = null; saveAs.launch(n) } }
+    LaunchedEffect(state.scriptClose) { if (state.scriptClose) { state.scriptClose = false; requestLeave() } }
     // tab-view-core E-13: cancelling the picker leaves the image tool (no dead tool mode); E-16: the temp copy goes after decoding
     val pickImage = rememberImagePicker(multiple = false, onCancel = { if (state.tool == ReaderTool.IMAGE && state.pendingImage == null) state.selectTool(null) }) { files ->
         scope.launch {

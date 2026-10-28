@@ -277,8 +277,9 @@ class FormFillState internal constructor(val reader: ReaderState) {
             val parts = raw.split('\n').filter { it.isNotEmpty() }.map { v -> w.exports.indexOf(v).takeIf { it >= 0 }?.let { w.options.getOrNull(it) } ?: v }
             return Display(parts.joinToString(", "))
         }
-        // XFA picture clause of a generated XFA form (values that do not match it show as stored)
-        w.picture?.let { pic -> com.smartdocs.editor.core.forms.XfaPicture.format(pic, raw)?.let { return Display(it) } }
+        // XFA picture clause of a generated XFA form: typed text is read back to its canonical value first
+        // (edit / display pattern), then shown in the display pattern; values that match neither show as typed
+        w.picture?.let { pic -> com.smartdocs.editor.core.forms.XfaPicture.format(pic, canonical(w, raw))?.let { return Display(it) } }
         scripts?.takeIf { it.hasFormat(w.name) }?.let { sc -> runCatching { sc.format(w.name, raw) }.getOrNull()?.let { return Display(it.first, it.second) } }
         val spec = model.calc.scripts[w.name]?.format ?: return Display(raw)
         return AfFormat.format(spec, raw)
@@ -398,11 +399,14 @@ class FormFillState internal constructor(val reader: ReaderState) {
 
     fun toggle(w: FWidget) {
         if (isReadOnly(w)) return
+        val before = value(w.name)
         when (w.kind) {
             WKind.CHECK -> setValue(w.name, (!isOn(w)).toString())
             WKind.RADIO -> w.onValue?.let { if (value(w.name) != it) setValue(w.name, it) }
             else -> {}
         }
+        // XFA interactive events: click, then change when the state changed
+        if (model.generatedFromXfa) { fireXfa(w, "click", before); if (value(w.name) != before) fireXfa(w, "change", before) }
     }
 
     /** Field-bar undo: the reader's unified undo while its newest step is a form step. */
@@ -429,11 +433,14 @@ class FormFillState internal constructor(val reader: ReaderState) {
             WKind.COMBO, WKind.LIST -> { if (isReadOnly(w)) return; activeId = w.id; menuFor = if (w.kind == WKind.COMBO && w.editable) null else w.id }
             WKind.TEXT -> {
                 if (isReadOnly(w) || isCalculated(w.name)) return
+                val entering = activeId != w.id
                 activeId = w.id
                 if (w.fileSelect) filePickFor = w.name
+                if (entering && model.generatedFromXfa) fireXfa(w, "enter")      // XFA enter event
             }
             WKind.IMAGE -> if (!isReadOnly(w)) imageTarget = w.name
             WKind.BUTTON -> {
+                if (w.xfaClick) { fireXfa(w, "click"); return }      // an XFA button: its click scripts
                 // Enter, Mouse Down, Mouse Up (/A + /AA U), Exit: a tap enters and leaves the widget
                 val t = w.triggers
                 val useChain = w.mouseUp.isNotEmpty() && (scripts != null || w.mouseUp.any { it !is PdfAction.JavaScript })
@@ -503,18 +510,57 @@ class FormFillState internal constructor(val reader: ReaderState) {
         val issue = validate(w, requiredToo = false)
         if (issue == null) committed[w.name] = v
         remember(w)
+        // XFA interactive events of a generated form: change (when the value changed), then exit
+        if (model.generatedFromXfa && textual) { if (v != previous) fireXfa(w, "change", previous); fireXfa(w, "exit", previous) }
         return true
+    }
+
+    // ------------------------------------------------------------------ XFA interactive events
+
+    private var xfaEvents: com.smartdocs.editor.core.forms5.XfaEventRuntime? = null
+    private var xfaEventsFor: String? = null
+
+    /**
+     * Run the XFA [activity] script of [w] (exit / change / click) on the source template with the current values;
+     * the values and presence it changes are applied as one undo step / Hide-action change.
+     */
+    fun fireXfa(w: FWidget, activity: String, prev: String = "") {
+        if (!model.generatedFromXfa) return
+        val f = reader.file ?: return
+        val values = allValues()
+        reader.scope.launch {
+            val rt = if (xfaEventsFor == f.path) xfaEvents else com.smartdocs.editor.core.forms5.XfaEventRuntime.load(f, reader.password).also { xfaEvents = it; xfaEventsFor = f.path }
+            rt ?: return@launch
+            val r = withContext(kotlinx.coroutines.Dispatchers.Default) { runCatching { rt.fire(w.name, activity, values, prev) }.getOrNull() } ?: return@launch
+            if (r.values.isNotEmpty()) setValues(r.values.filterKeys { it != w.name || activity != "change" })
+            r.presence.entries.groupBy({ it.value in setOf("hidden", "invisible", "inactive") }, { it.key }).forEach { (hide, names) -> setHidden(names, hide) }
+        }
     }
 
     private fun remember(w: FWidget) {
         if (FormPrefs.autocomplete && w.kind == WKind.TEXT && !w.password && !w.fileSelect && w.name in edits) runCatching { acFile.store().record(w.name, value(w.name)); acFile.save() }
     }
 
+    /** XFA: [v] as typed → its canonical value through the field's edit or display picture (unchanged when neither reads it). */
+    fun canonical(w: FWidget, v: String): String {
+        if (v.isEmpty()) return v
+        for (p in listOfNotNull(w.editPicture, w.picture)) com.smartdocs.editor.core.forms.XfaPicture.parse(p, v)?.let { return it }
+        return v
+    }
+
+    /** XFA: the text the editor starts with — the value in the edit picture when the field has one. */
+    fun editText(w: FWidget): String {
+        val raw = value(w.name)
+        val p = w.editPicture ?: return raw
+        return com.smartdocs.editor.core.forms.XfaPicture.format(p, canonical(w, raw)) ?: raw
+    }
+
     fun validate(w: FWidget, requiredToo: Boolean): Issue? {
         val sc = model.calc.scripts[w.name]
         val rules = FieldRules(required = requiredToo && (w.required || props(w.name)?.required == true), maxLen = w.maxLen, keystroke = sc?.keystroke ?: com.smartdocs.editor.core.forms.KeystrokeKind.NONE,
             format = sc?.format, validate = w.validate)
-        val issue = if (w.kind == WKind.TEXT || (requiredToo && w.required)) FieldValidation.check(value(w.name), rules) else null
+        val issue = (if (w.kind == WKind.TEXT || (requiredToo && w.required)) FieldValidation.check(value(w.name), rules) else null)
+            ?: w.validatePicture?.takeIf { !com.smartdocs.editor.core.forms.XfaPicture.conforms(it, canonical(w, value(w.name))) }?.let { Issue.Picture(it) }
         if (issue == null) errors.remove(w.name) else errors[w.name] = issue
         return issue
     }
@@ -535,6 +581,8 @@ class FormFillState internal constructor(val reader: ReaderState) {
         val m = model
         val values = LinkedHashMap<String, String>(edits)
         computed.forEach { (k, v) -> values[k] = v }
+        // XFA picture fields store their canonical value (/V), whatever pattern it was typed in
+        m.widgets.forEach { w -> if (w.picture != null || w.editPicture != null) values[w.name]?.let { values[w.name] = canonical(w, it) } }
         val all = m.values.keys.associateWith { values[it] ?: m.values[it].orEmpty() }
         val display = HashMap(m.calc.displayMap(all).filterKeys { it in values })
         // format (F) scripts on the JS runtime give the appearance text; the pattern formatter is the fallback
@@ -545,6 +593,15 @@ class FormFillState internal constructor(val reader: ReaderState) {
             com.smartdocs.editor.core.forms.XfaPicture.format(pic, all[w.name].orEmpty())?.let { display[w.name] = it } }
         return values to display
     }
+
+    /** 8.84: document changes asked for by the form's JavaScript (addScript, setLock, addField), written on save. */
+    private val addedScripts = LinkedHashMap<String, String>()
+    private val addedLocks = LinkedHashMap<String, com.smartdocs.editor.core.formsx.FxSigLock>()
+    private val addedFields = ArrayList<com.smartdocs.editor.core.forms5.ScriptDocChanges.NewField>()
+    fun scriptChanges() = com.smartdocs.editor.core.forms5.ScriptDocChanges(addedScripts.toMap(), addedLocks.toMap(), addedFields.toList())
+    fun addDocScript(name: String, code: String) { addedScripts[name] = code; markDirty() }
+    fun setSigLock(name: String, lock: com.smartdocs.editor.core.formsx.FxSigLock) { addedLocks[name] = lock; markDirty() }
+    fun addScriptField(f: com.smartdocs.editor.core.forms5.ScriptDocChanges.NewField) { if (addedFields.none { it.name == f.name }) { addedFields += f; markDirty() } }
 
     /** 8.28: fill-time style of rich-text fields (bold / italic / underline), written to /RV and /DS on save. */
     val richStyles = mutableStateMapOf<String, com.smartdocs.editor.core.annot.AnnotStyle.Rich>()
@@ -563,11 +620,15 @@ class FormFillState internal constructor(val reader: ReaderState) {
         // audit V-01: a full rewrite would invalidate the signatures of a signed form; it is appended instead
         if (com.smartdocs.editor.core.pdf.SignedSave.isSigned(src, password)) {
             FormValueWriter.writeSigned(reader.context, src, values, display, images.toMap(), hiddenOverride.toMap(), out, password, rich = richStyles.toMap())
+            // a full rewrite would break the signatures: script-requested document changes are not applied here
+            if (!scriptChanges().isEmpty) consoleLog += "! addScript / setLock / addField are not saved into a signed document"
             return
         }
         FormValueWriter.write(reader.context, src, values, display, images.toMap(), out, password, dropXfa = model.xfa == XfaSupport.Kind.STATIC, rich = richStyles.toMap())
         // field visibility changed by Hide actions + barcode fields re-encoded from the new values
         FieldVisibility.applyTo(out, password, hiddenOverride.toMap())
+        // 8.84: addScript / setLock / addField of the form's scripts
+        scriptChanges().takeIf { !it.isEmpty }?.applyTo(out, password)
     }
 
     /**

@@ -19,4 +19,5 @@
     <string name="cf_float_note">Floating note</string>
     <string name="cf_float_select">The comment is selected; tap Save again.</string>
     <string name="cf_float_gone">This comment no longer exists.</string>
+    <string name="cf_err_picture">The value does not match the pattern %1$s</string>
 </resources>
