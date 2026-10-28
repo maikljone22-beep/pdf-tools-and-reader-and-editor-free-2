@@ -63,30 +63,21 @@ class NpfPrefsTest {
         assertFalse(NpfSaveFolder.isCandidateName("noext"))
     }
 
-    @Test fun code128PatternTableIsConsistent() {
-        assertEquals(107, NpfBarcode.C128.size)
-        NpfBarcode.C128.forEachIndexed { i, p -> assertEquals("symbol $i", if (i == 106) 13 else 11, p.sumOf { it - '0' }) }
-        val w = NpfBarcode.code128("AB")!!
-        // start + 2 data + checksum = 4 symbols of 6 elements, stop has 7
-        assertEquals(4 * 6 + 7, w.size)
-        assertEquals(4 * 11 + 13, w.sum())
-        assertNull(NpfBarcode.code128("é"))
-    }
-
-    @Test fun code39() {
-        assertEquals(44, NpfBarcode.C39.length); assertEquals(44, NpfBarcode.C39_PAT.size)
-        NpfBarcode.C39_PAT.forEach { p -> assertEquals(9, p.length); assertEquals(p, 3, p.count { it == 'w' }) }
-        assertEquals(NpfBarcode.C39_PAT.toSet().size, NpfBarcode.C39_PAT.size)
-        val w = NpfBarcode.code39("A1")!!
-        assertEquals(4 * 9 + 3, w.size)       // *A1* plus 3 gaps
-        assertNull(NpfBarcode.code39("a*b"))
+    @Test fun moduleRuns() {
+        assertTrue(NpfBarcode.runs(BooleanArray(3)).isEmpty())
+        val r = NpfBarcode.runs(booleanArrayOf(false, true, true, false, true, false, false))
+        assertEquals(listOf(2, 1, 1), r.toList())
     }
 
     @Test fun barcodeBoxes() {
         val bars = NpfBarcode.boxes("code128B", "123", 0f, 0f, 200f, 40f)
         assertNotNull(bars)
         assertTrue(bars!!.all { it is XItem.Box && it.x >= 0f && it.x + it.w <= 200.01f })
-        assertNull(NpfBarcode.boxes("pdf417", "x", 0f, 0f, 10f, 10f))
+        // shared zxing encoder: the 2D and EAN/UPC symbologies now draw too
+        for ((t, v) in listOf("pdf417" to "hello", "dataMatrix" to "hello", "ean13" to "590123412345", "upcA" to "03600029145", "code3Of9" to "A1", "interleaved2of5" to "1234"))
+            assertTrue(t, NpfBarcode.boxes(t, v, 0f, 0f, 200f, 80f)?.isNotEmpty() == true)
+        assertNull("not valid for EAN-13", NpfBarcode.boxes("ean13", "abc", 0f, 0f, 200f, 80f))
+        assertNull("no encoder", NpfBarcode.boxes("postUSIMB", "1", 0f, 0f, 200f, 80f))
         val qr = NpfBarcode.boxes("QRCode", "hello", 0f, 0f, 100f, 100f)
         assertTrue(qr != null && qr.isNotEmpty())
     }
