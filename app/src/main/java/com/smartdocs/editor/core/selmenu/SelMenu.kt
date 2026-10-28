@@ -15,6 +15,8 @@ enum class SelTab { VIEW, COMMENT, EDIT, FILL_SIGN, SIGN, TOOLS, PAGES, CUSTOM }
 
 /** What was pressed / selected. */
 enum class SelCtx {
+    /** fix/thumbs-panel: long-press on a page thumbnail (Organize grid, reader thumbnails panel); see [SelThumbs]. */
+    THUMB,
     /** Text selected (drag handles, select all, column select, keyboard). */
     TEXT,
     /** Long-press on a single word (one word selected; the menu offers to grow the selection). */
@@ -32,7 +34,7 @@ enum class SelCtx {
 }
 
 enum class SelGroup {
-    SMART, CLIPBOARD, ARABIC, SELECT, MARKUP, COMMENT, LOOKUP, AI, EDIT, SHARE, LINK, INSERT, PAGE,
+    THUMB, SMART, CLIPBOARD, ARABIC, SELECT, MARKUP, COMMENT, LOOKUP, AI, EDIT, SHARE, LINK, INSERT, PAGE,
     // fix/selmenu-rest: object menus
     ANNOT_STYLE, ANNOT_ACTION, ANNOT_ARRANGE, ANNOT_EXPORT, FIELD_VALUE, FIELD_FORM, IMAGE_OUT, IMAGE_EDIT, IMAGE_ARRANGE,
 }
@@ -58,6 +60,20 @@ enum class SelAction(
     /** Smart actions: the entity kind they act on. */
     val entity: EntityKind? = null,
 ) {
+    // --- fix/thumbs-panel: page thumbnails (acts on the selection when the pressed page is in it, else on that page)
+    THUMB_OPEN(SelGroup.THUMB, setOf(SelCtx.THUMB)),
+    THUMB_SELECT(SelGroup.THUMB, setOf(SelCtx.THUMB)),
+    THUMB_DESELECT(SelGroup.THUMB, setOf(SelCtx.THUMB)),
+    THUMB_ROTATE_LEFT(SelGroup.THUMB, setOf(SelCtx.THUMB), Need.MODIFY, changesContent = true),
+    THUMB_ROTATE_RIGHT(SelGroup.THUMB, setOf(SelCtx.THUMB), Need.MODIFY, changesContent = true),
+    THUMB_DUPLICATE(SelGroup.THUMB, setOf(SelCtx.THUMB), Need.MODIFY, changesContent = true),
+    THUMB_DELETE(SelGroup.THUMB, setOf(SelCtx.THUMB), Need.MODIFY, changesContent = true),
+    THUMB_EXTRACT(SelGroup.THUMB, setOf(SelCtx.THUMB), Need.COPY),
+    THUMB_INSERT_BLANK(SelGroup.THUMB, setOf(SelCtx.THUMB), Need.MODIFY, changesContent = true),
+    THUMB_INSERT_FILE(SelGroup.THUMB, setOf(SelCtx.THUMB), Need.MODIFY, changesContent = true),
+    THUMB_REPLACE(SelGroup.THUMB, setOf(SelCtx.THUMB), Need.MODIFY, changesContent = true),
+    THUMB_PRINT(SelGroup.THUMB, setOf(SelCtx.THUMB), Need.PRINT),
+
     // --- smart actions for detected entities (shown first, like Android's assist item)
     CALL(SelGroup.SMART, TEXTS, Need.COPY, entity = EntityKind.PHONE),
     WHATSAPP(SelGroup.SMART, TEXTS, Need.COPY, entity = EntityKind.PHONE),
@@ -268,6 +284,7 @@ object SelMenus {
 
     /** Tab-specific candidates of the floating bar, most used first (smart actions are put in front of these). */
     fun barOrder(tab: SelTab, ctx: SelCtx): List<SelAction> = when (ctx) {
+        SelCtx.THUMB -> listOf(SelAction.THUMB_OPEN, SelAction.THUMB_ROTATE_RIGHT, SelAction.THUMB_DELETE, SelAction.THUMB_EXTRACT, SelAction.THUMB_DUPLICATE, SelAction.THUMB_SELECT)
         SelCtx.LINK -> listOf(SelAction.LINK_OPEN, SelAction.LINK_COPY, SelAction.LINK_SHARE)
         SelCtx.ANNOT, SelCtx.FIELD, SelCtx.IMAGE -> SelObjects.barOrder(ctx)
         SelCtx.EMPTY -> when (tab) {
@@ -290,6 +307,7 @@ object SelMenus {
 
     /** Group order of the "More" sheet: the tab's own group comes right after the smart actions. */
     fun groupOrder(tab: SelTab, ctx: SelCtx): List<SelGroup> {
+        if (ctx == SelCtx.THUMB) return listOf(SelGroup.THUMB)
         val base = listOf(SelGroup.SMART, SelGroup.LINK, SelGroup.INSERT, SelGroup.CLIPBOARD, SelGroup.ARABIC, SelGroup.SELECT, SelGroup.MARKUP,
             SelGroup.COMMENT, SelGroup.LOOKUP, SelGroup.AI, SelGroup.EDIT, SelGroup.SHARE, SelGroup.PAGE)
         if (ctx == SelCtx.ANNOT || ctx == SelCtx.FIELD || ctx == SelCtx.IMAGE) return SelObjects.groupOrder(ctx)

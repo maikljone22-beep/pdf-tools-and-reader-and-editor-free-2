@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- fix/thumbs-panel: reader thumbnails panel (organise, multi-select, size) and the thumbnail long-press menu. Prefix tpn_. -->
+<resources>
+    <string name="tpn_go_to_page">Go to page</string>
+    <string name="tpn_select">Select</string>
+    <string name="tpn_deselect">Deselect</string>
+    <string name="tpn_rotate_left">Rotate left</string>
+    <string name="tpn_rotate_right">Rotate right</string>
+    <string name="tpn_duplicate">Duplicate</string>
+    <string name="tpn_delete">Delete</string>
+    <string name="tpn_extract">Extract to a new file</string>
+    <string name="tpn_insert_blank">Insert a blank page after</string>
+    <string name="tpn_insert_file">Insert pages from a file after</string>
+    <string name="tpn_replace">Replace with pages from a file</string>
+    <string name="tpn_print">Print</string>
+    <string name="tpn_g_pages">Pages</string>
+    <string name="tpn_menu_page">Page %1$d</string>
+    <string name="tpn_menu_pages">%1$d pages</string>
+    <string name="tpn_failed">The page operation failed</string>
+    <string name="tpn_hi_rotate">Rotate pages</string>
+    <string name="tpn_hi_delete">Delete pages</string>
+    <string name="tpn_hi_duplicate">Duplicate pages</string>
+    <string name="tpn_hi_blank">Insert a blank page</string>
+    <string name="tpn_hi_move">Move pages</string>
+    <string name="tpn_hi_insert">Insert pages from a file</string>
+    <string name="tpn_hi_replace">Replace pages</string>
+    <string name="tpn_extracted">Pages extracted to %1$s</string>
+    <string name="tpn_select_mode">Select pages</string>
+    <string name="tpn_select_all">Select all</string>
+    <string name="tpn_n_selected">%1$d selected</string>
+    <string name="tpn_smaller">Smaller thumbnails</string>
+    <string name="tpn_larger">Larger thumbnails</string>
+    <string name="tpn_delete_one_q">Delete page %1$d?</string>
+    <string name="tpn_delete_many_q">Delete %1$d pages?</string>
+</resources>

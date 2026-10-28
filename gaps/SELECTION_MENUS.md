@@ -310,7 +310,11 @@ Before: the same 26-chip bottom row in every tab.
 - ~~Form field menu~~ — **done** (§7.1).
 - ~~Page-content image menu~~ — **done** (§7.3).
 - ~~Annotation menu keeps the existing `AnnotActionBar`~~ — **done**: moved into the registry, Reply added (§7.2).
-- Thumbnail (PAGES) context menu: the organiser's / thumbnails panel's (separate screen, another helper).
+- ~~Thumbnail (PAGES) context menu is the organiser's (separate screen).~~ **DONE (fix/thumbs-panel)**: `SelCtx.THUMB` with the
+  `THUMB_*` actions in the registry (`core/selmenu/SelMenu.kt`, rules in `core/selmenu/SelThumbs.kt`, dropdown `ui/selmenu/SelThumbMenu.kt`).
+  Long-press a thumbnail in Organize or in the reader's thumbnails panel: Go to page, Select / Deselect, Rotate left / right,
+  Duplicate, Delete, Extract, Insert blank after, Insert from file after, Replace from file, Print. It acts on the selection when
+  the pressed page is selected, else on that page. Permission and signed-file reasons are shown on disabled items. Test `SelThumbsTest`.
 - Not tested on a device; CI compiles and runs the JVM tests only.
 
 ## 7. fix/selmenu-rest (branch `fix/selmenu-rest`, from main `8106ebe`)
@@ -322,7 +326,7 @@ Before: the same 26-chip bottom row in every tab.
 | 7.3 | **Page-image menu, EDIT tab** (content-edit screen): long-press a picture / shape / shading selects it and opens the floating bar + More: Copy, Cut, Save to Pictures, Share, Replace, Crop, Rotate left / right, Flip H / V, Image editor, Image properties, More tools, Delete (confirm), Bring to front, Send to back, Duplicate (vector shapes: no save / share / replace / editor / 90° rotate; shadings: no copy / cut). | done | `ui/selmenu/SelEditImage.kt`, hook `ui/edit/EditPageView.kt` |
 | 7.4 | **Sign / Insert image at the pressed point**: "Sign" opens a chooser of the saved signatures (recent first, locked ones ask for the PIN) and opens the reader's signature placement frame centred on the point; "Insert image" picks a picture and opens the image placement frame there. Box from `FsGeom.stampBoxInside` (crop box + /Rotate, kept on the page, default signature width honoured). | done | `ui/selmenu/SelPlace.kt`, `core/fillsign2/FsGeom.kt` (`stampBoxInside`), `ui/selmenu/SelHandlers.kt` |
 | 7.5 | **No gesture lock**: the link / empty-area / field menus no longer put a full-screen tap catcher over the pages; the page scrolls and zooms with the menu open (the bar follows its anchor), a tap on a page or field closes it (`SelHooks.onPageTap`). | done | `ui/selmenu/SelMenuLayer.kt`, `ui/selmenu/SelMenuState.kt`, hooks `ui/reader/PageCanvas.kt`, `ui/forms5/InPageFormLayer.kt` |
-| 7.6 | Thumbnail (Organize / thumbnails panel) menu | other helper | — |
+| 7.6 | Thumbnail (Organize / thumbnails panel) menu | done (fix/thumbs-panel) | `core/selmenu/SelThumbs.kt`, `ui/selmenu/SelThumbMenu.kt`, `ui/reader/ReaderThumbs.kt` (see §6) |
 
 Strings: `values/strings_selmenu_rest.xml` (ar), `values-en/strings_selmenu_rest.xml` (en), prefix `smr_`.
 Tests: `app/src/test/java/com/smartdocs/editor/core/selmenu/SelObjectsTest.kt` (object menus, guard / signed rules, `stampBoxInside` incl. a /Rotate 90 cropped page).

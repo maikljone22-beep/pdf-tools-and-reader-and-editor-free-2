@@ -12,6 +12,19 @@ import com.smartdocs.editor.core.selmenu.Why
 /** Label and icon of every registry action (core/selmenu/SelMenu.kt); strings in values (ar) and values-en. */
 object SelBindings {
     fun label(a: SelAction): Int = when (a) {
+        // fix/thumbs-panel: page thumbnail menu (strings_thumbs_panel.xml)
+        SelAction.THUMB_OPEN -> R.string.tpn_go_to_page
+        SelAction.THUMB_SELECT -> R.string.tpn_select
+        SelAction.THUMB_DESELECT -> R.string.tpn_deselect
+        SelAction.THUMB_ROTATE_LEFT -> R.string.tpn_rotate_left
+        SelAction.THUMB_ROTATE_RIGHT -> R.string.tpn_rotate_right
+        SelAction.THUMB_DUPLICATE -> R.string.tpn_duplicate
+        SelAction.THUMB_DELETE -> R.string.tpn_delete
+        SelAction.THUMB_EXTRACT -> R.string.tpn_extract
+        SelAction.THUMB_INSERT_BLANK -> R.string.tpn_insert_blank
+        SelAction.THUMB_INSERT_FILE -> R.string.tpn_insert_file
+        SelAction.THUMB_REPLACE -> R.string.tpn_replace
+        SelAction.THUMB_PRINT -> R.string.tpn_print
         SelAction.CALL -> R.string.sm_call
         SelAction.WHATSAPP -> R.string.sm_whatsapp
         SelAction.SMS -> R.string.sm_sms
@@ -150,6 +163,18 @@ object SelBindings {
     }
 
     fun icon(a: SelAction): ImageVector = when (a) {
+        SelAction.THUMB_OPEN -> Icons.Default.Pageview
+        SelAction.THUMB_SELECT -> Icons.Default.CheckCircle
+        SelAction.THUMB_DESELECT -> Icons.Default.RadioButtonUnchecked
+        SelAction.THUMB_ROTATE_LEFT -> Icons.Default.RotateLeft
+        SelAction.THUMB_ROTATE_RIGHT -> Icons.Default.RotateRight
+        SelAction.THUMB_DUPLICATE -> Icons.Default.FileCopy
+        SelAction.THUMB_DELETE -> Icons.Default.Delete
+        SelAction.THUMB_EXTRACT -> Icons.Default.ContentCut
+        SelAction.THUMB_INSERT_BLANK -> Icons.Default.NoteAdd
+        SelAction.THUMB_INSERT_FILE -> Icons.Default.FileOpen
+        SelAction.THUMB_REPLACE -> Icons.Default.FindReplace
+        SelAction.THUMB_PRINT -> Icons.Default.Print
         SelAction.CALL -> Icons.Default.Call
         SelAction.WHATSAPP -> Icons.Default.Chat
         SelAction.SMS -> Icons.Default.Sms
@@ -275,6 +300,7 @@ object SelBindings {
     }
 
     fun group(g: SelGroup): Int = when (g) {
+        SelGroup.THUMB -> R.string.tpn_g_pages
         SelGroup.SMART -> R.string.sm_g_smart
         SelGroup.CLIPBOARD -> R.string.sm_g_clipboard
         SelGroup.ARABIC -> R.string.sm_g_arabic
