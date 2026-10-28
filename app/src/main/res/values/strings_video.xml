@@ -30,4 +30,22 @@
     <string name="vid_opt_controls">إظهار أزرار التحكم</string>
     <string name="vid_share">مشاركة الفيديو</string>
     <string name="vid_save">حفظ الفيديو على الجهاز</string>
+    <string name="vid_tab_props">الخصائص</string>
+    <string name="vid_tab_play">التشغيل</string>
+    <string name="vid_tab_actions">الإجراءات</string>
+    <string name="vid_title">العنوان</string>
+    <string name="vid_alt">نص بديل</string>
+    <string name="vid_locked">مقفل</string>
+    <string name="vid_poster">صورة الغلاف</string>
+    <string name="vid_poster_auto">إطار من الفيديو</string>
+    <string name="vid_poster_none">بدون</string>
+    <string name="vid_poster_file">من صورة</string>
+    <string name="vid_poster_pick">اختيار صورة…</string>
+    <string name="vid_volume">مستوى الصوت: %1$d٪</string>
+    <string name="vid_repeat">مرات التشغيل</string>
+    <string name="vid_keep_open">إبقاء المشغّل مفتوحًا بعد الانتهاء</string>
+    <string name="vid_start_visible">عند ظهور الصفحة</string>
+    <string name="vid_start_open">عند فتح الصفحة</string>
+    <string name="vid_stop_hidden">الإيقاف عند إخفاء الصفحة أو إغلاقها</string>
+    <string name="vid_actions_note">في هذا التطبيق يتوقف الفيديو دائمًا عند خروجه من الشاشة؛ تُحفظ هذه الإجراءات في الملف للبرامج الأخرى.</string>
 </resources>

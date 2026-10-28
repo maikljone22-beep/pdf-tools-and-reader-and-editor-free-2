@@ -30,4 +30,22 @@
     <string name="vid_opt_controls">Show player controls</string>
     <string name="vid_share">Share video</string>
     <string name="vid_save">Save video to device</string>
+    <string name="vid_tab_props">Properties</string>
+    <string name="vid_tab_play">Playback</string>
+    <string name="vid_tab_actions">Actions</string>
+    <string name="vid_title">Title</string>
+    <string name="vid_alt">Alternate text</string>
+    <string name="vid_locked">Locked</string>
+    <string name="vid_poster">Poster</string>
+    <string name="vid_poster_auto">Frame from the video</string>
+    <string name="vid_poster_none">None</string>
+    <string name="vid_poster_file">From an image</string>
+    <string name="vid_poster_pick">Choose image…</string>
+    <string name="vid_volume">Volume: %1$d%%</string>
+    <string name="vid_repeat">Times to play</string>
+    <string name="vid_keep_open">Keep player open after playback</string>
+    <string name="vid_start_visible">When the page is visible</string>
+    <string name="vid_start_open">When the page opens</string>
+    <string name="vid_stop_hidden">Stop when the page is hidden or closed</string>
+    <string name="vid_actions_note">In this app a video always stops when it leaves the screen; these actions are saved in the file for other viewers.</string>
 </resources>

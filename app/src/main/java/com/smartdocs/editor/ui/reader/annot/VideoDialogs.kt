@@ -48,6 +48,20 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Slider
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
+import androidx.compose.runtime.mutableIntStateOf
+import kotlin.math.roundToInt
 import com.smartdocs.editor.R
 import com.smartdocs.editor.core.annot.VideoPdf
 import com.smartdocs.editor.ui.reader.ReaderState
@@ -119,7 +133,7 @@ fun VideoDialogs(state: ReaderState) {
         )
     }
     if (host.importing) com.smartdocs.editor.ui.common.ProgressDialog(stringResource(R.string.vid_preparing))
-    if (host.optionsOpen) VideoOptionsDialog(host.selectedOptions(), onOk = { host.applyOptions(it) }, onDismiss = { host.optionsOpen = false })
+    if (host.optionsOpen) VideoOptionsDialog(host.selectedProps(), onOk = { host.applyOptions(it) }, onDismiss = { host.optionsOpen = false })
     if (host.fullscreen && host.active != null) FullscreenPlayer(host)
 }
 
@@ -127,30 +141,105 @@ private fun sizeOf(ctx: Context, uri: Uri): Long = runCatching {
     ctx.contentResolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)?.use { c -> if (c.moveToFirst() && !c.isNull(0)) c.getLong(0) else -1L } ?: -1L
 }.getOrDefault(-1L)
 
+/**
+ * FINAL_CHECK_2 #15 (§19): video properties in three tabs, as in Acrobat: Properties (title, alt text, locked, poster:
+ * a frame of the video / none / an image), Playback (controls, volume, repeat, keep open, full screen) and Actions
+ * (start on page open / visible, stop when the page is hidden or closed).
+ */
 @Composable
-private fun VideoOptionsDialog(initial: VideoPdf.Options, onOk: (VideoPdf.Options) -> Unit, onDismiss: () -> Unit) {
-    var o by remember { mutableStateOf(initial) }
+private fun VideoOptionsDialog(initial: VideoProps, onOk: (VideoProps) -> Unit, onDismiss: () -> Unit) {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var o by remember { mutableStateOf(initial.options) }
+    var title by remember { mutableStateOf(initial.title) }
+    var locked by remember { mutableStateOf(initial.locked) }
+    var poster by remember { mutableStateOf(initial.posterPath) }
+    var tab by remember { mutableIntStateOf(0) }
+    val pickPoster = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) scope.launch {
+            val f = withContext(Dispatchers.IO) { posterFromImage(ctx, uri) }
+            if (f != null) { poster = f.absolutePath; o = o.copy(poster = VideoPdf.POSTER_FILE) }
+        }
+    }
     @Composable
     fun row(label: Int, checked: Boolean, set: (Boolean) -> Unit) {
         Row(Modifier.fillMaxWidth().clickable { set(!checked) }.padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
             Checkbox(checked, set); Text(stringResource(label))
         }
     }
+    @Composable
+    fun chips(values: List<Pair<Int, Int>>, selected: Int, pick: (Int) -> Unit) {
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            values.forEach { (v, label) -> FilterChip(selected == v, { pick(v) }, label = { Text(stringResource(label)) }) }
+        }
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.vid_options)) },
         text = {
-            Column {
-                row(R.string.vid_opt_autoplay, o.autoplay) { o = o.copy(autoplay = it) }
-                row(R.string.vid_opt_loop, o.loop) { o = o.copy(loop = it) }
-                row(R.string.vid_opt_muted, o.muted) { o = o.copy(muted = it) }
-                row(R.string.vid_opt_controls, o.controls) { o = o.copy(controls = it) }
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                TabRow(tab) {
+                    listOf(R.string.vid_tab_props, R.string.vid_tab_play, R.string.vid_tab_actions).forEachIndexed { i, l ->
+                        Tab(tab == i, { tab = i }, text = { Text(stringResource(l), maxLines = 1) })
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                when (tab) {
+                    0 -> {
+                        OutlinedTextField(title, { title = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.vid_title)) })
+                        OutlinedTextField(o.alt, { o = o.copy(alt = it) }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.vid_alt)) })
+                        row(R.string.vid_locked, locked) { locked = it }
+                        Text(stringResource(R.string.vid_poster), style = MaterialTheme.typography.labelLarge)
+                        chips(listOf(VideoPdf.POSTER_AUTO to R.string.vid_poster_auto, VideoPdf.POSTER_NONE to R.string.vid_poster_none,
+                            VideoPdf.POSTER_FILE to R.string.vid_poster_file), o.poster) { v ->
+                            if (v == VideoPdf.POSTER_FILE) runCatching { pickPoster.launch("image/*") } else o = o.copy(poster = v)
+                        }
+                        if (o.poster == VideoPdf.POSTER_FILE) TextButton(onClick = { runCatching { pickPoster.launch("image/*") } }) { Text(stringResource(R.string.vid_poster_pick)) }
+                    }
+                    1 -> {
+                        row(R.string.vid_opt_controls, o.controls) { o = o.copy(controls = it) }
+                        row(R.string.vid_opt_muted, o.muted) { o = o.copy(muted = it) }
+                        Text(stringResource(R.string.vid_volume, o.volume))
+                        Slider(o.volume.toFloat(), { o = o.copy(volume = it.roundToInt()) }, enabled = !o.muted, valueRange = 0f..100f)
+                        row(R.string.vid_opt_loop, o.loop) { o = o.copy(loop = it) }
+                        if (!o.loop) Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(stringResource(R.string.vid_repeat), Modifier.weight(1f))
+                            TextButton(onClick = { o = o.copy(repeat = (o.repeat - 1).coerceAtLeast(1)) }) { Text("−") }
+                            Text(o.repeat.toString())
+                            TextButton(onClick = { o = o.copy(repeat = (o.repeat + 1).coerceAtMost(VideoPdf.MAX_REPEAT)) }) { Text("+") }
+                        }
+                        row(R.string.vid_keep_open, o.keepOpen) { o = o.copy(keepOpen = it) }
+                        row(R.string.vid_fullscreen, o.fullscreen) { o = o.copy(fullscreen = it) }
+                    }
+                    else -> {
+                        row(R.string.vid_opt_autoplay, o.autoplay) { o = o.copy(autoplay = it) }
+                        if (o.autoplay) chips(listOf(VideoPdf.START_VISIBLE to R.string.vid_start_visible, VideoPdf.START_OPEN to R.string.vid_start_open), o.startOn) { o = o.copy(startOn = it) }
+                        row(R.string.vid_stop_hidden, o.stopWhenHidden) { o = o.copy(stopWhenHidden = it) }
+                        Text(stringResource(R.string.vid_actions_note), style = MaterialTheme.typography.bodySmall)
+                    }
+                }
             }
         },
-        confirmButton = { Button(onClick = { onOk(o) }) { Text(stringResource(R.string.ok)) } },
+        confirmButton = { Button(onClick = { onOk(VideoProps(o, title, locked, poster)) }) { Text(stringResource(R.string.ok)) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
     )
 }
+
+/** A picked image as a baseline JPEG poster (at most 1280 px) in the cache, or null. */
+private fun posterFromImage(ctx: Context, uri: Uri): File? = runCatching {
+    val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    ctx.contentResolver.openInputStream(uri)?.use { android.graphics.BitmapFactory.decodeStream(it, null, bounds) }
+    var sample = 1
+    while (maxOf(bounds.outWidth, bounds.outHeight) / sample > 1280) sample *= 2
+    val bmp = ctx.contentResolver.openInputStream(uri)?.use {
+        android.graphics.BitmapFactory.decodeStream(it, null, android.graphics.BitmapFactory.Options().apply { inSampleSize = sample })
+    } ?: return null
+    try {
+        File(File(ctx.cacheDir, "video_posters").apply { mkdirs() }, "poster_${System.nanoTime()}.jpg").also { f ->
+            f.outputStream().use { bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, it) }
+        }
+    } finally { bmp.recycle() }
+}.getOrNull()
 
 private fun Context.activity(): Activity? {
     var c: Context? = this
