@@ -47,4 +47,8 @@
     <string name="cv9_ex_original">Original format</string>
     <string name="cv9_xlsx_split">Split multi-line text into rows</string>
     <string name="cv9_xlsx_nomerge">Reduce merged cells</string>
+    <string name="cv9_char_spacing">Character spacing</string>
+    <string name="cv9_spacing_normal">Normal</string>
+    <string name="cv9_anchor_images">Anchor pictures at their place</string>
+    <string name="cv9_anchor_images_sub">Pictures float at their page position instead of in line</string>
 </resources>

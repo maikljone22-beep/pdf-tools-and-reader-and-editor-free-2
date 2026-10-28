@@ -85,6 +85,9 @@ data class Cv6Opts(
     /** PDF → Excel (s6): split multi-line cells into rows; reduce merged cells. */
     val xlsxSplitLines: Boolean = false,
     val xlsxNoMerge: Boolean = false,
+    /** PDF → Word (s6): character spacing (pt) and anchored pictures. */
+    val docxCharSpacing: Float = 0f,
+    val docxAnchorImages: Boolean = false,
 )
 
 enum class Stage { WORK, OCR }
@@ -277,7 +280,8 @@ class Cv6Engine(private val ctx: Context, private val docs: DocumentRepository) 
             val flowing = o.keepLayout?.not() ?: (inp.ocrPages > 0 && inp.rtl)
             val out = out(base, "docx")
             val opts = ConvertOptions(format = TargetFormat.DOCX, pages = pages, detectTables = o.tables, includeImages = o.includeImages, docxFlowing = flowing && !o.exactLayout,
-                docxExact = o.exactLayout, detectHeaders = o.headerMode != 1, dropFurniture = o.headerMode == 2)
+                docxExact = o.exactLayout, detectHeaders = o.headerMode != 1, dropFurniture = o.headerMode == 2,
+                docxCharSpacing = o.docxCharSpacing, docxAnchorImages = o.docxAnchorImages)
             val stats = ConvertEngine.convert(ctx, inp.file, pw, opts, out, p, cancelled)
             val info = ArrayList<String>()
             info += if (stats.textPages == 0) ctx.getString(R.string.cv_scanned_warning) else ctx.getString(R.string.cv6_info_pages, stats.pages, stats.tables, stats.images)

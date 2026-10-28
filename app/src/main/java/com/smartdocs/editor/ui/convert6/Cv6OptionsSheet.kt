@@ -160,6 +160,12 @@ private fun OptionsBody(conv: Conv, inputCount: Int, o: Cv6Opts, onChange: (Cv6O
     if (Opt.GRAY in opts && !o.bw) SwitchRow(stringResource(R.string.cv6_gray), o.gray) { onChange(o.copy(gray = it)) }
     if (Opt.BW in opts) SwitchRow(stringResource(R.string.pc_bw), o.bw, stringResource(R.string.pc_bw_sub)) { onChange(o.copy(bw = it)) }
     if (Opt.FORM_FIELDS in opts) SwitchRow(stringResource(R.string.cv9_form_fields), o.recognizeFields, stringResource(R.string.cv9_form_fields_sub)) { onChange(o.copy(recognizeFields = it)) }
+    if (Opt.DOCX_TEXT in opts) {
+        // s6 Word: custom character spacing; image anchoring
+        FieldLabel(stringResource(R.string.cv9_char_spacing))
+        ChoiceChips(listOf(-0.5f, 0f, 0.5f, 1f), o.docxCharSpacing, { if (it == 0f) stringResource(R.string.cv9_spacing_normal) else (if (it > 0) "+" else "") + it.toString() + " pt" }) { onChange(o.copy(docxCharSpacing = it)) }
+        SwitchRow(stringResource(R.string.cv9_anchor_images), o.docxAnchorImages, stringResource(R.string.cv9_anchor_images_sub)) { onChange(o.copy(docxAnchorImages = it)) }
+    }
     if (Opt.XLSX_CELLS in opts) {
         // s6 Excel: split multi-line text into rows; reduce merged cells
         SwitchRow(stringResource(R.string.cv9_xlsx_split), o.xlsxSplitLines) { onChange(o.copy(xlsxSplitLines = it)) }

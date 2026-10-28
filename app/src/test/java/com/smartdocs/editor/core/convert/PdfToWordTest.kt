@@ -224,4 +224,15 @@ class PdfToWordTest {
         assertTrue(ar, ar.indexOf("framePr") < ar.indexOf("<w:bidi/>") && ar.indexOf("<w:bidi/>") < ar.indexOf("<w:spacing"))
         assertFalse(docx(false, l).contains("framePr"))
     }
+
+    @Test fun customCharacterSpacingOnEveryRun() {
+        val l = LayoutAnalyzer.analyze(page(ltrWord("Invoice", 100f, 210f)))
+        val bos = ByteArrayOutputStream()
+        DocxBuilder(bos, "t", PageFurniture.NONE, false, charSpacing = 0.5f).use { b -> b.addPage(l); b.finish() }
+        val xml = ZipInputStream(bos.toByteArray().inputStream()).use { z ->
+            var out = ""; while (true) { val e = z.nextEntry ?: break; if (e.name == "word/document.xml") { out = z.readBytes().toString(Charsets.UTF_8); break } }; out
+        }
+        assertTrue(xml.contains("<w:spacing w:val=\"10\"/>"))       // 0.5 pt = 10 twentieths
+        assertFalse(docx(false, l).contains("<w:spacing w:val="))
+    }
 }

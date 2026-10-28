@@ -47,4 +47,8 @@
     <string name="cv9_ex_original">الصيغة الأصلية</string>
     <string name="cv9_xlsx_split">تقسيم النص متعدد الأسطر إلى صفوف</string>
     <string name="cv9_xlsx_nomerge">تقليل الخلايا المدمجة</string>
+    <string name="cv9_char_spacing">تباعد الأحرف</string>
+    <string name="cv9_spacing_normal">عادي</string>
+    <string name="cv9_anchor_images">تثبيت الصور في أماكنها</string>
+    <string name="cv9_anchor_images_sub">تطفو الصور في موضعها من الصفحة بدل أن تكون ضمن السطر</string>
 </resources>

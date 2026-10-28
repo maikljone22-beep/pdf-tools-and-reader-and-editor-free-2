@@ -37,6 +37,9 @@ data class ConvertOptions(
     /** XLSX: one sheet row per line of multi-line table cells; no merged cells. */
     val xlsxSplitLines: Boolean = false,
     val xlsxNoMerge: Boolean = false,
+    /** DOCX: character spacing added to every run (points) and pictures anchored at their place. */
+    val docxCharSpacing: Float = 0f,
+    val docxAnchorImages: Boolean = false,
 )
 
 /** Where page content comes from (PdfBox on Android, desktop PdfBox in the test harness). */
@@ -82,7 +85,8 @@ object ConvertPipeline {
         fun step(k: Int) { if (cancelled()) throw ConvertCancelled(); progress(k, total) }
         progress(0, total)
         when (opts.format) {
-            TargetFormat.DOCX -> DocxBuilder(out, title, furniture, opts.docxFlowing, exact = opts.docxExact, dropFurniture = opts.dropFurniture).use { b ->
+            TargetFormat.DOCX -> DocxBuilder(out, title, furniture, opts.docxFlowing, exact = opts.docxExact, dropFurniture = opts.dropFurniture,
+                charSpacing = opts.docxCharSpacing, anchorImages = opts.docxAnchorImages).use { b ->
                 pages.forEachIndexed { k, i -> b.addPage(layout(i, opts.includeImages)); step(k + 1) }
                 b.finish()
             }

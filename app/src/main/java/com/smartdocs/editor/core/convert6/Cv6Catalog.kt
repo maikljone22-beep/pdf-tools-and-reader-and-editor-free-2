@@ -10,7 +10,7 @@ enum class Fmt { PDF, WORD, EXCEL, PPT, IMAGE, JPG, PNG, WEBP, HEIC, TIFF, ZIP, 
 
 /** Options a conversion shows in its sheet. */
 enum class Opt { RANGE, AUTO_OCR, TABLES, INCLUDE_IMAGES, SINGLE_SHEET, PPT_MODE, LAYOUT, IMG_FORMAT, DPI, QUALITY, IMG_OUTPUT, GRAY,
-    PAGE_SETUP, MERGE, NUP, RESIZE, CSV_SHEETS, OCR_LANG, URL, TEXT, PDFA_STRICT, BW, SHEET_PER_TABLE, BOOKMARKS, FORM_FIELDS, TEXT_RECOVERY, SPEAKER_NOTES, CELL_COMMENTS, SLIDES, HEADERS, TEXT_LAYOUT, XLSX_CELLS }
+    PAGE_SETUP, MERGE, NUP, RESIZE, CSV_SHEETS, OCR_LANG, URL, TEXT, PDFA_STRICT, BW, SHEET_PER_TABLE, BOOKMARKS, FORM_FIELDS, TEXT_RECOVERY, SPEAKER_NOTES, CELL_COMMENTS, SLIDES, HEADERS, TEXT_LAYOUT, XLSX_CELLS, DOCX_TEXT }
 
 /**
  * One hub conversion. [inputs] = accepted kinds (empty = no file: URL / clipboard / camera); [multi] = several inputs at once
@@ -40,7 +40,7 @@ object Cv6Catalog {
 
     val all: List<Conv> = listOf(
         // ---- from PDF ----
-        Conv("pdf_docx", listOf(Cv6Group.FROM_PDF, Cv6Group.OFFICE), Fmt.PDF, Fmt.WORD, PDF, opts = setOf(Opt.RANGE, Opt.AUTO_OCR, Opt.TEXT_RECOVERY, Opt.OCR_LANG, Opt.LAYOUT, Opt.TABLES, Opt.INCLUDE_IMAGES, Opt.HEADERS), outExt = "docx", keywords = "word docx"),
+        Conv("pdf_docx", listOf(Cv6Group.FROM_PDF, Cv6Group.OFFICE), Fmt.PDF, Fmt.WORD, PDF, opts = setOf(Opt.RANGE, Opt.AUTO_OCR, Opt.TEXT_RECOVERY, Opt.OCR_LANG, Opt.LAYOUT, Opt.TABLES, Opt.INCLUDE_IMAGES, Opt.HEADERS, Opt.DOCX_TEXT), outExt = "docx", keywords = "word docx"),
         Conv("pdf_xlsx", listOf(Cv6Group.FROM_PDF, Cv6Group.OFFICE), Fmt.PDF, Fmt.EXCEL, PDF, opts = setOf(Opt.RANGE, Opt.AUTO_OCR, Opt.SINGLE_SHEET, Opt.TABLES, Opt.XLSX_CELLS), outExt = "xlsx", keywords = "excel xlsx"),
         Conv("pdf_pptx", listOf(Cv6Group.FROM_PDF, Cv6Group.OFFICE), Fmt.PDF, Fmt.PPT, PDF, opts = setOf(Opt.RANGE, Opt.AUTO_OCR, Opt.PPT_MODE, Opt.TABLES, Opt.INCLUDE_IMAGES), outExt = "pptx", keywords = "powerpoint pptx"),
         Conv("pdf_images", listOf(Cv6Group.FROM_PDF, Cv6Group.IMAGES), Fmt.PDF, Fmt.IMAGES_OUT, PDF, opts = setOf(Opt.RANGE, Opt.IMG_FORMAT, Opt.DPI, Opt.QUALITY, Opt.IMG_OUTPUT, Opt.GRAY), outExt = "jpg", keywords = "jpg png webp zip"),
@@ -116,7 +116,7 @@ object Cv6Catalog {
         Conv("epub_txt", listOf(Cv6Group.TEXT_BOOKS), Fmt.EPUB, Fmt.TXT, setOf(Kind6.EPUB), outExt = "txt", keywords = "ebook text"),
         Conv("epub_docx", listOf(Cv6Group.TEXT_BOOKS), Fmt.EPUB, Fmt.WORD, setOf(Kind6.EPUB), outExt = "docx", keywords = "ebook word"),
         // ---- OCR ----
-        Conv("ocr_pdf_docx", listOf(Cv6Group.OCR), Fmt.OCR, Fmt.WORD, PDF, opts = setOf(Opt.RANGE, Opt.OCR_LANG, Opt.LAYOUT, Opt.HEADERS), outExt = "docx", keywords = "scanned editable word"),
+        Conv("ocr_pdf_docx", listOf(Cv6Group.OCR), Fmt.OCR, Fmt.WORD, PDF, opts = setOf(Opt.RANGE, Opt.OCR_LANG, Opt.LAYOUT, Opt.HEADERS, Opt.DOCX_TEXT), outExt = "docx", keywords = "scanned editable word"),
         Conv("ocr_pdf_txt", listOf(Cv6Group.OCR), Fmt.OCR, Fmt.TXT, PDF, opts = setOf(Opt.RANGE, Opt.OCR_LANG, Opt.HEADERS, Opt.TEXT_LAYOUT), outExt = "txt", keywords = "scanned text"),
         Conv("ocr_pdf_xlsx", listOf(Cv6Group.OCR), Fmt.OCR, Fmt.EXCEL, PDF, opts = setOf(Opt.RANGE, Opt.OCR_LANG, Opt.XLSX_CELLS), outExt = "xlsx", keywords = "scanned table excel"),
     )
