@@ -180,7 +180,7 @@ private fun ReviewDetail(nav: NavHostController, ref: ReviewRef, onBack: () -> U
     Scaffold(topBar = {
         AppTopBar(ref.title, onBack = onBack, actions = {
             IconButton(onClick = { share = true }) { Icon(Icons.Default.Share, stringResource(R.string.share)) }
-            IconButton(onClick = { nav.navigate(com.smartdocs.editor.ui.share5.Share5Routes.review(ref.id)) }) { Icon(Icons.Default.ManageAccounts, null) }
+            IconButton(onClick = { nav.navigate(com.smartdocs.editor.ui.share5.Share5Routes.review(ref.id)) }) { Icon(Icons.Default.ManageAccounts, stringResource(R.string.pc_cd_reviewers)) }
         })
     }) { pad ->
         LazyColumn(Modifier.padding(pad).fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -278,7 +278,7 @@ private fun NewReviewDialog(file: File, onDismiss: () -> Unit, onCreate: (title:
                 OutlinedTextField(name, { name = it }, label = { Text(stringResource(R.string.ac_your_name)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(if (deadline > 0) stringResource(R.string.ac_review_due, DocumentRepository.formatDate(deadline)) else stringResource(R.string.ac_review_no_deadline), Modifier.weight(1f))
-                    if (deadline > 0) IconButton(onClick = { deadline = 0 }) { Icon(Icons.Default.Close, null) }
+                    if (deadline > 0) IconButton(onClick = { deadline = 0 }) { Icon(Icons.Default.Close, stringResource(R.string.pc_cd_remove)) }
                     TextButton(onClick = { pickDate = true }) { Text(stringResource(R.string.ac_review_add_deadline)) }
                 }
                 Text(stringResource(R.string.ac_review_link_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

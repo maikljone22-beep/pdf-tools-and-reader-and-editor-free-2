@@ -38,6 +38,12 @@ data class PdfAOptions(
     /** PDF/A-2b only allows PDF/A attachments; attachments cannot be verified here so they are removed. */
     val removeAttachments: Boolean = true,
     val dpi: Int = 200,
+    /** Foxit 8 / Nitro 20: part and conformance (1a / 1b / 2a / 2b / 2u / 3a / 3b / 3u). */
+    val level: PdfALevel = PdfALevel.A2B,
+    /** Also claim PDF/UA (pdfuaid part), e.g. 1. */
+    val uaPart: Int? = null,
+    /** Document language for the "a" levels (auto-tagging) when the file has none. */
+    val lang: String = "",
 )
 
 /** PDF/A-2b preflight + conversion (best effort, on device). */
@@ -152,12 +158,15 @@ object PdfA {
             val bad = HashSet<Int>()
             if (opt.rasterizeProblemPages && before.fontsNotEmbedded.isNotEmpty()) bad += pagesWithFonts(d, before.fontsNotEmbedded.map { it.name }.toSet())
             if (opt.rasterizeProblemPages) bad += before.cmykPages
-            if (opt.flattenTransparency) bad += before.transparencyPages
+            if (opt.flattenTransparency || opt.level.strict1) bad += before.transparencyPages
+            // "u" / "a" levels: text must map to Unicode; pages with fonts that do not are pictures afterwards
+            if (opt.rasterizeProblemPages && opt.level.needsUnicode && before.fontsWithoutUnicode.isNotEmpty()) bad += pagesWithFonts(d, before.fontsWithoutUnicode.map { it.name }.toSet())
             if (bad.isNotEmpty()) {
                 rasterize(ctx, src, password, d, bad, opt.dpi)
                 if (before.fontsNotEmbedded.isNotEmpty()) fixed += "fonts"
                 if (before.cmykPages.isNotEmpty()) fixed += "cmyk"
-                if (opt.flattenTransparency && before.transparencyPages.isNotEmpty()) fixed += "transparency"
+                if ((opt.flattenTransparency || opt.level.strict1) && before.transparencyPages.isNotEmpty()) fixed += "transparency"
+                if (opt.level.needsUnicode && before.fontsWithoutUnicode.isNotEmpty()) fixed += "unicode"
             }
             val cat = d.documentCatalog.cosObject
             // JavaScript and forbidden actions
@@ -195,7 +204,11 @@ object PdfA {
             if (before.annotationsWithoutAppearance > 0) fixed += "annot_ap"
             if (before.lzw) fixed += "lzw"
             if (before.xfa) fixed += "xfa"
-            if (opt.removeAttachments && before.embeddedFiles > 0) { (cat.getDictionaryObject(N.Names) as? COSDictionary)?.removeItem(N.EmbeddedFiles); fixed += "attachments" }
+            if (opt.level.anyAttachments) { Standards.associateAttachments(d); if (before.embeddedFiles > 0) fixed += "attachments" }
+            else if (opt.removeAttachments && before.embeddedFiles > 0) { (cat.getDictionaryObject(N.Names) as? COSDictionary)?.removeItem(N.EmbeddedFiles); fixed += "attachments" }
+            if (opt.level.strict1 && cat.containsKey(COSName.getPDFName("OCProperties"))) { cat.removeItem(COSName.getPDFName("OCProperties")); fixed += "a_layers" }
+            if (opt.level.needsTags && !cat.containsKey(COSName.getPDFName("StructTreeRoot"))) { runCatching { AccessAutoTag.tag(d, opt.lang, false) }; fixed += "a_tags" }
+            if (opt.lang.isNotBlank() && !cat.containsKey(COSName.LANG)) cat.setItem(COSName.LANG, COSString(opt.lang))
             // output intent (sRGB)
             cat.setItem(N.OutputIntents, COSArray().apply { add(outputIntent(d)) }); fixed += "intent"
             // info + XMP kept in sync
@@ -206,7 +219,8 @@ object PdfA {
             if (!title.isNullOrBlank() && info.title.isNullOrBlank()) info.title = title
             info.producer = "SmartDocs"
             if (info.creator.isNullOrBlank()) info.creator = "SmartDocs"
-            val xmp = XmpWriter.packet(info.title, info.author, info.subject, info.keywords, info.creator ?: "SmartDocs", "SmartDocs", XmpWriter.isoDate(created), XmpWriter.isoDate(now))
+            val xmp = XmpWriter.packet(info.title, info.author, info.subject, info.keywords, info.creator ?: "SmartDocs", "SmartDocs", XmpWriter.isoDate(created), XmpWriter.isoDate(now),
+                part = opt.level.part, conformance = opt.level.conformance, uaPart = opt.uaPart)
             val md = PDMetadata(d)
             md.importXMPMetadata(xmp.toByteArray(Charsets.UTF_8))
             d.documentCatalog.metadata = md
@@ -214,12 +228,13 @@ object PdfA {
             // trailer /ID and version
             val id = MessageDigest.getInstance("MD5").digest((src.absolutePath + now.timeInMillis).toByteArray())
             d.document.trailer.setItem(N.ID, COSArray().apply { add(COSString(id)); add(COSString(id)) })
-            if (d.version > 1.7f || d.version < 1.4f) { d.version = 1.7f; fixed += "version" }
+            if (opt.level.strict1) { if (d.version != 1.4f) { d.version = 1.4f; fixed += "a_version14" } }
+            else if (d.version > 1.7f || d.version < 1.4f) { d.version = 1.7f; fixed += "version" }
             d.save(out)
         }
         // self-check of the written file
-        val after = PDDocument.load(out).use { PdfInspect.inspect(it) }
-        report(after) to fixed
+        val after = PDDocument.load(out).use { Standards.levelReport(PdfInspect.inspect(it), Standards.printFacts(it, (0 until it.numberOfPages).toList()), opt.level) }
+        after to fixed
     }
 
     /** Pages whose resources (directly or in forms) use one of [fontNames]. */

@@ -49,6 +49,9 @@ fun NveDocBanners(state: ReaderState, onOpenTool: (String) -> Unit, modifier: Mo
                 val action: Pair<String, () -> Unit>? = when (h.kind) {
                     DocNotice.FORMS -> stringResource(R.string.np_bn_forms_act) to { onOpenTool("forms") }
                     DocNotice.PENDING_REDACTIONS -> stringResource(R.string.np_bn_redact_act) to { onOpenTool("redact") }
+                    // Foxit 8 standards panel: verify the claim / check accessibility
+                    DocNotice.PDFA -> stringResource(R.string.pc_std_verify) to { onOpenTool("pdfa") }
+                    DocNotice.PDFUA -> stringResource(R.string.pc_std_verify) to { onOpenTool("accessibility") }
                     // Foxit 7: a portfolio opens in the portfolio editor (views, folders, fields, search)
                     DocNotice.PORTFOLIO -> stringResource(R.string.np_bn_portfolio_act) to { onOpenTool("portfolio") }
                     else -> null

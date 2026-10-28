@@ -7,7 +7,7 @@ package com.smartdocs.editor.core.tools5
 
 enum class AccGroup { DOCUMENT, PAGE, FORMS, ALT, TABLES, LISTS, HEADINGS }
 
-enum class AccStatus { PASS, FAIL, MANUAL, NA }
+enum class AccStatus { PASS, FAIL, MANUAL, NA, SKIPPED }
 
 /** Everything the rules need, counted once over the document. */
 data class AccessFacts(
@@ -54,7 +54,8 @@ data class AccessFacts(
 
 data class AccRule(val id: String, val group: AccGroup)
 
-data class AccResult(val rule: AccRule, val status: AccStatus, val count: Int = 0)
+/** [manual] = the status is the user's verdict (Foxit "Pass / Fail manually", "Skip rule"). */
+data class AccResult(val rule: AccRule, val status: AccStatus, val count: Int = 0, val manual: Boolean = false)
 
 object AccessRules {
 
@@ -66,7 +67,7 @@ object AccessRules {
         // page content (7)
         AccRule("tagged_content", AccGroup.PAGE), AccRule("tagged_annots", AccGroup.PAGE), AccRule("tab_order", AccGroup.PAGE),
         AccRule("encoding", AccGroup.PAGE), AccRule("multimedia", AccGroup.PAGE), AccRule("scripts", AccGroup.PAGE),
-        AccRule("nav_links", AccGroup.PAGE),
+        AccRule("nav_links", AccGroup.PAGE), AccRule("flicker", AccGroup.PAGE), AccRule("timed", AccGroup.PAGE),
         // forms (2)
         AccRule("tagged_fields", AccGroup.FORMS), AccRule("field_desc", AccGroup.FORMS),
         // alternate text (5)
@@ -103,6 +104,9 @@ object AccessRules {
             "multimedia" -> (if (f.multimedia == 0) AccStatus.NA else failIf(f.multimediaUntagged)) to f.multimediaUntagged
             "scripts" -> (if (f.javascript) AccStatus.MANUAL else AccStatus.NA) to 0
             "nav_links" -> (if (f.links == 0) AccStatus.NA else failIf(f.linksUntagged)) to f.linksUntagged
+            // screen flicker / timed responses can only come from media or scripts: those need a human check
+            "flicker" -> (if (f.multimedia > 0 || f.javascript) AccStatus.MANUAL else AccStatus.NA) to f.multimedia
+            "timed" -> (if (f.javascript) AccStatus.MANUAL else AccStatus.NA) to 0
             "tagged_fields" -> (if (f.formFields == 0) AccStatus.NA else failIf(f.formFieldsUntagged)) to f.formFieldsUntagged
             "field_desc" -> (if (f.formFields == 0) AccStatus.NA else failIf(f.formFieldsWithoutTU)) to f.formFieldsWithoutTU
             "figure_alt" -> (if (f.figures == 0) AccStatus.NA else failIf(f.figuresWithoutAlt)) to f.figuresWithoutAlt
@@ -123,6 +127,19 @@ object AccessRules {
         AccResult(r, st, n)
     }
 
+    /**
+     * Checker options and verdicts: only rules of [groups] (null = all) and not in [skipped]; [verdicts] replace the
+     * computed status (manual pass / fail). Pure.
+     */
+    fun apply(results: List<AccResult>, groups: Set<AccGroup>?, verdicts: Map<String, AccStatus>, skipped: Set<String>): List<AccResult> =
+        results.filter { groups == null || it.rule.group in groups }.map { r ->
+            when {
+                r.rule.id in skipped -> r.copy(status = AccStatus.SKIPPED, manual = true)
+                verdicts[r.rule.id] != null -> r.copy(status = verdicts.getValue(r.rule.id), manual = true)
+                else -> r
+            }
+        }
+
     fun counts(results: List<AccResult>): Map<AccStatus, Int> = AccStatus.entries.associateWith { s -> results.count { it.status == s } }
 
     /** Self-contained HTML report. [label] gives the rule title, [statusLabel] / [groupLabel] the localised names. */
@@ -133,7 +150,7 @@ object AccessRules {
         val dir = if (rtl) "rtl" else "ltr"
         append("<!DOCTYPE html><html lang=\"").append(if (rtl) "ar" else "en").append("\" dir=\"").append(dir).append("\"><head><meta charset=\"utf-8\">")
         append("<title>").append(XmpWriter.esc(title)).append("</title><style>body{font-family:sans-serif;margin:24px}table{border-collapse:collapse;width:100%}")
-        append("td,th{border:1px solid #ccc;padding:6px;text-align:start}.PASS{color:#1b5e20}.FAIL{color:#b71c1c;font-weight:bold}.MANUAL{color:#e65100}.NA{color:#757575}</style></head><body>")
+        append("td,th{border:1px solid #ccc;padding:6px;text-align:start}.PASS{color:#1b5e20}.FAIL{color:#b71c1c;font-weight:bold}.MANUAL{color:#e65100}.NA{color:#757575}.SKIPPED{color:#9e9e9e}</style></head><body>")
         append("<h1>").append(XmpWriter.esc(title)).append("</h1><p>").append(XmpWriter.esc(fileName)).append("</p><p>")
         counts(results).forEach { (s, n) -> append(XmpWriter.esc(statusLabel(s))).append(": ").append(n).append(" &nbsp; ") }
         append("</p>")
@@ -145,6 +162,7 @@ object AccessRules {
                 append("<tr><td>").append(XmpWriter.esc(label(r.rule.id))).append("</td><td class=\"").append(r.status.name).append("\">")
                 append(XmpWriter.esc(statusLabel(r.status)))
                 if (r.count > 0) append(" (").append(r.count).append(')')
+                if (r.manual) append(" ✎")
                 append("</td></tr>")
             }
             append("</table>")

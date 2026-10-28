@@ -138,7 +138,7 @@ fun SigAppearanceDesigner(state: SigAppearanceState, name: String, reason: Strin
                 Text(stringResource(R.string.g6_ap_sub), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Switch(state.enabled, { state.enabled = it; state.persist(); if (it) open = true })
-            IconButton(onClick = { open = !open }) { Icon(if (open) Icons.Default.ExpandLess else Icons.Default.ExpandMore, null) }
+            IconButton(onClick = { open = !open }) { Icon(if (open) Icons.Default.ExpandLess else Icons.Default.ExpandMore, stringResource(if (open) R.string.pc_cd_collapse else R.string.pc_cd_expand)) }
         }
         AnimatedVisibility(open && state.enabled) {
             Column(Modifier.padding(start = 12.dp, end = 12.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {

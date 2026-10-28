@@ -79,7 +79,7 @@ fun TemplatesScreen(nav: NavHostController, uri: String?) {
                                     IconButton(onClick = { renaming = t.name; newName = t.name }) { Icon(Icons.Default.DriveFileRenameOutline, stringResource(R.string.f8_tpl_rename)) }
                                     IconButton(onClick = { val p = page; run { s, o, pw -> PageTemplates.replaceWithPage(s, o, pw, t.name, p) } }) { Icon(Icons.Default.FindReplace, stringResource(R.string.f8_tpl_replace, page + 1)) }
                                     IconButton(onClick = { val a = at.toInt() - 1; val c = count.toInt(); run { s, o, pw -> PageTemplates.instantiate(s, o, pw, t.name, a, c) } }) { Icon(Icons.Default.AddToPhotos, stringResource(R.string.e5_tpl_insert)) }
-                                    IconButton(onClick = { run { s, o, pw -> PageTemplates.setVisible(s, o, pw, t.name, !t.visible) } }) { Icon(if (t.visible) Icons.Default.VisibilityOff else Icons.Default.Visibility, null) }
+                                    IconButton(onClick = { run { s, o, pw -> PageTemplates.setVisible(s, o, pw, t.name, !t.visible) } }) { Icon(if (t.visible) Icons.Default.VisibilityOff else Icons.Default.Visibility, stringResource(if (t.visible) R.string.pc_cd_hide else R.string.pc_cd_show)) }
                                     IconButton(onClick = { run { s, o, pw -> PageTemplates.delete(s, o, pw, t.name) } }) { Icon(Icons.Default.Delete, stringResource(R.string.delete)) }
                                 }
                             })

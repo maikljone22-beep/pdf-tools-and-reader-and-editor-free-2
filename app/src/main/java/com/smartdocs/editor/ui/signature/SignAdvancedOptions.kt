@@ -139,7 +139,7 @@ fun AdvancedSignOptions(state: AdvancedSignState, signatures: List<SavedSignatur
             Icon(Icons.Default.Tune, null, tint = MaterialTheme.colorScheme.primary)
             Spacer(Modifier.width(8.dp))
             Text(stringResource(R.string.ps_sign_advanced), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
-            IconButton(onClick = { open = !open }) { Icon(if (open) Icons.Default.ExpandLess else Icons.Default.ExpandMore, null) }
+            IconButton(onClick = { open = !open }) { Icon(if (open) Icons.Default.ExpandLess else Icons.Default.ExpandMore, stringResource(if (open) R.string.pc_cd_collapse else R.string.pc_cd_expand)) }
         }
         AnimatedVisibility(open) {
             Column(Modifier.padding(start = 12.dp, end = 12.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {

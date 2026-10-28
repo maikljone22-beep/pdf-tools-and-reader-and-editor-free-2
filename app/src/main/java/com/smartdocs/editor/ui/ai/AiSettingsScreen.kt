@@ -79,7 +79,7 @@ fun AiSettingsScreen(nav: NavHostController) {
             OutlinedTextField(
                 key, { key = it }, Modifier.fillMaxWidth().padding(16.dp, 4.dp), label = { Text(stringResource(R.string.ai_api_key)) }, singleLine = true,
                 visualTransformation = if (showKey) VisualTransformation.None else PasswordVisualTransformation(),
-                trailingIcon = { IconButton(onClick = { showKey = !showKey }) { Icon(if (showKey) Icons.Default.VisibilityOff else Icons.Default.Visibility, null) } },
+                trailingIcon = { IconButton(onClick = { showKey = !showKey }) { Icon(if (showKey) Icons.Default.VisibilityOff else Icons.Default.Visibility, stringResource(if (showKey) R.string.pc_cd_hide else R.string.pc_cd_show)) } },
                 supportingText = { Text(stringResource(R.string.sa_ai_key_hint)) },
             )
             Row(Modifier.padding(16.dp, 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
