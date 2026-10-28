@@ -24,6 +24,7 @@ import com.smartdocs.editor.core.redact.SanitizeItem
 import com.smartdocs.editor.core.search.TextSearch
 import com.smartdocs.editor.ui.common.*
 import com.smartdocs.editor.ui.search.rememberDocHolder
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.io.File
@@ -65,9 +66,26 @@ fun RedactScreen(nav: NavHostController, uri: String?) {
     val pick = rememberPdfPicker { it.firstOrNull()?.let { f -> doc.file = f } }
     val batchPick = rememberPdfPicker(multiple = true) { files -> if (files.isNotEmpty()) runBatch(files, st, runner, app, ctx, sanitize, maxSecurity) { batchSkipped = it } }
 
+    // T-09: the password the reader opened this document with
+    LaunchedEffect(Unit) {
+        val pw = com.smartdocs.editor.core.pdf.SessionPasswords.get(doc.file)
+        if (pw != null && doc.password == null) { doc.password = pw; doc.askPassword = false }
+    }
+    var signed by remember { mutableStateOf(false) }
+    val restoredFmt = stringResource(R.string.ttrd_draft_restored)
     LaunchedEffect(doc.generation) {
         val f = doc.file ?: return@LaunchedEffect
-        if (doc.session != null) { st.load(f, doc.password); page = 0 }
+        if (doc.session == null) return@LaunchedEffect
+        val pw = doc.password
+        // audit 5 R-4: warn before applying (the output is a new file whose signature values are removed)
+        signed = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.smartdocs.editor.core.pdf.SignedSave.isSigned(f, pw) }
+        val restored = st.load(f, pw); page = 0
+        if (restored > 0) scope.launch { snack.showSnackbar(restoredFmt.format(restored)) }
+        // audit 5 R-L7: unsaved marks are kept as a draft (written shortly after each change)
+        snapshotFlow { st.marks.toList() to st.excluded }.collectLatest { (list, ex) ->
+            kotlinx.coroutines.delay(800)
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { runCatching { st.saveDraft(f, list, ex) } }
+        }
     }
     LaunchedEffect(runner.result) { runner.result?.let { result = it; runner.result = null } }
     LaunchedEffect(runner.error) { runner.error?.let { snack.showSnackbar(it); runner.error = null } }
@@ -81,6 +99,10 @@ fun RedactScreen(nav: NavHostController, uri: String?) {
     val applying = stringResource(R.string.pg_redact_applying)
     val reportFmt = stringResource(R.string.s5_report)
     val rasterFmt = stringResource(R.string.s5_report_raster)
+    val sigFmt = stringResource(R.string.ttrd_sig_removed)
+    val skipText = rememberSkipText()
+    val failedMsg = stringResource(R.string.ttrd_failed)
+    val wrongPwMsg = stringResource(R.string.ttrd_wrong_password)
     /** Applies [only] (all active marks when null); the other active marks stay pending in the result. */
     fun applyAll(only: RedactMark? = null) {
         val src = doc.file ?: return
@@ -90,11 +112,18 @@ fun RedactScreen(nav: NavHostController, uri: String?) {
         val base = outPrefix + src.nameWithoutExtension + outSuffix
         runner.run(applying) {
             val out = app.documents.uniqueFile(app.documents.docsDir, base.ifBlank { src.nameWithoutExtension + "_redacted" })
-            val r = RedactApplier.apply(ctx, src, out, doc.password, marks, RedactApplier.Options(sanitize = sanitize, maxSecurity = maxSecurity, keepPending = pending, author = me))
+            val r = try {
+                RedactApplier.apply(ctx, src, out, doc.password, marks, RedactApplier.Options(sanitize = sanitize, maxSecurity = maxSecurity, keepPending = pending, author = me))
+            } catch (e: com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException) { throw IllegalStateException(wrongPwMsg, e) }
+            catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (e: Exception) { throw IllegalStateException(failedMsg, e) }
             report = reportFmt.format(r.marks, r.pages, r.glyphs, r.objects + r.images, r.annots) +
-                (if (r.rasterPages.isNotEmpty()) "\n" + rasterFmt.format(r.rasterPages.joinToString(", ") { (it + 1).toString() }) else "")
+                (if (r.rasterPages.isNotEmpty()) "\n" + rasterFmt.format(r.rasterPages.joinToString(", ") { (it + 1).toString() }) else "") +
+                (if (r.signaturesRemoved > 0) "\n" + sigFmt.format(r.signaturesRemoved) else "") +
+                (skipText(r.sanitizeSkipped)?.let { "\n" + it } ?: "")
             runCatching { app.documents.touchRecent(out) }
-            out
+            st.draftDone(src)
+            com.smartdocs.editor.core.pdf.ToolOutputs.record(out, src)
         }
     }
     val savingMsg = stringResource(R.string.s5_saving_marks)
@@ -107,7 +136,8 @@ fun RedactScreen(nav: NavHostController, uri: String?) {
             RedactMarks.save(src, out, doc.password, marks, author)
             report = null
             runCatching { app.documents.touchRecent(out) }
-            out
+            st.draftDone(src)
+            com.smartdocs.editor.core.pdf.ToolOutputs.record(out, src)
         }
     }
 
@@ -190,9 +220,11 @@ fun RedactScreen(nav: NavHostController, uri: String?) {
         text = {
             Column {
                 Text(stringResource(R.string.redact_warning))
+                if (signed) Text(stringResource(R.string.ttrd_signed_warning), Modifier.padding(top = 8.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                 Spacer(Modifier.height(8.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(sanitize, { sanitize = it }); Text(stringResource(R.string.s5_also_sanitize), style = MaterialTheme.typography.bodyMedium) }
-                Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(maxSecurity, { maxSecurity = it }); Text(stringResource(R.string.s5_max_security), style = MaterialTheme.typography.bodyMedium) }
+                // audit 5 P-L: the whole row toggles, so TalkBack reads the label with the checkbox
+                ToggleRow(stringResource(R.string.s5_also_sanitize), sanitize) { sanitize = it }
+                ToggleRow(stringResource(R.string.s5_max_security), maxSecurity) { maxSecurity = it }
                 Text(stringResource(R.string.nt_rd_file_name), Modifier.padding(top = 8.dp), style = MaterialTheme.typography.labelLarge)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(outPrefix, { outPrefix = it }, Modifier.weight(1f), singleLine = true, label = { Text(stringResource(R.string.nt_rd_prefix)) })

@@ -36,6 +36,12 @@ enum class SanitizeItem {
 
 data class Finding(val count: Int, val details: List<String>)
 
+/** audit 5 R-8: why hidden content found on a page was not removed by [Sanitizer.clean]. */
+enum class SkipReason { UNREADABLE, NESTED, VERTICAL, ODD_SIZE, REWRITE_FAILED }
+
+/** Hidden content on [page] (zero-based) that [Sanitizer.clean] left in place: [count] glyphs / objects (0 = unknown). */
+data class SanitizeSkip(val page: Int, val reason: SkipReason, val count: Int)
+
 /** [ocrLayer]: invisible text lies over images, i.e. an OCR layer that keeps a scan searchable. */
 data class ScanResult(val findings: Map<SanitizeItem, Finding>, val ocrLayer: Boolean, val revisions: Int)
 
@@ -57,8 +63,10 @@ object Sanitizer {
     private val N_XFA = COSName.getPDFName("XFA")
     private val N_OC = COSName.getPDFName("OC")
     private val N_JS = COSName.getPDFName("JavaScript")
+    // audit 5 R-9: Redact marks hold the matched sensitive words in /Contents and /OverlayText; Watermark annotations
+    // are comments too (Screen / media annotations are removed by MULTIMEDIA)
     private val MARKUP = setOf("Text", "FreeText", "Line", "Square", "Circle", "Polygon", "PolyLine", "Highlight", "Underline", "Squiggly",
-        "StrikeOut", "Stamp", "Caret", "Ink", "Popup", "Sound")
+        "StrikeOut", "Stamp", "Caret", "Ink", "Popup", "Sound", "Redact", "Watermark")
 
     // ---------------- scan ----------------
 
@@ -193,13 +201,20 @@ object Sanitizer {
 
     // ---------------- clean ----------------
 
-    suspend fun cleanFile(src: File, out: File, password: String?, items: Set<SanitizeItem>, context: android.content.Context? = null): Map<SanitizeItem, Int> = withContext(Dispatchers.IO) {
+    /**
+     * [skipped] (audit 5 R-8) receives what could not be removed. The output never keeps signature values (audit 5
+     * R-4: a full rewrite is not validly signed any more) and is written atomically (audit 5 R-10).
+     */
+    suspend fun cleanFile(src: File, out: File, password: String?, items: Set<SanitizeItem>, context: android.content.Context? = null,
+                          skipped: MutableList<SanitizeSkip>? = null): Map<SanitizeItem, Int> = withContext(Dispatchers.IO) {
         require(out.canonicalPath != src.canonicalPath) { "out must differ from src" }
         var pages: List<Int> = emptyList()
         val r = PdfOps.load(src, password).use { doc ->
             if (SanitizeItem.OVERLAPPING in items && context != null)
                 pages = doc.pages.mapIndexedNotNull { i, p -> i.takeIf { runCatching { Overlap.has(PageInspector(p, doc.documentCatalog.ocProperties).run(p)) }.getOrDefault(false) } }
-            val r = clean(doc, items); doc.save(out); r
+            val r = clean(doc, items, skipped)
+            PageScrub.stripSignatures(doc)
+            RedactIo.saveAtomic(doc, out); r
         }
         if (pages.isEmpty() || context == null) return@withContext r
         val tmp = File(out.absoluteFile.parentFile, ".${out.nameWithoutExtension}.${System.nanoTime()}.ovl.pdf")
@@ -207,8 +222,12 @@ object Sanitizer {
         r + (SanitizeItem.OVERLAPPING to pages.size)
     }
 
-    /** Cleans [doc] in memory. Returns the number of things removed per item. */
-    fun clean(doc: PDDocument, items: Set<SanitizeItem>): Map<SanitizeItem, Int> {
+    /**
+     * Cleans [doc] in memory. Returns the number of things removed per item. audit 5 R-8: content that matches but
+     * cannot be removed (inspection failed, glyphs / objects inside form XObjects, vertical text, odd glyph sizes,
+     * a failed rewrite) is added to [skipped] instead of being dropped silently from the counts.
+     */
+    fun clean(doc: PDDocument, items: Set<SanitizeItem>, skipped: MutableList<SanitizeSkip>? = null): Map<SanitizeItem, Int> {
         val r = LinkedHashMap<SanitizeItem, Int>()
         fun add(k: SanitizeItem, n: Int) { if (n > 0) r[k] = (r[k] ?: 0) + n }
         val cat = doc.documentCatalog
@@ -217,14 +236,26 @@ object Sanitizer {
         val contentItems = items.intersect(setOf(SanitizeItem.HIDDEN_LAYERS, SanitizeItem.INVISIBLE_TEXT, SanitizeItem.HIDDEN_TEXT, SanitizeItem.CROPPED))
         if (contentItems.isNotEmpty()) {
             val oc = cat.ocProperties
-            doc.pages.forEach { page ->
+            doc.pages.forEachIndexed { pi, page ->
                 val insp = PageInspector(page, oc).run(page)
-                if (insp.failed) return@forEach
+                if (insp.failed) { skipped?.add(SanitizeSkip(pi, SkipReason.UNREADABLE, 0)); return@forEachIndexed }
                 val crop = cropBox(page)
                 val plan = RewritePlan()
                 var hl = 0; var inv = 0; var ht = 0; var cr = 0
+                var nested = 0; var vertical = 0; var odd = 0
+                fun matches(g: GlyphProbe) = (SanitizeItem.HIDDEN_LAYERS in items && g.hidden) ||
+                    (SanitizeItem.INVISIBLE_TEXT in items && isInvisible(g)) ||
+                    (SanitizeItem.HIDDEN_TEXT in items && !isInvisible(g) && isHiddenText(g, insp)) ||
+                    (SanitizeItem.CROPPED in items && !crop.intersects(g.box))
                 insp.glyphs.forEach { g ->
-                    if (g.nested || g.vertical || g.badSize) return@forEach
+                    if (g.nested || g.vertical || g.badSize) {
+                        if (skipped != null && runCatching { matches(g) }.getOrDefault(false)) when {
+                            g.nested -> nested++
+                            g.vertical -> vertical++
+                            else -> odd++
+                        }
+                        return@forEach
+                    }
                     when {
                         SanitizeItem.HIDDEN_LAYERS in items && g.hidden -> { plan.removeGlyph(g); hl++ }
                         SanitizeItem.INVISIBLE_TEXT in items && isInvisible(g) -> { plan.removeGlyph(g); inv++ }
@@ -233,7 +264,10 @@ object Sanitizer {
                     }
                 }
                 insp.paints.forEach { p ->
-                    if (p.nested) return@forEach
+                    if (p.nested) {
+                        if ((SanitizeItem.HIDDEN_LAYERS in items && p.hidden) || (SanitizeItem.CROPPED in items && !crop.intersects(p.box) && p.kind != PaintKind.SHADING)) nested++
+                        return@forEach
+                    }
                     val drop = (SanitizeItem.HIDDEN_LAYERS in items && p.hidden).also { if (it) hl++ } ||
                         (SanitizeItem.CROPPED in items && !crop.intersects(p.box) && p.kind != PaintKind.SHADING).also { if (it) cr++ }
                     if (drop) when (p.kind) {
@@ -241,8 +275,15 @@ object Sanitizer {
                         else -> plan.removeOps += p.op
                     }
                 }
-                if (!plan.isEmpty && TrueRedactor.apply(doc, page, insp, plan)) {
-                    add(SanitizeItem.HIDDEN_LAYERS, hl); add(SanitizeItem.INVISIBLE_TEXT, inv); add(SanitizeItem.HIDDEN_TEXT, ht); add(SanitizeItem.CROPPED, cr)
+                if (!plan.isEmpty) {
+                    if (TrueRedactor.apply(doc, page, insp, plan)) {
+                        add(SanitizeItem.HIDDEN_LAYERS, hl); add(SanitizeItem.INVISIBLE_TEXT, inv); add(SanitizeItem.HIDDEN_TEXT, ht); add(SanitizeItem.CROPPED, cr)
+                    } else skipped?.add(SanitizeSkip(pi, SkipReason.REWRITE_FAILED, hl + inv + ht + cr))
+                }
+                if (skipped != null) {
+                    if (nested > 0) skipped += SanitizeSkip(pi, SkipReason.NESTED, nested)
+                    if (vertical > 0) skipped += SanitizeSkip(pi, SkipReason.VERTICAL, vertical)
+                    if (odd > 0) skipped += SanitizeSkip(pi, SkipReason.ODD_SIZE, odd)
                 }
                 if (SanitizeItem.CROPPED in items) {
                     val cb = page.cropBox

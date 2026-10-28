@@ -39,7 +39,11 @@ fun ProtectAdvancedScreen(nav: NavHostController, uri: String?) {
     val app = LocalApp.current
     val runner = rememberToolRunner()
     var file by remember { mutableStateOf(fileOf(uri)) }
-    var current by remember { mutableStateOf<String?>(null) }
+    // T-09: the password the reader opened this document with
+    var current by remember { mutableStateOf(com.smartdocs.editor.core.pdf.SessionPasswords.get(file)) }
+    var signed by remember { mutableStateOf(false) }
+    /** audit 5 P-L: a generated owner password, shown in a dialog with a copy action before the result sheet. */
+    var generatedOwner by remember { mutableStateOf<String?>(null) }
     var encrypted by remember { mutableStateOf(false) }
     var askCurrent by remember { mutableStateOf(false) }
     var openPw by remember { mutableStateOf("") }
@@ -63,6 +67,15 @@ fun ProtectAdvancedScreen(nav: NavHostController, uri: String?) {
         encrypted = needPassword || runCatching { PdfOps.isEncrypted(f) }.getOrDefault(false)
         if (needPassword && current == null) askCurrent = true
     }
+    // audit 5 R-4: a signed input gets a warning (the protected copy keeps no signature values)
+    LaunchedEffect(file, current) {
+        val f = file ?: run { signed = false; return@LaunchedEffect }
+        val pw = current
+        signed = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.smartdocs.editor.core.pdf.SignedSave.isSigned(f, pw) }
+    }
+    val wrongPwMsg = stringResource(R.string.ttrd_wrong_password)
+    val failedMsg = stringResource(R.string.ttrd_failed)
+    val latinMsg = stringResource(R.string.ttrd_latin1_only)
     // nitro-protect2 "Change Settings": the current algorithm, permissions and metadata option (passwords stay empty)
     var needsOwner by remember { mutableStateOf(false) }
     var prefilled by remember { mutableStateOf<String?>(null) }
@@ -70,9 +83,17 @@ fun ProtectAdvancedScreen(nav: NavHostController, uri: String?) {
         val f = file ?: return@LaunchedEffect
         if (!encrypted) { needsOwner = false; return@LaunchedEffect }
         val pw = current
-        val info = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-            runCatching { PdfOps.loadRaw(f, pw).use { com.smartdocs.editor.core.security.SecurityInfoReader.of(it) } }.getOrNull()
-        } ?: return@LaunchedEffect
+        // audit 5 P-11: a wrong current password is said and asked again (it was swallowed, and Protect failed later)
+        val read = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching { PdfOps.loadRaw(f, pw).use { com.smartdocs.editor.core.security.SecurityInfoReader.of(it) } }
+        }
+        val info = read.getOrElse { e ->
+            if (e is com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException && pw != null) {
+                current = null; askCurrent = true
+                snack.showSnackbar(wrongPwMsg)
+            }
+            return@LaunchedEffect
+        }
         // opened without the permissions password: the author's restrictions may not be changed (or dropped) here
         needsOwner = com.smartdocs.editor.core.security.ReaderRestrictions.restricted(info)
         val key = f.absolutePath + "|" + pw
@@ -84,17 +105,30 @@ fun ProtectAdvancedScreen(nav: NavHostController, uri: String?) {
     val mismatch = openPw.isNotEmpty() && openPw != openPw2
     val effective = if (restrict) perms else Permissions()
     val nothing = (openPw.isEmpty() && !restrict) || (scope == EncScope.ATTACHMENTS_ONLY && openPw.isEmpty())
+    // audit 5 P-2: revision 2-4 algorithms would turn non-Latin (e.g. Arabic) characters into '?'
+    val notLatin = !ProtectAdvanced.passwordsFit(ProtectOptions(openPw, if (restrict) ownerPw else "", algo))
+    // audit 5 P-5: an owner password equal to the open password would let anyone who opens the file lift the restrictions
+    val ownerSame = restrict && ownerPw.isNotEmpty() && ownerPw == openPw
     val msg = stringResource(R.string.s5_protecting)
     val ownerFmt = stringResource(R.string.s5_owner_generated)
     fun protect() {
         val src = file ?: return
-        val o = ProtectOptions(openPw, ownerPw, algo, effective, scope)
+        val o = ProtectOptions(openPw, if (restrict) ownerPw else "", algo, effective, scope)
+        val typedOwner = if (restrict) ownerPw else ""
+        val pw = current
         runner.run(msg) {
             val out = app.documents.uniqueFile(app.documents.docsDir, src.nameWithoutExtension + "_protected")
-            val owner = ProtectAdvanced.protect(src, out, current, o)
-            info = if (ownerPw.isEmpty() && restrict) ownerFmt.format(owner) else null
+            val owner = try { ProtectAdvanced.protect(src, out, pw, o) }
+                catch (e: com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException) { throw IllegalStateException(wrongPwMsg, e) }
+                catch (e: com.smartdocs.editor.core.redact.NonLatinPasswordException) { throw IllegalStateException(latinMsg, e) }
+                catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                catch (e: Exception) { throw IllegalStateException(failedMsg, e) }
+            // a generated owner password (none typed, or it equalled the open password) must reach the user
+            val generated = restrict && owner != typedOwner
+            info = if (generated) ownerFmt.format(owner) else null
+            generatedOwner = if (generated) owner else null
             runCatching { app.documents.touchRecent(out) }
-            out
+            com.smartdocs.editor.core.pdf.ToolOutputs.record(out, src)
         }
     }
     LaunchedEffect(runner.result) { runner.result?.let { result = it; runner.result = null } }
@@ -109,7 +143,7 @@ fun ProtectAdvancedScreen(nav: NavHostController, uri: String?) {
         },
         bottomBar = {
             Surface(tonalElevation = 3.dp) {
-                Button(onClick = ::protect, enabled = file != null && !mismatch && !nothing && !runner.running && !needsOwner, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)) {
+                Button(onClick = ::protect, enabled = file != null && !mismatch && !nothing && !runner.running && !needsOwner && !notLatin && !ownerSame, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)) {
                     Icon(Icons.Default.EnhancedEncryption, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.s5_protect_apply))
                 }
             }
@@ -121,6 +155,7 @@ fun ProtectAdvancedScreen(nav: NavHostController, uri: String?) {
             if (prefilled != null) Text(stringResource(R.string.np2_change_prefilled), Modifier.padding(top = 4.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
             if (needsOwner) Text(stringResource(R.string.np2_change_needs_owner), Modifier.padding(top = 4.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             if (needsOwner) TextButton(onClick = { askCurrent = true }) { Text(stringResource(R.string.np2_change_enter_owner)) }
+            if (signed) Text(stringResource(R.string.ttrd_signed_warning), Modifier.padding(top = 4.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             Section(stringResource(R.string.s5_algorithm))
             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                 val all = EncAlgo.values()
@@ -130,8 +165,7 @@ fun ProtectAdvancedScreen(nav: NavHostController, uri: String?) {
             if (algo == EncAlgo.RC4_40) Rc40Warning()
             Section(stringResource(R.string.s5_enc_scope))
             EncScope.values().forEach { sc ->
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    RadioButton(scope == sc, { scope = sc }, enabled = sc == EncScope.ALL || algo.aes)
+                RadioRow(scope == sc, enabled = sc == EncScope.ALL || algo.aes, onSelect = { scope = sc }) {
                     Column {
                         Text(scopeLabel(sc), style = MaterialTheme.typography.bodyMedium)
                         if (sc != EncScope.ALL) Text(stringResource(if (sc == EncScope.ALL_BUT_METADATA) R.string.s5_scope_meta_hint else R.string.s5_scope_att_hint),
@@ -146,13 +180,14 @@ fun ProtectAdvancedScreen(nav: NavHostController, uri: String?) {
                 trailingIcon = { IconButton(onClick = { show = !show }) { Icon(if (show) Icons.Default.VisibilityOff else Icons.Default.Visibility, stringResource(if (show) R.string.pc_cd_hide else R.string.pc_cd_show)) } })
             OutlinedTextField(openPw2, { openPw2 = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.s5_confirm_password)) }, visualTransformation = vt,
                 isError = mismatch, supportingText = if (mismatch) { { Text(stringResource(R.string.s5_password_mismatch)) } } else null)
+            if (notLatin) Text(latinMsg, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 12.dp)) {
                 Text(stringResource(R.string.s5_restrict), Modifier.weight(1f), fontWeight = FontWeight.Bold)
                 Switch(restrict, { restrict = it })
             }
             if (restrict) {
                 OutlinedTextField(ownerPw, { ownerPw = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.s5_owner_password)) }, visualTransformation = vt,
-                    supportingText = { Text(stringResource(R.string.s5_owner_hint)) })
+                    isError = ownerSame, supportingText = { Text(stringResource(if (ownerSame) R.string.ttrd_owner_same else R.string.s5_owner_hint)) })
                 Section(stringResource(R.string.s5_printing))
                 SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                     val all = PrintLevel.values()
@@ -161,8 +196,7 @@ fun ProtectAdvancedScreen(nav: NavHostController, uri: String?) {
                 }
                 Section(stringResource(R.string.s5_changes))
                 ChangeLevel.values().forEach { l ->
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        RadioButton(perms.changeLevel == l, { perms = perms.withChanges(l) })
+                    RadioRow(perms.changeLevel == l, onSelect = { perms = perms.withChanges(l) }) {
                         Text(changeLabel(l), style = MaterialTheme.typography.bodyMedium)
                     }
                 }
@@ -196,7 +230,9 @@ fun ProtectAdvancedScreen(nav: NavHostController, uri: String?) {
     }
     if (askCurrent) PasswordDialog(onDismiss = { askCurrent = false }) { current = it; askCurrent = false }
     if (runner.running) ProgressDialog(runner.message)
-    result?.let { ResultSheet(it, nav, onDismiss = { result = null }, extraInfo = info) }
+    val owner = generatedOwner
+    if (owner != null && result != null) OwnerPasswordDialog(owner) { generatedOwner = null }
+    else result?.let { ResultSheet(it, nav, onDismiss = { result = null }, extraInfo = info) }
 }
 
 /** Strong warning for 40-bit ARC4: anyone can remove it, so it only fits files for very old readers. */
@@ -225,12 +261,31 @@ private fun profileSummary(p: SecurityProfile): String {
 @Composable
 private fun Section(t: String) = Text(t, Modifier.padding(top = 14.dp, bottom = 6.dp), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall)
 
+/** audit 5 P-L: one toggleable row, so TalkBack reads the permission with its checkbox. */
 @Composable
-private fun PermRow(label: String, checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Checkbox(checked, onChange, enabled = enabled)
-        Text(label, style = MaterialTheme.typography.bodyMedium)
-    }
+private fun PermRow(label: String, checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) = ToggleRow(label, checked, enabled, onChange)
+
+/** audit 5 P-L: the generated owner password with a copy action (it is not shown again). */
+@Composable
+private fun OwnerPasswordDialog(owner: String, onDismiss: () -> Unit) {
+    val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
+    var copied by remember { mutableStateOf(false) }
+    AlertDialog(onDismissRequest = onDismiss, title = { Text(stringResource(R.string.ttrd_owner_title)) },
+        text = {
+            Column {
+                Text(stringResource(R.string.ttrd_owner_body), style = MaterialTheme.typography.bodyMedium)
+                androidx.compose.foundation.text.selection.SelectionContainer {
+                    Text(owner, Modifier.padding(top = 10.dp), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                }
+                if (copied) Text(stringResource(R.string.ttrd_copied), Modifier.padding(top = 6.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.ok)) } },
+        dismissButton = {
+            TextButton(onClick = { clipboard.setText(androidx.compose.ui.text.AnnotatedString(owner)); copied = true }) {
+                Icon(Icons.Default.ContentCopy, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.ttrd_copy))
+            }
+        })
 }
 
 @Composable

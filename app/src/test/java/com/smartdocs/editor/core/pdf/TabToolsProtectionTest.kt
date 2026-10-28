@@ -10,9 +10,6 @@ import com.tom_roush.pdfbox.pdmodel.encryption.StandardProtectionPolicy
 import com.tom_roush.pdfbox.pdmodel.interactive.documentnavigation.destination.PDPageFitDestination
 import com.tom_roush.pdfbox.pdmodel.interactive.documentnavigation.outline.PDDocumentOutline
 import com.tom_roush.pdfbox.pdmodel.interactive.documentnavigation.outline.PDOutlineItem
-import com.tom_roush.pdfbox.pdmodel.interactive.form.PDAcroForm
-import com.tom_roush.pdfbox.pdmodel.interactive.form.PDTextField
-import com.tom_roush.pdfbox.pdmodel.interactive.annotation.PDAnnotationWidget
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -97,12 +94,16 @@ class TabToolsProtectionTest {
         val src = tmp.newFile("form.pdf")
         PDDocument().use { d ->
             val p1 = PDPage(PDRectangle.A4); val p2 = PDPage(PDRectangle.A4); d.addPage(p1); d.addPage(p2)
-            val acro = PDAcroForm(d); d.documentCatalog.acroForm = acro
-            val tf = PDTextField(acro); tf.partialName = "name"
-            val w = tf.widgets[0]; w.rectangle = PDRectangle(50f, 700f, 200f, 20f); w.page = p2
-            p2.annotations = listOf<com.tom_roush.pdfbox.pdmodel.interactive.annotation.PDAnnotation>(w)
-            acro.fields.add(tf)
-            tf.cosObject.setString(COSName.V, "Ali")
+            // raw COS: PDAcroForm / PDTextField pull in the standard 14 fonts, which PdfBox-Android cannot load on the JVM
+            val field = com.tom_roush.pdfbox.cos.COSDictionary().apply {
+                setName(COSName.TYPE, "Annot"); setName(COSName.SUBTYPE, "Widget"); setName(COSName.FT, "Tx")
+                setString(COSName.T, "name"); setString(COSName.V, "Ali"); setItem(COSName.P, p2.cosObject)
+                setItem(COSName.RECT, PDRectangle(50f, 700f, 200f, 20f).cosArray)
+            }
+            p2.cosObject.setItem(COSName.ANNOTS, com.tom_roush.pdfbox.cos.COSArray().apply { add(field) })
+            d.documentCatalog.cosObject.setItem(COSName.ACRO_FORM, com.tom_roush.pdfbox.cos.COSDictionary().apply {
+                setItem(COSName.FIELDS, com.tom_roush.pdfbox.cos.COSArray().apply { add(field) })
+            })
             val outline = PDDocumentOutline(); d.documentCatalog.documentOutline = outline
             outline.addLast(PDOutlineItem().apply { title = "Two"; destination = PDPageFitDestination().apply { page = p2 } })
             d.save(src)
@@ -110,10 +111,15 @@ class TabToolsProtectionTest {
         val out = tmp.newFile("form_ex.pdf")
         PdfOps.keepPages(src, listOf(1), out, null)
         PDDocument.load(out).use { d ->
-            val f = d.documentCatalog.acroForm?.getField("name")
-            assertNotNull("field kept", f); assertEquals("Ali", f!!.valueAsString)
-            val widget = d.getPage(0).annotations.filterIsInstance<PDAnnotationWidget>().single()
-            assertEquals("widget points at the new page", d.getPage(0).cosObject, widget.cosObject.getDictionaryObject(COSName.P))
+            val acro = d.documentCatalog.cosObject.getDictionaryObject(COSName.ACRO_FORM) as? com.tom_roush.pdfbox.cos.COSDictionary
+            assertNotNull("form kept", acro)
+            val fields = acro!!.getDictionaryObject(COSName.FIELDS) as com.tom_roush.pdfbox.cos.COSArray
+            val f = fields.getObject(0) as com.tom_roush.pdfbox.cos.COSDictionary
+            assertEquals("name", f.getString(COSName.T)); assertEquals("Ali", f.getString(COSName.V))
+            val annots = d.getPage(0).cosObject.getDictionaryObject(COSName.ANNOTS) as com.tom_roush.pdfbox.cos.COSArray
+            assertEquals(1, annots.size())
+            assertEquals("the field is the page's widget", f, annots.getObject(0))
+            assertEquals("widget points at the new page", d.getPage(0).cosObject, f.getDictionaryObject(COSName.P))
             val item = d.documentCatalog.documentOutline?.firstChild
             assertEquals("Two", item?.title)
         }

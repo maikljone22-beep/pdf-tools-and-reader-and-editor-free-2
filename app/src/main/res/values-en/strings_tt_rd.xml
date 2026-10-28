@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- audit 5 (Redact / Sanitize / Advanced protect) -->
+    <string name="ttrd_signed_warning">This document is digitally signed. The result is a new file without valid signatures: their values are removed from it. The original file is not changed.</string>
+    <string name="ttrd_sig_removed">%1$d digital signature value(s) removed from the result.</string>
+    <string name="ttrd_wrong_password">Wrong password. Please enter it again.</string>
+    <string name="ttrd_failed">The operation could not be completed for this file.</string>
+    <string name="ttrd_latin1_only">This algorithm only accepts Latin characters in passwords (Arabic characters would become \"?\"). Choose AES-256 or change the password.</string>
+    <string name="ttrd_owner_same">The permissions password must differ from the open password.</string>
+    <string name="ttrd_owner_title">Permissions password</string>
+    <string name="ttrd_owner_body">This permissions password was generated. Save it now: it will not be shown again.</string>
+    <string name="ttrd_copy">Copy</string>
+    <string name="ttrd_copied">Copied to the clipboard.</string>
+    <string name="ttrd_details">Details</string>
+    <string name="ttrd_skipped_title">Not all hidden content was removed:</string>
+    <string name="ttrd_skip_unreadable">Page %1$d: its content could not be inspected</string>
+    <string name="ttrd_skip_nested">Page %1$d: %2$d item(s) inside form XObjects</string>
+    <string name="ttrd_skip_vertical">Page %1$d: %2$d character(s) of vertical text</string>
+    <string name="ttrd_skip_size">Page %1$d: %2$d character(s) with an invalid size</string>
+    <string name="ttrd_skip_rewrite">Page %1$d: the content could not be rewritten (%2$d item(s))</string>
+    <string name="ttrd_skip_hint">To remove what is left, turn these pages into images (maximum-security redaction).</string>
+    <string name="ttrd_draft_restored">%1$d unsaved mark(s) restored.</string>
+</resources>
