@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cmr_note_resize">Resize note</string>
+    <string name="cmr_tick_palette">Symbol palette</string>
+    <string name="cmr_connector_color">Connector colour</string>
+    <string name="cmr_connector_opacity">Connector opacity %1$d%%</string>
+    <string name="cmr_csv_columns">CSV columns</string>
+    <string name="cmr_seq_next">Next number of the sequential stamp</string>
+    <string name="cmr_set_export">Export stamp set</string>
+    <string name="cmr_set_export_hint">Your custom stamps are saved in one file to share with your team. Locked stamps cannot be edited after they are imported.</string>
+    <string name="cmr_set_name">Set name</string>
+    <string name="cmr_set_lock">Lock the stamps (cannot be edited)</string>
+    <string name="cmr_set_import">Import stamp set</string>
+    <string name="cmr_set_imported">%1$d stamps imported</string>
+    <string name="cmr_set_bad">This file is not a stamp set</string>
+    <string name="cmr_set_locked_info">This stamp belongs to the shared set “%1$s” and is locked.</string>
+    <string name="cmr_set_remove">Remove the set</string>
+    <string name="cmr_replace_image">Replace image</string>
+    <string name="cmr_locked">Locked</string>
+</resources>

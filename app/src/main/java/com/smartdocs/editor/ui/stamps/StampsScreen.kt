@@ -14,6 +14,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.Approval
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -102,9 +103,11 @@ fun StampsScreen(nav: NavHostController) {
                             }
                             Row(Modifier.padding(start = 12.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Text(s.text ?: stringResource(R.string.sig_image), Modifier.weight(1f), style = MaterialTheme.typography.labelMedium, maxLines = 1)
-                                IconButton(onClick = {
+                                // §41: stamps of a locked shared set are removed only as a whole set (stamp picker)
+                                if (!com.smartdocs.editor.ui.view5.StampMeta.custom(ctx, s.id).locked) IconButton(onClick = {
                                     scope.launch { withContext(Dispatchers.IO) { s.imagePath?.let { File(it).delete() }; app.db.stamps().delete(s) } }
                                 }) { Icon(Icons.Default.Delete, stringResource(R.string.delete), tint = MaterialTheme.colorScheme.error) }
+                                else Icon(Icons.Default.Lock, stringResource(R.string.cmr_locked), Modifier.padding(12.dp))
                             }
                         }
                     }

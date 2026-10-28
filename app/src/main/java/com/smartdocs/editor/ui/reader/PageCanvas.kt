@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.IntSize
 import com.smartdocs.editor.LocalSettings
 import com.smartdocs.editor.core.pdf.AnnotKind
 import com.smartdocs.editor.core.pdf.PageLink
+import com.smartdocs.editor.ui.reader.annot.commentHover
 import com.smartdocs.editor.ui.reader.annot.drawAnnot2Overlay
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
@@ -144,12 +145,14 @@ fun PageCanvas(
     val layoutNow by rememberUpdatedState(layout)
     // audit RD-05: edge zones are measured on the screen, so taps are reported in root coordinates
     var rootPos by remember { mutableStateOf(Offset.Zero) }
+    val hover = remember(page) { com.smartdocs.editor.ui.reader.annot.CommentHoverState() }   // 24.66: hover tooltip
 
     Box(modifier.size(wDp, hDp)) {
     Canvas(
         Modifier
             .matchParentSize()
             .onGloballyPositioned { rootPos = it.positionInRoot() }
+            .commentHover(state, page, g, hover)
             .pointerInput(page, g) {
                 detectTapGestures(
                     onDoubleTap = { p ->
@@ -325,6 +328,7 @@ fun PageCanvas(
     com.smartdocs.editor.ui.reader.annot.MultiActionBar(state, page, g)
     PasteHereBar(state, page, g)      // nitro-fillsign2: long-press "Paste here"
     com.smartdocs.editor.ui.selmenu.SelAnchor(state, page, g)      // selmenu: where the selection / long-pressed spot is on screen
+    com.smartdocs.editor.ui.reader.annot.CommentHoverTip(hover, layout.width, layout.height)
     }
 }
 

@@ -24,8 +24,12 @@ import java.io.File
 
 /** ZapfDingbats tickmark palette: (font code, screen glyph). */
 object TickSymbols {
-    val all = listOf("3" to "✓", "4" to "✔", "7" to "✗", "8" to "✘", "H" to "★",
-        "l" to "●", "n" to "■", "u" to "◆", "s" to "▲", "t" to "▼")
+    /** 25.27: 31 symbols (ZapfDingbats code -> screen glyph); codes stay printable ASCII as AnnotStyle writes them. */
+    val all = listOf("3" to "✓", "4" to "✔", "5" to "✕", "6" to "✖", "7" to "✗", "8" to "✘", ":" to "✚",
+        "H" to "★", "I" to "✩", "J" to "✪", "Q" to "✱", "S" to "✳", "F" to "✦",
+        "l" to "●", "m" to "❍", "n" to "■", "o" to "❏", "u" to "◆", "v" to "❖", "s" to "▲", "t" to "▼",
+        "%" to "☎", ")" to "✉", "*" to "☛", "+" to "☞", "," to "✌", "-" to "✍", "." to "✎", "/" to "✏",
+        "d" to "❄", "`" to "❀")
 }
 
 /** In-app comment clipboard (survives switching documents in this process): pending copies and/or stored refs. */

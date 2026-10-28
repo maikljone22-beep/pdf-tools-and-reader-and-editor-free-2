@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cmr_note_resize">تغيير حجم الملاحظة</string>
+    <string name="cmr_tick_palette">لوحة الرموز</string>
+    <string name="cmr_connector_color">لون خطوط الربط</string>
+    <string name="cmr_connector_opacity">شفافية خطوط الربط %1$d%%</string>
+    <string name="cmr_csv_columns">أعمدة ملف CSV</string>
+    <string name="cmr_seq_next">الرقم التالي في الختم المتسلسل</string>
+    <string name="cmr_set_export">تصدير مجموعة أختام</string>
+    <string name="cmr_set_export_hint">تُحفظ أختامك المخصصة في ملف واحد يمكن مشاركته مع الفريق. الأختام المقفلة لا يمكن تعديلها بعد استيرادها.</string>
+    <string name="cmr_set_name">اسم المجموعة</string>
+    <string name="cmr_set_lock">قفل الأختام (لا يمكن تعديلها)</string>
+    <string name="cmr_set_import">استيراد مجموعة أختام</string>
+    <string name="cmr_set_imported">تم استيراد %1$d ختم</string>
+    <string name="cmr_set_bad">هذا الملف ليس مجموعة أختام</string>
+    <string name="cmr_set_locked_info">هذا الختم من المجموعة المشتركة «%1$s» وهو مقفل.</string>
+    <string name="cmr_set_remove">إزالة المجموعة</string>
+    <string name="cmr_replace_image">استبدال الصورة</string>
+    <string name="cmr_locked">مقفل</string>
+</resources>

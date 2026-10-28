@@ -22,6 +22,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Badge
 import androidx.compose.material.icons.filled.ContentPaste
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
@@ -74,6 +76,9 @@ object StampIdentity {
         return (saved?.split("\u001E")?.filter { it.isNotBlank() } ?: DEFAULT_TEMPLATES).distinct()   // templates are grid keys: duplicates crash
     }
     fun saveTemplates(ctx: Context, list: List<String>) { ctx.getSharedPreferences(V5State.PREFS, Context.MODE_PRIVATE).edit().putString("stamp_tpl", list.joinToString("\u001E")).apply() }
+    /** §41 sequential stamps: the next number of a template with {seq} (kept per template). */
+    fun seq(ctx: Context, tpl: String): Int = ctx.getSharedPreferences(V5State.PREFS, Context.MODE_PRIVATE).getInt("stamp_seq_" + tpl.hashCode(), 1)
+    fun setSeq(ctx: Context, tpl: String, n: Int) { ctx.getSharedPreferences(V5State.PREFS, Context.MODE_PRIVATE).edit().putInt("stamp_seq_" + tpl.hashCode(), n.coerceAtLeast(0)).apply() }
     fun hijriAdjust(ctx: Context) = ctx.getSharedPreferences(V5State.PREFS, Context.MODE_PRIVATE).getInt("hijri_adj", 0)
     val DEFAULT_TEMPLATES = listOf(
         "معتمد\n{name} • {date}", "تمت المراجعة\n{name} • {hijri}", "استلمت\n{datetime}", "APPROVED\n{name} • {date}",
@@ -139,9 +144,10 @@ fun V5StampPicker(onPicked: (Bitmap) -> Unit, onDismiss: () -> Unit) {
     val noClip = stringResource(R.string.cx_no_clip_image)
     var info by remember { mutableStateOf<String?>(null) }
 
-    fun renderTpl(t: String): Bitmap {
-        val st = StampMeta.tplStyle(ctx, t)
-        val filled = StampTokens.fill(t, identity, now, hijriAdjust = adj)
+    // §41: [key] is the template whose style and counter apply ([t] may already have its {ask:} values filled in)
+    fun renderTpl(t: String, key: String = t): Bitmap {
+        val st = StampMeta.tplStyle(ctx, key)
+        val filled = StampTokens.fill(t, identity, now, hijriAdjust = adj, seq = StampIdentity.seq(ctx, key))
         val lines = filled.split('\n')
         return StampRenderer.renderTextStamp(lines.first(), lines.drop(1).joinToString(" ").ifBlank { null }, st.color, 500,
             StampRenderer.Border.entries.getOrElse(st.border) { StampRenderer.Border.ROUNDED }, StampMeta.typeface(st.font))
@@ -161,11 +167,18 @@ fun V5StampPicker(onPicked: (Bitmap) -> Unit, onDismiss: () -> Unit) {
         k.startsWith("sh:") -> k.removePrefix("sh:").split(':').let { (n, c) -> StampShape.entries.firstOrNull { it.name == n }?.render(c.toInt(), 400) }
         else -> null
     }
+    // §41: a placed sequential stamp moves its counter on (the grid shows the next number)
+    fun bumpSeq(key: String) {
+        val t = key.takeIf { it.startsWith("t:") }?.removePrefix("t:") ?: return
+        if (!StampTokens.hasSeq(t)) return
+        StampIdentity.setSeq(ctx, t, StampIdentity.seq(ctx, t) + 1); metaVersion++
+    }
     fun pick(key: String, bmp: Bitmap) {
         StampMeta.pushRecent(ctx, key); recents = StampMeta.recents(ctx)
         // a template with {ask:...} values asks for them before the stamp is placed
         if (key.startsWith("t:") && StampMeta.askTokens(key.removePrefix("t:")).isNotEmpty()) { askTpl = key.removePrefix("t:"); return }
         onPicked(bmp)
+        bumpSeq(key)
     }
     fun fav(key: String) { StampMeta.toggleFavourite(ctx, key); favs = StampMeta.favourites(ctx) }
 
@@ -177,6 +190,32 @@ fun V5StampPicker(onPicked: (Bitmap) -> Unit, onDismiss: () -> Unit) {
             }
             pdfFile = f
         }
+    }
+
+    // 24.58 / §41: shared (enterprise) stamp sets and image replacement
+    var exportSet by remember { mutableStateOf(false) }
+    var exportReq by remember { mutableStateOf<Pair<String, Boolean>?>(null) }
+    var replaceFor by remember { mutableStateOf<CustomStamp?>(null) }
+    val setBad = stringResource(R.string.cmr_set_bad)
+    val setImport = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) scope.launch {
+            val n = runCatching { StampSets.import(ctx, uri) }.getOrNull()
+            info = if (n == null) setBad else ctx.getString(R.string.cmr_set_imported, n)
+            metaVersion++
+        }
+    }
+    val setExport = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+        val req = exportReq; exportReq = null
+        if (uri != null && req != null) scope.launch {
+            runCatching { StampSets.export(ctx, custom, req.first, req.second, uri) }.onFailure { info = it.message ?: it.toString() }
+        }
+    }
+    val replacePick = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
+        val st = replaceFor; replaceFor = null
+        if (uri != null && st != null) scope.launch { if (StampSets.replaceImage(ctx, st, uri)) metaVersion++ }
+    }
+    if (exportSet) StampSetExportDialog(onDismiss = { exportSet = false }) { n, lock ->
+        exportSet = false; exportReq = n to lock; setExport.launch(n.filter { it.isLetterOrDigit() || it == ' ' || it == '_' || it == '-' }.ifBlank { "stamps" } + ".sdstamps.zip")
     }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
@@ -223,6 +262,10 @@ fun V5StampPicker(onPicked: (Bitmap) -> Unit, onDismiss: () -> Unit) {
                                 leadingIcon = { Icon(Icons.Default.PictureAsPdf, null, Modifier.size(16.dp)) })
                             AssistChip(onClick = { scope.launch { val b = StampSources.fromClipboard(ctx); if (b != null) onPicked(b) else info = noClip } },
                                 label = { Text(stringResource(R.string.cx_stamp_from_clip)) }, leadingIcon = { Icon(Icons.Default.ContentPaste, null, Modifier.size(16.dp)) })
+                            AssistChip(onClick = { setImport.launch(arrayOf("application/zip", "application/octet-stream", "*/*")) }, label = { Text(stringResource(R.string.cmr_set_import)) },
+                                leadingIcon = { Icon(Icons.Default.Download, null, Modifier.size(16.dp)) })
+                            AssistChip(onClick = { exportSet = true }, enabled = custom.isNotEmpty(), label = { Text(stringResource(R.string.cmr_set_export)) },
+                                leadingIcon = { Icon(Icons.Default.Upload, null, Modifier.size(16.dp)) })
                             // user categories of custom stamps (24.52 / 24.53)
                             val cats = remember(custom, metaVersion) { custom.map { StampMeta.custom(ctx, it.id).category }.filter { it.isNotBlank() }.distinct() }
                             if (cats.isNotEmpty()) {
@@ -268,7 +311,7 @@ fun V5StampPicker(onPicked: (Bitmap) -> Unit, onDismiss: () -> Unit) {
                 OutlinedTextField(txt, { txt = it }, minLines = 2, label = { Text(stringResource(R.string.v5_template)) }, modifier = Modifier.fillMaxWidth())
                 Text(stringResource(R.string.v5_template_tokens), style = MaterialTheme.typography.bodySmall)
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
-                    listOf("{name}", "{title}", "{org}", "{unit}", "{email}", "{date}", "{time}", "{hijri}", "{ask:" + stringResource(R.string.cx_stamp_ask_default) + "}").forEach { tk -> AssistChip(onClick = { txt += tk }, label = { Text(tk) }) }
+                    listOf("{name}", "{title}", "{org}", "{unit}", "{email}", "{date}", "{time}", "{hijri}", "{seq}", "{seq:3}", "{ask:" + stringResource(R.string.cx_stamp_ask_default) + "}").forEach { tk -> AssistChip(onClick = { txt += tk }, label = { Text(tk) }) }
                 }
                 Text(StampTokens.fill(txt, identity, now, hijriAdjust = adj), style = MaterialTheme.typography.bodyMedium)
             } },
@@ -278,6 +321,7 @@ fun V5StampPicker(onPicked: (Bitmap) -> Unit, onDismiss: () -> Unit) {
     // dynamic template style: colour, border, font (24.56); delete
     styleTpl?.let { t ->
         var st by remember(t) { mutableStateOf(StampMeta.tplStyle(ctx, t)) }
+        var nextSeq by remember(t) { mutableStateOf(StampIdentity.seq(ctx, t).toString()) }
         AlertDialog(onDismissRequest = { styleTpl = null }, title = { Text(stringResource(R.string.cx_stamp_style)) },
             text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -291,8 +335,14 @@ fun V5StampPicker(onPicked: (Bitmap) -> Unit, onDismiss: () -> Unit) {
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     StampMeta.FONTS.forEachIndexed { i, r -> FilterChip(st.font == i, { st = st.copy(font = i) }, label = { Text(stringResource(r)) }) }
                 }
+                // §41 sequential stamp: the next number can be set (or reset)
+                if (StampTokens.hasSeq(t)) OutlinedTextField(nextSeq, { nextSeq = it.filter { c -> c.isDigit() }.take(7) }, label = { Text(stringResource(R.string.cmr_seq_next)) }, singleLine = true)
             } },
-            confirmButton = { TextButton(onClick = { StampMeta.saveTplStyle(ctx, t, st); metaVersion++; styleTpl = null }) { Text(stringResource(R.string.ok)) } },
+            confirmButton = { TextButton(onClick = {
+                StampMeta.saveTplStyle(ctx, t, st)
+                if (StampTokens.hasSeq(t)) nextSeq.toIntOrNull()?.let { StampIdentity.setSeq(ctx, t, it) }
+                metaVersion++; styleTpl = null
+            }) { Text(stringResource(R.string.ok)) } },
             dismissButton = { Row {
                 TextButton(onClick = { templates = templates - t; StampIdentity.saveTemplates(ctx, templates); styleTpl = null }) { Text(stringResource(R.string.delete)) }
                 TextButton(onClick = { styleTpl = null }) { Text(stringResource(R.string.cancel)) }
@@ -306,23 +356,28 @@ fun V5StampPicker(onPicked: (Bitmap) -> Unit, onDismiss: () -> Unit) {
             text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 names.forEach { n -> OutlinedTextField(values[n] ?: "", { values[n] = it }, label = { Text(n) }, singleLine = true) }
             } },
-            confirmButton = { TextButton(onClick = { val filled = StampMeta.fillAsk(t, values); askTpl = null; onPicked(renderTpl(filled)) }) { Text(stringResource(R.string.ok)) } },
+            confirmButton = { TextButton(onClick = { val filled = StampMeta.fillAsk(t, values); askTpl = null; onPicked(renderTpl(filled, t)); bumpSeq("t:$t") }) { Text(stringResource(R.string.ok)) } },
             dismissButton = { TextButton(onClick = { askTpl = null }) { Text(stringResource(R.string.cancel)) } })
     }
     // custom stamp: name, category, opacity, white transparent, delete (24.52 / 24.58)
     editCustom?.let { s ->
         var m by remember(s.id) { mutableStateOf(StampMeta.custom(ctx, s.id)) }
+        val free = !m.locked   // §41: stamps of a locked shared set cannot be edited
         AlertDialog(onDismissRequest = { editCustom = null }, title = { Text(stringResource(R.string.cx_stamp_edit)) },
             text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(m.name, { m = m.copy(name = it) }, label = { Text(stringResource(R.string.cx_name)) }, singleLine = true)
-                OutlinedTextField(m.category, { m = m.copy(category = it) }, label = { Text(stringResource(R.string.cx_stamp_category)) }, singleLine = true)
+                if (m.locked) Text(stringResource(R.string.cmr_set_locked_info, m.set), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                OutlinedTextField(m.name, { m = m.copy(name = it) }, enabled = free, label = { Text(stringResource(R.string.cx_name)) }, singleLine = true)
+                OutlinedTextField(m.category, { m = m.copy(category = it) }, enabled = free, label = { Text(stringResource(R.string.cx_stamp_category)) }, singleLine = true)
                 Text(stringResource(R.string.cx_stamp_opacity, (m.opacity * 100).toInt()), style = MaterialTheme.typography.labelMedium)
-                Slider(m.opacity, { m = m.copy(opacity = it) }, valueRange = 0.1f..1f)
-                Row(verticalAlignment = Alignment.CenterVertically) { Switch(m.whiteTransparent, { m = m.copy(whiteTransparent = it) }); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.cx_stamp_white)) }
+                Slider(m.opacity, { m = m.copy(opacity = it) }, enabled = free, valueRange = 0.1f..1f)
+                Row(verticalAlignment = Alignment.CenterVertically) { Switch(m.whiteTransparent, { m = m.copy(whiteTransparent = it) }, enabled = free); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.cx_stamp_white)) }
+                // 24.58: replace the image of an image stamp (same stamp: favourites and recents stay)
+                if (free && s.imagePath != null) OutlinedButton(onClick = { replaceFor = s; editCustom = null; replacePick.launch(arrayOf("image/*")) }) { Text(stringResource(R.string.cmr_replace_image)) }
+                if (m.locked && m.set.isNotBlank()) OutlinedButton(onClick = { editCustom = null; scope.launch { StampSets.removeSet(ctx, m.set); metaVersion++ } }) { Text(stringResource(R.string.cmr_set_remove)) }
             } },
-            confirmButton = { TextButton(onClick = { StampMeta.saveCustom(ctx, s.id, m); metaVersion++; editCustom = null }) { Text(stringResource(R.string.ok)) } },
+            confirmButton = { TextButton(onClick = { if (free) StampMeta.saveCustom(ctx, s.id, m); metaVersion++; editCustom = null }) { Text(stringResource(R.string.ok)) } },
             dismissButton = { Row {
-                TextButton(onClick = { editCustom = null; scope.launch { withContext(Dispatchers.IO) { s.imagePath?.let { java.io.File(it).delete() }; app.db.stamps().delete(s) } } }) { Text(stringResource(R.string.delete)) }
+                if (free) TextButton(onClick = { editCustom = null; scope.launch { withContext(Dispatchers.IO) { s.imagePath?.let { java.io.File(it).delete() }; app.db.stamps().delete(s); StampMeta.forget(ctx, s.id) } } }) { Text(stringResource(R.string.delete)) }
                 TextButton(onClick = { editCustom = null }) { Text(stringResource(R.string.cancel)) }
             } })
     }

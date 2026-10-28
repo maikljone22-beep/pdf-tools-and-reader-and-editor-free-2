@@ -95,14 +95,24 @@ object CommentFilter {
     private fun date(ms: Long) = if (ms <= 0) "" else SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date(ms))
 
     /** UTF-8 BOM CSV: page, type, author, date, status, checked, contents, marked text, replies. */
-    fun csv(rows: List<CRow>, header: List<String>): String {
-        val sb = StringBuilder("\uFEFF").append(header.joinToString(",") { cell(it) }).append("\r\n")
+    fun csv(rows: List<CRow>, header: List<String>, columns: Set<Int>? = null): String {
+        // \u00A741: [columns] picks the columns by index (0 page ... 8 replies), always in this order; null = all
+        val keep = CSV_COLUMNS.filter { columns == null || it in columns }.ifEmpty { CSV_COLUMNS }
+        val sb = StringBuilder("\uFEFF").append(keep.mapNotNull { header.getOrNull(it) }.joinToString(",") { cell(it) }).append("\r\n")
         rows.forEach { r ->
-            sb.append(listOf((r.page + 1).toString(), r.type, r.author, date(r.date), r.status, if (r.checked) "1" else "0", r.contents, r.markedText,
-                r.replies.joinToString(" | ")).joinToString(",") { cell(it) }).append("\r\n")
+            val all = listOf((r.page + 1).toString(), r.type, r.author, date(r.date), r.status, if (r.checked) "1" else "0", r.contents, r.markedText,
+                r.replies.joinToString(" | "))
+            sb.append(keep.map { all[it] }.joinToString(",") { cell(it) }).append("\r\n")
         }
         return sb.toString()
     }
+
+    /** Column indices of [csv]: page, type, author, date, status, checked, contents, marked text, replies. */
+    val CSV_COLUMNS = (0..8).toList()
+
+    /** \u00A741: the CSV column choice kept in the preferences as "0,2,6" (unknown / empty = all columns). */
+    fun columnsOf(pref: String?): Set<Int> = pref.orEmpty().split(',').mapNotNull { it.trim().toIntOrNull() }.filter { it in CSV_COLUMNS }.toSet().ifEmpty { CSV_COLUMNS.toSet() }
+    fun columnsPref(cols: Set<Int>): String = cols.sorted().joinToString(",")
 
     /** Plain-text summary grouped by page (used for "summary" export and share). */
     fun summary(rows: List<CRow>, title: String, pageLabel: (Int) -> String, typeLabel: (String) -> String): String {
