@@ -134,7 +134,8 @@ object Portfolio {
      * New portfolio: a cover page listing the parts (title + file names) and every file embedded, with a
      * /Collection dictionary (details view) so desktop viewers open it as a portfolio. [initial] names the part shown first.
      */
-    suspend fun create(ctx: Context, title: String, files: List<File>, out: File, initial: String? = null, coverHeader: String = "") = withContext(Dispatchers.IO) {
+    suspend fun create(ctx: Context, title: String, files: List<File>, out: File, initial: String? = null, coverHeader: String = "",
+                       view: PfView = PfView.DETAILS) = withContext(Dispatchers.IO) {
         PDDocument().use { doc ->
             val page = PDPage(PDRectangle.A4); doc.addPage(page)
             val arabic: PDFont = runCatching { PdfOps.arabicFont(ctx, doc) }.getOrDefault(PDType1Font.HELVETICA)
@@ -158,10 +159,10 @@ object Portfolio {
                 y -= 10f
                 files.take(40).forEach { line("• " + it.name, 11f) }
             }
-            Embed.addFiles(doc, files.map { Attachment(it.name, Embed.mimeOf(it.name), it.readBytes()) })
+            if (files.isNotEmpty()) Embed.addFiles(doc, files.map { Attachment(it.name, Embed.mimeOf(it.name), it.readBytes()) })
             val coll = COSDictionary()
             coll.setItem(COSName.TYPE, COLLECTION)
-            coll.setItem(COSName.getPDFName("View"), COSName.getPDFName("D"))
+            coll.setItem(COSName.getPDFName("View"), COSName.getPDFName(view.code))
             val first = initial ?: files.firstOrNull()?.name
             if (first != null) coll.setItem(COSName.getPDFName("D"), COSString(first))
             doc.documentCatalog.cosObject.setItem(COLLECTION, coll)
