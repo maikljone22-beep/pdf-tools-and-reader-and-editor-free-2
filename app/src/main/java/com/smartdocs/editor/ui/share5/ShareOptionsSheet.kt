@@ -198,7 +198,7 @@ private fun CheckRow(checked: Boolean, label: String, onChange: (Boolean) -> Uni
  * E-mails every open reader tab (the active one as [current], which carries its pending annotations). With [strip]
  * each copy is cleaned first; a file that cannot be cleaned (protected, damaged) is sent as it is.
  */
-private suspend fun emailOpenTabs(ctx: android.content.Context, current: File, strip: Set<com.smartdocs.editor.core.redact.SanitizeItem>) {
+internal suspend fun emailOpenTabs(ctx: android.content.Context, current: File, strip: Set<com.smartdocs.editor.core.redact.SanitizeItem>) {
     val tabs = com.smartdocs.editor.ui.reader.view.ReaderTabs
     val active = tabs.active
     val files = tabs.tabs.mapNotNull { t -> if (t.uri == active) current else Uri.parse(t.uri).path?.let(::File)?.takeIf { it.exists() } }.distinctBy { it.absolutePath }
