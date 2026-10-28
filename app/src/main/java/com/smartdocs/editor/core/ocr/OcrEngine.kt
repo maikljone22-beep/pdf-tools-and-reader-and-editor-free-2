@@ -251,6 +251,8 @@ class OcrEngine(private val context: Context, val fast: Boolean = false) : AutoC
                     }
                     runCatching { hp.clear() }
                 }
+                // the fine-tuned script model may answer with Persian digit / letter forms (۲, ی, ک): Arabic forms
+                if (usingFt) out = out.map { k -> OcrRefine.foldScript(k.text).let { f -> if (f == k.text || f.isEmpty()) k else k.copy(text = f) } }
                 out = OcrCleanup.clean(out)
                 // the PP-OCRv5 AI model: alone (AI) or word by word with Tesseract (AUTO / CLOUD fallback)
                 if (m != OcrEngineMode.TESSERACT && !cancelled && initialisedLangs?.split('+')?.contains("ara") == true) {
