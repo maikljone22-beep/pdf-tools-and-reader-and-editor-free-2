@@ -31,6 +31,19 @@ object OfficeHtml {
 
     internal fun browserImage(img: ImageData?): Boolean = img != null && img.mime.startsWith("image/") && img.mime != "image/x-emf" && img.mime != "image/x-wmf" && img.mime != "image/tiff"
 
+    /** Localised placeholder labels (set by the app from string resources; English on the JVM). */
+    @Volatile var labels: Map<String, String> = emptyMap()
+    private fun label(key: String, def: String) = labels[key] ?: def
+
+    /** A picture the WebView can show: as it is, or TIFF / BMP converted to PNG (convert audit A-M5). */
+    internal fun printable(img: ImageData?): ImageData? {
+        if (img == null) return null
+        if (browserImage(img)) return img
+        if (img.mime == "image/tiff" || img.mime == "image/bmp")
+            com.smartdocs.editor.core.convert6.PortableImage.normalize(img.bytes, if (img.mime == "image/tiff") "tif" else "bmp", setOf("png", "jpg"))?.let { (b, e) -> return ImageData(b, if (e == "png") "image/png" else "image/jpeg") }
+        return null
+    }
+
     // ======================= DOCX =======================
 
     private const val DOCX_CSS = """
@@ -53,11 +66,43 @@ a{color:#1a5fb4;}
 @media print{body{background:#fff;}.page{box-shadow:none;margin:0;padding:0;max-width:none;break-after:page;page-break-after:always;}.page:last-child{break-after:auto;page-break-after:auto;}.secbrk{display:none;}.tblwrap{overflow:visible;}}
 """
 
-    fun docx(model: DocModel, title: String = model.title ?: ""): String = buildString {
-        append(head(title, "width=device-width, initial-scale=1", DOCX_CSS))
-        append("<body><div class=\"page\">")
+    private const val PRINT_CSS = """
+@media print{.page{padding:0!important;}}
+table.docwrap{width:100%;border:0;border-collapse:collapse;margin:0;}
+table.docwrap>thead>tr>td,table.docwrap>tfoot>tr>td,table.docwrap>tbody>tr>td{border:0;padding:0;}
+.hdrf{color:#444;font-size:.9em;}
+.hdrf.h{border-bottom:1px solid #ccc;margin-bottom:8px;}
+.hdrf.f{border-top:1px solid #ccc;margin-top:8px;}
+.notes{border-top:1px solid #999;margin-top:1.2em;padding-top:.4em;font-size:.9em;}
+.notes .nm{vertical-align:super;font-size:.75em;margin-inline-end:.3em;}
+"""
+
+    /**
+     * Word document → HTML. [forPrint] (Word → PDF): the default header and footer repeat on every printed page (a
+     * table whose thead / tfoot Chromium repeats per page), footnotes / endnotes follow the text, equations are linear
+     * text (convert audit A-H10); the page size and margins are given to the printer by the caller ([DocModel.page]).
+     */
+    fun docx(model: DocModel, title: String = model.title ?: "", forPrint: Boolean = false): String = buildString {
+        append(head(title, "width=device-width, initial-scale=1", DOCX_CSS + (if (forPrint) PRINT_CSS else "")))
+        append("<body>")
+        val wrap = forPrint && (model.header.isNotEmpty() || model.footer.isNotEmpty())
+        if (wrap) {
+            append("<table class=\"docwrap\">")
+            if (model.header.isNotEmpty()) { append("<thead><tr><td><div class=\"hdrf h\">"); blocks(model.header, this); append("</div></td></tr></thead>") }
+            if (model.footer.isNotEmpty()) { append("<tfoot><tr><td><div class=\"hdrf f\">"); blocks(model.footer, this); append("</div></td></tr></tfoot>") }
+            append("<tbody><tr><td>")
+        } else if (!forPrint && model.header.isNotEmpty()) { append("<div class=\"page hdrf h\">"); blocks(model.header, this); append("</div>") }
+        append("<div class=\"page\">")
         blocks(model.blocks, this)
-        append("</div></body></html>")
+        if (model.notes.isNotEmpty()) {
+            append("<div class=\"notes\">")
+            model.notes.forEach { (m, bs) -> append("<div><span class=\"nm\">").append(esc(m)).append("</span>"); blocks(bs, this); append("</div>") }
+            append("</div>")
+        }
+        append("</div>")
+        if (wrap) append("</td></tr></tbody></table>")
+        else if (!forPrint && model.footer.isNotEmpty()) { append("<div class=\"page hdrf f\">"); blocks(model.footer, this); append("</div>") }
+        append("</body></html>")
     }
 
     private fun blocks(bs: List<Block>, sb: StringBuilder) {
@@ -133,10 +178,14 @@ a{color:#1a5fb4;}
     }
 
     private fun image(i: Inline.Image, sb: StringBuilder) {
-        val img = i.image
+        val img = printable(i.image)
         val wPx = (i.widthEmu / 9525).toInt()
-        if (!browserImage(img)) { sb.append("<span class=\"noimg\">").append(esc(i.alt ?: "[image]")).append("</span>"); return }
-        sb.append("<img src=\"").append(dataUri(img!!)).append('"')
+        if (img == null) {
+            val what = when { i.image == null -> label("chart", "[chart]"); else -> label("image", "[image]") + " (" + i.image.mime.substringAfter('/').removePrefix("x-").uppercase() + ")" }
+            sb.append("<span class=\"noimg\">").append(esc(listOfNotNull(i.alt?.takeIf { it.isNotBlank() }, what).joinToString(" · "))).append("</span>")
+            return
+        }
+        sb.append("<img src=\"").append(dataUri(img)).append('"')
         if (wPx > 0) sb.append(" style=\"width:").append(wPx).append("px\"")
         i.alt?.let { sb.append(" alt=\"").append(esc(it)).append('"') }
         sb.append('>')
@@ -180,7 +229,13 @@ a{color:#1a5fb4;}
 
     fun xlsx(book: WorkbookModel): String = OfficeSheetHtml.workbook(book)
     fun xlsxSheet(book: WorkbookModel, index: Int, forPrint: Boolean = false): String = OfficeSheetHtml.sheet(book, index, forPrint)
-    fun pptx(model: PresentationModel, forPrint: Boolean = false): String = OfficeSlideHtml.render(model, forPrint)
+    fun pptx(model: PresentationModel, forPrint: Boolean = false, pageWidthPx: Int = 0): String = OfficeSlideHtml.render(model, forPrint, pageWidthPx)
+
+    /** Printable sheet (Excel → PDF): see [OfficeSheetHtml.printSheet]. */
+    fun xlsxPrint(book: WorkbookModel, index: Int, rows: IntRange?, pageWidthPx: Int, title: String?, truncatedNote: String?): String =
+        OfficeSheetHtml.printSheet(book, index, rows, pageWidthPx, title, truncatedNote)
+    fun xlsxUsedRows(s: SheetModel): IntRange = OfficeSheetHtml.usedRange(s).first
+    fun xlsxLandscape(book: WorkbookModel): Boolean = OfficeSheetHtml.wantsLandscape(book)
 
     internal fun fmt(f: Float): String = if (f == f.toInt().toFloat()) f.toInt().toString() else String.format(java.util.Locale.US, "%.2f", f)
 }

@@ -84,7 +84,7 @@ class Export7Test {
     }
 
     @Test fun xmlExports() {
-        val xml = PdfXml.write("R&D", mapOf("author" to "Ali"), listOf(595f to 842f), listOf(PdfXml.Mark("Intro", 0, 0)),
+        val xml = PdfXml.write("R&D", mapOf("author" to "Ali"), listOf(Triple(0, 595f, 842f)), listOf(PdfXml.Mark("Intro", 0, 0)),
             listOf(PdfXml.Line(0, "a < b", 72f, 700f, 12f, "Arial")))
         assertTrue(xml.contains("title=\"R&amp;D\"")); assertTrue(xml.contains("<bookmark level=\"0\" page=\"1\">Intro</bookmark>"))
         assertTrue(xml.contains("x=\"72.0\" y=\"700.0\" size=\"12.0\" font=\"Arial\">a &lt; b</line>"))

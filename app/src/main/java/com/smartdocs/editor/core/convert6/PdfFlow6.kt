@@ -24,7 +24,8 @@ class PdfPages(val title: String, val author: String, val layouts: List<PageLayo
 
 object PdfFlow6 {
 
-    fun load(src: File, password: String?): PDDocument = if (password.isNullOrEmpty()) PDDocument.load(src) else PDDocument.load(src, password)
+    /** Load for reading: large streams spill to a temp file instead of the heap (convert audit C10 / A-H6). */
+    fun load(src: File, password: String?): PDDocument = PDDocument.load(src, password.orEmpty(), com.tom_roush.pdfbox.io.MemoryUsageSetting.setupMixed(48L shl 20))
 
     /** Outline entries (top two levels) → zero-based page index → titles. */
     fun chapters(doc: PDDocument): Map<Int, List<String>> {
@@ -46,8 +47,20 @@ object PdfFlow6 {
         return out
     }
 
-    /** Layouts of [pages] (zero-based; empty = all), running headers / footers removed, with progress. */
-    suspend fun pages(src: File, password: String?, pages: List<Int>, withImages: Boolean, detectTables: Boolean = true, onProgress: (Int, Int) -> Unit = { _, _ -> }): PdfPages = withContext(Dispatchers.IO) {
+    /** Layouts of [pages] (zero-based; empty = all), running headers / footers removed, with progress. [title] when the PDF has none. */
+    suspend fun pages(src: File, password: String?, pages: List<Int>, withImages: Boolean, detectTables: Boolean = true, onProgress: (Int, Int) -> Unit = { _, _ -> }, title: String = src.nameWithoutExtension): PdfPages {
+        val out = ArrayList<PageLayout>()
+        val meta = eachPage(src, password, pages, withImages, detectTables, onProgress) { l, _ -> out += l }
+        return PdfPages(meta.first.ifBlank { title }, meta.second, out, meta.third)
+    }
+
+    /**
+     * Analyses [pages] one at a time and hands each layout (with the outline's chapter titles) to [each]; nothing is
+     * kept here, so PDF → EPUB / Markdown of an image-heavy book no longer holds every page's pictures (audit B10).
+     * Returns (the PDF's /Title or "", author, chapters).
+     */
+    suspend fun eachPage(src: File, password: String?, pages: List<Int>, withImages: Boolean, detectTables: Boolean, onProgress: (Int, Int) -> Unit,
+                         each: (PageLayout, Map<Int, List<String>>) -> Unit): Triple<String, String, Map<Int, List<String>>> = withContext(Dispatchers.IO) {
         load(src, password).use { doc ->
             val ex = PdfContentExtractor(doc)
             val list = pages.filter { it in 0 until doc.numberOfPages }.ifEmpty { (0 until doc.numberOfPages).toList() }
@@ -58,22 +71,43 @@ object PdfFlow6 {
                 override fun render(index: Int, scale: Float): Pair<ByteArray, String>? = null
             }
             val furniture = if (list.size >= 2) runCatching { ConvertPipeline.detectFurniture(source, list) }.getOrNull() else null
-            val out = ArrayList<PageLayout>()
+            val chapters = chapters(doc)
             list.forEachIndexed { k, i ->
                 coroutineContext.ensureActive()
                 onProgress(k, list.size)
                 val c = ex.extract(i, withImages)
-                out += if (furniture != null) LayoutAnalyzer.analyze(c, detectTables, furniture) else LayoutAnalyzer.analyze(c, detectTables)
+                each(if (furniture != null) LayoutAnalyzer.analyze(c, detectTables, furniture) else LayoutAnalyzer.analyze(c, detectTables), chapters)
             }
             onProgress(list.size, list.size)
             val info = doc.documentInformation
-            PdfPages(info?.title?.takeIf { it.isNotBlank() } ?: src.nameWithoutExtension, info?.author.orEmpty(), out, chapters(doc))
+            Triple(info?.title?.takeIf { it.isNotBlank() }.orEmpty(), info?.author.orEmpty(), chapters)
         }
     }
 
-    suspend fun flow(src: File, password: String?, pages: List<Int>, withImages: Boolean, pageBreaks: Boolean, onProgress: (Int, Int) -> Unit = { _, _ -> }): FlowDoc {
-        val p = pages(src, password, pages, withImages, true, onProgress)
-        return LayoutFlow.fromLayouts(p.title, p.layouts, p.chapters, withImages, pageBreaks, p.author)
+    /**
+     * PDF → [FlowDoc] page by page. [detectTables] is the sheet's "Detect tables" switch (audit B19). [title] is used
+     * when the PDF has no /Title (the source's name, not the OCR temp copy's — audit B23). With [spillDir] the pictures
+     * are written to temp files there and the document refers to them (audit B10); the caller deletes the folder.
+     */
+    suspend fun flow(src: File, password: String?, pages: List<Int>, withImages: Boolean, pageBreaks: Boolean, onProgress: (Int, Int) -> Unit = { _, _ -> },
+                     detectTables: Boolean = true, title: String = src.nameWithoutExtension, spillDir: File? = null): FlowDoc {
+        val blocks = ArrayList<FBlock>()
+        var first = true
+        var spilled = 0
+        val meta = eachPage(src, password, pages, withImages, detectTables, onProgress) { layout, chapters ->
+            val part = LayoutFlow.fromLayouts("", listOf(layout), chapters, withImages, false)
+            if (!first && pageBreaks) blocks += FBlock.PageBreak
+            first = false
+            part.blocks.forEach { b ->
+                if (b is FBlock.Image && spillDir != null) {
+                    spillDir.mkdirs()
+                    val f = File(spillDir, "p" + layout.index + "_" + (++spilled) + "." + b.ext)
+                    f.writeBytes(b.bytes)
+                    blocks += FBlock.Image(null, b.ext, b.widthPt, b.heightPt, b.alt, f)
+                } else blocks += b
+            }
+        }
+        return FlowDoc(meta.first.ifBlank { title }, blocks, meta.second)
     }
 
     /**
@@ -154,6 +188,9 @@ object PdfFlow6 {
             catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { null }
         val out = File(tempDir, src.nameWithoutExtension + "_ocr_" + System.currentTimeMillis() + ".pdf")
         val engine = OcrEngine(ctx.applicationContext)
-        return try { OcrRunner.ocrFile(ctx, engine, src, password, OcrPlan(langs = langs), out, onProgress) } finally { engine.close() }
+        // the temp copy is deleted when OCR fails, is cancelled or had nothing to do (audit B24)
+        var ok = false
+        return try { OcrRunner.ocrFile(ctx, engine, src, password, OcrPlan(langs = langs), out, onProgress).also { ok = it != null } }
+        finally { engine.close(); if (!ok) out.delete() }
     }
 }

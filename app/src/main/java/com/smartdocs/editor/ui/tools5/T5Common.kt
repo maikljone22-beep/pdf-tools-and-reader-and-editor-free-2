@@ -36,9 +36,18 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-/** Long-running job with a progress fraction, cancellation and a result (one or many files). */
-class T5Job(private val scope: CoroutineScope) {
+/**
+ * Long-running job with a progress fraction, cancellation and a result (one or many files).
+ *
+ * Convert audit B01 / C13 / A-H8: only one job runs at a time — a cancelled run that is still unwinding (a library call
+ * that cannot be interrupted) is awaited before the next one starts, so two heavy conversions never run side by side;
+ * whatever a cancelled run still produces is discarded; errors are shown as localised text ([errorText]), never as raw
+ * English messages or class names.
+ */
+class T5Job(private val scope: CoroutineScope, private val errorText: (Throwable) -> String = { it.message ?: "" }) {
     var running by mutableStateOf(false); private set
+    /** A cancelled run is still finishing (the next one waits for it). */
+    var finishing by mutableStateOf(false); private set
     var message by mutableStateOf("")
     var progress by mutableStateOf<Float?>(null)
     var error by mutableStateOf<String?>(null)
@@ -54,12 +63,18 @@ class T5Job(private val scope: CoroutineScope) {
         if (running) return
         running = true; message = msg; progress = null; error = null; info = null
         val gen = ++generation
+        val previous = job
         job = scope.launch {
-            try { block() }
+            try {
+                previous?.join()   // one conversion at a time: a cancelled one finishes (and cleans up) first
+                if (gen != generation) return@launch
+                block()
+            }
             catch (e: kotlinx.coroutines.CancellationException) { }
-            catch (e: OutOfMemoryError) { if (gen == generation) error = "OutOfMemory" }
-            catch (e: Exception) { if (gen == generation) error = e.message ?: e.javaClass.simpleName }
-            catch (e: Throwable) { if (gen == generation) error = e.message ?: e.javaClass.simpleName }   // NoClassDefFoundError, StackOverflowError… must not kill the app
+            catch (e: Throwable) {   // OutOfMemoryError, NoClassDefFoundError, StackOverflowError… must not kill the app
+                android.util.Log.w("T5Job", "job failed", e)
+                if (gen == generation) error = runCatching { errorText(e) }.getOrNull()?.ifBlank { null } ?: e.javaClass.simpleName
+            }
             finally { if (gen == generation) running = false }
         }
     }
@@ -71,12 +86,18 @@ class T5Job(private val scope: CoroutineScope) {
         val g = ++generation
         j.cancel()
         running = false; progress = null
-        j.invokeOnCompletion { scope.launch { if (generation == g) { result = null; results = emptyList(); info = null } } }   // a newer run's results stay
+        if (j.isActive) finishing = true
+        j.invokeOnCompletion { scope.launch { if (generation == g) { result = null; results = emptyList(); info = null }; finishing = false } }   // a newer run's results stay
     }
 }
 
+/** A job whose errors are shown in the app language ([com.smartdocs.editor.ui.convert6.Cv6ErrorText]). */
 @Composable
-fun rememberT5Job(): T5Job { val scope = rememberCoroutineScope(); return remember { T5Job(scope) } }
+fun rememberT5Job(): T5Job {
+    val scope = rememberCoroutineScope()
+    val ctx = LocalContext.current.applicationContext
+    return remember { T5Job(scope) { e -> com.smartdocs.editor.ui.convert6.Cv6ErrorText.of(ctx, e) } }
+}
 
 /** Progress dialog with percent and a cancel button, result sheet / list and error snackbar for a [T5Job]. */
 @Composable

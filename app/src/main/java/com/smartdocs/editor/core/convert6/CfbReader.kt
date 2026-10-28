@@ -127,6 +127,56 @@ class CfbReader(private val b: ByteArray) {
     }
 
     companion object {
+        /**
+         * Stream names of a CFB file read from disk without loading it: the header, the FAT sectors the directory
+         * chain needs and the directory sectors (convert audit A-L5 / C14: file-type detection read a whole 100 MB
+         * .xls into memory, several times). Null when it is not a readable CFB.
+         */
+        fun streamNamesOf(f: java.io.File): List<String>? = runCatching {
+            java.io.RandomAccessFile(f, "r").use { raf ->
+                val head = ByteArray(512)
+                if (raf.length() < 512) return null
+                raf.readFully(head)
+                if (le32(head, 0) != 0xE011CFD0.toInt() || le32(head, 4) != 0xE11AB1A1.toInt()) return null
+                val shift = le16(head, 0x1E); if (shift !in 7..16) return null
+                val sec = 1 shl shift
+                val per = sec / 4
+                fun read(s: Int): ByteArray? {
+                    val off = (s.toLong() + 1) shl shift
+                    if (s < 0 || off + sec > raf.length()) return null
+                    return ByteArray(sec).also { raf.seek(off); raf.readFully(it) }
+                }
+                val fatSectors = ArrayList<Int>()
+                for (i in 0 until 109) { val s = le32(head, 0x4C + i * 4); if (s >= 0) fatSectors += s }
+                var difat = le32(head, 0x44); var guard = 0
+                while (difat >= 0 && guard++ < 1000) {
+                    val b = read(difat) ?: break
+                    for (i in 0 until per - 1) { val s = le32(b, i * 4); if (s >= 0) fatSectors += s }
+                    difat = le32(b, sec - 4)
+                }
+                val fatCache = HashMap<Int, ByteArray>()
+                fun next(s: Int): Int {
+                    val fs = fatSectors.getOrNull(s / per) ?: return -2
+                    val b = fatCache.getOrPut(fs) { read(fs) ?: return -2 }
+                    return le32(b, (s % per) * 4)
+                }
+                val names = ArrayList<String>()
+                var s = le32(head, 0x30); var n = 0
+                val seen = HashSet<Int>()
+                while (s >= 0 && n++ < 10_000 && seen.add(s)) {
+                    val d = read(s) ?: break
+                    var o = 0
+                    while (o + 128 <= d.size) {
+                        val nameLen = le16(d, o + 64)
+                        if (d[o + 66].toInt() and 0xFF == 2 && nameLen in 2..64) names += String(d, o, nameLen - 2, Charsets.UTF_16LE)
+                        o += 128
+                    }
+                    s = next(s)
+                }
+                names
+            }
+        }.getOrNull()
+
         fun le32(a: ByteArray, o: Int): Int =
             (a[o].toInt() and 0xFF) or ((a[o + 1].toInt() and 0xFF) shl 8) or ((a[o + 2].toInt() and 0xFF) shl 16) or ((a[o + 3].toInt() and 0xFF) shl 24)
         fun le16(a: ByteArray, o: Int): Int = (a[o].toInt() and 0xFF) or ((a[o + 1].toInt() and 0xFF) shl 8)

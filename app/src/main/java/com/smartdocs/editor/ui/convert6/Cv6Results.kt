@@ -53,10 +53,11 @@ fun commonMime(files: List<File>): String {
 /** Results of a run that produced several files: open / share each, share all, pack all into one ZIP. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun Cv6ResultsSheet(files: List<File>, info: String?, nav: NavHostController, onDismiss: () -> Unit, onZip: (File) -> Unit) {
+fun Cv6ResultsSheet(files: List<File>, info: String?, nav: NavHostController, onDismiss: () -> Unit, onZip: (File) -> Unit, onError: (String) -> Unit = {}) {
     val app = LocalApp.current
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
+    var zipping by remember { mutableStateOf(false) }
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = MaterialTheme.colorScheme.surfaceContainerLow) {
         Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 24.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -89,16 +90,22 @@ fun Cv6ResultsSheet(files: List<File>, info: String?, nav: NavHostController, on
                 Button(onClick = { runCatching { ctx.startActivity(Intent.createChooser(app.documents.shareIntent(files, commonMime(files)), null)) } }, Modifier.weight(1f)) {
                     Icon(Icons.Default.Share, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.cv6_share_all))
                 }
-                OutlinedButton(onClick = {
+                OutlinedButton(enabled = !zipping, onClick = {
+                    zipping = true
                     scope.launch {
-                        val zip = withContext(Dispatchers.IO) {
-                            val z = app.documents.uniqueFile(app.documents.docsDir, files.first().nameWithoutExtension + "_all", "zip")
-                            ZipOutputStream(z.outputStream().buffered()).use { zo -> files.forEach { f -> zo.putNextEntry(ZipEntry(f.name)); f.inputStream().use { it.copyTo(zo) }; zo.closeEntry() } }
-                            z
+                        // a full disk or a file error is a message, not a crash; duplicate names are numbered (A-L9 / B27 / C30)
+                        val z = app.documents.uniqueFile(app.documents.docsDir, files.first().nameWithoutExtension + "_all", "zip")
+                        val zip = runCatching {
+                            withContext(Dispatchers.IO) {
+                                val names = com.smartdocs.editor.core.convert6.ImageNaming.dedupe(files.map { it.name })
+                                ZipOutputStream(z.outputStream().buffered()).use { zo -> files.forEachIndexed { i, f -> zo.putNextEntry(ZipEntry(names[i])); f.inputStream().use { it.copyTo(zo) }; zo.closeEntry() } }
+                                z
+                            }
                         }
-                        onZip(zip)
+                        zipping = false
+                        zip.onSuccess { onZip(it) }.onFailure { e -> z.delete(); onError(Cv6ErrorText.of(ctx, e)) }
                     }
-                }, Modifier.weight(1f)) { Icon(Icons.Default.FolderZip, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.cv6_zip_all)) }
+                }, modifier = Modifier.weight(1f)) { Icon(Icons.Default.FolderZip, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.cv6_zip_all)) }
             }
         }
     }

@@ -226,6 +226,9 @@ object Optimizer {
             ImgCompression.ZIP -> needScale || isJpeg.not() || c.o.grayImages
         }
         if (!recode) return null
+        // grayscale: pictures that are grey already are left as they are (convert audit C28: lossless grey scans became bigger JPEGs)
+        val colour = c.o.grayImages && !isGray(img)
+        if (c.o.grayImages && !colour && !needScale && !c.o.onlyIfSmaller) return null
         val bmp0 = runCatching { img.image }.getOrNull() ?: return null
         var bmp = bmp0
         if (needScale) {
@@ -264,7 +267,8 @@ object Optimizer {
         bmp0.recycle()
         made ?: return null
         val newLen = runCatching { made.cosObject.length }.getOrDefault(Long.MAX_VALUE)
-        if (newLen >= oldLen && !c.o.scanFilters) return null     // never make an image bigger (filters change the look on purpose)
+        // never make an image bigger (filters change the look on purpose; a colour picture of a grayscale copy must go grey)
+        if (newLen >= oldLen && !c.o.scanFilters && !colour) return null
         c.done[img.cosObject] = made; c.changed++
         return made
     }
@@ -333,7 +337,8 @@ object Optimizer {
         var subset = 0; var merged = 0; var flattened = 0
         var cleaned: Map<String, Int> = emptyMap()
         var transparency: Set<Int> = emptySet()
-        (if (password.isNullOrEmpty()) PDDocument.load(src) else PDDocument.load(src, password)).use { doc ->
+        // temp-file memory for big scans (convert audit C10)
+        PDDocument.load(src, password.orEmpty(), com.tom_roush.pdfbox.io.MemoryUsageSetting.setupMixed(48L shl 20)).use { doc ->
             before = audit(doc, src.length())
             val protectedInput = doc.isEncrypted
             if (protectedInput) { if (o.keepProtection) com.smartdocs.editor.core.pdf.PdfOps.reprotect(doc, password) else doc.isAllSecurityToBeRemoved = true }

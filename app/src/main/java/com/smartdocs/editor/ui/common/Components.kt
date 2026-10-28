@@ -373,7 +373,10 @@ fun FilePickRow(file: File?, label: String, onPick: () -> Unit) {
 
 @Composable
 fun PageRangeField(value: String, onChange: (String) -> Unit) {
-    OutlinedTextField(value, onChange, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.page_range)) }, placeholder = { Text(stringResource(R.string.pages_hint)) }, singleLine = true, shape = RoundedCornerShape(16.dp))
+    // Arabic-Indic digits and «،» are accepted; anything else is flagged before converting (convert audit B17 / A-M12)
+    val bad = !com.smartdocs.editor.core.pdf.PdfOps.rangeSyntaxOk(value)
+    OutlinedTextField(value, onChange, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.page_range)) }, placeholder = { Text(stringResource(R.string.pages_hint)) }, singleLine = true, shape = RoundedCornerShape(16.dp),
+        isError = bad, supportingText = if (bad) ({ Text(stringResource(R.string.cv6_err_range)) }) else null)
 }
 
 @Composable

@@ -15,13 +15,15 @@ object FlowDocx {
     private val x = Text6::xml
 
     private class Ctx {
-        val media = ArrayList<Pair<String, ByteArray>>()
+        val media = ArrayList<Pair<String, () -> ByteArray>>()
         val links = ArrayList<String>()
         var picId = 0
         var numInstances = 0
+        var dropped = 0
     }
 
-    fun write(doc: FlowDoc, out: OutputStream) {
+    /** Returns the number of pictures that could not be stored (EMF / WMF / SVG without a platform decoder). */
+    fun write(doc: FlowDoc, out: OutputStream): Int {
         val c = Ctx()
         val body = StringBuilder()
         var lastList: Boolean? = null   // ordered?
@@ -46,8 +48,9 @@ object FlowDocx {
             put("word/styles.xml", styles(doc.rtl))
             put("word/numbering.xml", numbering(c.numInstances))
             put("word/_rels/document.xml.rels", rels(c))
-            c.media.forEach { (n, bytes) -> z.putNextEntry(ZipEntry("word/media/$n")); z.write(bytes); z.closeEntry() }
+            c.media.forEach { (n, bytes) -> z.putNextEntry(ZipEntry("word/media/$n")); z.write(bytes()); z.closeEntry() }
         }
+        return c.dropped
     }
 
     private fun pPr(style: String?, rtl: Boolean, align: FAlign = FAlign.START, extra: String = ""): String {
@@ -60,9 +63,42 @@ object FlowDocx {
         return sb.toString()
     }
 
+    /**
+     * A run that mixes Arabic and Latin words is split by direction, so only the Arabic part carries `<w:rtl/>`
+     * (convert audit C38: "نص مع English 123" laid the Latin words out as complex script). Pure, used by the tests.
+     */
+    fun directionSegments(text: String): List<Pair<String, Boolean>> {
+        if (text.none { Text6.isRtlChar(it) }) return listOf(text to false)
+        if (text.none { it.isLetter() && !Text6.isRtlChar(it) }) return listOf(text to true)
+        val out = ArrayList<Pair<String, Boolean>>()
+        val latin = Regex("""[A-Za-zÀ-ɏ](?:[A-Za-z0-9À-ɏ'’.,:/@_\-]|\s+(?=[A-Za-z0-9À-ɏ]))*""")
+        var pos = 0
+        latin.findAll(text).forEach { m ->
+            if (m.range.first > pos) out += text.substring(pos, m.range.first) to true
+            out += m.value to false
+            pos = m.range.last + 1
+        }
+        if (pos < text.length) out += text.substring(pos) to true
+        return out.filter { it.first.isNotEmpty() }
+    }
+
     private fun runXml(r: FRun, c: Ctx): String {
         if (r.text.isEmpty()) return ""
-        val rtl = r.text.any { Text6.isRtlChar(it) }
+        val link = Text6.safeLink(r.link)
+        val segs = directionSegments(r.text)
+        if (segs.size > 1) {
+            val inner = segs.joinToString("") { (t, rtl) -> runXml(r.copy(text = t, link = link), c, rtl) }
+            if (link == null) return inner
+            c.links += link
+            return "<w:hyperlink r:id=\"rIdL${c.links.size}\">$inner</w:hyperlink>"
+        }
+        val run = runXml(r.copy(link = link), c, segs.firstOrNull()?.second ?: false)
+        if (link == null) return run
+        c.links += link
+        return "<w:hyperlink r:id=\"rIdL${c.links.size}\">$run</w:hyperlink>"
+    }
+
+    private fun runXml(r: FRun, c: Ctx, rtl: Boolean): String {
         val props = StringBuilder()
         if (r.code) props.append("<w:rFonts w:ascii=\"Courier New\" w:hAnsi=\"Courier New\" w:cs=\"Courier New\"/>")
         if (r.bold) props.append("<w:b/><w:bCs/>")
@@ -74,10 +110,7 @@ object FlowDocx {
         val inner = parts.mapIndexed { i, p ->
             (if (i > 0) "<w:br/>" else "") + p.split('\t').mapIndexed { j, s -> (if (j > 0) "<w:tab/>" else "") + (if (s.isEmpty()) "" else "<w:t xml:space=\"preserve\">${x(s)}</w:t>") }.joinToString("")
         }.joinToString("")
-        val run = "<w:r>$rPr$inner</w:r>"
-        if (r.link == null) return run
-        c.links += r.link
-        return "<w:hyperlink r:id=\"rIdL${c.links.size}\">$run</w:hyperlink>"
+        return "<w:r>$rPr$inner</w:r>"
     }
 
     private fun runs(rs: List<FRun>, c: Ctx) = rs.joinToString("") { runXml(it, c) }
@@ -119,22 +152,25 @@ object FlowDocx {
         sb.append("</w:tbl><w:p/>")
     }
 
-    private fun image(img: FBlock.Image, sb: StringBuilder, c: Ctx) {
-        val ext = (Images6.sniffExt(img.bytes) ?: img.ext).lowercase().let { if (it == "jpeg") "jpg" else it }
-        if (ext !in setOf("jpg", "png", "gif", "bmp")) return
-        val dims = ImageDims.of(img.bytes)
-        var wPt = if (img.widthPt > 0) img.widthPt else dims?.let { it.first * 0.75f } ?: 300f
-        var hPt = if (img.heightPt > 0) img.heightPt else dims?.let { wPt * it.second / it.first.coerceAtLeast(1) } ?: (wPt * 0.75f)
+    private fun image(img0: FBlock.Image, sb: StringBuilder, c: Ctx) {
+        // TIFF / WebP / odd BMP become PNG (convert audit C36); EMF / WMF / SVG are counted as dropped
+        val norm = PortableImage.normalize(img0.bytes, img0.ext, setOf("jpg", "png", "gif", "bmp"))
+        if (norm == null) { c.dropped++; return }
+        val (bytes, ext) = norm
+        val unchanged = img0.file != null && Images6.sniffExt(img0.head) == ext
+        val dims = ImageDims.of(bytes)
+        var wPt = if (img0.widthPt > 0) img0.widthPt else dims?.let { it.first * 0.75f } ?: 300f
+        var hPt = if (img0.heightPt > 0) img0.heightPt else dims?.let { wPt * it.second / it.first.coerceAtLeast(1) } ?: (wPt * 0.75f)
         val maxW = 481f; val maxH = 680f
         val k = minOf(1f, maxW / wPt, maxH / hPt)
         wPt *= k; hPt *= k
         c.picId++
         val name = "image${c.picId}.$ext"
-        c.media += name to img.bytes
+        c.media += name to (if (unchanged) ({ img0.bytes }) else ({ bytes }))
         val cx = (wPt * 12700).toLong(); val cy = (hPt * 12700).toLong()
         val id = c.picId
         sb.append("<w:p><w:pPr><w:jc w:val=\"center\"/></w:pPr><w:r><w:drawing><wp:inline distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\"><wp:extent cx=\"$cx\" cy=\"$cy\"/>")
-            .append("<wp:docPr id=\"$id\" name=\"Picture $id\" descr=\"").append(x(img.alt)).append("\"/><a:graphic><a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/picture\">")
+            .append("<wp:docPr id=\"$id\" name=\"Picture $id\" descr=\"").append(x(img0.alt)).append("\"/><a:graphic><a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/picture\">")
             .append("<pic:pic><pic:nvPicPr><pic:cNvPr id=\"$id\" name=\"$name\"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed=\"rIdM$id\"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>")
             .append("<pic:spPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"$cx\" cy=\"$cy\"/></a:xfrm><a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>")
     }

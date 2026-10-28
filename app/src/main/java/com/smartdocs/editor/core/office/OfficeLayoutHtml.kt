@@ -50,6 +50,102 @@ td.n{text-align:right;} table.g[dir=rtl] td.n{text-align:left;} td.b,td.e{text-a
         append("</body></html>")
     }
 
+    // ---------------- print (Excel → PDF, convert audit A-H9) ----------------
+
+    private const val PRINT_CSS = """
+body{background:#fff;color:#111;font-size:10pt;}
+h2.sn{font-size:12pt;margin:0 0 6px 0;}
+table.p{border-collapse:collapse;table-layout:fixed;}
+table.p td,table.p th{border:0.5pt solid #b8bcc2;padding:1px 4px;vertical-align:bottom;overflow:hidden;white-space:pre-wrap;overflow-wrap:anywhere;}
+table.p thead th{background:#eef1f5;font-weight:bold;}
+table.p tr{break-inside:avoid;page-break-inside:avoid;}
+td.n{text-align:right;} table.p[dir=rtl] td.n{text-align:left;} td.b,td.e{text-align:center;}
+.trunc{padding:6px;color:#a33;font-size:9pt;}
+.sheet{break-after:page;page-break-after:always;} .sheet:last-child{break-after:auto;page-break-after:auto;}
+"""
+
+    /** Used area of a sheet: rows / columns that hold a value or a merge (no empty padding rows / columns). */
+    fun usedRange(s: SheetModel): Pair<IntRange, IntRange> {
+        var r0 = Int.MAX_VALUE; var r1 = -1; var c0 = Int.MAX_VALUE; var c1 = -1
+        s.rows.forEach { row -> row.cells.forEach { c -> if (c.display.isNotBlank()) { r0 = minOf(r0, row.index); r1 = maxOf(r1, row.index); c0 = minOf(c0, c.col); c1 = maxOf(c1, c.col) } } }
+        s.merges.forEach { m -> r0 = minOf(r0, m.r1); r1 = maxOf(r1, m.r2); c0 = minOf(c0, m.c1); c1 = maxOf(c1, m.c2) }
+        if (r1 < 0) return IntRange.EMPTY to IntRange.EMPTY
+        return r0..r1 to c0..c1
+    }
+
+    /** Printed width of the used columns in CSS px. */
+    fun printWidthPx(s: SheetModel): Int { val (_, cols) = usedRange(s); return cols.sumOf { colPx(s, it) } }
+
+    /** Landscape when a sheet is wider than a portrait page (≈ 700 px of printable width). */
+    fun wantsLandscape(book: WorkbookModel): Boolean = book.sheets.any { printWidthPx(it) > 700 }
+
+    /**
+     * One sheet (rows [rows] of its used range) as a clean printable table: no column letters, no row numbers, no
+     * padding rows / columns, gridlines as thin borders; the first row repeats on every page when it looks like a header;
+     * a sheet wider than the page is zoomed to fit its width ([pageWidthPx]). [title] is shown above the first part.
+     */
+    fun printSheet(book: WorkbookModel, index: Int, rows: IntRange?, pageWidthPx: Int, title: String?, truncatedNote: String?): String = buildString {
+        val s = book.sheets[index]
+        val (used, cols) = usedRange(s)
+        append(OfficeHtml.head(s.name, "width=device-width, initial-scale=1", PRINT_CSS))
+        append("<body><div class=\"sheet\">")
+        if (title != null) append("<h2 class=\"sn\" dir=\"auto\">").append(esc(title)).append("</h2>")
+        if (used.isEmpty()) { append("</div></body></html>"); return@buildString }
+        val range = rows?.let { maxOf(it.first, used.first)..minOf(it.last, used.last) } ?: used
+        val width = cols.sumOf { colPx(s, it) }.coerceAtLeast(1)
+        val zoom = minOf(1f, pageWidthPx.toFloat() / width)
+        val byRow = s.rows.associateBy { it.index }
+        val covered = HashSet<Long>(); val spans = HashMap<Long, Pair<Int, Int>>()
+        for (m in s.merges) {
+            spans[key(m.r1, m.c1)] = (m.r2 - m.r1 + 1) to (m.c2 - m.c1 + 1)
+            for (r in m.r1..m.r2) for (c in m.c1..m.c2) if (r != m.r1 || c != m.c1) covered.add(key(r, c))
+        }
+        val first = byRow[used.first]
+        val headerLike = first != null && first.cells.count { it.display.isNotBlank() } >= 2 && first.cells.all { it.type == "s" || it.display.isBlank() } &&
+            (used.first + 1..minOf(used.last, used.first + 5)).any { r -> byRow[r]?.cells?.any { it.type == "n" } == true }
+        append("<table class=\"p\" dir=\"").append(if (s.rtl) "rtl" else "ltr").append('"')
+        if (zoom < 0.999f) append(" style=\"zoom:").append(fmt(zoom)).append('"')
+        append("><colgroup>")
+        for (c in cols) append("<col style=\"width:").append(colPx(s, c)).append("px\">")
+        append("</colgroup>")
+        fun row(r: Int, tag: String) {
+            val rw = byRow[r]
+            append("<tr")
+            rw?.heightPt?.let { append(" style=\"height:").append((it * 4 / 3).toInt()).append("px\"") }
+            append('>')
+            val cells = rw?.cells?.associateBy { it.col } ?: emptyMap()
+            for (c in cols) {
+                if (key(r, c) in covered) continue
+                val cell = cells[c]
+                val st = cell?.let { book.styles.getOrNull(it.styleIndex) }
+                append('<').append(tag)
+                val cls = when (cell?.type) { "n" -> if (st?.hAlign == null) "n" else ""; "b" -> "b"; "e" -> "e"; else -> "" }
+                if (cls.isNotBlank()) append(" class=\"").append(cls).append('"')
+                spans[key(r, c)]?.let { (rs, cs) -> if (rs > 1) append(" rowspan=\"").append(rs).append('"'); if (cs > 1) append(" colspan=\"").append(cs).append('"') }
+                if (cell?.type == "s") append(" dir=\"auto\"")
+                if (st != null) {
+                    val css = StringBuilder()
+                    if (st.bold) css.append("font-weight:bold;")
+                    if (st.italic) css.append("font-style:italic;")
+                    st.color?.let { css.append("color:#").append(it).append(';') }
+                    st.fill?.let { css.append("background:#").append(it).append(';') }
+                    when (st.hAlign) { "center", "centerContinuous" -> css.append("text-align:center;"); "left" -> css.append("text-align:left;"); "right" -> css.append("text-align:right;"); "justify" -> css.append("text-align:justify;") }
+                    if (css.isNotEmpty()) append(" style=\"").append(css).append('"')
+                }
+                append('>')
+                if (cell != null) append(esc(cell.display))
+                append("</").append(tag).append('>')
+            }
+            append("</tr>")
+        }
+        if (headerLike) { append("<thead>"); row(used.first, "th"); append("</thead>") }
+        append("<tbody>")
+        for (r in range) { if (headerLike && r == used.first) continue; row(r, "td") }
+        append("</tbody></table>")
+        if (truncatedNote != null) append("<div class=\"trunc\" dir=\"auto\">").append(esc(truncatedNote)).append("</div>")
+        append("</div></body></html>")
+    }
+
     private fun colPx(s: SheetModel, c: Int): Int {
         val w = s.colWidths[c] ?: s.defaultColWidth
         return if (w <= 0f) 0 else (w * 7 + 5).toInt().coerceIn(16, 900)
@@ -130,14 +226,20 @@ body{background:#5f6368;}
 @media print{body{background:#fff;}.sl{margin:0 auto;box-shadow:none;page-break-after:always;break-after:page;border:1px solid #ddd;}.num{display:none;}}
 """
 
-    fun render(model: PresentationModel, forPrint: Boolean): String = buildString {
-        append(OfficeHtml.head("", "width=1000", CSS))
+    /** Print layout: one slide per page of the slide's own size (the caller sets that paper), no frame or gap (audit A-M3). */
+    private const val PRINT_CSS = "@media print{.sl{margin:0!important;border:0!important;box-shadow:none!important;}}html,body{margin:0;padding:0;background:#fff;}"
+
+    /** [pageWidthPx] (print): the printable width in CSS px; each 960-px slide is zoomed to it. */
+    fun render(model: PresentationModel, forPrint: Boolean, pageWidthPx: Int = 0): String = buildString {
+        append(OfficeHtml.head("", "width=1000", CSS + if (forPrint && pageWidthPx > 0) PRINT_CSS else ""))
         append("<body>")
+        val zoom = if (forPrint && pageWidthPx > 0) pageWidthPx.toFloat() / SLIDE_PX else 0f
         model.slides.forEachIndexed { i, s ->
             val scale = SLIDE_PX.toDouble() / s.width.coerceAtLeast(1)
             val hPx = (s.height * scale).toInt()
             if (!forPrint) append("<div class=\"num\">").append(i + 1).append(" / ").append(model.slides.size).append("</div>")
             append("<div class=\"sl\" id=\"slide").append(i + 1).append("\" style=\"width:").append(SLIDE_PX).append("px;height:").append(hPx).append("px;")
+            if (zoom > 0f) append("zoom:").append(fmt(zoom)).append(';')
             s.background?.let { append("background:#").append(it).append(';') }
             append("\">")
             s.shapes.forEach { shape(it, scale, this) }
