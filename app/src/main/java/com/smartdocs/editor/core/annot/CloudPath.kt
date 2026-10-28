@@ -58,9 +58,22 @@ object CloudPath {
     fun ellipse(l: Float, b: Float, r: Float, t: Float, intensity: Int, lineWidth: Float): List<Pair<Float, Float>> {
         val rx = kotlin.math.abs(r - l) / 2f; val ry = kotlin.math.abs(t - b) / 2f
         val cx = (l + r) / 2f; val cy = (b + t) / 2f
-        val perim = (Math.PI * (3 * (rx + ry) - kotlin.math.sqrt(((3 * rx + ry) * (rx + 3 * ry)).toDouble()))).toFloat()
-        val n = max(8, ceil(perim / (2f * radius(intensity, lineWidth))).toInt()).coerceAtMost(720)
-        return (0 until n).map { i -> val a = 2.0 * Math.PI * i / n; (cx + rx * kotlin.math.cos(a)).toFloat() to (cy + ry * kotlin.math.sin(a)).toFloat() }
+        // dense outline, then points spaced evenly along its length so every bump has the same size
+        val dense = 720
+        val ring = (0..dense).map { i -> val a = 2.0 * Math.PI * i / dense; (cx + rx * kotlin.math.cos(a)).toFloat() to (cy + ry * kotlin.math.sin(a)).toFloat() }
+        val cum = FloatArray(dense + 1)
+        for (i in 1..dense) cum[i] = cum[i - 1] + hypot(ring[i].first - ring[i - 1].first, ring[i].second - ring[i - 1].second)
+        val perim = cum[dense]
+        val n = max(8, ceil(perim / (2f * radius(intensity, lineWidth))).toInt()).coerceAtMost(dense)
+        val out = ArrayList<Pair<Float, Float>>(n)
+        var j = 0
+        for (k in 0 until n) {
+            val target = perim * k / n
+            while (j < dense - 1 && cum[j + 1] < target) j++
+            val seg = (cum[j + 1] - cum[j]).coerceAtLeast(1e-6f); val t = ((target - cum[j]) / seg).coerceIn(0f, 1f)
+            out += (ring[j].first + (ring[j + 1].first - ring[j].first) * t) to (ring[j].second + (ring[j + 1].second - ring[j].second) * t)
+        }
+        return out
     }
 
     /** Bounding box (minX, minY, maxX, maxY) of [pts] grown by [pad]. */
