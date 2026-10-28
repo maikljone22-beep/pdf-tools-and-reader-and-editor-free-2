@@ -135,6 +135,7 @@ object FormActions {
             "flatten" -> flatten(fs)
             "remove" -> { fs.removeFieldByScript(q["n"]); unsupported += "removeField -> hidden" }
             "menu" -> named(fs, q["n"])
+            "dataobj" -> exportDataObject(fs, q["n"])
             "unsupported" -> unsupported += q["m"]
         }
         if (unsupported.isNotEmpty()) fs.message = FormMessage.Unsupported(unsupported.distinct().joinToString(", "))
@@ -333,6 +334,25 @@ object FormActions {
             }
         }
         runCatching { sendMail(fs, out, mime, emptyArray(), name) }.onFailure { fs.message = FormMessage.Failed(it.message ?: it.toString()) }
+    }
+
+    /** 8.84 exportDataObject: the named embedded file of the document, handed to a share target. */
+    private suspend fun exportDataObject(fs: FormFillState, name: String) {
+        val file = fs.reader.file ?: return
+        val out = withContext(Dispatchers.IO) {
+            runCatching {
+                val src = fs.exportSource(file, fs.reader.password)      // COPY-gated like every export
+                com.smartdocs.editor.core.pdf.PdfOps.loadRaw(src, fs.reader.password).use { d ->
+                    com.smartdocs.editor.core.forms5.DataObjects.find(d, name)?.let { o ->
+                        File(fs.reader.app.documents.tempDir, com.smartdocs.editor.core.forms5.DataObjects.safeName(o.fileName)).also { it.writeBytes(o.bytes) }
+                    }
+                }
+            }
+        }
+        val f = out.getOrNull()
+        if (f == null) { fs.message = out.exceptionOrNull()?.let { FormMessage.Failed(it.message ?: it.toString()) } ?: FormMessage.Unsupported("exportDataObject: $name"); return }
+        val send = fs.reader.app.documents.shareIntent(listOf(f), com.smartdocs.editor.core.annot.MediaAnnots.mimeOf(f.name))
+        runCatching { fs.reader.context.startActivity(Intent.createChooser(send, null).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)) }
     }
 
     // ------------------------------------------------------------------ print / flatten / layers
