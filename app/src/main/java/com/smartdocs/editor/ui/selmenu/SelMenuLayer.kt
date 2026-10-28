@@ -11,6 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import java.io.File
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.geometry.Offset
@@ -203,19 +204,50 @@ fun SelMenuLayer(
     }
 }
 
-/** Saves the selected text as a .txt file (system file picker). */
+/**
+ * Saves the selection (system file picker): as plain text, or (FINAL_CHECK_2 #4) its region of the page as Word, Excel
+ * or PowerPoint, laid out by the converter ([com.smartdocs.editor.core.convert.RegionExport]).
+ */
 @Composable
 private fun ExportSelection(state: ReaderState, sel: TextSelection, onDone: () -> Unit) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
-    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
-        if (uri != null) scope.launch {
-            val ok = withContext(Dispatchers.IO) { runCatching { ctx.contentResolver.openOutputStream(uri)?.use { it.write(sel.text.toByteArray()) } != null }.getOrDefault(false) }
-            android.widget.Toast.makeText(ctx, if (ok) R.string.success else R.string.nv_failed, android.widget.Toast.LENGTH_SHORT).show()
+    var format by remember { mutableStateOf<com.smartdocs.editor.core.convert.TargetFormat?>(null) }
+    val base = (state.file?.nameWithoutExtension ?: "selection") + "_p${sel.page + 1}"
+    fun done(ok: Boolean) { android.widget.Toast.makeText(ctx, if (ok) R.string.success else R.string.nv_failed, android.widget.Toast.LENGTH_SHORT).show(); onDone() }
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("*/*")) { uri ->
+        val f = format
+        if (uri == null) { onDone(); return@rememberLauncherForActivityResult }
+        scope.launch {
+            val ok = withContext(Dispatchers.IO) {
+                runCatching {
+                    val src = state.file
+                    if (f == com.smartdocs.editor.core.convert.TargetFormat.TXT || src == null) ctx.contentResolver.openOutputStream(uri)?.use { it.write(sel.text.toByteArray()) } != null
+                    else {
+                        val tmp = File(ctx.cacheDir, "selexp_${System.nanoTime()}.${f!!.ext}")
+                        try {
+                            val l = sel.rects.minOf { minOf(it.left, it.right) }; val r = sel.rects.maxOf { maxOf(it.left, it.right) }
+                            val t = sel.rects.maxOf { maxOf(it.top, it.bottom) }; val b = sel.rects.minOf { minOf(it.top, it.bottom) }
+                            val laid = com.smartdocs.editor.core.convert.RegionExport.export(src, state.password, sel.page, l, b, r, t, f, tmp, base, sel.text)
+                            if (laid) ctx.contentResolver.openOutputStream(uri)?.use { o -> tmp.inputStream().use { it.copyTo(o) } } != null
+                            else ctx.contentResolver.openOutputStream(uri)?.use { it.write(sel.text.toByteArray()) } != null   // nothing to lay out: the text
+                        } finally { tmp.delete() }
+                    }
+                }.getOrDefault(false)
+            }
+            done(ok)
         }
-        onDone()
     }
-    LaunchedEffect(sel) { runCatching { launcher.launch((state.file?.nameWithoutExtension ?: "selection") + "_p${sel.page + 1}.txt") }.onFailure { onDone() } }
+    AlertDialog(onDismissRequest = onDone, title = { Text(stringResource(R.string.cv9_export_sel)) },
+        text = {
+            Column {
+                listOf(com.smartdocs.editor.core.convert.TargetFormat.TXT to R.string.cv9_fmt_txt, com.smartdocs.editor.core.convert.TargetFormat.DOCX to R.string.cv9_fmt_word,
+                    com.smartdocs.editor.core.convert.TargetFormat.XLSX to R.string.cv9_fmt_excel, com.smartdocs.editor.core.convert.TargetFormat.PPTX to R.string.cv9_fmt_ppt).forEach { (fm, label) ->
+                    TextButton(onClick = { format = fm; runCatching { launcher.launch("$base.${fm.ext}") }.onFailure { onDone() } }) { Text(stringResource(label)) }
+                }
+            }
+        },
+        confirmButton = {}, dismissButton = { TextButton(onClick = onDone) { Text(stringResource(R.string.cancel)) } })
 }
 
 /**

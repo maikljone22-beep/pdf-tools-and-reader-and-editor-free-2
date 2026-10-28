@@ -69,4 +69,9 @@
     <string name="cv9_preset_archive">أرشيفي (PDF/A)</string>
     <string name="cv9_tagged">PDF موسوم</string>
     <string name="cv9_tagged_sub">وسوم العناوين والقوائم والجداول لقارئات الشاشة</string>
+    <string name="cv9_export_sel">تصدير التحديد</string>
+    <string name="cv9_fmt_txt">نص (.txt)</string>
+    <string name="cv9_fmt_word">Word (.docx)</string>
+    <string name="cv9_fmt_excel">Excel (.xlsx)</string>
+    <string name="cv9_fmt_ppt">PowerPoint (.pptx)</string>
 </resources>

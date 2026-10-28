@@ -69,4 +69,9 @@
     <string name="cv9_preset_archive">Archival (PDF/A)</string>
     <string name="cv9_tagged">Tagged PDF</string>
     <string name="cv9_tagged_sub">Headings, lists and tables tagged for screen readers</string>
+    <string name="cv9_export_sel">Export selection</string>
+    <string name="cv9_fmt_txt">Text (.txt)</string>
+    <string name="cv9_fmt_word">Word (.docx)</string>
+    <string name="cv9_fmt_excel">Excel (.xlsx)</string>
+    <string name="cv9_fmt_ppt">PowerPoint (.pptx)</string>
 </resources>
