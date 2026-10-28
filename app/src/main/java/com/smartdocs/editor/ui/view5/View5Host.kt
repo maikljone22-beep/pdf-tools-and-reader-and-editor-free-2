@@ -40,6 +40,8 @@ fun View5ReaderHost(s: ReaderState, nav: NavHostController, snack: SnackbarHostS
     // every jump (links, outline, bookmarks, search, go-to) goes through pendingJump: record where we were
     LaunchedEffect(s) { snapshotFlow { s.pendingJump }.collect { p -> if (p != null) v.recordJump(s.currentPage, p) } }
     ToolMemoryEffect(s)
+    // tab-view-core V-34: stopping auto scroll (chip, Esc, command) puts the user's page layout back
+    LaunchedEffect(s) { snapshotFlow { v.autoScroll }.collect { on -> if (!on) v.modeBeforeAutoScroll?.let { m -> v.modeBeforeAutoScroll = null; if (s.viewMode == ViewMode.CONTINUOUS) s.viewMode = m } } }
     val ctx = LocalContext.current
     LaunchedEffect(Unit) { ReadAloudOptions.apply(ctx) }
 
@@ -56,7 +58,7 @@ fun View5ReaderHost(s: ReaderState, nav: NavHostController, snack: SnackbarHostS
         V5Surface.PRINT -> PrintSheet5(v, outputFile, msg)
         V5Surface.SHORTCUTS -> ShortcutsSheet(v)
         V5Surface.OVERLAY_SETTINGS -> OverlaySettingsSheet(v)
-        V5Surface.AUTO_SCROLL -> LaunchedEffect(Unit) { v.close(); if (s.viewMode != ViewMode.CONTINUOUS) s.viewMode = ViewMode.CONTINUOUS; v.autoScroll = true; v.autoPaused = false }
+        V5Surface.AUTO_SCROLL -> LaunchedEffect(Unit) { v.close(); v.startAutoScroll(s) }      // tab-view-core V-34
         V5Surface.READ_ALOUD -> ReadAloudOptionsSheet(v)
     }
 }
@@ -66,20 +68,23 @@ fun View5ReaderHost(s: ReaderState, nav: NavHostController, snack: SnackbarHostS
 fun View5ViewChips(s: ReaderState) {
     val v = V5State.of(s)
     VerticalDivider(Modifier.height(36.dp).padding(horizontal = 4.dp))
-    ToolChip(Icons.Default.Bolt, stringResource(R.string.v5_tell_me)) { v.open(V5Surface.COMMANDS) }
-    ToolChip(Icons.Default.ViewHeadline, stringResource(R.string.v5_reflow), selected = s.reflow) { s.reflow = !s.reflow }
-    ToolChip(Icons.Default.VerticalSplit, stringResource(R.string.v5_split_view)) { v.open(V5Surface.SPLIT) }
-    ToolChip(Icons.Default.Compare, stringResource(R.string.v5_compare)) { v.open(V5Surface.COMPARE) }
-    ToolChip(Icons.Default.Slideshow, stringResource(R.string.v5_presentation)) { v.open(V5Surface.PRESENT) }
-    ToolChip(Icons.Default.SwipeVertical, stringResource(R.string.v5_auto_scroll), selected = v.autoScroll) {
+    // tab-view-core V-10: the second Reflow chip and the Lens chip (a second magnifier) are gone from this row; both stay
+    // in Tell me. V-26: every chip can be hidden in Customise toolbar (ids in NveToolbarPrefs.VIEW_CHIPS).
+    val ctx = LocalContext.current
+    @Suppress("UNUSED_VARIABLE") val ver = com.smartdocs.editor.ui.nve.shell.NveShellPrefs.version.intValue
+    val hidden = com.smartdocs.editor.ui.nve.shell.NveToolbarPrefs.hiddenChips(ctx)
+    if ("v5_tell_me" !in hidden) ToolChip(Icons.Default.Bolt, stringResource(R.string.v5_tell_me)) { v.open(V5Surface.COMMANDS) }
+    if ("v5_split" !in hidden) ToolChip(Icons.Default.VerticalSplit, stringResource(R.string.v5_split_view)) { v.open(V5Surface.SPLIT) }
+    if ("v5_compare" !in hidden) ToolChip(Icons.Default.Compare, stringResource(R.string.v5_compare)) { v.open(V5Surface.COMPARE) }
+    if ("v5_present" !in hidden) ToolChip(Icons.Default.Slideshow, stringResource(R.string.v5_presentation)) { v.open(V5Surface.PRESENT) }
+    if ("v5_auto_scroll" !in hidden) ToolChip(Icons.Default.SwipeVertical, stringResource(R.string.v5_auto_scroll), selected = v.autoScroll) {
         if (v.autoScroll) v.autoScroll = false else v.open(V5Surface.AUTO_SCROLL)
     }
-    ToolChip(Icons.Default.Straighten, stringResource(R.string.v5_rulers), selected = v.rulers) { v.rulers = !v.rulers; v.saveOverlays() }
-    ToolChip(Icons.Default.Grid4x4, stringResource(R.string.v5_grid), selected = v.grid) { v.grid = !v.grid; v.saveOverlays() }
-    ToolChip(Icons.Default.HorizontalRule, stringResource(R.string.v5_reading_ruler), selected = v.readingRuler) { v.readingRuler = !v.readingRuler }
-    ToolChip(Icons.Default.ZoomIn, stringResource(R.string.v5_lens), selected = v.lens) { v.lens = !v.lens }
-    ToolChip(Icons.Default.Tune, stringResource(R.string.v5_overlay_settings)) { v.open(V5Surface.OVERLAY_SETTINGS) }
-    ToolChip(Icons.Default.Repeat, stringResource(R.string.v5_read_aloud_options)) { v.open(V5Surface.READ_ALOUD) }
+    if ("v5_rulers" !in hidden) ToolChip(Icons.Default.Straighten, stringResource(R.string.v5_rulers), selected = v.rulers) { v.rulers = !v.rulers; v.saveOverlays() }
+    if ("v5_grid" !in hidden) ToolChip(Icons.Default.Grid4x4, stringResource(R.string.v5_grid), selected = v.grid) { v.grid = !v.grid; v.saveOverlays() }
+    if ("v5_reading_ruler" !in hidden) ToolChip(Icons.Default.HorizontalRule, stringResource(R.string.v5_reading_ruler), selected = v.readingRuler) { v.readingRuler = !v.readingRuler }
+    if ("v5_overlay" !in hidden) ToolChip(Icons.Default.Tune, stringResource(R.string.v5_overlay_settings)) { v.open(V5Surface.OVERLAY_SETTINGS) }
+    if ("v5_tts_options" !in hidden) ToolChip(Icons.Default.Repeat, stringResource(R.string.v5_read_aloud_options)) { v.open(V5Surface.READ_ALOUD) }
     com.smartdocs.editor.ui.nve.NveViewChips(s)      // NVE
 }
 

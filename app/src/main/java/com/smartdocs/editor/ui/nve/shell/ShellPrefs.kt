@@ -52,7 +52,9 @@ object NveToolbarPrefs {
 
     /** View-tab chips the user can hide (ids used by the parent's ViewToolbar hook). */
     val VIEW_CHIPS = listOf("view_mode", "fit", "night", "page_color", "reflow", "auto_flip", "rotate", "crop", "magnifier", "search", "panels",
-        "bookmarks", "thumbnails", "read_aloud", "ai", "share", "print", "doc_info")
+        "bookmarks", "thumbnails", "attachments", "read_aloud", "ai", "share", "print", "doc_info",
+        // tab-view-core V-26: the View5 and NVE chips of the same row can be hidden too
+        "v5_tell_me", "v5_split", "v5_compare", "v5_present", "v5_auto_scroll", "v5_rulers", "v5_grid", "v5_reading_ruler", "v5_overlay", "v5_tts_options", "nv_zoom", "nv_marquee", "nv_fit_height", "nv_actual", "nv_cont_facing", "nv_reverse", "nv_word_count", "nv_text_viewer", "nv_quad", "nv_transitions", "nv_page_snap", "nv_area_snap", "nv_paste", "nv_select_all", "nv_signatures", "nv_spell")
 }
 
 /** Shell "Convert to Word / Excel / PowerPoint / Text" targets: the conversion the hub opens with. */

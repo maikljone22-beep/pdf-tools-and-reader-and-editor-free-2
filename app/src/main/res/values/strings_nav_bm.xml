@@ -24,7 +24,7 @@
     <string name="nbm_auto_page_links">روابط أرقام الصفحات (جدول المحتويات)</string>
     <string name="nbm_auto_size">حجم تلقائي</string>
     <string name="nbm_bm_added">أضيفت الإشارة المرجعية</string>
-    <string name="nbm_bm_from_selection">إشارة مرجعية</string>
+    <string name="nbm_bm_from_selection">إشارة مرجعية في PDF</string>
     <string name="nbm_bm_imported_n">استوردت %1$d إشارة مرجعية</string>
     <string name="nbm_bold_top">المستوى الأول بخط عريض</string>
     <string name="nbm_centered">في الوسط</string>

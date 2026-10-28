@@ -140,9 +140,10 @@ private fun ViewToolbar(state: ReaderState, a: ReaderActions) {
         if ("rotate" !in nveHidden) ToolChip(Icons.Default.RotateRight, stringResource(R.string.rotate_view)) { state.rotation = (state.rotation + 90) % 360 }
         // view module: crop mode (auto toggle; the View sheet has the full menu) and the pan & zoom window
         if ("crop" !in nveHidden) ToolChip(Icons.Default.Crop, stringResource(R.string.crop_mode), selected = state.vx.crop.enabled) {
-            if (state.vx.crop.enabled) state.vx.crop.disable() else { state.vx.crop.enableAuto(); state.reflow = false; state.vx.magnifier = false }
+            if (state.vx.crop.enabled) state.vx.crop.disable() else { state.vx.crop.enableAuto(); state.reflow = false; state.vx.magnifier = false; com.smartdocs.editor.ui.view5.V5State.of(state).lens = false }
         }
-        if ("magnifier" !in nveHidden) ToolChip(Icons.Default.ZoomIn, stringResource(R.string.vw_magnifier), selected = state.vx.magnifier, enabled = !state.vx.crop.enabled && !state.reflow) { state.vx.magnifier = !state.vx.magnifier }
+        // tab-view-core V-10: the one magnifier chip (the v5 lens stays in Tell me; only one of them is on at a time)
+        if ("magnifier" !in nveHidden) ToolChip(Icons.Default.ZoomIn, stringResource(R.string.vw_magnifier), selected = state.vx.magnifier, enabled = !state.vx.crop.enabled && !state.reflow) { state.vx.magnifier = !state.vx.magnifier; if (state.vx.magnifier) com.smartdocs.editor.ui.view5.V5State.of(state).lens = false }
         if ("search" !in nveHidden) ToolChip(Icons.Default.Search, stringResource(R.string.search), selected = state.searchOpen, onClick = a.search)
         if ("panels" !in nveHidden) ToolChip(Icons.Default.FormatListBulleted, stringResource(R.string.rd_panels)) { a.panels(ReaderPanel.OUTLINE) }
         if ("bookmarks" !in nveHidden) ToolChip(Icons.Default.Bookmark, stringResource(R.string.panel_bookmarks)) { a.panels(ReaderPanel.BOOKMARKS) }
@@ -152,7 +153,7 @@ private fun ViewToolbar(state: ReaderState, a: ReaderActions) {
         if ("ai" !in nveHidden && com.smartdocs.editor.LocalSettings.current.aiEnabled) ToolChip(Icons.Default.AutoAwesome, stringResource(R.string.tool_ai), onClick = a.ai)
         if ("share" !in nveHidden) ToolChip(Icons.Default.Share, stringResource(R.string.share), onClick = a.share)
         if ("print" !in nveHidden) ToolChip(Icons.Default.Print, stringResource(R.string.print), onClick = a.print)
-        if ("doc_info" !in nveHidden) ToolChip(Icons.Default.Info, stringResource(R.string.tool_doc_info), onClick = a.docInfo)
+        if ("doc_info" !in nveHidden) ToolChip(Icons.Default.Info, stringResource(R.string.tvc_info_panel), onClick = a.docInfo)   // tab-view-core V-21: the INFO side panel, named apart from "Document properties"
         com.smartdocs.editor.ui.view5.View5ViewChips(state)
     }
 }

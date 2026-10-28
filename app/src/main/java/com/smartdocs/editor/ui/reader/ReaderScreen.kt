@@ -11,6 +11,8 @@ import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Redo
+import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -86,6 +88,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
     var contentEdit by remember { mutableStateOf(false) }          // MODULE_edit: real text/image editing
     var prompt by remember { mutableStateOf<TextPrompt?>(null) }
     var menu by remember { mutableStateOf(false) }
+    var tabsMenu by remember { mutableStateOf(false) }      // tab-view-core V-03: tabs menu opened from ⋮
     var showHistory by remember { mutableStateOf(false) }           // MODULE_history: unified undo / redo sheet
     val tts by ReadAloudController.status.collectAsState()
     SideEffect { com.smartdocs.editor.core.voice.AiVoiceEngine.aiSwitchOn = settings.aiEnabled }   // ai6: AI switch off -> no AI voice in read aloud
@@ -276,14 +279,31 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                         title = { Text(NpfReader.title(state) ?: state.file?.name ?: stringResource(R.string.loading), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium) },
                         navigationIcon = { IconButton(onClick = { requestLeave() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.back)) } },
                         actions = {
-                            HistoryButtons(state) { showHistory = true }      // MODULE_history: always-visible undo / redo (long press: history)
-                            if (state.dirty) IconButton(onClick = actions.save) { Icon(Icons.Default.Save, stringResource(R.string.save), tint = MaterialTheme.colorScheme.primary) }
-                            if (!tablet) com.smartdocs.editor.ui.reader.view.ReaderTabsAction(state, switchTab)
-                            com.smartdocs.editor.ui.view5.V5TopActions(state)
-                            IconButton(onClick = actions.search) { Icon(Icons.Default.Search, stringResource(R.string.search)) }
+                            // tab-view-core V-03: only what fits stays in the bar (by width); the ⋮ button is always shown
+                            val topItems = buildList {
+                                add(TOP_UNDO to 80); if (state.dirty) add(TOP_SAVE to 48); add(TOP_SEARCH to 48)
+                                val v5 = com.smartdocs.editor.ui.view5.v5TopEntries(state)
+                                addAll(v5.take(1)); if (!tablet) add(TOP_TABS to 48); addAll(v5.drop(1))
+                            }
+                            val split = TopBarOverflow.partition(TopBarOverflow.budget(LocalConfiguration.current.screenWidthDp), topItems)
+                            val shown = split.shown.toSet(); val hidden = split.overflow.toSet()
+                            if (TOP_UNDO in shown) HistoryButtons(state) { showHistory = true }      // MODULE_history: always-visible undo / redo (long press: history)
+                            if (state.dirty && TOP_SAVE in shown) IconButton(onClick = actions.save) { Icon(Icons.Default.Save, stringResource(R.string.save), tint = MaterialTheme.colorScheme.primary) }
+                            if (!tablet) com.smartdocs.editor.ui.reader.view.ReaderTabsAction(state, switchTab, showIcon = TOP_TABS in shown, externalOpen = tabsMenu, onExternalClose = { tabsMenu = false })
+                            com.smartdocs.editor.ui.view5.V5TopActions(state) { it in shown }
+                            if (TOP_SEARCH in shown) IconButton(onClick = actions.search) { Icon(Icons.Default.Search, stringResource(R.string.search)) }
                             Box {
                                 IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, stringResource(R.string.more)) }
                                 DropdownMenu(menu, { menu = false }) {
+                                    // tab-view-core V-03: the top-bar actions that did not fit
+                                    if (TOP_UNDO in hidden) {
+                                        DropdownMenuItem(text = { Text(stringResource(R.string.hi_undo)) }, leadingIcon = { Icon(Icons.AutoMirrored.Filled.Undo, null) }, enabled = state.canUndo, onClick = { menu = false; state.undo() })
+                                        DropdownMenuItem(text = { Text(stringResource(R.string.hi_redo)) }, leadingIcon = { Icon(Icons.AutoMirrored.Filled.Redo, null) }, enabled = state.canRedo, onClick = { menu = false; state.redo() })
+                                    }
+                                    if (TOP_SEARCH in hidden) DropdownMenuItem(text = { Text(stringResource(R.string.search)) }, leadingIcon = { Icon(Icons.Default.Search, null) }, onClick = { menu = false; actions.search() })
+                                    if (TOP_TABS in hidden) DropdownMenuItem(text = { Text(stringResource(R.string.vw_tabs)) }, leadingIcon = { Icon(Icons.Default.Tab, null) }, onClick = { menu = false; tabsMenu = true })
+                                    com.smartdocs.editor.ui.view5.V5TopOverflowItems(state, hidden) { menu = false }
+                                    if (hidden.isNotEmpty()) HorizontalDivider()
                                     DropdownMenuItem(text = { Text(stringResource(R.string.save)) }, leadingIcon = { Icon(Icons.Default.Save, null) }, enabled = state.dirty, onClick = { menu = false; actions.save() })
                                     DropdownMenuItem(text = { Text(stringResource(R.string.hi_history)) }, leadingIcon = { Icon(Icons.Default.History, null) }, onClick = { menu = false; showHistory = true })
                                     DropdownMenuItem(text = { Text(stringResource(R.string.save_as)) }, leadingIcon = { Icon(Icons.Default.SaveAlt, null) }, onClick = { menu = false; actions.saveAs() })
@@ -299,7 +319,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                                     DropdownMenuItem(text = { Text(stringResource(R.string.pc_ocr_this_page)) }, leadingIcon = { Icon(Icons.Default.TextFields, null) }, onClick = { menu = false; quick.openOcrForPage(state.currentPage) })
                                     DropdownMenuItem(text = { Text(stringResource(R.string.s5_rd_apply)) }, leadingIcon = { Icon(Icons.Default.Gavel, null) }, onClick = { menu = false; actions.navigateTool("redact") })
                                     DropdownMenuItem(text = { Text(stringResource(R.string.go_to_page)) }, leadingIcon = { Icon(Icons.Default.Numbers, null) }, onClick = { menu = false; showGoTo = true })
-                                    DropdownMenuItem(text = { Text(stringResource(R.string.tool_doc_info)) }, leadingIcon = { Icon(Icons.Default.Info, null) }, onClick = { menu = false; actions.quick(QuickAction.PROPERTIES) })
+                                    // tab-view-core V-21 / E-10: the quick "Document info" item is gone; ⋮ keeps one "Document properties" (NVE)
                                     DropdownMenuItem(text = { Text(stringResource(R.string.keep_screen_on)) }, leadingIcon = { Icon(if (settings.keepScreenOn) Icons.Default.CheckBox else Icons.Default.CheckBoxOutlineBlank, null) },
                                         onClick = { menu = false; scope.launch { app.settings.update { it.copy(keepScreenOn = !it.keepScreenOn) } } })
                                     DropdownMenuItem(text = { Text(stringResource(R.string.settings)) }, leadingIcon = { Icon(Icons.Default.Settings, null) }, onClick = { menu = false; nav.navigate(Routes.SETTINGS) })
@@ -490,6 +510,12 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
     LaunchedEffect(nveEdit) { if (nveEdit != null) { com.smartdocs.editor.ui.nve.NveEditRequest.forward(state, nveEdit); com.smartdocs.editor.ui.nve.NveState.of(state).requestEdit = null; state.selection = null; state.selectTool(null); contentEdit = true } }
     ReaderAi6.ReadAloudHighlight(state)   // ai6 (C1): sentence highlight while reading aloud
 }
+
+// tab-view-core V-03: ids of the reader's own top-bar actions for TopBarOverflow
+private const val TOP_UNDO = "undo"
+private const val TOP_SAVE = "save"
+private const val TOP_SEARCH = "search"
+private const val TOP_TABS = "tabs"
 
 /** Suffix of the token path handed to the AI chat for its undo (see agentHost). */
 private const val AI_TOKEN = ".ai-undo"

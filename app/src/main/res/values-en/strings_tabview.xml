@@ -5,4 +5,6 @@
     <string name="tvc_save_failed_generic">An error occurred while saving.</string>
     <string name="tvc_copy_saved_leave">The copy was saved. Close this document? Its unsaved changes to the original file will be discarded.</string>
     <string name="tvc_leave">Close document</string>
+    <string name="tvc_reading_bookmark">Reading bookmark</string>
+    <string name="tvc_info_panel">Info panel</string>
 </resources>

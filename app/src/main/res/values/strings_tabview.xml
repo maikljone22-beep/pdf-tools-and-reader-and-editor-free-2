@@ -5,4 +5,6 @@
     <string name="tvc_save_failed_generic">حدث خطأ أثناء الحفظ.</string>
     <string name="tvc_copy_saved_leave">حُفظت النسخة. هل تغلق هذا المستند؟ ستُتجاهَل تعديلاته غير المحفوظة في الملف الأصلي.</string>
     <string name="tvc_leave">إغلاق المستند</string>
+    <string name="tvc_reading_bookmark">إشارة قراءة</string>
+    <string name="tvc_info_panel">لوحة المعلومات</string>
 </resources>

@@ -57,10 +57,9 @@ object V5Commands {
             V5Command("rulers", R.string.v5_rulers, Icons.Default.Straighten, "rulers مساطر") { v.rulers = !v.rulers; v.saveOverlays() },
             V5Command("grid", R.string.v5_grid, Icons.Default.Grid4x4, "grid شبكة") { v.grid = !v.grid; v.saveOverlays() },
             V5Command("reading_ruler", R.string.v5_reading_ruler, Icons.Default.HorizontalRule, "reading ruler line focus مسطرة القراءة") { v.readingRuler = !v.readingRuler },
-            V5Command("lens", R.string.v5_lens, Icons.Default.ZoomIn, "lens magnifier loupe عدسة مكبر") { v.lens = !v.lens },
+            V5Command("lens", R.string.v5_lens, Icons.Default.ZoomIn, "lens magnifier loupe عدسة مكبر") { v.lens = !v.lens; if (v.lens) s.vx.magnifier = false },   // tab-view-core V-10: one magnifier at a time
             V5Command("auto_scroll", R.string.v5_auto_scroll, Icons.Default.SwipeVertical, "auto scroll تمرير تلقائي") {
-                if (s.viewMode != ViewMode.CONTINUOUS) s.viewMode = ViewMode.CONTINUOUS
-                v.autoScroll = !v.autoScroll; v.autoPaused = false
+                if (v.autoScroll) v.autoScroll = false else v.startAutoScroll(s)      // tab-view-core V-34
             },
             V5Command("back", R.string.v5_back_position, Icons.AutoMirrored.Filled.ArrowBack, "back previous position رجوع الموضع السابق") { v.back() },
             V5Command("forward", R.string.v5_forward_position, Icons.AutoMirrored.Filled.ArrowForward, "forward next position تقدم الموضع التالي") { v.forward() },
@@ -157,16 +156,54 @@ fun CommandSearchSheet(e: V5Env) {
 
 /** Pinned commands + back / forward + command search, for the reader top bar (hook). */
 @Composable
-fun V5TopActions(s: ReaderState) {
+fun V5TopActions(s: ReaderState, show: (String) -> Boolean = { true }) {
     val v = V5State.of(s)
     val e = v.env ?: return
+    val pinned = v5Pinned(s, v, e)
+    @Suppress("UNUSED_VARIABLE") val hv = v.historyVersion
+    // tab-view-core V-03: [show] = the entries that fit in the bar; the others are in the ⋮ menu (V5TopOverflowItems)
+    if (v.history.canBack && show(TOP_BACK)) IconButton(onClick = { v.back() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.v5_back_position)) }
+    if (v.history.canForward && show(TOP_FORWARD)) IconButton(onClick = { v.forward() }) { Icon(Icons.AutoMirrored.Filled.ArrowForward, stringResource(R.string.v5_forward_position)) }
+    pinned.forEach { c -> if (show(TOP_PIN + c.id)) IconButton(onClick = c.run) { Icon(c.icon, stringResource(c.label)) } }
+    if (show(TOP_TELL_ME)) IconButton(onClick = { v.open(V5Surface.COMMANDS) }) { Icon(Icons.Default.Bolt, stringResource(R.string.v5_tell_me)) }
+}
+
+const val TOP_BACK = "v5:back"
+const val TOP_FORWARD = "v5:forward"
+const val TOP_TELL_ME = "v5:tellme"
+const val TOP_PIN = "v5:pin:"
+
+@Composable
+private fun v5Pinned(s: ReaderState, v: V5State, e: V5Env): List<V5Command> {
     val cmds = remember(e) { V5Commands.all(e) }
     val pv = v.pinsVersion
     val max = if (LocalConfiguration.current.screenWidthDp > 700) 6 else 2
-    val pinned = remember(pv, cmds) { V5Commands.pins(v).mapNotNull { id -> cmds.firstOrNull { it.id == id } }.take(max) }
+    return remember(pv, cmds) { V5Commands.pins(v).mapNotNull { id -> cmds.firstOrNull { it.id == id } }.take(max) }
+}
+
+/** tab-view-core V-03: the entries of [V5TopActions] with their width (dp), in keep-priority order (tell me first). */
+@Composable
+fun v5TopEntries(s: ReaderState): List<Pair<String, Int>> {
+    val v = V5State.of(s)
+    val e = v.env ?: return emptyList()
+    val pinned = v5Pinned(s, v, e)
     @Suppress("UNUSED_VARIABLE") val hv = v.historyVersion
-    if (v.history.canBack) IconButton(onClick = { v.back() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.v5_back_position)) }
-    if (v.history.canForward) IconButton(onClick = { v.forward() }) { Icon(Icons.AutoMirrored.Filled.ArrowForward, stringResource(R.string.v5_forward_position)) }
-    pinned.forEach { c -> IconButton(onClick = c.run) { Icon(c.icon, stringResource(c.label)) } }
-    IconButton(onClick = { v.open(V5Surface.COMMANDS) }) { Icon(Icons.Default.Bolt, stringResource(R.string.v5_tell_me)) }
+    return buildList {
+        add(TOP_TELL_ME to 48)
+        pinned.forEach { add(TOP_PIN + it.id to 48) }
+        if (v.history.canBack) add(TOP_BACK to 48)
+        if (v.history.canForward) add(TOP_FORWARD to 48)
+    }
+}
+
+/** tab-view-core V-03: menu items for the [V5TopActions] entries that did not fit ([hidden]). */
+@Composable
+fun V5TopOverflowItems(s: ReaderState, hidden: Set<String>, close: () -> Unit) {
+    val v = V5State.of(s)
+    val e = v.env ?: return
+    val pinned = v5Pinned(s, v, e)
+    if (TOP_TELL_ME in hidden) DropdownMenuItem(text = { Text(stringResource(R.string.v5_tell_me)) }, leadingIcon = { Icon(Icons.Default.Bolt, null) }, onClick = { close(); v.open(V5Surface.COMMANDS) })
+    pinned.forEach { c -> if (TOP_PIN + c.id in hidden) DropdownMenuItem(text = { Text(stringResource(c.label)) }, leadingIcon = { Icon(c.icon, null) }, onClick = { close(); c.run() }) }
+    if (TOP_BACK in hidden && v.history.canBack) DropdownMenuItem(text = { Text(stringResource(R.string.v5_back_position)) }, leadingIcon = { Icon(Icons.AutoMirrored.Filled.ArrowBack, null) }, onClick = { close(); v.back() })
+    if (TOP_FORWARD in hidden && v.history.canForward) DropdownMenuItem(text = { Text(stringResource(R.string.v5_forward_position)) }, leadingIcon = { Icon(Icons.AutoMirrored.Filled.ArrowForward, null) }, onClick = { close(); v.forward() })
 }
