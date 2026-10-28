@@ -64,6 +64,8 @@ data class Cv6Opts(
     val perTable: Boolean = true,
     /** Office → PDF: bookmarks from Word headings, Excel sheet names, PowerPoint slides. */
     val bookmarks: Boolean = true,
+    /** To PDF: turn likely blanks (lines, boxes) into form fields (form field recognition on creation). */
+    val recognizeFields: Boolean = false,
 )
 
 enum class Stage { WORK, OCR }

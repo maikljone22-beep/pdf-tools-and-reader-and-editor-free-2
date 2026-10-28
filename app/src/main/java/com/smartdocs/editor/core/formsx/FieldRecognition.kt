@@ -199,6 +199,32 @@ object FieldRecognition {
     }
 
     /** Create text fields / check boxes for [suggestions] on [page]. Returns their names. */
+    /**
+     * Create PDF → form (Nitro preference "run form field recognition when creating PDFs"): fields for the likely
+     * blanks of every page (up to [maxPages]) of a document that has no form fields yet; names are made unique over
+     * the document. Returns how many fields were created.
+     */
+    fun recognizeAll(doc: PDDocument, maxPages: Int = 200): Int {
+        if (doc.documentCatalog.acroForm?.fields?.isNotEmpty() == true) return 0
+        val used = HashSet<String>()
+        var n = 0
+        for (p in 0 until minOf(doc.numberOfPages, maxPages)) {
+            val found = runCatching { scanPage(doc, p) }.getOrDefault(emptyList())
+            if (found.isEmpty()) continue
+            val named = found.map { s -> s.copy(name = uniqueName(s.name, used)) }
+            n += runCatching { apply(doc, p, named).size }.getOrDefault(0)
+        }
+        return n
+    }
+
+    /** [name], or name_2, name_3 … when [used] already has it (the chosen name is added to [used]). */
+    fun uniqueName(name: String, used: MutableSet<String>): String {
+        val base = name.ifBlank { "field" }
+        var c = base; var k = 2
+        while (!used.add(c)) c = "${base}_${k++}"
+        return c
+    }
+
     fun apply(doc: PDDocument, page: Int, suggestions: List<Suggestion>, defaults: FieldSpec? = null): List<String> = suggestions.map { s ->
         val base = defaults?.takeIf { it.type == s.type } ?: FieldSpec(name = s.name, type = s.type, widgets = emptyList())
         FxEditor.create(doc, base.copy(name = s.name, type = s.type, tooltip = s.label, widgets = listOf(FxWidget(page, s.rect)),
