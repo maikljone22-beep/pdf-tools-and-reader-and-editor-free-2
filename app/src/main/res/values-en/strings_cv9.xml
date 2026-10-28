@@ -10,4 +10,5 @@
     <string name="cv9_form_fields_sub">Recognises empty lines and boxes in the new PDF</string>
     <string name="cv9_fields_made">%1$d form fields created</string>
     <string name="cv9_fields_none">No form fields were found</string>
+    <string name="cv9_info_ppt_text">PowerPoint 97 file (.ppt): slide texts only, without pictures or layout</string>
 </resources>

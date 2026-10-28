@@ -238,6 +238,14 @@ object ToPdf6 {
                 sheets.cut.forEach { info(ctx.getString(R.string.cvf_info_sheet_cut, it)) }
                 ToPdf.htmlParts(ctx, sheetParts(title, sheets.list) { name, shown, all -> ctx.getString(R.string.cvf_info_rows_cut, name, shown, all).also { info(it) } }, out, tmp)
             }
+            // row 19: PowerPoint 97-2003 — the slide texts (one page per slide, title as heading); pictures and layout are not read
+            kind == Kind6.PPT -> {
+                val slides = withContext(Dispatchers.IO) { com.smartdocs.editor.core.openall.PptText.slides(f.readBytes()) }
+                info(ctx.getString(R.string.cv9_info_ppt_text))
+                flowToPdf(ctx, slidesFlow(title, slides), out)
+                if (bookmarks) runCatching { OfficeOutline.applyByText(out, slides.mapNotNull { (t, _) -> t.takeIf { it.isNotBlank() }?.let { OfficeOutline.Title(1, it) } }) }
+                out
+            }
             kind == Kind6.ODP -> ToPdf.html(ctx, FlowHtml.write(withContext(Dispatchers.IO) { odpFlow(title, OdfReader.readOdpSlides(OdfReader.zipEntry(f))) }), out,
                 WebPdfWriter.Setup(media = PrintAttributes.MediaSize.ISO_A4, landscape = true, javaScript = false))
             kind.isWordLike -> {

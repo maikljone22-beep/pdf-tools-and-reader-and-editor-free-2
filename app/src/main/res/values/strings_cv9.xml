@@ -10,4 +10,5 @@
     <string name="cv9_form_fields_sub">يتعرّف على الخطوط والمربعات الفارغة في PDF الناتج</string>
     <string name="cv9_fields_made">أُنشئ %1$d حقل نموذج</string>
     <string name="cv9_fields_none">لم يُعثر على حقول نموذج</string>
+    <string name="cv9_info_ppt_text">ملف PowerPoint 97 (.ppt): نصوص الشرائح فقط، دون الصور أو التنسيق</string>
 </resources>
