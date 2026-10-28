@@ -3,7 +3,6 @@ package com.smartdocs.editor.ui.selmenu
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -16,7 +15,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -86,9 +84,21 @@ fun SelMenuLayer(
     var origin by remember { mutableStateOf(Offset.Zero) }
     var size by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
     var dialog by remember { mutableStateOf<Pair<SelDialog, TextSelection>?>(null) }
-    val runner = SelRunner(ctx, state, actions, quick, toast = { t -> scope.launch { snack.currentSnackbarData?.dismiss(); snack.showSnackbar(t) } },
+    val toast: (String) -> Unit = { t -> scope.launch { snack.currentSnackbarData?.dismiss(); snack.showSnackbar(t) } }
+    // fix/selmenu-rest: "Insert image" / "Sign" of the empty-area menu drop their result at the pressed point
+    var imageAt by remember { mutableStateOf<SelObject?>(null) }
+    val pickImageAt = com.smartdocs.editor.ui.common.rememberImagePicker(multiple = false) { files ->
+        val at = imageAt; imageAt = null
+        val f = files.firstOrNull()
+        if (at != null && f != null) scope.launch { com.smartdocs.editor.ui.reader.ReaderIntents.decode(f)?.let { state.placeAtPoint(com.smartdocs.editor.ui.reader.ReaderTool.IMAGE, at.page, at.x, at.y, it) } }
+    }
+    val gate = com.smartdocs.editor.ui.signature.rememberSignatureGate()
+    SideEffect { m.actions = actions }
+    val runner = SelRunner(ctx, state, actions, quick, toast = toast,
         onTextTool = onTextTool, onReadAloud = onReadAloud, onPrompt = onPrompt, onOpenLink = onOpenLink,
-        openDialog = { d, s -> dialog = d to s })
+        openDialog = { d, s -> dialog = d to s },
+        onSignAt = { m.signAt = it }, onImageAt = { imageAt = it; pickImageAt() },
+        onField = { item, obj -> SelFieldMenu.run(ctx, state, actions, item, obj, toast) })
 
     // a new tab / tool / selection ends the object menu; a selection replaces it
     LaunchedEffect(state.tab, state.tool) { m.closeAll() }
@@ -104,6 +114,8 @@ fun SelMenuLayer(
             val hit = com.smartdocs.editor.ui.nve.pdfAt(state, at)
             if (hit != null) {
                 val (page, x, y) = hit
+                // fix/selmenu-rest: an annotation under the pointer gets selected and shows its own (registry) bar
+                if (state.tool == null && state.edit.selectAt(page, x, y, 6f)) return@LaunchedEffect
                 val links = runCatching { state.session?.links(page) }.getOrNull().orEmpty()
                 val l = links.firstOrNull { l -> val r = PageGeometry.normPdf(l.bounds); x >= r.left && x <= r.right && y <= r.top && y >= r.bottom }
                 m.target = SelObject(if (l != null) SelCtx.LINK else SelCtx.EMPTY, page, x, y, l)
@@ -120,7 +132,8 @@ fun SelMenuLayer(
         else -> null
     }
     val model: SelMenuModel? = menuFor?.let { f ->
-        SelMenus.build(m.env(f.ctx, f.sel?.text.orEmpty(), ai, hasRects = f.sel?.rects?.isNotEmpty() ?: true, link = f.obj?.link),
+        val field = f.obj?.widget?.let { w -> SelFieldMenu.facts(com.smartdocs.editor.ui.forms5.FormFill.of(state), w) }
+        SelMenus.build(m.env(f.ctx, f.sel?.text.orEmpty(), ai, hasRects = f.sel?.rects?.isNotEmpty() ?: true, link = f.obj?.link, field = field),
             if (tablet) SelMenus.BAR_TABLET else SelMenus.BAR_PHONE)
     }
     fun runItem(item: SelItem) {
@@ -130,8 +143,8 @@ fun SelMenuLayer(
     }
 
     Box(Modifier.fillMaxSize().onGloballyPositioned { origin = it.positionInRoot(); size = it.size }) {
-        // tap outside an object menu closes it (a text selection closes through the page's own tap handling)
-        if (target != null && sel == null && m.dropdownAt == null) Box(Modifier.fillMaxSize().pointerInput(target) { detectTapGestures { m.closeObject() } })
+        // fix/selmenu-rest: no full-screen tap catcher (it held every gesture while a link / empty-area menu was open);
+        // a tap on the page closes the menu through PageCanvas's tap handling (SelHooks.onPageTap), scroll and zoom go on
 
         val anchorRoot: Rect? = when {
             sel != null -> m.anchor?.takeIf { m.anchorKey === sel }
@@ -172,6 +185,8 @@ fun SelMenuLayer(
         }
     }
 
+    SelSignChooser(state, actions, gate)
+    SelFieldDialogs(state)
     if (m.moreOpen && model != null) SelMoreSheet(model, menuFor?.sel?.text, tablet, onItem = { runItem(it) }) { m.moreOpen = false }
 
     // dialogs opened from the menu (existing reader dialogs)
@@ -208,7 +223,7 @@ private fun ExportSelection(state: ReaderState, sel: TextSelection, onDone: () -
  * else at the bottom of the area when the anchor is off screen or taller than the area. Always clamped inside.
  */
 @Composable
-private fun FloatingPlacement(anchor: Rect, handles: Boolean, content: @Composable () -> Unit) {
+internal fun FloatingPlacement(anchor: Rect, handles: Boolean, content: @Composable () -> Unit) {
     Layout(content, Modifier.fillMaxSize()) { ms, c ->
         val p = ms.first().measure(c.copy(minWidth = 0, minHeight = 0))
         layout(c.maxWidth, c.maxHeight) {
@@ -230,7 +245,7 @@ private fun FloatingPlacement(anchor: Rect, handles: Boolean, content: @Composab
 
 /** The floating bar: icon + short label per item, then "More". Layout direction (RTL) orders the row. */
 @Composable
-private fun SelBar(model: SelMenuModel, tablet: Boolean, onItem: (SelItem) -> Unit, onMore: () -> Unit) {
+internal fun SelBar(model: SelMenuModel, tablet: Boolean, onItem: (SelItem) -> Unit, onMore: () -> Unit) {
     Surface(shape = RoundedCornerShape(16.dp), tonalElevation = 6.dp, shadowElevation = 8.dp) {
         Row(Modifier.padding(horizontal = 4.dp, vertical = 2.dp)) {
             model.bar.forEach { item -> BarButton(stringResource(SelBindings.label(item.action)), item, tablet) { onItem(item) } }
@@ -253,7 +268,7 @@ private fun BarButton(label: String, item: SelItem?, tablet: Boolean, onClick: (
 /** "More": every visible item of the registry by group; disabled items say why when tapped. */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-private fun SelMoreSheet(model: SelMenuModel, text: String?, tablet: Boolean, onItem: (SelItem) -> Unit, onDismiss: () -> Unit) {
+internal fun SelMoreSheet(model: SelMenuModel, text: String?, tablet: Boolean, onItem: (SelItem) -> Unit, onDismiss: () -> Unit) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
         LazyColumn(Modifier.fillMaxWidth().padding(horizontal = 16.dp), contentPadding = PaddingValues(bottom = 24.dp)) {
             if (!text.isNullOrBlank()) item {
