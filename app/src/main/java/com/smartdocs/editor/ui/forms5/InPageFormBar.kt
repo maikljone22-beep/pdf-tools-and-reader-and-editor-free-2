@@ -73,7 +73,9 @@ import kotlinx.coroutines.launch
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun InPageFormBar(reader: ReaderState, modifier: Modifier = Modifier, onOpen: (java.io.File, Int) -> Unit = { _, _ -> }, onSign: (java.io.File) -> Unit = {}) {
+fun InPageFormBar(reader: ReaderState, modifier: Modifier = Modifier, onOpen: (java.io.File, Int) -> Unit = { _, _ -> }, onSign: (java.io.File) -> Unit = {},
+                  /** Tab audit D20: height of the reader's bottom toolbar; the strip and messages sit above it. */
+                  stripBottom: androidx.compose.ui.unit.Dp = 0.dp) {
     val fs = remember(reader) { FormFill.of(reader) }
     val scope = rememberCoroutineScope()
     // GoToR / Launch of another PDF: the reader opens it (hook in ReaderScreen)
@@ -91,10 +93,10 @@ fun InPageFormBar(reader: ReaderState, modifier: Modifier = Modifier, onOpen: (j
             FieldBar(fs, w, Modifier.align(Alignment.BottomCenter))
         }
         val msg = fs.message
-        if (w == null && enabled) FormStatusStrip(fs, Modifier.align(Alignment.BottomCenter))
+        if (w == null && enabled) FormStatusStrip(fs, Modifier.align(Alignment.BottomCenter).padding(bottom = stripBottom))
         if (msg != null && w == null) {
             LaunchedEffect(msg) { delay(4000); if (fs.message == msg) fs.message = null }
-            Surface(Modifier.align(Alignment.BottomCenter).padding(16.dp).navigationBarsPadding(), shape = MaterialTheme.shapes.medium,
+            Surface(Modifier.align(Alignment.BottomCenter).padding(bottom = stripBottom).padding(16.dp).then(if (stripBottom > 0.dp) Modifier else Modifier.navigationBarsPadding()), shape = MaterialTheme.shapes.medium,
                 color = MaterialTheme.colorScheme.inverseSurface, contentColor = MaterialTheme.colorScheme.inverseOnSurface, shadowElevation = 6.dp) {
                 Text(messageText(msg), Modifier.padding(horizontal = 16.dp, vertical = 12.dp))
             }
@@ -195,7 +197,7 @@ private fun FieldBar(fs: FormFillState, w: FWidget, modifier: Modifier) {
                 if (w.fileSelect) IconButton(onClick = { fs.filePickFor = w.name }) { Icon(Icons.Default.AttachFile, stringResource(R.string.f8_pick_file)) }
                 if (!com.smartdocs.editor.core.forms5.FormPrefs.autoCalculate && (fs.model.calc.hasCalculations || fs.scripts?.hasCalculations == true))
                     IconButton(onClick = { fs.calculateNow(); fs.message = FormMessage.Calculated }) { Icon(Icons.Default.Calculate, stringResource(R.string.f8_calc_now)) }
-                if (aiOn) IconButton(onClick = { smartFill = true }) { Icon(Icons.Default.AutoAwesome, stringResource(R.string.ai6r_smart_fill)) }   // ai6
+                if (aiOn) IconButton(onClick = { if (SmartFill.allowed(fs)) smartFill = true }) { Icon(Icons.Default.AutoAwesome, stringResource(R.string.ai6r_smart_fill)) }   // ai6
                 IconButton(onClick = { fs.setValue(w.name, if (w.kind == WKind.CHECK) "false" else "") }) { Icon(Icons.Default.Clear, stringResource(R.string.f5_clear)) }
                 IconButton(onClick = { fs.undo() }, enabled = fs.canUndo) { Icon(Icons.AutoMirrored.Filled.Undo, stringResource(R.string.f5_undo)) }
                 IconButton(onClick = { fs.redo() }, enabled = fs.canRedo) { Icon(Icons.AutoMirrored.Filled.Redo, stringResource(R.string.f5_redo)) }
@@ -205,9 +207,8 @@ private fun FieldBar(fs: FormFillState, w: FWidget, modifier: Modifier) {
         }
     }
     // ai6: smart fill (profile + document, AI) for the form's fields; values go through setValues (one undo step)
-    if (smartFill) fs.reader.file?.let { f ->
-        com.smartdocs.editor.ui.ai5.FormFillSheet(f, fs.reader.password, onValues = { v -> if (v.isNotEmpty()) fs.setValues(v) }) { smartFill = false }
-    }
+    // tab audit D18: seeded with the pending values, pending fields skipped, COPY checked before opening
+    if (smartFill) SmartFillSheet(fs) { smartFill = false }
 }
 
 private fun num(v: Double?) = v?.let { AfNumbers.raw(it) } ?: ""

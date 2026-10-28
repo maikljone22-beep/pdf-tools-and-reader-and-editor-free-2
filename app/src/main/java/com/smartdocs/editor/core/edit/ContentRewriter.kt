@@ -21,6 +21,7 @@ internal object EditIo {
     fun load(file: File, password: String?): PDDocument = PdfOps.load(file, password)
 
     fun save(doc: PDDocument, out: File) {
+        com.smartdocs.editor.core.pdf.SignedGuard.checkFullSave(doc, out)   // tab-view-core E-01: never rewrite a signed file in full
         val tmp = File(out.absoluteFile.parentFile, ".${out.name}.${System.nanoTime()}.tmp")
         try {
             doc.save(tmp)

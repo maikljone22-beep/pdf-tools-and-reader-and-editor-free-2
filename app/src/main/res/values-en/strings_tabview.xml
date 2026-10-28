@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- tab-view-core: reader VIEW tab + core audit (gaps/tabs-audit/1_view_core.md) and EDIT tab audit (3_edit.md) -->
+<resources>
+    <string name="tvc_save_failed_text">The changes could not be saved: %1$s\nSave a copy, discard the changes, or stay in the document.</string>
+    <string name="tvc_save_failed_generic">An error occurred while saving.</string>
+    <string name="tvc_copy_saved_leave">The copy was saved. Close this document? Its unsaved changes to the original file will be discarded.</string>
+    <string name="tvc_leave">Close document</string>
+</resources>

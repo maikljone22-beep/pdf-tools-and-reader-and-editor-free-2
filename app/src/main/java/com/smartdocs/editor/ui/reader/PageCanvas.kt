@@ -419,17 +419,17 @@ private fun handleTap(
             links.firstOrNull { l -> val r = PageGeometry.normPdf(l.bounds); x >= r.left && x <= r.right && y <= r.top && y >= r.bottom }?.let { onOpenLink(it); return }
             if (com.smartdocs.editor.ui.nve.NveLinks.tapUrl(state, page, x, y)) return     // NVE: plain-text URLs are tappable
             // OLD I1: on a flat form a tap on a detected field fills it (text, or a check mark in a box)
-            if (state.tab == ReaderTab.FILL_SIGN) state.fsTargetAt(page, x, y)?.let { t -> fillTarget(state, page, t, onPrompt); return }
+            if (state.tab == ReaderTab.FILL_SIGN) state.fsTargetAt(page, x, y)?.let { t -> fillTarget(state, page, t, g, onPrompt); return }
             onTap(p, layout)
         }
         ReaderTool.NOTE, ReaderTool.FREETEXT, ReaderTool.TEXTBOX, ReaderTool.FS_TEXT, ReaderTool.FS_COMB -> onPrompt(TextPrompt(t, page, x, y))
         ReaderTool.FS_PROFILE, ReaderTool.FS_DATE -> {
             val text = state.pendingText.ifBlank { return }
-            state.addAnnot(state.newAnnot(AnnotKind.FREETEXT, page, rects = listOf(textRectAt(x, y, text, state.fontSize, g.pageW, text.any { it in '؀'..'ۿ' })), text = text))
+            state.addAnnot(state.newAnnot(AnnotKind.FREETEXT, page, rects = listOf(textRectAt(x, y, text, state.fontSize, g.pageBox(), text.any { it in '؀'..'ۿ' })), text = text))
         }
         ReaderTool.FS_CHECK, ReaderTool.FS_CROSS, ReaderTool.FS_DOT, ReaderTool.FS_LINE -> {
             val sz = state.fontSize * 1.2f
-            val a = state.newAnnot(AnnotKind.INK, page, paths = quickMarkPaths(t, x, y, sz))
+            val a = state.newAnnot(AnnotKind.INK, page, paths = quickMarkPaths(t, x, y, sz, g.pageRotate))      // tab audit D9: upright on a turned page
             state.addAnnot(if (t == ReaderTool.FS_DOT) a.copy(strokeWidth = sz * 0.4f) else a.copy(strokeWidth = (state.thickness).coerceAtLeast(2f)))
         }
         ReaderTool.SIGNATURE, ReaderTool.STAMP, ReaderTool.IMAGE -> {
@@ -437,7 +437,8 @@ private fun handleTap(
             // nitro-fillsign2: a signature's remembered default size ("Set current size as default" / "Keep original size")
             val pref = if (t == ReaderTool.SIGNATURE && state.pendingText.isNotBlank()) com.smartdocs.editor.core.data.SignatureMetaStore.get(state.context, state.pendingText).widthPt else 0f
             val w = if (pref > 0f) pref.coerceIn(8f, g.pageW * 0.95f) else (g.pageW * 0.35f).coerceAtLeast(40f); val h = w * img.height / img.width.coerceAtLeast(1)
-            state.placement = Placement(page, RectF(x - w / 2, y + h / 2, x + w / 2, y - h / 2), img)
+            // tab audit D9: w x h is the upright (displayed) size; on a turned page its user space box is turned too
+            state.placement = Placement(page, com.smartdocs.editor.core.fillsign2.FsGeom.stampBox(g.pageBox(), x, y, w, h).toPdfRect(), img)
         }
         ReaderTool.LINK -> onPrompt(TextPrompt(t, page, x, y))
         ReaderTool.MEASURE -> {
@@ -519,20 +520,28 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawDraft(draft: Ge
     }
 }
 
-/** OLD I1: fill a detected field — a check mark in a box, a text prompt at the line otherwise (the text fits the line height). */
-private fun fillTarget(state: ReaderState, page: Int, t: com.smartdocs.editor.core.formsx.FieldRecognition.Suggestion, onPrompt: (TextPrompt) -> Unit) {
+/**
+ * OLD I1: fill a detected field — a check mark in a box, a text prompt on the line otherwise (the text fits the line
+ * height). Laid out upright in display space (FsGeom), so it also works on /Rotate and cropped pages.
+ */
+private fun fillTarget(state: ReaderState, page: Int, t: com.smartdocs.editor.core.formsx.FieldRecognition.Suggestion, g: PageGeometry, onPrompt: (TextPrompt) -> Unit) {
     val r = t.rect
-    val cx = (r.left + r.right) / 2; val cy = (r.bottom + r.top) / 2
+    val box = g.pageBox()
+    val d = com.smartdocs.editor.core.fillsign2.FsGeom.userToDisplayRect(box, com.smartdocs.editor.core.fillsign2.MultiPage.Box(r.left, r.bottom, r.right, r.top))
+    val dw = d[2] - d[0]; val dh = d[3] - d[1]
     when (t.type) {
         com.smartdocs.editor.core.formsx.FxType.CHECKBOX, com.smartdocs.editor.core.formsx.FxType.RADIO -> {
-            val sz = minOf(r.right - r.left, r.top - r.bottom) * 0.8f
-            val a = state.newAnnot(AnnotKind.INK, page, paths = quickMarkPaths(ReaderTool.FS_CHECK, cx, cy, sz))
+            val sz = minOf(dw, dh) * 0.8f
+            val (cx, cy) = com.smartdocs.editor.core.fillsign2.FsGeom.fromDisplay(box, (d[0] + d[2]) / 2, (d[1] + d[3]) / 2)
+            val a = state.newAnnot(AnnotKind.INK, page, paths = quickMarkPaths(ReaderTool.FS_CHECK, cx, cy, sz, g.pageRotate))
             state.addAnnot(a.copy(strokeWidth = (sz / 8f).coerceAtLeast(1.5f)))
         }
         else -> {
-            val h = r.top - r.bottom
-            if (h > 4f) state.fontSize = state.fontSize.coerceAtMost((h * 0.7f).coerceAtLeast(6f))
-            onPrompt(TextPrompt(ReaderTool.FS_TEXT, page, r.left + 2f, cy))
+            if (dh > 4f) state.fontSize = state.fontSize.coerceAtMost((dh * 0.7f).coerceAtLeast(6f))
+            // the text box (top edge at the prompt point) sits with its bottom on the line
+            val boxH = state.fontSize * 1.3f + 8f
+            val (x, y) = com.smartdocs.editor.core.fillsign2.FsGeom.fromDisplay(box, d[0] + 1f, (d[3] - boxH).coerceAtLeast(0f))
+            onPrompt(TextPrompt(ReaderTool.FS_TEXT, page, x, y))
         }
     }
 }

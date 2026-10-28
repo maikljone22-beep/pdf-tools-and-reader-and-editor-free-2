@@ -59,7 +59,7 @@ internal fun CertificateTab(identity: DigitalSignature.Identity?, onIdentity: (D
     var ids by remember { mutableStateOf(DigitalIds.list(ctx)) }
     fun refresh() { ids = DigitalIds.list(ctx) }
     var selected by rememberSaveable { mutableStateOf(ids.firstOrNull()?.id) }
-    var password by rememberSaveable { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }   // audit D17: secrets never go into saved state
     var details by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf<DigitalIds.Entry?>(null) }
     val entry = ids.firstOrNull { it.id == selected }
@@ -70,13 +70,13 @@ internal fun CertificateTab(identity: DigitalSignature.Identity?, onIdentity: (D
         scope.launch {
             busy = true; error = null
             runCatching { DigitalIds.open(ctx, e, password.toCharArray()) }
-                .onSuccess { onIdentity(it); info = null; refresh() }.onFailure { error = it.message ?: it.toString() }
+                .onSuccess { onIdentity(it); info = null; refresh(); password = "" }.onFailure { error = it.message ?: it.toString() }
             busy = false
         }
     }
 
     // --- import PKCS#12 into the list ---
-    var importPassword by rememberSaveable { mutableStateOf("") }
+    var importPassword by remember { mutableStateOf("") }   // audit D17: secrets never go into saved state
     var pendingUri by remember { mutableStateOf<android.net.Uri?>(null) }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> pendingUri = uri }
     fun importPicked() {
@@ -87,7 +87,7 @@ internal fun CertificateTab(identity: DigitalSignature.Identity?, onIdentity: (D
             runCatching {
                 val stream = ctx.contentResolver.openInputStream(uri) ?: throw IllegalStateException("cannot open")
                 DigitalIds.importPkcs12(ctx, stream, importPassword.toCharArray())
-            }.onSuccess { (e, id) -> onIdentity(id); refresh(); selected = e.id; pendingUri = null; info = null }.onFailure { error = it.message ?: it.toString() }
+            }.onSuccess { (e, id) -> onIdentity(id); refresh(); selected = e.id; pendingUri = null; info = null; importPassword = "" }.onFailure { error = it.message ?: it.toString() }
             busy = false
         }
     }
@@ -120,8 +120,8 @@ internal fun CertificateTab(identity: DigitalSignature.Identity?, onIdentity: (D
     var genUsage by rememberSaveable { mutableStateOf(DigitalIds.Usage.BOTH) }
     var genKey by rememberSaveable { mutableStateOf(DigitalIds.KeyType.RSA_2048) }
     var genYears by rememberSaveable { mutableIntStateOf(5) }
-    var genPw by rememberSaveable { mutableStateOf("") }
-    var genPw2 by rememberSaveable { mutableStateOf("") }
+    var genPw by remember { mutableStateOf("") }   // audit D17: secrets never go into saved state
+    var genPw2 by remember { mutableStateOf("") }   // audit D17: secrets never go into saved state
     fun generate() {
         if (genPw.isEmpty()) { error = pwRequired; return }
         if (genPw != genPw2) { error = pwMismatch; return }

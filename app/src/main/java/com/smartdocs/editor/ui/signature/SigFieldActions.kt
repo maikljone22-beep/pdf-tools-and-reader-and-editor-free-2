@@ -51,15 +51,15 @@ fun BoxScope.SigFieldSheet(reader: ReaderState, nav: NavHostController) {
     val file = reader.file
     // Foxit "verify signatures when the document is opened": badges + the signed / certified bar
     var results by remember(file) { mutableStateOf<List<DigitalSignature.VerifyResult>>(emptyList()) }
-    var bannerClosed by remember(file) { mutableStateOf(false) }
+    // audit D21: closing the bar survives a rotation
+    var bannerClosed by androidx.compose.runtime.saveable.rememberSaveable(file?.path) { mutableStateOf(false) }
     LaunchedEffect(file, reader.renderVersion) {
         val f = file ?: return@LaunchedEffect
-        results = withContext(Dispatchers.IO) {
-            runCatching { if (SigFields.list(f, reader.password).none { it.signed }) emptyList() else DigitalSignature.verify(f) }.getOrDefault(emptyList())
-        }
+        results = withContext(Dispatchers.IO) { runCatching { VerifyCache.results(f, reader.password) }.getOrDefault(emptyList()) }
         fs.sigStatus = results.mapNotNull { v -> v.fieldName?.let { it to (v.signatureValid && v.error == null) } }.toMap()
     }
-    if (results.isNotEmpty() && !bannerClosed && file != null) SignedBar(results, Modifier.align(Alignment.TopCenter),
+    // the bar shares the top slot with the placement bar and tool hints: it shows only while no tool is active (D21)
+    if (results.isNotEmpty() && !bannerClosed && file != null && reader.tool == null) SignedBar(results, Modifier.align(Alignment.TopCenter),
         onOpen = { SigFieldRequest.pending = SigFieldRequest.Request(file.path, null, verify = true); nav.navigate(Routes.tool("digital_sign", reader.fileUri)) },
         onClose = { bannerClosed = true })
     val w = fs.sigTapped ?: return
@@ -73,25 +73,26 @@ fun BoxScope.SigFieldSheet(reader: ReaderState, nav: NavHostController) {
     var moving by remember(w) { mutableStateOf(false) }
     var confirmDeleteField by remember(w) { mutableStateOf(false) }
     fun close() { fs.sigTapped = null }
-    /** Rewrites the document in place through a temporary copy (incremental on signed files), then reloads. */
-    fun edit(op: (File, File) -> Unit) {
+    val editLabel = stringResource(R.string.ns3_field_edit_step)
+    /**
+     * Audit D6 / D36: a field edit goes through the reader's in-place change (author restrictions checked, atomic
+     * replace under the save lock, an undo step, write-back to the user's document). The writers append an
+     * incremental update on signed files.
+     */
+    fun edit(op: (src: File, out: File, pw: String?) -> Unit) {
+        if (!reader.guard.check(com.smartdocs.editor.core.security.DocAction.FILL_FORMS)) return
         scope.launch {
             busy = true
-            val ok = withContext(Dispatchers.IO) {
-                runCatching {
-                    val tmp = File(reader.context.cacheDir, "sigfield_${System.nanoTime()}.pdf")
-                    try { op(file, tmp); tmp.copyTo(file, overwrite = true) } finally { tmp.delete() }
-                }
-            }
+            val r = runCatching { reader.applyInPlace(label = { editLabel }, action = com.smartdocs.editor.core.security.DocAction.FILL_FORMS) { src, out, pw -> withContext(Dispatchers.IO) { op(src, out, pw) } } }
             busy = false
-            ok.onSuccess { close(); reader.reloadIfChanged() }.onFailure { error = it.message ?: it.toString() }
+            r.onSuccess { if (it != null) close() else error = reader.error }.onFailure { error = it.message ?: it.toString() }
         }
     }
     LaunchedEffect(w) {
         withContext(Dispatchers.IO) {
             runCatching {
                 field = SigFields.list(file, reader.password).firstOrNull { it.name == w.name }
-                if (field?.signed == true) result = DigitalSignature.verify(file).firstOrNull { it.fieldName == w.name }
+                if (field?.signed == true) result = VerifyCache.results(file, reader.password).firstOrNull { it.fieldName == w.name }
             }.onFailure { error = it.message ?: it.toString() }
         }
         busy = false
@@ -115,6 +116,7 @@ fun BoxScope.SigFieldSheet(reader: ReaderState, nav: NavHostController) {
             error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             if (f != null && !f.signed) Button(onClick = {
                 if (reader.dirty) { error = unsavedMsg; return@Button }
+                if (!reader.guard.check(com.smartdocs.editor.core.security.DocAction.FILL_FORMS)) return@Button   // D36
                 SigFieldRequest.pending = SigFieldRequest.Request(file.path, f.name, verify = false)
                 close(); nav.navigate(Routes.tool("digital_sign", reader.fileUri))
             }, Modifier.fillMaxWidth()) { Icon(Icons.Default.Draw, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.ns_field_sign)) }
@@ -156,9 +158,9 @@ fun BoxScope.SigFieldSheet(reader: ReaderState, nav: NavHostController) {
         }
         SigPlacementDialog(file, fl.page, initial, password = reader.password, onDismiss = { moving = false }, onDone = { _, b ->
             moving = false
-            edit { src, out ->
-                val r = com.smartdocs.editor.core.pdf.PdfOps.loadRaw(src, reader.password).use { d -> val p = d.getPage(fl.page); SigFields.toUserSpace(b.l, b.t, b.w, b.h, p.cropBox, p.rotation) }
-                SigFields.move(src, out, fl.name, r, reader.password)
+            edit { src, out, pw ->
+                val r = com.smartdocs.editor.core.pdf.PdfOps.loadRaw(src, pw).use { d -> val p = d.getPage(fl.page); SigFields.toUserSpace(b.l, b.t, b.w, b.h, p.cropBox, p.rotation) }
+                SigFields.move(src, out, fl.name, r, pw)
             }
         })
     }
@@ -166,7 +168,7 @@ fun BoxScope.SigFieldSheet(reader: ReaderState, nav: NavHostController) {
         onDismissRequest = { confirmDeleteField = false },
         title = { Text(stringResource(R.string.ns2_field_delete)) },
         text = { Text(stringResource(R.string.ns2_field_delete_confirm, fl.name)) },
-        confirmButton = { TextButton(onClick = { confirmDeleteField = false; edit { src, out -> SigFields.delete(src, out, fl.name, reader.password) } }) { Text(stringResource(R.string.delete)) } },
+        confirmButton = { TextButton(onClick = { confirmDeleteField = false; edit { src, out, pw -> SigFields.delete(src, out, fl.name, pw) } }) { Text(stringResource(R.string.delete)) } },
         dismissButton = { TextButton(onClick = { confirmDeleteField = false }) { Text(stringResource(R.string.cancel)) } },
     )
     if (confirmClear) AlertDialog(
@@ -176,21 +178,30 @@ fun BoxScope.SigFieldSheet(reader: ReaderState, nav: NavHostController) {
         confirmButton = {
             TextButton(onClick = {
                 confirmClear = false
-                scope.launch {
-                    busy = true
-                    val ok = withContext(Dispatchers.IO) {
-                        runCatching {
-                            val tmp = File(reader.context.cacheDir, "sigclear_${System.nanoTime()}.pdf")
-                            try { SigFields.clear(file, tmp, w.name, reader.password); tmp.copyTo(file, overwrite = true) } finally { tmp.delete() }
-                        }
-                    }
-                    busy = false
-                    ok.onSuccess { close(); reader.reloadIfChanged() }.onFailure { error = it.message ?: it.toString() }
-                }
+                edit { src, out, pw -> SigFields.clear(src, out, w.name, pw) }
             }) { Text(stringResource(R.string.ns_field_clear)) }
         },
         dismissButton = { TextButton(onClick = { confirmClear = false }) { Text(stringResource(R.string.cancel)) } },
     )
+}
+
+/**
+ * Validation results per file version (audit D22): the reader re-validates after every save / reopen, which reads
+ * the whole file; an unchanged file (same length and time) reuses the last result.
+ */
+internal object VerifyCache {
+    private data class Key(val path: String, val length: Long, val modified: Long)
+    private val cache = object : LinkedHashMap<Key, List<DigitalSignature.VerifyResult>>(8, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Key, List<DigitalSignature.VerifyResult>>?) = size > 4
+    }
+
+    fun results(f: File, password: String?): List<DigitalSignature.VerifyResult> {
+        val k = Key(f.path, f.length(), f.lastModified())
+        synchronized(cache) { cache[k]?.let { return it } }
+        val r = if (SigFields.list(f, password).none { it.signed }) emptyList() else DigitalSignature.verifyBlocking(f, password)
+        synchronized(cache) { cache[k] = r }
+        return r
+    }
 }
 
 /** The revision a signature covers, as its own file ("View signed version"). */

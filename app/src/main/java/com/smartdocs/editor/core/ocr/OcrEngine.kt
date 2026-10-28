@@ -330,7 +330,7 @@ class OcrEngine(private val context: Context, val fast: Boolean = false) : AutoC
          * uploaded the download fails quietly and Auto uses ara+eng.
          */
         const val ARABIC_FT = "ArabicFT"
-        const val FT_URL = "https://github.com/maikljone22-beep/pdf-tools-and-reader-and-editor-free-2/releases/download/ocr-models-1/ArabicFT.traineddata"
+        const val FT_URL = "https://raw.githubusercontent.com/maikljone22-beep/pdf-tools-and-reader-and-editor-free-2/cfb6e655066bcce5ea5b29c5cb5fd6d1103715bb/models/ocr/ArabicFT.traineddata"   // pinned commit; size + SHA-256 checked
         /** Models kept in the best folder whatever the recognition quality. */
         val BEST_ONLY = setOf(ARABIC_SCRIPT, ARABIC_FT)
 
