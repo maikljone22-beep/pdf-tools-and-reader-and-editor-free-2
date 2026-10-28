@@ -54,6 +54,34 @@ object FormValueWriter {
         } finally { mid.delete() }
     }
 
+    /**
+     * Fill-time save of a digitally signed PDF (audit V-01): every step of [write] plus the Hide-action flags
+     * ([hidden]) and the barcode refresh runs on one document loaded with its original security, and the result
+     * is appended as an incremental update ([SignedSave.saveIncremental]), so the signed bytes stay a prefix and
+     * the signatures stay valid. A certification that allows no changes (DocMDP P=1, or a FieldMDP /P 1 lock)
+     * throws [com.smartdocs.editor.core.pdf.SignedDocumentException] (the reader then offers "save a copy").
+     * Fields locked by a signature are read-only and are skipped like any read-only field. The XFA packet is kept.
+     */
+    suspend fun writeSigned(
+        context: Context?, src: File, values: Map<String, String>, display: Map<String, String>, images: Map<String, File>,
+        hidden: Map<String, Boolean>, out: File, password: String?,
+    ) = withContext(Dispatchers.IO) {
+        PdfOps.loadRaw(src, password).use { doc ->
+            com.smartdocs.editor.core.pdf.SignedSave.requireFormFillAllowed(doc)
+            val names = values.keys + display.keys
+            if (names.isNotEmpty()) runCatching { AppearanceRotation.fixIn(doc, names) }
+            if (values.isNotEmpty() || display.isNotEmpty()) FormOps.fillIn(doc, values, context, display, dropXfa = false)
+            images.forEach { (name, file) -> runCatching { setImage(doc, name, file) } }
+            FieldVisibility.apply(doc, hidden)
+            val barcodes = runCatching { com.smartdocs.editor.core.formsx.FxBarcodes.refreshAll(doc) }.getOrDefault(0)
+            val acro = doc.documentCatalog.getAcroForm(null) ?: throw IllegalStateException("no form")
+            val touched = (names + images.keys + hidden.keys).toMutableSet()
+            if (barcodes > 0) acro.fieldTree.forEach { f -> if (f.cosObject.containsKey(COSName.getPDFName("SDBarcode"))) touched += f.fullyQualifiedName }
+            val pages = SignedFormMarks.mark(doc, acro, touched)
+            com.smartdocs.editor.core.pdf.SignedSave.saveIncremental(doc, pages, out)
+        }
+    }
+
     private fun decode(file: File, maxSide: Int = 1600): Bitmap? {
         val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeFile(file.path, o)
@@ -133,6 +161,13 @@ object AppearanceRotation {
      * Fix the widgets of [names] in [src]; writes [out] and returns true only when something changed.
      */
     fun prepare(src: File, password: String?, names: Set<String>, out: File): Boolean = PdfOps.load(src, password).use { doc ->
+        val changed = fixIn(doc, names)
+        if (changed) doc.save(out)
+        changed
+    }
+
+    /** [prepare] on an open document, without saving. */
+    fun fixIn(doc: PDDocument, names: Set<String>): Boolean {
         val acro = doc.documentCatalog.acroForm ?: return false
         var changed = false
         for (name in names) {
@@ -158,7 +193,6 @@ object AppearanceRotation {
                 }
             }
         }
-        if (changed) doc.save(out)
-        changed
+        return changed
     }
 }

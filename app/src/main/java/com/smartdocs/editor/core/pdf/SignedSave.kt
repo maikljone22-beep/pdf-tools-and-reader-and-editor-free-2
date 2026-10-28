@@ -55,6 +55,17 @@ object SignedSave {
         2
     }.getOrNull()
 
+    /**
+     * Throws [SignedDocumentException] when the certification of [doc] (or a signature's FieldMDP /P lock) forbids
+     * filling in forms: only P=1 ("no changes"); P=2 and P=3 allow form filling.
+     */
+    fun requireFormFillAllowed(doc: PDDocument) {
+        val locked = runCatching { doc.signatureDictionaries.mapNotNull { com.smartdocs.editor.core.sign.SigFields.lockOf(doc, it)?.docPermission }.minOrNull() }.getOrNull()
+        val p = listOfNotNull(certifyLevel(doc), locked).minOrNull() ?: return
+        if (p < 2) throw SignedDocumentException(SignedDocumentException.Reason.CERTIFIED_NO_CHANGES,
+            "this file is certified (DocMDP P=$p) and does not allow form filling; save as a copy")
+    }
+
     /** Throws [SignedDocumentException] when the certification of [doc] forbids adding or removing annotations. */
     fun requireAnnotationsAllowed(doc: PDDocument) {
         // a FieldMDP lock with /P (PDF 2.0, "lock document after signing") restricts changes like a certification

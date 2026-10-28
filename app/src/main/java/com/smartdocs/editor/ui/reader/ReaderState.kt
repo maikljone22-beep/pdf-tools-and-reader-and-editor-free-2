@@ -495,6 +495,7 @@ class ReaderState(
             try {
                 // MODULE_forms5: pending form values are written first (FormOps.fillFields -> swapFile)
                 val formsSaved = try { withContext(NonCancellable) { forms5.flushOnSave(f, password) { tmp -> swapFile(tmp, record = false) } } }
+                    catch (e: com.smartdocs.editor.core.pdf.SignedDocumentException) { signedBlock = e.reason; return false }   // audit V-01
                     catch (e: Exception) { error = e.message ?: e.toString(); return false }
                 wrote = formsSaved
                 if (annots.isEmpty()) {
