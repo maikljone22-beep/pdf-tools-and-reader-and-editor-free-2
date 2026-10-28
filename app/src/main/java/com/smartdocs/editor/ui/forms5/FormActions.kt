@@ -35,6 +35,7 @@ object FormActions {
         val m = fs.model
         val out = LinkedHashMap<String, String>()
         m.byName.forEach { (name, ws) ->
+            if (fs.isRemoved(name)) return@forEach      // 8.84: removed by this.removeField
             val w = ws.first()
             val v = fs.value(name)
             out[name] = when (w.kind) {
@@ -133,22 +134,25 @@ object FormActions {
             "image" -> fs.imageTarget = q["n"].ifBlank { w?.name }
             "file" -> fs.filePickFor = q["n"].ifBlank { w?.name }
             "flatten" -> flatten(fs)
-            "remove" -> { fs.removeFieldByScript(q["n"]); unsupported += "removeField -> hidden" }
+            "remove" -> fs.removeFieldByScript(q["n"])
             "menu" -> named(fs, q["n"])
             // 8.84 document API
-            "saveas" -> {
-                val r = fs.reader
-                val name = q["p"].substringAfterLast('/').substringAfterLast('\\').ifBlank { r.file?.name ?: "document.pdf" }
-                    .let { if (it.endsWith(".pdf", true)) it else "$it.pdf" }
-                r.scope.launch { if (r.save()) r.scriptSaveAs = name }
-            }
+            "saveas" -> saveAs(fs, q["p"])
             "close" -> fs.reader.scriptClose = true
             "scroll" -> {
                 val r = fs.reader
                 val page = r.currentPage
                 val h = runCatching { r.session?.pageSize(page)?.second }.getOrNull()
                 val y = q["y"].toFloatOrNull() ?: 0f
-                if (h != null && h > 0f) r.jumpTo(page, com.smartdocs.editor.core.forms5.NamedActions.scrollFraction(y, h)) else r.jumpTo(page)
+                val x = q["x"].toFloatOrNull() ?: 0f
+                if (h != null && h > 0f) r.jumpTo(page, com.smartdocs.editor.core.forms5.NamedActions.scrollFraction(y, h), x) else r.jumpTo(page)
+            }
+            // 27.10 Field.setAction / buttonSetIcon / signatureSign
+            "setaction" -> if (!fs.setScriptAction(q["n"], q["t"], q["s"])) unsupported += "setAction(" + q["t"] + ")"
+            "seticon" -> setIcon(fs, q["n"], com.smartdocs.editor.core.forms5.ScriptDocChanges.IconSrc(q["f"], q["nm"]))
+            "sign" -> {
+                val target = fs.model.widgets.firstOrNull { it.name == q["n"] && it.kind == WKind.SIGNATURE }
+                if (target == null) fs.message = FormMessage.NotFound(q["n"]) else fs.reader.scriptSign = target.name
             }
             "addscript" -> fs.addDocScript(q["n"], q["s"])
             "lock" -> fs.setSigLock(q["n"], com.smartdocs.editor.core.forms5.ScriptDocChanges.lockOf(q["a"], q["f"].split('\n').filter { it.isNotBlank() }))
@@ -163,6 +167,48 @@ object FormActions {
         }
         if (unsupported.isNotEmpty()) fs.message = FormMessage.Unsupported(unsupported.distinct().joinToString(", "))
         if (confirm.isNotEmpty()) fs.pendingChain = Triple(w, null, confirm)
+    }
+
+    /** this.saveAs / named action SaveAs: save, then "Save a copy" under the script's file name (or the document's). */
+    private fun saveAs(fs: FormFillState, path: String) {
+        val r = fs.reader
+        val name = path.substringAfterLast('/').substringAfterLast('\\').ifBlank { r.file?.name ?: "document.pdf" }
+            .let { if (it.endsWith(".pdf", true)) it else "$it.pdf" }
+        r.scope.launch { if (r.save()) r.scriptSaveAs = name }
+    }
+
+    /**
+     * 27.10 `field.buttonSetIcon(icon)`: the picture inside the icon becomes the button's pending image (shown at
+     * once, written on save like an imported image); an icon without a picture is copied as it is on save.
+     */
+    private suspend fun setIcon(fs: FormFillState, target: String, src: com.smartdocs.editor.core.forms5.ScriptDocChanges.IconSrc) {
+        if (fs.model.widgets.none { it.name == target && it.kind == WKind.BUTTON }) { fs.message = FormMessage.NotFound(target); return }
+        if (!fs.reader.guard.check(com.smartdocs.editor.core.security.DocAction.FILL_FORMS)) return
+        // a button whose picture was chosen while filling: its pending image is the icon
+        fs.images[src.field]?.takeIf { src.field.isNotBlank() && it.exists() }?.let { picked ->
+            val copy = File(fs.reader.app.documents.tempDir, "jsa_icon_${System.nanoTime()}." + picked.extension.ifBlank { "png" })
+            if (runCatching { withContext(Dispatchers.IO) { picked.copyTo(copy, overwrite = true) } }.isSuccess) { fs.setImage(target, copy); return }
+        }
+        val file = fs.reader.file ?: return
+        val found = withContext(Dispatchers.IO) {
+            runCatching {
+                PdfOps.loadRaw(file, fs.reader.password).use { d ->
+                    val icon = com.smartdocs.editor.core.forms5.ScriptIcons.find(d, src) ?: return@use null
+                    val png = com.smartdocs.editor.core.forms5.ScriptIcons.firstImage(icon)?.let { img ->
+                        runCatching {
+                            val bmp = (com.tom_roush.pdfbox.pdmodel.graphics.PDXObject.createXObject(img, null) as? com.tom_roush.pdfbox.pdmodel.graphics.image.PDImageXObject)?.image
+                            bmp?.let { b -> File(fs.reader.app.documents.tempDir, "jsa_icon_${System.nanoTime()}.png").also { f -> f.outputStream().use { o -> b.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, o) } } }
+                        }.getOrNull()
+                    }
+                    png ?: file      // an icon without a picture: copied on save
+                }
+            }.getOrNull()
+        }
+        when {
+            found == null -> fs.message = FormMessage.NotFound(src.field.ifBlank { src.named })
+            found == file -> fs.setIconCopy(target, src)
+            else -> fs.setImage(target, found)
+        }
     }
 
     // ------------------------------------------------------------------ navigation / named actions
@@ -187,6 +233,12 @@ object FormActions {
             com.smartdocs.editor.core.forms5.NamedOp.SINGLE_PAGE -> r.viewMode = com.smartdocs.editor.ui.reader.ViewMode.SINGLE
             com.smartdocs.editor.core.forms5.NamedOp.ONE_COLUMN -> r.viewMode = com.smartdocs.editor.ui.reader.ViewMode.CONTINUOUS
             com.smartdocs.editor.core.forms5.NamedOp.TWO_PAGES, com.smartdocs.editor.core.forms5.NamedOp.TWO_COLUMNS -> r.viewMode = com.smartdocs.editor.ui.reader.ViewMode.FACING
+            // 8.69: the reader's position history, closing the tab / leaving (unsaved-changes guard of the screen), save as
+            com.smartdocs.editor.core.forms5.NamedOp.GO_BACK -> com.smartdocs.editor.ui.view5.V5State.of(r).back()
+            com.smartdocs.editor.core.forms5.NamedOp.GO_FORWARD -> com.smartdocs.editor.ui.view5.V5State.of(r).forward()
+            com.smartdocs.editor.core.forms5.NamedOp.CLOSE -> r.scriptClose = true
+            com.smartdocs.editor.core.forms5.NamedOp.QUIT -> r.scriptQuit = true
+            com.smartdocs.editor.core.forms5.NamedOp.SAVE_AS -> saveAs(fs, "")
             com.smartdocs.editor.core.forms5.NamedOp.UNSUPPORTED -> fs.message = FormMessage.Unsupported(name)
         }
     }
