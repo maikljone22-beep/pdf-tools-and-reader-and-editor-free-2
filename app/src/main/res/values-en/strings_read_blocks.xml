@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="rab_jump">Jump to…</string>
+    <string name="rab_next_block">Next block</string>
+    <string name="rab_next_heading">Next heading</string>
+    <string name="rab_next_paragraph">Next paragraph</string>
+    <string name="rab_prev_block">Previous block</string>
+    <string name="rab_prev_heading">Previous heading</string>
+    <string name="rab_prev_paragraph">Previous paragraph</string>
+    <string name="rab_repeat_block">Repeat block</string>
+</resources>

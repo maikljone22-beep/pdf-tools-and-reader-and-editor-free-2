@@ -45,6 +45,14 @@ class V5State private constructor(val s: ReaderState) {
 
     // ---- auto scroll (continuous mode; paged modes use the existing auto-flip) ----
     var autoScroll by mutableStateOf(false)
+    /** tab-view-core V-34: the page layout before auto scroll forced continuous mode (restored when it stops). */
+    var modeBeforeAutoScroll: com.smartdocs.editor.ui.reader.ViewMode? = null
+
+    /** tab-view-core V-34: start auto scroll in continuous mode, remembering the layout to restore afterwards. */
+    fun startAutoScroll(s: com.smartdocs.editor.ui.reader.ReaderState) {
+        if (s.viewMode != com.smartdocs.editor.ui.reader.ViewMode.CONTINUOUS) { modeBeforeAutoScroll = s.viewMode; s.viewMode = com.smartdocs.editor.ui.reader.ViewMode.CONTINUOUS }
+        autoScroll = true; autoPaused = false
+    }
     var autoPaused by mutableStateOf(false)
     var autoSpeed by mutableIntStateOf(prefs.getInt("as_speed", 3))      // 1..10
 

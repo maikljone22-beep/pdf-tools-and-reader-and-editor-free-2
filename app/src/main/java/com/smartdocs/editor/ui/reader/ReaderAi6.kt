@@ -126,6 +126,19 @@ object ReaderAi6 {
     /** Page and rects (PDF space) of the sentence being read aloud; drawn by PageCanvas. */
     val ttsHighlight = mutableStateOf<Pair<Int, List<RectF>>?>(null)
 
+    /** tab-view-core V-08 / V-22: absolute path of the document being read aloud (the reader that started it). */
+    @Volatile var ttsOwner: String? = null
+
+    /** True when the running read aloud belongs to [state]'s document. */
+    fun ownsTts(state: ReaderState): Boolean = state.file?.absolutePath?.let { it == ttsOwner } == true
+
+    /** tab-view-core V-08: the reader of [path] is closed or replaced: its read aloud and highlight stop with it. */
+    fun stopTtsOf(path: String?) {
+        if (path == null || path != ttsOwner) return
+        ttsOwner = null; ttsHighlight.value = null
+        if (ReadAloudController.isActive) runCatching { ReadAloudController.stop() }
+    }
+
     /** Keeps [ttsHighlight] in sync with the read-aloud progress (placed once in ReaderScreen). */
     @Composable
     fun ReadAloudHighlight(state: ReaderState) {
@@ -133,7 +146,7 @@ object ReaderAi6 {
         val status by ReadAloudController.status.collectAsState()
         LaunchedEffect(spoken, status.state) {
             val sp = spoken
-            if (sp == null || status.state == ReadAloudController.State.IDLE) { ttsHighlight.value = null; return@LaunchedEffect }
+            if (sp == null || status.state == ReadAloudController.State.IDLE || !ownsTts(state)) { ttsHighlight.value = null; return@LaunchedEffect }   // tab-view-core V-22
             val o = cache(state).let { c -> synchronized(c) { c[sp.page]?.second } } ?: run { ttsHighlight.value = null; return@LaunchedEffect }
             val boxes = runCatching { state.charBoxes(sp.page) }.getOrDefault(emptyList())
             if (boxes.isEmpty()) { ttsHighlight.value = null; return@LaunchedEffect }

@@ -71,7 +71,8 @@ object PageGraphics {
 
     /** Images of several pages at once (one document load). */
     suspend fun images(src: File, pw: String?, pages: IntRange): Map<Int, List<RImage>> = withContext(Dispatchers.IO) {
-        (if (pw.isNullOrEmpty()) PDDocument.load(src) else PDDocument.load(src, pw)).use { d ->
+        // tab-view-core V-13: big streams spill to temp files instead of the heap
+        PDDocument.load(src, pw ?: "", com.tom_roush.pdfbox.io.MemoryUsageSetting.setupMixed(32L shl 20)).use { d ->
             pages.filter { it in 0 until d.numberOfPages }.associateWith { p -> scan(d, p, maxSegments = 0).images }
         }
     }

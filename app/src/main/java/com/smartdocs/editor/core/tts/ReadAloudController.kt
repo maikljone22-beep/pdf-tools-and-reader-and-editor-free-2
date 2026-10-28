@@ -45,6 +45,8 @@ object ReadAloudController {
     val spoken: StateFlow<Spoken?> = _spoken.asStateFlow()
     private var pieces: List<com.smartdocs.editor.core.ai6.ReadingOrder.Piece> = emptyList()
     private var bodyOffset = 0
+    /** Reading-order text of the current page (block navigation searches it). */
+    private var pageText = ""
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var appContext: Context? = null
@@ -100,6 +102,50 @@ object ReadAloudController {
     }
 
     fun nextPage() = goToPage(_status.value.page + 1)
+
+    // ---- FINAL_CHECK §19: block navigation (piece = the spoken block; paragraphs / headings of the page text) ----
+
+    /** Next spoken block; past the last one of the page, the next page. */
+    fun nextBlock() {
+        if (!isActive) return
+        if (chunkIdx + 1 < chunks.size) { chunkIdx++; speakCurrent() } else advancePage()
+    }
+
+    /** Previous spoken block; before the first one, the last block of the previous page. */
+    fun prevBlock() {
+        if (!isActive) return
+        if (chunkIdx > 0) { chunkIdx--; speakCurrent(); return }
+        val s = _status.value
+        if (s.page <= 0) { speakCurrent(); return }
+        scope.launch { loadPage(s.page - 1, 0); chunkIdx = (chunks.size - 1).coerceAtLeast(0); speakCurrent() }
+    }
+
+    /** Say the current block again. */
+    fun repeatBlock() { if (isActive) speakCurrent() }
+
+    /** Jump to the next / previous paragraph or heading of the page (the next page when none is left). */
+    fun nextBlockOf(kind: ReadBlocks.Kind) = jump(kind, forward = true)
+    fun prevBlockOf(kind: ReadBlocks.Kind) = jump(kind, forward = false)
+
+    private fun jump(kind: ReadBlocks.Kind, forward: Boolean) {
+        if (!isActive) return
+        val s = _status.value
+        val here = _spoken.value?.takeIf { it.page == s.page }?.start ?: bodyOffset
+        val starts = ReadBlocks.starts(pageText, kind)
+        val target = if (forward) ReadBlocks.next(starts, here) else ReadBlocks.previous(starts, here)
+        when {
+            target != null -> scope.launch { loadPage(s.page, target); speakCurrent() }
+            forward -> advancePage()
+            s.page > 0 -> scope.launch {
+                // the last block of that kind on the previous page
+                loadPage(s.page - 1, 0)
+                val prev = ReadBlocks.starts(pageText, kind).lastOrNull() ?: 0
+                if (prev > 0) loadPage(s.page - 1, prev)
+                speakCurrent()
+            }
+            else -> scope.launch { loadPage(s.page, 0); speakCurrent() }
+        }
+    }
     fun prevPage() = goToPage(_status.value.page - 1)
 
     fun goToPage(page: Int) {
@@ -147,6 +193,7 @@ object ReadAloudController {
 
     private suspend fun loadPage(page: Int, fromChar: Int) {
         val text = runCatching { withContext(Dispatchers.IO) { provider?.invoke(page) ?: "" } }.getOrDefault("")
+        pageText = text
         val body = if (fromChar in 1 until text.length) text.substring(fromChar) else text
         // ai6 (C1): sentence pieces keep a map back to the page text for the on-page sentence highlight
         bodyOffset = if (fromChar in 1 until text.length) fromChar else 0

@@ -219,12 +219,21 @@ private fun NpfPanelBody(state: ReaderState, panel: NpfPanel, onJump: (Int) -> U
     }
 }
 
+/** tab-view-core V-37: OCR reports per file version. */
+private val OCR_REPORTS = java.util.concurrent.ConcurrentHashMap<String, List<Int>>()
+
 /** Recognition report: pages whose text layer is empty (scanned) — tap to go there, or run OCR. */
 @Composable
 private fun OcrReport(state: ReaderState, onJump: (Int) -> Unit, onOcr: () -> Unit) {
-    var empty by remember(state.renderVersion) { mutableStateOf<List<Int>?>(null) }
-    LaunchedEffect(state.renderVersion, state.pageCount) {
-        empty = (0 until state.pageCount.coerceAtMost(500)).filter { state.pageText(it).isBlank() }
+    // tab-view-core V-37: off the main thread, cached per file version (a save that changes nothing keeps it), and
+    // cancelled with the panel (LaunchedEffect leaves the composition)
+    val key = state.file?.let { "${it.absolutePath}|${it.lastModified()}|${it.length()}" }
+    var empty by remember(state.renderVersion) { mutableStateOf<List<Int>?>(key?.let { OCR_REPORTS[it] }) }
+    LaunchedEffect(state.renderVersion, state.pageCount, key) {
+        key?.let { k -> OCR_REPORTS[k]?.let { empty = it; return@LaunchedEffect } }
+        val r = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { (0 until state.pageCount.coerceAtMost(500)).filter { kotlinx.coroutines.yield(); state.pageText(it).isBlank() } }
+        key?.let { k -> if (OCR_REPORTS.size > 16) OCR_REPORTS.clear(); OCR_REPORTS[k] = r }
+        empty = r
     }
     val e = empty
     if (e == null) { NpfLoading(); return }

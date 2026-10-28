@@ -310,5 +310,9 @@ Before: the same 26-chip bottom row in every tab.
   form layer owns those touches; needs its own hook in `forms5` (left for the forms owner to avoid conflicts with the running audit).
 - **Page-content image menu** (EDIT tab: Copy image, Save image, Replace, Crop, Rotate, Delete) — lives in `EditModeHost`; not wired.
 - **Annotation menu** keeps the existing `AnnotActionBar` (already complete); Reply / Flatten single are reached via its More.
-- Thumbnail (PAGES) context menu is the organiser's (separate screen).
+- ~~Thumbnail (PAGES) context menu is the organiser's (separate screen).~~ **DONE (fix/thumbs-panel)**: `SelCtx.THUMB` with the
+  `THUMB_*` actions in the registry (`core/selmenu/SelMenu.kt`, rules in `core/selmenu/SelThumbs.kt`, dropdown `ui/selmenu/SelThumbMenu.kt`).
+  Long-press a thumbnail in Organize or in the reader's thumbnails panel: Go to page, Select / Deselect, Rotate left / right,
+  Duplicate, Delete, Extract, Insert blank after, Insert from file after, Replace from file, Print. It acts on the selection when
+  the pressed page is selected, else on that page. Permission and signed-file reasons are shown on disabled items. Test `SelThumbsTest`.
 - Not tested on a device; CI compiles and runs the JVM tests only.

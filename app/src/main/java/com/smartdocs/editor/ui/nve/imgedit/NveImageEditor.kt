@@ -86,13 +86,29 @@ private class EDoc(base: Bitmap) {
     val undo = ArrayDeque<Snap>(); val redo = ArrayDeque<Snap>()
     val maxSteps = (220_000_000L / (w.toLong() * h * 4 * 2)).toInt().coerceIn(2, 15)
 
-    class Snap(val layers: List<Layer>, val active: Int, val mask: ByteArray?)
+    /**
+     * One undo step: every layer ([layers]), or — tab-view-core E-18, for strokes — only the layer [partIndex]
+     * ([part]); a stroke changes nothing else, and steps that change the layer list are full snapshots, so the list
+     * has the same shape when a partial step is restored.
+     */
+    class Snap(val layers: List<Layer>?, val active: Int, val mask: ByteArray?, val partIndex: Int = -1, val part: Layer? = null) {
+        /** Free the pixels of a step that left the history (its bitmaps are copies nobody else holds). */
+        fun recycle() { layers?.forEach { runCatching { it.bmp.recycle() } }; part?.let { runCatching { it.bmp.recycle() } } }
+    }
 
     private fun snap() = Snap(layers.map { it.copy() }, active, mask?.copyOf())
-    fun push() { undo.addLast(snap()); while (undo.size > maxSteps) undo.removeFirst(); redo.clear() }
-    private fun restore(s: Snap) { layers.clear(); layers.addAll(s.layers); active = s.active.coerceIn(0, layers.size - 1); putMask(s.mask); version++ }
-    fun undo() { val s = undo.removeLastOrNull() ?: return; redo.addLast(snap()); restore(s) }
-    fun redo() { val s = redo.removeLastOrNull() ?: return; undo.addLast(snap()); restore(s) }
+    private fun snapLike(s: Snap) = if (s.part != null && s.partIndex in layers.indices) Snap(null, active, mask?.copyOf(), s.partIndex, layers[s.partIndex].copy()) else snap()
+    private fun add(s: Snap) { undo.addLast(s); while (undo.size > maxSteps) undo.removeFirst().recycle(); redo.forEach { it.recycle() }; redo.clear() }
+    fun push() = add(snap())
+    /** tab-view-core E-18: a stroke (brush, eraser, burn, dodge, heal, clone) copies only the active layer. */
+    fun pushActive() = add(Snap(null, active, mask?.copyOf(), active.coerceIn(0, layers.size - 1), cur.copy()))
+    private fun restore(s: Snap) {
+        val all = s.layers
+        if (all != null) { layers.clear(); layers.addAll(all) } else if (s.part != null && s.partIndex in layers.indices) layers[s.partIndex] = s.part
+        active = s.active.coerceIn(0, layers.size - 1); putMask(s.mask); version++
+    }
+    fun undo() { val s = undo.removeLastOrNull() ?: return; redo.addLast(snapLike(s)); restore(s) }
+    fun redo() { val s = redo.removeLastOrNull() ?: return; undo.addLast(snapLike(s)); restore(s) }
     fun putMask(m: ByteArray?) { mask = m; overlay = m?.let { ImageOps.maskOverlay(it, w, h) } }
     val cur: Layer get() = layers[active.coerceIn(0, layers.size - 1)]
     fun composite(): Bitmap = ImageOps.flatten(layers)
@@ -167,6 +183,13 @@ private fun NewCanvasForm(onCreate: (Bitmap) -> Unit, onCancel: () -> Unit) {
 
 @Composable
 private fun EditorBody(d: EDoc, onDone: (Bitmap) -> Unit, onCancel: () -> Unit) {
+    // tab-view-core E-18: burn / dodge / heal / clone dabs on one background thread (ordered), redraw posted back
+    val painter = remember { java.util.concurrent.Executors.newSingleThreadExecutor() }
+    DisposableEffect(painter) { onDispose { painter.shutdown() } }
+    val mainHandler = remember { android.os.Handler(android.os.Looper.getMainLooper()) }
+    fun offMain(work: () -> Unit) { runCatching { painter.execute { runCatching(work); mainHandler.post { d.version++ } } } }
+    /** Wait for queued dabs (before an undo snapshot, undo / redo or the final composite). */
+    fun painterIdle() { runCatching { painter.submit {}.get(3, java.util.concurrent.TimeUnit.SECONDS) } }
     var tool by remember { mutableStateOf(ETool.BRUSH) }
     var color by remember { mutableIntStateOf(0xD32F2F) }
     var size by remember { mutableFloatStateOf(24f) }
@@ -211,13 +234,13 @@ private fun EditorBody(d: EDoc, onDone: (Bitmap) -> Unit, onCancel: () -> Unit) 
         Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onCancel) { Icon(Icons.Default.Close, stringResource(R.string.cancel)) }
             Text(stringResource(R.string.nh_ie_title), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-            IconButton(onClick = { d.undo() }, enabled = d.undo.isNotEmpty() || d.version < 0) { Icon(Icons.AutoMirrored.Filled.Undo, stringResource(R.string.undo)) }
-            IconButton(onClick = { d.redo() }, enabled = d.redo.isNotEmpty() || d.version < 0) { Icon(Icons.AutoMirrored.Filled.Redo, stringResource(R.string.redo)) }
+            IconButton(onClick = { painterIdle(); d.undo() }, enabled = d.undo.isNotEmpty() || d.version < 0) { Icon(Icons.AutoMirrored.Filled.Undo, stringResource(R.string.undo)) }
+            IconButton(onClick = { painterIdle(); d.redo() }, enabled = d.redo.isNotEmpty() || d.version < 0) { Icon(Icons.AutoMirrored.Filled.Redo, stringResource(R.string.redo)) }
             IconButton(onClick = { fit() }) { Icon(Icons.Default.FitScreen, stringResource(R.string.nh_ie_zoom_fit)) }
             Button(onClick = {
                 val f = d.floating
                 if (f != null) { d.push(); ACanvas(d.cur.bmp).drawBitmap(f, d.floatX, d.floatY, null); d.floating = null }
-                onDone(d.composite())
+                painterIdle(); onDone(d.composite())
             }) { Text(stringResource(R.string.done)) }
         }
         // ---- canvas ----
@@ -242,9 +265,9 @@ private fun EditorBody(d: EDoc, onDone: (Bitmap) -> Unit, onCancel: () -> Unit) 
                         if (began) return
                         began = true
                         when (tool) {
-                            ETool.BRUSH, ETool.ERASER -> { d.push(); stroke = Bitmap.createBitmap(d.w, d.h, Bitmap.Config.ARGB_8888) }
-                            ETool.BURN, ETool.DODGE, ETool.HEAL -> d.push()
-                            ETool.CLONE -> d.push()
+                            ETool.BRUSH, ETool.ERASER -> { d.pushActive(); stroke = Bitmap.createBitmap(d.w, d.h, Bitmap.Config.ARGB_8888) }   // tab-view-core E-18
+                            ETool.BURN, ETool.DODGE, ETool.HEAL -> { painterIdle(); d.pushActive() }
+                            ETool.CLONE -> { painterIdle(); d.pushActive() }
                             else -> {}
                         }
                     }
@@ -258,9 +281,10 @@ private fun EditorBody(d: EDoc, onDone: (Bitmap) -> Unit, onCancel: () -> Unit) 
                                 val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = (0xFF000000.toInt() or color); alpha = (flow * 255).roundToInt().coerceIn(1, 255); strokeWidth = size; strokeCap = Paint.Cap.ROUND; style = Paint.Style.STROKE }
                                 c.drawLine(last.x, last.y, p.x, p.y, paint)
                             }
-                            ETool.BURN, ETool.DODGE -> ImageOps.burnDodge(d.cur.bmp, p.x, p.y, size / 2f, flow, tool == ETool.BURN, d.mask)
-                            ETool.HEAL -> ImageOps.healDab(d.cur.bmp, p.x, p.y, size / 2f, d.mask)
-                            ETool.CLONE -> cloneOff?.let { o -> cloneSnapshot?.let { s -> ImageOps.cloneDab(d.cur.bmp, s, p.x, p.y, o.x, o.y, size / 2f, d.mask) } }
+                            // tab-view-core E-18: retouching dabs run on one background thread, in order (not in the pointer loop)
+                            ETool.BURN, ETool.DODGE -> { val b = d.cur.bmp; val r = size / 2f; val fl0 = flow; val burn = tool == ETool.BURN; val m = d.mask; offMain { ImageOps.burnDodge(b, p.x, p.y, r, fl0, burn, m) } }
+                            ETool.HEAL -> { val b = d.cur.bmp; val r = size / 2f; val m = d.mask; offMain { ImageOps.healDab(b, p.x, p.y, r, m) } }
+                            ETool.CLONE -> cloneOff?.let { o -> cloneSnapshot?.let { s -> val b = d.cur.bmp; val r = size / 2f; val m = d.mask; offMain { ImageOps.cloneDab(b, s, p.x, p.y, o.x, o.y, r, m) } } }
                             else -> {}
                         }
                         d.version++

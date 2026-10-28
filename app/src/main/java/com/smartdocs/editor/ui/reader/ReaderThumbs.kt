@@ -42,6 +42,7 @@ import com.smartdocs.editor.core.edit5.ThumbMoves
 import com.smartdocs.editor.core.pdf.PdfOps
 import com.smartdocs.editor.core.security.DocAction
 import com.smartdocs.editor.core.selmenu.SelAction
+import com.smartdocs.editor.ui.reader.view.pageTint
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -324,7 +325,7 @@ private fun ThumbGrid(
                         .border(if (current || sel || target) 2.dp else 1.dp, border, RoundedCornerShape(6.dp)),
                     contentAlignment = Alignment.Center,
                 ) {
-                    bmp?.let { Image(it.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Fit) } ?: CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                    bmp?.let { Image(it.asImageBitmap(), null, Modifier.fillMaxSize().pageTint(state.pageColor, state.nightMode), contentScale = ContentScale.Fit) } ?: CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)   // tab-view-core V-38
                     if (selectMode || sel) Icon(
                         if (sel) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked, null,
                         Modifier.align(Alignment.TopStart).padding(4.dp).size(20.dp).background(Color.White.copy(alpha = 0.8f), RoundedCornerShape(50)),

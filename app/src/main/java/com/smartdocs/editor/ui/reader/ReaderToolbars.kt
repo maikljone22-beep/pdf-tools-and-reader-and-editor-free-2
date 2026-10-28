@@ -78,6 +78,10 @@ fun ReaderTabRow(state: ReaderState, onTab: (ReaderTab) -> Unit) {
     val nveUserTabs = com.smartdocs.editor.ui.nve.shell.NveUserTabs.tabs(nveCtx)
     val nveState = com.smartdocs.editor.ui.nve.NveState.of(state)
     val nveUserIdx = nveUserTabs.indexOfFirst { it.id == nveState.userTab }
+    // tab-view-core V-36: the current tab was hidden in Customise toolbar: switch to the first visible one (its tools too)
+    androidx.compose.runtime.LaunchedEffect(tabsShown, state.tab, nveUserIdx) {
+        if (nveUserIdx < 0 && tabsShown.none { it.first == state.tab }) tabsShown.firstOrNull { it.first != ReaderTab.PAGES }?.let { state.tab = it.first; state.selectTool(null) }
+    }
     val idx = if (nveUserIdx >= 0) tabsShown.size + nveUserIdx else tabsShown.indexOfFirst { it.first == state.tab }.coerceAtLeast(0)
     ScrollableTabRow(selectedTabIndex = idx, modifier = Modifier.coachTarget(CoachIds.READER_TABS), edgePadding = 8.dp, divider = {}, containerColor = MaterialTheme.colorScheme.surface) {
         tabsShown.forEach { (t, label) ->
@@ -100,7 +104,8 @@ fun ToolChip(icon: ImageVector, label: String, selected: Boolean = false, enable
         Modifier.width(72.dp).clip(RoundedCornerShape(14.dp)).background(bg).clickable(enabled = enabled, onClick = onClick).padding(vertical = 6.dp, horizontal = 2.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Icon(icon, label, Modifier.size(24.dp), tint = tint?.takeIf { enabled } ?: fg)
+        // tab-view-core E-15: the label is read once (icon without its own description) and may take two lines
+        Icon(icon, null, Modifier.size(24.dp), tint = tint?.takeIf { enabled } ?: fg)
         Spacer(Modifier.height(3.dp))
         // tabs audit CM-19: two lines (Arabic labels such as "مدير التعليقات" were cut at one line)
         Text(label, style = MaterialTheme.typography.labelSmall, color = fg, maxLines = maxLines, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center, lineHeight = 12.sp)
@@ -148,19 +153,22 @@ private fun ViewToolbar(state: ReaderState, a: ReaderActions) {
         if ("rotate" !in nveHidden) ToolChip(Icons.Default.RotateRight, stringResource(R.string.rotate_view)) { state.rotation = (state.rotation + 90) % 360 }
         // view module: crop mode (auto toggle; the View sheet has the full menu) and the pan & zoom window
         if ("crop" !in nveHidden) ToolChip(Icons.Default.Crop, stringResource(R.string.crop_mode), selected = state.vx.crop.enabled) {
-            if (state.vx.crop.enabled) state.vx.crop.disable() else { state.vx.crop.enableAuto(); state.reflow = false; state.vx.magnifier = false }
+            if (state.vx.crop.enabled) state.vx.crop.disable() else { state.vx.crop.enableAuto(); state.reflow = false; state.vx.magnifier = false; com.smartdocs.editor.ui.view5.V5State.of(state).lens = false }
         }
-        if ("magnifier" !in nveHidden) ToolChip(Icons.Default.ZoomIn, stringResource(R.string.vw_magnifier), selected = state.vx.magnifier, enabled = !state.vx.crop.enabled && !state.reflow) { state.vx.magnifier = !state.vx.magnifier }
+        // tab-view-core V-10: the one magnifier chip (the v5 lens stays in Tell me; only one of them is on at a time)
+        if ("magnifier" !in nveHidden) ToolChip(Icons.Default.ZoomIn, stringResource(R.string.vw_magnifier), selected = state.vx.magnifier, enabled = !state.vx.crop.enabled && !state.reflow) { state.vx.magnifier = !state.vx.magnifier; if (state.vx.magnifier) com.smartdocs.editor.ui.view5.V5State.of(state).lens = false }
         if ("search" !in nveHidden) ToolChip(Icons.Default.Search, stringResource(R.string.search), selected = state.searchOpen, onClick = a.search)
         if ("panels" !in nveHidden) ToolChip(Icons.Default.FormatListBulleted, stringResource(R.string.rd_panels)) { a.panels(ReaderPanel.OUTLINE) }
         if ("bookmarks" !in nveHidden) ToolChip(Icons.Default.Bookmark, stringResource(R.string.panel_bookmarks)) { a.panels(ReaderPanel.BOOKMARKS) }
         if ("thumbnails" !in nveHidden) ToolChip(Icons.Default.GridView, stringResource(R.string.panel_thumbnails)) { a.panels(ReaderPanel.THUMBNAILS) }
         if ("attachments" !in nveHidden) ToolChip(Icons.Default.AttachFile, stringResource(R.string.panel_attachments)) { a.panels(ReaderPanel.ATTACHMENTS) }   // nav-attach
-        if ("read_aloud" !in nveHidden) ToolChip(Icons.Default.RecordVoiceOver, stringResource(R.string.tool_read_aloud), onClick = a.readAloud)
+        // tab-view-core V-08: the chip shows when this document is being read aloud
+        val ttsSt by com.smartdocs.editor.core.tts.ReadAloudController.status.collectAsState()
+        if ("read_aloud" !in nveHidden) ToolChip(Icons.Default.RecordVoiceOver, stringResource(R.string.tool_read_aloud), selected = ttsSt.state != com.smartdocs.editor.core.tts.ReadAloudController.State.IDLE && ReaderAi6.ownsTts(state), onClick = a.readAloud)
         if ("ai" !in nveHidden && com.smartdocs.editor.LocalSettings.current.aiEnabled) ToolChip(Icons.Default.AutoAwesome, stringResource(R.string.tool_ai), onClick = a.ai)
         if ("share" !in nveHidden) ToolChip(Icons.Default.Share, stringResource(R.string.share), onClick = a.share)
         if ("print" !in nveHidden) ToolChip(Icons.Default.Print, stringResource(R.string.print), onClick = a.print)
-        if ("doc_info" !in nveHidden) ToolChip(Icons.Default.Info, stringResource(R.string.tool_doc_info), onClick = a.docInfo)
+        if ("doc_info" !in nveHidden) ToolChip(Icons.Default.Info, stringResource(R.string.tvc_info_panel), onClick = a.docInfo)   // tab-view-core V-21: the INFO side panel, named apart from "Document properties"
         com.smartdocs.editor.ui.view5.View5ViewChips(state)
     }
 }
@@ -212,17 +220,23 @@ private fun CommentToolbar(state: ReaderState, a: ReaderActions) {
 private fun EditToolbar(state: ReaderState, a: ReaderActions) {
     ToolRow {
         ToolChip(Icons.Default.EditNote, stringResource(R.string.ed_content_edit)) { a.navigateTool("content_edit") }
-        ToolChip(Icons.Default.TextFields, stringResource(R.string.rd_add_text), selected = state.tool == ReaderTool.TEXTBOX) { state.selectTool(ReaderTool.TEXTBOX) }
-        ToolChip(Icons.Default.Image, stringResource(R.string.rd_add_image), selected = state.tool == ReaderTool.IMAGE) { state.selectTool(ReaderTool.IMAGE); if (state.tool == ReaderTool.IMAGE) a.pickImage() }
+        // tab-view-core E-15: "Edit tools" (own icon) and "Edit form fields" come early, so they are not hidden off-screen
+        ToolChip(Icons.Default.Handyman, stringResource(R.string.nv_edit5_tools)) { com.smartdocs.editor.ui.nve.NveState.of(state).open(com.smartdocs.editor.ui.nve.NveSurface.EDIT5) }   // NVE
+        ToolChip(Icons.Default.AddBox, stringResource(R.string.fx_edit_fields)) { a.navigateTool("form_builder") }   // formsx: form designer
+        VerticalDivider(Modifier.height(36.dp).padding(horizontal = 4.dp))
+        // tab-view-core E-09: these two make comment annotations (text box / image stamp); page content is added in Edit content
+        ToolChip(Icons.Default.TextFields, stringResource(R.string.tvc_add_text_comment), selected = state.tool == ReaderTool.TEXTBOX) { state.selectTool(ReaderTool.TEXTBOX) }
+        ToolChip(Icons.Default.Image, stringResource(R.string.tvc_add_image_stamp), selected = state.tool == ReaderTool.IMAGE) { state.selectTool(ReaderTool.IMAGE); if (state.tool == ReaderTool.IMAGE) a.pickImage() }
         ToolChip(Icons.Default.Link, stringResource(R.string.annot_link), selected = state.tool == ReaderTool.LINK) { state.selectTool(ReaderTool.LINK) }
         VerticalDivider(Modifier.height(36.dp).padding(horizontal = 4.dp))
         ToolChip(Icons.Default.DocumentScanner, stringResource(R.string.tool_ocr)) { a.quick(QuickAction.OCR) }
-        ToolChip(Icons.Default.BrandingWatermark, stringResource(R.string.tool_watermark)) { a.quick(QuickAction.WATERMARK) }
-        ToolChip(Icons.Default.FormatListNumbered, stringResource(R.string.tool_page_numbers)) { a.quick(QuickAction.PAGE_NUMBERS) }
-        ToolChip(Icons.Default.Info, stringResource(R.string.tool_doc_info)) { a.quick(QuickAction.PROPERTIES) }
+        // tab-view-core E-04 / E-10: the edit5 watermark and header & footer (page numbers preset): rotation / crop-box
+        // aware, tagged, updatable and removable — the same screens as in Edit tools
+        ToolChip(Icons.Default.BrandingWatermark, stringResource(R.string.tool_watermark)) { a.navigateTool("e5_watermark") }
+        ToolChip(Icons.Default.FormatListNumbered, stringResource(R.string.tool_page_numbers)) { a.navigateTool("e5_header_footer") }
+        // tab-view-core E-10 / E-17: one Document properties (full editor, XMP kept in step)
+        ToolChip(Icons.Default.Info, stringResource(R.string.e5_props_title)) { a.navigateTool("e5_doc_props") }
         ToolChip(Icons.Default.AutoAwesomeMotion, stringResource(R.string.tool_organize)) { a.navigateTool("organize") }
-        ToolChip(Icons.Default.EditNote, stringResource(R.string.nv_edit5_tools)) { com.smartdocs.editor.ui.nve.NveState.of(state).open(com.smartdocs.editor.ui.nve.NveSurface.EDIT5) }   // NVE
-        ToolChip(Icons.Default.AddBox, stringResource(R.string.fx_edit_fields)) { a.navigateTool("form_builder") }   // formsx: form designer
     }
 }
 
@@ -441,13 +455,20 @@ fun PropertyBar(state: ReaderState) {
     val t = state.tool
     Column(Modifier.fillMaxWidth()) {
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            PALETTE.forEach { c -> ColorDot(c, state.color == c) { state.color = c } }
-            Box(Modifier.size(28.dp).clip(CircleShape).border(1.dp, MaterialTheme.colorScheme.outline, CircleShape).clickable { showMore = !showMore }, contentAlignment = Alignment.Center) {
-                Icon(Icons.Default.Tune, stringResource(R.string.rd_custom_color), Modifier.size(16.dp))
+            // tab-view-core E-14: only the controls the tool uses (IMAGE: opacity; LINK: none)
+            val colorT = t != ReaderTool.IMAGE && t != ReaderTool.LINK
+            val opacityT = t != ReaderTool.LINK
+            if (colorT) {
+                PALETTE.forEach { c -> ColorDot(c, state.color == c) { state.color = c } }
+                Box(Modifier.size(28.dp).clip(CircleShape).border(1.dp, MaterialTheme.colorScheme.outline, CircleShape).clickable { showMore = !showMore }, contentAlignment = Alignment.Center) {
+                    Icon(Icons.Default.Tune, stringResource(R.string.rd_custom_color), Modifier.size(16.dp))
+                }
             }
-            VerticalDivider(Modifier.height(24.dp))
-            listOf(0.25f, 0.5f, 0.75f, 1f).forEach { o ->
-                FilterChip(selected = state.opacity == o, onClick = { state.opacity = o }, label = { Text("${(o * 100).toInt()}%") }, modifier = Modifier.height(30.dp))
+            if (opacityT) {
+                VerticalDivider(Modifier.height(24.dp))
+                listOf(0.25f, 0.5f, 0.75f, 1f).forEach { o ->
+                    FilterChip(selected = state.opacity == o, onClick = { state.opacity = o }, label = { Text("${(o * 100).toInt()}%") }, modifier = Modifier.height(30.dp))
+                }
             }
             VerticalDivider(Modifier.height(24.dp))
             FilterChip(selected = state.continueCreating, onClick = { state.continueCreating = !state.continueCreating; com.smartdocs.editor.core.data.NpfPrefs.setBool(com.smartdocs.editor.core.data.NpfPrefs.K.RETAIN_TOOLS, state.continueCreating) },
@@ -457,7 +478,7 @@ fun PropertyBar(state: ReaderState) {
             FilterChip(selected = memOn, onClick = { memOn = !memOn; com.smartdocs.editor.ui.reader.annot.ToolMemory.setEnabled(ctx, memOn) },
                 label = { Text(stringResource(R.string.v5_tool_memory)) }, leadingIcon = { Icon(Icons.Default.Memory, null, Modifier.size(16.dp)) }, modifier = Modifier.height(30.dp))
         }
-        if (showMore) {
+        if (showMore && t != ReaderTool.IMAGE && t != ReaderTool.LINK) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(hex, { v -> hex = v.take(7); v.removePrefix("#").toIntOrNull(16)?.let { if (v.removePrefix("#").length == 6) state.color = it } },
                     label = { Text(stringResource(R.string.rd_custom_color)) }, placeholder = { Text("#FF5722") }, singleLine = true, modifier = Modifier.width(140.dp))
