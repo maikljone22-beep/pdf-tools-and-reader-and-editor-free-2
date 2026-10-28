@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.RectF
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -38,6 +39,7 @@ import com.smartdocs.editor.core.view5.RBlock
 import com.smartdocs.editor.core.view5.RImage
 import com.smartdocs.editor.core.view5.RLine
 import com.smartdocs.editor.core.view5.ReflowBlocks
+import com.smartdocs.editor.core.view5.ReflowTables
 import com.smartdocs.editor.ui.reader.ReaderState
 import com.smartdocs.editor.ui.reader.view.ViewExtras
 import com.smartdocs.editor.ui.reader.view.pageTextColor
@@ -63,7 +65,14 @@ internal fun pageLines(text: String, boxes: List<RectF>): List<RLine> {
             top = maxOf(top, t); bot = minOf(bot, bt); l = minOf(l, b.left); r = maxOf(r, b.right)
         }
         val s = sb.toString().trim()
-        if (s.isNotEmpty() && top > bot) out += RLine(s, hs.sorted().getOrNull(hs.size / 2) ?: (top - bot), top, bot, l, r)
+        if (s.isNotEmpty() && top > bot) {
+            val size = hs.sorted().getOrNull(hs.size / 2) ?: (top - bot)
+            // reflow A1: cut at gaps wider than about one em (table cells, a line over two columns)
+            val ls = FloatArray(end - start) { k -> boxes[start + k].let { b -> if (b.width() <= 0f) Float.NaN else b.left } }
+            val rs = FloatArray(end - start) { k -> boxes[start + k].let { b -> if (b.width() <= 0f) Float.NaN else b.right } }
+            val segs = ReflowTables.segment(text.substring(start, end), ls, rs, size * 1.6f).takeIf { it.size >= 2 } ?: emptyList()
+            out += RLine(s, size, top, bot, l, r, segs)
+        }
     }
     for (i in 0 until n) if (text[i] == '\n' || text[i] == '\r') { emit(i); start = i + 1 }
     emit(n)
@@ -99,14 +108,15 @@ fun ReflowReader(s: ReaderState) {
         // so no chunk scans the whole document)
         val all = HashMap<Int, List<RBlock>>()
         com.smartdocs.editor.core.view5.ReflowChunks.order(startPage, s.pageCount).forEach { chunk ->
-            val imgs = runCatching { PageGraphics.images(f, s.password, chunk) }.getOrDefault(emptyMap())
+            val extras = runCatching { PageGraphics.reflowExtras(f, s.password, chunk) }.getOrDefault(emptyMap())
             chunk.forEach { p -> runCatching {          // one odd page must not crash the reader
                 val (pw, ph) = s.pageSize(p)
                 val lines = withContext(Dispatchers.Default) { pageLines(s.pageText(p), s.charBoxes(p)) }
                 val area = pw * ph
-                val im = (imgs[p] ?: emptyList()).filter { val a = (it.right - it.left) * (it.top - it.bottom); a > area * 0.004f && a < area * 0.92f }
+                val ex = extras[p]
+                val im = (ex?.images ?: emptyList()).filter { val a = (it.right - it.left) * (it.top - it.bottom); a > area * 0.004f && a < area * 0.92f }
                 val b = if (lines.isEmpty()) listOf(RBlock.PageMark(p), RBlock.Image(p, RImage(ph, 0f, 0f, pw)))
-                else ReflowBlocks.build(p, lines, im, ph)
+                else ReflowBlocks.build(p, lines, im, ph, rules = ex?.rules.orEmpty(), tagged = ex?.tables.orEmpty())
                 all[p] = b
             }.onFailure { if (it is kotlinx.coroutines.CancellationException) throw it; all[p] = listOf(RBlock.PageMark(p)) } }
             // keep document order in the list
@@ -133,6 +143,7 @@ fun ReflowReader(s: ReaderState) {
     val hits = remember(folded, blocks.size) {
         if (folded.length < 2) emptyList() else blocks.withIndex().filter { (_, b) ->
             (b as? RBlock.Para)?.text?.let { CommentFilter.fold(it).contains(folded) } == true || (b as? RBlock.Heading)?.text?.let { CommentFilter.fold(it).contains(folded) } == true
+                || (b as? RBlock.Table)?.rows?.any { r -> r.any { CommentFilter.fold(it).contains(folded) } } == true
         }.map { it.index }
     }
     var hitIdx by remember(hits) { mutableIntStateOf(0) }
@@ -177,6 +188,7 @@ fun ReflowReader(s: ReaderState) {
                             textAlign = if (justify) TextAlign.Justify else TextAlign.Start,
                             style = MaterialTheme.typography.bodyLarge.copy(textDirection = if (b.rtl) TextDirection.Rtl else TextDirection.Ltr))
                         is RBlock.Image -> if (images) ReflowImage(s, b)
+                        is RBlock.Table -> ReflowTable(b, fg, fontSp, family, folded, i in hits)
                     }
                 }
             }
@@ -212,6 +224,37 @@ private fun highlight(text: String, folded: String, on: Boolean) = buildAnnotate
         from = b; pos = k + folded.length
     }
     append(text.substring(from))
+}
+
+/**
+ * A rebuilt table (OLD A1): real rows and columns in page order, column widths from the longest cell (capped),
+ * scrolled sideways when it is wider than the screen; the header row is bold on a tinted band.
+ */
+@Composable
+private fun ReflowTable(b: RBlock.Table, fg: Color, fontSp: Float, family: FontFamily, folded: String, hit: Boolean) {
+    val cols = b.rows.maxOfOrNull { it.size }?.takeIf { it > 0 } ?: return
+    val cellSp = fontSp * 0.9f
+    // about 0.55 em per character, 3..24 characters wide before the cell wraps
+    val widths = (0 until cols).map { c -> (b.rows.maxOf { r -> r.getOrNull(c)?.length ?: 0 }.coerceIn(3, 24) * cellSp * 0.55f + 16f).dp }
+    val line = fg.copy(alpha = 0.3f)
+    Box(Modifier.fillMaxWidth().padding(vertical = 8.dp).horizontalScroll(rememberScrollState())) {
+        // page order is kept left to right, also for Arabic tables (each cell keeps its own text direction)
+        CompositionLocalProvider(androidx.compose.ui.platform.LocalLayoutDirection provides androidx.compose.ui.unit.LayoutDirection.Ltr) {
+            Column(Modifier.border(1.dp, line)) {
+                b.rows.forEachIndexed { ri, row ->
+                    val head = b.header && ri == 0
+                    Row(Modifier.height(IntrinsicSize.Min).then(if (head) Modifier.background(fg.copy(alpha = 0.08f)) else Modifier)) {
+                        (0 until cols).forEach { c ->
+                            Text(highlight(row.getOrNull(c) ?: "", folded, hit), Modifier.width(widths[c]).fillMaxHeight().border(0.5.dp, line).padding(6.dp),
+                                color = fg, fontSize = cellSp.sp, lineHeight = (cellSp * 1.35f).sp, fontFamily = family,
+                                fontWeight = if (head) FontWeight.Bold else FontWeight.Normal,
+                                style = MaterialTheme.typography.bodyMedium.copy(textDirection = TextDirection.Content))
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable
