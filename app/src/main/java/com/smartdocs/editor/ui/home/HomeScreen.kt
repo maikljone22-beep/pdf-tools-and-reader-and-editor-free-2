@@ -180,7 +180,7 @@ fun HomeScreen(nav: NavHostController) {
                 }
 
                 // ---- recent / tagged documents ----
-                val docs = (if (selectedTag != null) tagged else recents).take(com.smartdocs.editor.ui.nve.shell.NveFolders.recentSize(ctx))   // NVE-shell: recent list size
+                val docs = if (selectedTag != null) tagged else recents   // fc-settings: one recent-size setting (recentLimit above)
                 item(key = "recent_title") {
                     SectionTitle(tags.firstOrNull { it.id == selectedTag }?.name ?: stringResource(R.string.recent_files)) {
                         if (docs.isNotEmpty()) IconButton(onClick = { grid = !grid; prefs.edit().putBoolean("recent_grid", grid).apply() }) {

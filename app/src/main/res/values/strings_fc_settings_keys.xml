@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- fc-settings (§39): names of the added keyboard shortcuts in the customise sheet -->
+    <string name="fcs_key_export_comments">تصدير التعليقات</string>
+    <string name="fcs_key_reply">الرد على التعليق المحدد</string>
+    <string name="fcs_key_deselect">إلغاء التحديد</string>
+    <string name="fcs_key_duplicate_page">تكرار الصفحة الحالية</string>
+    <string name="fcs_key_read_to_end">القراءة بصوت عالٍ حتى نهاية المستند</string>
+    <string name="fcs_key_read_pause">إيقاف القراءة مؤقتًا / متابعتها</string>
+    <string name="fcs_key_read_toggle">تشغيل القراءة بصوت عالٍ أو إيقافها</string>
+    <string name="fcs_key_toolbars">إخفاء أشرطة الأدوات / إظهارها</string>
+    <string name="fcs_key_email_tabs">إرسال كل علامات التبويب المفتوحة بالبريد</string>
+</resources>

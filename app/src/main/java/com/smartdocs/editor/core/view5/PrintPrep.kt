@@ -44,11 +44,19 @@ data class PrintOptions(
     val content: PrintContent = PrintContent.DOC_AND_MARKUPS,
     val poster: Boolean = false, val posterZoom: Int = 200, val overlap: Float = 18f, val posterLabels: Boolean = true,
     val cutMarks: Boolean = false,
+    // fc-settings: printer marks for normal printing (registration targets, bleed marks at [bleed] points) and the hairline fix
+    val regMarks: Boolean = false,
+    val bleedMarks: Boolean = false,
+    val bleed: Float = 9f,
+    /** Minimum stroke width in points (0 = off): thinner lines (and 0-width hairlines) are widened before printing. */
+    val hairline: Float = 0f,
     val notes: Boolean = false,                // sticky-note texts drawn beside their icons
     val appendix: File? = null,                // pages added at the end (the comment summary)
 ) {
     val what: PrintContent get() = if (!annotations) PrintContent.DOCUMENT else content
     val nUp: Boolean get() = perSheet > 1 || cols > 0 && rows > 0
+    /** Registration or bleed marks are wanted (one page per sheet, placed with room for the marks). */
+    val printerMarks: Boolean get() = regMarks || bleedMarks
 }
 
 /**
@@ -61,7 +69,8 @@ object PrintPrep {
 
     /** True when the options need no re-imposition (the original file can be printed as-is). */
     fun isPlain(o: PrintOptions, pageCount: Int) = o.range.isBlank() && o.subset == PrintLayout.Subset.ALL && !o.reverse && !o.markedOnly && o.perSheet == 1 && !o.booklet &&
-        o.what == PrintContent.DOC_AND_MARKUPS && pageCount > 0 && o.scale == PrintLayout.Scale.AUTO && !o.nUp && !o.poster && !o.notes && o.appendix == null && !o.cutMarks
+        o.what == PrintContent.DOC_AND_MARKUPS && pageCount > 0 && o.scale == PrintLayout.Scale.AUTO && !o.nUp && !o.poster && !o.notes && o.appendix == null && !o.cutMarks &&
+        !o.printerMarks && o.hairline <= 0f
 
     /** [note] renders a sticky note's text as an image (width in points → bitmap), for [PrintOptions.notes]. */
     suspend fun build(src: File, pw: String?, o: PrintOptions, out: File, note: ((String, Float) -> Bitmap?)? = null): Int = withContext(Dispatchers.IO) {
@@ -76,6 +85,7 @@ object PrintPrep {
                 PrintContent.MARKUPS -> { keepAnnots(doc) { it != "Widget" && it != "Link" }; clearContent(doc); flattenAppearances(doc) }
                 PrintContent.DOC_AND_MARKUPS -> flattenAppearances(doc)
             }
+            if (o.hairline > 0f) fixHairlines(doc, o.hairline)   // fc-settings: G8 hairline fix
             var pages = PrintLayout.subset(PrintLayout.parseRange(o.range, doc.numberOfPages), o.subset)
             if (nveMarked != null) pages = pages.filter { it in nveMarked }
             if (o.reverse) pages = pages.reversed()
@@ -141,14 +151,15 @@ object PrintPrep {
                                 }
                             }
                         }
-                    } else if (o.scale == PrintLayout.Scale.AUTO && !o.cutMarks) {
+                    } else if (o.scale == PrintLayout.Scale.AUTO && !o.cutMarks && !o.printerMarks) {
                         pages.forEach { p -> dst.importPage(doc.getPage(p)) }
                     } else {
                         // one page per sheet: fit / shrink / 100 % / custom %, auto-rotated and centred on the paper
                         val sw = if (o.landscape) portraitH else portraitW; val sh = if (o.landscape) portraitW else portraitH
                         pages.forEach { p ->
                             val (pw0, ph0) = size(p)
-                            val (s, rot) = PrintLayout.fitScale(pw0, ph0, sw, sh, o.scale, o.scalePct, o.margin, o.autoRotate)
+                            val room = PrinterMarks.room(o.bleed, o.regMarks, o.bleedMarks)
+                            val (s, rot) = PrintLayout.fitScale(pw0, ph0, sw, sh, o.scale, o.scalePct, maxOf(o.margin, room), o.autoRotate)
                             val dw = (if (rot) ph0 else pw0) * s; val dh = (if (rot) pw0 else ph0) * s
                             val x0 = (sw - dw) / 2; val y0 = (sh - dh) / 2
                             val sheet = PDPage(PDRectangle(sw, sh)); dst.addPage(sheet)
@@ -161,6 +172,7 @@ object PrintPrep {
                                 cs.restoreGraphicsState()
                                 if (o.borders) { cs.setLineWidth(0.5f); cs.setStrokingColor(0.6f, 0.6f, 0.6f); cs.addRect(x0, y0, dw, dh); cs.stroke() }
                                 if (o.cutMarks) cutMarks(cs, x0, y0, dw, dh, minOf(x0, y0))
+                                if (o.printerMarks) printerMarks(cs, PrinterMarks.layout(x0, y0, dw, dh, o.bleed, o.regMarks, o.bleedMarks))
                             }
                         }
                     }
@@ -194,6 +206,55 @@ object PrintPrep {
             cs.moveTo(cx, cy + dy * gap); cs.lineTo(cx, cy + dy * (gap + len))
         }
         cs.stroke()
+    }
+
+    /** fc-settings: bleed marks and registration targets (0.3 pt, registration black). */
+    private fun printerMarks(cs: PDPageContentStream, l: PrinterMarks.Layout) {
+        cs.setLineWidth(0.3f); cs.setStrokingColor(0f, 0f, 0f)
+        l.bleed.forEach { g -> cs.moveTo(g.x1, g.y1); cs.lineTo(g.x2, g.y2) }
+        l.reg.forEach { t ->
+            // circle from four Bézier arcs, then the cross
+            val k = 0.5523f * t.r
+            cs.moveTo(t.cx + t.r, t.cy)
+            cs.curveTo(t.cx + t.r, t.cy + k, t.cx + k, t.cy + t.r, t.cx, t.cy + t.r)
+            cs.curveTo(t.cx - k, t.cy + t.r, t.cx - t.r, t.cy + k, t.cx - t.r, t.cy)
+            cs.curveTo(t.cx - t.r, t.cy - k, t.cx - k, t.cy - t.r, t.cx, t.cy - t.r)
+            cs.curveTo(t.cx + k, t.cy - t.r, t.cx + t.r, t.cy - k, t.cx + t.r, t.cy)
+            cs.moveTo(t.cx - t.r - 2f, t.cy); cs.lineTo(t.cx + t.r + 2f, t.cy)
+            cs.moveTo(t.cx, t.cy - t.r - 2f); cs.lineTo(t.cx, t.cy + t.r + 2f)
+        }
+        cs.stroke()
+    }
+
+    /**
+     * fc-settings (G8 hairline fix): every `w` in the page content and in the page's own form XObjects (this includes
+     * the flattened comment appearances) is raised to at least [min] points. Widths set through ExtGState /LW or in
+     * nested forms are left as they are.
+     */
+    private fun fixHairlines(doc: PDDocument, min: Float) {
+        doc.pages.forEach { page ->
+            runCatching {
+                val p = com.tom_roush.pdfbox.pdfparser.PDFStreamParser(page); p.parse()
+                val tokens: MutableList<Any?> = ArrayList(p.tokens)
+                if (PrinterMarks.fixLineWidths(tokens, min) > 0) {
+                    val st = PDStream(doc)
+                    st.createOutputStream(com.tom_roush.pdfbox.cos.COSName.FLATE_DECODE).use { com.tom_roush.pdfbox.pdfwriter.ContentStreamWriter(it).writeTokens(tokens) }
+                    page.setContents(st)
+                }
+            }
+            val res = page.resources ?: return@forEach
+            runCatching {
+                res.xObjectNames.forEach { n ->
+                    val f = runCatching { res.getXObject(n) }.getOrNull() as? PDFormXObject ?: return@forEach
+                    runCatching {
+                        val p = com.tom_roush.pdfbox.pdfparser.PDFStreamParser(f); p.parse()
+                        val tokens: MutableList<Any?> = ArrayList(p.tokens)
+                        if (PrinterMarks.fixLineWidths(tokens, min) > 0)
+                            f.cosObject.createOutputStream(com.tom_roush.pdfbox.cos.COSName.FLATE_DECODE).use { com.tom_roush.pdfbox.pdfwriter.ContentStreamWriter(it).writeTokens(tokens) }
+                    }
+                }
+            }
+        }
     }
 
     /** Small ASCII label (tile position) in the bottom margin. */

@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- fc-settings: Settings gaps (FINAL_CHECK nav/settings) -->
+<resources>
+    <string name="fcs_lang_system">System language</string>
+    <string name="fcs_cv_save_default">Save as default</string>
+    <string name="fcs_cv_forget_default">Forget saved default</string>
+    <string name="fcs_cv_saved">Options saved as the default for this conversion</string>
+    <string name="fcs_qat_pos">Pinned commands</string>
+    <string name="fcs_qat_top">Top bar</string>
+    <string name="fcs_qat_bottom">Bottom</string>
+    <string name="fcs_invite_ok">Your friend\'s invite code was saved</string>
+    <string name="fcs_invite_bad">This invite link is not valid, or a code was already used</string>
+    <string name="fcs_cv_title">Saved conversion defaults</string>
+    <string name="fcs_cv_none">No saved defaults. Set the options in a conversion, then tap \"Save as default\".</string>
+    <string name="fcs_cv_forget_all">Forget all saved defaults</string>
+    <string name="fcs_connected_on">Connected documents (ConnectedPDF)</string>
+    <string name="fcs_connected_on_sub">When off, the app never contacts the connected-documents server: no tracking and no version checks</string>
+    <string name="fcs_debug">Debug log</string>
+    <string name="fcs_debug_sub">Keeps a technical log to send to support when something goes wrong</string>
+    <string name="fcs_debug_share">Share log</string>
+    <string name="fcs_debug_clear">Clear log</string>
+    <string name="fcs_n_channels">Settings per message</string>
+    <string name="fcs_n_channels_none">Notification types appear here after the app shows its first notification</string>
+    <string name="fcs_n_gear">Settings for this notification</string>
+    <string name="fcs_n_off">Off</string>
+    <string name="fcs_a11y_assistant">Accessibility setup assistant</string>
+    <string name="fcs_a11y_assistant_sub">A few steps to set colours, reading order, page display and read aloud</string>
+    <string name="fcs_a11y_s1">Replace document colours with high-contrast colours?</string>
+    <string name="fcs_a11y_s2">Reading order for screen readers and read aloud:</string>
+    <string name="fcs_a11y_s3">Page layout and zoom when a document opens:</string>
+    <string name="fcs_a11y_s4">Read aloud and screen:</string>
+    <string name="fcs_a11y_single">Single page</string>
+    <string name="fcs_a11y_continuous">Continuous scrolling</string>
+    <string name="fcs_a11y_auto">Automatic</string>
+    <string name="fcs_next">Next</string>
+    <string name="fcs_prev">Back</string>
+    <string name="fcs_finish">Finish</string>
+</resources>
