@@ -18,8 +18,21 @@ import java.io.OutputStream
 class DocxBuilder(
     out: OutputStream, private val title: String, private val furniture: PageFurniture = PageFurniture.NONE,
     /** Flowing text: no page breaks and no Word header / footer (running headers and footers are left out). */
-    private val flowing: Boolean = false,
+    private val flowing0: Boolean = false,
+    /**
+     * Row 46 "precisely laid out": every paragraph and picture in a Word frame (framePr) and every table floating
+     * (tblpPr), placed on the page where the PDF has it; page breaks between pages. Wins over [flowing0].
+     */
+    private val exact: Boolean = false,
 ) : Closeable {
+    private val flowing = flowing0 && !exact
+
+    /** framePr of a block placed at [r] (PDF points, y down) on its page; a little wider so its lines do not wrap. */
+    private fun frame(r: Rect): String {
+        val w = ((r.x1 - r.x0) * 1.06f + 4f).coerceAtMost(pageW)
+        return "<w:framePr w:w=\"" + OoxmlZip.twips(w) + "\" w:hRule=\"auto\" w:wrap=\"notBeside\" w:vAnchor=\"page\" w:hAnchor=\"page\" w:x=\"" +
+            OoxmlZip.twips(r.x0.coerceAtLeast(0f)) + "\" w:y=\"" + OoxmlZip.twips(r.y0.coerceAtLeast(0f)) + "\"/>"
+    }
 
     private val zip = OoxmlZip(out)
     private val body = StringBuilder()
@@ -102,8 +115,10 @@ class DocxBuilder(
     private fun paragraph(b: ParagraphBlock) {
         body.append("<w:p><w:pPr>")
         if (b.headingLevel in 1..3) body.append("<w:pStyle w:val=\"Heading").append(b.headingLevel).append("\"/>")
+        if (exact) body.append(frame(b.rect))                // schema order: pStyle, framePr, shd, bidi, spacing, jc
         b.shade?.let { body.append("<w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"").append(Decorations.hex(it)).append("\"/>") }
         if (b.rtl) body.append("<w:bidi/>")
+        if (exact) body.append("<w:spacing w:before=\"0\" w:after=\"0\"/>")
         jc(b.align)?.let { body.append("<w:jc w:val=\"").append(it).append("\"/>") }
         body.append("</w:pPr>")
         runs(body, TextRuns.ofParagraph(b.lines), b.rtl)
@@ -129,6 +144,9 @@ class DocxBuilder(
         }
         val border = if (t.ruled) "w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"808080\"" else "w:val=\"none\" w:sz=\"0\" w:space=\"0\" w:color=\"auto\""
         body.append("<w:tbl><w:tblPr>")
+        // precisely laid out: a floating table at its place on the page
+        if (exact) body.append("<w:tblpPr w:leftFromText=\"0\" w:rightFromText=\"0\" w:vertAnchor=\"page\" w:horzAnchor=\"page\" w:tblpX=\"")
+            .append(OoxmlZip.twips(t.rect.x0.coerceAtLeast(0f))).append("\" w:tblpY=\"").append(OoxmlZip.twips(t.rect.y0.coerceAtLeast(0f))).append("\"/><w:tblOverlap w:val=\"overlap\"/>")
         if (rtl) body.append("<w:bidiVisual/>")
         body.append("<w:tblW w:w=\"").append(w.sum()).append("\" w:type=\"dxa\"/><w:tblBorders>")
         for (side in listOf("top", "left", "bottom", "right", "insideH", "insideV")) body.append("<w:").append(side).append(' ').append(border).append("/>")
@@ -189,7 +207,7 @@ class DocxBuilder(
         val rid = "rIdImg$picId"
         imageRels += rid to name
         // keep the PDF size, shrunk to the text width/height when needed
-        val s = minOf(1f, contentW / img.w, (pageH - marginT - marginB).coerceAtLeast(72f) / img.h)
+        val s = if (exact) minOf(1f, pageW / img.w, pageH / img.h) else minOf(1f, contentW / img.w, (pageH - marginT - marginB).coerceAtLeast(72f) / img.h)
         val cx = emu(img.w * s); val cy = emu(img.h * s)
         val center = (b.rect.x0 + b.rect.x1) / 2f
         val align = when {
@@ -197,7 +215,8 @@ class DocxBuilder(
             center > page.width / 2f -> "right"
             else -> "left"
         }
-        body.append("<w:p><w:pPr><w:jc w:val=\"").append(align).append("\"/></w:pPr><w:r><w:drawing><wp:inline distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\">")
+        body.append("<w:p><w:pPr>").append(if (exact) frame(b.rect) + "<w:spacing w:before=\"0\" w:after=\"0\"/>" else "")
+            .append("<w:jc w:val=\"").append(if (exact) "left" else align).append("\"/></w:pPr><w:r><w:drawing><wp:inline distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\">")
             .append("<wp:extent cx=\"").append(cx).append("\" cy=\"").append(cy).append("\"/><wp:docPr id=\"").append(picId).append("\" name=\"Picture ").append(picId).append("\"/>")
             .append("<wp:cNvGraphicFramePr><a:graphicFrameLocks noChangeAspect=\"1\"/></wp:cNvGraphicFramePr>")
             .append("<a:graphic><a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/picture\"><pic:pic>")

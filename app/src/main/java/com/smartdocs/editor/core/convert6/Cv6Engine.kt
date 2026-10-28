@@ -68,6 +68,8 @@ data class Cv6Opts(
     val recognizeFields: Boolean = false,
     /** PDF → Word text recovery (row 51): with [autoOcr], recognise every page instead of only the problem pages. */
     val recoverAllPages: Boolean = false,
+    /** PDF → Word "precisely laid out" (row 46): text boxes at their PDF position; wins over [keepLayout]. */
+    val exactLayout: Boolean = false,
 )
 
 enum class Stage { WORK, OCR }
@@ -256,7 +258,8 @@ class Cv6Engine(private val ctx: Context, private val docs: DocumentRepository) 
         return PdfFlow6.wordInput(ctx, f, pw, pages, o.ocrLangs, tempDir, ocr, ocrProgress, allPages = ocr && o.recoverAllPages).use { inp ->
             val flowing = o.keepLayout?.not() ?: (inp.ocrPages > 0 && inp.rtl)
             val out = out(base, "docx")
-            val opts = ConvertOptions(format = TargetFormat.DOCX, pages = pages, detectTables = o.tables, includeImages = o.includeImages, docxFlowing = flowing)
+            val opts = ConvertOptions(format = TargetFormat.DOCX, pages = pages, detectTables = o.tables, includeImages = o.includeImages, docxFlowing = flowing && !o.exactLayout,
+                docxExact = o.exactLayout)
             val stats = ConvertEngine.convert(ctx, inp.file, pw, opts, out, p, cancelled)
             val info = ArrayList<String>()
             info += if (stats.textPages == 0) ctx.getString(R.string.cv_scanned_warning) else ctx.getString(R.string.cv6_info_pages, stats.pages, stats.tables, stats.images)

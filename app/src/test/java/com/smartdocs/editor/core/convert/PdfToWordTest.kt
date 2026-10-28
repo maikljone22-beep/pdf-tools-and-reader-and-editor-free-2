@@ -175,9 +175,11 @@ class PdfToWordTest {
         assertEquals(listOf("abc def" to false), BidiText.scriptRuns("abc def", false))
     }
 
-    private fun docx(flowing: Boolean, vararg pages: PageLayout): String {
+    private fun docx(flowing: Boolean, vararg pages: PageLayout): String = docxWith(flowing, false, *pages)
+
+    private fun docxWith(flowing: Boolean, exact: Boolean, vararg pages: PageLayout): String {
         val bos = ByteArrayOutputStream()
-        DocxBuilder(bos, "t", PageFurniture.NONE, flowing).use { b -> pages.forEach { b.addPage(it) }; b.finish() }
+        DocxBuilder(bos, "t", PageFurniture.NONE, flowing, exact = exact).use { b -> pages.forEach { b.addPage(it) }; b.finish() }
         ZipInputStream(bos.toByteArray().inputStream()).use { z ->
             while (true) { val e = z.nextEntry ?: break; if (e.name == "word/document.xml") return z.readBytes().toString(Charsets.UTF_8) }
         }
@@ -206,5 +208,20 @@ class PdfToWordTest {
         assertEquals(1, Regex("w:type=\"page\"").findAll(keep).count())
         // no page break before the first page
         assertTrue(keep.indexOf("w:type=\"page\"") > keep.indexOf("أولى"))
+    }
+
+    @Test fun preciseLayoutPutsParagraphsInFramesAtTheirPlace() {
+        // row 46: an English paragraph at (100, 200) and an Arabic one at the right
+        val gs = ltrWord("Invoice", 100f, 210f) + rtlLine("المجموع".split(' '), 540f, 400f)
+        val l = LayoutAnalyzer.analyze(page(gs))
+        val xml = docxWith(true, true, l, l)       // exact wins over flowing: pages are kept
+        val frames = Regex("""<w:framePr [^>]*w:x="(\d+)" w:y="(\d+)"""").findAll(xml).map { it.groupValues[1].toInt() to it.groupValues[2].toInt() }.toList()
+        assertTrue(frames.size >= 4)                                       // two blocks on each of the two pages
+        assertTrue(frames.any { (x, _) -> x in 1900..2100 })                // x = 100 pt = 2000 twips
+        assertTrue(xml.contains("<w:br w:type=\"page\"/>"))
+        // pPr children keep the schema order: framePr before bidi before spacing
+        val ar = Regex("<w:p><w:pPr>(.*?)</w:pPr>").findAll(xml).map { it.groupValues[1] }.first { it.contains("<w:bidi/>") }
+        assertTrue(ar, ar.indexOf("framePr") < ar.indexOf("<w:bidi/>") && ar.indexOf("<w:bidi/>") < ar.indexOf("<w:spacing"))
+        assertFalse(docx(false, l).contains("framePr"))
     }
 }

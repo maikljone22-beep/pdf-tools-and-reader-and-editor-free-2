@@ -15,4 +15,5 @@
     <string name="cv9_recovery_off">متوقف</string>
     <string name="cv9_recovery_problem">الصفحات المتضررة فقط</string>
     <string name="cv9_recovery_all">كل الصفحات</string>
+    <string name="cv9_layout_exact">دقيق (مربعات نص)</string>
 </resources>

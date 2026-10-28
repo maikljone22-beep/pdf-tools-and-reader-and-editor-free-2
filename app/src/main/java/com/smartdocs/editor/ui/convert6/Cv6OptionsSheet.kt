@@ -118,7 +118,13 @@ private fun OptionsBody(conv: Conv, inputCount: Int, o: Cv6Opts, onChange: (Cv6O
     }
     if (Opt.LAYOUT in opts) {
         FieldLabel(stringResource(R.string.cv6_layout))
-        ChoiceChips(listOf<Boolean?>(null, true, false), o.keepLayout, { when (it) { null -> stringResource(R.string.cv6_lang_auto); true -> stringResource(R.string.cv6_layout_keep); false -> stringResource(R.string.cv6_layout_flow) } }) { onChange(o.copy(keepLayout = it)) }
+        // row 46: auto / page layout / flowing / precisely laid out (text boxes)
+        val choice = if (o.exactLayout) "exact" else when (o.keepLayout) { null -> "auto"; true -> "keep"; false -> "flow" }
+        ChoiceChips(listOf("auto", "keep", "flow", "exact"), choice, { when (it) { "auto" -> stringResource(R.string.cv6_lang_auto); "keep" -> stringResource(R.string.cv6_layout_keep)
+            "flow" -> stringResource(R.string.cv6_layout_flow); else -> stringResource(R.string.cv9_layout_exact) } }) {
+            onChange(when (it) { "exact" -> o.copy(exactLayout = true); "keep" -> o.copy(keepLayout = true, exactLayout = false)
+                "flow" -> o.copy(keepLayout = false, exactLayout = false); else -> o.copy(keepLayout = null, exactLayout = false) })
+        }
     }
     if (Opt.PPT_MODE in opts) {
         FieldLabel(stringResource(R.string.cv_ppt_mode))
