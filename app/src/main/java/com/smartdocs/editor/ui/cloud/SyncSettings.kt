@@ -35,8 +35,7 @@ fun SyncSettingsSection(title: String? = null) {
         // fc-sync: how cloud changes are found right now (notifications / delta feed), per provider
         val modes by com.smartdocs.editor.core.sync.ChangeWatch.modes.collectAsStateWithLifecycle()
         if (live && auto && modes.isNotEmpty()) androidx.compose.material3.Text(
-            modes.entries.sortedBy { it.key.ordinal }.joinToString("
-") { (p, m) -> p.label + ": " + watchLabel(ctx, m) },
+            modes.entries.sortedBy { it.key.ordinal }.joinToString(separator = NL) { (p, m) -> p.label + ": " + watchLabel(ctx, m) },
             androidx.compose.ui.Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
             style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
             color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant)
@@ -54,3 +53,5 @@ private fun watchLabel(ctx: android.content.Context, m: com.smartdocs.editor.cor
     com.smartdocs.editor.core.sync.ChangeWatch.Mode.BACKING_OFF -> R.string.fcy_watch_backoff
     com.smartdocs.editor.core.sync.ChangeWatch.Mode.SIGN_IN -> R.string.fcy_watch_signin
 })
+
+private val NL = Char(10).toString()
