@@ -20,10 +20,23 @@ object OdfReader {
 
     private class Sty(val bold: Boolean, val italic: Boolean, val rtl: Boolean, val center: Boolean, val parent: String?)
 
+    /** True when [bytes] (an XML part) declares a DOCTYPE or an entity: ODF parts never do, so they are refused. */
+    fun hasDoctype(bytes: ByteArray): Boolean {
+        val head = String(bytes, 0, minOf(bytes.size, 64 * 1024), Charsets.ISO_8859_1)
+        return head.contains("<!DOCTYPE", ignoreCase = true) || head.contains("<!ENTITY", ignoreCase = true)
+    }
+
+    /**
+     * XXE-safe parse that fails closed (convert audit A-L8): a part with a DOCTYPE / ENTITY is refused before the parser
+     * sees it, whatever features this platform's parser supports; the features are still set where possible.
+     */
     private fun parseXml(bytes: ByteArray): Element {
+        if (hasDoctype(bytes)) throw IllegalArgumentException("not an OpenDocument part (DOCTYPE)")
         val f = DocumentBuilderFactory.newInstance()
         f.isNamespaceAware = true
         runCatching { f.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true) }
+        runCatching { f.setFeature("http://xml.org/sax/features/external-general-entities", false) }
+        runCatching { f.setFeature("http://xml.org/sax/features/external-parameter-entities", false) }
         runCatching { f.isExpandEntityReferences = false }
         return f.newDocumentBuilder().parse(bytes.inputStream()).documentElement
     }
@@ -188,6 +201,8 @@ object OdfReader {
         return rows.map { r -> (0 until width).map { r.getOrElse(it) { "" } } }
     }
 
+    /** Synchronized: [orderedStyles] belongs to the read in progress (convert audit C43: two reads at once mixed it up). */
+    @Synchronized
     fun readOdt(entry: (String) -> ByteArray?, title: String): FlowDoc {
         val content = parseXml(entry("content.xml") ?: throw IllegalArgumentException("no content.xml"))
         val stylesRoot = entry("styles.xml")?.let { runCatching { parseXml(it) }.getOrNull() }
@@ -200,10 +215,38 @@ object OdfReader {
     }
 
     /** Sheets: name → rows. */
-    fun readOds(entry: (String) -> ByteArray?): List<Pair<String, List<List<String>>>> {
+    fun readOds(entry: (String) -> ByteArray?, maxRows: Int = MAX_ROWS, maxCols: Int = MAX_COLS): List<Pair<String, List<List<String>>>> {
         val content = parseXml(entry("content.xml") ?: throw IllegalArgumentException("no content.xml"))
         val l = content.getElementsByTagNameNS(TABLE, "table")
-        return (0 until l.length).map { i -> val t = l.item(i) as Element; (t.attr(TABLE, "name") ?: "Sheet${i + 1}") to tableRows(t, 20000, 500) }
+        return (0 until l.length).map { i -> val t = l.item(i) as Element; (t.attr(TABLE, "name") ?: "Sheet${i + 1}") to tableRows(t, maxRows, maxCols) }
+    }
+
+    /** Limits of a spreadsheet read for a format conversion (convert audit C5: 20000 × 500 cut rows silently). */
+    const val MAX_ROWS = 200_000
+    const val MAX_COLS = 1024
+
+    /** One ODP slide with its text and pictures (convert audit A-M3: ODP → PDF was text only). */
+    class OdpSlide(val title: String, val lines: List<String>, val pictures: List<ByteArray>)
+
+    fun readOdpSlides(entry: (String) -> ByteArray?): List<OdpSlide> {
+        val content = parseXml(entry("content.xml") ?: throw IllegalArgumentException("no content.xml"))
+        val pages = content.getElementsByTagNameNS(DRAW, "page")
+        return (0 until pages.length).map { i ->
+            val p = pages.item(i) as Element
+            var title = ""; val lines = ArrayList<String>(); val pics = ArrayList<ByteArray>()
+            val frames = p.getElementsByTagNameNS(DRAW, "frame")
+            for (j in 0 until frames.length) {
+                val f = frames.item(j) as Element
+                val cls = f.attr(PRES, "class")
+                if (cls == "notes" || (f.parentNode as? Element)?.localName == "notes") continue
+                val ps = f.getElementsByTagNameNS(TEXT, "p")
+                val texts = (0 until ps.length).map { ps.item(it).textContent.trim() }.filter { it.isNotEmpty() }
+                if (cls == "title" && title.isEmpty()) title = texts.joinToString(" ") else lines += texts
+                kids(f).filter { it.isA(DRAW, "image") }.forEach { im -> im.attr(XLINK, "href")?.let { h -> entry(h.removePrefix("./"))?.let { pics += it } } }
+            }
+            if (title.isEmpty() && lines.isNotEmpty()) title = lines.removeAt(0)
+            OdpSlide(title, lines, pics)
+        }
     }
 
     /** Slides: (title, lines). */

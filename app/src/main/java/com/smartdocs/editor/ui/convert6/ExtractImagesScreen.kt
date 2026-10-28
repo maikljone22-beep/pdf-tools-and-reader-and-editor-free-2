@@ -75,12 +75,21 @@ fun ExtractImagesScreen(nav: NavHostController, uri: String?) {
     var overrides by remember { mutableStateOf<Map<Int, String>>(emptyMap()) }
     var renaming by remember { mutableStateOf<Int?>(null) }
     var password by remember { mutableStateOf("") }
+    var needPw by remember { mutableStateOf(false) }
     val job = rememberT5Job()
     val pick = rememberAnyFilePicker(false, FileKind6.mimes(EXTRACT_KINDS)) { fs -> fs.firstOrNull()?.let { file = it; items = emptyList() } }
     val docName = file?.nameWithoutExtension ?: "images"
     val names = remember(items, mode, overrides, docName) { ImageExtract6.names(items, mode, docName, overrides) }
     fun chosen(): List<Pair<File, String>> = items.indices.filter { it in selected }.map { items[it].file to names[it] }
 
+    // Android 9 and older need the storage permission for the gallery (convert audit B28: it silently saved 0)
+    val galleryPerm = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
+        scope.launch {
+            if (!ok) { snackbar.showSnackbar(ctx.getString(R.string.cvf_ex_gallery_perm)); return@launch }
+            runCatching { snackbar.showSnackbar(ctx.getString(R.string.cv6_ex_gallery_n, Cv6Save.toGallery(ctx, chosen().filter { Cv6Save.galleryOk(it.first.extension) }))) }
+                .onFailure { snackbar.showSnackbar(Cv6ErrorText.of(ctx, it)) }
+        }
+    }
     val tree = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { t ->
         if (t != null) scope.launch {
             val n = Cv6Save.toTree(ctx, t, chosen())
@@ -94,12 +103,21 @@ fun ExtractImagesScreen(nav: NavHostController, uri: String?) {
         job.launch(ctx.getString(R.string.cv6_ex_running)) {
             val work = File(app.documents.tempDir, "cv6_extract").also { it.deleteRecursively(); it.mkdirs() }
             val kind = FileKind6.of(f)
-            val list = if (kind == Kind6.PDF) {
-                val pages = if (r.isBlank()) emptyList() else PdfOps.parseRange(r, PdfOps.pageCount(f, pw))
-                ImageExtract6.fromPdf(f, pw, pages, m, work) { d, t -> step(d, t) }
-            } else ImageExtract6.fromPackage(f, kind, m, work)
+            var skipped = 0
+            val list = try {
+                if (kind == Kind6.PDF) {
+                    // Arabic-Indic digits accepted; a range that selects nothing is an error, not "all pages" (convert audit B17)
+                    val pages = if (r.isBlank()) emptyList() else PdfOps.parseRange(r, PdfOps.pageCount(f, pw)).ifEmpty { throw com.smartdocs.editor.core.convert6.UserMessage(ctx.getString(R.string.cv6_err_range)) }
+                    ImageExtract6.fromPdf(f, pw, pages, m, work, { d, t -> step(d, t) }) { skipped++ }
+                } else ImageExtract6.fromPackage(f, kind, m, work)
+            } catch (e: com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException) {
+                // ask for the password (convert audit B16: the error was shown raw and nothing asked for it)
+                needPw = true; error = ctx.getString(if (pw == null) R.string.cv_password_needed else R.string.cvf_pw_wrong_short); return@launch
+            }
+            needPw = false
             items = list; selected = list.indices.toSet(); overrides = emptyMap()
-            if (list.isEmpty()) error = ctx.getString(R.string.cv6_ex_none)
+            if (list.isEmpty()) error = if (skipped > 0) ctx.getString(R.string.cvf_ex_skipped, skipped) else ctx.getString(R.string.cv6_ex_none)
+            else if (skipped > 0) error = ctx.getString(R.string.cvf_ex_skipped, skipped)
         }
     }
 
@@ -112,21 +130,28 @@ fun ExtractImagesScreen(nav: NavHostController, uri: String?) {
                     val any = selected.isNotEmpty()
                     Button(enabled = any, onClick = {
                         job.launch(ctx.getString(R.string.processing)) {
-                            result = Cv6Save.zip(chosen(), app.documents.uniqueFile(app.documents.docsDir, docName + "_images", "zip"))
+                            val z = app.documents.uniqueFile(app.documents.docsDir, docName + "_images", "zip")
+                            result = try { Cv6Save.zip(chosen(), z) } catch (e: Throwable) { z.delete(); throw e }
                         }
                     }) { Icon(Icons.Default.FolderZip, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.cv6_ex_zip)) }
                     OutlinedButton(enabled = any, onClick = { runCatching { tree.launch(null) } }) { Icon(Icons.Default.Folder, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.cv6_ex_folder)) }
                     OutlinedButton(enabled = any, onClick = {
                         scope.launch {
-                            val files = Cv6Save.named(chosen(), File(app.documents.tempDir, "cv6_share"))
-                            runCatching { ctx.startActivity(Intent.createChooser(app.documents.shareIntent(files, "image/*"), null)) }
+                            // disk full / file errors are reported, not a crash (convert audit B27)
+                            runCatching {
+                                val files = Cv6Save.named(chosen(), File(app.documents.tempDir, "cv6_share"))
+                                ctx.startActivity(Intent.createChooser(app.documents.shareIntent(files, "image/*"), null))
+                            }.onFailure { snackbar.showSnackbar(Cv6ErrorText.of(ctx, it)) }
                         }
                     }) { Icon(Icons.Default.Share, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.share)) }
                     OutlinedButton(enabled = any, onClick = {
+                        if (Cv6Save.needsStoragePermission(ctx)) { galleryPerm.launch(android.Manifest.permission.WRITE_EXTERNAL_STORAGE); return@OutlinedButton }
                         scope.launch {
-                            val list = chosen().filter { Cv6Save.galleryOk(it.first.extension) }
-                            val n = Cv6Save.toGallery(ctx, list)
-                            snackbar.showSnackbar(ctx.getString(R.string.cv6_ex_gallery_n, n))
+                            runCatching {
+                                val list = chosen().filter { Cv6Save.galleryOk(it.first.extension) }
+                                val n = Cv6Save.toGallery(ctx, list)
+                                snackbar.showSnackbar(ctx.getString(R.string.cv6_ex_gallery_n, n))
+                            }.onFailure { snackbar.showSnackbar(Cv6ErrorText.of(ctx, it)) }
                         }
                     }) { Icon(Icons.Default.PhotoLibrary, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.cv6_ex_gallery)) }
                 }
@@ -143,6 +168,7 @@ fun ExtractImagesScreen(nav: NavHostController, uri: String?) {
                     if (file?.let { FileKind6.of(it) } == Kind6.PDF) {
                         PageRangeField(range) { range = it }
                         OutlinedTextField(password, { password = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.cv_password)) }, singleLine = true,
+                            isError = needPw, supportingText = if (needPw) ({ Text(stringResource(R.string.cv_password_needed)) }) else null,
                             visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(), shape = RoundedCornerShape(16.dp))
                     }
                     FieldLabel(stringResource(R.string.cv6_ex_min))
@@ -151,7 +177,7 @@ fun ExtractImagesScreen(nav: NavHostController, uri: String?) {
                     ChoiceChips(NameMode.entries, mode, { when (it) { NameMode.PAGE_INDEX -> stringResource(R.string.cv6_ex_name_page); NameMode.RESOURCE -> stringResource(R.string.cv6_ex_name_res); NameMode.CAPTION -> stringResource(R.string.cv6_ex_name_caption) } }) { mode = it }
                     Text(stringResource(R.string.cv6_ex_example, if (names.isNotEmpty()) names.first() else ImageExtract6.names(listOf(Extracted(File("x.png"), 3, 1, "Im7", ctx.getString(R.string.cv6_ex_sample_caption), 0, 0, "png")), mode, docName).first()),
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    PrimaryButton(stringResource(R.string.cv6_ex_extract), enabled = file != null, icon = Icons.Default.Collections) { extract() }
+                    PrimaryButton(stringResource(R.string.cv6_ex_extract), enabled = file != null && PdfOps.rangeSyntaxOk(range), icon = Icons.Default.Collections) { extract() }
                     if (items.isNotEmpty()) Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(stringResource(R.string.cv6_ex_found, items.size, selected.size), style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
                         TextButton(onClick = { selected = items.indices.toSet() }) { Text(stringResource(R.string.cv6_ex_all)) }

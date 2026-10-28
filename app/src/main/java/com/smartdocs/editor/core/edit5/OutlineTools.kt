@@ -59,6 +59,14 @@ object OutlineTools {
         override fun endPage(page: PDPage?) { colors.clear(); super.endPage(page) }
     }
 
+    /** Text lines of one zero-based [page] of an open document (page-by-page exports with cancel / progress, audit B25). */
+    fun textLinesOfPage(doc: com.tom_roush.pdfbox.pdmodel.PDDocument, page: Int): List<TextLine> {
+        val c = Collector()
+        c.startPage = page + 1; c.endPage = page + 1
+        runCatching { c.getText(doc) }
+        return c.full.filter { it.page == page }
+    }
+
     /** Every text line of [pages] (zero-based; null = all) with font, size, colour and position. */
     suspend fun textLines(src: File, password: String?, pages: List<Int>? = null): List<TextLine> = withContext(Dispatchers.IO) {
         E5Io.load(src, password).use { doc ->

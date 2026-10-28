@@ -20,7 +20,15 @@ sealed class FBlock {
     data class Quote(val runs: List<FRun>, val rtl: Boolean) : FBlock()
     data class Code(val text: String) : FBlock()
     data class Table(val rows: List<List<String>>, val header: Boolean, val rtl: Boolean) : FBlock()
-    class Image(val bytes: ByteArray, val ext: String, val widthPt: Float = 0f, val heightPt: Float = 0f, val alt: String = "") : FBlock()
+    /**
+     * A picture: its bytes in memory, or in [file] (PDF → EPUB / ODT / Markdown / HTML set of image-heavy books keep the
+     * pictures in temp files, read back one at a time while writing — convert audit B10).
+     */
+    class Image(private val data: ByteArray?, val ext: String, val widthPt: Float = 0f, val heightPt: Float = 0f, val alt: String = "", val file: java.io.File? = null) : FBlock() {
+        val bytes: ByteArray get() = data ?: file?.let { f -> runCatching { f.readBytes() }.getOrNull() } ?: ByteArray(0)
+        /** The first bytes (format sniffing without reading a file-backed picture completely). */
+        val head: ByteArray get() = data?.let { it.copyOf(minOf(it.size, 64)) } ?: file?.let { f -> runCatching { f.inputStream().use { s -> ByteArray(64).let { b -> b.copyOf(maxOf(0, s.read(b))) } } }.getOrNull() } ?: ByteArray(0)
+    }
     object PageBreak : FBlock()
     object Rule : FBlock()
     /** Start of a chapter (EPUB file split, outline entry). */
@@ -85,6 +93,21 @@ object Text6 {
 
     fun plain(runs: List<FRun>) = runs.joinToString("") { it.text }
 
+    /**
+     * A link target that is safe in a converted document: http(s), mailto, tel, an in-document "#anchor" or a plain
+     * relative path; javascript:, vbscript:, data:, file: and other schemes give null (convert audit C34 / A-M6).
+     */
+    fun safeLink(url: String?): String? {
+        val u = url?.trim()?.filter { it >= ' ' && it != '\u007F' } ?: return null
+        if (u.isEmpty()) return null
+        val scheme = Regex("""^([a-zA-Z][a-zA-Z0-9+.\-]*):""").find(u.replace(Regex("""\s"""), ""))?.groupValues?.get(1)?.lowercase()
+        return when (scheme) {
+            null -> u
+            "http", "https", "mailto", "tel" -> u
+            else -> null
+        }
+    }
+
     fun xml(s: String): String = buildString(s.length + 16) {
         s.forEach { c ->
             when {
@@ -111,7 +134,7 @@ object FlowMarkdown {
             var t = if (r.code) "`" + core.replace("`", "'") + "`" else escInline(core)
             if (r.italic && !r.code) t = "*$t*"
             if (r.bold && !r.code) t = "**$t**"
-            if (r.link != null) t = "[$t](${r.link})"
+            Text6.safeLink(r.link)?.let { u -> t = if (u.any { it == ' ' || it == '(' || it == ')' }) "[$t](<" + u.replace(">", "%3E") + ">)" else "[$t]($u)" }
             append(lead).append(t).append(trail)
         }
     }
@@ -172,14 +195,15 @@ object FlowHtml {
             if (r.code) t = "<code>$t</code>"
             if (r.italic) t = "<i>$t</i>"
             if (r.bold) t = "<b>$t</b>"
-            if (r.link != null) t = "<a href=\"" + Text6.xml(r.link) + "\">$t</a>"
+            Text6.safeLink(r.link)?.let { t = "<a href=\"" + Text6.xml(it) + "\">$t</a>" }
             append(t)
         }
     }
 
     private fun dir(rtl: Boolean) = if (rtl) "rtl" else "ltr"
 
-    fun body(blocks: List<FBlock>): String = buildString {
+    /** [imageSrc] gives a picture's href (HTML set: a file in the zip, audit B10 / B30); null = an inline data: URI. */
+    fun body(blocks: List<FBlock>, imageSrc: ((FBlock.Image) -> String?)? = null): String = buildString {
         var list: String? = null
         fun close() { list?.let { append("</").append(it).append(">\n") }; list = null }
         blocks.forEach { b ->
@@ -208,7 +232,9 @@ object FlowHtml {
                 is FBlock.Image -> {
                     val mime = Images6.mimeOf(b.ext)
                     val w = if (b.widthPt > 0) " style=\"width:${b.widthPt.toInt()}pt;max-width:100%\"" else ""
-                    append("<img alt=\"").append(Text6.xml(b.alt)).append("\"$w src=\"data:$mime;base64,").append(Base64.getEncoder().encodeToString(b.bytes)).append("\">\n")
+                    val href = imageSrc?.invoke(b)
+                    if (href != null) append("<img alt=\"").append(Text6.xml(b.alt)).append("\"$w src=\"").append(Text6.xml(href)).append("\">\n")
+                    else if (imageSrc == null) append("<img alt=\"").append(Text6.xml(b.alt)).append("\"$w src=\"data:$mime;base64,").append(Base64.getEncoder().encodeToString(b.bytes)).append("\">\n")
                 }
                 FBlock.PageBreak -> append("<div style=\"page-break-after:always\"></div>\n")
                 FBlock.Rule -> append("<hr>\n")

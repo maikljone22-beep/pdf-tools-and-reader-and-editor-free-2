@@ -42,6 +42,9 @@ object ImageExtract6 {
 
     private class Seen { val objs = IdentityHashMap<Any, Boolean>(); val hashes = HashSet<String>() }
 
+    /** Pictures larger than this are decoded subsampled (ARGB memory). */
+    private const val MAX_DECODE_PIXELS = 24_000_000L
+
     private fun sha1(b: ByteArray) = MessageDigest.getInstance("SHA-1").digest(b).joinToString("") { "%02x".format(it) }
 
     /** Encoded bytes + extension of a PDF image, keeping the original encoding when possible. */
@@ -57,8 +60,22 @@ object ImageExtract6 {
             if (!hasMask && filters.lastOrNull() == "JPXDecode") {
                 runCatching { img.stream.createInputStream(listOf("JPXDecode")).use { it.readBytes() } }.getOrNull()?.takeIf { it.size > 12 }?.let { return it to "jp2" }
             }
+            // fax scans (CCITT G3/G4): the stream as a TIFF, never decoded (convert audit B18: 1-bit pages ran out of memory)
+            if (!hasMask && filters.size == 1 && filters[0] == "CCITTFaxDecode") runCatching {
+                val parms = (img.cosObject.getDictionaryObject(COSName.DECODE_PARMS) as? com.tom_roush.pdfbox.cos.COSDictionary)
+                    ?: ((img.cosObject.getDictionaryObject(COSName.DECODE_PARMS) as? com.tom_roush.pdfbox.cos.COSArray)?.getObject(0) as? com.tom_roush.pdfbox.cos.COSDictionary)
+                val k = parms?.getInt(COSName.K, 0) ?: 0
+                val black = parms?.getBoolean(COSName.getPDFName("BlackIs1"), false) ?: false
+                val inverted = (img.cosObject.getDictionaryObject(COSName.DECODE) as? com.tom_roush.pdfbox.cos.COSArray)?.let { it.size() >= 1 && (it.getObject(0) as? com.tom_roush.pdfbox.cos.COSNumber)?.floatValue() == 1f } == true
+                val raw = img.stream.createInputStream(listOf("CCITTFaxDecode")).use { it.readBytes() }
+                if (raw.isNotEmpty()) return TiffWriter.ccitt(raw, img.width, img.height, k, black != inverted) to "tif"
+            }
         }
-        val bmp: Bitmap = runCatching { img.image }.getOrNull() ?: return null
+        // big pictures are decoded subsampled instead of failing (convert audit B18)
+        val px = img.width.toLong() * img.height
+        val sub = if (px > MAX_DECODE_PIXELS) Math.ceil(Math.sqrt(px.toDouble() / MAX_DECODE_PIXELS)).toInt().coerceAtLeast(2) else 1
+        val bmp: Bitmap = (if (sub > 1) runCatching { img.getImage(null, sub) }.getOrNull() else null)
+            ?: runCatching { if (sub == 1) img.image else null }.getOrNull() ?: return null
         val bos = ByteArrayOutputStream()
         bmp.compress(Bitmap.CompressFormat.PNG, 100, bos)
         bmp.recycle()
@@ -127,7 +144,8 @@ object ImageExtract6 {
         }
     }
 
-    suspend fun fromPdf(src: File, password: String?, pages: List<Int>, minSide: Int, workDir: File, onProgress: (Int, Int) -> Unit): List<Extracted> = withContext(Dispatchers.IO) {
+    /** [onSkipped] is told about each picture that could not be extracted (unsupported JBIG2, out of memory …). */
+    suspend fun fromPdf(src: File, password: String?, pages: List<Int>, minSide: Int, workDir: File, onProgress: (Int, Int) -> Unit, onSkipped: () -> Unit = {}): List<Extracted> = withContext(Dispatchers.IO) {
         workDir.mkdirs()
         val out = ArrayList<Extracted>()
         val seen = Seen()
@@ -147,7 +165,8 @@ object ImageExtract6 {
                     val key: Any = (img as? PDImageXObject)?.cosObject ?: img
                     if (seen.objs.put(key, true) != null) return
                     if (minOf(img.width, img.height) < minSide) return
-                    val enc = runCatching { encode(img) }.getOrNull() ?: return
+                    val enc = try { encode(img) } catch (e: OutOfMemoryError) { null } catch (e: Exception) { null }
+                    if (enc == null) { onSkipped(); return }
                     if (!seen.hashes.add(sha1(enc.first))) return
                     n++
                     val caption = if (box != null && page.rotation % 360 == 0) {

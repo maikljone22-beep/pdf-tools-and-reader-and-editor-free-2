@@ -39,7 +39,16 @@ class OcrDoc(val src: File, val isPdf: Boolean, val password: String?, val langs
 
 object OcrRunner {
 
-    fun isImage(f: File) = f.extension.lowercase() in setOf("jpg", "jpeg", "png", "webp", "bmp", "gif", "heic", "heif")
+    /**
+     * A picture input (by its content, not only the name — convert audit C8). TIFF is not one here: the hub turns a
+     * TIFF into a PDF first (one OCR page per TIFF page), since the picture loader reads one frame only.
+     */
+    fun isImage(f: File): Boolean {
+        val k = com.smartdocs.editor.core.convert6.FileKind6.of(f)
+        if (k == com.smartdocs.editor.core.convert6.Kind6.PDF) return false
+        if (k.isImage) return k != com.smartdocs.editor.core.convert6.Kind6.TIFF
+        return f.extension.lowercase() in setOf("jpg", "jpeg", "png", "webp", "bmp", "gif", "heic", "heif")
+    }
 
     /** Grey + background normalisation + level stretch: helps Tesseract on photos with shadows. Returns a new bitmap. */
     fun preClean(src: Bitmap): Bitmap {
@@ -231,6 +240,8 @@ object AutoOcr {
         val out = File(tempDir, src.nameWithoutExtension + "_ocr_" + System.currentTimeMillis() + ".pdf")
         val tuning = com.smartdocs.editor.core.ocr.OcrTuning.load(ctx)
         val engine = com.smartdocs.editor.core.ocr.OcrPipeline.engineFor(ctx, null, tuning)
-        return try { OcrRunner.ocrFile(ctx, engine, src, password, OcrPlan(langs = langs, tuning = tuning), out, onProgress) } finally { engine.close() }
+        var ok = false   // the temp copy goes when OCR fails or is cancelled (convert audit B24)
+        return try { OcrRunner.ocrFile(ctx, engine, src, password, OcrPlan(langs = langs, tuning = tuning), out, onProgress).also { ok = it != null } }
+        finally { engine.close(); if (!ok) out.delete() }
     }
 }

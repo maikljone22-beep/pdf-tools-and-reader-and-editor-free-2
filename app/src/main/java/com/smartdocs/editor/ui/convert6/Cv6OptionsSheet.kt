@@ -36,22 +36,8 @@ import com.smartdocs.editor.ui.tools5.FileListEditor
 import com.smartdocs.editor.ui.tools5.SwitchRow
 import java.io.File
 
-/** Good defaults per conversion. */
-fun defaultsFor(c: Conv): Cv6Opts = when (c.id) {
-    "img_convert" -> Cv6Opts(imgFormat = ImgFmt.PNG, quality = 90)
-    "img_resize" -> Cv6Opts(imgFormat = null, quality = 80, resizePercent = 50)
-    "heic_jpg" -> Cv6Opts(imgFormat = ImgFmt.JPG, quality = 92)
-    "pdf_compress" -> Cv6Opts(quality = 70, dpi = 150)
-    "pdf_flatten" -> Cv6Opts(dpi = 200)
-    "pdf_odp", "pptx_odp" -> Cv6Opts(dpi = 150)
-    "pdf_svg" -> Cv6Opts(dpi = 150, zip = true)
-    "pdf_long_image" -> Cv6Opts(imgFormat = ImgFmt.JPG, dpi = 110, quality = 85)
-    "pdf_tiff", "pdf_ps", "pdf_eps", "pdf_xps" -> Cv6Opts(dpi = 200)
-    "pdf_bmp" -> Cv6Opts(dpi = 150, zip = true)
-    "images_pdf", "tiff_pdf" -> Cv6Opts(quality = 88)
-    "ocr_pdf_docx" -> Cv6Opts(keepLayout = null)
-    else -> Cv6Opts()
-}
+/** Good defaults per conversion (shared with the recipes, see [Cv6Catalog.defaultsFor]). */
+fun defaultsFor(c: Conv): Cv6Opts = Cv6Catalog.defaultsFor(c)
 
 /**
  * Options sheet of one conversion: the inputs (reorder / remove / add more), a password field when needed,
@@ -64,6 +50,8 @@ fun Cv6OptionsSheet(
     o: Cv6Opts, onChange: (Cv6Opts) -> Unit,
     needPassword: Boolean, password: String, onPassword: (String) -> Unit,
     onDismiss: () -> Unit, onConvert: () -> Unit,
+    /** The protected input the password is for (batches ask file by file), and whether the last try was wrong. */
+    lockedName: String? = null, lockedWrong: Boolean = false,
 ) {
     val ctx = LocalContext.current
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = MaterialTheme.colorScheme.surfaceContainerLow) {
@@ -83,11 +71,14 @@ fun Cv6OptionsSheet(
                 if (conv.multi) OutlinedButton(onClick = onAddMore, shape = RoundedCornerShape(50)) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.cv6_add_files)) }
             }
             if (needPassword) {
+                if (lockedName != null) Text(stringResource(if (lockedWrong) R.string.cvf_pw_wrong else R.string.cvf_pw_for, lockedName),
+                    style = MaterialTheme.typography.bodyMedium, color = if (lockedWrong) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
                 OutlinedTextField(password, onPassword, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.cv_password)) }, singleLine = true,
                     visualTransformation = PasswordVisualTransformation(), leadingIcon = { Icon(Icons.Default.Lock, null) }, shape = RoundedCornerShape(16.dp))
             }
             OptionsBody(conv, inputs.size, o, onChange)
-            PrimaryButton(stringResource(R.string.cv6_convert), enabled = (conv.inputs.isEmpty() || inputs.isNotEmpty()) && (Opt.URL !in conv.opts || o.url.isNotBlank()) && (Opt.TEXT !in conv.opts || o.text.isNotBlank()),
+            PrimaryButton(stringResource(R.string.cv6_convert), enabled = (conv.inputs.isEmpty() || inputs.isNotEmpty()) && (Opt.URL !in conv.opts || o.url.isNotBlank()) && (Opt.TEXT !in conv.opts || o.text.isNotBlank()) &&
+                (Opt.RANGE !in conv.opts || com.smartdocs.editor.core.pdf.PdfOps.rangeSyntaxOk(o.range)) && (!needPassword || password.isNotEmpty()),
                 icon = Icons.Default.SwapHoriz, onClick = onConvert)
         }
     }

@@ -6,6 +6,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -31,6 +32,22 @@ fun rememberEmlLabels(): Map<String, String> {
     return m
 }
 
+/**
+ * "Convert each" of Tools → To PDF / Share-to-PDF (convert audit A-H5): every file is tried, a failing one is reported
+ * by name and its partial output removed, the others go on. Returns (outputs, "name: reason" lines).
+ */
+suspend fun convertEachToPdf(ctx: android.content.Context, docs: com.smartdocs.editor.core.files.DocumentRepository, list: List<File>, step: (Int, Int) -> Unit,
+                             each: suspend (File, File) -> Unit = { _, _ -> }): Pair<List<File>, String?> {
+    val outs = ArrayList<File>()
+    val o = com.smartdocs.editor.core.convert6.Cv6Batch.each(list, onFailure = { _, _ -> }) { i, f ->
+        step(i, list.size)
+        val dst = docs.uniqueFile(docs.docsDir, f.nameWithoutExtension)
+        try { ToPdf.convert(ctx, f, dst); each(f, dst); outs += dst } catch (e: Throwable) { dst.delete(); throw e }
+    }
+    step(list.size, list.size)
+    return outs to com.smartdocs.editor.core.convert6.Cv6Batch.failureLines(o.failures) { com.smartdocs.editor.ui.convert6.Cv6ErrorText.of(ctx, it) }
+}
+
 /** Any-format → PDF: combine mixed files (bookmark per file), web page / HTML, or convert each file separately. */
 @Composable
 fun ToPdfPlusScreen(nav: NavHostController, uri: String?) {
@@ -50,7 +67,8 @@ fun ToPdfPlusScreen(nav: NavHostController, uri: String?) {
     val job = rememberT5Job()
     val web = remember { WebOpts() }
     val pick = rememberAnyFilePicker(true, ToPdf.pickerMimes) { picked -> files = files + picked.filter { f -> files.none { it.absolutePath == f.absolutePath } } }
-    val unsupported = files.filter { ToPdf.kindOf(it.name) == SourceKind.UNKNOWN }
+    // kinds by content, like the hub (convert audit A-M8): a .doc / .odt / .xls / .tiff is not "unsupported" here
+    val unsupported by produceState(emptyList<File>(), files) { value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { files.filter { ToPdf.kindOf(it) == SourceKind.UNKNOWN } } }
     val combining = stringResource(R.string.t5_combining)
     val converting = stringResource(R.string.t5_converting)
     val queued = stringResource(R.string.t5_batch_queued)
@@ -97,14 +115,11 @@ fun ToPdfPlusScreen(nav: NavHostController, uri: String?) {
                             job.info = queued
                             nav.navigate(com.smartdocs.editor.ui.Routes.tool("batch"))
                         } else { val attach = attachSrc; job.launch(converting) {
-                            val out = ArrayList<File>()
-                            list.forEachIndexed { i, f ->
-                                step(i, list.size)
-                                val dst = app.documents.uniqueFile(app.documents.docsDir, f.nameWithoutExtension)
-                                ToPdf.convert(ctx, f, dst); out += dst
+                            val (out, failed) = convertEachToPdf(ctx, app.documents, list, { d, t -> step(d, t) }) { f, dst ->
                                 if (attach) com.smartdocs.editor.core.pdf.AttachmentOps.attachSources(dst, listOf(f), srcDesc)
                             }
                             results = out
+                            if (failed != null) { if (out.isEmpty()) error = failed else info = failed }
                         } }
                     }
                 }
@@ -148,8 +163,9 @@ fun ShareToPdfScreen(nav: NavHostController) {
     val ctx = LocalContext.current
     val snackbar = remember { SnackbarHostState() }
     rememberEmlLabels()
-    val payload = remember { ShareImport.pending.also { ShareImport.pending = null } }
-    var files by remember { mutableStateOf(payload?.files.orEmpty()) }
+    // the payload survives opening a result and coming back, and a language switch (convert audit A-M13)
+    val payload = rememberSaveable(saver = SharePayloadSaver) { mutableStateOf(ShareImport.pending.also { ShareImport.pending = null }) }.value
+    var files by rememberSaveable(stateSaver = FileListSaver) { mutableStateOf(payload?.files.orEmpty()) }
     val job = rememberT5Job()
     val converting = stringResource(R.string.t5_converting)
     val title = payload?.subject?.ifBlank { null } ?: stringResource(R.string.t5_shared_name)
@@ -165,16 +181,17 @@ fun ShareToPdfScreen(nav: NavHostController) {
             PrimaryButton(stringResource(if (files.size > 1) R.string.t5_combine else R.string.t5_convert_one), enabled = !job.running, icon = Icons.Default.PictureAsPdf) {
                 val list = files.toList()
                 job.launch(converting) {
-                    val out = app.documents.uniqueFile(app.documents.docsDir, if (list.size == 1) list[0].nameWithoutExtension.substringAfter('_').substringAfter('_') else title)
-                    result = ToPdf.combine(ctx, list.map { ToPdf.Item(it, it.nameWithoutExtension) }, out, app.documents.tempDir, list.size > 1) { d, t -> step(d, t) }
+                    val out = app.documents.uniqueFile(app.documents.docsDir, if (list.size == 1) list[0].nameWithoutExtension else title)
+                    try { result = ToPdf.combine(ctx, list.map { ToPdf.Item(it, it.nameWithoutExtension) }, out, app.documents.tempDir, list.size > 1) { d, t -> step(d, t) } }
+                    catch (e: Throwable) { out.delete(); throw e }
                 }
             }
             if (files.size > 1) OutlinedButton(onClick = {
                 val list = files.toList()
                 job.launch(converting) {
-                    val out = ArrayList<File>()
-                    list.forEachIndexed { i, f -> step(i, list.size); val d = app.documents.uniqueFile(app.documents.docsDir, f.nameWithoutExtension); ToPdf.convert(ctx, f, d); out += d }
+                    val (out, failed) = convertEachToPdf(ctx, app.documents, list, { d, t -> step(d, t) })
                     results = out
+                    if (failed != null) { if (out.isEmpty()) error = failed else info = failed }
                 }
             }, Modifier.fillMaxWidth()) { Text(stringResource(R.string.t5_convert_each)) }
         }
@@ -196,13 +213,25 @@ fun ShareToPdfScreen(nav: NavHostController) {
                 PrimaryButton(stringResource(R.string.t5_text_to_pdf), enabled = !job.running, icon = Icons.Default.TextSnippet) {
                     val isHtml = payload.html != null
                     job.launch(converting) {
-                        val page = if (isHtml) HtmlBits.page(title, text, HtmlBits.rtlDominant(text)) else TextHtml.fromText(text, title).html
+                        // shared HTML is untrusted: sanitised and printed without scripts (convert audit A-M6)
+                        val page = if (isHtml) HtmlBits.page(title, HtmlBits.sanitize(text), HtmlBits.rtlDominant(text)) else TextHtml.fromText(text, title).html
                         result = ToPdf.html(ctx, page, app.documents.uniqueFile(app.documents.docsDir, title))
                     }
                 }
             }
         }
         if (job.results.isNotEmpty()) ResultsList(job.results, nav, "application/pdf")
+        job.info?.takeIf { job.result == null }?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
     }
     T5JobUi(job, nav, snackbar)
 }
+
+/** [SharePayload] as plain values for saved instance state (the copies stay in the cache folder of the share). */
+private val SharePayloadSaver = androidx.compose.runtime.saveable.Saver<MutableState<SharePayload?>, List<String?>>(
+    save = { s -> s.value?.let { p -> listOf(p.url, p.text, p.html, p.subject) + p.files.map { it.absolutePath } } ?: emptyList() },
+    restore = { l -> mutableStateOf(if (l.size < 4) null else SharePayload(l.drop(4).filterNotNull().map(::File).filter { it.exists() }, l[0], l[1], l[2], l[3])) },
+)
+
+private val FileListSaver = androidx.compose.runtime.saveable.Saver<List<File>, List<String>>(
+    save = { l -> l.map { it.absolutePath } }, restore = { l -> l.map(::File).filter { it.exists() } },
+)

@@ -15,6 +15,7 @@ import com.tom_roush.pdfbox.pdmodel.graphics.form.PDFormXObject
 import com.tom_roush.pdfbox.pdmodel.graphics.image.JPEGFactory
 import com.tom_roush.pdfbox.pdmodel.graphics.image.PDImageXObject
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.security.MessageDigest
@@ -142,9 +143,13 @@ object PdfA {
     /**
      * Convert [src] to PDF/A-2b at [out]. Returns the preflight of the result (self-check) and the codes that were fixed.
      */
-    suspend fun convert(ctx: Context, src: File, password: String?, out: File, opt: PdfAOptions = PdfAOptions(), title: String? = null): Pair<PreflightReport, Set<String>> = withContext(Dispatchers.IO) {
+    suspend fun convert(ctx: Context, src: File, password: String?, out: File, opt: PdfAOptions = PdfAOptions(), title: String? = null,
+                        onProgress: (Int, Int) -> Unit = { _, _ -> }): Pair<PreflightReport, Set<String>> = withContext(Dispatchers.IO) {
         val fixed = HashSet<String>()
-        val doc = if (password.isNullOrEmpty()) PDDocument.load(src) else PDDocument.load(src, password)
+        // temp-file memory, progress and Cancel between pages (convert audit C10 / C29)
+        val doc = PDDocument.load(src, password.orEmpty(), com.tom_roush.pdfbox.io.MemoryUsageSetting.setupMixed(48L shl 20))
+        val total = doc.numberOfPages.coerceAtLeast(1) + 2
+        onProgress(0, total)
         doc.use { d ->
             val before = PdfInspect.inspect(d)
             if (d.isEncrypted) { d.isAllSecurityToBeRemoved = true; fixed += "encrypted" }
@@ -167,7 +172,10 @@ object PdfA {
             // forms
             (cat.getDictionaryObject(N.AcroForm) as? COSDictionary)?.let { af -> af.removeItem(N.XFA); af.setBoolean(N.NeedAppearances, false) }
             val seen = HashSet<Any>()
-            d.pages.forEach { page ->
+            onProgress(1, total)
+            d.pages.forEachIndexed { pi, page ->
+                kotlin.coroutines.coroutineContext.ensureActive()
+                onProgress(1 + pi, total)
                 page.cosObject.removeItem(N.AA)
                 page.cosObject.removeItem(N.PieceInfo)
                 cleanResources(page.resources, seen)
@@ -215,8 +223,11 @@ object PdfA {
             val id = MessageDigest.getInstance("MD5").digest((src.absolutePath + now.timeInMillis).toByteArray())
             d.document.trailer.setItem(N.ID, COSArray().apply { add(COSString(id)); add(COSString(id)) })
             if (d.version > 1.7f || d.version < 1.4f) { d.version = 1.7f; fixed += "version" }
+            kotlin.coroutines.coroutineContext.ensureActive()
+            onProgress(total - 1, total)
             d.save(out)
         }
+        onProgress(total, total)
         // self-check of the written file
         val after = PDDocument.load(out).use { PdfInspect.inspect(it) }
         report(after) to fixed
