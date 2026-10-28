@@ -36,6 +36,25 @@ class OcrEngine(private val context: Context, val fast: Boolean = false) : AutoC
     private var whitelist: String? = null
 
     /**
+     * Recogniser choice (PRO_OCR_r5), from the OCR settings unless the caller sets it. [OcrEngineMode.AUTO] adds the
+     * PP-OCRv5 AI model to Tesseract word by word ([OcrEnsemble]) when its optional models are installed.
+     */
+    @Volatile var mode: OcrEngineMode = runCatching { OcrTuning.load(context).engine }.getOrDefault(OcrEngineMode.AUTO)
+    private var pro: ProOcr? = null
+    private var proTried = false
+    private var lexicon: OcrLexicon? = null
+
+    /** Extra known words for choosing between the two engines' readings (for example the document's own text layer). */
+    fun addKnownText(text: String) { synchronized(this) { lexiconLocked().addText(text) } }
+
+    private fun lexiconLocked(): OcrLexicon = lexicon ?: OcrLexicon.fromText(runCatching {
+        context.assets.open(OcrLexicon.GLOSSARY_ASSET).bufferedReader(Charsets.UTF_8).use { it.readText() }
+    }.getOrDefault("")).also { lexicon = it }
+
+    /** True when the AI ("Pro offline") models are downloaded. */
+    fun isProInstalled(): Boolean = ProOcr.isInstalled(context)
+
+    /**
      * Nitro special recognition "numbers only": restrict the characters Tesseract may return (null = all). Applies to
      * the next [init] of other languages and to the engine already initialised.
      */
@@ -93,6 +112,12 @@ class OcrEngine(private val context: Context, val fast: Boolean = false) : AutoC
         // without it, so a failed download is not an error.
         if ("ara" in list && !isLanguageInstalled(ARABIC_SCRIPT)) {
             try { download(ARABIC_SCRIPT, onProgress) }
+            catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (_: Exception) { }
+        }
+        // optional too: the PP-OCRv5 AI models (12.8 MB) for the AUTO / AI recogniser choice
+        if ("ara" in list && mode != OcrEngineMode.TESSERACT && !ProOcr.isInstalled(context)) {
+            try { ProOcr.ensureModels(context) { f -> onProgress("AI", f) } }
             catch (e: kotlinx.coroutines.CancellationException) { throw e }
             catch (_: Exception) { }
         }
@@ -161,7 +186,16 @@ class OcrEngine(private val context: Context, val fast: Boolean = false) : AutoC
      */
     suspend fun recognize(bitmap: Bitmap, wantWords: Boolean = true): OcrPage = withContext(Dispatchers.Default) {
         cancelled = false
+        val m = mode
+        // Pro OCR on the server first (user opt-in); any failure falls back to the offline engines below
+        val cloud = if (m == OcrEngineMode.CLOUD && wantWords && CloudOcr.available()) runCatching { CloudOcr.recognize(bitmap, initialisedLangs) }.getOrNull() else null
         synchronized(this@OcrEngine) {
+            if (!cloud.isNullOrEmpty()) {
+                val c = OcrCleanup.clean(cloud)
+                return@withContext OcrPage(OcrRefine.lines(c).joinToString("
+") { l -> l.joinToString(" ") { c[it].text } },
+                    c.map { k -> OcrWord(k.text, Rect(k.left, k.top, k.right, k.bottom), k.conf, k.line) }, bitmap.width, bitmap.height)
+            }
             // read the handle under the lock: close() may have recycled it meanwhile
             val t = api ?: throw IllegalStateException("engine not initialised")
             val w0 = bitmap.width; val h0 = bitmap.height
@@ -208,6 +242,14 @@ class OcrEngine(private val context: Context, val fast: Boolean = false) : AutoC
                     runCatching { hp.clear() }
                 }
                 out = OcrCleanup.clean(out)
+                // the PP-OCRv5 AI model: alone (AI) or word by word with Tesseract (AUTO / CLOUD fallback)
+                if (m != OcrEngineMode.TESSERACT && !cancelled && initialisedLangs?.split('+')?.contains("ara") == true) {
+                    val p = proLocked()
+                    if (p != null) {
+                        val pw = runCatching { p.recognize(bitmap) }.getOrDefault(emptyList())
+                        if (pw.isNotEmpty()) out = OcrCleanup.clean(if (m == OcrEngineMode.AI) pw else OcrEnsemble.combine(out, pw, lexiconLocked()))
+                    }
+                }
                 if (out != toks) {
                     words = ArrayList(out.map { k -> OcrWord(k.text, Rect(k.left, k.top, k.right, k.bottom), k.conf, k.line) })
                     text = OcrRefine.lines(out).joinToString("\n") { l -> l.joinToString(" ") { out[it].text } }
@@ -233,8 +275,19 @@ class OcrEngine(private val context: Context, val fast: Boolean = false) : AutoC
         return h
     }
 
+    /** The AI engine, opened once per engine when its models are installed; null otherwise. Holds the lock. */
+    private fun proLocked(): ProOcr? {
+        pro?.let { return it }
+        if (proTried) return null
+        proTried = true
+        val p = ProOcr(context)
+        if (!p.open()) { p.close(); return null }
+        pro = p
+        return p
+    }
+
     /** Ask Tesseract to abort the current recognition. */
-    fun cancel() { cancelled = true; runCatching { api?.stop() } }
+    fun cancel() { cancelled = true; runCatching { api?.stop() }; runCatching { pro?.cancel() } }
 
     /** Thread-safe: waits for an in-flight [recognize] (which holds the same monitor) before freeing native memory. */
     override fun close() { synchronized(this) { closeLocked() } }
@@ -242,7 +295,8 @@ class OcrEngine(private val context: Context, val fast: Boolean = false) : AutoC
     private fun closeLocked() {
         runCatching { api?.recycle() }
         runCatching { helper?.recycle() }
-        api = null; initialisedLangs = null; helper = null; helperTried = false
+        runCatching { pro?.close() }
+        api = null; initialisedLangs = null; helper = null; helperTried = false; pro = null; proTried = false
     }
 
     companion object {

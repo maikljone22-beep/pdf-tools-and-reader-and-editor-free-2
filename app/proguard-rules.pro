@@ -31,3 +31,6 @@
 -dontwarn javax.swing.**
 -dontwarn java.beans.**
 -dontwarn jdk.dynalink.**
+
+# ONNX Runtime (PRO_OCR_r5): JNI looks classes and fields up by name
+-keep class ai.onnxruntime.** { *; }
