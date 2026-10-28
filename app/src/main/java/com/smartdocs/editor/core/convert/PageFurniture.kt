@@ -69,9 +69,14 @@ class PageFurniture private constructor(private val keys: Set<String>, private v
 
         private fun norm(s: String) = s.filter { !it.isDigitAscii() && !it.isWhitespace() }
 
+        /**
+         * Zone, height and text (digits ignored) of a line. Only the typeset words count when the line has any: OCR words
+         * the line picked up (an OCR layer adds the parts of a header that are pictures, plus specks) vary from page to page.
+         */
         fun key(line: Line, pageH: Float, body: Float): String {
             val z = zone(line, pageH, body) ?: return ""
-            return "$z${Math.round(line.top / 6f)}|${norm(line.text)}"
+            val ws = line.words.filter { !it.ocr }.ifEmpty { line.words }
+            return "$z${Math.round(ws.minOf { it.top } / 6f)}|${norm(ws.joinToString(" ") { it.text })}"
         }
 
         /** Runs of digits and of non-digits. */

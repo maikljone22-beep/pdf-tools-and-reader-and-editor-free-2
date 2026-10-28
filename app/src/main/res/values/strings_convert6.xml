@@ -140,6 +140,9 @@
 
     <!-- results / errors -->
     <string name="cv6_info_pages">الصفحات: %1$d · الجداول: %2$d · الصور: %3$d</string>
+    <string name="cv6_info_word_ocr">التعرف الضوئي (OCR): %1$d صفحة</string>
+    <string name="cv6_info_ocr_unavailable">تعذّر تشغيل التعرف الضوئي (بيانات اللغة غير متاحة): حُوِّل النص الموجود فقط.</string>
+    <string name="cv6_info_rebuilt">أعاد إصدار قديم من التعرف الضوئي بناء الصفحات %1$s، فنصها محدود الجودة. حوِّل الملف الأصلي للحصول على أفضل نتيجة.</string>
     <string name="cv6_info_chapters">الفصول: %1$d</string>
     <string name="cv6_info_tables">الجداول المكتشفة: %1$d</string>
     <string name="cv6_info_pdfa">ملاحظات متبقية: %1$d</string>

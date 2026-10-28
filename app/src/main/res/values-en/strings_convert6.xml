@@ -140,6 +140,9 @@
 
     <!-- results / errors -->
     <string name="cv6_info_pages">Pages: %1$d · tables: %2$d · images: %3$d</string>
+    <string name="cv6_info_word_ocr">Text recognition (OCR): %1$d pages</string>
+    <string name="cv6_info_ocr_unavailable">Text recognition could not run (language data not available): only the existing text was converted.</string>
+    <string name="cv6_info_rebuilt">Pages %1$s were rebuilt by an older version of text recognition, so their text is of limited quality. Convert the original file for the best result.</string>
     <string name="cv6_info_chapters">Chapters: %1$d</string>
     <string name="cv6_info_tables">Tables found: %1$d</string>
     <string name="cv6_info_pdfa">Remaining findings: %1$d</string>

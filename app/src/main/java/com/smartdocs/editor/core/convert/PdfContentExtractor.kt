@@ -51,13 +51,18 @@ class PdfContentExtractor(private val doc: PDDocument) {
     fun extract(index: Int, withImages: Boolean): PageContent {
         val page = doc.getPage(index)
         val cb = page.cropBox
-        val raw = RawCollector().collect(doc, index)
+        val collector = RawCollector()
+        val raw0 = collector.collect(doc, index)
+        // the visible words an older OCR build re-typed over a page picture count as recognised text too
+        val rebuilt = OcrText.ourVisibleLayer(collector.marks)
+        val raw = if (!rebuilt) raw0 else raw0.mapIndexed { i, g -> if (collector.marks[i].ourFont) g.copy(ocr = true) else g }
         // PDFTextStripper reports glyphs relative to the crop-box origin already
         val frame = PageFrame.of(cb.width.takeIf { it > 1f } ?: 595f, cb.height.takeIf { it > 1f } ?: 842f,
             page.rotation, raw)
-        val glyphs = frame.glyphs(raw)
-        val gfx = runCatching { GraphicsCollector(page, frame, withImages).also { it.processPage(page) } }.getOrNull()
-        return PageContent(index, frame.width, frame.height, glyphs, gfx?.segments.orEmpty(), gfx?.images.orEmpty(), gfx?.fills.orEmpty())
+        // invisible OCR words lying on real text are duplicates of it (an OCR layer over a digital page)
+        val glyphs = OcrText.dropVertical(OcrText.dropDuplicates(frame.glyphs(raw)))
+        val gfx = runCatching { GraphicsCollector(page, frame, withImages, glyphs).also { it.processPage(page) } }.getOrNull()
+        return PageContent(index, frame.width, frame.height, glyphs, gfx?.segments.orEmpty(), gfx?.images.orEmpty(), gfx?.fills.orEmpty(), rebuilt)
     }
 
     private class FontInfo(val bold: Boolean, val italic: Boolean, val family: String)
@@ -65,6 +70,8 @@ class PdfContentExtractor(private val doc: PDDocument) {
     /** Glyphs in PDF user space (crop-box origin, before rotation). */
     private class RawCollector : PDFTextStripper() {
         val out = ArrayList<RawGlyph>()
+        /** Per glyph of [out]: set in the app's OCR fonts, horizontal scaling ([OcrText.ourVisibleLayer]). */
+        val marks = ArrayList<OcrText.Mark>()
         private val fonts = HashMap<PDFont, FontInfo>()
 
         init {
@@ -101,7 +108,8 @@ class PdfContentExtractor(private val doc: PDDocument) {
         private fun rgb(c: PDColor?): Int = if (c == null) 0 else runCatching { c.toRGB() and 0xFFFFFF }.getOrDefault(0)
 
         override fun processTextPosition(text: TextPosition) {
-            val u = text.unicode ?: return
+            val u0 = text.unicode ?: return
+            val u = FontMap.symbolText(runCatching { text.font?.name }.getOrNull(), u0) ?: u0
             if (u.isEmpty()) return
             val m = text.textMatrix
             var fs = text.fontSizeInPt
@@ -110,14 +118,19 @@ class PdfContentExtractor(private val doc: PDDocument) {
             if (!m.translateX.isFinite() || !m.translateY.isFinite() || fs > 1000f) return
             val gs = graphicsState
             val mode = runCatching { gs.textState.renderingMode }.getOrNull()
-            val color = if (mode != null && !mode.isFill() && mode.isStroke()) rgb(gs.strokingColor) else if (mode == RenderingMode.NEITHER) 0 else rgb(gs.nonStrokingColor)
+            val invisible = mode == RenderingMode.NEITHER || mode == RenderingMode.NEITHER_CLIP
+            val color = if (mode != null && !mode.isFill() && mode.isStroke()) rgb(gs.strokingColor) else if (invisible) 0 else rgb(gs.nonStrokingColor)
             val fi = info(text.font)
-            out += RawGlyph(m.translateX, m.translateY, m.scaleX, m.shearY, text.widthDirAdj.coerceAtLeast(0f), hh, u, fs, fi.bold, fi.italic, color, fi.family)
+            // invisible text is an OCR layer (ours or another app's): never typeset text
+            out += RawGlyph(m.translateX, m.translateY, m.scaleX, m.shearY, text.widthDirAdj.coerceAtLeast(0f), hh, u, fs, fi.bold, fi.italic, color, fi.family, ocr = invisible)
+            val tz = runCatching { gs.textState.horizontalScaling }.getOrDefault(100f)
+            marks += OcrText.Mark(OcrText.isOcrFont(runCatching { text.font?.name }.getOrNull(), runCatching { text.font?.isEmbedded }.getOrNull() ?: true), tz, invisible)
         }
     }
 
     /** Collects stroked lines / thin filled rectangles (table rules), filled boxes and image placements. */
-    private class GraphicsCollector(page: PDPage, private val frame: PageFrame, private val withImages: Boolean) : PDFGraphicsStreamEngine(page) {
+    private class GraphicsCollector(page: PDPage, private val frame: PageFrame, private val withImages: Boolean, glyphs: List<Glyph>) : PDFGraphicsStreamEngine(page) {
+        private val text = OcrText.Coverage(glyphs)
         val segments = ArrayList<Segment>()
         val images = ArrayList<PageImage>()
         val fills = ArrayList<Fill>()
@@ -140,22 +153,32 @@ class PdfContentExtractor(private val doc: PDDocument) {
         }
 
         override fun drawImage(pdImage: PDImage) {
-            if (!withImages || images.size >= 60 || imageBytes > 40L * 1024 * 1024) return
             if (pdImage.isStencil) return
             val m = graphicsState.currentTransformationMatrix
             fun pt(u: Float, v: Float) = map(m.scaleX * u + m.shearX * v + m.translateX, m.shearY * u + m.scaleY * v + m.translateY)
             val o = pt(0f, 0f); val ex = pt(1f, 0f); val ey = pt(0f, 1f); val exy = pt(1f, 1f)
             val x0 = minOf(o[0], ex[0], ey[0], exy[0]); val x1 = maxOf(o[0], ex[0], ey[0], exy[0])
             val y0 = minOf(o[1], ex[1], ey[1], exy[1]); val y1 = maxOf(o[1], ex[1], ey[1], exy[1])
-            if (x1 - x0 < 8f || y1 - y0 < 8f) return
             if (x1 < 0f || y1 < 0f || x0 > frame.width || y0 > frame.height) return
+            // a tiny image (Word draws 2x2 tiles) is either a highlight / shading tile (a fill) or, through a soft mask
+            // holding glyphs, a picture of a word ("text with effects")
+            val tiny = pdImage.width <= 4 && pdImage.height <= 4
+            val masked = tiny && (pdImage as? com.tom_roush.pdfbox.pdmodel.graphics.image.PDImageXObject)?.cosObject?.containsKey(COSName.SMASK) == true
+            if (tiny && !masked) {
+                if (fills.size < 3000 && x1 - x0 > 3f && y1 - y0 > 3f) solidColor(pdImage)?.let { fills += Fill(Rect(x0, y0, x1, y1), it) }
+                return
+            }
+            if (!withImages || images.size >= 60 || imageBytes > 40L * 1024 * 1024) return
+            if (x1 - x0 < 8f || y1 - y0 < 8f) return
+            // a picture of text that the page's (OCR) text already covers is not exported a second time
+            if (masked && text.covered(Rect(x0, y0, x1, y1)) >= 0.3f) return
             // image rows run from the top (unit-square y = 1) down: its "up" vector decides the turn
             val ux = ey[0] - o[0]; val uy = ey[1] - o[1]
             val vx = ex[0] - o[0]; val vy = ex[1] - o[1]
             val orient = PageFrame.imageOrientation(vx, vy, ux, uy)
             val enc = runCatching { encodePdfImage(pdImage, orient.first, orient.second) }.getOrNull() ?: return
             imageBytes += enc.first.size
-            images += PageImage(x0, y0, x1 - x0, y1 - y0, enc.first, enc.second)
+            images += PageImage(x0, y0, x1 - x0, y1 - y0, enc.first, enc.second, maskText = masked)
         }
 
         override fun clip(windingRule: Winding) = Unit
