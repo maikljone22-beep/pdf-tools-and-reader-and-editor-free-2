@@ -19,4 +19,5 @@
     <string name="fid_hint">لكل فهرس قاعدة بيانات خاصة به. اختر في شاشة البحث الفهارس التي تبحث فيها؛ تُفهرس المجلدات المضمّنة مع كل إعادة بناء وكل 12 ساعة.</string>
     <string name="fid_scope_signatures">التوقيعات</string>
     <string name="fid_scope_layers">الطبقات</string>
+    <string name="fid_info_doc_basic">ملف Word 97 (‎.doc): تُحفظ العناوين والغامق والمائل والصور؛ تبقى الجداول نصاً ولا يُقرأ بقية التنسيق</string>
 </resources>

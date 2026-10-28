@@ -104,7 +104,7 @@ object ToPdf6 {
     fun readWordLike(f: File, kind: Kind6 = FileKind6.of(f)): FlowDoc = when (kind) {
         Kind6.DOCX -> OfficeFlow.docx(OoxmlReader.readDocx(f), f.nameWithoutExtension)
         Kind6.DOC -> when (val v = FileKind6.legacyVariant(head(f))) {
-            FileKind6.Legacy.CFB -> FlowDoc.fromText(DocReader.text(f.readBytes()), f.nameWithoutExtension)
+            FileKind6.Legacy.CFB -> LegacyDocFlow.read(f.readBytes(), f.nameWithoutExtension)   // fix/files-index: headings, bold / italic, pictures
             FileKind6.Legacy.RTF -> RtfReader.parse(f.readBytes(), f.nameWithoutExtension)
             FileKind6.Legacy.HTML -> LegacyVariants.wordDoc(v, ToPdf.readHtml(f), f.nameWithoutExtension)
             else -> LegacyVariants.wordDoc(v, ToPdf.readText(f), f.nameWithoutExtension)
@@ -257,7 +257,7 @@ object ToPdf6 {
             kind == Kind6.ODP -> ToPdf.html(ctx, FlowHtml.write(withContext(Dispatchers.IO) { odpFlow(title, OdfReader.readOdpSlides(OdfReader.zipEntry(f))) }), out,
                 WebPdfWriter.Setup(media = PrintAttributes.MediaSize.ISO_A4, landscape = true, javaScript = false))
             kind.isWordLike -> {
-                if (kind == Kind6.DOC && FileKind6.legacyVariant(head(f)) == FileKind6.Legacy.CFB) info(ctx.getString(R.string.cvf_info_doc_text))
+                if (kind == Kind6.DOC && FileKind6.legacyVariant(head(f)) == FileKind6.Legacy.CFB) info(ctx.getString(R.string.fid_info_doc_basic))   // fix/files-index: formatting / pictures now read
                 flowToPdf(ctx, withContext(Dispatchers.IO) { readWordLike(f, kind) }, out)
             }
             else -> throw unsupported(f, kind)

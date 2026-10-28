@@ -96,7 +96,8 @@ object DxfRender {
     fun read(f: File): DxfDrawing {
         require(f.length() <= 80L * 1024 * 1024) { "drawing too large" }
         val head = FileSniffer.readHead(f, 32)
-        if (String(head, Charsets.ISO_8859_1).startsWith("AutoCAD Binary DXF")) throw IllegalStateException("binary DXF")
+        // fix/files-index: binary DXF is read too
+        if (DxfReader.isBinary(head)) return DxfReader.read(DxfReader.binaryPairs(f.readBytes()))
         return DxfReader.read(TextDecode.readFile(f).text)
     }
 
@@ -127,6 +128,28 @@ object DxfRender {
                     val r = (sh.r * s).toFloat()
                     // screen y is flipped: angles run clockwise on screen
                     c.drawArc(x(sh.x) - r, y(sh.y) - r, x(sh.x) + r, y(sh.y) + r, (-sh.a1 - sweep).toFloat(), sweep.toFloat(), false, p)
+                }
+                is DxfShape.Hatch -> {
+                    // fix/files-index: solid fill, or the pattern's line families clipped to the boundary
+                    val path = android.graphics.Path().apply { fillType = android.graphics.Path.FillType.EVEN_ODD }
+                    sh.loops.forEach { l -> var i = 0; while (i + 1 < l.size) { if (i == 0) path.moveTo(x(l[0]), y(l[1])) else path.lineTo(x(l[i]), y(l[i + 1])); i += 2 }; path.close() }
+                    if (sh.solid) c.drawPath(path, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = col; style = Paint.Style.FILL })
+                    else {
+                        val b = android.graphics.RectF(); path.computeBounds(b, true)
+                        val gap = (sh.spacing * s).toFloat().coerceAtLeast(4f)
+                        val lp = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = col; style = Paint.Style.STROKE; strokeWidth = 0.8f }
+                        val half = kotlin.math.hypot(b.width(), b.height()) / 2f + gap
+                        c.save(); c.clipPath(path)
+                        for (a in sh.angles) {
+                            c.save(); c.rotate((-a).toFloat(), b.centerX(), b.centerY())
+                            var t = -half
+                            var n = 0
+                            while (t <= half && n++ < 4000) { c.drawLine(b.centerX() - half, b.centerY() + t, b.centerX() + half, b.centerY() + t, lp); t += gap }
+                            c.restore()
+                        }
+                        c.restore()
+                        c.drawPath(path, p)
+                    }
                 }
                 is DxfShape.Text -> {
                     tp.textSize = (sh.h * s).toFloat().coerceAtLeast(1f)

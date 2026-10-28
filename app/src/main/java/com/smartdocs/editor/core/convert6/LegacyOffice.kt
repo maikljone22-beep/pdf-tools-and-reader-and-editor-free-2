@@ -83,7 +83,8 @@ object DocReader {
 
 /**
  * Excel 97-2003 (.xls, BIFF8) cell values: shared strings, numbers (incl. RK / MULRK), inline strings,
- * formula cached results, booleans. Number formats (dates) are not applied. Pure.
+ * formula cached results, booleans; fix/files-index: number formats (FORMAT / XF records, dates in the workbook's
+ * date system) applied through [XlsNumFmt]. Pure.
  */
 object XlsReader {
 
@@ -168,12 +169,17 @@ object XlsReader {
         val recs = records(wb)
         if (recs.any { it.type == 0x002F }) throw LegacyEncrypted()
         val sheetNames = HashMap<Int, String>()
+        // fix/files-index: number formats — FORMAT (id → code), XF (index → format id), DATEMODE (1904 system)
+        val formats = HashMap<Int, String>(); val xfFormat = ArrayList<Int>(); var date1904 = false
         val order = ArrayList<Int>()
         var sstParts: ArrayList<ByteArray>? = null
         val sstAll = ArrayList<ByteArray>()
         recs.forEach { r ->
             when (r.type) {
                 0x0085 -> { val pos = CfbReader.le32(r.data, 0); if ((r.data[5].toInt() and 0xFF) == 0) { sheetNames[pos] = xlString(r.data, 6, 1); order += pos } }
+                0x041E -> runCatching { formats[CfbReader.le16(r.data, 0)] = xlString(r.data, 2, 2) }
+                0x00E0 -> if (r.data.size >= 4) xfFormat += CfbReader.le16(r.data, 2)
+                0x0022 -> if (r.data.size >= 2) date1904 = CfbReader.le16(r.data, 0) == 1
                 0x00FC -> { sstParts = ArrayList<ByteArray>().also { it += r.data }; }
                 0x003C -> sstParts?.add(r.data)
                 else -> sstParts?.let { sstAll.addAll(it); sstParts = null }
@@ -181,6 +187,11 @@ object XlsReader {
         }
         sstParts?.let { sstAll.addAll(it) }
         val strings = if (sstAll.isEmpty()) emptyList() else sst(sstAll)
+        fun fmt(d: Double, ixfe: Int): String {
+            val id = xfFormat.getOrNull(ixfe) ?: return num(d)
+            val code = formats[id] ?: XlsNumFmt.BUILT_IN[id] ?: return num(d)
+            return runCatching { XlsNumFmt.format(d, code, date1904) }.getOrElse { num(d) }
+        }
         val result = ArrayList<Pair<String, List<List<String>>>>()
         var cur: HashMap<Long, String>? = null; var name = ""
         var lastFormula: Long = -1
@@ -199,12 +210,12 @@ object XlsReader {
                 0x0809 -> { val dt = CfbReader.le16(d, 2); if (dt == 0x0010 && sheetNames.containsKey(r.offset)) { finish(); cur = HashMap(); name = sheetNames[r.offset]!! } }
                 0x000A -> finish()
                 0x00FD -> put(CfbReader.le16(d, 0), CfbReader.le16(d, 2), strings.getOrElse(CfbReader.le32(d, 6)) { "" })
-                0x0203 -> put(CfbReader.le16(d, 0), CfbReader.le16(d, 2), num(double(d, 6)))
-                0x027E -> put(CfbReader.le16(d, 0), CfbReader.le16(d, 2), num(rk(CfbReader.le32(d, 6))))
+                0x0203 -> put(CfbReader.le16(d, 0), CfbReader.le16(d, 2), fmt(double(d, 6), CfbReader.le16(d, 4)))
+                0x027E -> put(CfbReader.le16(d, 0), CfbReader.le16(d, 2), fmt(rk(CfbReader.le32(d, 6)), CfbReader.le16(d, 4)))
                 0x00BD -> {
                     val row = CfbReader.le16(d, 0); val first = CfbReader.le16(d, 2)
                     val n = (d.size - 6) / 6
-                    for (k in 0 until n) put(row, first + k, num(rk(CfbReader.le32(d, 4 + k * 6 + 2))))
+                    for (k in 0 until n) put(row, first + k, fmt(rk(CfbReader.le32(d, 4 + k * 6 + 2)), CfbReader.le16(d, 4 + k * 6)))
                 }
                 0x0204 -> put(CfbReader.le16(d, 0), CfbReader.le16(d, 2), xlString(d, 6, 2))
                 0x00D6 -> put(CfbReader.le16(d, 0), CfbReader.le16(d, 2), xlString(d, 6, 2))
@@ -217,7 +228,7 @@ object XlsReader {
                             1 -> put(row, col, if (d[8].toInt() != 0) "TRUE" else "FALSE")
                             2 -> put(row, col, "#ERR")
                         }
-                    } else put(row, col, num(double(d, 6)))
+                    } else put(row, col, fmt(double(d, 6), CfbReader.le16(d, 4)))
                 }
                 0x0207 -> if (lastFormula >= 0) { cur?.put(lastFormula, xlString(d, 0, 2)); lastFormula = -1 }
             }

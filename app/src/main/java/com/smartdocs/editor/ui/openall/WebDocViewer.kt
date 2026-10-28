@@ -87,7 +87,13 @@ object WebDocs {
             }
             FType.FB2 -> { val b = Fb2Reader.read(bytes(f), title); WebDoc(b.html, BASE + "book.html", toc = b.toc) }
             FType.MOBI -> { val b = MobiReader.read(bytes(f), title); WebDoc(b.html, BASE + "book.html", toc = b.toc) }
-            FType.PPT -> WebDoc(FlowHtml.write(ToPdf6.slidesFlow(title, PptText.slides(bytes(f)))), BASE + "slides.html", hint = R.string.oa_ppt_hint)
+            FType.PPT -> {
+                // fix/files-index: slides laid out with their pictures (PptReader) when the file has shapes, else the texts
+                val b = bytes(f)
+                val model = runCatching { com.smartdocs.editor.core.convert6.PptReader.read(b) }.getOrNull()?.takeIf { m -> m.slides.any { it.shapes.isNotEmpty() } }
+                if (model != null) WebDoc(com.smartdocs.editor.core.office.OfficeHtml.pptx(model, forPrint = false), BASE + "slides.html", hint = R.string.oa_readonly_hint)
+                else WebDoc(FlowHtml.write(ToPdf6.slidesFlow(title, PptText.slides(b))), BASE + "slides.html", hint = R.string.oa_ppt_hint)
+            }
             FType.ODP -> WebDoc(FlowHtml.write(ToPdf6.slidesFlow(title, OdfReader.readOdp(OdfReader.zipEntry(f)))), BASE + "slides.html", hint = R.string.oa_readonly_hint)
             FType.XLS, FType.ODS -> WebDoc(FlowHtml.write(ToPdf6.sheetsFlow(title, ToPdf6.readSheets(f, FileKind6.of(f)))), BASE + "sheet.html", hint = R.string.oa_readonly_hint)
             FType.XLSX -> WebDoc(OfficeHtml.xlsx(OoxmlReader.readXlsx(f)), BASE + "sheet.html", hint = R.string.oa_readonly_hint)
