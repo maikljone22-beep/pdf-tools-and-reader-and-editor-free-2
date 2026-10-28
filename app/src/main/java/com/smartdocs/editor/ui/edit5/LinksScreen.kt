@@ -26,6 +26,7 @@ import com.smartdocs.editor.core.edit5.LinkKind
 import com.smartdocs.editor.core.edit5.LinkOps
 import com.smartdocs.editor.core.edit5.LinkSpec
 import com.smartdocs.editor.core.edit5.PageLinkInfo
+import com.smartdocs.editor.core.edit5.WebCapture
 import com.smartdocs.editor.core.pdf.PdfSession
 import com.smartdocs.editor.core.view5.PrintLayout
 import com.smartdocs.editor.ui.common.rememberToolRunner
@@ -65,6 +66,7 @@ fun LinksScreen(nav: NavHostController, uri: String?) {
     var selecting by remember { mutableStateOf(false) }
     var selected by remember { mutableStateOf<List<Int>>(emptyList()) }     // annotation indexes, in selection order
     var auto by remember { mutableStateOf<AutoTool?>(null) }
+    var webLinks by remember { mutableStateOf(false) }     // fix/links-bookmarks: View / Append web links
     var step by remember { mutableFloatStateOf(1f) }
     val processing = stringResource(R.string.processing)
     val doneN = stringResource(R.string.e5_links_added_n)
@@ -174,6 +176,7 @@ fun LinksScreen(nav: NavHostController, uri: String?) {
                     OutlinedButton(onClick = { auto = AutoTool.PAGE_NUMBERS }, Modifier.fillMaxWidth()) { Icon(Icons.Default.FormatListNumbered, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.nbm_auto_page_links)) }
                     OutlinedButton(onClick = { auto = AutoTool.CROSS_REFS }, Modifier.fillMaxWidth()) { Icon(Icons.Default.Shortcut, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.nbm_xref_links)) }
                     OutlinedButton(onClick = { auto = AutoTool.KEYWORD }, Modifier.fillMaxWidth()) { Icon(Icons.Default.Key, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.nbm_keyword_links)) }
+                    OutlinedButton(onClick = { webLinks = true }, Modifier.fillMaxWidth()) { Icon(Icons.Default.Public, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.lbm_web_links)) }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(onClick = { var n = 0; run({ s, o, p -> n = LinkOps.removeAll(s, o, p, webOnly = true) }) { scope.launch { snack.showSnackbar(removedN.format(n)) } } }, Modifier.weight(1f)) { Text(stringResource(R.string.e5_links_remove_web)) }
                         OutlinedButton(onClick = { var n = 0; run({ s, o, p -> n = LinkOps.removeAll(s, o, p, webOnly = false) }) { scope.launch { snack.showSnackbar(removedN.format(n)) } } }, Modifier.weight(1f)) { Text(stringResource(R.string.e5_links_remove_all)) }
@@ -198,8 +201,19 @@ fun LinksScreen(nav: NavHostController, uri: String?) {
         }
     }
     if (busy) com.smartdocs.editor.ui.common.ProgressDialog(processing)
+    val appended = stringResource(R.string.lbm_web_appended)
+    val w0 = doc.work
+    if (webLinks && w0 != null) WebLinksSheet(w0, doc.password, doc.pageCount, page, onDismiss = { webLinks = false }) { parts, bm, byDomain, relink ->
+        webLinks = false
+        var n = 0
+        run({ s, o, p -> n = WebCapture.append(s, o, p, parts, bm, byDomain, relink) }) {
+            parts.forEach { runCatching { it.second.delete() } }
+            scope.launch { snack.showSnackbar(appended.format(n)) }
+        }
+    }
+    val attachments = rememberNavAttachments(doc.work, doc.password, doc.version)
     editing?.let { (spec, existing) ->
-        LinkEditorSheet(spec, doc.pageCount, isNew = existing == null, onDismiss = { editing = null },
+        LinkEditorSheet(spec, doc.pageCount, isNew = existing == null, onDismiss = { editing = null }, attachments = attachments,
             onDelete = existing?.let { e -> { editing = null; run({ s, o, p -> LinkOps.delete(s, o, p, mapOf(e.page to setOf(e.index))) }) } }) { result ->
             editing = null
             if (existing == null) run({ s, o, p -> LinkOps.add(s, o, p, mapOf(page to listOf(result))) })

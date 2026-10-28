@@ -134,7 +134,9 @@ object BookmarkXml {
                     is NavAction.Launch -> append(pad).append("<action type=\"launch\" value=\"").append(esc(a.file)).append("\"/>\n")
                     is NavAction.Named -> append(pad).append("<action type=\"named\" value=\"").append(esc(a.name)).append("\"/>\n")
                     is NavAction.Js -> append(pad).append("<action type=\"js\" value=\"").append(esc(a.script)).append("\"/>\n")
-                    is NavAction.Kept -> Unit
+                    is NavAction.GoToE -> append(pad).append("<action type=\"gotoe\" value=\"").append(esc(a.attachment)).append("\" page=\"").append(a.page + 1).append("\" named=\"").append(esc(a.named)).append("\"/>
+")
+                    is NavAction.Media, is NavAction.Kept -> Unit
                 }
             }
             open += lvl
@@ -170,6 +172,7 @@ object BookmarkXml {
                         "goto" -> actions += NavAction.GoTo(((a.getAttribute("page").toIntOrNull() ?: 1) - 1).coerceIn(0, (pageCount - 1).coerceAtLeast(0)),
                             DestView(runCatching { DestFit.valueOf(a.getAttribute("fit")) }.getOrDefault(DestFit.FIT)), a.getAttribute("named"))
                         "gotor" -> actions += NavAction.GoToR(v, ((a.getAttribute("page").toIntOrNull() ?: 1) - 1).coerceAtLeast(0), a.getAttribute("named"))
+                        "gotoe" -> actions += NavAction.GoToE(v, ((a.getAttribute("page").toIntOrNull() ?: 1) - 1).coerceAtLeast(0), a.getAttribute("named"))
                         "launch" -> actions += NavAction.Launch(v)
                         "named" -> actions += NavAction.Named(v)
                         "js" -> actions += NavAction.Js(v)

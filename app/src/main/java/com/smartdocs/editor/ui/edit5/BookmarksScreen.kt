@@ -44,6 +44,7 @@ import com.smartdocs.editor.core.edit5.OutlineStore
 import com.smartdocs.editor.core.edit5.OutlineTools
 import com.smartdocs.editor.core.edit5.TocOrientation
 import com.smartdocs.editor.core.edit5.TocStyle
+import com.smartdocs.editor.core.edit5.TitleCase
 import com.smartdocs.editor.core.pdf.PdfOps
 import com.smartdocs.editor.ui.common.ProgressDialog
 import com.smartdocs.editor.ui.common.rememberToolRunner
@@ -75,6 +76,8 @@ fun BookmarksScreen(nav: NavHostController, uri: String?) {
     var editing by remember { mutableStateOf<Int?>(null) }          // index; -1 = new
     var showAuto by remember { mutableStateOf(false) }
     var showToc by remember { mutableStateOf(false) }
+    var showTags by remember { mutableStateOf(false) }          // fix/links-bookmarks: bookmarks from structure tags
+    var showDefaults by remember { mutableStateOf(false) }      // fix/links-bookmarks: defaults for new bookmarks
     var busy by remember { mutableStateOf(false) }
     var selecting by remember { mutableStateOf(false) }
     var selected by remember { mutableStateOf<Set<Long>>(emptySet()) }
@@ -120,6 +123,8 @@ fun BookmarksScreen(nav: NavHostController, uri: String?) {
                 AssistChip(onClick = { editing = -1 }, label = { Text(stringResource(R.string.e5_bm_add)) }, leadingIcon = { Icon(Icons.Default.BookmarkAdd, null) })
                 AssistChip(onClick = { showAuto = true }, label = { Text(stringResource(R.string.e5_bm_auto)) }, leadingIcon = { Icon(Icons.Default.AutoAwesome, null) })
                 AssistChip(onClick = { showToc = true }, label = { Text(stringResource(R.string.e5_bm_toc)) }, leadingIcon = { Icon(Icons.Default.Toc, null) })
+                AssistChip(onClick = { showTags = true }, label = { Text(stringResource(R.string.lbm_bm_from_tags)) }, leadingIcon = { Icon(Icons.Default.AccountTree, null) })
+                AssistChip(onClick = { showDefaults = true }, label = { Text(stringResource(R.string.lbm_bm_defaults)) }, leadingIcon = { Icon(Icons.Default.Tune, null) })
                 AssistChip(onClick = { update(OutlineNav.setOpenAll(list, true)) }, enabled = list.isNotEmpty(), label = { Text(stringResource(R.string.nbm_expand_all)) }, leadingIcon = { Icon(Icons.Default.UnfoldMore, null) })
                 AssistChip(onClick = { update(OutlineNav.setOpenAll(list, false)) }, enabled = list.isNotEmpty(), label = { Text(stringResource(R.string.nbm_collapse_all)) }, leadingIcon = { Icon(Icons.Default.UnfoldLess, null) })
                 AssistChip(onClick = { selecting = !selecting; selected = emptySet() }, enabled = list.isNotEmpty(), label = { Text(stringResource(R.string.nbm_select)) }, leadingIcon = { Icon(Icons.Default.Checklist, null) })
@@ -213,13 +218,15 @@ fun BookmarksScreen(nav: NavHostController, uri: String?) {
             dismissButton = { TextButton(onClick = { deleteSection = null }) { Text(stringResource(R.string.cancel)) } })
     }
     editing?.let { idx ->
-        val b = list.getOrNull(idx) ?: E5Bookmark(OutlineModel.newKey(), "", 0, list.getOrNull(list.lastIndex)?.level ?: 0)
+        // fix/links-bookmarks: a new bookmark starts with the default zoom and appearance
+        val b = list.getOrNull(idx) ?: remember { com.smartdocs.editor.core.edit5.BookmarkDefaults.apply(ctx, E5Bookmark(OutlineModel.newKey(), "", 0, list.getOrNull(list.lastIndex)?.level ?: 0)) }
         val destNames by produceState(emptyList<String>(), doc.work) {
             value = doc.work?.let { w -> kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                 runCatching { PdfOps.loadRaw(w, doc.password).use { d -> com.smartdocs.editor.core.edit5.NamedDests.list(d).map { it.name } } }.getOrDefault(emptyList())
             } } ?: emptyList()
         }
-        CompositionLocalProvider(LocalDestNames provides destNames) {
+        val attachments = rememberNavAttachments(doc.work, doc.password, doc.version)
+        CompositionLocalProvider(LocalDestNames provides destNames, LocalNavAttachments provides attachments) {
         BookmarkSheet(b, doc.pageCount, doc.infos.getOrNull(b.page.coerceAtLeast(0)), onDismiss = { editing = null }) { nb ->
             editing = null
             if (idx >= 0) update(list.toMutableList().also { it[idx] = nb })
@@ -237,6 +244,16 @@ fun BookmarksScreen(nav: NavHostController, uri: String?) {
             if (found.isEmpty()) snack.showSnackbar(noHeadings) else update(OutlineNav.insert(list, found, settings.insert))
         }
     }
+    if (showTags) TagBookmarksDialog(onDismiss = { showTags = false }) { types, insert ->
+        showTags = false; busy = true
+        scope.launch {
+            val w = doc.work
+            val found = if (w != null) runCatching { com.smartdocs.editor.core.edit5.TagBookmarks.load(w, doc.password, types, com.smartdocs.editor.core.edit5.BookmarkDefaults.load(ctx).view) }.getOrDefault(emptyList()) else emptyList()
+            busy = false
+            if (found.isEmpty()) snack.showSnackbar(ctx.getString(R.string.lbm_tags_none)) else update(OutlineNav.insert(list, found, insert))
+        }
+    }
+    if (showDefaults) BookmarkDefaultsDialog(onDismiss = { showDefaults = false })
     if (showToc) TocDialog(onDismiss = { showToc = false }) { title, maxLevel, rtl, arDigits, font, style ->
         showToc = false
         saveOutline {
@@ -272,8 +289,14 @@ private fun BookmarkSheet(initial: E5Bookmark, pageCount: Int, info: com.smartdo
             SwitchRow(stringResource(R.string.e5_bold), b.bold) { b = b.copy(bold = it) }
             SwitchRow(stringResource(R.string.e5_italic), b.italic) { b = b.copy(italic = it) }
             SwitchRow(stringResource(R.string.e5_bm_open), b.open) { b = b.copy(open = it) }
+            // fix/links-bookmarks (Foxit §16): this colour / bold / italic for the next new bookmarks
+            val ctx = LocalContext.current
+            val saved = stringResource(R.string.nbm_link_default_saved)
+            TextButton(onClick = { com.smartdocs.editor.core.edit5.BookmarkDefaults.saveStyle(ctx, b.color, b.bold, b.italic); android.widget.Toast.makeText(ctx, saved, android.widget.Toast.LENGTH_SHORT).show() }) {
+                Icon(Icons.Default.Star, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.lbm_bm_use_default))
+            }
             Row { Spacer(Modifier.weight(1f)); TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
-                Button(enabled = b.title.isNotBlank() && (!useActions || b.actions.isNotEmpty()), onClick = {
+                Button(enabled = b.title.isNotBlank() && (!useActions || actionsComplete(b.actions)), onClick = {
                     val p = ((pageText.toIntOrNull() ?: 1) - 1).coerceIn(0, (pageCount - 1).coerceAtLeast(0))
                     if (useActions) onSave(b.copy(page = (b.actions.firstOrNull { it is NavAction.GoTo } as? NavAction.GoTo)?.page ?: -1))
                     else {
@@ -323,6 +346,22 @@ private fun AutoBookmarksDialog(onDismiss: () -> Unit, onRun: (AutoBmSettings) -
             SwitchRow(stringResource(R.string.nbm_exact_text), s.exactText) { s = s.copy(exactText = it) }
             SwitchRow(stringResource(R.string.nbm_skip_repeated), s.skipRepeated) { s = s.copy(skipRepeated = it) }
             SwitchRow(stringResource(R.string.nbm_collapse_new), s.collapse) { s = s.copy(collapse = it) }
+            // fix/links-bookmarks (Nitro §16): title text case, text before / after, characters and stop words
+            HorizontalDivider()
+            Text(stringResource(R.string.lbm_title_text), style = MaterialTheme.typography.titleSmall)
+            ChoiceChips(TitleCase.values().toList(), s.titleCase, { stringResource(titleCaseLabel(it)) }) { s = s.copy(titleCase = it) }
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                OutlinedTextField(s.prefix, { s = s.copy(prefix = it) }, Modifier.weight(1f), singleLine = true, label = { Text(stringResource(R.string.lbm_text_before)) })
+                OutlinedTextField(s.suffix, { s = s.copy(suffix = it) }, Modifier.weight(1f), singleLine = true, label = { Text(stringResource(R.string.lbm_text_after)) })
+            }
+            SwitchRow(stringResource(R.string.lbm_alnum_only), s.alnumOnly) { s = s.copy(alnumOnly = it) }
+            OutlinedTextField(s.stopWords, { s = s.copy(stopWords = it) }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.lbm_stop_words)) },
+                supportingText = { Text(stringResource(R.string.lbm_stop_words_help)) })
+            if (s.titleCase != TitleCase.KEEP || s.prefix.isNotEmpty() || s.suffix.isNotEmpty() || s.alnumOnly || s.stopWords.isNotBlank()) {
+                val sample = stringResource(R.string.lbm_title_sample)
+                Text(stringResource(R.string.lbm_title_preview, AutoBookmarks.formatTitle(sample, s)), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            HorizontalDivider()
             Text(stringResource(R.string.nbm_magnification))
             DestViewFields(s.view) { s = s.copy(view = it) }
             Text(stringResource(R.string.nbm_insert_where))
@@ -361,6 +400,60 @@ private fun LevelRule(l: AutoBmLevel, onChange: (AutoBmLevel) -> Unit) {
         OutlinedTextField(l.include, { onChange(l.copy(include = it)) }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.nbm_keywords_in)) })
         OutlinedTextField(l.exclude, { onChange(l.copy(exclude = it)) }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.nbm_keywords_out)) })
     }
+}
+
+private fun titleCaseLabel(c: TitleCase) = when (c) {
+    TitleCase.KEEP -> R.string.lbm_case_keep; TitleCase.UPPER -> R.string.lbm_case_upper; TitleCase.LOWER -> R.string.lbm_case_lower
+    TitleCase.TITLE -> R.string.lbm_case_title; TitleCase.SENTENCE -> R.string.lbm_case_sentence
+}
+
+/** fix/links-bookmarks (Foxit §16 "New bookmarks from structure"): pick the tag types, then where the bookmarks go. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun TagBookmarksDialog(onDismiss: () -> Unit, onRun: (Set<String>, AutoInsert) -> Unit) {
+    var types by remember { mutableStateOf(com.smartdocs.editor.core.edit5.TagBookmarks.DEFAULT) }
+    var insert by remember { mutableStateOf(AutoInsert.AFTER) }
+    AlertDialog(onDismissRequest = onDismiss, title = { Text(stringResource(R.string.lbm_bm_from_tags)) }, text = {
+        Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(stringResource(R.string.lbm_tags_help), style = MaterialTheme.typography.bodySmall)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                com.smartdocs.editor.core.edit5.TagBookmarks.TYPES.forEach { t ->
+                    FilterChip(t in types, { types = if (t in types) types - t else types + t }, label = { Text(t) })
+                }
+            }
+            Text(stringResource(R.string.nbm_insert_where))
+            ChoiceChips(AutoInsert.values().toList(), insert, { stringResource(when (it) { AutoInsert.REPLACE -> R.string.nbm_ins_replace; AutoInsert.BEFORE -> R.string.nbm_ins_before; AutoInsert.AFTER -> R.string.nbm_ins_after }) }) { insert = it }
+        }
+    }, confirmButton = { Button(enabled = types.isNotEmpty(), onClick = { onRun(types, insert) }) { Text(stringResource(R.string.e5_run)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } })
+}
+
+/** fix/links-bookmarks (Foxit §16): the view (fit / zoom) and appearance new bookmarks start with. */
+@Composable
+private fun BookmarkDefaultsDialog(onDismiss: () -> Unit) {
+    val ctx = LocalContext.current
+    val d0 = remember { com.smartdocs.editor.core.edit5.BookmarkDefaults.load(ctx) }
+    var view by remember { mutableStateOf(d0.view) }
+    var color by remember { mutableStateOf(d0.color) }
+    var bold by remember { mutableStateOf(d0.bold) }
+    var italic by remember { mutableStateOf(d0.italic) }
+    AlertDialog(onDismissRequest = onDismiss, title = { Text(stringResource(R.string.lbm_bm_defaults)) }, text = {
+        Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(stringResource(R.string.lbm_bm_defaults_help), style = MaterialTheme.typography.bodySmall)
+            Text(stringResource(R.string.nbm_magnification))
+            DestViewFields(view) { view = it }
+            Text(stringResource(R.string.e5_color))
+            NbmColorRow(BM_COLORS, color ?: 0x000000) { color = if (it == 0x000000) null else it }
+            SwitchRow(stringResource(R.string.e5_bold), bold) { bold = it }
+            SwitchRow(stringResource(R.string.e5_italic), italic) { italic = it }
+        }
+    }, confirmButton = {
+        Button(onClick = {
+            com.smartdocs.editor.core.edit5.BookmarkDefaults.saveView(ctx, view)
+            com.smartdocs.editor.core.edit5.BookmarkDefaults.saveStyle(ctx, color, bold, italic)
+            onDismiss()
+        }) { Text(stringResource(R.string.save)) }
+    }, dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } })
 }
 
 private val TOC_COLORS = listOf(0x212121, 0x424242, 0xC62828, 0x1565C0, 0x2E7D32, 0x6A1B9A)

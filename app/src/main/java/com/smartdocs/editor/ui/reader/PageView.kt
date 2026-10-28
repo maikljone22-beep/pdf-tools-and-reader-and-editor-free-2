@@ -232,6 +232,14 @@ fun PageView(
                 info.visibleItemsInfo.minByOrNull { abs(it.offset + it.size / 2 - center) }?.index ?: -1
             }.collect { item -> val pg = if (item >= 0) contPages(item).firstOrNull() ?: -1 else -1; if (pg >= 0 && pg != state.currentPage) state.rememberPage(pg) }
         }
+        // fix/links-bookmarks: how far the current page is scrolled (bookmark / link "current view" destinations)
+        LaunchedEffect(listState) {
+            snapshotFlow {
+                val info = listState.layoutInfo
+                val item = info.visibleItemsInfo.firstOrNull { it.index == contItemOf(state.currentPage) }
+                if (item == null || item.size <= 0) 0f else ((info.viewportStartOffset - item.offset).toFloat() / item.size).coerceIn(0f, 1f)
+            }.collect { state.viewTopFraction = it }
+        }
     } else {
         LaunchedEffect(pagerState, spread) { snapshotFlow { itemPages(pagerState.currentPage).firstOrNull() ?: dp(spread.firstPage(pagerState.currentPage)) }.collect { if (it != state.currentPage) state.rememberPage(it) } }
     }
