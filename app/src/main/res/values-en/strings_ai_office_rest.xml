@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- aor (fix/ai-office-rest): AI image editing, Workspace crafts, video voices, AI panel width. English. -->
+<resources>
+    <string name="aor_panel_drag">Drag to resize the panel</string>
+
+    <!-- Workspace crafts -->
+    <string name="aor_infographic">Infographic</string>
+    <string name="aor_infographic_sub">Visual summary with key figures and sections: image, HTML or PDF</string>
+    <string name="aor_webpage">Web page</string>
+    <string name="aor_webpage_sub">An explainer page about the document with contents: HTML, image or PDF</string>
+    <string name="aor_png">PNG image</string>
+    <string name="aor_preview">Preview</string>
+    <string name="aor_key_figures">Key figures</string>
+    <string name="aor_takeaway">Takeaway</string>
+    <string name="aor_contents">Contents</string>
+    <string name="aor_made_from">Made with AI from: %1$s</string>
+    <string name="aor_crafts">Slides, infographics and pages</string>
+    <string name="aor_crafts_title">Create from the Space: %1$s</string>
+    <string name="aor_crafts_empty">Nothing yet. Make slides, an infographic or a web page from the files of this Space, and they will be listed here to open again.</string>
+    <string name="aor_craft_remove">Remove from the list</string>
+
+    <!-- Narrated video voices -->
+    <string name="aor_ai_voice">AI voice in the video</string>
+    <string name="aor_ai_voice_note">Needs the internet; without it the device voice is used.</string>
+    <string name="aor_video_note">The video is made on the device, with the AI voice when it is on or the system text-to-speech voice, and can take a minute or more.</string>
+    <string name="aor_video_device_voice">The AI voice was not available, so the device voice was used.</string>
+
+    <!-- AI image editing and undoable insert -->
+    <string name="aor_edit_pick">Pick an image to edit</string>
+    <string name="aor_edit_prompt">Describe the edit (e.g. make the background white)</string>
+    <string name="aor_edit_apply">Edit image</string>
+    <string name="aor_edit_undo">Undo edit</string>
+    <string name="aor_insert_page">Insert on the page (undoable)</string>
+    <string name="aor_img_history">AI image, page %1$d</string>
+    <string name="aor_img_inserted">Image inserted on page %1$d. You can undo it.</string>
+    <string name="aor_img_not_inserted">The image was not inserted into this file. Save a copy, or use Insert to make a copy.</string>
+    <string name="aor_img_failed">Could not insert the image: %1$s</string>
+    <string name="aor_img_unreadable">The image could not be read.</string>
+</resources>

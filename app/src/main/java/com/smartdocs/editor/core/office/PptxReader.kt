@@ -47,7 +47,11 @@ internal class PptxReader(private val pkg: OoxmlPackage) {
                 "spTree" -> readTree(p, path, inherited, null, shapes)
             }
         }
-        return SlideModel(cx, cy, shapes, bg)
+        // row 103: speaker notes (the slide's notesSlide part) and the hidden flag
+        val notes = pkg.rels(path).values.firstOrNull { it.type.endsWith("/notesSlide") }?.target
+            ?.let { pkg.bytes(it)?.toString(Charsets.UTF_8) }?.let { PptxNotes.text(it) }
+        val hidden = pkg.bytes(path)?.let { b -> PptxNotes.hidden(String(b, 0, minOf(b.size, 2000), Charsets.UTF_8)) } ?: false
+        return SlideModel(cx, cy, shapes, bg, notes, hidden)
     }
 
     /** Placeholder positions of a layout, falling back to its master for those without xfrm. */

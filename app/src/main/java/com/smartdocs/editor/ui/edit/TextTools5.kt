@@ -73,6 +73,8 @@ internal object EditPrefs {
     fun liveSpell(ctx: Context) = p(ctx).getBoolean("live_spell", true)
     /** Run OCR by itself when Edit mode opens a page with no editable text (a scan). Off by default. */
     fun autoOcr(ctx: Context) = p(ctx).getBoolean("auto_ocr", false)
+    /** §37: show the text changed in this edit session in colour. Off by default. */
+    fun showChanged(ctx: Context) = p(ctx).getBoolean("show_changed", false)
     fun set(ctx: Context, key: String, v: Boolean) { p(ctx).edit().putBoolean(key, v).apply() }
     fun setFloat(ctx: Context, key: String, v: Float) { p(ctx).edit().putFloat(key, v).apply() }
 
@@ -271,7 +273,7 @@ internal class TextTools5(val c: EditController) {
             link != null && text.isNotBlank() && st.list == ListKind.NONE -> c.runNve(done) { src, out ->
                 TextEdit5.flowLinked(ctx, src, out, pw, p, b.ops, text, st, b.rect.top - b.rect.bottom + 2f, link)
             }
-            b.angle != 0f || b.inForm || movePending -> c.runNve(done) { src, out ->
+            b.framed || b.inForm || movePending -> c.runNve(done) { src, out ->
                 TextEdit5.replace(ctx, src, out, pw, p, b.ops, text, st, mx, my, mw)
             }
             else -> return false
@@ -466,7 +468,15 @@ internal fun TextTopActions5(c: EditController) {
     if (c.mode != EditMode.TEXT) return
     IconButton(onClick = { t.sheet = TSheet.REFLOW }, enabled = !c.busy && (c.model?.blocks?.isNotEmpty() == true)) { Icon(Icons.Default.Notes, stringResource(R.string.nt_reflow)) }
     IconButton(onClick = { t.sheet = TSheet.PREFS }) { Icon(Icons.Default.Tune, stringResource(R.string.nt_prefs)) }
+    // §37: changed text shown in colour until edit mode is left
+    IconToggleButton(checked = c.showChanged, onCheckedChange = { c.toggleShowChanged() }) {
+        Icon(Icons.Default.FormatColorText, stringResource(if (c.showChanged) R.string.ett_changed_hide else R.string.ett_changed_show),
+            tint = if (c.showChanged) Color(CHANGED_COLOR) else LocalContentColor.current)
+    }
 }
+
+/** §37: colour of the text changed in this edit session. */
+internal const val CHANGED_COLOR = 0xFFE65100
 
 /** "No editable text" bar with the OCR button (scanned pages). */
 @Composable

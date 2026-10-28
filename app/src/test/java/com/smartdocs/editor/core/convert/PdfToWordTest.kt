@@ -224,4 +224,24 @@ class PdfToWordTest {
         assertTrue(ar, ar.indexOf("framePr") < ar.indexOf("<w:bidi/>") && ar.indexOf("<w:bidi/>") < ar.indexOf("<w:spacing"))
         assertFalse(docx(false, l).contains("framePr"))
     }
+
+    @Test fun customCharacterSpacingOnEveryRun() {
+        val l = LayoutAnalyzer.analyze(page(ltrWord("Invoice", 100f, 210f)))
+        val bos = ByteArrayOutputStream()
+        DocxBuilder(bos, "t", PageFurniture.NONE, false, charSpacing = 0.5f).use { b -> b.addPage(l); b.finish() }
+        val xml = ZipInputStream(bos.toByteArray().inputStream()).use { z ->
+            var out = ""; while (true) { val e = z.nextEntry ?: break; if (e.name == "word/document.xml") { out = z.readBytes().toString(Charsets.UTF_8); break } }; out
+        }
+        assertTrue(xml.contains("<w:spacing w:val=\"10\"/>"))       // 0.5 pt = 10 twentieths
+        assertFalse(docx(false, l).contains("<w:spacing w:val="))
+    }
+
+    @Test fun linedTablesOnlySkipsAlignmentTables() {
+        // a 3 x 3 grid of aligned words without any ruling lines
+        val gs = listOf(100f, 120f, 140f).flatMap { y -> listOf(50f, 220f, 390f).flatMapIndexed { i, x -> ltrWord("c$i${y.toInt()}", x, y) } }
+        val withStream = LayoutAnalyzer.analyze(page(gs), detectTables = true)
+        val linedOnly = LayoutAnalyzer.analyze(page(gs), detectTables = true, streamTables = false)
+        assertEquals(0, linedOnly.blocks.count { it is TableBlock })
+        assertTrue(withStream.blocks.count { it is TableBlock } >= linedOnly.blocks.count { it is TableBlock })
+    }
 }

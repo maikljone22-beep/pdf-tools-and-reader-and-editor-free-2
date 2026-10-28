@@ -86,6 +86,16 @@ object AiMedia {
         if (model.startsWith("dall-e")) put("response_format", "b64_json")
     }
 
+    /**
+     * aor (AI-8): text fields of an `/images/edits` multipart request (the image goes in the "image" file part).
+     * The proxy picks its own model, so [model] is blank there and left out.
+     */
+    fun editFields(model: String, prompt: String, size: String): List<Pair<String, String>> = buildList {
+        if (model.isNotBlank()) add("model" to model)
+        add("prompt" to prompt.take(4000)); add("size" to size); add("n" to "1")
+        if (model.startsWith("dall-e")) add("response_format" to "b64_json")
+    }
+
     /** Bytes of the first generated image (b64_json), or the URL when the server returned one. */
     fun parseImage(resp: JsonObject): Pair<ByteArray?, String?> {
         val first = (resp["data"] as? JsonArray)?.firstOrNull() as? JsonObject ?: throw AiException("no image")
@@ -214,6 +224,32 @@ object AiMedia {
         if (client.viaProxy && !supports(client, AiFeature.IMAGES)) throw AiNotConfiguredException(AiFeature.IMAGES)
         val model = if (client.viaProxy) "" else IMAGE_MODEL_OPENAI
         val (bytes, url) = parseImage(post(client, AiFeature.IMAGES, "/images/generations", imageBody(model, prompt, size)))
+        if (bytes != null) return bytes
+        return withContext(Dispatchers.IO) { http.newCall(Request.Builder().url(url!!).build()).execute().use { r -> r.body?.bytes() ?: throw AiException("empty image") } }
+    }
+
+    /**
+     * aor (AI-8): prompt-based edit of an existing image (OpenAI-compatible `/images/edits`, multipart). [png] is the
+     * source image as PNG; returns the edited image bytes. Through the proxy this needs its `/images/edits` route
+     * (an older proxy answers 404, shown as "not configured").
+     */
+    suspend fun editImage(client: AiClient, png: ByteArray, prompt: String, size: String = "1024x1024"): ByteArray {
+        if (client.viaProxy && !supports(client, AiFeature.IMAGES)) throw AiNotConfiguredException(AiFeature.IMAGES)
+        val model = if (client.viaProxy) "" else IMAGE_MODEL_OPENAI
+        val resp = withContext(Dispatchers.IO) {
+            val mb = MultipartBody.Builder().setType(MultipartBody.FORM)
+            editFields(model, prompt, size).forEach { (k, v) -> mb.addFormDataPart(k, v) }
+            mb.addFormDataPart("image", "image.png", png.toRequestBody("image/png".toMediaType()))
+            val req = authed(client, Request.Builder().url(client.baseUrl + "/images/edits").post(mb.build())).build()
+            http.newCall(req).execute().use { r ->
+                val text = r.body?.string().orEmpty()
+                if (!r.isSuccessful) throw mapError(AiFeature.IMAGES, r.code, text)
+                val obj = runCatching { AiClient.json.parseToJsonElement(text).jsonObject }.getOrNull() ?: throw AiException("bad response")
+                obj["error"]?.let { e -> val m = e.toString(); if (m.contains("not configured", true)) throw AiNotConfiguredException(AiFeature.IMAGES); throw AiException(m.take(300)) }
+                obj
+            }
+        }
+        val (bytes, url) = parseImage(resp)
         if (bytes != null) return bytes
         return withContext(Dispatchers.IO) { http.newCall(Request.Builder().url(url!!).build()).execute().use { r -> r.body?.bytes() ?: throw AiException("empty image") } }
     }

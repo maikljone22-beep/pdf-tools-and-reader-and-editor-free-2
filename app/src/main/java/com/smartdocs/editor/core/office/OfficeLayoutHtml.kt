@@ -73,6 +73,15 @@ td.n{text-align:right;} table.p[dir=rtl] td.n{text-align:left;} td.b,td.e{text-a
         return r0..r1 to c0..c1
     }
 
+    /** FINAL_CHECK_2 #9: scale and column bands of a sheet printed on a [pageW] × [pageH] px page in fit [mode]. */
+    fun fitPlan(s: SheetModel, pageW: Int, pageH: Int, mode: Int): ExcelFit.Plan {
+        val (rows, cols) = usedRange(s)
+        val byRow = s.rows.associateBy { it.index }
+        val defPx = s.defaultRowPt * 4 / 3
+        val height = if (rows.isEmpty()) 0 else rows.sumOf { r -> ((byRow[r]?.heightPt?.let { it * 4 / 3 } ?: defPx) + 1).toDouble() }.toInt()
+        return ExcelFit.plan(cols, cols.map { colPx(s, it) }, height, pageW, pageH, mode, s.print)
+    }
+
     /** Printed width of the used columns in CSS px. */
     fun printWidthPx(s: SheetModel): Int { val (_, cols) = usedRange(s); return cols.sumOf { colPx(s, it) } }
 
@@ -84,19 +93,25 @@ td.n{text-align:right;} table.p[dir=rtl] td.n{text-align:left;} td.b,td.e{text-a
      * padding rows / columns, gridlines as thin borders; the first row repeats on every page when it looks like a header;
      * a sheet wider than the page is zoomed to fit its width ([pageWidthPx]). [title] is shown above the first part.
      */
-    fun printSheet(book: WorkbookModel, index: Int, rows: IntRange?, pageWidthPx: Int, title: String?, truncatedNote: String?): String = buildString {
+    fun printSheet(book: WorkbookModel, index: Int, rows: IntRange?, pageWidthPx: Int, title: String?, truncatedNote: String?,
+                   band: IntRange? = null, fixedZoom: Float? = null): String = buildString {
         val s = book.sheets[index]
-        val (used, cols) = usedRange(s)
+        val (used, allCols) = usedRange(s)
+        // FINAL_CHECK_2 #9: one column band of the sheet, at the scale of its fit plan
+        val cols = band?.let { maxOf(it.first, allCols.first)..minOf(it.last, allCols.last) } ?: allCols
         append(OfficeHtml.head(s.name, "width=device-width, initial-scale=1", PRINT_CSS))
         append("<body><div class=\"sheet\">")
         if (title != null) append("<h2 class=\"sn\" dir=\"auto\">").append(esc(title)).append("</h2>")
         if (used.isEmpty()) { append("</div></body></html>"); return@buildString }
         val range = rows?.let { maxOf(it.first, used.first)..minOf(it.last, used.last) } ?: used
         val width = cols.sumOf { colPx(s, it) }.coerceAtLeast(1)
-        val zoom = minOf(1f, pageWidthPx.toFloat() / width)
+        val zoom = fixedZoom ?: minOf(1f, pageWidthPx.toFloat() / width)
         val byRow = s.rows.associateBy { it.index }
         val covered = HashSet<Long>(); val spans = HashMap<Long, Pair<Int, Int>>()
-        for (m in s.merges) {
+        for (m0 in s.merges) {
+            // a merge crossing the band's edge is cut to the band
+            if (cols.isEmpty() || m0.c2 < cols.first || m0.c1 > cols.last) continue
+            val m = m0.copy(c1 = maxOf(m0.c1, cols.first), c2 = minOf(m0.c2, cols.last))
             spans[key(m.r1, m.c1)] = (m.r2 - m.r1 + 1) to (m.c2 - m.c1 + 1)
             for (r in m.r1..m.r2) for (c in m.c1..m.c2) if (r != m.r1 || c != m.c1) covered.add(key(r, c))
         }

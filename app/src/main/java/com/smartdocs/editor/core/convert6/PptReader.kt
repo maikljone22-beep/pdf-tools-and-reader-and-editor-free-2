@@ -148,10 +148,10 @@ object PptReader {
 
     private fun s16(b: ByteArray, o: Int): Int = u16(b, o).toShort().toInt()
 
-    private fun paragraphs(t: String): List<SlideParagraph> =
-        t.replace('\u000B', '\r').split('\r', '\n').map { line ->
-            SlideParagraph(listOf(Inline.Text(line, RunStyle())), rtl = Text6.rtlDominant(line))
-        }
+    /** A text of a slide with its text type (title, body …) and its StyleTextPropAtom styles. */
+    private class PText(val type: Int, val text: String, var styles: PptStyle.Styles? = null)
+
+    private fun paragraphs(t: PText): List<SlideParagraph> = PptStyle.paragraphs(t.text, t.styles)
 
     fun read(bytes: ByteArray): PresentationModel {
         val cfb = CfbReader(bytes)
@@ -167,62 +167,84 @@ object PptReader {
         val sh = ((docAtom?.let { u32(s, it.body + 4) } ?: 4320) * EMU_PER_MASTER).toLong()
         // slides in order: SlideListWithText (instance 0) → SlidePersistAtom → persist id → Slide container
         val slwt = doc?.let { d -> kids(s, d).firstOrNull { it.type == 0x0FF0 && it.inst == 0 } }
-        data class Entry(val persistId: Int, val texts: MutableList<Pair<Int, String>>)   // (text type, text)
+        class Entry(val persistId: Int, val texts: MutableList<PText>)
         val entries = ArrayList<Entry>()
         slwt?.let { l ->
             var cur: Entry? = null; var type = 1
             for (r in kids(s, l)) when (r.type) {
                 0x03F3 -> cur = Entry(u32(s, r.body), ArrayList()).also { entries += it }
                 0x0F9F -> type = u32(s, r.body)                                                  // TextHeaderAtom
-                0x0FA0, 0x0FA8 -> text(s, r)?.let { t -> cur?.texts?.add(type to t) }
+                0x0FA0, 0x0FA8 -> text(s, r)?.let { t -> cur?.texts?.add(PText(type, t)) }
+                0x0FA1 -> cur?.texts?.lastOrNull()?.let { pt -> pt.styles = PptStyle.parse(s, r.body, r.body + r.len, pt.text.length) }   // StyleTextPropAtom
             }
         }
         val slideRecs: List<Pair<Rec, Entry?>> = if (entries.isNotEmpty() && persist.isNotEmpty())
             entries.mapNotNull { e -> persist[e.persistId]?.let { off -> recs(s, off, s.size).firstOrNull()?.takeIf { it.type == 0x03EE }?.let { it to e } } }
         else emptyList()
         val slides = slideRecs.ifEmpty { top.flatMap { r -> if (r.type == 0x03EE) listOf(r to null) else emptyList() } }
-        return PresentationModel(slides.mapIndexed { i, (slide, entry) -> slideModel(s, slide, entry?.texts ?: emptyList(), pics, sw, sh) }
+        // masters: their own shapes (logos, decorations; not placeholders) go behind the slides that follow master objects
+        val masterShapes = HashMap<Int, List<SlideShape>>()
+        fun masterOf(slide: Rec): List<SlideShape> {
+            val atom = kids(s, slide).firstOrNull { it.type == 0x03EF && it.len >= 22 } ?: return emptyList()     // SlideAtom
+            val masterId = u32(s, atom.body + 12)
+            val follow = (u16(s, atom.body + 20) and 1) != 0                                                       // fMasterObjects
+            if (!follow || masterId == 0) return emptyList()
+            return masterShapes.getOrPut(masterId) {
+                val m = persist[masterId]?.let { off -> recs(s, off, s.size).firstOrNull() }?.takeIf { it.type == 0x03F8 || it.type == 0x03EE } ?: return@getOrPut emptyList()
+                shapesOf(s, m, emptyList(), pics, skipPlaceholders = true, used = HashSet())
+            }
+        }
+        return PresentationModel(slides.map { (slide, entry) -> slideModel(s, slide, entry?.texts ?: emptyList(), pics, sw, sh, masterOf(slide)) }
             .ifEmpty { listOf(SlideModel(sw, sh, emptyList())) })
     }
 
-    private fun slideModel(s: ByteArray, slide: Rec, texts: List<Pair<Int, String>>, pics: List<ImageData?>, sw: Long, sh: Long): SlideModel {
+    private fun slideModel(s: ByteArray, slide: Rec, texts: List<PText>, pics: List<ImageData?>, sw: Long, sh: Long, master: List<SlideShape>): SlideModel {
+        val usedTexts = HashSet<Int>()
+        val shapes = ArrayList<SlideShape>(master)
+        shapes += shapesOf(s, slide, texts, pics, skipPlaceholders = false, used = usedTexts)
+        // texts of the slide that no shape referenced (placeholders inherited from the master): stacked in the slide
+        val rest = texts.filterIndexed { i, _ -> i !in usedTexts }
+        if (shapes.none { it is SlideShape.TextBox && it !in master } && rest.isNotEmpty()) {
+            var y = sh / 12
+            rest.forEach { t ->
+                val title = t.type == 0 || t.type == 6
+                val hh = if (title) sh / 6 else sh / 2
+                shapes += SlideShape.TextBox(sw / 16, y, sw * 7 / 8, hh, paragraphs(t), defaultSizePt = if (title) 32f else 20f)
+                y += hh
+            }
+        }
+        return SlideModel(sw, sh, shapes)
+    }
+
+    /** The anchored shapes of a slide / master drawing; [skipPlaceholders]: leave out placeholder shapes (masters). */
+    private fun shapesOf(s: ByteArray, slide: Rec, texts: List<PText>, pics: List<ImageData?>, skipPlaceholders: Boolean, used: MutableSet<Int>): List<SlideShape> {
         val shapes = ArrayList<SlideShape>()
         val spContainers = ArrayList<Rec>()
         find(s, slide, 0x040C)?.let { drawing -> findAll(s, drawing, 0xF004, spContainers) }   // PPDrawing → OfficeArtSpContainer
-        val usedTexts = HashSet<Int>()
         for (sp in spContainers) {
             val ks = kids(s, sp)
             val a = ks.firstOrNull { it.type == 0xF010 }?.let { anchor(s, it) } ?: continue          // shapes without a client anchor: group / background
             val x = (a[1] * EMU_PER_MASTER).toLong(); val y = (a[0] * EMU_PER_MASTER).toLong()
             val w = ((a[2] - a[1]) * EMU_PER_MASTER).toLong(); val h = ((a[3] - a[0]) * EMU_PER_MASTER).toLong()
             if (w <= 0 || h <= 0) continue
+            if (skipPlaceholders && ks.firstOrNull { it.type == 0xF011 }?.let { cd -> find(s, cd, 0x0BC3) != null } == true) continue   // OEPlaceholderAtom
             val fopt = ks.firstOrNull { it.type == 0xF00B }
             val pib = fopt?.let { prop(s, it, 0x0104) }
             if (pib != null && pib in 1..pics.size) { shapes += SlideShape.Picture(x, y, w, h, pics[pib - 1]); continue }
             val box = ks.firstOrNull { it.type == 0xF00D }                                          // ClientTextbox
-            var t: String? = null; var tType = 1
+            var t: PText? = null; var tType = 1
             box?.let { b ->
                 for (r in kids(s, b)) when (r.type) {
                     0x0F9F -> tType = u32(s, r.body)
-                    0x0FA0, 0x0FA8 -> t = text(s, r)
-                    0x0F9E -> { val idx = u32(s, r.body); texts.getOrNull(idx)?.let { (ty, tx) -> t = tx; tType = ty; usedTexts += idx } }   // OutlineTextRefAtom
+                    0x0FA0, 0x0FA8 -> text(s, r)?.let { t = PText(tType, it) }
+                    0x0FA1 -> t?.let { pt -> pt.styles = PptStyle.parse(s, r.body, r.body + r.len, pt.text.length) }
+                    0x0F9E -> { val idx = u32(s, r.body); texts.getOrNull(idx)?.let { pt -> t = pt; tType = pt.type; used += idx } }   // OutlineTextRefAtom
                 }
             }
-            val tx = t?.takeIf { it.isNotBlank() } ?: continue
+            val tx = t?.takeIf { it.text.isNotBlank() } ?: continue
             val size = when (tType) { 0, 6 -> 32f; 1, 5, 7, 8 -> 20f; else -> 18f }                // title / center title / body / other
             shapes += SlideShape.TextBox(x, y, w, h, paragraphs(tx), defaultSizePt = size)
         }
-        // texts of the slide that no shape referenced (placeholders inherited from the master): stacked in the slide
-        val rest = texts.filterIndexed { i, _ -> i !in usedTexts }
-        if (shapes.none { it is SlideShape.TextBox } && rest.isNotEmpty()) {
-            var y = sh / 12
-            rest.forEach { (ty, tx) ->
-                val title = ty == 0 || ty == 6
-                val hh = if (title) sh / 6 else sh / 2
-                shapes += SlideShape.TextBox(sw / 16, y, sw * 7 / 8, hh, paragraphs(tx), defaultSizePt = if (title) 32f else 20f)
-                y += hh
-            }
-        }
-        return SlideModel(sw, sh, shapes)
+        return shapes
     }
 }

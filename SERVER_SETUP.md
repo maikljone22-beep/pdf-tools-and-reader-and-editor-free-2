@@ -224,6 +224,8 @@ The app declares an auto-verified link for `https://smartdocs.app/invite` (added
 - **Instant change notices for Google Drive / OneDrive (optional):** the app polls their change feeds (30 s → 5 min back-off) while it is open. True push needs an HTTPS endpoint that receives Drive `changes.watch` / Graph subscription callbacks and forwards them to the app (e.g. through Firebase Cloud Messaging) — not built; Dropbox and Box already use long-poll.
 - **Egnyte native API (optional):** Egnyte works now as a WebDAV place (preset in Add Place). A native Egnyte provider would need an Egnyte developer app (API key / OAuth client).
 - **Verified invite links:** see section 9b.
+- **AI image editing (fix/ai-office-rest):** redeploy `ai-proxy` (`cd ai-proxy && wrangler deploy`). It adds `POST /images/edits` (multipart `image` + `prompt` + `size`). The route uses the same `IMAGE_URL`, `IMAGE_MODEL` and secret `IMAGE_KEY` as image generation, so the image model must support edits (`gpt-image-1` or `dall-e-2`). An older worker answers 404, and the app then shows "not configured" for edits only. With their own OpenAI key, users need no server.
+- **AI voices in the narrated video summary (fix/ai-office-rest):** nothing new. The app uses the existing `POST /audio/speech` route (section 1, `TTS_KEY`). When that route has no key, or the phone is offline, the video falls back to the device voice.
 
 ## 10. Summary: the app-side files
 All are in the project root, git-ignored. **Keys only, never commit them.**

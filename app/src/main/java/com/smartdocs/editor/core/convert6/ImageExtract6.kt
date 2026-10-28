@@ -40,6 +40,34 @@ class Extracted(
  */
 object ImageExtract6 {
 
+    /** s6 "output format": the extension a picture gets for [fmt] (null = keep the original encoding). Pure. */
+    fun targetExt(fmt: ImgFmt?, current: String): String = when (fmt) {
+        null -> current
+        ImgFmt.JPG -> "jpg"; ImgFmt.PNG -> "png"; ImgFmt.WEBP -> "webp"
+        else -> current
+    }
+
+    /**
+     * Re-encode [items] into [fmt] (JPG / PNG / WebP at [quality]); pictures already in that format, and ones Android
+     * cannot decode (JPEG 2000, CMYK TIFF …), stay as they are. Returns the new list (files replaced in the work folder).
+     */
+    suspend fun convertAll(items: List<Extracted>, fmt: ImgFmt?, quality: Int): List<Extracted> = withContext(kotlinx.coroutines.Dispatchers.IO) {
+        if (fmt == null) return@withContext items
+        items.map { e ->
+            coroutineContext.ensureActive()
+            val ext = targetExt(fmt, e.ext)
+            if (ext == e.ext || (ext == "jpg" && e.ext == "jpeg")) return@map e
+            val bmp = runCatching { android.graphics.BitmapFactory.decodeFile(e.file.path) }.getOrNull() ?: return@map e
+            try {
+                val out = File(e.file.parentFile, e.file.nameWithoutExtension + "." + ext)
+                val ok = out.outputStream().use { os -> bmp.compress(ImageIo6.compressFormat(fmt), if (fmt == ImgFmt.PNG) 100 else quality.coerceIn(30, 100), os) }
+                if (!ok) { out.delete(); return@map e }
+                if (out != e.file) e.file.delete()
+                Extracted(out, e.page, e.indexOnPage, e.resource, e.caption, e.width, e.height, ext)
+            } finally { bmp.recycle() }
+        }
+    }
+
     private class Seen { val objs = IdentityHashMap<Any, Boolean>(); val hashes = HashSet<String>() }
 
     /** Pictures larger than this are decoded subsampled (ARGB memory). */

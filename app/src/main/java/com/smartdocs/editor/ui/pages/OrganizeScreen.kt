@@ -151,7 +151,7 @@ fun OrganizeScreen(nav: NavHostController, uri: String?) {
     fun useThumbFile(f: File, t: Pair<Boolean, List<Int>>, pw: String?) {
         if (t.first) state.replacePages(t.second, f, pw) else state.insertFrom(f, t.second.max() + 1, pw)
     }
-    val pickThumbFile = rememberPdfPicker { files ->
+    val pickThumbFile = com.smartdocs.editor.ui.common.rememberAnyDocPicker { files ->   // FINAL_CHECK_2 #7: pages from any document
         val f = files.firstOrNull(); val t = thumbPick; thumbPick = null
         if (f != null && t != null) scope.launch {
             if (kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.smartdocs.editor.core.pdf.LockedPdf.needsPassword(f) }) thumbLocked = f to t

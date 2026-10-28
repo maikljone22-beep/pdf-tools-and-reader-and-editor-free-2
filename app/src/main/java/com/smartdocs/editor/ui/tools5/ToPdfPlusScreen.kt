@@ -63,6 +63,7 @@ fun ToPdfPlusScreen(nav: NavHostController, uri: String?) {
     var html by remember { mutableStateOf("") }
     var background by remember { mutableStateOf(false) }
     var attachSrc by remember { mutableStateOf(false) }   // nav-attach: "attach source file"
+    var outTree by remember { mutableStateOf("") }   // FINAL_CHECK_2 #2: output folder
     val srcDesc = stringResource(R.string.nat_source_desc)
     val job = rememberT5Job()
     val web = remember { WebOpts() }
@@ -71,7 +72,7 @@ fun ToPdfPlusScreen(nav: NavHostController, uri: String?) {
         bookmarks = j.optBoolean("bookmarks", bookmarks); attachSrc = j.optBoolean("attach", attachSrc); background = j.optBoolean("background", background)
         web.paper = j.optString("paper", web.paper); web.landscape = j.optBoolean("landscape", web.landscape); web.margin = j.optInt("margin", web.margin)
         web.timeoutSec = j.optDouble("timeout", web.timeoutSec.toDouble()).toFloat(); web.images = j.optBoolean("images", web.images)
-        web.backgrounds = j.optBoolean("backgrounds", web.backgrounds); web.underline = j.optBoolean("underline", web.underline); web.noLinks = j.optBoolean("noLinks", web.noLinks)
+        web.backgrounds = j.optBoolean("backgrounds", web.backgrounds); web.underline = j.optBoolean("underline", web.underline); web.noLinks = j.optBoolean("noLinks", web.noLinks); web.singlePage = j.optBoolean("singlePage", web.singlePage); web.tags = j.optBoolean("tags", web.tags)
     } }
     val savedMsg = stringResource(R.string.fcs_cv_saved)
     val pick = rememberAnyFilePicker(true, ToPdf.pickerMimes) { picked -> files = files + picked.filter { f -> files.none { it.absolutePath == f.absolutePath } } }
@@ -100,17 +101,20 @@ fun ToPdfPlusScreen(nav: NavHostController, uri: String?) {
                 if (files.isNotEmpty()) T5Card { FileListEditor(files, { files = it }) }
                 if (unsupported.isNotEmpty()) Text(stringResource(R.string.t5_unsupported, unsupported.joinToString { it.name }), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                 if (tab == 0 || !background) SwitchRow(stringResource(R.string.nat_attach_source), attachSrc, stringResource(R.string.nat_attach_source_sub)) { attachSrc = it }
+                // FINAL_CHECK_2 #2: output folder for the combined / converted files
+                if (tab == 0 || !background) com.smartdocs.editor.ui.common.OutputFolderRow(outTree) { outTree = it }
                 if (tab == 0) {
                     SwitchRow(stringResource(R.string.t5_bookmark_per_file), bookmarks) { bookmarks = it }
                     OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.t5_file_name_optional)) })
                     PrimaryButton(stringResource(R.string.t5_combine), enabled = files.isNotEmpty() && unsupported.isEmpty() && !job.running, icon = Icons.Default.CallMerge) {
                         val list = files.toList(); val bm = bookmarks; val base = name.ifBlank { if (list.size == 1) list[0].nameWithoutExtension else defaultName }
-                        val attach = attachSrc
+                        val attach = attachSrc; val tree = outTree
                         job.launch(combining) {
                             val out = app.documents.uniqueFile(app.documents.docsDir, base)
                             ToPdf.combine(ctx, list.map { ToPdf.Item(it, it.nameWithoutExtension) }, out, app.documents.tempDir, bm) { d, t -> step(d, t) }
                             if (attach) com.smartdocs.editor.core.pdf.AttachmentOps.attachSources(out, list, srcDesc)
                             runCatching { app.documents.touchRecent(out) }
+                            com.smartdocs.editor.ui.common.copyToOutputFolder(ctx, tree, listOf(out))
                             result = out
                         }
                     }
@@ -122,10 +126,11 @@ fun ToPdfPlusScreen(nav: NavHostController, uri: String?) {
                             BatchJobs.enqueue(ctx, converting, list.map { it to null }, null, true, app.documents.docsDir)
                             job.info = queued
                             nav.navigate(com.smartdocs.editor.ui.Routes.tool("batch"))
-                        } else { val attach = attachSrc; job.launch(converting) {
+                        } else { val attach = attachSrc; val tree = outTree; job.launch(converting) {
                             val (out, failed) = convertEachToPdf(ctx, app.documents, list, { d, t -> step(d, t) }) { f, dst ->
                                 if (attach) com.smartdocs.editor.core.pdf.AttachmentOps.attachSources(dst, listOf(f), srcDesc)
                             }
+                            com.smartdocs.editor.ui.common.copyToOutputFolder(ctx, tree, out)
                             results = out
                             if (failed != null) { if (out.isEmpty()) error = failed else info = failed }
                         } }
@@ -142,6 +147,7 @@ fun ToPdfPlusScreen(nav: NavHostController, uri: String?) {
                     job.launch(converting) {
                         val out = app.documents.uniqueFile(app.documents.docsDir, host)
                         ToPdf.url(ctx, u, out, setup, nl)
+                        tagIfAsked(web, out)
                         result = appendIfAsked(web, out) { app.documents.uniqueFile(app.documents.docsDir, it) }
                     }
                 }
@@ -153,7 +159,7 @@ fun ToPdfPlusScreen(nav: NavHostController, uri: String?) {
                     job.launch(converting) {
                         val out = app.documents.uniqueFile(app.documents.docsDir, "html_" + t5Today())
                         val page = if (h.contains("<html", true) || h.contains("<body", true)) h else HtmlBits.page("", h, HtmlBits.rtlDominant(h))
-                        result = ToPdf.html(ctx, page, out, web.setup())
+                        result = ToPdf.html(ctx, page, out, web.setup()).also { tagIfAsked(web, it) }
                     }
                 }
             }
@@ -163,7 +169,7 @@ fun ToPdfPlusScreen(nav: NavHostController, uri: String?) {
             com.smartdocs.editor.core.convert6.Cv6Defaults.saveScreen(ctx, TO_PDF_DEFAULTS, org.json.JSONObject()
                 .put("bookmarks", bookmarks).put("attach", attachSrc).put("background", background)
                 .put("paper", web.paper).put("landscape", web.landscape).put("margin", web.margin).put("timeout", web.timeoutSec.toDouble())
-                .put("images", web.images).put("backgrounds", web.backgrounds).put("underline", web.underline).put("noLinks", web.noLinks))
+                .put("images", web.images).put("backgrounds", web.backgrounds).put("underline", web.underline).put("noLinks", web.noLinks).put("singlePage", web.singlePage).put("tags", web.tags))
             android.widget.Toast.makeText(ctx, savedMsg, android.widget.Toast.LENGTH_SHORT).show()
         }) { Icon(Icons.Default.BookmarkAdd, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.fcs_cv_save_default)) }
         if (job.results.isNotEmpty()) ResultsList(job.results, nav, "application/pdf")

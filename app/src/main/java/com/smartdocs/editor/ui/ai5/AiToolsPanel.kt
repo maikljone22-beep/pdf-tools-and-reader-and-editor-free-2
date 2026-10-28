@@ -22,6 +22,8 @@ import androidx.compose.material.icons.filled.ReportProblem
 import androidx.compose.material.icons.filled.Slideshow
 import androidx.compose.material.icons.filled.TableChart
 import androidx.compose.material.icons.filled.ViewColumn
+import androidx.compose.material.icons.filled.Insights
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -77,6 +79,7 @@ fun AiToolsPanel(nav: NavHostController, file: File?, modifier: Modifier = Modif
     var guidance by remember { mutableStateOf("") }
     var trImages by remember { mutableStateOf(false) }
     var slides by remember { mutableStateOf(false) }
+    var craft by remember { mutableStateOf<com.smartdocs.editor.core.ai6.CraftKind?>(null) }   // aor: infographic / web page
     var review by remember { mutableStateOf<com.smartdocs.editor.core.ai6.DocReview.Kind?>(null) }
     var tables by remember { mutableStateOf(false) }
     val processing = stringResource(R.string.a5_working)
@@ -99,6 +102,8 @@ fun AiToolsPanel(nav: NavHostController, file: File?, modifier: Modifier = Modif
         // ai6: side-by-side view (with the last whole translation of this file when there is one)
         ToolRow(Icons.Default.ViewColumn, stringResource(R.string.ai6t_side_by_side), stringResource(R.string.ai6t_side_by_side_sub), ok) { nav.navigate(Routes.tool("ai_side_by_side", uri)) }
         ToolRow(Icons.Default.Slideshow, stringResource(R.string.ai6t_slides), stringResource(R.string.ai6t_slides_sub), ok) { gated { slides = true } }
+        ToolRow(Icons.Default.Insights, stringResource(R.string.aor_infographic), stringResource(R.string.aor_infographic_sub), ok) { gated { craft = com.smartdocs.editor.core.ai6.CraftKind.INFOGRAPHIC } }
+        ToolRow(Icons.Default.Language, stringResource(R.string.aor_webpage), stringResource(R.string.aor_webpage_sub), ok) { gated { craft = com.smartdocs.editor.core.ai6.CraftKind.WEB_PAGE } }
         ToolRow(Icons.Default.Gavel, stringResource(R.string.ai6t_contract), stringResource(R.string.ai6t_contract_sub), ok) { gated { review = com.smartdocs.editor.core.ai6.DocReview.Kind.CONTRACT } }
         ToolRow(Icons.Default.CompareArrows, stringResource(R.string.ai6t_compare), stringResource(R.string.ai6t_compare_sub), ok) { gated { review = com.smartdocs.editor.core.ai6.DocReview.Kind.COMPARE } }
         ToolRow(Icons.Default.Analytics, stringResource(R.string.ai6t_analysis), stringResource(R.string.ai6t_analysis_sub), ok) { gated { review = com.smartdocs.editor.core.ai6.DocReview.Kind.ANALYSIS } }
@@ -177,6 +182,7 @@ fun AiToolsPanel(nav: NavHostController, file: File?, modifier: Modifier = Modif
     // ai6 (fork T)
     val pwMap = if (file != null && pw != null) mapOf(file.absolutePath to pw) else emptyMap()
     if (slides && file != null) com.smartdocs.editor.ui.ai6.SlidesSheet(nav, listOf(file), onDismiss = { slides = false }, passwords = pwMap)
+    craft?.let { k -> if (file != null) com.smartdocs.editor.ui.ai6.CraftSheet(nav, listOf(file), k, onDismiss = { craft = null }, passwords = pwMap) }
     review?.let { k -> if (file != null) com.smartdocs.editor.ui.ai6.ReviewSheet(nav, file, k, onDismiss = { review = null }, passwords = pwMap) }
     if (tables && file != null) com.smartdocs.editor.ui.ai6.TablesSheet(file, onDismiss = { tables = false }, password = pw)
     if (pii && file != null) PiiScanSheet(file, pw, onApply = { pii = false; nav.navigate(Routes.tool("redact", uri)) }, onDismiss = { pii = false })

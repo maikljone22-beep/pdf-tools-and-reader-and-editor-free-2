@@ -149,7 +149,18 @@ internal fun EditPageView(c: EditController, modifier: Modifier = Modifier) {
                     }
                     val model = c.model ?: return@Canvas
                     when (c.mode) {
-                        EditMode.TEXT -> if (!c.editingText) model.blocks.forEach { b -> box(b.rect, primary.copy(alpha = 0.55f), 1.5f, true, primary.copy(alpha = 0.06f)) }
+                        EditMode.TEXT -> {
+                            if (!c.editingText) model.blocks.forEach { b -> box(b.rect, primary.copy(alpha = 0.55f), 1.5f, true, primary.copy(alpha = 0.06f)) }
+                            // §37: text changed in this session, in colour: the blocks now drawn where it was written
+                            if (c.showChanged) {
+                                val changed = Color(CHANGED_COLOR)
+                                c.changedOn(c.page).forEach { r ->
+                                    val hit = model.blocks.filter { b -> b.rect.left < r.right && b.rect.right > r.left && b.rect.bottom < r.top && b.rect.top > r.bottom }
+                                    if (hit.isEmpty()) box(r, changed, 2f, false, changed.copy(alpha = 0.22f))
+                                    else hit.forEach { b -> box(b.rect, changed, 2f, false, changed.copy(alpha = 0.22f)) }
+                                }
+                            }
+                        }
                         EditMode.IMAGE -> {
                             model.images.forEach { im -> if (im != c.image) box(im.rect, tertiary.copy(alpha = 0.7f), 2f, true, tertiary.copy(alpha = 0.08f)) }
                             c.image?.let { im ->

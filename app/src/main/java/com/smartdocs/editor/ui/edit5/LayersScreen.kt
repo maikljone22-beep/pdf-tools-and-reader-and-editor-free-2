@@ -128,8 +128,16 @@ fun LayersScreen(nav: NavHostController, uri: String?) {
                 AssistChip(onClick = { edit { Layers.applyOverrides(it, "Print") } }, enabled = !busy, label = { Text(stringResource(R.string.pc_ly_apply_print)) })
                 AssistChip(onClick = { edit { Layers.applyOverrides(it, "Export") } }, enabled = !busy, label = { Text(stringResource(R.string.pc_ly_apply_export)) })
             }
+            // pdf39 §22 #270: all layers, or only those used on the page shown above
+            var thisPage by remember { mutableStateOf(false) }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                FilterChip(!thisPage, { thisPage = false }, label = { Text(stringResource(R.string.ett_ly_all)) })
+                FilterChip(thisPage, { thisPage = true }, label = { Text(stringResource(R.string.ett_ly_this_page, page + 1)) })
+            }
+            val shown = rows.filter { com.smartdocs.editor.core.edit5.LayerPageFilter.keep(it.pages, if (thisPage) setOf(page) else null) }
+            if (shown.isEmpty()) Text(stringResource(R.string.ett_ly_none_here), style = MaterialTheme.typography.bodySmall)
             var lastGroup: String? = null
-            rows.forEach { r ->
+            shown.forEach { r ->
                 if (r.group != null && r.group != lastGroup) {
                     val g = r.group
                     Row(Modifier.fillMaxWidth().clickable { collapsed = if (g in collapsed) collapsed - g else collapsed + g }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {

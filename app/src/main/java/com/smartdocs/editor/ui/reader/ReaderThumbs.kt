@@ -146,7 +146,7 @@ internal fun ReaderThumbnailsPanel(state: ReaderState, onJump: (Int) -> Unit) {
             com.smartdocs.editor.core.edit5.PageOps5.replace(s, o, pw, purpose.pages, f, otherPw, purpose.pages.indices.toList())
         }
     }
-    val pick = com.smartdocs.editor.ui.common.rememberPdfPicker { files ->
+    val pick = com.smartdocs.editor.ui.common.rememberAnyDocPicker { files ->   // FINAL_CHECK_2 #7: pages from any document
         val f = files.firstOrNull(); val p = pickFor; pickFor = null
         if (f != null && p != null) state.scope.launch {
             if (withContext(Dispatchers.IO) { com.smartdocs.editor.core.pdf.LockedPdf.needsPassword(f) }) locked = f to p else useFile(f, p, null)

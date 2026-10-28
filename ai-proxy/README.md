@@ -8,6 +8,7 @@
 - `GET /usage` — عدّادات اليوم من مساحة KV (محادثة، كلام، صور، تفريغ صوت).
 - `POST /chat/completions` مع صور (`image_url`) — يستعمل `VISION_MODEL` (اسأل عن صورة أو مخطط، ترجمة الصور).
 - `POST /images/generations` — توليد الصور (`IMAGE_URL`، `IMAGE_MODEL`، السر `IMAGE_KEY`).
+- `POST /images/edits` — تعديل صورة بوصف نصي (multipart: `image` و`prompt` و`size`)، بنفس إعدادات توليد الصور.
 - `POST /audio/transcriptions` — تفريغ ملف صوتي إلى نص (`STT_URL`، `STT_MODEL`، السر `STT_KEY` أو `PROVIDER_KEY`).
 - `POST /embeddings` — متجهات لإعادة ترتيب المقاطع (`EMBED_URL`، `EMBED_MODEL`، السر `EMBED_KEY`).
 - `POST /web/search` — بحث ويب حيّ في المحادثة (السر `SEARCH_KEY` لـ Brave Search API).

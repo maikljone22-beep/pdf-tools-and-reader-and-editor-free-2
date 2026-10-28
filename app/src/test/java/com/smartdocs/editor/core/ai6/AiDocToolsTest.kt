@@ -56,6 +56,18 @@ class AiDocToolsTest {
         assertTrue(s3.contains("rtl=\"1\""))
         assertTrue(entries["[Content_Types].xml"]!!.contains("/ppt/slides/slide3.xml"))
         assertEquals(3, Regex("<p:sldId ").findAll(entries["ppt/presentation.xml"]!!).count())
+        // aor (B13): speaker notes as a notes slide of slide 2 (the first content slide), on a notes master
+        assertTrue(entries.containsKey("ppt/notesSlides/notesSlide2.xml"))
+        assertTrue(!entries.containsKey("ppt/notesSlides/notesSlide3.xml"))   // that slide has no notes
+        assertTrue(entries.containsKey("ppt/notesMasters/notesMaster1.xml"))
+        assertTrue(entries.containsKey("ppt/theme/theme2.xml"))
+        assertTrue(entries["ppt/presentation.xml"]!!.contains("<p:notesMasterIdLst>"))
+        assertTrue(entries["ppt/slides/_rels/slide2.xml.rels"]!!.contains("notesSlide2.xml"))
+        assertTrue(entries["[Content_Types].xml"]!!.contains("/ppt/notesSlides/notesSlide2.xml"))
+        val doc = com.smartdocs.editor.core.office5.PptDoc.of(com.smartdocs.editor.core.office5.OPackage.create(entries.mapValues { it.value.toByteArray() }))
+        assertEquals(3, doc.slideCount)
+        assertEquals("نبدأ بالتعريف.", com.smartdocs.editor.core.office5.SlideFind.notesText(doc, 1))
+        assertEquals("", com.smartdocs.editor.core.office5.SlideFind.notesText(doc, 2))
     }
 
     // ---------------- B17 reviews + tables ----------------

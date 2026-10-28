@@ -80,8 +80,8 @@ object SlidesGen {
 
 /**
  * Minimal PowerPoint writer for a [SlideDeck]: 16:9 slides with a coloured title band, a title text box and a
- * bulleted body (right-aligned + rtl for Arabic). Speaker notes are not written (they need a notes master);
- * they are kept in the Markdown and PDF outputs.
+ * bulleted body (right-aligned + rtl for Arabic). Speaker notes go into notes slides (`notesSlide` parts) on a
+ * minimal notes master, so PowerPoint / Keynote / the Office editor show them under each slide (aor, B13).
  */
 object SlidesPptx {
     const val W = 12192000L
@@ -121,16 +121,58 @@ object SlidesPptx {
             "</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>"
     }
 
+    private const val CLR_MAP = "<p:clrMap bg1=\"lt1\" tx1=\"dk1\" bg2=\"lt2\" tx2=\"dk2\" accent1=\"accent1\" accent2=\"accent2\" accent3=\"accent3\" " +
+        "accent4=\"accent4\" accent5=\"accent5\" accent6=\"accent6\" hlink=\"hlink\" folHlink=\"folHlink\"/>"
+
+    /** Placeholder shape of a notes page: the slide image ([type] sldImg) or the notes text (body). */
+    private fun notesPh(id: Int, name: String, type: String, idx: Int?, xfrm: String, body: String): String =
+        "<p:sp><p:nvSpPr><p:cNvPr id=\"$id\" name=\"$name\"/><p:cNvSpPr><a:spLocks noGrp=\"1\"" + (if (type == "sldImg") " noRot=\"1\" noChangeAspect=\"1\"" else "") + "/></p:cNvSpPr>" +
+            "<p:nvPr><p:ph type=\"$type\"" + (if (idx != null) " idx=\"$idx\"" else "") + "/></p:nvPr></p:nvSpPr><p:spPr>$xfrm</p:spPr>$body</p:sp>"
+
+    private fun xfrm(x: Long, y: Long, cx: Long, cy: Long) =
+        "<a:xfrm><a:off x=\"$x\" y=\"$y\"/><a:ext cx=\"$cx\" cy=\"$cy\"/></a:xfrm><a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom>"
+
+    /** The notes master (portrait 7.5 x 10 in page: slide image on top, notes body below). */
+    fun notesMasterXml(): String = XML_HEAD + "<p:notesMaster " + PptxTemplates.NS + "><p:cSld><p:bg><p:bgRef idx=\"1001\"><a:schemeClr val=\"bg1\"/></p:bgRef></p:bg><p:spTree>" +
+        PptxTemplates.GROUP_HEAD +
+        notesPh(2, "Slide Image Placeholder 1", "sldImg", 2, xfrm(381000, 685800, 6096000, 3429000), "") +
+        notesPh(3, "Notes Placeholder 2", "body", 3, xfrm(685800, 4343400, 5486400, 4114800),
+            "<p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:endParaRPr lang=\"en-US\"/></a:p></p:txBody>") +
+        "</p:spTree></p:cSld>$CLR_MAP<p:notesStyle><a:lvl1pPr marL=\"0\" algn=\"l\"><a:defRPr sz=\"1200\"><a:solidFill><a:schemeClr val=\"tx1\"/></a:solidFill>" +
+        "<a:latin typeface=\"+mn-lt\"/><a:cs typeface=\"+mn-cs\"/></a:defRPr></a:lvl1pPr></p:notesStyle></p:notesMaster>"
+
+    /** Notes page of one slide; each line of [notes] is a paragraph. */
+    fun notesSlideXml(notes: String, rtl: Boolean): String {
+        val paras = notes.lines().filter { it.isNotBlank() }.joinToString("") { para(it.trim(), 1200, rtl, "000000", false, false) }
+            .ifEmpty { "<a:p><a:endParaRPr lang=\"en-US\"/></a:p>" }
+        return XML_HEAD + "<p:notes " + PptxTemplates.NS + "><p:cSld><p:spTree>" + PptxTemplates.GROUP_HEAD +
+            notesPh(2, "Slide Image Placeholder 1", "sldImg", null, "", "") +
+            notesPh(3, "Notes Placeholder 2", "body", 1, "", "<p:txBody><a:bodyPr/><a:lstStyle/>$paras</p:txBody>") +
+            "</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:notes>"
+    }
+
     /** Write the deck: a cover slide (deck title + first slide's subtitle) followed by one slide per [SlideSpec]. */
     fun write(deck: SlideDeck, out: OutputStream) {
         val zip = OoxmlZip(out)
         val rtl = deck.rtl
         val all = listOf(SlideSpec(deck.title, emptyList())) + deck.slides
+        // slide numbers (1-based) that get a notes page
+        val noted = all.indices.filter { all[it].notes.isNotBlank() }.map { it + 1 }
         all.forEachIndexed { i, s ->
             zip.text("ppt/slides/slide${i + 1}.xml", slideXml(s, rtl, cover = i == 0))
-            zip.text("ppt/slides/_rels/slide${i + 1}.xml.rels", OoxmlZip.rels(Triple("rId1", "$REL_DOC/slideLayout", "../slideLayouts/slideLayout1.xml")))
+            val slideRels = arrayListOf(Triple("rId1", "$REL_DOC/slideLayout", "../slideLayouts/slideLayout1.xml"))
+            if (i + 1 in noted) {
+                slideRels += Triple("rId2", "$REL_DOC/notesSlide", "../notesSlides/notesSlide${i + 1}.xml")
+                zip.text("ppt/notesSlides/notesSlide${i + 1}.xml", notesSlideXml(s.notes, rtl))
+                zip.text("ppt/notesSlides/_rels/notesSlide${i + 1}.xml.rels", OoxmlZip.rels(
+                    Triple("rId1", "$REL_DOC/notesMaster", "../notesMasters/notesMaster1.xml"),
+                    Triple("rId2", "$REL_DOC/slide", "../slides/slide${i + 1}.xml"),
+                ))
+            }
+            zip.text("ppt/slides/_rels/slide${i + 1}.xml.rels", OoxmlZip.rels(*slideRels.toTypedArray()))
         }
         val n = all.size
+        val hasNotes = noted.isNotEmpty()
         val ct = StringBuilder(XML_HEAD).append("<Types xmlns=\"").append(OoxmlZip.NS_CT).append("\">")
             .append("<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>")
             .append("<Default Extension=\"xml\" ContentType=\"application/xml\"/>")
@@ -143,12 +185,19 @@ object SlidesPptx {
             .append("<Override PartName=\"/ppt/tableStyles.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.presentationml.tableStyles+xml\"/>")
             .append("<Override PartName=\"/docProps/core.xml\" ContentType=\"").append(OoxmlZip.CT_CORE).append("\"/>")
         for (i in 1..n) ct.append("<Override PartName=\"/ppt/slides/slide").append(i).append(".xml\" ContentType=\"application/vnd.openxmlformats-officedocument.presentationml.slide+xml\"/>")
+        if (hasNotes) {
+            ct.append("<Override PartName=\"/ppt/notesMasters/notesMaster1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.presentationml.notesMaster+xml\"/>")
+            ct.append("<Override PartName=\"/ppt/theme/theme2.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.theme+xml\"/>")
+            for (i in noted) ct.append("<Override PartName=\"/ppt/notesSlides/notesSlide").append(i).append(".xml\" ContentType=\"application/vnd.openxmlformats-officedocument.presentationml.notesSlide+xml\"/>")
+        }
         ct.append("</Types>")
         zip.text("[Content_Types].xml", ct)
         zip.text("_rels/.rels", OoxmlZip.rels(Triple("rId1", "$REL_DOC/officeDocument", "ppt/presentation.xml"), Triple("rId2", OoxmlZip.REL_CORE, "docProps/core.xml")))
         zip.text("docProps/core.xml", OoxmlZip.coreProps(deck.title))
         val p = StringBuilder(XML_HEAD).append("<p:presentation ").append(PptxTemplates.NS).append(" saveSubsetFonts=\"1\">")
-            .append("<p:sldMasterIdLst><p:sldMasterId id=\"2147483648\" r:id=\"rId1\"/></p:sldMasterIdLst><p:sldIdLst>")
+            .append("<p:sldMasterIdLst><p:sldMasterId id=\"2147483648\" r:id=\"rId1\"/></p:sldMasterIdLst>")
+        if (hasNotes) p.append("<p:notesMasterIdLst><p:notesMasterId r:id=\"rId").append(n + 6).append("\"/></p:notesMasterIdLst>")
+        p.append("<p:sldIdLst>")
         for (i in 1..n) p.append("<p:sldId id=\"").append(255 + i).append("\" r:id=\"rId").append(i + 1).append("\"/>")
         p.append("</p:sldIdLst><p:sldSz cx=\"").append(W).append("\" cy=\"").append(H).append("\"/><p:notesSz cx=\"6858000\" cy=\"9144000\"/></p:presentation>")
         zip.text("ppt/presentation.xml", p)
@@ -159,6 +208,7 @@ object SlidesPptx {
         rels += Triple("rId${n + 3}", "$REL_DOC/viewProps", "viewProps.xml")
         rels += Triple("rId${n + 4}", "$REL_DOC/theme", "theme/theme1.xml")
         rels += Triple("rId${n + 5}", "$REL_DOC/tableStyles", "tableStyles.xml")
+        if (hasNotes) rels += Triple("rId${n + 6}", "$REL_DOC/notesMaster", "notesMasters/notesMaster1.xml")
         zip.text("ppt/_rels/presentation.xml.rels", OoxmlZip.rels(*rels.toTypedArray()))
         zip.text("ppt/slideMasters/slideMaster1.xml", PptxTemplates.MASTER)
         zip.text("ppt/slideMasters/_rels/slideMaster1.xml.rels", OoxmlZip.rels(
@@ -171,6 +221,11 @@ object SlidesPptx {
         zip.text("ppt/presProps.xml", PptxTemplates.PRES_PROPS)
         zip.text("ppt/viewProps.xml", PptxTemplates.VIEW_PROPS)
         zip.text("ppt/tableStyles.xml", PptxTemplates.TABLE_STYLES)
+        if (hasNotes) {
+            zip.text("ppt/notesMasters/notesMaster1.xml", notesMasterXml())
+            zip.text("ppt/notesMasters/_rels/notesMaster1.xml.rels", OoxmlZip.rels(Triple("rId1", "$REL_DOC/theme", "../theme/theme2.xml")))
+            zip.text("ppt/theme/theme2.xml", PptxTemplates.THEME)
+        }
         zip.close()
     }
 }

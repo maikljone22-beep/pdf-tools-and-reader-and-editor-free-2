@@ -73,6 +73,8 @@ object WebPdfWriter {
         val javaScript: Boolean = true,
         val blockNetwork: Boolean = false,
         val marginsMils: IntArray? = null,
+        /** Row 93: the whole page on one long sheet (the paper as tall as the content; [landscape] is ignored). */
+        val singlePage: Boolean = false,
     )
 
     /** Suspends until the page has been written to [out]. Call from the main dispatcher. Cancellable. */
@@ -215,8 +217,14 @@ object WebPdfWriter {
         val adapter = view.createPrintDocumentAdapter(out.nameWithoutExtension)
         val m = setup.marginMils.coerceIn(0, 2000)
         val ms = setup.marginsMils?.takeIf { it.size == 4 }?.map { it.coerceIn(0, 3000) }
+        val media = if (setup.singlePage) {
+            val w = setup.media.asPortrait().widthMils
+            val h = com.smartdocs.editor.core.tools5.WebCss.longPageMils(w, ms?.let { maxOf(it[1], it[3]) } ?: m, view.contentHeight,
+                view.width / view.resources.displayMetrics.density)
+            runCatching { PrintAttributes.MediaSize("long_page", "Single page", w, h) }.getOrDefault(setup.media.asPortrait())
+        } else if (setup.landscape) setup.media.asLandscape() else setup.media.asPortrait()
         val attrs = PrintAttributes.Builder()
-            .setMediaSize(if (setup.landscape) setup.media.asLandscape() else setup.media.asPortrait())
+            .setMediaSize(media)
             .setResolution(PrintAttributes.Resolution("pdf", "pdf", 300, 300))
             .setColorMode(PrintAttributes.COLOR_MODE_COLOR)
             .setMinMargins(if (ms != null) PrintAttributes.Margins(ms[0], ms[1], ms[2], ms[3]) else PrintAttributes.Margins(m, m, m, m))
