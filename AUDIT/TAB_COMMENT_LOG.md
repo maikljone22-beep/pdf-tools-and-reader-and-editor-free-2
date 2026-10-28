@@ -22,14 +22,14 @@ incremental on signed files, refused on certified ones, re-protected otherwise).
 | CM-13 | Med | FIXED | `CommentOps7.keepOnly` keeps the encryption (loadRaw + reprotect); the filtered copy is deleted after the export |
 | CM-14 | Med | FIXED | flatten on a signed file refused (`SignedSave.requireContentChangeAllowed`, reason CONTENT_CHANGE → save-a-copy dialog). To be switched to `SignedGuard.checkFullSave` when fix/tab-view-core is on main |
 | CM-15 | Med | FIXED | `fileOp` calls `SaveHooks.onSaved` and `guard.afterSave`, sets `saving` during the write |
-| CM-16 | Med | PARTIAL | `WorkbenchModel` kept in `V5State` (survives rotation); the page bitmap belongs to the session's render cache and is not recycled |
+| CM-16 | Med | FIXED | `WorkbenchModel` kept in `V5State` (survives rotation); the page is rendered into a bitmap the workbench owns (`PdfSession.renderOwned`, not the 64 MB page cache) and recycled when replaced / closed (`rememberOwnedBitmap`) — fix/tab-comment-2 | <!-- old: `WorkbenchModel` kept in `V5State` (survives rotation); the page bitmap belongs to the session's render cache and is not recycled | -->
 | CM-17 | Med | FIXED | pending export file in `Annot2Host`; "exported n" shown after the write |
 | CM-18 | Med | FIXED | no outside-tap / back dismiss while recording; a recording interrupted by recreation is kept and added |
-| CM-19 | Med | PARTIAL | chips 72 dp with two-line labels; grouping into dropdowns / compact-height collapse not done |
+| CM-19 | Med | FIXED | 72 dp two-line chips; on phones the Comment row is grouped (Markup / Text / Draw / Shapes / Media dropdown chips showing the active tool, `CommentGroups`); on short screens the creation extras fold behind "More tool options" — fix/tab-comment-2 | <!-- old: chips 72 dp with two-line labels; grouping into dropdowns / compact-height collapse not done | -->
 | CM-20 | Med | FIXED | `Customization.readerToolset` exported / imported (`ToolsetStore`) |
 | CM-21 | Med | FIXED | user-tab tools filtered by `AiGate`; document-independent tools (`ReaderRestrictions.DOCUMENT_FREE`) open directly (no guard, save or undo step) |
 | CM-22 | Low | FIXED | a missing user tab resets `userTab` |
-| CM-23 | Low | PARTIAL | snapshot buttons wrap (FlowRow); bitmap not recycled (still shown while the sheet closes) |
+| CM-23 | Low | FIXED | snapshot buttons wrap; the picture is recycled when the sheet is gone for good (not on a rotation) — fix/tab-comment-2 | <!-- old: snapshot buttons wrap (FlowRow); bitmap not recycled (still shown while the sheet closes) | -->
 | CM-24 | Low | FIXED | shortcuts go through `clickTool` and clear the user tab |
 | CM-25 | Low | FIXED | tab switch clears the multi-selection |
 | CM-26 | Low | FIXED | a picked, unplaced video is dropped on another tool |
@@ -40,7 +40,7 @@ incremental on signed files, refused on certified ones, re-protected otherwise).
 | CM-32 | Med | FIXED | NVE area / page snapshot check COPY |
 | CM-33 | Low | FIXED | previous / next comment walks stored and pending comments |
 | CM-34 | Low | FIXED | one thickness slider for polygon / polyline / cloud (same 0.5–24 range) |
-| CM-35 | Low | OPEN | placement copies are made only on slider release; recycling the replaced bitmap is not safe while a frame may still draw it |
+| CM-35 | Low | FIXED | an opacity-slider copy that is replaced again is recycled two frames later (`recycleLater`); the original and the placed copy are kept — fix/tab-comment-2 | <!-- old: placement copies are made only on slider release; recycling the replaced bitmap is not safe while a frame may still draw it | -->
 | CM-36 | Low | FIXED | exports read a temp copy with the pending edits (`Annot2Host.exportSource`); the original is not saved |
 | CM-37 | Low | FIXED | customisation import ≤ 256 KB, read on IO |
 | CM-38 | Low | FIXED | the tool is cleared before Organize opens |
