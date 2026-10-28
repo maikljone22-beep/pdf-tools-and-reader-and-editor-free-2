@@ -513,7 +513,7 @@ class FormFillState internal constructor(val reader: ReaderState) {
         if (issue == null) committed[w.name] = v
         remember(w)
         // XFA interactive events of a generated form: change (when the value changed), then exit
-        if (model.generatedFromXfa && textual) { if (v != previous) fireXfa(w, "change", previous); fireXfa(w, "exit", previous) }
+        if (model.generatedFromXfa && textual) { if (v != previous) fireXfa(w, "change", previous); fireXfa(w, "exit", previous); validateXfa(w) }
         return true
     }
 
@@ -531,11 +531,62 @@ class FormFillState internal constructor(val reader: ReaderState) {
         val f = reader.file ?: return
         val values = allValues()
         reader.scope.launch {
-            val rt = if (xfaEventsFor == f.path) xfaEvents else com.smartdocs.editor.core.forms5.XfaEventRuntime.load(f, reader.password).also { xfaEvents = it; xfaEventsFor = f.path }
-            rt ?: return@launch
+            val rt = xfaRuntime() ?: return@launch
             val r = withContext(kotlinx.coroutines.Dispatchers.Default) { runCatching { rt.fire(w.name, activity, values, prev) }.getOrNull() } ?: return@launch
-            if (r.values.isNotEmpty()) setValues(r.values.filterKeys { it != w.name || activity != "change" })
-            r.presence.entries.groupBy({ it.value in setOf("hidden", "invisible", "inactive") }, { it.key }).forEach { (hide, names) -> setHidden(names, hide) }
+            applyXfa(r, skip = if (activity == "change") w.name else null)
+        }
+    }
+
+    private suspend fun xfaRuntime(): com.smartdocs.editor.core.forms5.XfaEventRuntime? {
+        val f = reader.file ?: return null
+        return if (xfaEventsFor == f.path) xfaEvents else com.smartdocs.editor.core.forms5.XfaEventRuntime.load(f, reader.password).also { xfaEvents = it; xfaEventsFor = f.path }
+    }
+
+    /** Values / presence a script changed, applied as one step; its messages shown. */
+    private fun applyXfa(r: com.smartdocs.editor.core.forms5.XfaEventRuntime.Result, skip: String? = null) {
+        if (r.values.isNotEmpty()) setValues(r.values.filterKeys { it != skip })
+        r.presence.entries.groupBy({ it.value in setOf("hidden", "invisible", "inactive") }, { it.key }).forEach { (hide, names) -> setHidden(names, hide) }
+        r.messages.lastOrNull()?.let { message = FormMessage.Script(it) }
+    }
+
+    /** FINAL_CHECK_2 XFA validate of [w] after it was left: a failed test marks the field with its message. */
+    fun validateXfa(w: FWidget) {
+        if (!model.generatedFromXfa) return
+        val values = allValues()
+        reader.scope.launch {
+            val rt = xfaRuntime() ?: return@launch
+            val r = withContext(kotlinx.coroutines.Dispatchers.Default) { runCatching { rt.validate(w.name, values) }.getOrNull() } ?: return@launch
+            applyXfa(r)
+            val msg = r.invalid[w.name]
+            if (msg != null) { errors[w.name] = Issue.Script(msg.ifBlank { null }); message = FormMessage.XfaInvalid(msg) }
+            else if ((errors[w.name] as? Issue.Script) != null) errors.remove(w.name)
+        }
+    }
+
+    /**
+     * FINAL_CHECK_2 XFA form events before saving / printing / submitting ([activity] preSave, prePrint, preSubmit).
+     * Returns false when a script cancelled the action (`xfa.event.cancelAction`) or, before submitting, a field failed
+     * its validate test (the first one gets the focus).
+     */
+    suspend fun xfaFormEvent(activity: String): Boolean {
+        if (!model.generatedFromXfa) return true
+        val values = withContext(Dispatchers.Main.immediate) { allValues() }
+        val rt = xfaRuntime() ?: return true
+        if (!rt.hasFormEvent(activity)) return true
+        val r = withContext(Dispatchers.Default) { runCatching { rt.formEvent(activity, values) }.getOrNull() } ?: return true
+        return withContext(Dispatchers.Main.immediate) {
+            applyXfa(r)
+            r.invalid.forEach { (n, m) -> errors[n] = Issue.Script(m.ifBlank { null }) }
+            val first = r.invalid.entries.firstOrNull()
+            when {
+                r.cancelled -> { message = FormMessage.XfaCancelled(activity); false }
+                activity == "preSubmit" && first != null -> {
+                    message = FormMessage.XfaInvalid(first.value)
+                    model.byName[first.key]?.firstOrNull()?.let { focus(it.id) }
+                    false
+                }
+                else -> true
+            }
         }
     }
 
@@ -720,6 +771,8 @@ class FormFillState internal constructor(val reader: ReaderState) {
         withContext(Dispatchers.Main.immediate) { commitActive() }
         val tmp = File(file.parentFile, ".${file.nameWithoutExtension}.forms5.pdf")
         withContext(Dispatchers.Main.immediate) { runDocAction("WS") }        // document action: will save
+        // XFA preSave scripts; one that sets xfa.event.cancelAction keeps the values pending (not written)
+        if (!xfaFormEvent("preSave")) return false
         try { writeTo(file, password, tmp, offerCopy = true) } catch (e: Throwable) { tmp.delete(); throw e }
         // audit D37: the typed values are dropped only after the new file is in place (a failed swap keeps them)
         try { swap(tmp) } catch (e: Throwable) { tmp.delete(); throw e }
@@ -842,4 +895,10 @@ sealed class FormMessage {
     data class Unsupported(val what: String) : FormMessage()
     data class Imported(val count: Int) : FormMessage()
     data object Calculated : FormMessage()
+    /** XFA: a field failed its validate test ([text] its message, "" = the default text). */
+    data class XfaInvalid(val text: String) : FormMessage()
+    /** XFA: a preSave / prePrint / preSubmit script cancelled the action. */
+    data class XfaCancelled(val activity: String) : FormMessage()
+    /** A text a form script showed (xfa.host.messageBox / app.alert). */
+    data class Script(val text: String) : FormMessage()
 }
