@@ -104,7 +104,7 @@ fun HeaderFooterScreen(nav: NavHostController, uri: String?) {
                 if (spec.imagePath.isNotBlank()) {
                     Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                         Text(java.io.File(spec.imagePath).name, Modifier.weight(1f), maxLines = 1, style = MaterialTheme.typography.bodySmall)
-                        IconButton(onClick = { spec = spec.copy(imagePath = "") }) { Icon(Icons.Default.Close, null) }
+                        IconButton(onClick = { spec = spec.copy(imagePath = "") }) { Icon(Icons.Default.Close, stringResource(R.string.pc_cd_remove)) }
                     }
                     if (spec.imagePath.endsWith(".pdf", true)) FloatField((spec.imagePage + 1).toFloat(), stringResource(R.string.nt_pdf_page_no)) { spec = spec.copy(imagePage = (it.toInt() - 1).coerceAtLeast(0)) }
                     ChoiceChips((0..5).toList(), spec.imageSlot, { stringResource(slotLabel(com.smartdocs.editor.core.edit5.HeaderFooterOps.Slot.values()[it])) }) { spec = spec.copy(imageSlot = it) }
@@ -146,7 +146,7 @@ fun HeaderFooterScreen(nav: NavHostController, uri: String?) {
                 batch.forEachIndexed { i, f ->
                     Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                         Text("${i + 2}. ${f.name}", Modifier.weight(1f), maxLines = 1)
-                        IconButton(onClick = { batch = batch - f; unlocker.forget(f) }) { Icon(Icons.Default.Close, null) }
+                        IconButton(onClick = { batch = batch - f; unlocker.forget(f) }) { Icon(Icons.Default.Close, stringResource(R.string.pc_cd_remove)) }
                     }
                 }
                 com.smartdocs.editor.ui.tools5.BatchSources(batch) { batch = it; unlockBatch() }

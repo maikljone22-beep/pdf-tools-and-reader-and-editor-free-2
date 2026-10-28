@@ -57,7 +57,7 @@ fun E5ProfileBar(kind: String, current: () -> String, onLoad: (String) -> Unit, 
             }
             IconButton(onClick = { naming = "save" }) { Icon(Icons.Default.Save, stringResource(R.string.nt_profiles_save)) }
             Box {
-                IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, null) }
+                IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, stringResource(R.string.pc_cd_more)) }
                 DropdownMenu(menu, { menu = false }) {
                     val sel = selected
                     DropdownMenuItem(text = { Text(stringResource(R.string.nt_profiles_rename)) }, leadingIcon = { Icon(Icons.Default.DriveFileRenameOutline, null) },

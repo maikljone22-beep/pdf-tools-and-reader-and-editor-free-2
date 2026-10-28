@@ -88,9 +88,9 @@ fun SigPlacementDialog(
                 Text(stringResource(R.string.ns_place_title), style = MaterialTheme.typography.titleMedium)
                 Text(stringResource(R.string.ns_place_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { if (page > 0) page-- }, enabled = page > 0) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, null) }
+                    IconButton(onClick = { if (page > 0) page-- }, enabled = page > 0) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, stringResource(R.string.pc_cd_prev_page)) }
                     Text(stringResource(R.string.ns_page_of, page + 1, count))
-                    IconButton(onClick = { if (page < count - 1) page++ }, enabled = page < count - 1) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null) }
+                    IconButton(onClick = { if (page < count - 1) page++ }, enabled = page < count - 1) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, stringResource(R.string.pc_cd_next_page)) }
                     Spacer(Modifier.weight(1f))
                     listOf(R.string.ns_corner_br, R.string.ns_corner_bl, R.string.ns_corner_tr, R.string.ns_corner_tl).forEachIndexed { i, s ->
                         TextButton(onClick = { box = PlaceBox.corner(i) }, contentPadding = PaddingValues(horizontal = 6.dp)) { Text(stringResource(s), style = MaterialTheme.typography.labelSmall) }
