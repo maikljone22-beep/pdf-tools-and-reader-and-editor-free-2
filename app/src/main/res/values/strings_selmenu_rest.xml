@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- fix/selmenu-rest (ui/selmenu, core/selmenu): annotation, form-field and page-image menus of the selection registry. Prefix smr_. -->
+<resources>
+    <string name="smr_g_annot_style">المظهر</string>
+    <string name="smr_g_annot_action">التعليق</string>
+    <string name="smr_g_annot_arrange">ترتيب</string>
+    <string name="smr_g_annot_export">تصدير</string>
+    <string name="smr_g_field_value">قيمة الحقل</string>
+    <string name="smr_g_field_form">النموذج</string>
+    <string name="smr_g_image_out">نسخ ومشاركة</string>
+    <string name="smr_g_image_edit">تحرير الصورة</string>
+    <string name="smr_g_image_arrange">ترتيب</string>
+
+    <string name="smr_range_start_less">البداية كلمة للخلف</string>
+    <string name="smr_range_start_more">البداية كلمة للأمام</string>
+    <string name="smr_range_end_less">النهاية كلمة للخلف</string>
+    <string name="smr_range_end_more">النهاية كلمة للأمام</string>
+    <string name="smr_reply">رد</string>
+
+    <string name="smr_f_copy_value">نسخ القيمة</string>
+    <string name="smr_f_paste">لصق</string>
+    <string name="smr_f_clear">مسح</string>
+    <string name="smr_f_reset">إعادة تعيين الحقل</string>
+    <string name="smr_f_pick_image">اختيار صورة</string>
+    <string name="smr_f_sign">توقيع / تحقق</string>
+    <string name="smr_f_spell">التدقيق الإملائي</string>
+    <string name="smr_f_calculate">احسب الآن</string>
+    <string name="smr_f_props">خصائص الحقل</string>
+    <string name="smr_f_designer">تحرير في مصمم النماذج</string>
+    <string name="smr_f_duplicate">تكرار الحقل</string>
+    <string name="smr_f_delete">حذف الحقل</string>
+    <string name="smr_f_tab_order">ضبط ترتيب التنقل</string>
+
+    <string name="smr_fp_name">الاسم</string>
+    <string name="smr_fp_tooltip">التلميح</string>
+    <string name="smr_fp_type">النوع</string>
+    <string name="smr_fp_page">الصفحة</string>
+    <string name="smr_fp_value">القيمة</string>
+    <string name="smr_fp_required">مطلوب</string>
+    <string name="smr_fp_readonly">للقراءة فقط</string>
+    <string name="smr_fp_calculated">محسوب</string>
+    <string name="smr_fp_maxlen">الطول الأقصى</string>
+    <string name="smr_fp_options">الخيارات</string>
+
+    <string name="smr_fk_text">حقل نص</string>
+    <string name="smr_fk_check">مربع اختيار</string>
+    <string name="smr_fk_radio">زر اختيار</string>
+    <string name="smr_fk_combo">قائمة منسدلة</string>
+    <string name="smr_fk_list">مربع قائمة</string>
+    <string name="smr_fk_image">حقل صورة</string>
+    <string name="smr_fk_signature">حقل توقيع</string>
+    <string name="smr_fk_button">زر</string>
+
+    <string name="smr_sign_pick">وقّع هنا بـ</string>
+</resources>

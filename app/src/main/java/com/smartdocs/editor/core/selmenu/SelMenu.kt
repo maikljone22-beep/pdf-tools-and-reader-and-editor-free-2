@@ -23,17 +23,30 @@ enum class SelCtx {
     LINK,
     /** Long-press / right-click on the page where there is no text, link or annotation. */
     EMPTY,
+    /** A selected annotation (its floating bar; fix/selmenu-rest: moved into this registry). */
+    ANNOT,
+    /** Long-press on a form field of the in-page form layer. */
+    FIELD,
+    /** Long-press on a picture / shape of the page content (content-edit screen of the EDIT tab). */
+    IMAGE,
 }
 
-enum class SelGroup { SMART, CLIPBOARD, ARABIC, SELECT, MARKUP, COMMENT, LOOKUP, AI, EDIT, SHARE, LINK, INSERT, PAGE }
+enum class SelGroup {
+    SMART, CLIPBOARD, ARABIC, SELECT, MARKUP, COMMENT, LOOKUP, AI, EDIT, SHARE, LINK, INSERT, PAGE,
+    // fix/selmenu-rest: object menus
+    ANNOT_STYLE, ANNOT_ACTION, ANNOT_ARRANGE, ANNOT_EXPORT, FIELD_VALUE, FIELD_FORM, IMAGE_OUT, IMAGE_EDIT, IMAGE_ARRANGE,
+}
 
 /** Document permission an action needs (ui maps it onto core.security.DocAction / ReaderGuard). */
-enum class Need { NONE, COPY, ANNOTATE, MODIFY, PRINT }
+enum class Need { NONE, COPY, ANNOTATE, MODIFY, PRINT, FILL }
 
 /** Why an item is shown disabled. */
 enum class Why { AUTHOR, PROTECTED_VIEW, SIGNED, EMPTY_CLIPBOARD }
 
 private val TEXTS = setOf(SelCtx.TEXT, SelCtx.WORD)
+private val ANN = setOf(SelCtx.ANNOT)
+private val FLD = setOf(SelCtx.FIELD)
+private val IMG = setOf(SelCtx.IMAGE)
 
 enum class SelAction(
     val group: SelGroup,
@@ -135,6 +148,81 @@ enum class SelAction(
     ROTATE_VIEW(SelGroup.PAGE, setOf(SelCtx.EMPTY)),
     PRINT(SelGroup.PAGE, setOf(SelCtx.EMPTY), Need.PRINT),
     DOC_INFO(SelGroup.PAGE, setOf(SelCtx.EMPTY)),
+
+    // --- selected annotation: every action of the former AnnotActionBar (inline row) ...
+    A_COLOR(SelGroup.ANNOT_STYLE, ANN, Need.ANNOTATE),
+    A_OPACITY(SelGroup.ANNOT_STYLE, ANN, Need.ANNOTATE),
+    A_THICKNESS(SelGroup.ANNOT_STYLE, ANN, Need.ANNOTATE),
+    A_EDIT_TEXT(SelGroup.ANNOT_STYLE, ANN, Need.ANNOTATE),
+    A_TEXT_FORMAT(SelGroup.ANNOT_STYLE, ANN, Need.ANNOTATE),
+    A_COPY(SelGroup.ANNOT_ACTION, ANN),
+    A_PLAY(SelGroup.ANNOT_ACTION, ANN),
+    A_STAMP_CUT(SelGroup.ANNOT_ACTION, ANN, Need.ANNOTATE),
+    A_STAMP_COPY(SelGroup.ANNOT_ACTION, ANN),
+    A_STAMP_DEFAULT_SIZE(SelGroup.ANNOT_ACTION, ANN),
+    A_STAMP_PAGES(SelGroup.ANNOT_ACTION, ANN, Need.ANNOTATE),
+    A_OPEN_FILE(SelGroup.ANNOT_ACTION, ANN),
+    A_VIDEO_PLAY(SelGroup.ANNOT_ACTION, ANN),
+    A_VIDEO_OPTIONS(SelGroup.ANNOT_ACTION, ANN, Need.ANNOTATE),
+    A_VIDEO_SHARE(SelGroup.ANNOT_ACTION, ANN, Need.COPY),
+    A_VIDEO_SAVE(SelGroup.ANNOT_ACTION, ANN, Need.COPY),
+    A_RECOGNIZE(SelGroup.ANNOT_ACTION, ANN, Need.ANNOTATE),
+    A_IMAGE_PROPS(SelGroup.ANNOT_STYLE, ANN, Need.ANNOTATE),
+    A_DELETE(SelGroup.ANNOT_ACTION, ANN, Need.ANNOTATE),
+    A_RANGE_START_LESS(SelGroup.ANNOT_STYLE, ANN, Need.ANNOTATE),
+    A_RANGE_START_MORE(SelGroup.ANNOT_STYLE, ANN, Need.ANNOTATE),
+    A_RANGE_END_LESS(SelGroup.ANNOT_STYLE, ANN, Need.ANNOTATE),
+    A_RANGE_END_MORE(SelGroup.ANNOT_STYLE, ANN, Need.ANNOTATE),
+    // ... and of its "More" menu (SelectionMoreButton), plus Reply (comments panel thread)
+    A_REPLY(SelGroup.ANNOT_ACTION, ANN, Need.ANNOTATE),
+    A_PROPS(SelGroup.ANNOT_ARRANGE, ANN),
+    A_LOCK(SelGroup.ANNOT_ARRANGE, ANN, Need.ANNOTATE),
+    A_UNLOCK(SelGroup.ANNOT_ARRANGE, ANN, Need.ANNOTATE),
+    A_CUT(SelGroup.ANNOT_ARRANGE, ANN, Need.ANNOTATE),
+    A_CLIP_COPY(SelGroup.ANNOT_ARRANGE, ANN),
+    A_PASTE_IN_PLACE(SelGroup.ANNOT_ARRANGE, ANN, Need.ANNOTATE),
+    A_ROTATE_LEFT(SelGroup.ANNOT_ARRANGE, ANN, Need.ANNOTATE),
+    A_ROTATE_RIGHT(SelGroup.ANNOT_ARRANGE, ANN, Need.ANNOTATE),
+    A_ROTATE_CUSTOM(SelGroup.ANNOT_ARRANGE, ANN, Need.ANNOTATE),
+    A_PLACE_PAGES(SelGroup.ANNOT_ARRANGE, ANN, Need.ANNOTATE),
+    A_FLATTEN(SelGroup.ANNOT_ARRANGE, ANN, Need.ANNOTATE, changesContent = true),
+    A_EXPORT_XFDF(SelGroup.ANNOT_EXPORT, ANN),
+    A_EXPORT_FDF(SelGroup.ANNOT_EXPORT, ANN),
+    A_EMAIL_FDF(SelGroup.ANNOT_EXPORT, ANN),
+
+    // --- form field (fill mode, then the form designer for structural changes)
+    F_COPY_VALUE(SelGroup.FIELD_VALUE, FLD, Need.COPY),
+    F_PASTE(SelGroup.FIELD_VALUE, FLD, Need.FILL),
+    F_CLEAR(SelGroup.FIELD_VALUE, FLD, Need.FILL),
+    F_RESET(SelGroup.FIELD_VALUE, FLD, Need.FILL),
+    F_PICK_IMAGE(SelGroup.FIELD_VALUE, FLD, Need.FILL),
+    F_SIGN(SelGroup.FIELD_VALUE, FLD),
+    F_SPELL(SelGroup.FIELD_VALUE, FLD, Need.FILL),
+    F_CALCULATE(SelGroup.FIELD_VALUE, FLD),
+    F_PROPS(SelGroup.FIELD_FORM, FLD),
+    F_DESIGNER(SelGroup.FIELD_FORM, FLD, Need.MODIFY, changesContent = true),
+    F_DUPLICATE(SelGroup.FIELD_FORM, FLD, Need.MODIFY, changesContent = true),
+    F_DELETE(SelGroup.FIELD_FORM, FLD, Need.MODIFY, changesContent = true),
+    F_TAB_ORDER(SelGroup.FIELD_FORM, FLD, Need.MODIFY, changesContent = true),
+
+    // --- page-content picture / shape (content-edit screen)
+    I_COPY(SelGroup.IMAGE_OUT, IMG, Need.COPY),
+    I_CUT(SelGroup.IMAGE_OUT, IMG, Need.MODIFY, changesContent = true),
+    I_SAVE(SelGroup.IMAGE_OUT, IMG, Need.COPY),
+    I_SHARE(SelGroup.IMAGE_OUT, IMG, Need.COPY),
+    I_REPLACE(SelGroup.IMAGE_EDIT, IMG, Need.MODIFY, changesContent = true),
+    I_CROP(SelGroup.IMAGE_EDIT, IMG, Need.MODIFY, changesContent = true),
+    I_ROTATE_LEFT(SelGroup.IMAGE_EDIT, IMG, Need.MODIFY, changesContent = true),
+    I_ROTATE_RIGHT(SelGroup.IMAGE_EDIT, IMG, Need.MODIFY, changesContent = true),
+    I_FLIP_H(SelGroup.IMAGE_EDIT, IMG, Need.MODIFY, changesContent = true),
+    I_FLIP_V(SelGroup.IMAGE_EDIT, IMG, Need.MODIFY, changesContent = true),
+    I_EDITOR(SelGroup.IMAGE_EDIT, IMG, Need.MODIFY, changesContent = true),
+    I_PROPS(SelGroup.IMAGE_EDIT, IMG),
+    I_MORE_TOOLS(SelGroup.IMAGE_EDIT, IMG),
+    I_DELETE(SelGroup.IMAGE_EDIT, IMG, Need.MODIFY, changesContent = true),
+    I_FRONT(SelGroup.IMAGE_ARRANGE, IMG, Need.MODIFY, changesContent = true),
+    I_BACK(SelGroup.IMAGE_ARRANGE, IMG, Need.MODIFY, changesContent = true),
+    I_DUPLICATE(SelGroup.IMAGE_ARRANGE, IMG, Need.MODIFY, changesContent = true),
 }
 
 /** Everything the registry needs to decide which items show and whether they are enabled. */
@@ -154,6 +242,10 @@ data class SelEnv(
     val linkIsWeb: Boolean = true,
     /** Smart entities; null = detect from [text]. */
     val entities: List<SelEntity>? = null,
+    /** ANNOT / FIELD / IMAGE contexts: what the object offers (null = a plain one of its kind). */
+    val annot: AnnotFacts? = null,
+    val field: FieldFacts? = null,
+    val image: ImageFacts? = null,
 ) {
     val found: List<SelEntity> by lazy { entities ?: if (ctx == SelCtx.TEXT || ctx == SelCtx.WORD) SelEntities.detect(text) else emptyList() }
 }
@@ -176,6 +268,7 @@ object SelMenus {
     /** Tab-specific candidates of the floating bar, most used first (smart actions are put in front of these). */
     fun barOrder(tab: SelTab, ctx: SelCtx): List<SelAction> = when (ctx) {
         SelCtx.LINK -> listOf(SelAction.LINK_OPEN, SelAction.LINK_COPY, SelAction.LINK_SHARE)
+        SelCtx.ANNOT, SelCtx.FIELD, SelCtx.IMAGE -> SelObjects.barOrder(ctx)
         SelCtx.EMPTY -> when (tab) {
             SelTab.COMMENT, SelTab.CUSTOM -> listOf(SelAction.NOTE_HERE, SelAction.TEXT_HERE, SelAction.PASTE_STAMP, SelAction.PASTE, SelAction.IMAGE_HERE, SelAction.SELECT_ALL, SelAction.SNAPSHOT)
             SelTab.EDIT -> listOf(SelAction.TEXT_HERE, SelAction.IMAGE_HERE, SelAction.PASTE_STAMP, SelAction.PASTE, SelAction.SELECT_ALL, SelAction.SNAPSHOT)
@@ -198,6 +291,7 @@ object SelMenus {
     fun groupOrder(tab: SelTab, ctx: SelCtx): List<SelGroup> {
         val base = listOf(SelGroup.SMART, SelGroup.LINK, SelGroup.INSERT, SelGroup.CLIPBOARD, SelGroup.ARABIC, SelGroup.SELECT, SelGroup.MARKUP,
             SelGroup.COMMENT, SelGroup.LOOKUP, SelGroup.AI, SelGroup.EDIT, SelGroup.SHARE, SelGroup.PAGE)
+        if (ctx == SelCtx.ANNOT || ctx == SelCtx.FIELD || ctx == SelCtx.IMAGE) return SelObjects.groupOrder(ctx)
         if (ctx != SelCtx.TEXT && ctx != SelCtx.WORD) return base
         val lead = when (tab) {
             SelTab.COMMENT, SelTab.CUSTOM -> listOf(SelGroup.MARKUP, SelGroup.COMMENT)
@@ -227,7 +321,7 @@ object SelMenus {
             SelAction.PASTE_STAMP -> env.stampOnClipboard
             SelAction.FILL_TEXT_HERE -> env.tab == SelTab.FILL_SIGN || env.tab == SelTab.SIGN
             SelAction.SIGN_HERE -> env.tab == SelTab.FILL_SIGN || env.tab == SelTab.SIGN
-            else -> true
+            else -> SelObjects.visible(a, env)
         }
     }
 
@@ -235,7 +329,7 @@ object SelMenus {
     fun state(a: SelAction, env: SelEnv): SelItem {
         val why = env.blocked[a.need].takeIf { a.need != Need.NONE }
             ?: (if (a.changesContent && env.signed) Why.SIGNED else null)
-            ?: (if (a == SelAction.PASTE && !env.clipboardHasContent) Why.EMPTY_CLIPBOARD else null)
+            ?: (if ((a == SelAction.PASTE || a == SelAction.F_PASTE) && !env.clipboardHasContent) Why.EMPTY_CLIPBOARD else null)
         val rectsMissing = !env.hasRects && a.group in setOf(SelGroup.MARKUP, SelGroup.COMMENT, SelGroup.EDIT) && a != SelAction.READING_BOOKMARK
         val entity = a.entity?.let { k -> env.found.firstOrNull { it.kind == k && (a != SelAction.WHATSAPP || it.international) } }
         return SelItem(a, why == null && !rectsMissing, why, entity)

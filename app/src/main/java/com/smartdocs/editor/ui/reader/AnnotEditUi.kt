@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.LineWeight
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.FormatSize
 import androidx.compose.material.icons.filled.Opacity
 import androidx.compose.material.icons.filled.Palette
@@ -38,6 +39,8 @@ import androidx.compose.ui.unit.dp
 import com.smartdocs.editor.R
 import com.smartdocs.editor.core.pdf.Annot
 import com.smartdocs.editor.core.pdf.AnnotKind
+import com.smartdocs.editor.core.selmenu.SelItem
+import com.smartdocs.editor.ui.selmenu.SelBindings
 import kotlin.math.roundToInt
 
 private enum class AeSub { NONE, COLOR, OPACITY, THICKNESS }
@@ -45,10 +48,14 @@ private enum class AeSub { NONE, COLOR, OPACITY, THICKNESS }
 /**
  * Floating action bar for the selected annotation, placed above its frame (below when there is no room).
  * [frame] is the selection frame in the page's layout space. Must be called inside the page's Box.
+ * fix/selmenu-rest: its items come from the selection-menu registry (core/selmenu, ANNOT context; facts and
+ * simple handlers in ui/selmenu/SelAnnotMenu): the row, then "More" with the former SelectionMoreButton items
+ * plus Reply. Items the document refuses stay greyed and say why when tapped.
  */
 @Composable
 fun AnnotActionBar(state: ReaderState, annot: Annot?, frame: Rect) {
     val ed = state.edit
+    val ctx = state.context
     var sub by remember(ed.target) { mutableStateOf(AeSub.NONE) }
     var fmtOpen by remember(ed.target) { mutableStateOf(false) }
     if (fmtOpen && annot != null) com.smartdocs.editor.ui.reader.annot.TextFormatDialog(com.smartdocs.editor.ui.reader.annot.TextFmt.of(annot), onDismiss = { fmtOpen = false }, showBiu = true) { fm ->
@@ -56,6 +63,47 @@ fun AnnotActionBar(state: ReaderState, annot: Annot?, frame: Rect) {
     }
     val loaded = annot != null
     val enabled = loaded && !ed.busy
+    // nitro-fillsign2 stamp items (cut / copy / default size / multiple pages) and the NVE image-annotation properties
+    val sigPath = rememberStampSigPath(annot)
+    val gate = com.smartdocs.editor.ui.signature.rememberSignatureGate()
+    var multi by remember { mutableStateOf(false) }
+    var nveProps by remember { mutableStateOf(false) }
+    var moreOpen by remember { mutableStateOf(false) }
+    val nveStored = (ed.target as? AnnotTarget.Stored)?.e
+    val ai = com.smartdocs.editor.LocalSettings.current.aiEnabled
+    val menu = com.smartdocs.editor.ui.selmenu.SelAnnotMenu.model(state, annot, sigPath, ai)
+    val copied = stringResource(R.string.nf2_copied)
+    val sizeSaved = stringResource(R.string.nf2_size_saved)
+    fun why(item: SelItem) = android.widget.Toast.makeText(ctx,
+        item.why?.let { ctx.getString(SelBindings.why(it)) } ?: ctx.getString(R.string.sm_unavailable), android.widget.Toast.LENGTH_SHORT).show()
+    fun run(item: SelItem) {
+        if (!item.enabled) { why(item); return }
+        val a = item.action
+        sub = when (a) {
+            SA.A_COLOR -> if (sub == AeSub.COLOR) AeSub.NONE else AeSub.COLOR
+            SA.A_OPACITY -> if (sub == AeSub.OPACITY) AeSub.NONE else AeSub.OPACITY
+            SA.A_THICKNESS -> if (sub == AeSub.THICKNESS) AeSub.NONE else AeSub.THICKNESS
+            else -> AeSub.NONE
+        }
+        when (a) {
+            SA.A_COLOR, SA.A_OPACITY, SA.A_THICKNESS -> {}
+            SA.A_EDIT_TEXT -> ed.editingText = true
+            SA.A_TEXT_FORMAT -> fmtOpen = true
+            SA.A_STAMP_CUT -> annot?.let { state.cutStamp(it) }
+            SA.A_STAMP_COPY -> annot?.let { state.copyStamp(it); android.widget.Toast.makeText(ctx, copied, android.widget.Toast.LENGTH_SHORT).show() }
+            SA.A_STAMP_DEFAULT_SIZE -> if (annot != null && sigPath != null) {
+                val r = PageGeometry.normPdf(annot.rects.first())
+                com.smartdocs.editor.core.data.SignatureMetaStore.setWidth(ctx, sigPath, r.right - r.left)
+                android.widget.Toast.makeText(ctx, sizeSaved, android.widget.Toast.LENGTH_SHORT).show()
+            }
+            // tab audit D15: copying a locked signature to other pages asks for its PIN
+            SA.A_STAMP_PAGES -> gate.requestFor(sigPath) { multi = true }
+            SA.A_IMAGE_PROPS -> nveProps = true
+            else -> com.smartdocs.editor.ui.selmenu.SelAnnotMenu.run(state, item)
+        }
+    }
+    // busy gating as before: delete, play and video share / save only wait for a running edit, the rest for the load too
+    fun gated(a: SA) = if (a == SA.A_DELETE || a == SA.A_PLAY || a == SA.A_VIDEO_SHARE || a == SA.A_VIDEO_SAVE) !ed.busy else enabled
     Surface(
         Modifier.floatNear(frame, 10f).widthIn(max = 360.dp),
         shape = RoundedCornerShape(14.dp), tonalElevation = 3.dp, shadowElevation = 6.dp,
@@ -63,41 +111,29 @@ fun AnnotActionBar(state: ReaderState, annot: Annot?, frame: Rect) {
         Column(Modifier.padding(4.dp)) {
             NpfNotePopup(state, annot)   // nav-prefs: comment pop-up with the note font, size and opacity
             Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
-                val video = annot?.kind == AnnotKind.VIDEO
-                if (annot?.kind != AnnotKind.STAMP_IMAGE && !video) AeButton(Icons.Default.Palette, R.string.ae_color, enabled, sub == AeSub.COLOR) { sub = if (sub == AeSub.COLOR) AeSub.NONE else AeSub.COLOR }
-                if (!video) AeButton(Icons.Default.Opacity, R.string.ae_opacity, enabled, sub == AeSub.OPACITY) { sub = if (sub == AeSub.OPACITY) AeSub.NONE else AeSub.OPACITY }
-                if (hasStroke(annot)) AeButton(Icons.Default.LineWeight, R.string.ae_thickness, enabled, sub == AeSub.THICKNESS) { sub = if (sub == AeSub.THICKNESS) AeSub.NONE else AeSub.THICKNESS }
-                if (hasEditableText(annot)) AeButton(Icons.Default.Edit, R.string.ae_edit_text, enabled, false) { sub = AeSub.NONE; ed.editingText = true }
-                if (annot?.kind == AnnotKind.FREETEXT) AeButton(Icons.Default.FormatSize, R.string.cx_text_format, enabled, false) { sub = AeSub.NONE; fmtOpen = true }
-                AeButton(Icons.Default.ContentCopy, R.string.ae_copy, enabled, false) { sub = AeSub.NONE; ed.copy() }
-                val nativeAudio = (ed.target as? AnnotTarget.Stored)?.e?.let { it.subtype == "Sound" || (it.subtype == "Screen" && it.video == null) } == true
-                if (nativeAudio) AeButton(Icons.Default.PlayArrow, R.string.an_open, !ed.busy, false) { sub = AeSub.NONE; state.annot2.openSelected() }
-                StampActionButtons(state, annot, enabled)      // nitro-fillsign2: cut / copy / default size / multiple pages
-                if (annot?.kind == AnnotKind.FILE_ATTACH || annot?.kind == AnnotKind.SOUND)
-                    AeButton(if (annot?.kind == AnnotKind.FILE_ATTACH) Icons.Default.OpenInNew else Icons.Default.PlayArrow, R.string.an_open, enabled, false) { sub = AeSub.NONE; state.annot2.openSelected() }
-                if (annot?.kind == AnnotKind.VIDEO) {
-                    // played inside the page; options, share and save to the device
-                    AeButton(Icons.Default.PlayArrow, R.string.vid_play, enabled, false) { sub = AeSub.NONE; state.video.playSelected() }
-                    AeButton(Icons.Default.Tune, R.string.vid_options, enabled, false) { sub = AeSub.NONE; state.video.optionsOpen = true }
-                    AeButton(Icons.Default.Share, R.string.vid_share, !ed.busy, false) { sub = AeSub.NONE; state.video.shareSelected() }
-                    AeButton(Icons.Default.SaveAlt, R.string.vid_save, !ed.busy, false) { sub = AeSub.NONE; state.video.saveSelected() }
+                menu.inline.forEach { item ->
+                    val a = item.action
+                    val glyph = RANGE_GLYPH[a]
+                    if (glyph != null) TextButton(onClick = { run(item) }, enabled = gated(a), modifier = Modifier.alpha(if (item.enabled) 1f else 0.45f)) { Text(glyph) }
+                    else AeButton(SelBindings.icon(a), SelBindings.label(a), gated(a),
+                        active = (a == SA.A_COLOR && sub == AeSub.COLOR) || (a == SA.A_OPACITY && sub == AeSub.OPACITY) || (a == SA.A_THICKNESS && sub == AeSub.THICKNESS),
+                        tint = if (a == SA.A_DELETE) MaterialTheme.colorScheme.error else LocalContentColor.current, dim = !item.enabled) { run(item) }
+                    if (a == SA.A_DELETE && annot?.locked == true) Icon(Icons.Default.Lock, stringResource(R.string.cx_locked), Modifier.padding(horizontal = 4.dp).size(18.dp))
                 }
-                if (annot?.kind == AnnotKind.INK) AeButton(Icons.Default.Gesture, R.string.an_recognize, enabled, false) { sub = AeSub.NONE; state.annot2.startHandwriting() }
-                // NVE: image annotation properties (scaling, position, border, hidden / locked) for stored image stamps
-                val nveStored = (ed.target as? AnnotTarget.Stored)?.e
-                var nveProps by remember { mutableStateOf(false) }
-                if (nveStored != null && (annot?.kind == AnnotKind.STAMP_IMAGE || nveStored.subtype == "Stamp")) AeButton(Icons.Default.Tune, R.string.ni_ia_title, enabled, false) { sub = AeSub.NONE; nveProps = true }
-                if (nveProps && nveStored != null) com.smartdocs.editor.ui.reader.annot.ImageAnnotPropsDialog5(state, nveStored) { nveProps = false }
-                AeButton(Icons.Default.Delete, R.string.ae_delete, !ed.busy, false, tint = MaterialTheme.colorScheme.error) { ed.delete() }
-                if (annot?.locked == true) Icon(androidx.compose.material.icons.Icons.Default.Lock, stringResource(R.string.cx_locked), Modifier.padding(horizontal = 4.dp).size(18.dp))
-                com.smartdocs.editor.ui.reader.annot.SelectionMoreButton(state, multi = false)      // section 7: properties, lock, clipboard, rotate, flatten...
-                if (annot != null && annot.kind in setOf(AnnotKind.HIGHLIGHT, AnnotKind.UNDERLINE, AnnotKind.STRIKEOUT, AnnotKind.SQUIGGLY)) {
-                    // Foxit 24.9: adjust the markup range word by word at either end
-                    val cx = state.annot2.cx
-                    TextButton(onClick = { cx.adjustMarkup(true, -1) }, enabled = enabled) { Text("\u2190|") }
-                    TextButton(onClick = { cx.adjustMarkup(true, 1) }, enabled = enabled) { Text("|\u2192") }
-                    TextButton(onClick = { cx.adjustMarkup(false, -1) }, enabled = enabled) { Text("\u2190]") }
-                    TextButton(onClick = { cx.adjustMarkup(false, 1) }, enabled = enabled) { Text("]\u2192") }
+                // section 7: properties, lock, clipboard, rotate, place on pages, flatten, export (+ Reply)
+                Box {
+                    IconButton(onClick = { moreOpen = true }) { Icon(Icons.Default.MoreVert, stringResource(R.string.cx_more)) }
+                    DropdownMenu(moreOpen, { moreOpen = false }) {
+                        menu.more.forEach { item ->
+                            val reason = item.why
+                            DropdownMenuItem(
+                                text = { Text(stringResource(SelBindings.label(item.action)), Modifier.alpha(if (item.enabled) 1f else 0.45f)) },
+                                leadingIcon = { Icon(SelBindings.icon(item.action), null, Modifier.alpha(if (item.enabled) 1f else 0.45f)) },
+                                trailingIcon = if (reason == null) null else ({ Text(stringResource(SelBindings.why(reason)), style = MaterialTheme.typography.labelSmall, maxLines = 1) }),
+                                onClick = { moreOpen = false; run(item) },
+                            )
+                        }
+                    }
                 }
                 if (ed.busy || ed.storedLoading) CircularProgressIndicator(Modifier.padding(horizontal = 8.dp).size(18.dp), strokeWidth = 2.dp)
             }
@@ -117,16 +153,26 @@ fun AnnotActionBar(state: ReaderState, annot: Annot?, frame: Rect) {
             }
         }
     }
+    if (nveProps && nveStored != null) com.smartdocs.editor.ui.reader.annot.ImageAnnotPropsDialog5(state, nveStored) { nveProps = false }
+    if (multi && annot != null) MultiPageDialog(state.pageCount, onDismiss = { multi = false }) { set, range ->
+        multi = false
+        state.placeOnPages(annot, set, range) { n -> android.widget.Toast.makeText(ctx, ctx.resources.getQuantityString(R.plurals.nf2_placed_on_pages, n, n), android.widget.Toast.LENGTH_SHORT).show() }
+    }
     if (ed.editingText && annot != null) AnnotTextDialog(annot.text, state.annot2.cx.noteFontSize, state.annot2.cx.noteOpacity,
         onOk = { ed.editingText = false; ed.setText(it) }, onDismiss = { ed.editingText = false })
 }
 
+private typealias SA = com.smartdocs.editor.core.selmenu.SelAction
+
+/** The markup range buttons keep their compact glyphs (start / end, one word back / on). */
+private val RANGE_GLYPH = mapOf(SA.A_RANGE_START_LESS to "←|", SA.A_RANGE_START_MORE to "|→", SA.A_RANGE_END_LESS to "←]", SA.A_RANGE_END_MORE to "]→")
+
 @Composable
-private fun AeButton(icon: ImageVector, label: Int, enabled: Boolean, active: Boolean, tint: Color = LocalContentColor.current, onClick: () -> Unit) {
+private fun AeButton(icon: ImageVector, label: Int, enabled: Boolean, active: Boolean, tint: Color = LocalContentColor.current, dim: Boolean = false, onClick: () -> Unit) {
     val text = stringResource(label)
     IconButton(onClick = onClick, enabled = enabled,
         colors = if (active) IconButtonDefaults.iconButtonColors(containerColor = MaterialTheme.colorScheme.secondaryContainer) else IconButtonDefaults.iconButtonColors()) {
-        Icon(icon, text, tint = if (enabled) tint else tint.copy(alpha = 0.38f))
+        Icon(icon, text, tint = if (enabled && !dim) tint else tint.copy(alpha = 0.38f))
     }
 }
 
