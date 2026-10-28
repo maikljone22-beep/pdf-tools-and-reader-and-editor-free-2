@@ -16,6 +16,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AddBox
 import androidx.compose.material.icons.filled.Calculate
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.EditNote
@@ -61,6 +62,7 @@ fun FormRunSettings() {
             FormPrefs.setAutoCalculate(ctx, it)
         }
         SwitchRow(stringResource(R.string.f8_set_autocomplete), FormPrefs.autocomplete, icon = Icons.Default.History) { FormPrefs.setAutocomplete(ctx, it) }
+        SwitchRow(stringResource(R.string.cf_overflow_ind), FormPrefs.overflowIndicator, icon = Icons.Default.AddBox) { FormPrefs.setOverflowIndicator(ctx, it) }
         GroupRow(stringResource(R.string.f8_set_ac_manage), icon = Icons.Default.ListAlt, onClick = { manage = true })
         SwitchRow(stringResource(R.string.f8_set_banner), FormPrefs.fillableBanner, icon = Icons.Default.EditNote) { FormPrefs.setFillableBanner(ctx, it) }
         GroupDivider()

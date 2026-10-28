@@ -224,7 +224,11 @@ G.saveAs = function () { rq({ k: "unsupported", m: "saveAs" }); };
 G.closeDoc = function () { rq({ k: "unsupported", m: "closeDoc" }); };
 G.flattenPages = function () { rq({ k: "flatten" }); };
 G.removeField = function (n) { rq({ k: "remove", n: str(n) }); };
-["addScript", "syncAnnotScan", "scroll", "exportDataObject"].forEach(function (m) { G[m] = function () { rq({ k: "unsupported", m: m }); }; });
+// 8.84: an embedded file shared by name; annotation scanning needs no sync here; addScript runs the script now (not saved)
+G.exportDataObject = function () { rq({ k: "dataobj", n: str(arg(arguments, "cName", 0)) }); };
+G.syncAnnotScan = function () {};
+G.addScript = function () { var src = arg(arguments, "cScript", 1); if (src !== undefined && src !== null) (0, eval)(str(src)); };
+["scroll"].forEach(function (m) { G[m] = function () { rq({ k: "unsupported", m: m }); }; });
 function wordsOf(p) { var w = S.words[p]; return w ? w : []; }
 G.getPageNthWord = function (p, n, strip) {
   var w = wordsOf(p === undefined ? 0 : Number(p))[n === undefined ? 0 : Number(n)];

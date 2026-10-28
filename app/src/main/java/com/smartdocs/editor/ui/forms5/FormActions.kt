@@ -135,6 +135,7 @@ object FormActions {
             "flatten" -> flatten(fs)
             "remove" -> { fs.removeFieldByScript(q["n"]); unsupported += "removeField -> hidden" }
             "menu" -> named(fs, q["n"])
+            "dataobj" -> exportDataObject(fs, q["n"])
             "unsupported" -> unsupported += q["m"]
         }
         if (unsupported.isNotEmpty()) fs.message = FormMessage.Unsupported(unsupported.distinct().joinToString(", "))
@@ -145,14 +146,25 @@ object FormActions {
 
     private fun named(fs: FormFillState, name: String) {
         val r = fs.reader
-        when (name) {
-            "NextPage" -> r.jumpTo(r.currentPage + 1)
-            "PrevPage" -> r.jumpTo(r.currentPage - 1)
-            "FirstPage" -> r.jumpTo(0)
-            "LastPage" -> r.jumpTo(r.pageCount - 1)
-            "Print" -> r.scope.launch { print(fs) }
-            "Save" -> r.scope.launch { r.save() }
-            else -> fs.message = FormMessage.Unsupported(name)
+        when (com.smartdocs.editor.core.forms5.NamedActions.resolve(name)) {
+            com.smartdocs.editor.core.forms5.NamedOp.NEXT -> r.jumpTo(r.currentPage + 1)
+            com.smartdocs.editor.core.forms5.NamedOp.PREV -> r.jumpTo(r.currentPage - 1)
+            com.smartdocs.editor.core.forms5.NamedOp.FIRST -> r.jumpTo(0)
+            com.smartdocs.editor.core.forms5.NamedOp.LAST -> r.jumpTo(r.pageCount - 1)
+            com.smartdocs.editor.core.forms5.NamedOp.PRINT -> r.scope.launch { print(fs) }
+            com.smartdocs.editor.core.forms5.NamedOp.SAVE -> r.scope.launch { r.save() }
+            // 8.69: the other common viewer commands
+            com.smartdocs.editor.core.forms5.NamedOp.FIND -> r.searchOpen = true
+            com.smartdocs.editor.core.forms5.NamedOp.ZOOM_IN -> r.zoom = com.smartdocs.editor.core.forms5.NamedActions.zoomStep(r.zoom, true, com.smartdocs.editor.ui.reader.MIN_ZOOM, com.smartdocs.editor.ui.reader.MAX_ZOOM)
+            com.smartdocs.editor.core.forms5.NamedOp.ZOOM_OUT -> r.zoom = com.smartdocs.editor.core.forms5.NamedActions.zoomStep(r.zoom, false, com.smartdocs.editor.ui.reader.MIN_ZOOM, com.smartdocs.editor.ui.reader.MAX_ZOOM)
+            com.smartdocs.editor.core.forms5.NamedOp.FIT_WIDTH -> { r.fitPage = false; r.zoom = 1f }
+            com.smartdocs.editor.core.forms5.NamedOp.FIT_PAGE -> { r.fitPage = true; r.zoom = 1f }
+            // the reader turns its chrome off for /PageMode FullScreen; the same request is reused here
+            com.smartdocs.editor.core.forms5.NamedOp.FULL_SCREEN -> r.initialPageMode = "FullScreen"
+            com.smartdocs.editor.core.forms5.NamedOp.SINGLE_PAGE -> r.viewMode = com.smartdocs.editor.ui.reader.ViewMode.SINGLE
+            com.smartdocs.editor.core.forms5.NamedOp.ONE_COLUMN -> r.viewMode = com.smartdocs.editor.ui.reader.ViewMode.CONTINUOUS
+            com.smartdocs.editor.core.forms5.NamedOp.TWO_PAGES, com.smartdocs.editor.core.forms5.NamedOp.TWO_COLUMNS -> r.viewMode = com.smartdocs.editor.ui.reader.ViewMode.FACING
+            com.smartdocs.editor.core.forms5.NamedOp.UNSUPPORTED -> fs.message = FormMessage.Unsupported(name)
         }
     }
 
@@ -322,6 +334,25 @@ object FormActions {
             }
         }
         runCatching { sendMail(fs, out, mime, emptyArray(), name) }.onFailure { fs.message = FormMessage.Failed(it.message ?: it.toString()) }
+    }
+
+    /** 8.84 exportDataObject: the named embedded file of the document, handed to a share target. */
+    private suspend fun exportDataObject(fs: FormFillState, name: String) {
+        val file = fs.reader.file ?: return
+        val out = withContext(Dispatchers.IO) {
+            runCatching {
+                val src = fs.exportSource(file, fs.reader.password)      // COPY-gated like every export
+                com.smartdocs.editor.core.pdf.PdfOps.loadRaw(src, fs.reader.password).use { d ->
+                    com.smartdocs.editor.core.forms5.DataObjects.find(d, name)?.let { o ->
+                        File(fs.reader.app.documents.tempDir, com.smartdocs.editor.core.forms5.DataObjects.safeName(o.fileName)).also { it.writeBytes(o.bytes) }
+                    }
+                }
+            }
+        }
+        val f = out.getOrNull()
+        if (f == null) { fs.message = out.exceptionOrNull()?.let { FormMessage.Failed(it.message ?: it.toString()) } ?: FormMessage.Unsupported("exportDataObject: $name"); return }
+        val send = fs.reader.app.documents.shareIntent(listOf(f), com.smartdocs.editor.core.annot.MediaAnnots.mimeOf(f.name))
+        runCatching { fs.reader.context.startActivity(Intent.createChooser(send, null).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)) }
     }
 
     // ------------------------------------------------------------------ print / flatten / layers

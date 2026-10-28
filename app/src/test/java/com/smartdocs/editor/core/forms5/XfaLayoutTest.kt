@@ -193,4 +193,30 @@ class XfaLayoutTest {
         assertTrue(back[0].canAdd); assertFalse(back[1].canAdd)
         assertTrue(XfaRepeat.parse(null).isEmpty()); assertTrue(XfaRepeat.parse("[{\"bad\":1}]").isEmpty())
     }
+
+    @Test fun pictureClauseReachesTheWidget() {
+        val r = run(xdp("""<subform name="form1" layout="tb">$letter
+            <subform name="Page1" w="8in" h="10.5in">
+              <field name="Amount" x="10mm" y="20mm" w="60mm" h="9mm"><ui><numericEdit/></ui>
+                <format><picture>num{z,zz9.99}</picture></format></field>
+            </subform></subform>""", "<form1><Page1><Amount>1234.5</Amount></Page1></form1>"))
+        val w = r.widgets.map { it.second }.first { it.dataPath?.contains("Amount") == true }
+        assertEquals("num{z,zz9.99}", w.picture)
+        assertEquals("1,234.50", com.smartdocs.editor.core.forms.XfaPicture.format(w.picture, w.value))
+        assertEquals("date{MM/DD/YYYY}", com.smartdocs.editor.core.forms.XfaPicture.withCategory("MM/DD/YYYY", com.smartdocs.editor.core.forms.XfaPicture.Hint.DATE))
+        assertEquals("num{9}", com.smartdocs.editor.core.forms.XfaPicture.withCategory("num{9}", com.smartdocs.editor.core.forms.XfaPicture.Hint.DATE))
+    }
+
+    @Test fun readyEventsRunAfterInitialize() {
+        val r = run(xdp("""<subform name="form1" layout="tb">$letter
+            <subform name="Order" layout="tb" w="6in">
+              <field name="Stamp" w="2in" h="20pt"><ui><textEdit/></ui>
+                <event activity="initialize"><script contentType="application/x-javascript">this.rawValue = "init";</script></event>
+                <event activity="ready" ref="${'$'}form"><script contentType="application/x-javascript">this.rawValue = this.rawValue + "+ready";</script></event></field>
+              <field name="Doc" w="2in" h="20pt"><ui><textEdit/></ui>
+                <event activity="docReady" ref="${'$'}host"><script contentType="application/x-javascript">this.rawValue = "open";</script></event></field>
+            </subform></subform>"""), scripts = true)
+        assertEquals("init+ready", r.widget("form1[0].Order[0].Stamp[0]")!!.second.value)
+        assertEquals("open", r.widget("form1[0].Order[0].Doc[0]")!!.second.value)
+    }
 }

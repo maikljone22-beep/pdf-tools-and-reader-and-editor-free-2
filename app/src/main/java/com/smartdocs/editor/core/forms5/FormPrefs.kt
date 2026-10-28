@@ -26,6 +26,8 @@ object FormPrefs {
     var requiredColor by mutableIntStateOf(DEFAULT_REQUIRED); private set
     /** Show the "this document has fillable fields" banner in the reader. */
     var fillableBanner by mutableStateOf(true); private set
+    /** §37: a "+" box on text fields whose text does not fit (Acrobat's overflow indicator). */
+    var overflowIndicator by mutableStateOf(true); private set
 
     @Volatile private var loaded = false
 
@@ -37,6 +39,7 @@ object FormPrefs {
         highlightColor = p.getInt("hl_color", DEFAULT_HIGHLIGHT)
         requiredColor = p.getInt("req_color", DEFAULT_REQUIRED)
         fillableBanner = p.getBoolean("fill_banner", true)
+        overflowIndicator = p.getBoolean("overflow_ind", true)
         loaded = true
     }
 
@@ -48,6 +51,16 @@ object FormPrefs {
     fun setHighlightColor(context: Context, v: Int) { highlightColor = v; edit(context) { putInt("hl_color", v) } }
     fun setRequiredColor(context: Context, v: Int) { requiredColor = v; edit(context) { putInt("req_color", v) } }
     fun setFillableBanner(context: Context, v: Boolean) { fillableBanner = v; edit(context) { putBoolean("fill_banner", v) } }
+    fun setOverflowIndicator(context: Context, v: Boolean) { overflowIndicator = v; edit(context) { putBoolean("overflow_ind", v) } }
+
+    /**
+     * Overflow indicator box (left, top, right, bottom; y down) inside the bottom-right corner of a field
+     * ([l], [t], [r], [b]): [side] px, never larger than the field.
+     */
+    fun overflowBox(l: Float, t: Float, r: Float, b: Float, side: Float): FloatArray {
+        val s = minOf(side, r - l, b - t).coerceAtLeast(0f)
+        return floatArrayOf(r - s, b - s, r, b)
+    }
 
     /** The colour choices offered in Settings (ARGB, highlight alpha applied by the caller). */
     val PALETTE = listOf(0x7C9CFF, 0xFFEB3B, 0x8BC34A, 0x26C6DA, 0xFF9800, 0xE53935, 0xAB47BC, 0x9E9E9E)
