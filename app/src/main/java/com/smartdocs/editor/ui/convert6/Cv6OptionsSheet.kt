@@ -95,7 +95,6 @@ fun Cv6OptionsSheet(
                     if (o.outputTree.isNotBlank()) IconButton(onClick = { onChange(o.copy(outputTree = "")) }) { Icon(Icons.Default.Close, stringResource(R.string.cancel)) }
                     TextButton(onClick = { tree.launch(null) }) { Text(stringResource(R.string.cv9_out_choose)) }
                 }
-            }
                 if (conv.multi) OutlinedButton(onClick = onAddMore, shape = RoundedCornerShape(50)) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.cv6_add_files)) }
             }
             if (needPassword) {
