@@ -76,4 +76,19 @@ object PageGraphics {
             pages.filter { it in 0 until d.numberOfPages }.associateWith { p -> scan(d, p, maxSegments = 0).images }
         }
     }
+
+    /** What the reflow reader needs of a page besides its text: images, straight ruling lines and tagged tables. */
+    class ReflowExtras(val images: List<RImage>, val rules: List<RRule>, val tables: List<RTable>)
+
+    /** [ReflowExtras] of several pages at once (one document load); a page that fails gets nothing extra. */
+    suspend fun reflowExtras(src: File, pw: String?, pages: IntRange): Map<Int, ReflowExtras> = withContext(Dispatchers.IO) {
+        (if (pw.isNullOrEmpty()) PDDocument.load(src) else PDDocument.load(src, pw)).use { d ->
+            pages.filter { it in 0 until d.numberOfPages }.associateWith { p ->
+                val r = runCatching { scan(d, p, maxSegments = 4000) }.getOrNull()
+                val rules = r?.segments.orEmpty().map { (a, b) -> RRule(a.x.toFloat(), a.y.toFloat(), b.x.toFloat(), b.y.toFloat()) }
+                    .filter { (it.horizontal || it.vertical) && maxOf(kotlin.math.abs(it.x2 - it.x1), kotlin.math.abs(it.y2 - it.y1)) > 8f }
+                ReflowExtras(r?.images.orEmpty(), rules, runCatching { ReflowTags.load(d, p) }.getOrDefault(emptyList()))
+            }
+        }
+    }
 }
