@@ -402,6 +402,9 @@ private fun CalculatorDialog(state: ReaderState, onDismiss: () -> Unit) {
  */
 @Composable
 fun PlacementBar(state: ReaderState, modifier: Modifier = Modifier) {
+    // tab audit D24: the stamp just placed with "place on pages" (one multi-page implementation: FillSign2Reader)
+    var multiFor by remember { mutableStateOf<com.smartdocs.editor.core.pdf.Annot?>(null) }
+    multiFor?.let { a -> com.smartdocs.editor.ui.reader.PlaceOnPagesDialog(state, a) { multiFor = null } }
     val p = state.placement ?: return
     var sizeOpen by remember { mutableStateOf(false) }
     var opacity by remember(p.image) { mutableFloatStateOf(1f) }
@@ -417,7 +420,7 @@ fun PlacementBar(state: ReaderState, modifier: Modifier = Modifier) {
                 TextButton(onClick = {
                     val before = state.annots.map { it.id }.toSet()
                     state.confirmPlacement()
-                    state.annots.firstOrNull { it.id !in before }?.let { a -> state.annot2.cx.pagesReq = PagesReq(CTarget(a.page, listOf(a.id), emptyList())) }
+                    state.annots.firstOrNull { it.id !in before }?.let { a -> multiFor = a }
                 }) { Icon(Icons.Default.FileCopy, null, Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)); Text(stringResource(R.string.cx_place_pages)) }
                 IconButton(onClick = { state.confirmPlacement() }) { Icon(Icons.Default.Check, stringResource(R.string.done)) }
             }

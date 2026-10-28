@@ -224,7 +224,7 @@ fun ResultSheet(file: File, nav: NavHostController, onDismiss: () -> Unit, extra
                     val r = runCatching { app.documents.replaceOriginal(source, file) }
                     replacing = false; confirmReplace = false
                     if (r.isFailure) {
-                        Toast.makeText(ctx, ctx.getString(R.string.fx_save_failed, r.exceptionOrNull()?.message ?: ""), Toast.LENGTH_LONG).show()
+                        Toast.makeText(ctx, ctx.getString(R.string.fx_save_failed, signedOrMessage(ctx, r.exceptionOrNull())), Toast.LENGTH_LONG).show()   // tab-view-core E-01
                         return@launch
                     }
                     Toast.makeText(ctx, ctx.getString(R.string.fx_replaced_kept_in_trash), Toast.LENGTH_LONG).show()
