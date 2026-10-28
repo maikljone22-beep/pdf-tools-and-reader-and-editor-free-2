@@ -74,4 +74,9 @@
     <string name="cv9_fmt_word">Word (.docx)</string>
     <string name="cv9_fmt_excel">Excel (.xlsx)</string>
     <string name="cv9_fmt_ppt">PowerPoint (.pptx)</string>
+    <string name="cv9_xfit">ملاءمة الصفحة</string>
+    <string name="cv9_xfit_sheet">حسب إعداد الورقة</string>
+    <string name="cv9_xfit_actual">الحجم الفعلي</string>
+    <string name="cv9_xfit_cols">كل الأعمدة في عرض صفحة</string>
+    <string name="cv9_xfit_page">الورقة كلها في صفحة</string>
 </resources>

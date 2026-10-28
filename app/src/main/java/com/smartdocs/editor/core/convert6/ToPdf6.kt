@@ -4,6 +4,7 @@ import android.content.Context
 import android.print.PrintAttributes
 import android.print.WebPdfWriter
 import com.smartdocs.editor.R
+import com.smartdocs.editor.core.office.ExcelFit
 import com.smartdocs.editor.core.office.OfficeHtml
 import com.smartdocs.editor.core.office.OoxmlReader
 import com.smartdocs.editor.core.office5.CsvIO
@@ -176,7 +177,7 @@ object ToPdf6 {
      */
     suspend fun convert(ctx: Context, f: File, out: File, setup: PageSetup = PageSetup(), quality: Int = 88, bookmarks: Boolean = false,
                         speakerNotes: Boolean = false, cellComments: Boolean = false, slideRange: String = "", hiddenSlides: Boolean = true,
-                        info: (String) -> Unit = {}): File {
+                        excelFit: Int = ExcelFit.AUTO, info: (String) -> Unit = {}): File {
         coroutineContext.ensureActive()
         val kind = FileKind6.of(f)
         val title = f.nameWithoutExtension
@@ -199,7 +200,7 @@ object ToPdf6 {
                 if (bookmarks) runCatching { OfficeOutline.applyByText(out, OfficeOutline.docxTitles(model)) }
                 out
             }
-            kind == Kind6.XLSX -> xlsx(ctx, f, out, tmp, info, bookmarks, cellComments)
+            kind == Kind6.XLSX -> xlsx(ctx, f, out, tmp, info, bookmarks, cellComments, excelFit)
             kind == Kind6.PPTX || pptM != null -> {
                 // row 103: slide range and hidden slides
                 val model = SlideSelect.select(pptM ?: withContext(Dispatchers.IO) { OoxmlReader.readPptx(f) }, slideRange, hiddenSlides)
@@ -290,20 +291,30 @@ object ToPdf6 {
         if (sb.isNotEmpty() || chapters.isEmpty()) yield(HtmlBits.page(title, sb.toString(), rtl, css))
     }
 
-    /** Excel → PDF: clean printable sheets (no grid chrome), landscape for wide sheets, printed in parts (A-H9 / A-M1). */
-    private suspend fun xlsx(ctx: Context, f: File, out: File, tmp: File, info: (String) -> Unit, bookmarks: Boolean = false, cellComments: Boolean = false): File {
+    /**
+     * Excel → PDF: clean printable sheets (no grid chrome), landscape for wide sheets, printed in parts (A-H9 / A-M1).
+     * FINAL_CHECK_2 #9 [fit]: the sheet's own fit-to-page / scale setup, all columns on one page width or the whole
+     * sheet on one page ([ExcelFit]); columns that do not fit go on further pages ("down, then over").
+     */
+    private suspend fun xlsx(ctx: Context, f: File, out: File, tmp: File, info: (String) -> Unit, bookmarks: Boolean = false, cellComments: Boolean = false, fit: Int = ExcelFit.AUTO): File {
         val book = withContext(Dispatchers.IO) { OoxmlReader.readXlsx(f, MAX_PRINT_ROWS, 500) }
-        val landscape = OfficeHtml.xlsxLandscape(book)
+        val landscape = ExcelFit.landscape(book.sheets.map { it.print }, fit) ?: OfficeHtml.xlsxLandscape(book)
+        // printable A4 area in CSS px (margins 0.4 in), less room for the sheet name
         val pageW = if (landscape) 1020 else 700
+        val pageH = if (landscape) 660 else 980
         book.sheets.filter { it.truncated }.forEach { info(ctx.getString(R.string.cvf_info_sheet_cut, it.name)) }
         val parts = sequence {
             book.sheets.forEachIndexed { i, s ->
                 val used = OfficeHtml.xlsxUsedRows(s)
                 if (used.isEmpty()) return@forEachIndexed
-                val chunks = (used.first..used.last).chunked(PART_ROWS)
-                chunks.forEachIndexed { k, part ->
-                    val note = if (k == chunks.lastIndex && s.truncated) ctx.getString(R.string.cvf_info_sheet_cut, s.name) else null
-                    yield(OfficeHtml.xlsxPrint(book, i, part.first()..part.last(), pageW, if (k == 0 && book.sheets.size > 1) s.name else null, note))
+                val plan = OfficeHtml.xlsxFit(s, pageW, pageH, fit)
+                val chunks = if (plan.onePart) listOf(used.toList()) else (used.first..used.last).chunked(PART_ROWS)
+                plan.bands.forEachIndexed { b, band ->
+                    chunks.forEachIndexed { k, part ->
+                        val note = if (b == plan.bands.lastIndex && k == chunks.lastIndex && s.truncated) ctx.getString(R.string.cvf_info_sheet_cut, s.name) else null
+                        val title = if (b == 0 && k == 0 && book.sheets.size > 1) s.name else null
+                        yield(OfficeHtml.xlsxPrint(book, i, part.first()..part.last(), pageW, title, note, band, plan.zoom))
+                    }
                 }
             }
         }.ifEmpty { sequenceOf(FlowHtml.write(FlowDoc(f.nameWithoutExtension, emptyList()))) }
@@ -329,13 +340,13 @@ object ToPdf6 {
      * audit A-H4); [info] gets notes (signed inputs, rows not printed …).
      */
     suspend fun combine(ctx: Context, files: List<File>, out: File, tempDir: File, setup: PageSetup, quality: Int, onProgress: (Int, Int) -> Unit,
-                        passwords: (File) -> String? = { null }, info: (String) -> Unit = {}, bookmarks: Boolean = false): File {
+                        passwords: (File) -> String? = { null }, info: (String) -> Unit = {}, bookmarks: Boolean = false, excelFit: Int = ExcelFit.AUTO): File {
         val temps = ArrayList<File>()
         try {
             val items = files.mapIndexed { i, f ->
                 onProgress(i, files.size + 1)
                 if (FileKind6.of(f) == Kind6.PDF) ToPdf.Item(f, f.nameWithoutExtension, passwords(f))
-                else ToPdf.Item(File(tempDir, "cv6c_${i}_${System.nanoTime()}.pdf").also { temps += it; convert(ctx, f, it, setup, quality, bookmarks = bookmarks, info = info) }, f.nameWithoutExtension)
+                else ToPdf.Item(File(tempDir, "cv6c_${i}_${System.nanoTime()}.pdf").also { temps += it; convert(ctx, f, it, setup, quality, bookmarks = bookmarks, info = info, excelFit = excelFit) }, f.nameWithoutExtension)
             }
             return ToPdf.combine(ctx, items, out, tempDir, bookmarks = files.size > 1, onProgress = { _, _ -> onProgress(files.size, files.size + 1) },
                 signed = { s -> info(ctx.getString(R.string.cvf_info_signed, s.name)) })
