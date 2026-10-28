@@ -18,65 +18,115 @@ import java.io.File
 /** Runs the [Export7] writers on a PDF (page pictures from PDFium, text and structure from PdfBox). */
 object Export7Run {
 
+    /**
+     * Page rasters straight from the page render at the DPI option, no JPEG round trip (convert audit B11: TIFF / BMP /
+     * fax TIFF were JPEG q88 at ≤ 2400 px whatever the DPI, and the tags claimed the requested dpi). The raster's dpi is
+     * the effective one. One page in memory at a time.
+     */
     private suspend fun rasters(ctx: Context, f: File, pw: String?, pages: List<Int>, dpi: Int, each: suspend (Int, Raster, Float, Float) -> Unit) {
         var k = 0
-        ImageIo6.pagePictures(ctx, f, pw, pages, dpi) { _, w, h, jpeg ->
-            val b = BitmapFactory.decodeByteArray(jpeg, 0, jpeg.size) ?: return@pagePictures
+        ImageIo6.pageBitmaps(ctx, f, pw, pages, dpi) { _, w, h, b, eff ->
             val px = IntArray(b.width * b.height); b.getPixels(px, 0, b.width, 0, 0, b.width, b.height)
-            val r = Raster(b.width, b.height, px, dpi); b.recycle()
-            each(k++, r, w, h)
+            each(k++, Raster(b.width, b.height, px, eff), w, h)
         }
     }
 
+    /** Multi-page TIFF streamed page by page into [out] (convert audit B07). [p] gets the real page total (B25). */
     suspend fun tiff(ctx: Context, f: File, pw: String?, pages: List<Int>, dpi: Int, color: TiffColor, out: File, p: (Int, Int) -> Unit): File {
-        val enc = ArrayList<TiffWriter.Encoded>()
-        rasters(ctx, f, pw, pages, dpi) { i, r, _, _ -> enc += TiffWriter.encode(r, color); p(i + 1, maxOf(pages.size, i + 2)) }
-        withContext(Dispatchers.IO) { out.outputStream().buffered().use { TiffWriter.writeEncoded(enc, color, it) } }
+        val total = ImageIo6.selectedCount(ctx, f, pw, pages)
+        withContext(Dispatchers.IO) {
+            TiffWriter.Stream(out, color).use { s -> rasters(ctx, f, pw, pages, dpi) { i, r, _, _ -> s.add(r); p(i + 1, total) } }
+        }
         return out
     }
 
+    /** One BMP per page into [dir] (a work folder the engine moves into Documents on success, audit B14 / B15). */
     suspend fun bmp(ctx: Context, f: File, pw: String?, pages: List<Int>, dpi: Int, dir: File, base: String, p: (Int, Int) -> Unit): List<File> {
         dir.mkdirs()
+        val total = ImageIo6.selectedCount(ctx, f, pw, pages)
         val files = ArrayList<File>()
         rasters(ctx, f, pw, pages, dpi) { i, r, _, _ ->
-            val o = File(dir, "${base}_%03d.bmp".format(i + 1)); withContext(Dispatchers.IO) { o.writeBytes(BmpWriter.write(r)) }; files += o
-            p(i + 1, maxOf(pages.size, i + 2))
+            // ASCII digits whatever the app language (audit B12)
+            val o = ImageIo6.unique(dir, base + "_" + (i + 1).toString().padStart(3, '0'), "bmp"); withContext(Dispatchers.IO) { o.writeBytes(BmpWriter.write(r)) }; files += o
+            p(i + 1, total)
         }
         return files
     }
 
-    /** PostScript (one file) or EPS (one file per page). */
+    /** PostScript (one file, streamed page by page — audit B08) or EPS (one file per page). */
     suspend fun ps(ctx: Context, f: File, pw: String?, pages: List<Int>, dpi: Int, gray: Boolean, eps: Boolean, out: (String, String) -> File, base: String, p: (Int, Int) -> Unit): List<File> {
-        val list = ArrayList<PsWriter.Page>()
+        val total = ImageIo6.selectedCount(ctx, f, pw, pages)
         val outs = ArrayList<File>()
-        ImageIo6.pagePictures(ctx, f, pw, pages, dpi) { _, w, h, jpeg ->
-            val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }; BitmapFactory.decodeByteArray(jpeg, 0, jpeg.size, o)
-            val pg = PsWriter.Page(jpeg, o.outWidth, o.outHeight, w, h, gray = false)
-            if (eps) { val e = out(base + "_%03d".format(outs.size + 1), "eps"); withContext(Dispatchers.IO) { e.writeText(PsWriter.write(listOf(pg), true, base), Charsets.US_ASCII) }; outs += e }
-            else list += pg
-            p(outs.size + list.size, maxOf(pages.size, outs.size + list.size + 1))
+        var n = 0
+        if (eps) {
+            ImageIo6.pagePictures(ctx, f, pw, pages, dpi) { _, w, h, jpeg, pxW, pxH ->
+                val pg = PsWriter.Page(jpeg, pxW, pxH, w, h, gray = false)
+                val e = out(base + "_" + (outs.size + 1).toString().padStart(3, '0'), "eps")
+                withContext(Dispatchers.IO) { e.bufferedWriter(Charsets.US_ASCII).use { PsWriter.Stream(it, true, base, 1, pg).use { s -> s.page(pg) } } }
+                outs += e
+                p(++n, total)
+            }
+            return outs
         }
-        if (!eps) { val o = out(base, "ps"); withContext(Dispatchers.IO) { o.writeText(PsWriter.write(list, false, base), Charsets.US_ASCII) }; outs += o }
+        val o = out(base, "ps")
+        withContext(Dispatchers.IO) {
+            o.bufferedWriter(Charsets.US_ASCII).use { wr ->
+                PsWriter.Stream(wr, false, base, total, null).use { s ->
+                    ImageIo6.pagePictures(ctx, f, pw, pages, dpi) { _, w, h, jpeg, pxW, pxH -> s.page(PsWriter.Page(jpeg, pxW, pxH, w, h, gray = false)); p(++n, total) }
+                }
+            }
+        }
+        outs += o
         return outs
     }
 
+    /** XPS streamed page by page (audit B09), with the picture's pixel size as the brush viewbox (audit B05). */
     suspend fun xps(ctx: Context, f: File, pw: String?, pages: List<Int>, dpi: Int, out: File, p: (Int, Int) -> Unit): File {
-        val list = ArrayList<XpsWriter.Page>()
-        ImageIo6.pagePictures(ctx, f, pw, pages, dpi) { _, w, h, jpeg -> list += XpsWriter.Page(jpeg, w, h); p(list.size, maxOf(pages.size, list.size + 1)) }
-        withContext(Dispatchers.IO) { out.outputStream().buffered().use { XpsWriter.write(list, it) } }
+        val total = ImageIo6.selectedCount(ctx, f, pw, pages)
+        var n = 0
+        withContext(Dispatchers.IO) {
+            out.outputStream().buffered().use { os ->
+                XpsWriter.Stream(os).use { s -> ImageIo6.pagePictures(ctx, f, pw, pages, dpi) { _, w, h, jpeg, pxW, pxH -> s.page(XpsWriter.Page(jpeg, w, h, pxW, pxH)); p(++n, total) } }
+            }
+        }
         return out
     }
 
-    suspend fun xml(f: File, pw: String?, pages: List<Int>, out: File): File = withContext(Dispatchers.IO) {
-        val lines = OutlineTools.textLines(f, pw, pages.ifEmpty { null })
-        E5Io.load(f, pw).use { d ->
-            val keep = pages.ifEmpty { (0 until d.numberOfPages).toList() }.toSet()
-            val sizes = (0 until d.numberOfPages).map { val b = d.getPage(it).cropBox; b.width to b.height }
+    /** ODP of page pictures streamed slide by slide (audit B09 / C39), each letterboxed in the slide (audit B26). */
+    suspend fun odp(ctx: Context, f: File, pw: String?, pages: List<Int>, dpi: Int, out: File, p: (Int, Int) -> Unit): File {
+        val total = ImageIo6.selectedCount(ctx, f, pw, pages)
+        // the slide size follows the first page; other pages keep their own shape inside it
+        val size = ImageIo6.firstPageSize(ctx, f, pw, pages) ?: (842f to 595f)
+        val wCm = 28f; val hCm = wCm * size.second / size.first
+        var n = 0
+        withContext(Dispatchers.IO) {
+            out.outputStream().buffered().use { os ->
+                OdfWriter.OdpStream(os, false, wCm, hCm).use { s ->
+                    ImageIo6.pagePictures(ctx, f, pw, pages, dpi) { _, w, h, jpeg, _, _ -> s.add(jpeg, w / h); p(++n, total) }
+                }
+            }
+        }
+        return out
+    }
+
+    /**
+     * PDF → XML 1.0: text extracted page by page (Cancel works between pages, real progress — audit B25); the
+     * pages keep their source numbers and their own text with a range (audit B04).
+     */
+    suspend fun xml(f: File, pw: String?, pages: List<Int>, out: File, p: (Int, Int) -> Unit = { _, _ -> }): File = withContext(Dispatchers.IO) {
+        PdfFlow6.load(f, pw).use { d ->
+            val keep = pages.filter { it in 0 until d.numberOfPages }.ifEmpty { (0 until d.numberOfPages).toList() }
             val info = d.documentInformation.let { i -> listOfNotNull(i.title?.let { "title" to it }, i.author?.let { "author" to it }, i.subject?.let { "subject" to it }, i.keywords?.let { "keywords" to it }) }.toMap()
             val marks = marksOf(d)
-            val xml = PdfXml.write(f.nameWithoutExtension, info, sizes.filterIndexed { i, _ -> i in keep }.ifEmpty { sizes },
-                marks, lines.filter { it.page in keep }.map { PdfXml.Line(it.page, it.text, it.left, it.top, it.size, it.font) })
-            out.writeText(xml)
+            val lines = ArrayList<PdfXml.Line>()
+            keep.forEachIndexed { k, i ->
+                kotlin.coroutines.coroutineContext.ensureActive()
+                p(k, keep.size)
+                OutlineTools.textLinesOfPage(d, i).forEach { lines += PdfXml.Line(it.page, it.text, it.left, it.top, it.size, it.font) }
+            }
+            p(keep.size, keep.size)
+            val sized = keep.map { i -> val b = d.getPage(i).cropBox; Triple(i, b.width, b.height) }
+            out.bufferedWriter().use { it.write(PdfXml.write(f.nameWithoutExtension, info, sized, marks, lines)) }
         }
         out
     }
@@ -132,17 +182,20 @@ object Export7Run {
     suspend fun xml2003(f: File, pw: String?, pages: List<Int>, onePerTable: Boolean, sheetName: (Int) -> String, out: File, p: (Int, Int) -> Unit): Pair<File, Int> {
         val pp = PdfFlow6.pages(f, pw, pages, false, true, p)
         val sheets = ArrayList<Pair<String, List<List<String>>>>()
+        // pages without tables do not become text-dump sheets; a document without any table gives its text (audit B21)
         pp.layouts.forEach { l ->
-            val tables = LayoutFlow.tables(listOf(l))
+            val tables = LayoutFlow.tables(listOf(l), fallbackText = false)
             if (onePerTable) tables.forEachIndexed { t, rows -> if (rows.isNotEmpty()) sheets += "${sheetName(l.index + 1)}-${t + 1}" to rows }
-            else tables.flatMap { it + listOf(emptyList()) }.takeIf { it.isNotEmpty() }?.let { sheets += sheetName(l.index + 1) to it }
+            else tables.flatMap { it + listOf(emptyList()) }.takeIf { it.isNotEmpty() }?.let { sheets += sheetName(l.index + 1) to it.dropLast(1) }
         }
-        withContext(Dispatchers.IO) { out.writeText(Xml2003.write(sheets, pp.layouts.firstOrNull()?.rtl == true)) }
+        if (sheets.isEmpty()) LayoutFlow.tables(pp.layouts, fallbackText = true).flatten().takeIf { it.isNotEmpty() }?.let { sheets += sheetName(pp.layouts.firstOrNull()?.index?.plus(1) ?: 1) to it }
+        withContext(Dispatchers.IO) { out.bufferedWriter().use { it.write(Xml2003.write(sheets, pp.layouts.firstOrNull()?.rtl == true)) } }
         return out to sheets.size
     }
 
-    suspend fun htmlSet(f: File, pw: String?, pages: List<Int>, images: Boolean, out: File, p: (Int, Int) -> Unit): File {
-        val doc = PdfFlow6.flow(f, pw, pages, images, pageBreaks = false, onProgress = p)
+    /** HTML set; pictures are spilled to [spill] while the pages are read and go into the zip as files (audit B10 / B30). */
+    suspend fun htmlSet(f: File, pw: String?, pages: List<Int>, images: Boolean, out: File, p: (Int, Int) -> Unit, title: String = f.nameWithoutExtension, spill: File? = null): File {
+        val doc = PdfFlow6.flow(f, pw, pages, images, pageBreaks = false, onProgress = p, title = title, spillDir = spill)
         withContext(Dispatchers.IO) { out.outputStream().buffered().use { HtmlSet.write(doc, it) } }
         return out
     }

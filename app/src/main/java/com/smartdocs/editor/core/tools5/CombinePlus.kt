@@ -23,8 +23,8 @@ import kotlin.coroutines.coroutineContext
 /** Sort order of the combine list (Foxit Combine: name / modified / size). */
 enum class FileSort { NAME, TIME, SIZE }
 
-/** One file of a combine job: its bookmark title and the pages to take ("" = all, "1-3, 7"). */
-data class CombineEntry(val file: File, val title: String, val pages: String = "", val attach: Boolean = false)
+/** One file of a combine job: its bookmark title, the pages to take ("" = all, "1-3, 7") and the password of a protected PDF. */
+data class CombineEntry(val file: File, val title: String, val pages: String = "", val attach: Boolean = false, val password: String? = null)
 
 /** Options of [CombinePlus.combine] (Nitro 5 / Foxit 4 Combine settings). */
 data class CombineOpts(
@@ -72,16 +72,24 @@ object CombinePlus {
      * Combine [entries] in order into [out]: non-PDF files are converted first; each file contributes the pages of its
      * range. Bookmarks follow [o]; the TOC page (when asked) is built from the final outline. Returns [out].
      */
+    /**
+     * Combine [entries] in order into [out]: non-PDF files are converted first (kinds by content); each file contributes
+     * the pages of its range. A protected PDF uses its [CombineEntry.password] ([com.smartdocs.editor.core.convert6.Cv6NeedPassword]
+     * names the file when it is missing); a range that is not valid or selects nothing is an error naming the file
+     * instead of the file silently missing from the result (convert audit A-M12). Bookmarks follow [o]; the TOC page
+     * (when asked) is built from the final outline. Returns [out].
+     */
     suspend fun combine(ctx: Context, entries: List<CombineEntry>, out: File, tempDir: File, o: CombineOpts = CombineOpts(),
-                        onProgress: (Int, Int) -> Unit = { _, _ -> }): File {
+                        onProgress: (Int, Int) -> Unit = { _, _ -> }, signed: (File) -> Unit = {}): File {
         val temps = ArrayList<File>()
         try {
             // PDF Binder: files marked "attach" are embedded in the result instead of converted
             val attached = entries.filter { it.attach }
+            entries.filterNot { it.attach }.forEach { e -> if (!com.smartdocs.editor.core.pdf.PdfOps.rangeSyntaxOk(e.pages)) throw com.smartdocs.editor.core.convert6.InvalidRange(e.file.name) }
             val parts = entries.filterNot { it.attach }.mapIndexed { i, e ->
                 coroutineContext.ensureActive()
                 onProgress(i, entries.size)
-                val pdf = if (ToPdf.kindOf(e.file.name) == SourceKind.PDF) e.file
+                val pdf = if (ToPdf.kindOf(e.file) == SourceKind.PDF) withContext(Dispatchers.IO) { ToPdf.mergeablePdf(e.file, e.password, tempDir, temps, signed) }
                     else File(tempDir, "cmb_${i}_${System.nanoTime()}.pdf").also { t -> temps += t; ToPdf.convert(ctx, e.file, t) }
                 val heads = if (o.headings && pdf !== e.file) runCatching { OutlineTools.toBookmarks(OutlineTools.detectHeadings(pdf, null)) }.getOrDefault(emptyList()) else emptyList()
                 Triple(e, pdf, heads)
@@ -92,12 +100,13 @@ object CombinePlus {
                 val marks = ArrayList<E5Bookmark>()     // for the TOC page
                 val tmp = File(tempDir, "cmb_out_${System.nanoTime()}.pdf").also { temps += it }
                 try {
-                    PDDocument().use { nd ->
+                    PDDocument(com.tom_roush.pdfbox.io.MemoryUsageSetting.setupMixed(48L shl 20)).use { nd ->
                         val outline = PDDocumentOutline()
                         for ((e, pdf, heads) in parts) {
+                            coroutineContext.ensureActive()
                             val sd = E5Io.load(pdf).also { docs += it }
-                            val pages = PageSet.parse(e.pages, sd.numberOfPages)
-                            if (pages.isEmpty()) continue
+                            val pages = PageSet.parse(com.smartdocs.editor.core.pdf.PdfOps.normalizeRange(e.pages), sd.numberOfPages)
+                            if (pages.isEmpty()) throw com.smartdocs.editor.core.convert6.InvalidRange(e.file.name)
                             val start = nd.numberOfPages
                             val map = HashMap<COSDictionary, PDPage>()
                             val byIndex = HashMap<Int, PDPage>()

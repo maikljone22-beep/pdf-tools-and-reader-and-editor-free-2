@@ -22,11 +22,13 @@ internal fun ZipOutputStream.putStoredMimetype(mime: String) {
  */
 object EpubWriter {
 
-    fun write(doc: FlowDoc, out: OutputStream, lang: String? = null, id: String = "urn:uuid:" + UUID.randomUUID()) {
+    /** Returns the number of pictures that could not be stored (formats EPUB readers do not show and that cannot be converted). */
+    fun write(doc: FlowDoc, out: OutputStream, lang: String? = null, id: String = "urn:uuid:" + UUID.randomUUID()): Int {
+        var dropped = 0
         val rtl = doc.rtl
         val language = lang ?: if (rtl) "ar" else "en"
         val chapters = doc.chapters()
-        val images = ArrayList<Pair<String, FBlock.Image>>()
+        val images = ArrayList<String>()
         val x = Text6::xml
         ZipOutputStream(out).use { z ->
             fun put(n: String, s: String) { z.putNextEntry(ZipEntry(n)); z.write(s.toByteArray(Charsets.UTF_8)); z.closeEntry() }
@@ -35,22 +37,24 @@ object EpubWriter {
             put("OEBPS/style.css", "body{font-family:serif;line-height:1.6;margin:0 4%}" + (if (rtl) "html{direction:rtl}" else "") +
                 "img{max-width:100%;height:auto}table{border-collapse:collapse}td,th{border:1px solid #999;padding:2px 6px}pre{white-space:pre-wrap;font-size:.9em}blockquote{margin:0 1em;font-style:italic}")
             chapters.forEachIndexed { i, (title, blocks) ->
+                val pending = ArrayList<Pair<String, ByteArray>>()   // this chapter's pictures, written right after it (audit B10)
                 val mapped = blocks.map { b ->
                     if (b is FBlock.Image) {
-                        val ext = (Images6.sniffExt(b.bytes) ?: b.ext).let { if (it == "jpeg") "jpg" else it }
-                        if (ext in setOf("jpg", "png", "gif", "svg", "webp")) {
-                            val name = "img${images.size + 1}.$ext"
-                            images += name to b
+                        // BMP / TIFF are converted to PNG (convert audit C36), EMF / WMF are counted as dropped
+                        val norm = PortableImage.normalize(b.bytes, b.ext, setOf("jpg", "png", "gif", "svg", "webp"))
+                        if (norm != null) {
+                            val name = "img${images.size + 1}.${norm.second}"
+                            images += name; pending += name to norm.first
                             "<div class=\"img\"><img src=\"images/$name\" alt=\"" + x(b.alt) + "\"/></div>\n"
-                        } else ""
+                        } else { dropped++; "" }
                     } else xhtml(FlowHtml.body(listOf(b)))
                 }
                 val hasHeading = blocks.firstOrNull() is FBlock.Heading
                 val head = if (!hasHeading && title.isNotBlank() && chapters.size > 1) "<h1>" + x(title) + "</h1>\n" else ""
                 put("OEBPS/ch${i + 1}.xhtml", "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE html>\n<html xmlns=\"http://www.w3.org/1999/xhtml\" xmlns:epub=\"http://www.idpf.org/2007/ops\" xml:lang=\"$language\" lang=\"$language\" dir=\"${if (rtl) "rtl" else "ltr"}\">" +
                     "<head><meta charset=\"utf-8\"/><title>" + x(title) + "</title><link rel=\"stylesheet\" href=\"style.css\" type=\"text/css\"/></head><body>\n" + head + mapped.joinToString("") + "</body></html>")
+                pending.forEach { (n, b) -> z.putNextEntry(ZipEntry("OEBPS/images/$n")); z.write(b); z.closeEntry() }
             }
-            images.forEach { (n, b) -> z.putNextEntry(ZipEntry("OEBPS/images/$n")); z.write(b.bytes); z.closeEntry() }
             val navItems = chapters.mapIndexed { i, (t, _) -> "<li><a href=\"ch${i + 1}.xhtml\">" + x(t.ifBlank { "${i + 1}" }) + "</a></li>" }.joinToString("")
             put("OEBPS/nav.xhtml", "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE html>\n<html xmlns=\"http://www.w3.org/1999/xhtml\" xmlns:epub=\"http://www.idpf.org/2007/ops\" xml:lang=\"$language\" dir=\"${if (rtl) "rtl" else "ltr"}\"><head><meta charset=\"utf-8\"/><title>" +
                 x(doc.title) + "</title></head><body><nav epub:type=\"toc\" id=\"toc\"><h1>" + x(doc.title) + "</h1><ol>" + navItems + "</ol></nav></body></html>")
@@ -59,7 +63,7 @@ object EpubWriter {
             val manifest = StringBuilder()
             manifest.append("<item id=\"nav\" href=\"nav.xhtml\" media-type=\"application/xhtml+xml\" properties=\"nav\"/><item id=\"ncx\" href=\"toc.ncx\" media-type=\"application/x-dtbncx+xml\"/><item id=\"css\" href=\"style.css\" media-type=\"text/css\"/>")
             chapters.indices.forEach { manifest.append("<item id=\"ch${it + 1}\" href=\"ch${it + 1}.xhtml\" media-type=\"application/xhtml+xml\"/>") }
-            images.forEachIndexed { i, (n, _) -> manifest.append("<item id=\"im${i + 1}\" href=\"images/$n\" media-type=\"${Images6.mimeOf(n.substringAfterLast('.'))}\"/>") }
+            images.forEachIndexed { i, n -> manifest.append("<item id=\"im${i + 1}\" href=\"images/$n\" media-type=\"${Images6.mimeOf(n.substringAfterLast('.'))}\"/>") }
             val spine = chapters.indices.joinToString("") { "<itemref idref=\"ch${it + 1}\"/>" }
             val modified = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US).apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }.format(java.util.Date())
             put("OEBPS/content.opf", "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<package xmlns=\"http://www.idpf.org/2007/opf\" version=\"3.0\" unique-identifier=\"bookid\" xml:lang=\"$language\"" + (if (rtl) " dir=\"rtl\"" else "") + ">" +
@@ -67,6 +71,7 @@ object EpubWriter {
                 (if (doc.author.isNotBlank()) "<dc:creator>" + x(doc.author) + "</dc:creator>" else "") + "<meta property=\"dcterms:modified\">$modified</meta></metadata>" +
                 "<manifest>$manifest</manifest><spine toc=\"ncx\"" + (if (rtl) " page-progression-direction=\"rtl\"" else "") + ">$spine</spine></package>")
         }
+        return dropped
     }
 
     /** HTML fragments from [FlowHtml] made XML-clean (void elements closed). */
@@ -88,14 +93,15 @@ object OdfWriter {
 
     private val x = Text6::xml
 
-    private fun pack(out: OutputStream, mime: String, content: String, styles: String, media: List<Pair<String, ByteArray>> = emptyList()) {
+    /** [media] = (name, bytes) read when written (file-backed pictures are not all held in memory, audit B10). */
+    private fun pack(out: OutputStream, mime: String, content: String, styles: String, media: List<Pair<String, () -> ByteArray>> = emptyList()) {
         ZipOutputStream(out).use { z ->
             fun put(n: String, s: String) { z.putNextEntry(ZipEntry(n)); z.write(s.toByteArray(Charsets.UTF_8)); z.closeEntry() }
             z.putStoredMimetype(mime)
             put("content.xml", content)
             put("styles.xml", styles)
             put("meta.xml", "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<office:document-meta $NS xmlns:meta=\"urn:oasis:names:tc:opendocument:xmlns:meta:1.0\"><office:meta><meta:generator>SmartDocs</meta:generator></office:meta></office:document-meta>")
-            media.forEach { (n, b) -> z.putNextEntry(ZipEntry("Pictures/$n")); z.write(b); z.closeEntry() }
+            media.forEach { (n, b) -> z.putNextEntry(ZipEntry("Pictures/$n")); z.write(b()); z.closeEntry() }
             put("META-INF/manifest.xml", "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<manifest:manifest xmlns:manifest=\"urn:oasis:names:tc:opendocument:xmlns:manifest:1.0\" manifest:version=\"1.2\">" +
                 "<manifest:file-entry manifest:full-path=\"/\" manifest:media-type=\"$mime\"/><manifest:file-entry manifest:full-path=\"content.xml\" manifest:media-type=\"text/xml\"/>" +
                 "<manifest:file-entry manifest:full-path=\"styles.xml\" manifest:media-type=\"text/xml\"/><manifest:file-entry manifest:full-path=\"meta.xml\" manifest:media-type=\"text/xml\"/>" +
@@ -114,11 +120,12 @@ object OdfWriter {
     private fun runsXml(rs: List<FRun>): String = rs.joinToString("") { r ->
         val t = x(r.text).replace("\t", "<text:tab/>").replace("\n", "<text:line-break/>")
         val styled = when { r.bold && r.italic -> "<text:span text:style-name=\"TBI\">$t</text:span>"; r.bold -> "<text:span text:style-name=\"TB\">$t</text:span>"; r.italic -> "<text:span text:style-name=\"TI\">$t</text:span>"; r.code -> "<text:span text:style-name=\"TC\">$t</text:span>"; else -> t }
-        if (r.link != null) "<text:a xlink:type=\"simple\" xlink:href=\"" + x(r.link) + "\">$styled</text:a>" else styled
+        val link = Text6.safeLink(r.link)
+        if (link != null) "<text:a xlink:type=\"simple\" xlink:href=\"" + x(link) + "\">$styled</text:a>" else styled
     }
 
     fun odt(doc: FlowDoc, out: OutputStream) {
-        val media = ArrayList<Pair<String, ByteArray>>()
+        val media = ArrayList<Pair<String, () -> ByteArray>>()
         val body = StringBuilder()
         var listOpen: Boolean? = null
         fun closeList() { if (listOpen != null) body.append("</text:list>"); listOpen = null }
@@ -146,10 +153,13 @@ object OdfWriter {
                     body.append("</table:table>")
                 }
                 is FBlock.Image -> {
-                    val ext = Images6.sniffExt(b.bytes) ?: b.ext
-                    if (ext in setOf("jpg", "png", "gif")) {
-                        val n = "img${media.size + 1}.$ext"; media += n to b.bytes
-                        val d = ImageDims.of(b.bytes)
+                    val norm = PortableImage.normalize(b.bytes, b.ext, setOf("jpg", "png", "gif"))
+                    if (norm != null) {
+                        val (bytes, ext) = norm
+                        val n = "img${media.size + 1}.$ext"
+                        val unchanged = b.file != null && Images6.sniffExt(b.head) == ext
+                        media += n to (if (unchanged) ({ b.bytes }) else ({ bytes }))
+                        val d = ImageDims.of(bytes)
                         var w = if (b.widthPt > 0) b.widthPt else d?.let { it.first * 0.75f } ?: 300f
                         var h = if (b.heightPt > 0) b.heightPt else d?.let { w * it.second / it.first } ?: (w * 0.75f)
                         val k = minOf(1f, 481f / w); w *= k; h *= k
@@ -195,7 +205,7 @@ object OdfWriter {
                 body.append("<table:table-row>")
                 for (k in 0 until cols) {
                     val v = r.getOrElse(k) { "" }
-                    val num = Csv6.number(v)
+                    val num = Csv6.cellNumber(v)
                     when {
                         v.isEmpty() -> body.append("<table:table-cell/>")
                         num != null -> body.append("<table:table-cell office:value-type=\"float\" office:value=\"").append(num).append("\"><text:p>").append(x(v)).append("</text:p></table:table-cell>")
@@ -212,18 +222,70 @@ object OdfWriter {
         pack(out, "application/vnd.oasis.opendocument.spreadsheet", content, stylesXml(rtl))
     }
 
-    /** One slide per entry: a title, bullet lines and an optional picture (PNG/JPEG bytes) filling the slide. */
-    class Slide(val title: String, val lines: List<String>, val picture: ByteArray? = null)
+    /**
+     * One slide per entry: a title, bullet lines and an optional picture (PNG/JPEG bytes). [aspect] = width / height of
+     * the picture's page (0 = fill the slide); a page of another shape is letterboxed, not stretched (audit B26).
+     */
+    class Slide(val title: String, val lines: List<String>, val picture: ByteArray? = null, val aspect: Float = 0f)
+
+    /** Picture frame (x, y, w, h in cm) of a page of [aspect] centred on a [wCm]×[hCm] slide. Pure. */
+    fun letterbox(aspect: Float, wCm: Float, hCm: Float): FloatArray {
+        if (aspect <= 0f) return floatArrayOf(0f, 0f, wCm, hCm)
+        var w = wCm; var h = w / aspect
+        if (h > hCm) { h = hCm; w = h * aspect }
+        return floatArrayOf((wCm - w) / 2f, (hCm - h) / 2f, w, h)
+    }
+
+    /**
+     * Picture slides written one by one (convert audit B09 / C39: every slide JPEG was kept in a list before the zip was
+     * written): pictures go into the package as they arrive, content.xml is written at the end.
+     */
+    class OdpStream(out: OutputStream, private val rtl: Boolean, private val widthCm: Float, private val heightCm: Float) : java.io.Closeable {
+        private val z = ZipOutputStream(out)
+        private val slides = ArrayList<Slide>()
+        private val names = ArrayList<String>()
+
+        init { z.putStoredMimetype("application/vnd.oasis.opendocument.presentation") }
+
+        fun add(picture: ByteArray, aspect: Float) {
+            val ext = Images6.sniffExt(picture) ?: "jpg"
+            val n = "slide${names.size + 1}.$ext"
+            z.putNextEntry(ZipEntry("Pictures/$n")); z.write(picture); z.closeEntry()
+            names += n
+            slides += Slide("", emptyList(), null, aspect)
+        }
+
+        override fun close() {
+            val (content, styles) = odpXml(slides, names, rtl, widthCm, heightCm)
+            fun put(n: String, s: String) { z.putNextEntry(ZipEntry(n)); z.write(s.toByteArray(Charsets.UTF_8)); z.closeEntry() }
+            put("content.xml", content); put("styles.xml", styles)
+            put("meta.xml", "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<office:document-meta $NS xmlns:meta=\"urn:oasis:names:tc:opendocument:xmlns:meta:1.0\"><office:meta><meta:generator>SmartDocs</meta:generator></office:meta></office:document-meta>")
+            put("META-INF/manifest.xml", manifest("application/vnd.oasis.opendocument.presentation", names))
+            z.close()
+        }
+    }
+
+    private fun manifest(mime: String, media: List<String>) = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<manifest:manifest xmlns:manifest=\"urn:oasis:names:tc:opendocument:xmlns:manifest:1.0\" manifest:version=\"1.2\">" +
+        "<manifest:file-entry manifest:full-path=\"/\" manifest:media-type=\"$mime\"/><manifest:file-entry manifest:full-path=\"content.xml\" manifest:media-type=\"text/xml\"/>" +
+        "<manifest:file-entry manifest:full-path=\"styles.xml\" manifest:media-type=\"text/xml\"/><manifest:file-entry manifest:full-path=\"meta.xml\" manifest:media-type=\"text/xml\"/>" +
+        media.joinToString("") { n -> "<manifest:file-entry manifest:full-path=\"Pictures/$n\" manifest:media-type=\"${Images6.mimeOf(n.substringAfterLast('.'))}\"/>" } +
+        "</manifest:manifest>"
 
     fun odp(slides: List<Slide>, out: OutputStream, rtl: Boolean, widthCm: Float = 28f, heightCm: Float = 15.75f) {
-        val media = ArrayList<Pair<String, ByteArray>>()
+        val media = ArrayList<Pair<String, () -> ByteArray>>()
+        val names = slides.mapIndexed { i, s -> s.picture?.let { p -> ("slide${i + 1}." + (Images6.sniffExt(p) ?: "jpg")).also { media += it to { p } } } }
+        val (content, styles) = odpXml(slides, names, rtl, widthCm, heightCm)
+        pack(out, "application/vnd.oasis.opendocument.presentation", content, styles, media)
+    }
+
+    /** content.xml and styles.xml of a presentation; [pictures] = the picture file name of each slide (or null). */
+    private fun odpXml(slides: List<Slide>, pictures: List<String?>, rtl: Boolean, widthCm: Float, heightCm: Float): Pair<String, String> {
         val body = StringBuilder()
         slides.forEachIndexed { i, s ->
             body.append("<draw:page draw:name=\"page${i + 1}\" draw:master-page-name=\"Default\">")
-            if (s.picture != null) {
-                val ext = Images6.sniffExt(s.picture) ?: "jpg"
-                val n = "slide${i + 1}.$ext"; media += n to s.picture
-                body.append("<draw:frame svg:x=\"0cm\" svg:y=\"0cm\" svg:width=\"${widthCm}cm\" svg:height=\"${heightCm}cm\"><draw:image xlink:href=\"Pictures/$n\" xlink:type=\"simple\" xlink:show=\"embed\" xlink:actuate=\"onLoad\"/></draw:frame>")
+            pictures.getOrNull(i)?.let { n ->
+                val (fx, fy, fw, fh) = letterbox(s.aspect, widthCm, heightCm).toList()
+                body.append("<draw:frame svg:x=\"${fx}cm\" svg:y=\"${fy}cm\" svg:width=\"${fw}cm\" svg:height=\"${fh}cm\"><draw:image xlink:href=\"Pictures/$n\" xlink:type=\"simple\" xlink:show=\"embed\" xlink:actuate=\"onLoad\"/></draw:frame>")
             }
             val ps = if (rtl) "PR" else "PL"
             if (s.title.isNotBlank()) body.append("<draw:frame presentation:class=\"title\" svg:x=\"1cm\" svg:y=\"0.6cm\" svg:width=\"${widthCm - 2}cm\" svg:height=\"2.2cm\"><draw:text-box><text:p text:style-name=\"$ps\"><text:span text:style-name=\"TT\">")
@@ -238,9 +300,10 @@ object OdfWriter {
         val auto = "<office:automatic-styles><style:style style:name=\"PL\" style:family=\"paragraph\"><style:paragraph-properties style:writing-mode=\"lr-tb\"/><style:text-properties fo:font-size=\"18pt\"/></style:style>" +
             "<style:style style:name=\"PR\" style:family=\"paragraph\"><style:paragraph-properties style:writing-mode=\"rl-tb\" fo:text-align=\"end\"/><style:text-properties fo:font-size=\"18pt\"/></style:style>" +
             "<style:style style:name=\"TT\" style:family=\"text\"><style:text-properties fo:font-size=\"30pt\" fo:font-weight=\"bold\"/></style:style></office:automatic-styles>"
-        val styles = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<office:document-styles $NS><office:automatic-styles><style:page-layout style:name=\"PM1\"><style:page-layout-properties fo:page-width=\"${widthCm}cm\" fo:page-height=\"${heightCm}cm\" style:print-orientation=\"landscape\"/></style:page-layout></office:automatic-styles>" +
+        val orient = if (widthCm >= heightCm) "landscape" else "portrait"
+        val styles = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<office:document-styles $NS><office:automatic-styles><style:page-layout style:name=\"PM1\"><style:page-layout-properties fo:page-width=\"${widthCm}cm\" fo:page-height=\"${heightCm}cm\" style:print-orientation=\"$orient\"/></style:page-layout></office:automatic-styles>" +
             "<office:master-styles><style:master-page style:name=\"Default\" style:page-layout-name=\"PM1\"/></office:master-styles></office:document-styles>"
         val content = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<office:document-content $NS>$auto<office:body><office:presentation>$body</office:presentation></office:body></office:document-content>"
-        pack(out, "application/vnd.oasis.opendocument.presentation", content, styles, media)
+        return content to styles
     }
 }
