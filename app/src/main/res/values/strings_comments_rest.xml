@@ -39,5 +39,4 @@
     <string name="cmr_depth_hint">الحجم = المساحة × العمق. الطول المتعدد مع ارتفاع يعرض مساحة الجدار أيضًا. بوحدة المقياس الحالية.</string>
     <string name="cmr_hint_adjust">اسحب المقابض: نهايات القياسات والخطوط، علامة القياس، وكوع وسهم وسيلة الشرح. الحفظ يكتب التغييرات.</string>
     <string name="cmr_hint_diameter">انقر المركز ثم نقطة على المحيط</string>
-    <string name="cmr_adjusted">%1$d عنصر معدّل</string>
 </resources>

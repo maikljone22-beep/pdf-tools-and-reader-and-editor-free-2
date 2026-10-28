@@ -39,5 +39,4 @@
     <string name="cmr_depth_hint">Volume = area × depth. A polylength with a height also shows the wall area. In the units of the current scale.</string>
     <string name="cmr_hint_adjust">Drag the handles: ends of measurements and lines, a measurement label, the knee and tip of a callout. Save writes the changes.</string>
     <string name="cmr_hint_diameter">Tap the centre, then a point on the edge</string>
-    <string name="cmr_adjusted">%1$d placed items changed</string>
 </resources>
