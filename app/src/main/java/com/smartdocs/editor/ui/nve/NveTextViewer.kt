@@ -88,7 +88,8 @@ fun NveTextViewer(s: ReaderState) {
                     }
                 }
                 val maxW = when (width) { TvWidth.WINDOW -> Modifier.fillMaxWidth(); TvWidth.PAGE -> Modifier.widthIn(max = pageWidthDp.dp); TvWidth.MINIMAL -> Modifier.widthIn(max = 360.dp); TvWidth.KEEP_COLUMNS -> Modifier }
-                SelectionContainer {
+                // tab-view-core V-04: selection (and so copy) only when the document allows copying, as in reflow
+                com.smartdocs.editor.ui.reader.CopyableIf(s.guard.allows(com.smartdocs.editor.core.security.DocAction.COPY)) {
                     LazyColumn(Modifier.fillMaxSize().padding(horizontal = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         items(pages.size) { k ->
                             val page = pages[k]

@@ -357,11 +357,36 @@ class ReaderState(
     fun discardChanges() { discarded = true; edit.discardOnClose(); forms5.discard() }
 
     /**
+     * tab-view-core V-07: "Revert to saved" in place. The old way (close this reader, open a new one on the same file)
+     * let the new session load the file before the closing reader had put the stored-annotation backup back. Now the
+     * pending changes are dropped and the backup is restored here, under [saveMutex], then the session is reopened.
+     */
+    suspend fun revertToSaved() {
+        saveMutex.withLock {
+            withContext(NonCancellable) {
+                val f = file ?: return@withContext
+                edit.clear(); selection = null; placement = null; measure = null
+                forms5.discard()
+                annots.clear(); history.removeOwner(OWNER_ANNOTS)
+                val b = edit.backupFile?.takeIf { it.exists() }
+                if (b != null) {
+                    runCatching { session?.closeAsync() }
+                    withContext(Dispatchers.IO) { if (!b.renameTo(f)) { b.copyTo(f, overwrite = true); b.delete() } }
+                }
+                edit.committed()
+                dirty = false
+                if (b != null) reopen() else renderVersion++
+            }
+        }
+    }
+
+    /**
      * The document is closed for good (its back-stack entry was removed, see [ReaderHolder]). Pending edits the user
      * did not discard are saved first (audit AN-01 / DI-10): no way out of the reader drops them silently.
      */
     fun close() {
         disposed = true
+        ReaderAi6.stopTtsOf(file?.absolutePath)     // tab-view-core V-08: read aloud never outlives its document
         guard.release()
         runCatching { video.release() }      // player + extracted video copies
         val saveFirst = dirty && !discarded

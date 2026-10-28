@@ -182,8 +182,9 @@ object NveKeys {
             NveKey.PREV_TAB, NveKey.PREV_TAB2 -> tabStep(-1)
             NveKey.FIRST_PAGE -> s.jumpTo(0)
             NveKey.LAST_PAGE -> s.jumpTo(s.pageCount - 1)
-            NveKey.PREV_PAGE, NveKey.SPACE_UP -> s.jumpTo(s.currentPage - 1)
-            NveKey.NEXT_PAGE, NveKey.SPACE_DOWN -> s.jumpTo(s.currentPage + 1)
+            // tab-view-core V-09: spread-aware (facing / cover screens), like the arrow keys
+            NveKey.PREV_PAGE, NveKey.SPACE_UP -> s.vx.flip(-1)
+            NveKey.NEXT_PAGE, NveKey.SPACE_DOWN -> s.vx.flip(1)
             NveKey.PROPERTIES -> n.open(NveSurface.DOC_INFO)
             NveKey.FIND_NEXT -> if (s.searchHits.isNotEmpty()) s.searchStep(1) else a?.search?.invoke()
             NveKey.FIND_PREV -> if (s.searchHits.isNotEmpty()) s.searchStep(-1) else a?.search?.invoke()

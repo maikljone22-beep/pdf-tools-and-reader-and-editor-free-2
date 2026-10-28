@@ -122,7 +122,10 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
     LaunchedEffect(state.enterpriseInfo) { if (state.enterpriseInfo != null && connUri != null) { nav.popBackStack(); nav.navigate(com.smartdocs.editor.ui.connected.ConnRoutes.enterprise(connUri)) } }
     LaunchedEffect(state.connectedLocked) { if (state.connectedLocked) { val id = state.connected?.docId ?: state.file?.let { com.smartdocs.editor.core.connected.ConnectedDocs.markOf(it)?.docId }; if (id != null) { nav.popBackStack(); nav.navigate(com.smartdocs.editor.ui.connected.ConnRoutes.connectedOpen(id, connUri)) } } }
     var showShare5 by remember { mutableStateOf(false) }   // share6: share sheet
-    LaunchedEffect(tts.page, tts.state) { if (tts.state != ReadAloudController.State.IDLE && tts.page != state.currentPage && state.pageCount > 0) state.jumpTo(tts.page) }
+    var nveRevert by remember { mutableStateOf(false) }    // tab-view-core V-28: hoisted out of the ⋮ menu
+    // tab-view-core V-08: follow only this document's read aloud; another document coming to the front stops it
+    LaunchedEffect(tts.page, tts.state) { if (tts.state != ReadAloudController.State.IDLE && ReaderAi6.ownsTts(state) && tts.page != state.currentPage && state.pageCount > 0) state.jumpTo(tts.page) }
+    LaunchedEffect(state.file) { val o = ReaderAi6.ttsOwner; if (o != null && state.file != null && o != state.file?.absolutePath) ReaderAi6.stopTtsOf(o) }
 
     fun leave() { nav.popBackStack() }
     // tab-view-core V-02: what leaving (back / tab switch) does once the user chose to discard; set while blocked
@@ -194,6 +197,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
         val p0 = page.coerceIn(0, state.pageCount - 1)
         scope.launch {
             val from = ReaderAi6.toReadingOffset(state, p0, fromChar)
+            ReaderAi6.ttsOwner = state.file?.absolutePath      // tab-view-core V-08
             ReadAloudController.start(ctx, state.file?.name ?: "", p0, state.pageCount, settings.ttsRate, settings.ttsPitch, { pg -> state.file?.let { f -> com.smartdocs.editor.ui.nve.tts.NveReadText.pageText(ctx, f, state.password, pg, base = ReaderAi6.readingText(state, pg)) } ?: ReaderAi6.readingText(state, pg) }, from)   // NVE: + comments / alt text per reading prefs
         }
     }
@@ -304,11 +308,8 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                                     DropdownMenuItem(text = { Text(stringResource(R.string.cn_register)) }, leadingIcon = { Icon(Icons.Default.Link, null) }, onClick = { menu = false; nav.navigate(com.smartdocs.editor.ui.connected.ConnRoutes.connected(state.fileUri)) })
                                     com.smartdocs.editor.ui.view5.V5MoreMenuItems(state, nav) { menu = false }
                                     com.smartdocs.editor.ui.nve.NveMoreMenuItems(state) { menu = false }     // NVE
-                                    var nveRevert by remember { mutableStateOf(false) }      // NVE-shell: revert to the saved file
-                                    DropdownMenuItem(text = { Text(stringResource(R.string.nl_revert)) }, leadingIcon = { Icon(Icons.Default.Restore, null) }, enabled = state.dirty, onClick = { nveRevert = true })
-                                    if (nveRevert) AlertDialog(onDismissRequest = { nveRevert = false }, text = { Text(stringResource(R.string.nl_revert_confirm)) },
-                                        confirmButton = { TextButton(onClick = { nveRevert = false; menu = false; com.smartdocs.editor.ui.nve.shell.NveRecovery.revert(state) { nav.popBackStack(); nav.navigate(Routes.reader(state.fileUri)) } }) { Text(stringResource(R.string.ok)) } },
-                                        dismissButton = { TextButton(onClick = { nveRevert = false }) { Text(stringResource(R.string.cancel)) } })
+                                    // NVE-shell: revert to the saved file (tab-view-core V-28: the dialog lives outside the menu)
+                                    DropdownMenuItem(text = { Text(stringResource(R.string.nl_revert)) }, leadingIcon = { Icon(Icons.Default.Restore, null) }, enabled = state.dirty, onClick = { menu = false; nveRevert = true })
                                 }
                             }
                         },
@@ -325,7 +326,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
             },
             bottomBar = {
                 if (chrome) Column {
-                    if (tts.state != ReadAloudController.State.IDLE) TtsBar(tts) { r -> ReadAloudController.setRate(r); scope.launch { app.settings.update { it.copy(ttsRate = r) } } }
+                    if (tts.state != ReadAloudController.State.IDLE && ReaderAi6.ownsTts(state)) TtsBar(tts) { r -> ReadAloudController.setRate(r); scope.launch { app.settings.update { it.copy(ttsRate = r) } } }
                     state.selection?.let { sel ->
                         SelectionMenu(sel, state,
                             // nitro-protect2: copying / sending the text out follows the document's copy permission
@@ -344,6 +345,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                 Box(
                     Modifier.weight(1f).fillMaxHeight().focusRequester(focus).focusable().then(com.smartdocs.editor.ui.nve.nveMouseModifier(state)).onPreviewKeyEvent { e ->
                         if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                        if (contentEdit) return@onPreviewKeyEvent false      // tab-view-core E-19: Edit content owns the keyboard
                         // volume (if enabled) / arrows / page keys: spread-aware screen flips (view module)
                         // MODULE_pageflip6: Space / arrows in the document's direction while the page-turn view is shown
                         com.smartdocs.editor.ui.nve.NveKeys.onKey(state, e.nativeKeyEvent, switchTab) ||     // NVE: tabs / Ctrl+Home… / customised keys
@@ -428,6 +430,10 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
             confirmButton = { TextButton(onClick = { state.signedBlock = null; exportSignedCopy = state.signedCopy != null; saveAs.launch((state.file?.nameWithoutExtension ?: "document") + "_copy.pdf") }) { Text(stringResource(R.string.signed_doc_save_copy_action)) } },
             dismissButton = { TextButton(onClick = { state.signedBlock = null; state.dropSignedCopy(); leaveAfterCopy = false }) { Text(stringResource(R.string.cancel)) } })
     }
+    // tab-view-core V-07: revert in place (no second reader racing the closing one on the same file)
+    if (nveRevert) AlertDialog(onDismissRequest = { nveRevert = false }, text = { Text(stringResource(R.string.nl_revert_confirm)) },
+        confirmButton = { TextButton(onClick = { nveRevert = false; state.file?.let { com.smartdocs.editor.ui.nve.shell.NveRecovery.discard(ctx, it) }; scope.launch { state.revertToSaved() } }) { Text(stringResource(R.string.ok)) } },
+        dismissButton = { TextButton(onClick = { nveRevert = false }) { Text(stringResource(R.string.cancel)) } })
     if (showGoTo) GoToPageDialog(state.currentPage, state.pageCount, onGo = { state.jumpTo(it); showGoTo = false }, onDismiss = { showGoTo = false }, labels = pageLabels)
     if (showViewMode) ViewModeSheet(state, tablet = tablet) { showViewMode = false; scope.launch { app.settings.update { it.copy(continuousScroll = state.viewMode == ViewMode.CONTINUOUS, nightMode = state.nightMode) } } }
     com.smartdocs.editor.ui.pageflip.PageFlipSheetHost(state)   // MODULE_pageflip6: page turning settings + remembered reading mode

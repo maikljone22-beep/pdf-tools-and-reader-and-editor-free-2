@@ -164,6 +164,7 @@ private fun OutlinePrintMenu(state: ReaderState, flat: List<Pair<OutlineItem, Li
     val scope = rememberCoroutineScope()
     var open by remember { mutableStateOf(false) }
     fun print(range: IntRange) {
+        if (!state.guard.check(com.smartdocs.editor.core.security.DocAction.PRINT)) return   // tab-view-core V-05
         val f = state.file ?: return
         scope.launch {
             runCatching {
