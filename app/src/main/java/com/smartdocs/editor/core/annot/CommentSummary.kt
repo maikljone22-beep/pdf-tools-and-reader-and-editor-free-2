@@ -48,6 +48,7 @@ data class SummaryOptions(
     val letter: Boolean = false,
     val types: Set<String>? = null,
     val pageCount: Int = 0,
+    val connectors: Boolean = false,      // Foxit 24.87: lines from each numbered marker to its entry
 ) {
     enum class Sort { PAGE, AUTHOR, TYPE, CREATED_NEW, CREATED_OLD, MODIFIED }
 }
@@ -58,6 +59,13 @@ data class SummaryOptions(
  * and right-aligned with the embedded Naskh font.
  */
 object CommentSummary {
+
+    /**
+     * Foxit 24.87 connector line from the end of a list entry ([rowX], [rowY]) to its marker ([mx], [my]) on the
+     * thumbnail: across to the gutter at [gutterX], then straight to the marker.
+     */
+    fun connector(rowX: Float, rowY: Float, gutterX: Float, mx: Float, my: Float): List<Pair<Float, Float>> =
+        listOf(rowX to rowY, gutterX to rowY, mx to my)
 
     private var PW = 595f
     private var PH = 842f
@@ -172,11 +180,15 @@ object CommentSummary {
                     if (pi >= 0) { wr.text(s, String.format(Locale.US, labels.pageFmt, pi + 1), M, y - 12f, 13f * k, PW - M, 0x37474F); y -= 22f * k }
                     if (list.isEmpty()) { wr.text(s, labels.empty, M, y - 11f, 10f * k, PW - M, 0x78909C); y -= 18f * k }
                     val top = y
+                    val markers = HashMap<Int, Pair<Float, Float>>()     // comment number -> marker centre (connectors)
+                    val thumbPage = s
+                    var thumbLeft = 0f
                     // thumbnail with numbered markers
                     thumbs[pi]?.let { (bmp, sz) ->
                         val th = (thumbW * bmp.height / bmp.width.coerceAtLeast(1)).coerceAtMost(top - M)
                         val tw = th * bmp.width / bmp.height.coerceAtLeast(1)
                         val tx = PW - M - tw; val ty = top - th
+                        thumbLeft = tx
                         runCatching { s.drawImage(JPEGFactory.createFromImage(doc, bmp, 0.85f), tx, ty, tw, th) }
                         s.setStrokingColor(0.6f, 0.6f, 0.6f); s.setLineWidth(0.6f); s.addRect(tx, ty, tw, th); s.stroke()
                         var n = number
@@ -185,6 +197,7 @@ object CommentSummary {
                             val cx = tx + (c.rect.left / sz.first) * tw; val cy = ty + (c.rect.top / sz.second) * th
                             s.setNonStrokingColor(229, 57, 53)
                             s.addRect(cx - 6f, cy - 6f, 12f, 12f); s.fill()
+                            markers[n] = cx to cy
                             wr.text(s, n.toString(), cx - (if (n > 9) 5f else 2.6f), cy - 3.2f, 8f, null, 0xFFFFFF)
                         }
                     }
@@ -213,6 +226,13 @@ object CommentSummary {
                                 if (pi >= 0) wr.text(s, String.format(Locale.US, labels.pageFmt, pi + 1) + " " + labels.continued, M, y - 12f, 11f, PW - M, 0x78909C); y -= 22f
                             }
                             val indent = when { li == 0 -> 0f; size < 9.5f * k -> 16f; else -> 8f }
+                            // connector from the entry's first line to its marker, while both are on the same sheet
+                            if (li == 0 && opts.connectors && s === thumbPage) markers[number]?.let { (mx, my) ->
+                                val pts = connector((if (ArabicShaper.isArabic(t)) rightEdge else minOf(rightEdge, listLeft + wr.width(t, size))) + 3f, y - size * 0.65f, thumbLeft - 5f, mx, my)
+                                s.setStrokingColor(0.9f, 0.22f, 0.21f); s.setLineWidth(0.5f)
+                                pts.forEachIndexed { i, (px, py) -> if (i == 0) s.moveTo(px, py) else s.lineTo(px, py) }
+                                s.stroke()
+                            }
                             wr.text(s, t, listLeft + indent, y - size, size, rightEdge - indent, if (li == 0) 0x0D47A1 else 0x212121)
                             y -= size * 1.45f
                         }

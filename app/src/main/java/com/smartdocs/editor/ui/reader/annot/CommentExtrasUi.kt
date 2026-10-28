@@ -475,6 +475,7 @@ fun SummaryOptionsFields(o: com.smartdocs.editor.core.annot.SummaryOptions, page
     }
     SwRow(o.thumbnails, R.string.cx_sum_thumbs) { onChange(o.copy(thumbnails = it)) }
     SwRow(o.includeEmptyPages, R.string.cx_sum_empty_pages) { onChange(o.copy(includeEmptyPages = it)) }
+    if (o.thumbnails) SwRow(o.connectors, R.string.cf_sum_connectors) { onChange(o.copy(connectors = it)) }   // 24.87
     SwRow(o.replies, R.string.cx_sum_replies) { onChange(o.copy(replies = it)) }
     SwRow(o.status, R.string.cx_sum_status) { onChange(o.copy(status = it)) }
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
