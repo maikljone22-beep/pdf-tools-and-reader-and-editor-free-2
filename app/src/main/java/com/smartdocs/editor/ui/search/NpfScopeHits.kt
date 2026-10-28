@@ -77,5 +77,7 @@ private fun npfKindLabel(k: PartKind): Int = when (k) {
     PartKind.FIELD -> R.string.npf_scope_fields
     PartKind.ATTACHMENT -> R.string.npf_scope_attachments
     PartKind.METADATA -> R.string.fcs_m_scope_metadata
+    PartKind.SIGNATURE -> R.string.fid_scope_signatures
+    PartKind.LAYER -> R.string.fid_scope_layers
     PartKind.TEXT -> R.string.npf_scope_text
 }
