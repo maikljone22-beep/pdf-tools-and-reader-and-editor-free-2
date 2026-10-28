@@ -3,6 +3,7 @@ package com.smartdocs.editor.ui.reader.annot
 import android.graphics.RectF
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.smartdocs.editor.R
@@ -84,8 +85,23 @@ class CommentExtras(private val h: Annot2Host) {
         private set
     fun toggleCopyEncircled() { copyEncircled = !copyEncircled; prefs().edit().putBoolean("copy_encircled", copyEncircled).apply() }
 
+    /** Pencil stroke merge timeout in ms (0 = every stroke is its own ink annotation), remembered in prefs. */
+    var inkMergeMs by mutableLongStateOf(prefs().getLong("ink_merge_ms", 0L))
+        private set
+    fun cycleInkMerge() { inkMergeMs = com.smartdocs.editor.core.annot.InkMerge.next(inkMergeMs); prefs().edit().putLong("ink_merge_ms", inkMergeMs).apply() }
+    private var lastInkId = 0L
+    private var lastInkAt = 0L
+
     /** Add a freshly drawn annotation; drawing shapes first get the encircled page text when [copyEncircled]. */
     fun addNew(a: Annot) {
+        if (a.kind == AnnotKind.INK) {
+            val now = System.currentTimeMillis()
+            val prev = s.annots.lastOrNull()?.takeIf { it.id == lastInkId }
+            if (com.smartdocs.editor.core.annot.InkMerge.canMerge(prev, a, now - lastInkAt, inkMergeMs)) {
+                s.replaceAnnot(com.smartdocs.editor.core.annot.InkMerge.merge(prev!!, a)); lastInkAt = now; return
+            }
+            s.addAnnot(a); lastInkId = a.id; lastInkAt = now; return
+        }
         if (!copyEncircled || a.text.isNotBlank() || a.kind !in setOf(AnnotKind.RECT, AnnotKind.OVAL, AnnotKind.POLYGON, AnnotKind.CLOUD)) { s.addAnnot(a); return }
         s.scope.launch {
             val text = runCatching {

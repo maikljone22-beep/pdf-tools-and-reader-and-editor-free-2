@@ -59,6 +59,7 @@ class Annot2Host(val s: ReaderState) {
     var lineStart by mutableStateOf("None")
     var lineEnd by mutableStateOf("")
     var rectCloud by mutableIntStateOf(0)
+    var cloudInward by mutableStateOf(false)
     var bold by mutableStateOf(false)
     var italic by mutableStateOf(false)
     var underline by mutableStateOf(false)
@@ -231,6 +232,7 @@ class Annot2Host(val s: ReaderState) {
         val a = s.newAnnot(kind, page, points = pts).copy(
             fillColor = if (kind == AnnotKind.POLYLINE) null else fillColor,
             cloud = if (kind == AnnotKind.CLOUD) cloudIntensity else 0,
+            cloudInward = kind == AnnotKind.CLOUD && cloudInward,
         )
         cx.addNew(a)
     }

@@ -265,4 +265,10 @@ class CommandAndCommentTest {
         assertEquals(5, b.size)                                // page number dropped
         assertTrue(ReflowBlocks.isRtl("مرحبا بالعالم world"))
     }
+
+    @Test fun sharedIdentityUsesCommentAuthor() {
+        val stored = StampTokens.Identity("Old", "Eng", "Org", "Unit", "a@b.c")
+        assertEquals(stored.copy(name = "Sara"), StampTokens.shared(stored, " Sara "))
+        assertEquals(stored, StampTokens.shared(stored, ""))
+    }
 }

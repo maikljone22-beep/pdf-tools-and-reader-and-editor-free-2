@@ -90,6 +90,9 @@ fun CommentsPanel(state: ReaderState, onJump: (Int) -> Unit) {
     var sortMenu by remember { mutableStateOf(false) }
     var more by remember { mutableStateOf(false) }
     val expanded = remember { mutableStateMapOf<String, Boolean>() }
+    // fc-settings (§39): Ctrl+Enter on a selected comment expands its card (reply box)
+    val fcsReply = com.smartdocs.editor.ui.nve.NveState.of(state).replyTo
+    LaunchedEffect(fcsReply) { fcsReply?.let { (p, i) -> expanded["${p}_$i"] = true; com.smartdocs.editor.ui.nve.NveState.of(state).replyTo = null } }
     val colors = remember { mutableStateListOf<Int>() }
     val noAuthor = stringResource(R.string.an_unknown_author)
 

@@ -41,6 +41,7 @@ object CrashLog {
                     error.printStackTrace(pw)
                 }
                 file(app).writeText(sw.toString())
+                DebugLog.log("crash", sw.toString())   // fc-settings: debug mode keeps the crash in its log too
                 currentDocument?.let { File(app.filesDir, DOC).writeText(it) } ?: File(app.filesDir, DOC).delete()   // NVE-shell
             }
             previous?.uncaughtException(thread, error)
