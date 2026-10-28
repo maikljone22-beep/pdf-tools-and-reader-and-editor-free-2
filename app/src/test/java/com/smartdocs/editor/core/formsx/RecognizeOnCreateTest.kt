@@ -18,9 +18,9 @@ class RecognizeOnCreateTest {
     @Test fun aDocumentWithFieldsIsLeftAlone() {
         PDDocument().use { d ->
             d.addPage(PDPage())
-            FxEditor.create(d, FieldSpec("existing", FxType.TEXT, listOf(FxWidget(0, FxRect(50f, 700f, 250f, 720f)))))
+            FxEditor.create(d, FieldSpec("existing", FxType.SIGNATURE, listOf(FxWidget(0, FxRect(50f, 700f, 250f, 720f)))))   // no standard-font metrics on the JVM
             assertEquals(0, FieldRecognition.recognizeAll(d))
-            assertEquals(1, d.documentCatalog.acroForm.fields.size)
+            assertEquals(1, d.documentCatalog.getAcroForm(null).fields.size)
         }
         PDDocument().use { d -> d.addPage(PDPage()); assertEquals(0, FieldRecognition.recognizeAll(d)) }   // an empty page: nothing to find
     }
