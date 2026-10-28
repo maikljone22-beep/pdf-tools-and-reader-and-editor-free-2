@@ -187,17 +187,33 @@ object Sanitizer {
 
     private fun mergeChars(d: List<String>): List<String> = d.groupBy { it.substringBefore(':') }.map { (k, v) -> k + ": " + v.joinToString("") { it.substringAfter(": ") } }
 
-    private fun countEof(f: File): Int = runCatching {
-        val bytes = f.readBytes()
-        val pat = "%%EOF".toByteArray()
-        var n = 0; var i = 0
-        while (i <= bytes.size - pat.size) {
-            var ok = true
-            for (j in pat.indices) if (bytes[i + j] != pat[j]) { ok = false; break }
-            if (ok) { n++; i += pat.size } else i++
+    /**
+     * Number of `%%EOF` markers (one per saved revision). Streams the file in chunks (the whole file was read into
+     * memory, so a huge file fell back to 1 and hid its earlier revisions).
+     */
+    internal fun countEof(f: File): Int = runCatching { f.inputStream().use { countEof(it) } }.getOrDefault(1)
+
+    /** Streaming count of `%%EOF` in [input] (a partial match carries across chunk borders). */
+    internal fun countEof(input: java.io.InputStream): Int {
+        val pat = "%%EOF".toByteArray(Charsets.ISO_8859_1)
+        val buf = ByteArray(64 * 1024)
+        var n = 0; var matched = 0
+        while (true) {
+            val len = input.read(buf)
+            if (len < 0) break
+            for (i in 0 until len) {
+                val b = buf[i]
+                // KMP for "%%EOF": on a mismatch a '%' still starts (or, after "%%", continues) a match
+                matched = when {
+                    b == pat[matched] -> matched + 1
+                    b == pat[0] -> if (matched == 2) 2 else 1   // "%%%EOF": the last two '%' still match
+                    else -> 0
+                }
+                if (matched == pat.size) { n++; matched = 0 }
+            }
         }
-        n
-    }.getOrDefault(1)
+        return n
+    }
 
     // ---------------- clean ----------------
 

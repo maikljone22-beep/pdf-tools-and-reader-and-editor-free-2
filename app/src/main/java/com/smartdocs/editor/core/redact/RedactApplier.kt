@@ -84,17 +84,34 @@ object RedactApplier {
                 if (options.sanitize) sanitized = Sanitizer.clean(doc, options.sanitizeItems, skipped)
                 // after sanitising, which would drop the review replies of the marks kept pending. audit 5 R-6: when
                 // pages are rasterised, the pending marks are written after that (else they are burned into the image)
-                if (options.keepPending.isNotEmpty() && raster.isEmpty()) RedactMarks.writeAll(doc, options.keepPending, options.author)
+                pendingBeforeRaster(options.keepPending, raster).takeIf { it.isNotEmpty() }?.let { RedactMarks.writeAll(doc, it, options.author) }
                 sigs = PageScrub.stripSignatures(doc)   // audit 5 R-4
                 // audit AN-07: removed / blanked images and forms must not stay in /Resources (and so in the file)
                 RedactCleanup.pruneUnusedXObjects(doc)
                 doc.save(tmp)
             }
             if (raster.isNotEmpty()) rasterize(context, tmp, out, password, raster.toList(), options.rasterDpi, options.keepPending, options.author)
-            else if (!tmp.renameTo(out)) { tmp.copyTo(out, overwrite = true) }
+            else RedactIo.moveInto(tmp, out)   // audit 5b D10: never a half-copied output
         } finally { if (tmp.exists()) tmp.delete() }
         Report(marks.size, marks.map { it.page }.distinct().size, glyphs, objects, images, annots, whole, raster.toList(), sanitized, skipped, sigs)
     }
+
+    /**
+     * audit 5 R-6 / 5b D6: [pending] marks written after the raster step. A mark on a replaced page is moved into the
+     * new page's space ([moved]: page -> user-to-display matrix of the old page; the new page is unrotated display
+     * space), so it lands on the replacement page as a pending /Redact annotation and is never burned into the image.
+     */
+    internal fun writePending(doc: PDDocument, pending: List<RedactMark>, moved: Map<Int, FloatArray>, author: String) {
+        if (pending.isEmpty()) return
+        val marks = pending.map { m ->
+            val t = moved[m.page] ?: return@map m
+            m.copy(rects = m.rects.map { r -> RedactMath.map(t, Box.of(r.left, r.bottom, r.right, r.top)).let { b -> android.graphics.RectF(b.l, b.t, b.r, b.b) } })
+        }
+        RedactMarks.writeAll(doc, marks, author)
+    }
+
+    /** audit 5b D6: pending marks go into the first save only when no page is rasterised (else after [rasterize]). */
+    internal fun pendingBeforeRaster(pending: List<RedactMark>, raster: Collection<Int>): List<RedactMark> = if (raster.isEmpty()) pending else emptyList()
 
     private fun rgb(c: Int) = floatArrayOf(((c shr 16) and 0xFF) / 255f, ((c shr 8) and 0xFF) / 255f, (c and 0xFF) / 255f)
 
@@ -196,13 +213,7 @@ object RedactApplier {
                     } finally { bmp.recycle() }
                 }
                 RedactCleanup.pruneUnusedXObjects(doc)   // audit AN-07: inherited resources of the replaced pages
-                if (pending.isNotEmpty()) {
-                    val marks = pending.map { m ->
-                        val t = moved[m.page] ?: return@map m
-                        m.copy(rects = m.rects.map { r -> RedactMath.map(t, Box.of(r.left, r.bottom, r.right, r.top)).let { b -> android.graphics.RectF(b.l, b.t, b.r, b.b) } })
-                    }
-                    RedactMarks.writeAll(doc, marks, author)
-                }
+                writePending(doc, pending, moved, author)
                 RedactIo.saveAtomic(doc, out)   // audit 5 R-10
             }
         } finally { session.closeAsync() }
