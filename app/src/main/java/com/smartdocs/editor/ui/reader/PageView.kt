@@ -420,6 +420,9 @@ fun PageView(
             onClose = { vx.magnifier = false },
             modifier = Modifier.align(AbsoluteAlignment.TopLeft),
         )
+        // 7.10: floating pop-up note window
+        if (viewport != Size.Zero) com.smartdocs.editor.ui.reader.annot.FloatingNoteWindow(state, IntSize(viewport.width.roundToInt(), viewport.height.roundToInt()),
+            Modifier.align(AbsoluteAlignment.TopLeft))
         AutoFlipBar(state, Modifier.align(Alignment.BottomCenter).padding(bottom = 56.dp))
     }
 }
