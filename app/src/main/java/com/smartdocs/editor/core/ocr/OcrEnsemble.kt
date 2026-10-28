@@ -35,7 +35,12 @@ object OcrEnsemble {
         val n = tess.size
         val parent = IntArray(n + pp.size) { it }
         fun find(i: Int): Int { var x = i; while (parent[x] != x) { parent[x] = parent[parent[x]]; x = parent[x] }; return x }
-        for (i in tess.indices) for (j in pp.indices) if (overlaps(tess[i], pp[j])) parent[find(i)] = find(n + j)
+        // a border / table-rule "word" (either engine) far taller than the text would join every word beside it into one cluster
+        val hs = tess.map { it.bottom - it.top }.sorted(); val medH = hs[hs.size / 2]
+        for (i in tess.indices) {
+            if (tess[i].bottom - tess[i].top > 2.5f * medH) continue
+            for (j in pp.indices) if (pp[j].bottom - pp[j].top <= 2.5f * medH && overlaps(tess[i], pp[j])) parent[find(i)] = find(n + j)
+        }
         val clusters = LinkedHashMap<Int, Pair<MutableList<Int>, MutableList<Int>>>()
         for (i in tess.indices) clusters.getOrPut(find(i)) { ArrayList<Int>() to ArrayList() }.first += i
         for (j in pp.indices) clusters.getOrPut(find(n + j)) { ArrayList<Int>() to ArrayList() }.second += j
@@ -59,10 +64,10 @@ object OcrEnsemble {
         tess.forEachIndexed { i, t -> out += replace[i] ?: listOf(t.copy(text = fold(t.text))) }
         val maxLine = (tess.maxOfOrNull { it.line } ?: -1) + 1
         pp.forEachIndexed { j, p ->
-            if (used[j] || p.conf < ADD_CONF) return@forEachIndexed
+            if (used[j] || p.conf < ADD_CONF || p.bottom - p.top > 2.5f * medH) return@forEachIndexed
             val w = p.copy(text = fold(p.text))
             // into the Tesseract line on the same row, at its reading position (right to left in Arabic lines)
-            val row = out.indices.filter { k -> val o = out[k]; minOf(o.bottom, w.bottom) - maxOf(o.top, w.top) > 0.5f * minOf(o.bottom - o.top, w.bottom - w.top) }
+            val row = out.indices.filter { k -> val o = out[k]; o.bottom - o.top <= 2.5f * medH && minOf(o.bottom, w.bottom) - maxOf(o.top, w.top) > 0.5f * minOf(o.bottom - o.top, w.bottom - w.top) }
             if (row.isEmpty()) { out += w.copy(line = maxLine + p.line); return@forEachIndexed }
             val line = out[row.first()].line
             val inLine = row.filter { out[it].line == line }
