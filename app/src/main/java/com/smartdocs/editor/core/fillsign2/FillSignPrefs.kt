@@ -14,4 +14,8 @@ object FillSignPrefs {
      */
     fun flattenOnSave(c: Context): Boolean = p(c).getBoolean("flatten_on_save", false)
     fun setFlattenOnSave(c: Context, on: Boolean) = p(c).edit().putBoolean("flatten_on_save", on).apply()
+
+    /** Tab audit D26: the Date tool's pattern (one of [FsDate.PATTERNS]). */
+    fun datePattern(c: Context): String = FsDate.valid(p(c).getString("date_pattern", null))
+    fun setDatePattern(c: Context, pattern: String) = p(c).edit().putString("date_pattern", FsDate.valid(pattern)).apply()
 }

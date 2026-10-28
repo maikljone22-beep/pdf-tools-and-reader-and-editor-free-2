@@ -177,6 +177,8 @@ object AnnotationWriter {
     internal fun write(context: Context, doc: PDDocument, page: PDPage, a: Annot) {
         val annotations = page.annotations
         val now = Calendar.getInstance()
+        // tab audit D9: text, comb and image appearances are drawn upright for the reader of a page with /Rotate
+        val rot = com.smartdocs.editor.core.fillsign2.FsGeom.norm(runCatching { page.rotation }.getOrDefault(0))
         when (a.kind) {
             AnnotKind.HIGHLIGHT, AnnotKind.UNDERLINE, AnnotKind.STRIKEOUT, AnnotKind.SQUIGGLY -> {
                 val sub = when (a.kind) {
@@ -250,7 +252,9 @@ object AnnotationWriter {
                 else if (a.comb <= 0) com.smartdocs.editor.core.annot.AnnotStyle.applyRich(ft.cosObject, a.text,
                     com.smartdocs.editor.core.annot.AnnotStyle.Rich(a.fontSize, a.color, a.bold, a.italic, a.underline, a.strike, a.fontFamily, a.align,
                         a.lineSpacing, a.charSpacing, a.wordSpacing, a.bullets), ArabicShaper.isArabic(a.text))
-                ft.appearance = apDict(if (a.comb > 0) combAppearance(context, doc, rect, a) else textAppearance(context, doc, rect, a))
+                // Acrobat's /Rotate of a FreeText on a turned page (viewers that rebuild the appearance from /DA)
+                if (rot != 0) ft.cosObject.setInt(COSName.ROTATE, rot)
+                ft.appearance = apDict(if (a.comb > 0) combAppearance(context, doc, rect, a, rot) else textAppearance(context, doc, rect, a, rot))
                 annotations.add(ft)
             }
             AnnotKind.LINE, AnnotKind.ARROW -> {
@@ -306,9 +310,9 @@ object AnnotationWriter {
                     st.cosObject.setString(StampRead.SIG_REF, a.sigRef ?: StampRead.refOf(a.sigPath!!))
                 }
                 st.titlePopup = a.author; st.setCreationDate(now); st.setModifiedDate(now)
-                val form = newForm(doc, rect)
+                val (form, uw, uh) = uprightForm(doc, rect, rot)
                 val img = LosslessFactory.createFromImage(doc, bmp)
-                PDPageContentStream(doc, form).use { cs -> cs.drawImage(img, 0f, 0f, rect.width, rect.height) }
+                PDPageContentStream(doc, form).use { cs -> cs.drawImage(img, 0f, 0f, uw, uh) }
                 st.appearance = apDict(form)
                 annotations.add(st)
             }
@@ -322,6 +326,22 @@ object AnnotationWriter {
         bBox = PDRectangle(0f, 0f, rect.width, rect.height)
         resources = com.tom_roush.pdfbox.pdmodel.PDResources()
         setMatrix(com.tom_roush.harmony.awt.geom.AffineTransform.getTranslateInstance(rect.lowerLeftX.toDouble(), rect.lowerLeftY.toDouble()))
+    }
+
+    /**
+     * Tab audit D9: an appearance drawn upright for the reader of a page turned by [rot] (0/90/180/270): the BBox is
+     * the displayed (upright) size and the /Matrix turns it with the page ([com.smartdocs.editor.core.sign.SigFields.matrixFor],
+     * as the signature widgets do); the viewer fits the turned BBox onto /Rect. Returns the form and its upright size.
+     */
+    private fun uprightForm(doc: PDDocument, rect: PDRectangle, rot: Int): Triple<PDAppearanceStream, Float, Float> {
+        val m = com.smartdocs.editor.core.sign.SigFields.matrixFor(rot) ?: return Triple(newForm(doc, rect), rect.width, rect.height)
+        val (uw, uh) = com.smartdocs.editor.core.fillsign2.FsGeom.uprightSize(rot, rect.width, rect.height)
+        val form = PDAppearanceStream(doc).apply {
+            bBox = PDRectangle(0f, 0f, uw, uh)
+            resources = com.tom_roush.pdfbox.pdmodel.PDResources()
+            cosObject.setItem(COSName.MATRIX, COSArray().apply { m.forEach { add(COSFloat(it)) } })
+        }
+        return Triple(form, uw, uh)
     }
 
     private fun apDict(stream: PDAppearanceStream): PDAppearanceDictionary = PDAppearanceDictionary().apply { setNormalAppearance(stream) }
@@ -406,8 +426,9 @@ object AnnotationWriter {
         }
     }
 
-    private fun textAppearance(context: Context, doc: PDDocument, rect: PDRectangle, a: Annot): PDAppearanceStream {
-        val form = newForm(doc, rect)
+    private fun textAppearance(context: Context, doc: PDDocument, rect0: PDRectangle, a: Annot, rot: Int = 0): PDAppearanceStream {
+        val (form, uw, uh) = uprightForm(doc, rect0, rot)
+        val rect = PDRectangle(uw, uh)      // the upright box the text is laid out in
         val std = std14(a)
         val font = std ?: PdfOps.arabicFont(context, doc)
         // the Arabic font has one face: bold is drawn as fill + stroke and italic as a slant
@@ -489,8 +510,9 @@ object AnnotationWriter {
     }
 
     /** Comb text (nitro-fillsign2): one glyph centred in each of [Annot.comb] equal cells ([CombLayout]). */
-    private fun combAppearance(context: Context, doc: PDDocument, rect: PDRectangle, a: Annot): PDAppearanceStream {
-        val form = newForm(doc, rect)
+    private fun combAppearance(context: Context, doc: PDDocument, rect0: PDRectangle, a: Annot, rot: Int = 0): PDAppearanceStream {
+        val (form, uw, uh) = uprightForm(doc, rect0, rot)
+        val rect = PDRectangle(uw, uh)      // the upright box the cells are laid out in
         val font = PdfOps.arabicFont(context, doc)
         val rtl = ArabicShaper.isArabic(a.text)
         PDPageContentStream(doc, form).use { cs ->
@@ -581,7 +603,7 @@ object AnnotationWriter {
             if (page !in 0 until d.numberOfPages) return@use null
             val list = runCatching { d.getPage(page).annotations }.getOrNull() ?: return@use null
             val an = list.getOrNull(index) ?: return@use null
-            runCatching { toAnnot(an, page, media)?.copy(nm = an.annotationName) }.getOrNull()
+            runCatching { toAnnot(an, page, media, runCatching { d.getPage(page).rotation }.getOrDefault(0))?.copy(nm = an.annotationName) }.getOrNull()
         }
     }
 
@@ -604,7 +626,7 @@ object AnnotationWriter {
     }
 
     /** [media] false: a video's embedded file is not extracted (selection preview only; the copy needs it). */
-    internal fun toAnnot(an: PDAnnotation, page: Int, media: Boolean = true): Annot? {
+    internal fun toAnnot(an: PDAnnotation, page: Int, media: Boolean = true, pageRotation: Int = 0): Annot? {
         val cos = an.cosObject
         val sub = an.subtype ?: return null
         val r = an.rectangle ?: return null
@@ -662,7 +684,7 @@ object AnnotationWriter {
                     corner = if (sub == "Square") cos.getFloat(FillSignKeys.ROUND, 0f).coerceAtLeast(0f) else 0f)
             }
             // nitro-fillsign2: our image stamps (placed signatures above all) become editable again
-            "Stamp" -> readImageStamp(an, page, base, rect) ?: com.smartdocs.editor.core.annot.Annot2Writer.read(an, page, base, rect, media)
+            "Stamp" -> readImageStamp(an, page, base, rect, pageRotation) ?: com.smartdocs.editor.core.annot.Annot2Writer.read(an, page, base, rect, media)
             "FreeText" -> {
                 val da = cos.getString(COSName.DA) ?: ""
                 val size = Regex("""([0-9.]+)\s+Tf""").find(da)?.groupValues?.get(1)?.toFloatOrNull()?.takeIf { it > 1f } ?: 12f
@@ -685,11 +707,12 @@ object AnnotationWriter {
     }
 
     /** A saved image stamp of ours as a pending STAMP_IMAGE (image, rect; a rotated appearance is turned into the image). */
-    private fun readImageStamp(an: PDAnnotation, page: Int, base: Annot, rect: RectF): Annot? {
+    private fun readImageStamp(an: PDAnnotation, page: Int, base: Annot, rect: RectF, pageRotation: Int = 0): Annot? {
         val img = StampRead.imageOf(an) ?: return null
         var bmp = runCatching { img.image }.getOrNull() ?: return null
         val m = runCatching { an.normalAppearanceStream.matrix }.getOrNull()
-        val rot = if (m == null) 0 else StampRead.rotationOf(m.scaleX, m.shearY)
+        // tab audit D9: the reader shows the image upright on the turned page, so the page's /Rotate counts too
+        val rot = StampRead.displayRotation(if (m == null) 0 else StampRead.rotationOf(m.scaleX, m.shearY), pageRotation)
         if (rot != 0) bmp = Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, android.graphics.Matrix().apply { postRotate(rot.toFloat()) }, true)
         val ref = an.cosObject.getString(StampRead.SIG_REF)?.takeIf { it.isNotBlank() }
             ?: if (an.cosObject.getBoolean(FillSignKeys.SIG, false)) "" else null      // signature from before /SDSigRef: still a signature

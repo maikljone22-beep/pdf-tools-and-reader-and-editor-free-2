@@ -30,34 +30,42 @@ object MultiPage {
     }
 
     /**
-     * The same box on a page of size ([toW], [toH]): its centre keeps the same relative position as on the
-     * ([fromW], [fromH]) page, its size in points is kept (shrunk only when it does not fit), and it stays on the page.
+     * The same box on page [to]: its centre keeps the same relative position inside the crop box as on page [from],
+     * its size in points is kept (shrunk only when it does not fit), and it stays inside the crop box. Boxes and crop
+     * boxes are user space (tab audit D10: the displayed size of a rotated page and a crop origin other than (0, 0)
+     * moved the stamp).
      */
-    fun relocate(b: Box, fromW: Float, fromH: Float, toW: Float, toH: Float): Box {
-        val s = minOf(1f, toW / b.width.coerceAtLeast(0.01f), toH / b.height.coerceAtLeast(0.01f))
+    fun relocate(b: Box, from: FsGeom.PageBox, to: FsGeom.PageBox): Box {
+        val s = minOf(1f, to.w / b.width.coerceAtLeast(0.01f), to.h / b.height.coerceAtLeast(0.01f))
         val w = b.width * s; val h = b.height * s
-        val cx = (b.left + b.width / 2f) / fromW.coerceAtLeast(1f) * toW
-        val cy = (b.bottom + b.height / 2f) / fromH.coerceAtLeast(1f) * toH
-        val l = (cx - w / 2f).coerceIn(0f, (toW - w).coerceAtLeast(0f))
-        val bt = (cy - h / 2f).coerceIn(0f, (toH - h).coerceAtLeast(0f))
+        val cx = (b.left + b.width / 2f - from.x) / from.w.coerceAtLeast(1f) * to.w + to.x
+        val cy = (b.bottom + b.height / 2f - from.y) / from.h.coerceAtLeast(1f) * to.h + to.y
+        return place(cx, cy, w, h, to)
+    }
+
+    /** Paste at a point (long-press "Paste here"): the box centred on ([x], [y]), kept in [page] and shrunk only when bigger. */
+    fun boxAt(b: Box, x: Float, y: Float, page: FsGeom.PageBox): Box {
+        val s = minOf(1f, page.w / b.width.coerceAtLeast(0.01f), page.h / b.height.coerceAtLeast(0.01f))
+        return place(x, y, b.width * s, b.height * s, page)
+    }
+
+    /** Paste: the same spot when the box fits in the crop box of [page], otherwise centred on it. */
+    fun pasteBox(b: Box, page: FsGeom.PageBox): Box {
+        if (b.left >= page.x && b.bottom >= page.y && b.right <= page.x + page.w && b.top <= page.y + page.h) return b
+        val s = minOf(1f, page.w / b.width.coerceAtLeast(0.01f), page.h / b.height.coerceAtLeast(0.01f))
+        val w = b.width * s; val h = b.height * s
+        val l = page.x + (page.w - w) / 2f; val bt = page.y + (page.h - h) / 2f
         return Box(l, bt, l + w, bt + h)
     }
 
-    /** Paste at a point (long-press "Paste here"): the box centred on ([x], [y]), kept on the page and shrunk only when bigger. */
-    fun boxAt(b: Box, x: Float, y: Float, pageW: Float, pageH: Float): Box {
-        val s = minOf(1f, pageW / b.width.coerceAtLeast(0.01f), pageH / b.height.coerceAtLeast(0.01f))
-        val w = b.width * s; val h = b.height * s
-        val l = (x - w / 2f).coerceIn(0f, (pageW - w).coerceAtLeast(0f))
-        val bt = (y - h / 2f).coerceIn(0f, (pageH - h).coerceAtLeast(0f))
+    private fun place(cx: Float, cy: Float, w: Float, h: Float, p: FsGeom.PageBox): Box {
+        val l = (cx - w / 2f).coerceIn(p.x, p.x + (p.w - w).coerceAtLeast(0f))
+        val bt = (cy - h / 2f).coerceIn(p.y, p.y + (p.h - h).coerceAtLeast(0f))
         return Box(l, bt, l + w, bt + h)
     }
 
-    /** Paste: the same spot when the box fits on the ([pageW], [pageH]) page, otherwise centred on it. */
-    fun pasteBox(b: Box, pageW: Float, pageH: Float): Box {
-        if (b.left >= 0f && b.bottom >= 0f && b.right <= pageW && b.top <= pageH) return b
-        val s = minOf(1f, pageW / b.width.coerceAtLeast(0.01f), pageH / b.height.coerceAtLeast(0.01f))
-        val w = b.width * s; val h = b.height * s
-        val l = (pageW - w) / 2f; val bt = (pageH - h) / 2f
-        return Box(l, bt, l + w, bt + h)
-    }
+    // unrotated pages at (0, 0): the sizes are the crop box size
+    fun relocate(b: Box, fromW: Float, fromH: Float, toW: Float, toH: Float): Box = relocate(b, FsGeom.PageBox.plain(fromW, fromH), FsGeom.PageBox.plain(toW, toH))
+    fun boxAt(b: Box, x: Float, y: Float, pageW: Float, pageH: Float): Box = boxAt(b, x, y, FsGeom.PageBox.plain(pageW, pageH))
+    fun pasteBox(b: Box, pageW: Float, pageH: Float): Box = pasteBox(b, FsGeom.PageBox.plain(pageW, pageH))
 }

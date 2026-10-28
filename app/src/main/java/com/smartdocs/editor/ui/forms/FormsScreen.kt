@@ -123,7 +123,7 @@ fun FormsScreen(nav: NavHostController, uri: String?) {
             if (overwrite) {
                 // audit 5 C-3: never `out.copyTo(src)` (not atomic, no backup: a kill mid-copy truncated the original).
                 // replaceOriginal keeps a trash copy and swaps atomically; the central signed-file gate lives there
-                try { app.documents.replaceOriginal(src, out) } finally { out.delete() }
+                try { app.documents.replaceOriginal(src, out, password) } finally { out.delete() }
                 runCatching { app.documents.touchRecent(src) }; src
             } else {
                 runCatching { app.documents.touchRecent(out) }

@@ -133,6 +133,8 @@ class OrganizeState(
         is com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException, is PdfSession.Companion.PasswordRequiredException ->
             context.getString(com.smartdocs.editor.R.string.password_wrong)
         is com.smartdocs.editor.core.util.PdfPrint.PrintRestricted -> context.getString(com.smartdocs.editor.R.string.np2_restricted_author)
+        // the central signed gate (SignedGuard.checkWrite): signed / certified originals are saved as a new file
+        is com.smartdocs.editor.core.pdf.SignedDocumentException -> com.smartdocs.editor.ui.common.signedOrMessage(context, e)
         else -> context.getString(com.smartdocs.editor.R.string.ttpg_op_failed)
     }
 
@@ -419,11 +421,13 @@ class OrganizeState(
     suspend fun saveOverwrite(): File? {
         val o = original ?: return null; val w = work ?: return null
         if (w != o) {
+            // tab-view-core G-01: page changes are never written over a signed / certified original (save as new instead)
+            withContext(Dispatchers.IO) { com.smartdocs.editor.core.pdf.SignedGuard.checkWrite(o, w, password) }
             // close our session first, then replace atomically (sibling temp + rename) so a crash mid-copy
             // never leaves a truncated original behind
             sessionLock.withLock { session?.closeAsync(); session = null }
             // audit 5 E-16: like every other "save in original", a copy of the old original goes to the trash first
-            try { documents.replaceOriginal(o, w) } catch (e: Exception) { reopen(); throw e }
+            try { documents.replaceOriginal(o, w, password) } catch (e: Exception) { reopen(); throw e }
         }
         runCatching { documents.touchRecent(o, pageCount) }
         clearHistory()
