@@ -64,4 +64,18 @@ class RichFieldsTest {
         assertTrue(u.contains("2.00 4.06 m 32.00 4.06 l S"))
         assertEquals(null, RichFields.underlined("/Tx BMC EMC", 10f))
     }
+
+    @Test fun syntheticFacesForTheArabicFont() {
+        val content = listOf("/Tx BMC", "q", "BT", "/SDAr 12 Tf", "0.2 0.4 0.6 rg", "40 5.5 Td", "(abc) Tj", "ET", "Q", "EMC").joinToString("\n")
+        val b = RichFields.synthetic(content, bold = true, italic = false, boxH = 20f)
+        assertTrue(b.contains("BT\n2 Tr 0.400 w 0.2 0.4 0.6 RG"))      // fill + stroke in the text colour
+        assertFalse(b.contains(" cm"))
+        val i = RichFields.synthetic(content, bold = false, italic = true, boxH = 20f)
+        assertTrue(i.contains("q 1 0 0.2 1 -2.000 0 cm\nBT"))          // shear around the middle of the box
+        assertTrue(i.contains("ET\nQ"))
+        val both = RichFields.synthetic(content, bold = true, italic = true, boxH = 20f)
+        assertTrue(both.indexOf(" cm") < both.indexOf("2 Tr") && both.indexOf("2 Tr") < both.indexOf("Tj"))
+        assertEquals(content, RichFields.synthetic(content, bold = false, italic = false, boxH = 20f))
+        assertEquals("/Tx BMC EMC", RichFields.synthetic("/Tx BMC EMC", bold = true, italic = true, boxH = 20f))
+    }
 }

@@ -218,8 +218,13 @@ object FormOps {
                     applyTextAppearance(context, doc, acro, f, value, shown ?: value)
                 else applyValue(acro, f, value)
             }.isSuccess
-            if (ok && richStyle != null && f is PDTextField && !ArabicShaper.isArabic(shown ?: value))
-                runCatching { com.smartdocs.editor.core.forms5.RichFields.underlineAppearance(acro, f, richStyle, shown ?: value) }
+            // underline for every script; Arabic (one embedded face) also gets synthetic bold / italic
+            if (ok && richStyle != null && f is PDTextField) runCatching {
+                val text = shown ?: value
+                val arabic = ArabicShaper.isArabic(text)
+                val drawn = if (arabic) text.split('\n').joinToString("\n") { ArabicShaper.shape(it) } else text
+                com.smartdocs.editor.core.forms5.RichFields.styleAppearance(acro, f, richStyle, drawn, syntheticFace = arabic)
+            }
             if (!ok) { needViewer = true; runCatching { acro.needAppearances = true; applyValue(acro, f, value); acro.needAppearances = false } }
             if (name in values) applied++
         }

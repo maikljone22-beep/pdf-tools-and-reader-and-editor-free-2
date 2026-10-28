@@ -92,18 +92,57 @@ object RichFields {
         return content.trimEnd() + "\nq 0 G ${n(lw)} w ${n(x)} ${n(y)} m ${n(x + textWidth)} ${n(y)} l S Q\n"
     }
 
-    /** After the appearance of [f] was generated for [text]: underline it when [style] asks for it (single-line fields). */
-    fun underlineAppearance(acro: PDAcroForm, f: PDTextField, style: AnnotStyle.Rich?, text: String) {
-        if (style?.underline != true || f.isMultiline || text.isEmpty()) return
+    /**
+     * Synthetic faces for a font with a single face (the embedded Arabic font): bold as fill + stroke (text render
+     * mode 2, stroke colour = fill colour), italic as a shear of the text block around the middle of a box of
+     * height [boxH]. Returns [content] unchanged when there is no text object.
+     */
+    fun synthetic(content: String, bold: Boolean, italic: Boolean, boxH: Float): String {
+        if (!bold && !italic) return content
+        val bt = Regex("""(^|\s)BT(\s)""").find(content) ?: return content
+        val et = Regex("""(^|\s)ET(\s|$)""").findAll(content).lastOrNull() ?: return content
+        val btStart = bt.range.first + bt.groupValues[1].length
+        val btEnd = btStart + 2
+        val etEnd = et.range.first + et.groupValues[1].length + 2
+        fun n(v: Float) = String.format(java.util.Locale.US, "%.3f", v)
+        val sb = StringBuilder()
+        sb.append(content, 0, btStart)
+        if (italic) sb.append("q 1 0 0.2 1 ").append(n(-0.2f * boxH / 2f)).append(" 0 cm\n")
+        sb.append("BT")
+        if (bold) {
+            val size = DA_FONT.find(content)?.groupValues?.get(2)?.toFloatOrNull()?.takeIf { it > 0f } ?: 12f
+            // the stroke takes the fill colour of the text
+            val inner = content.substring(btEnd, etEnd)
+            val stroke = Regex("""(-?[\d.]+\s+-?[\d.]+\s+-?[\d.]+)\s+rg""").find(inner)?.let { it.groupValues[1] + " RG" }
+                ?: Regex("""(-?[\d.]+)\s+g(\s|$)""").find(inner)?.let { it.groupValues[1] + " G" } ?: "0 G"
+            sb.append("\n2 Tr ").append(n((size / 30f).coerceAtLeast(0.3f))).append(" w ").append(stroke)
+        }
+        sb.append(content, btEnd, etEnd)
+        if (italic) sb.append("\nQ")
+        sb.append(content, etEnd, content.length)
+        return sb.toString()
+    }
+
+    /**
+     * After the appearance of [f] was generated for [text] (the text as drawn: shaped for Arabic): the synthetic
+     * bold / italic of a single-face font when [syntheticFace], and the underline (single-line fields).
+     */
+    fun styleAppearance(acro: PDAcroForm, f: PDTextField, style: AnnotStyle.Rich?, text: String, syntheticFace: Boolean) {
+        style ?: return
+        if (text.isEmpty()) return
+        if (!style.underline && !(syntheticFace && (style.bold || style.italic))) return
         for (w in f.widgets) {
             val ap = w.normalAppearanceStream ?: continue
-            val content = ap.cosObject.createInputStream().use { String(it.readBytes(), Charsets.ISO_8859_1) }
-            val size = DA_FONT.find(content)?.groupValues?.get(2)?.toFloatOrNull()?.takeIf { it > 0f } ?: 12f
-            val fontName = DA_FONT.find(content)?.groupValues?.get(1)
-            val font = fontName?.let { ap.resources?.getFont(COSName.getPDFName(it)) ?: acro.defaultResources?.getFont(COSName.getPDFName(it)) }
-            val width = font?.let { runCatching { it.getStringWidth(text) / 1000f * size }.getOrNull() } ?: (text.length * size * 0.5f)
-            val out = underlined(content, width) ?: continue
-            ap.cosObject.createOutputStream().use { it.write(out.toByteArray(Charsets.ISO_8859_1)) }
+            var content = ap.cosObject.createInputStream().use { String(it.readBytes(), Charsets.ISO_8859_1) }
+            if (style.underline && !f.isMultiline) {
+                val size = DA_FONT.find(content)?.groupValues?.get(2)?.toFloatOrNull()?.takeIf { it > 0f } ?: 12f
+                val fontName = DA_FONT.find(content)?.groupValues?.get(1)
+                val font = fontName?.let { ap.resources?.getFont(COSName.getPDFName(it)) ?: acro.defaultResources?.getFont(COSName.getPDFName(it)) }
+                val width = font?.let { runCatching { it.getStringWidth(text) / 1000f * size }.getOrNull() } ?: (text.length * size * 0.5f)
+                underlined(content, width)?.let { content = it }
+            }
+            if (syntheticFace) content = synthetic(content, style.bold, style.italic, ap.bBox?.height ?: (w.rectangle?.height ?: 0f))
+            ap.cosObject.createOutputStream().use { it.write(content.toByteArray(Charsets.ISO_8859_1)) }
         }
     }
 }
