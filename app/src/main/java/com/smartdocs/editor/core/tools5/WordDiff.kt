@@ -27,8 +27,33 @@ object WordDiff {
 
     fun diffText(old: String, new: String): List<WordChange> = diff(tokenize(old), tokenize(new))
 
+    /**
+     * audit 5 C-12: diff of documents given as matched segments (e.g. the words of each old/new page pair): every
+     * pair is diffed on its own, so a long book never hits the whole-document edit limit, and the result is one
+     * change list over the concatenated token lists. [old] and [new] must have the same number of segments (use an
+     * empty list for an unmatched page).
+     */
+    fun diffPaged(old: List<List<String>>, new: List<List<String>>, maxD: Int = 2000): List<WordChange> {
+        require(old.size == new.size) { "segments differ" }
+        val ops = ArrayList<Char>()
+        for (i in old.indices) {
+            checkInterrupted()
+            ops += opsOf(old[i].map(::key), new[i].map(::key), maxD, 0)
+        }
+        return group(ops)
+    }
+
     /** Myers diff over comparison keys; adjacent delete+insert runs are merged into REPLACE. */
-    fun diffKeys(a: List<String>, b: List<String>, maxD: Int = 2000): List<WordChange> {
+    fun diffKeys(a: List<String>, b: List<String>, maxD: Int = 2000): List<WordChange> = group(opsOf(a, b, maxD, 0))
+
+    /**
+     * audit 5 C-12 / C-12 cancel: the thread running a compare is interrupted when the user cancels
+     * (CompareEngine uses runInterruptible); the diff stops instead of burning CPU to the end.
+     */
+    private fun checkInterrupted() { if (Thread.currentThread().isInterrupted) throw InterruptedException("diff cancelled") }
+
+    /** Edit script ('=', '-', '+') of [a] → [b]: prefix / suffix, Myers within [maxD], else split on unique anchors. */
+    private fun opsOf(a: List<String>, b: List<String>, maxD: Int, depth: Int): List<Char> {
         // common prefix / suffix first: cheap and keeps the search space small
         var pre = 0
         while (pre < a.size && pre < b.size && a[pre] == b[pre]) pre++
@@ -37,12 +62,60 @@ object WordDiff {
         val ops = ArrayList<Char>(a.size + b.size)    // '=', '-', '+'
         repeat(pre) { ops += '=' }
         val am = a.subList(pre, a.size - suf); val bm = b.subList(pre, b.size - suf)
-        ops += myers(am, bm, maxD)
+        ops += myers(am, bm, maxD) ?: anchored(am, bm, maxD, depth)
         repeat(suf) { ops += '=' }
-        return group(ops)
+        return ops
     }
 
-    private fun myers(a: List<String>, b: List<String>, maxD: Int): List<Char> {
+    /**
+     * audit 5 C-12: fallback when the texts differ by more than [maxD] edits (it used to report "everything
+     * changed", ~0 % similarity for two editions of a book): tokens that occur exactly once on each side and in the
+     * same order (patience anchors, longest increasing run) split the problem; the gaps are diffed again.
+     */
+    private fun anchored(a: List<String>, b: List<String>, maxD: Int, depth: Int): List<Char> {
+        val replaceAll = List(a.size) { '-' } + List(b.size) { '+' }
+        if (depth > 8 || a.isEmpty() || b.isEmpty()) return replaceAll
+        val ca = HashMap<String, Int>(); a.forEach { ca[it] = (ca[it] ?: 0) + 1 }
+        val cb = HashMap<String, Int>(); b.forEach { cb[it] = (cb[it] ?: 0) + 1 }
+        val posB = HashMap<String, Int>(); b.forEachIndexed { j, t -> if (cb[t] == 1 && ca[t] == 1) posB[t] = j }
+        val cand = ArrayList<IntArray>()              // (index in a, index in b) of unique common tokens, in a order
+        a.forEachIndexed { i, t -> posB[t]?.let { j -> cand += intArrayOf(i, j) } }
+        if (cand.isEmpty()) return replaceAll
+        val chain = longestIncreasing(cand)
+        if (chain.isEmpty()) return replaceAll
+        val ops = ArrayList<Char>(a.size + b.size)
+        var ia = 0; var ib = 0
+        for (p in chain) {
+            checkInterrupted()
+            ops += opsOf(a.subList(ia, p[0]), b.subList(ib, p[1]), maxD, depth + 1)
+            ops += '='
+            ia = p[0] + 1; ib = p[1] + 1
+        }
+        ops += opsOf(a.subList(ia, a.size), b.subList(ib, b.size), maxD, depth + 1)
+        return ops
+    }
+
+    /** Longest run of [pairs] (sorted by first) whose second values increase (patience sorting, O(k log k)). */
+    internal fun longestIncreasing(pairs: List<IntArray>): List<IntArray> {
+        if (pairs.isEmpty()) return emptyList()
+        val tails = IntArray(pairs.size); var len = 0          // index into pairs of the smallest tail of each length
+        val prev = IntArray(pairs.size) { -1 }
+        for (i in pairs.indices) {
+            var lo = 0; var hi = len
+            while (lo < hi) { val mid = (lo + hi) ushr 1; if (pairs[tails[mid]][1] < pairs[i][1]) lo = mid + 1 else hi = mid }
+            if (lo > 0) prev[i] = tails[lo - 1]
+            tails[lo] = i
+            if (lo == len) len++
+        }
+        val out = ArrayList<IntArray>(len)
+        var k = tails[len - 1]
+        while (k >= 0) { out += pairs[k]; k = prev[k] }
+        out.reverse()
+        return out
+    }
+
+    /** Myers O(ND) edit script, or null when more than [maxD] edits are needed. */
+    private fun myers(a: List<String>, b: List<String>, maxD: Int): List<Char>? {
         val n = a.size; val m = b.size
         if (n == 0) return List(m) { '+' }
         if (m == 0) return List(n) { '-' }
@@ -54,6 +127,7 @@ object WordDiff {
         var dEnd = 0
         outer@ for (d in 0..max) {
             if (d > maxD) break
+            if ((d and 63) == 0) checkInterrupted()
             trace += v.copyOfRange(off - d - 1, off + d + 2)   // slice k = -(d+1)..(d+1): memory O(D^2), not O(D*(N+M))
             var k = -d
             while (k <= d) {
@@ -65,7 +139,7 @@ object WordDiff {
                 k += 2
             }
         }
-        if (!found) return List(n) { '-' } + List(m) { '+' }   // too different: everything replaced
+        if (!found) return null   // too different for Myers within maxD: the caller splits on anchors
         // backtrack
         val out = ArrayList<Char>(n + m)
         var x = n; var y = m

@@ -84,45 +84,55 @@ fun AiToolsPanel(nav: NavHostController, file: File?, modifier: Modifier = Modif
     val uri = file?.let { Uri.fromFile(it).toString() }
     LaunchedEffect(runner.result) { if (runner.result != null) showResult = true }
     val ok = file != null
+    // audit 5 C-4b: the tools open a protected document with the reader's password, or ask for it (cancel keeps the
+    // file; the next tool tap asks again) — they used to pass null and fail on every protected PDF
+    val lock = com.smartdocs.editor.ui.tools.rememberToolPassword(file) { }
+    val pw = lock.password
+    val wrongPw = stringResource(R.string.password_wrong)
+    /** Runs [action] once the file can be opened (asks for the password first when it cannot). */
+    fun gated(action: () -> Unit) {
+        if (lock.ready) action() else if (lock.checked && lock.locked) lock.asking = true
+    }
 
     Column(modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        ToolRow(Icons.Default.GTranslate, stringResource(R.string.a5_translate_doc), stringResource(R.string.a5_translate_doc_sub), ok) { translate = true }
+        ToolRow(Icons.Default.GTranslate, stringResource(R.string.a5_translate_doc), stringResource(R.string.a5_translate_doc_sub), ok) { gated { translate = true } }
         // ai6: side-by-side view (with the last whole translation of this file when there is one)
         ToolRow(Icons.Default.ViewColumn, stringResource(R.string.ai6t_side_by_side), stringResource(R.string.ai6t_side_by_side_sub), ok) { nav.navigate(Routes.tool("ai_side_by_side", uri)) }
-        ToolRow(Icons.Default.Slideshow, stringResource(R.string.ai6t_slides), stringResource(R.string.ai6t_slides_sub), ok) { slides = true }
-        ToolRow(Icons.Default.Gavel, stringResource(R.string.ai6t_contract), stringResource(R.string.ai6t_contract_sub), ok) { review = com.smartdocs.editor.core.ai6.DocReview.Kind.CONTRACT }
-        ToolRow(Icons.Default.CompareArrows, stringResource(R.string.ai6t_compare), stringResource(R.string.ai6t_compare_sub), ok) { review = com.smartdocs.editor.core.ai6.DocReview.Kind.COMPARE }
-        ToolRow(Icons.Default.Analytics, stringResource(R.string.ai6t_analysis), stringResource(R.string.ai6t_analysis_sub), ok) { review = com.smartdocs.editor.core.ai6.DocReview.Kind.ANALYSIS }
-        ToolRow(Icons.Default.ReportProblem, stringResource(R.string.ai6t_risk), stringResource(R.string.ai6t_risk_sub), ok) { review = com.smartdocs.editor.core.ai6.DocReview.Kind.RISK }
-        ToolRow(Icons.Default.TableChart, stringResource(R.string.ai6t_tables), stringResource(R.string.ai6t_tables_sub), ok) { tables = true }
+        ToolRow(Icons.Default.Slideshow, stringResource(R.string.ai6t_slides), stringResource(R.string.ai6t_slides_sub), ok) { gated { slides = true } }
+        ToolRow(Icons.Default.Gavel, stringResource(R.string.ai6t_contract), stringResource(R.string.ai6t_contract_sub), ok) { gated { review = com.smartdocs.editor.core.ai6.DocReview.Kind.CONTRACT } }
+        ToolRow(Icons.Default.CompareArrows, stringResource(R.string.ai6t_compare), stringResource(R.string.ai6t_compare_sub), ok) { gated { review = com.smartdocs.editor.core.ai6.DocReview.Kind.COMPARE } }
+        ToolRow(Icons.Default.Analytics, stringResource(R.string.ai6t_analysis), stringResource(R.string.ai6t_analysis_sub), ok) { gated { review = com.smartdocs.editor.core.ai6.DocReview.Kind.ANALYSIS } }
+        ToolRow(Icons.Default.ReportProblem, stringResource(R.string.ai6t_risk), stringResource(R.string.ai6t_risk_sub), ok) { gated { review = com.smartdocs.editor.core.ai6.DocReview.Kind.RISK } }
+        ToolRow(Icons.Default.TableChart, stringResource(R.string.ai6t_tables), stringResource(R.string.ai6t_tables_sub), ok) { gated { tables = true } }
         ToolRow(Icons.Default.Image, stringResource(R.string.ai6t_image_gen), stringResource(R.string.ai6t_image_gen_sub), true) { nav.navigate(Routes.tool("ai_image", uri)) }
         ToolRow(Icons.Default.Audiotrack, stringResource(R.string.ai6t_transcribe), stringResource(R.string.ai6t_transcribe_sub), true) { nav.navigate(Routes.tool("ai_transcribe", uri)) }
-        ToolRow(Icons.Default.PrivacyTip, stringResource(R.string.a5_pii_title), stringResource(R.string.a5_pii_sub), ok) { pii = true }
-        ToolRow(Icons.Default.EditNote, stringResource(R.string.a5_form_fill), stringResource(R.string.a5_form_fill_sub), ok) { form = true }
-        ToolRow(Icons.Default.Comment, stringResource(R.string.a5_comments_summary), stringResource(R.string.a5_comments_summary_sub), ok) {
-            val f = file ?: return@ToolRow
-            runner.run(processing) {
+        ToolRow(Icons.Default.PrivacyTip, stringResource(R.string.a5_pii_title), stringResource(R.string.a5_pii_sub), ok) { gated { pii = true } }
+        ToolRow(Icons.Default.EditNote, stringResource(R.string.a5_form_fill), stringResource(R.string.a5_form_fill_sub), ok) { gated { form = true } }
+        ToolRow(Icons.Default.Comment, stringResource(R.string.a5_comments_summary), stringResource(R.string.a5_comments_summary_sub), ok) { gated {
+            val f = file ?: return@gated
+            runner.run(processing) { com.smartdocs.editor.ui.tools.withPasswordMessage(wrongPw) {
                 try {
-                    val s = CommentAi.summarize(ctx, client, f, null)
+                    val s = CommentAi.summarize(ctx, client, f, pw)
                     val out = app.documents.uniqueFile(app.documents.docsDir, f.nameWithoutExtension + "_comments")
-                    CommentAi.addAsNote(ctx, f, null, s, ctx.getString(R.string.a5_ai_author), out)
+                    // the document with one note added: "Save in original" may replace it (audit 5 E-1 / C-2)
+                    com.smartdocs.editor.core.pdf.ToolOutputs.record(CommentAi.addAsNote(ctx, f, pw, s, ctx.getString(R.string.a5_ai_author), out), f)
                 } catch (e: Exception) { throw if (AiCalls.isQuota(e)) IllegalStateException(quota) else e }
-            }
-        }
-        ToolRow(Icons.Default.Toc, stringResource(R.string.a5_ai_bookmarks), stringResource(R.string.a5_ai_bookmarks_sub), ok) {
-            val f = file ?: return@ToolRow
-            runner.run(processing) {
-                val idx = com.smartdocs.editor.core.ai5.DocIndexer.get(ctx, f)
+            } }
+        } }
+        ToolRow(Icons.Default.Toc, stringResource(R.string.a5_ai_bookmarks), stringResource(R.string.a5_ai_bookmarks_sub), ok) { gated {
+            val f = file ?: return@gated
+            runner.run(processing) { com.smartdocs.editor.ui.tools.withPasswordMessage(wrongPw) {
+                val idx = com.smartdocs.editor.core.ai5.DocIndexer.get(ctx, f, pw)
                 // headings are spread over the whole book: give the model the first line of every chunk + an even spread
                 val heads = idx.chunks.joinToString("\n") { "[صفحة ${it.page + 1}] " + it.text.lineSequence().first().take(120) }.take(9000)
                 val items = try { client.outline(heads + "\n\n" + com.smartdocs.editor.core.ai5.DocIndex.material(idx.spread(4000))) }
                     catch (e: Exception) { throw if (AiCalls.isQuota(e)) IllegalStateException(quota) else e }
                 if (items.isEmpty()) throw IllegalStateException(ctx.getString(R.string.a5_err_parse))
                 val out = app.documents.uniqueFile(app.documents.docsDir, f.nameWithoutExtension + "_bookmarks")
-                com.smartdocs.editor.core.pdf.PdfOps.setOutline(f, items.map { Triple(it.title, (it.page - 1).coerceIn(0, (idx.pageCount - 1).coerceAtLeast(0)), it.level) }, out)
-                out
-            }
-        }
+                com.smartdocs.editor.core.pdf.PdfOps.setOutline(f, items.map { Triple(it.title, (it.page - 1).coerceIn(0, (idx.pageCount - 1).coerceAtLeast(0)), it.level) }, out, pw)
+                com.smartdocs.editor.core.pdf.ToolOutputs.record(out, f)
+            } }
+        } }
         ToolRow(Icons.Default.Headphones, stringResource(R.string.a5_podcast), stringResource(R.string.a5_podcast_sub), true) { nav.navigate(Routes.tool("podcast", uri)) }
         ToolRow(Icons.Default.RecordVoiceOver, stringResource(R.string.a5_read_aloud), stringResource(R.string.a5_read_aloud_sub), true) { nav.navigate(Routes.tool("read_aloud", uri)) }
     }
@@ -155,7 +165,7 @@ fun AiToolsPanel(nav: NavHostController, file: File?, modifier: Modifier = Modif
                     val range = pages.takeIf { it.isNotBlank() }?.let { parsePages(it) }
                     val out = app.documents.uniqueFile(app.documents.docsDir, f.nameWithoutExtension + "_" + lang)
                     try {
-                        DocTranslator.translate(ctx, client, f, null, lang, mode, out, range, { a, b -> runner.message = "$processing ${a}/${b}" }, guidance, trImages)
+                        DocTranslator.translate(ctx, client, f, pw, lang, mode, out, range, { a, b -> runner.message = "$processing ${a}/${b}" }, guidance, trImages)
                             .also { com.smartdocs.editor.ui.ai6.SideBySideArgs.translated[f.absolutePath] = it }   // ai6: the side-by-side view shows it
                     }
                     catch (e: Exception) { throw if (AiCalls.isQuota(e)) IllegalStateException(quota) else if (e is com.smartdocs.editor.core.ai6.AiNotConfiguredException) IllegalStateException(ctx.getString(R.string.ai6_not_configured)) else e }
@@ -165,11 +175,12 @@ fun AiToolsPanel(nav: NavHostController, file: File?, modifier: Modifier = Modif
         dismissButton = { TextButton(onClick = { translate = false }) { Text(stringResource(R.string.a5_cancel)) } })
 
     // ai6 (fork T)
-    if (slides && file != null) com.smartdocs.editor.ui.ai6.SlidesSheet(nav, listOf(file), onDismiss = { slides = false })
-    review?.let { k -> if (file != null) com.smartdocs.editor.ui.ai6.ReviewSheet(nav, file, k, onDismiss = { review = null }) }
-    if (tables && file != null) com.smartdocs.editor.ui.ai6.TablesSheet(file, onDismiss = { tables = false })
-    if (pii && file != null) PiiScanSheet(file, null, onApply = { pii = false; nav.navigate(Routes.tool("redact", uri)) }, onDismiss = { pii = false })
-    if (form && file != null) FormFillSheet(file, null, onFile = { runner.result = it }, onDismiss = { form = false })
+    val pwMap = if (file != null && pw != null) mapOf(file.absolutePath to pw) else emptyMap()
+    if (slides && file != null) com.smartdocs.editor.ui.ai6.SlidesSheet(nav, listOf(file), onDismiss = { slides = false }, passwords = pwMap)
+    review?.let { k -> if (file != null) com.smartdocs.editor.ui.ai6.ReviewSheet(nav, file, k, onDismiss = { review = null }, passwords = pwMap) }
+    if (tables && file != null) com.smartdocs.editor.ui.ai6.TablesSheet(file, onDismiss = { tables = false }, password = pw)
+    if (pii && file != null) PiiScanSheet(file, pw, onApply = { pii = false; nav.navigate(Routes.tool("redact", uri)) }, onDismiss = { pii = false })
+    if (form && file != null) FormFillSheet(file, pw, onFile = { runner.result = com.smartdocs.editor.core.pdf.ToolOutputs.record(it, file) }, onDismiss = { form = false })
     if (runner.running) ProgressDialog(runner.message)
     runner.error?.let { e -> AlertDialog(onDismissRequest = { runner.error = null }, text = { Text(e) }, confirmButton = { TextButton(onClick = { runner.error = null }) { Text(stringResource(R.string.a5_close)) } }) }
     if (showResult) runner.result?.let { ResultSheet(it, nav, onDismiss = { showResult = false; runner.result = null }) }

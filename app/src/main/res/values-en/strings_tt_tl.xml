@@ -15,4 +15,5 @@
     <string name="tttl_pr_owner_text">You did not type an owner password, so a random one was created. Keep it: only it lifts the print, copy and edit restrictions of this file.</string>
     <string name="tttl_pr_owner_copied">Owner password copied</string>
     <string name="tttl_copy">Copy</string>
+    <string name="tttl_out_of_memory">The file is too large for the device memory. Close other apps or try a smaller file.</string>
 </resources>

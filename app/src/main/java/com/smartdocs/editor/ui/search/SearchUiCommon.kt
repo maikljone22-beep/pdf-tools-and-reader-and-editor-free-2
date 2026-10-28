@@ -11,6 +11,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -35,6 +37,16 @@ class DocHolder(initial: File?) {
     var error by mutableStateOf<String?>(null)
     /** Bumped whenever a (re)opened session is ready. */
     var generation by mutableIntStateOf(0)
+
+    /** Switch to [f], starting from the reader's password for it (audit 5 T-09). */
+    fun open(f: File?) { password = com.smartdocs.editor.core.pdf.SessionPasswords.get(f); file = f }
+}
+
+/** audit 5 C-9: a user message for a failed search / open (never the raw exception text). */
+fun searchErrorMessage(ctx: android.content.Context, e: Throwable): String = when {
+    com.smartdocs.editor.ui.tools.isPasswordError(e) -> ctx.getString(R.string.password_wrong)
+    e is OutOfMemoryError -> ctx.getString(R.string.ttcx_out_of_memory)
+    else -> ctx.getString(R.string.ttcx_search_failed)
 }
 
 fun fileOf(uri: String?): File? = uri?.takeIf { it.isNotBlank() }?.let { runCatching { File(Uri.parse(it).path!!) }.getOrNull() }?.takeIf { it.exists() }
@@ -43,14 +55,15 @@ fun fileOf(uri: String?): File? = uri?.takeIf { it.isNotBlank() }?.let { runCatc
 @Composable
 fun rememberDocHolder(uri: String?): DocHolder {
     val ctx = LocalContext.current
-    val h = remember { DocHolder(fileOf(uri)) }
+    // audit 5 T-09: the document the tool was opened on starts with the reader's password
+    val h = remember { DocHolder(fileOf(uri)).also { it.password = com.smartdocs.editor.core.pdf.SessionPasswords.get(it.file) } }
     DisposableEffect(Unit) { onDispose { h.session?.close() } }
     LaunchedEffect(h.file, h.password) {
         h.session?.closeAsync(); h.session = null; h.error = null
         val f = h.file ?: return@LaunchedEffect
         try { h.session = PdfSession.open(ctx, f, h.password); h.generation++ }
         catch (e: PdfSession.Companion.PasswordRequiredException) { h.askPassword = true }
-        catch (e: Exception) { h.error = e.message ?: e.toString() }
+        catch (e: Exception) { h.error = ctx.getString(R.string.ttcx_open_failed) }   // audit 5 C-9: no raw English
     }
     if (h.askPassword) PasswordDialog(onDismiss = { h.askPassword = false }) { h.password = it; h.askPassword = false }
     return h
@@ -186,12 +199,15 @@ fun ColorRow(selected: Int, onSelect: (Int) -> Unit, colors: List<Int> = MarkCol
     Row(modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         colors.forEach { c ->
             val col = Color(0xFF000000 or c.toLong())
+            // audit 5 C-22: TalkBack reads the colour name and whether it is the selected one
+            val name = com.smartdocs.editor.ui.tools.colorLabel(c)
             Surface(
+                selected = c == selected,
                 onClick = { onSelect(c) },
                 shape = androidx.compose.foundation.shape.CircleShape,
                 color = col,
                 border = androidx.compose.foundation.BorderStroke(if (c == selected) 3.dp else 1.dp, if (c == selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant),
-                modifier = Modifier.size(34.dp),
+                modifier = Modifier.size(34.dp).semantics { contentDescription = name },
             ) {}
         }
     }

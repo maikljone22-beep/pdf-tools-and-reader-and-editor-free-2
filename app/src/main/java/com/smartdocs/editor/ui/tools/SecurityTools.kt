@@ -62,8 +62,18 @@ fun ProtectScreen(nav: NavHostController, uri: String?) {
     val pick = rememberPdfPicker { file = it.firstOrNull() }
     val processing = stringResource(R.string.processing)
     val needOne = stringResource(R.string.tl_password_required)
+    val sameMsg = stringResource(R.string.ttcx_owner_same)
+    val wrongPw = stringResource(R.string.password_wrong)
+    val copiedMsg = stringResource(R.string.ttcx_copied)
+    val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
+    val snackbar = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+    // audit 5 T-09 / C-4: an already protected input opens with the reader's password or asks for one
+    val lock = rememberToolPassword(file) { file = null }
+    // audit 5 P-2 / P-5: the owner password PdfOps.protect picked when none was typed (shown once, with a copy action)
+    var generatedOwner by remember { mutableStateOf<String?>(null) }
 
-    ToolScaffold(stringResource(R.string.tool_protect), nav, runner) {
+    ToolScaffold(stringResource(R.string.tool_protect), nav, runner, snackbar = snackbar) {
         FilePickRow(file, stringResource(R.string.tl_input_file), pick)
         PasswordField(openPwd, stringResource(R.string.password_open)) { openPwd = it }
         Text(stringResource(R.string.tl_password_open_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -78,15 +88,34 @@ fun ProtectScreen(nav: NavHostController, uri: String?) {
                 SwitchRow(stringResource(R.string.perm_fill_forms), fill) { fill = it }
             }
         }
-        PrimaryButton(stringResource(R.string.tl_protect), enabled = file != null, icon = Icons.Default.Lock) {
+        if (ownerPwd.isNotEmpty() && ownerPwd == openPwd) Text(sameMsg, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+        generatedOwner?.let { g ->
+            Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) {
+                Row(Modifier.padding(start = 16.dp, end = 4.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(stringResource(R.string.ttcx_owner_generated), style = MaterialTheme.typography.bodyMedium)
+                        androidx.compose.foundation.text.selection.SelectionContainer { Text(g, style = MaterialTheme.typography.titleSmall) }
+                    }
+                    IconButton(onClick = {
+                        runCatching { clipboard.setText(androidx.compose.ui.text.AnnotatedString(g)) }
+                        scope.launch { snackbar.showSnackbar(copiedMsg) }
+                    }) { Icon(Icons.Default.ContentCopy, stringResource(R.string.ttcx_copy_owner)) }
+                }
+            }
+        }
+        PrimaryButton(stringResource(R.string.tl_protect), enabled = file != null && lock.ready, icon = Icons.Default.Lock) {
             val src = file ?: return@PrimaryButton
             if (openPwd.isEmpty() && ownerPwd.isEmpty()) { runner.error = needOne; return@PrimaryButton }
-            val o = openPwd; val w = ownerPwd; val p = print; val c = copy; val m = modify; val a = annotate; val f = fill
-            runner.run(processing) {
+            // audit 5 P-2: an owner password equal to the open one would give every reader full rights
+            if (ownerPwd == openPwd) { runner.error = sameMsg; return@PrimaryButton }
+            val o = openPwd; val w = ownerPwd; val p = print; val c = copy; val m = modify; val a = annotate; val f = fill; val cur = lock.password
+            generatedOwner = null
+            runner.run(processing) { withPasswordMessage(wrongPw) {
                 val out = app.documents.uniqueFile(app.documents.docsDir, outName(src, "protected"))
-                PdfOps.protect(src, out, o, w, p, c, m, a, f)
-                out
-            }
+                val used = PdfOps.protect(src, out, o, w, p, c, m, a, f, currentPassword = cur)
+                if (w.isEmpty()) withContext(Dispatchers.Main) { generatedOwner = used }
+                com.smartdocs.editor.core.pdf.ToolOutputs.record(out, src)
+            } }
         }
     }
 }
@@ -97,7 +126,8 @@ fun UnlockScreen(nav: NavHostController, uri: String?) {
     val app = LocalApp.current
     val runner = rememberToolRunner()
     var file by rememberInputFile(uri)
-    var pwd by remember { mutableStateOf("") }
+    // audit 5 T-09: start from the reader's password for the file
+    var pwd by remember(file) { mutableStateOf(com.smartdocs.editor.core.pdf.SessionPasswords.get(file).orEmpty()) }
     val pick = rememberPdfPicker { file = it.firstOrNull() }
     val processing = stringResource(R.string.processing)
     val wrong = stringResource(R.string.password_wrong)
@@ -119,7 +149,7 @@ fun UnlockScreen(nav: NavHostController, uri: String?) {
                     if (e is com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException || "password" in msg || "decrypt" in msg) throw IllegalStateException(wrong)
                     throw e
                 }
-                out
+                com.smartdocs.editor.core.pdf.ToolOutputs.record(out, src)
             }
         }
     }
@@ -137,19 +167,21 @@ fun FlattenScreen(nav: NavHostController, uri: String?) {
     var mode by remember { mutableStateOf(FlattenMode.FORMS) }
     val pick = rememberPdfPicker { file = it.firstOrNull() }
     val processing = stringResource(R.string.processing)
+    val wrongPw = stringResource(R.string.password_wrong)
+    val lock = rememberToolPassword(file) { file = null }
 
     ToolScaffold(stringResource(R.string.tool_flatten), nav, runner) {
         FilePickRow(file, stringResource(R.string.tl_input_file), pick)
         FlattenOption(stringResource(R.string.tl_flatten_forms), stringResource(R.string.tl_flatten_forms_desc), mode == FlattenMode.FORMS) { mode = FlattenMode.FORMS }
         FlattenOption(stringResource(R.string.tl_flatten_all), stringResource(R.string.tl_flatten_all_desc), mode == FlattenMode.ALL) { mode = FlattenMode.ALL }
-        PrimaryButton(stringResource(R.string.tl_flatten), enabled = file != null, icon = Icons.Default.Layers) {
+        PrimaryButton(stringResource(R.string.tl_flatten), enabled = file != null && lock.ready, icon = Icons.Default.Layers) {
             val src = file ?: return@PrimaryButton
-            val m = mode
-            runner.run(processing) {
+            val m = mode; val pw = lock.password
+            runner.run(processing) { withPasswordMessage(wrongPw) {
                 val out = app.documents.uniqueFile(app.documents.docsDir, outName(src, "flat"))
-                if (m == FlattenMode.FORMS) PdfOps.flattenForms(src, out) else PdfOps.flatten(ctx, src, out)
-                out
-            }
+                if (m == FlattenMode.FORMS) PdfOps.flattenForms(src, out, pw) else PdfOps.flatten(ctx, src, out, password = pw)
+                com.smartdocs.editor.core.pdf.ToolOutputs.record(out, src)
+            } }
         }
     }
 }
@@ -196,7 +228,7 @@ private fun CertEncryptTab(fileState: MutableState<java.io.File?>, runner: com.s
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var file by fileState
-    var currentPwd by remember { mutableStateOf("") }
+    var currentPwd by remember { mutableStateOf(com.smartdocs.editor.core.pdf.SessionPasswords.get(fileState.value).orEmpty()) }   // audit 5 T-09
     val recipients = remember { mutableStateListOf<CertEncryption.Recipient>() }
     var editing by remember { mutableStateOf<Int?>(null) }
     var prompt by remember { mutableStateOf(KeyPrompt.NONE) }

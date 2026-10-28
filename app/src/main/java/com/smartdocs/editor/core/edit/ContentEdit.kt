@@ -41,11 +41,14 @@ object ContentEdit {
      * A one-line block may grow sideways (to the page margin); a paragraph is re-wrapped to its width.
      */
     suspend fun replaceText(context: Context, src: File, out: File, password: String?, page: Int, ops: IntArray, text: String, style: EditTextStyle) =
-        edit(src, out, password) { doc ->
+        edit(src, out, password) { doc -> replaceTextIn(context, doc, page, ops, text, style) }
+
+    /** [replaceText] on an open document (audit 5 C-8: find & replace rewrites every block in ONE load and save). */
+    internal fun replaceTextIn(context: Context, doc: PDDocument, page: Int, ops: IntArray, text: String, style: EditTextStyle) {
             val a = PageTextModel.analyze(doc, page)
             val block = findBlock(a, ops)
             // NVE-text: rotated rows and form XObject text are rewritten in their own frame / stream
-            if (block.angle != 0f || block.inForm) { TextEdit5.replaceIn(context, doc, page, a, block, text, style); return@edit }
+            if (block.angle != 0f || block.inForm) { TextEdit5.replaceIn(context, doc, page, a, block, text, style); return }
             val p = doc.getPage(page)
             val rw = ContentRewriter(doc, p)
             block.ops.forEach { rw.removeText(it, a.scanner.textOps[it]) }
@@ -62,7 +65,7 @@ object ContentEdit {
                 // keep the baseline of the first line
                 writeText(context, doc, p, a.frame, original, text, st, left, right, block.firstBaseline, block.rtl)
             }
-        }
+    }
 
     /** Add new text as page content. [box]: left/right bound the lines, top is the top of the first line. */
     suspend fun addText(context: Context, src: File, out: File, password: String?, page: Int, text: String, style: EditTextStyle, box: RectF) =

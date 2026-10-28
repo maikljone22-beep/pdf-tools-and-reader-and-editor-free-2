@@ -15,4 +15,5 @@
     <string name="tttl_pr_owner_text">لم تُدخل كلمة مرور للمالك فأنشأنا واحدة عشوائية. احفظها: هي وحدها ترفع قيود الطباعة والنسخ والتعديل عن هذا الملف.</string>
     <string name="tttl_pr_owner_copied">نُسخت كلمة مرور المالك</string>
     <string name="tttl_copy">نسخ</string>
+    <string name="tttl_out_of_memory">الملف كبير على ذاكرة الجهاز. أغلق تطبيقات أخرى أو جرّب ملفًا أصغر.</string>
 </resources>

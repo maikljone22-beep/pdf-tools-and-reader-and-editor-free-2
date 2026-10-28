@@ -11,6 +11,7 @@ import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.text.PDFTextStripper
 import com.tom_roush.pdfbox.text.TextPosition
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withContext
 import java.io.File
 
@@ -74,7 +75,10 @@ class WordExtractor : PDFTextStripper() {
 
     override fun writeLineSeparator() { flushLine(); super.writeLineSeparator() }
 
-    override fun startPage(page: com.tom_roush.pdfbox.pdmodel.PDPage?) { flushLine(); super.startPage(page); this.page = currentPageNo - 1 }
+    override fun startPage(page: com.tom_roush.pdfbox.pdmodel.PDPage?) {
+        if (Thread.currentThread().isInterrupted) throw InterruptedException("compare cancelled")   // audit 5 C-12
+        flushLine(); super.startPage(page); this.page = currentPageNo - 1
+    }
 
     override fun endPage(page: com.tom_roush.pdfbox.pdmodel.PDPage?) { flushLine(); super.endPage(page) }
 
@@ -117,9 +121,15 @@ object CompareEngine {
     suspend fun compare(old: File, oldPw: String?, new: File, newPw: String?): CompareResult =
         compare(old, oldPw, new, newPw, CompareOptions(images = false, annotations = false, formatting = false, autoMatch = false))
 
-    suspend fun compare(old: File, oldPw: String?, new: File, newPw: String?, o: CompareOptions): CompareResult = withContext(Dispatchers.IO) {
-        fun load(f: File, pw: String?) = if (pw.isNullOrEmpty()) PDDocument.load(f) else PDDocument.load(f, pw)
-        load(old, oldPw).use { od -> load(new, newPw).use { nd -> CompareCore.run(od, nd, o) } }
+    /**
+     * audit 5 C-12: both files load with a mixed memory setting (large streams spill to temp files, PdfOps.loadRaw),
+     * and the work runs interruptible: Cancel interrupts the thread, and the word extraction (per page) and the diff
+     * (WordDiff) stop instead of running to the end.
+     */
+    suspend fun compare(old: File, oldPw: String?, new: File, newPw: String?, o: CompareOptions): CompareResult = runInterruptible(Dispatchers.IO) {
+        com.smartdocs.editor.core.pdf.PdfOps.loadRaw(old, oldPw).use { od ->
+            com.smartdocs.editor.core.pdf.PdfOps.loadRaw(new, newPw).use { nd -> CompareCore.run(od, nd, o) }
+        }
     }
 
     internal fun neighbour(words: List<PWord>, at: Int): PWord? = words.getOrNull(at - 1) ?: words.getOrNull(at)

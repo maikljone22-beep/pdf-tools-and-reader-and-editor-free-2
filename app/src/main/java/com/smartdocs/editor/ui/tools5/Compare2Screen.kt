@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -59,11 +61,13 @@ private suspend fun renderPage(ctx: Context, f: File, pw: String?, page: Int, wi
     } finally { s.closeAsync() }
 }
 
-/** True when [f] needs a password ([pw] missing or wrong). */
+/**
+ * True when [f] needs a password ([pw] missing or wrong). audit 5 C-14: one probe per file / password change through
+ * LockedPdf (no own full load), and the screen starts from the reader's password so a protected file the reader
+ * opened is not probed twice.
+ */
 private suspend fun locked(f: File, pw: String?): Boolean = withContext(Dispatchers.IO) {
-    try { (if (pw.isNullOrEmpty()) com.tom_roush.pdfbox.pdmodel.PDDocument.load(f) else com.tom_roush.pdfbox.pdmodel.PDDocument.load(f, pw)).close(); false }
-    catch (e: com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException) { true }
-    catch (e: Exception) { false }
+    if (pw.isNullOrEmpty()) com.smartdocs.editor.core.pdf.LockedPdf.needsPassword(f) else !com.smartdocs.editor.core.pdf.LockedPdf.checkPassword(f, pw)
 }
 
 @Composable
@@ -126,8 +130,8 @@ fun Compare2Screen(nav: NavHostController, uri: String?) {
     val snackbar = remember { SnackbarHostState() }
     var old by remember { mutableStateOf(fileOf(uri)) }
     var new by remember { mutableStateOf<File?>(com.smartdocs.editor.ui.signature.SignedCompare.take(old)) }   // signed version vs current
-    var oldPw by remember { mutableStateOf<String?>(null) }
-    var newPw by remember { mutableStateOf<String?>(null) }
+    var oldPw by remember { mutableStateOf(com.smartdocs.editor.core.pdf.SessionPasswords.get(old)) }   // audit 5 T-09
+    var newPw by remember { mutableStateOf(com.smartdocs.editor.core.pdf.SessionPasswords.get(new)) }
     var ask by remember { mutableStateOf(0) }   // 1 = old, 2 = new
     var cmp by remember { mutableStateOf<CompareResult?>(null) }
     var opts by remember { mutableStateOf(CompareOptions()) }
@@ -139,8 +143,8 @@ fun Compare2Screen(nav: NavHostController, uri: String?) {
     var showStyle by remember { mutableStateOf(false) }
     var showCount by remember { mutableStateOf(false) }
     val job = rememberT5Job()
-    val pickOld = rememberPdfPicker { old = it.firstOrNull(); oldPw = null; cmp = null }
-    val pickNew = rememberPdfPicker { new = it.firstOrNull(); newPw = null; cmp = null }
+    val pickOld = rememberPdfPicker { old = it.firstOrNull(); oldPw = com.smartdocs.editor.core.pdf.SessionPasswords.get(old); cmp = null }
+    val pickNew = rememberPdfPicker { new = it.firstOrNull(); newPw = com.smartdocs.editor.core.pdf.SessionPasswords.get(new); cmp = null }
     LaunchedEffect(old, oldPw) { old?.let { if (locked(it, oldPw)) ask = 1 } }
     LaunchedEffect(new, newPw) { new?.let { if (locked(it, newPw)) ask = 2 } }
     if (ask != 0) PasswordDialog(onDismiss = { if (ask == 1) old = null else new = null; ask = 0 }) { pw -> if (ask == 1) oldPw = pw else newPw = pw; ask = 0 }
@@ -248,9 +252,9 @@ fun Compare2Screen(nav: NavHostController, uri: String?) {
             val pairs = r.changedPairs(kinds).ifEmpty { r.pairs.take(1) }.ifEmpty { listOf(PagePair(0, 0)) }
             val pair = pairs[at.coerceIn(0, pairs.size - 1)]
             if (mode < 2) Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = { at = (at - 1).coerceAtLeast(0) }, enabled = at > 0) { Icon(Icons.Default.ChevronRight, stringResource(R.string.t5_prev_change)) }
+                IconButton(onClick = { at = (at - 1).coerceAtLeast(0) }, enabled = at > 0) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, stringResource(R.string.t5_prev_change)) }   // audit 5 C-19: mirrored in RTL
                 Text(stringResource(R.string.nt_cmp_pair, at + 1, pairs.size), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
-                IconButton(onClick = { at = (at + 1).coerceAtMost(pairs.size - 1) }, enabled = at < pairs.size - 1) { Icon(Icons.Default.ChevronLeft, stringResource(R.string.t5_next_change)) }
+                IconButton(onClick = { at = (at + 1).coerceAtMost(pairs.size - 1) }, enabled = at < pairs.size - 1) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, stringResource(R.string.t5_next_change)) }
             }
             when (mode) {
                 0 -> { val a = old; val b = new; if (a != null && b != null) BoxWithConstraints(Modifier.fillMaxWidth()) {

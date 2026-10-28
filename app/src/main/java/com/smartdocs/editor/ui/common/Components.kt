@@ -158,7 +158,17 @@ fun ProgressDialog(message: String, progress: Float? = null) {
 }
 
 /** State holder for long-running tool operations with a result file. */
-class ToolRunner(private val scope: CoroutineScope) {
+class ToolRunner(private val scope: CoroutineScope, private val ctx: android.content.Context? = null) {
+    /** audit 5 C-4 / C-18: password and memory failures in the user's language, not PdfBox's English text. */
+    private fun messageOf(e: Throwable): String {
+        val c = ctx
+        if (c != null) {
+            if (e is OutOfMemoryError) return c.getString(R.string.tttl_out_of_memory)
+            if (com.smartdocs.editor.core.edit5.E5Locks.isPasswordError(e) || (e.message ?: "").contains("encryption dictionary")) return c.getString(R.string.password_wrong)
+        }
+        return e.message ?: e.toString()
+    }
+
     var running by mutableStateOf(false); private set
     var message by mutableStateOf("")
     var error by mutableStateOf<String?>(null)
@@ -170,7 +180,7 @@ class ToolRunner(private val scope: CoroutineScope) {
         running = true; message = msg; error = null
         scope.launch {
             // Throwable: OutOfMemoryError / NoClassDefFoundError from PdfBox on big or odd files must show an error, not kill the app
-            try { result = withContext(Dispatchers.IO) { block() } } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Throwable) { error = e.message ?: e.toString() } finally { running = false }
+            try { result = withContext(Dispatchers.IO) { block() } } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Throwable) { error = messageOf(e) } finally { running = false }
         }
     }
 
@@ -178,13 +188,13 @@ class ToolRunner(private val scope: CoroutineScope) {
         if (running) return
         running = true; message = msg; error = null
         scope.launch {
-            try { results = withContext(Dispatchers.IO) { block() } } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Throwable) { error = e.message ?: e.toString() } finally { running = false }
+            try { results = withContext(Dispatchers.IO) { block() } } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Throwable) { error = messageOf(e) } finally { running = false }
         }
     }
 }
 
 @Composable
-fun rememberToolRunner(): ToolRunner { val scope = rememberCoroutineScope(); return remember { ToolRunner(scope) } }
+fun rememberToolRunner(): ToolRunner { val scope = rememberCoroutineScope(); val ctx = LocalContext.current.applicationContext; return remember { ToolRunner(scope, ctx) } }
 
 /** Bottom sheet shown after a tool produced a file: open / share / save elsewhere. */
 @OptIn(ExperimentalMaterial3Api::class)

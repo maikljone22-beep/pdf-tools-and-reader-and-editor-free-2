@@ -54,7 +54,8 @@ fun FormsScreen(nav: NavHostController, uri: String?) {
     var loaded by remember { mutableStateOf(false) }
     val edits = remember { mutableStateMapOf<String, String>() }
     var result by remember { mutableStateOf<File?>(null) }
-    var password by remember { mutableStateOf<String?>(null) }
+    // audit 5 T-09: the document the tool was opened on starts with the reader's password
+    var password by remember { mutableStateOf(com.smartdocs.editor.core.pdf.SessionPasswords.get(file)) }
     var askPassword by remember { mutableStateOf(false) }
     var saveMenu by remember { mutableStateOf(false) }
     val snack = remember { SnackbarHostState() }
@@ -85,12 +86,12 @@ fun FormsScreen(nav: NavHostController, uri: String?) {
             }
             catch (e: Exception) {
                 if (e.message?.contains("password", true) == true || e is com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException) askPassword = true
-                else snack.showSnackbar(e.message ?: e.toString())
+                else snack.showSnackbar(ctx.getString(R.string.ttcx_open_failed))      // audit 5 C-9: no raw English
             } finally { loading = false }
         }
     }
     LaunchedEffect(file) { reload() }
-    val pick = rememberPdfPicker { it.firstOrNull()?.let { f -> file = f } }
+    val pick = rememberPdfPicker { it.firstOrNull()?.let { f -> password = com.smartdocs.editor.core.pdf.SessionPasswords.get(f); file = f } }
 
     fun valueOf(f: FormField) = edits[f.name] ?: computed[f.name] ?: f.value
 
@@ -115,9 +116,20 @@ fun FormsScreen(nav: NavHostController, uri: String?) {
         val dyn = dynamicXfa
         runner.run(savingMsg) {
             val out = if (overwrite) app.documents.newTemp("form") else app.documents.uniqueFile(app.documents.docsDir, src.nameWithoutExtension + "_filled")
-            if (dyn) XfaSupport.saveValues(src, xValues, out, password)
-            else FormOps.fillFields(src, values, out, password, ctx, display, dropXfa)
-            if (overwrite) { out.copyTo(src, overwrite = true); out.delete(); runCatching { app.documents.touchRecent(src) }; src } else { runCatching { app.documents.touchRecent(out) }; out }
+            try {
+                if (dyn) XfaSupport.saveValues(src, xValues, out, password)
+                else FormOps.fillFields(src, values, out, password, ctx, display, dropXfa)
+            } catch (e: Exception) { out.delete(); throw e }
+            if (overwrite) {
+                // audit 5 C-3: never `out.copyTo(src)` (not atomic, no backup: a kill mid-copy truncated the original).
+                // replaceOriginal keeps a trash copy and swaps atomically; the central signed-file gate lives there
+                try { app.documents.replaceOriginal(src, out) } finally { out.delete() }
+                runCatching { app.documents.touchRecent(src) }; src
+            } else {
+                runCatching { app.documents.touchRecent(out) }
+                // the filled form is the source transformed: "Save in original" may replace it (audit 5 E-1 / C-2)
+                com.smartdocs.editor.core.pdf.ToolOutputs.record(out, src)
+            }
         }
     }
     LaunchedEffect(runner.result) { val r = runner.result; if (r != null && r == file) writeBackForms(r) }
@@ -125,7 +137,7 @@ fun FormsScreen(nav: NavHostController, uri: String?) {
         val src = file ?: return
         runner.run(processing) {
             val out = app.documents.uniqueFile(app.documents.docsDir, src.nameWithoutExtension + "_reset")
-            FormOps.resetAll(src, out, password); out
+            FormOps.resetAll(src, out, password); com.smartdocs.editor.core.pdf.ToolOutputs.record(out, src)
         }
     }
     fun flatten() {
@@ -140,7 +152,7 @@ fun FormsScreen(nav: NavHostController, uri: String?) {
                     try { com.smartdocs.editor.core.forms5.XfaGenerated.generate(ctx, withValues, if (withValues == src) password else null, tmp) } finally { if (withValues != src) withValues.delete() }
                     PdfOps.flattenForms(tmp, out)
                 } finally { tmp.delete() }
-                out
+                com.smartdocs.editor.core.pdf.ToolOutputs.record(out, src)
             }
             return
         }
@@ -152,7 +164,7 @@ fun FormsScreen(nav: NavHostController, uri: String?) {
             val tmp = if (values.isNotEmpty() || dropXfa) app.documents.newTemp("formflat").also { FormOps.fillFields(src, values, it, password, ctx, display, dropXfa) } else src
             PdfOps.flattenForms(tmp, out, password)
             if (tmp != src) tmp.delete()
-            out
+            com.smartdocs.editor.core.pdf.ToolOutputs.record(out, src)
         }
     }
     fun dropXfa() {
@@ -160,7 +172,7 @@ fun FormsScreen(nav: NavHostController, uri: String?) {
         runner.run(processing) {
             val out = app.documents.uniqueFile(app.documents.docsDir, src.nameWithoutExtension + "_acroform")
             FormOps.fillFields(src, emptyMap(), out, password, ctx, emptyMap(), true)
-            out
+            com.smartdocs.editor.core.pdf.ToolOutputs.record(out, src)
         }
     }
     fun openInReader() { file?.let { f -> nav.navigate(com.smartdocs.editor.ui.Routes.reader(Uri.fromFile(f).toString(), 0)) } }
@@ -170,11 +182,13 @@ fun FormsScreen(nav: NavHostController, uri: String?) {
     // JSON export / import of values
     val exportedMsg = stringResource(R.string.pg_form_exported)
     val importFailed = stringResource(R.string.pg_form_import_failed)
+    val exportFailed = stringResource(R.string.ttcx_export_failed)
     val exporter = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { u ->
         if (u != null) scope.launch {
             val json = buildJsonObject { fields.forEach { f -> put(f.name, JsonPrimitive(valueOf(f))) } }.toString()
-            withContext(Dispatchers.IO) { runCatching { ctx.contentResolver.openOutputStream(u, "wt")?.use { it.write(json.toByteArray()) } } }
-            snack.showSnackbar(exportedMsg)
+            // audit 5 C-26: a failed write (or no stream) is reported, not shown as "exported"
+            val ok = withContext(Dispatchers.IO) { runCatching { (ctx.contentResolver.openOutputStream(u, "wt") ?: error("no stream")).use { it.write(json.toByteArray()) } }.isSuccess }
+            snack.showSnackbar(if (ok) exportedMsg else exportFailed)
         }
     }
     val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { u ->
@@ -207,12 +221,13 @@ fun FormsScreen(nav: NavHostController, uri: String?) {
                     val tmp = if (values.isNotEmpty()) app.documents.newTemp("formdata").also { FormOps.fillFields(src, values, it, password, ctx, display, false) } else src
                     try {
                         PdfOps.load(tmp, if (tmp == src) password else password).use { d ->
-                            ctx.contentResolver.openOutputStream(u, "wt")?.use { o -> com.smartdocs.editor.core.formsx.FormData.export(d, dataFormat, o, src.name) }
+                            (ctx.contentResolver.openOutputStream(u, "wt") ?: error("no stream")).use { o -> com.smartdocs.editor.core.formsx.FormData.export(d, dataFormat, o, src.name) }
                         }
                     } finally { if (tmp != src) tmp.delete() }
                 }.isSuccess
             }
-            snack.showSnackbar(if (ok) exportedMsg else importFailed)
+            // audit 5 C-26: a failed DATA EXPORT said "import failed"
+            snack.showSnackbar(if (ok) exportedMsg else exportFailed)
         }
     }
     val dataImporter = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { u ->

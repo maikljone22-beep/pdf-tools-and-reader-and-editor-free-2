@@ -78,12 +78,22 @@ fun TFileActions(file: File) {
 internal fun tError(ctx: Context, e: Throwable): String =
     if (e.message == "parse") ctx.getString(R.string.a5_err_parse) else AiMedia.userMessage(ctx, e)
 
+/**
+ * audit 5 C-4b: [DocIndexer.getAll] with each file's password ([passwords] by absolute path, else the reader's,
+ * [com.smartdocs.editor.core.pdf.SessionPasswords]); getAll opened every file without one. Unreadable files are skipped.
+ */
+internal suspend fun indexWithPasswords(ctx: Context, files: List<File>, passwords: Map<String, String>): List<com.smartdocs.editor.core.ai5.DocIndex> =
+    files.mapNotNull { f ->
+        try { DocIndexer.get(ctx, f, passwords[f.absolutePath] ?: com.smartdocs.editor.core.pdf.SessionPasswords.get(f)) }
+        catch (e: CancellationException) { throw e } catch (e: Exception) { null }
+    }
+
 // ------------------------------------------------------------------ B13 / B15: slides + narrated video
 
 /** Generate a presentation from [files] (one document or a Space) and export it as PPTX / PDF / Markdown / narrated MP4. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SlidesSheet(nav: NavHostController, files: List<File>, onDismiss: () -> Unit) {
+fun SlidesSheet(nav: NavHostController, files: List<File>, onDismiss: () -> Unit, passwords: Map<String, String> = emptyMap()) {
     val ctx = LocalContext.current
     val app = LocalApp.current
     val settings = LocalSettings.current
@@ -135,7 +145,7 @@ fun SlidesSheet(nav: NavHostController, files: List<File>, onDismiss: () -> Unit
                     busy = working; error = null
                     scope.launch {
                         try {
-                            val idx = DocIndexer.getAll(ctx, files)
+                            val idx = indexWithPasswords(ctx, files, passwords)
                             deck = SlidesGen.generate(ctx, client, idx, count.toInt(), lang, focus)
                         } catch (e: CancellationException) { throw e } catch (e: Throwable) { error = tError(ctx, e) } finally { busy = null }
                     }
@@ -210,7 +220,7 @@ fun ReviewCards(r: ReviewResult, onPage: ((Int) -> Unit)? = null) {
 /** Contract review, document analysis, risk analysis, or comparison of up to 10 contracts (extra files picked here). */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ReviewSheet(nav: NavHostController, file: File, kind: DocReview.Kind, onDismiss: () -> Unit) {
+fun ReviewSheet(nav: NavHostController, file: File, kind: DocReview.Kind, onDismiss: () -> Unit, passwords: Map<String, String> = emptyMap()) {
     val ctx = LocalContext.current
     val app = LocalApp.current
     val settings = LocalSettings.current
@@ -230,7 +240,7 @@ fun ReviewSheet(nav: NavHostController, file: File, kind: DocReview.Kind, onDism
     fun startReview() {
         busy = true; error = null
         scope.launch {
-            try { result = DocReview.review(ctx, client, DocIndexer.getAll(ctx, files), kind) }
+            try { result = DocReview.review(ctx, client, indexWithPasswords(ctx, files, passwords), kind) }
             catch (e: CancellationException) { throw e } catch (e: Throwable) { error = tError(ctx, e) } finally { busy = false }
         }
     }
@@ -282,7 +292,7 @@ fun ReviewSheet(nav: NavHostController, file: File, kind: DocReview.Kind, onDism
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TablesSheet(file: File, onDismiss: () -> Unit) {
+fun TablesSheet(file: File, onDismiss: () -> Unit, password: String? = null) {
     val ctx = LocalContext.current
     val app = LocalApp.current
     val settings = LocalSettings.current
@@ -303,7 +313,7 @@ fun TablesSheet(file: File, onDismiss: () -> Unit) {
                 busy = true; error = null; out = null
                 scope.launch {
                     try {
-                        val idx = DocIndexer.get(ctx, file)
+                        val idx = DocIndexer.get(ctx, file, password ?: com.smartdocs.editor.core.pdf.SessionPasswords.get(file))   // audit 5 C-4b
                         val list = DocReview.tables(ctx, client, idx, pages.takeIf { it.isNotBlank() }?.let { parsePages(it) }, focus)
                         tables = list
                         if (list.isEmpty()) error = ctx.getString(R.string.ai6t_no_tables)

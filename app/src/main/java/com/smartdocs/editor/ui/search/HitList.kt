@@ -1,6 +1,7 @@
 package com.smartdocs.editor.ui.search
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -35,9 +36,10 @@ fun HitList(
             // position in the key: a repeated id would crash the list ("Key was already used")
             itemsIndexed(rows, key = { i, r -> "$i:${r.id}" }) { _, r ->
                 val on = r.id in checked
+                // audit 5 C-22: one toggleable row (checkbox role + state) instead of a click target with an unlabeled checkbox
                 ListItem(
-                    modifier = Modifier.clickable { onToggle(r.id) },
-                    leadingContent = { Checkbox(on, { onToggle(r.id) }) },
+                    modifier = Modifier.toggleable(value = on, role = androidx.compose.ui.semantics.Role.Checkbox, onValueChange = { onToggle(r.id) }),
+                    leadingContent = { Checkbox(on, null) },
                     headlineContent = { Text(r.snippet, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium) },
                     supportingContent = {
                         Text(stringResource(R.string.pg_page_n, r.page + 1) + if (r.label.isNotEmpty()) " · " + r.label else "", style = MaterialTheme.typography.labelSmall)

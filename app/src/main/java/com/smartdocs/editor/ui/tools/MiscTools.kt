@@ -41,17 +41,19 @@ fun PrintScreen(nav: NavHostController, uri: String?) {
     var settings by remember { mutableStateOf(PrintPresets.last(ctx) ?: PrintSettings()) }
     val pick = rememberPdfPicker { file = it.firstOrNull() }
     val preparing = stringResource(R.string.nbt_print_preparing)
+    val lock = rememberToolPassword(file) { file = null }   // audit 5 T-09 / C-4
     ToolScaffold(stringResource(R.string.tool_print), nav, runner) {
         FilePickRow(file, stringResource(R.string.tl_input_file), pick)
         Text(stringResource(R.string.tl_print_hint), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         OutlinedTextField(range, { range = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.v5_range)) },
             supportingText = { Text(stringResource(R.string.v5_range_hint)) })
         com.smartdocs.editor.ui.view5.PrintOptionsForm(settings) { settings = it }
-        PrimaryButton(stringResource(R.string.print), enabled = file != null, icon = Icons.Default.Print) {
+        PrimaryButton(stringResource(R.string.print), enabled = file != null && lock.ready, icon = Icons.Default.Print) {
             val f = file ?: return@PrimaryButton
+            val pw = lock.password
             runner.run(preparing) {
                 PrintPresets.remember(ctx, settings)
-                val (out, n) = PrintPipeline.prepare(ctx, f, null, settings.toOptions(range), settings.extras(), app.documents.tempDir, com.smartdocs.editor.ui.view5.printSummaryLabels(ctx))
+                val (out, n) = PrintPipeline.prepare(ctx, f, pw, settings.toOptions(range), settings.extras(), app.documents.tempDir, com.smartdocs.editor.ui.view5.printSummaryLabels(ctx))
                 PdfPrint.print(ctx, out, f.nameWithoutExtension, n, mono = settings.grayscale, media = settings.paper)
                 null
             }

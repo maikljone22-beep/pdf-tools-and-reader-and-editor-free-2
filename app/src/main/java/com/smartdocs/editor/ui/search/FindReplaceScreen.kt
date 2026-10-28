@@ -1,6 +1,7 @@
 package com.smartdocs.editor.ui.search
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -53,9 +54,19 @@ fun FindReplaceScreen(nav: NavHostController, uri: String?) {
     var confirm by remember { mutableStateOf(false) }
     var result by remember { mutableStateOf<File?>(null) }
     var replacedCount by remember { mutableIntStateOf(0) }
+    var skippedCount by remember { mutableIntStateOf(0) }
+    // audit 5 C-1: a signed / certified input is warned about (the replace rewrites the file; its signatures stop
+    // being valid); the central replace-original gate (fix/tab-view-core) decides about "Save in original"
+    var signed by remember { mutableStateOf(false) }
+    // audit 5 C-7: characters of the replacement no font can draw (they would be dropped)
+    var missing by remember { mutableStateOf<List<String>>(emptyList()) }
     val snack = remember { SnackbarHostState() }
-    val pick = rememberPdfPicker { it.firstOrNull()?.let { f -> doc.file = f; matches = emptyList(); checked = emptySet(); searched = false } }
+    val pick = rememberPdfPicker { it.firstOrNull()?.let { f -> doc.open(f); matches = emptyList(); checked = emptySet(); searched = false } }
     val badRegex = options.mode == SearchMode.REGEX && find.isNotBlank() && !TextMatcher.isValidRegex(find)
+    LaunchedEffect(doc.file, doc.generation) {
+        val f = doc.file
+        signed = f != null && doc.session != null && kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.smartdocs.editor.core.pdf.SignedSave.isSigned(f, doc.password) }
+    }
 
     fun doFind() {
         val f = doc.file ?: return
@@ -64,22 +75,47 @@ fun FindReplaceScreen(nav: NavHostController, uri: String?) {
         scope.launch {
             searching = true
             val pages = runCatching { PdfOps.parseRange(range, s.pageCount) }.getOrDefault(emptyList()).ifEmpty { (0 until s.pageCount).toList() }
-            matches = runCatching { FindReplace.find(f, doc.password, find, options, pages) { searchedPage = it } }.getOrDefault(emptyList())
-            checked = matches.map(::matchId).toSet()
-            searching = false; searched = true
+            // audit 5 C-9: a failure (wrong password, out of memory, …) is reported, not shown as "no hits"
+            try {
+                matches = FindReplace.find(f, doc.password, find, options, pages) { searchedPage = it }
+                searched = true
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e
+            } catch (e: Throwable) {
+                matches = emptyList(); searched = false
+                snack.showSnackbar(searchErrorMessage(ctx, e))
+            } finally {
+                checked = matches.map(::matchId).toSet()
+                searching = false
+            }
+        }
+    }
+    fun askConfirm() {
+        val r = replace
+        scope.launch {
+            missing = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { runCatching { com.smartdocs.editor.core.edit.TextEncodeCheck.missing(ctx, r) }.getOrDefault(emptyList()) }
+            confirm = true
         }
     }
     val msg = stringResource(R.string.s5_replacing)
+    val nothingReplaced = stringResource(R.string.ttcx_nothing_replaced)
+    val wrongPw = stringResource(R.string.password_wrong)
     fun doReplace() {
         val src = doc.file ?: return
         val sel = matches.filter { matchId(it) in checked }
         if (sel.isEmpty()) return
-        runner.run(msg) {
+        val pw = doc.password
+        runner.run(msg) { com.smartdocs.editor.ui.tools.withPasswordMessage(wrongPw) {
             val out = app.documents.uniqueFile(app.documents.docsDir, src.nameWithoutExtension + "_replaced")
-            replacedCount = FindReplace.apply(ctx, src, out, doc.password, sel, find, options, replace, app.documents.tempDir) { d, t -> runner.message = "$msg $d/$t" }
+            val r = try {
+                FindReplace.applyDetailed(ctx, src, out, pw, sel, find, options, replace, app.documents.tempDir) { d, t -> runner.message = "$msg $d/$t" }
+            } catch (e: Exception) { out.delete(); throw e }
+            // audit 5 C-8: nothing replaced is not a success (and leaves no copy of the unchanged file behind)
+            if (r.replaced == 0) { out.delete(); throw IllegalStateException(nothingReplaced) }
+            replacedCount = r.replaced; skippedCount = r.skipped
             runCatching { app.documents.touchRecent(out) }
-            out
-        }
+            // the source with text replaced: "Save in original" may replace it (audit 5 E-1 / C-1)
+            com.smartdocs.editor.core.pdf.ToolOutputs.record(out, src)
+        } }
     }
     LaunchedEffect(runner.result) { runner.result?.let { result = it; runner.result = null } }
     LaunchedEffect(runner.error) { runner.error?.let { snack.showSnackbar(it); runner.error = null } }
@@ -93,7 +129,7 @@ fun FindReplaceScreen(nav: NavHostController, uri: String?) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                     val n = matches.filter { matchId(it) in checked }.sumOf { it.ranges.size }
                     Text(stringResource(R.string.s5_n_occurrences, n), Modifier.weight(1f), style = MaterialTheme.typography.labelLarge)
-                    Button(onClick = { confirm = true }, enabled = n > 0 && !runner.running) { Icon(Icons.Default.FindReplace, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.s5_replace_all)) }
+                    Button(onClick = { askConfirm() }, enabled = n > 0 && !runner.running) { Icon(Icons.Default.FindReplace, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.s5_replace_all)) }
                 }
             }
         },
@@ -103,6 +139,7 @@ fun FindReplaceScreen(nav: NavHostController, uri: String?) {
             val controls: @Composable (Modifier) -> Unit = { m ->
                 Column(m.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp)) {
                     FilePickRow(doc.file, stringResource(R.string.open_file), pick)
+                    if (signed) Text(stringResource(R.string.ttcx_signed_replace_warning), Modifier.padding(top = 6.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                     Spacer(Modifier.height(8.dp))
                     OutlinedTextField(find, { find = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.s5_find)) },
                         isError = badRegex, supportingText = if (badRegex) { { Text(stringResource(R.string.s5_bad_regex)) } } else null)
@@ -130,9 +167,11 @@ fun FindReplaceScreen(nav: NavHostController, uri: String?) {
                     LazyColumn(Modifier.fillMaxSize()) {
                         itemsIndexed(matches, key = { i, m -> "$i:" + matchId(m) }) { _, mt ->
                             val id = matchId(mt)
+                            // audit 5 C-22: one toggleable row with the checkbox role and state
                             ListItem(
-                                modifier = Modifier.clickable { checked = if (id in checked) checked - id else checked + id },
-                                leadingContent = { Checkbox(id in checked, { checked = if (id in checked) checked - id else checked + id }) },
+                                modifier = Modifier.toggleable(value = id in checked, role = androidx.compose.ui.semantics.Role.Checkbox,
+                                    onValueChange = { checked = if (id in checked) checked - id else checked + id }),
+                                leadingContent = { Checkbox(id in checked, null) },
                                 headlineContent = { Text(highlighted(mt.text, mt.ranges, bg), maxLines = 4, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium) },
                                 supportingContent = {
                                     Column {
@@ -156,11 +195,19 @@ fun FindReplaceScreen(nav: NavHostController, uri: String?) {
     if (confirm) {
         val n = matches.filter { matchId(it) in checked }.sumOf { it.ranges.size }
         val warn = matches.any { matchId(it) in checked && it.fontWarning }
+        val notes = buildString {
+            append(stringResource(R.string.s5_replace_confirm, n, find, replace))
+            // audit 5 C-10: said once per run: the whole block is re-laid out in a substitute font
+            if (warn) append("\n\n").append(stringResource(R.string.s5_font_warning)).append("\n").append(stringResource(R.string.ttcx_relayout_note))
+            if (missing.isNotEmpty()) append("\n\n").append(stringResource(R.string.ttcx_missing_glyphs, missing.take(12).joinToString(" ")))
+            if (signed) append("\n\n").append(stringResource(R.string.ttcx_signed_replace_warning))
+        }
         AlertDialog(onDismissRequest = { confirm = false }, title = { Text(stringResource(R.string.s5_replace_all)) },
-            text = { Text(stringResource(R.string.s5_replace_confirm, n, find, replace) + if (warn) "\n\n" + stringResource(R.string.s5_font_warning) else "") },
+            text = { Text(notes, Modifier.verticalScroll(rememberScrollState())) },
             confirmButton = { TextButton(onClick = { confirm = false; doReplace() }) { Text(stringResource(R.string.apply)) } },
             dismissButton = { TextButton(onClick = { confirm = false }) { Text(stringResource(R.string.cancel)) } })
     }
     if (runner.running) ProgressDialog(runner.message)
-    result?.let { ResultSheet(it, nav, onDismiss = { result = null }, extraInfo = stringResource(R.string.s5_replaced_n, replacedCount)) }
+    result?.let { ResultSheet(it, nav, onDismiss = { result = null }, extraInfo = stringResource(R.string.s5_replaced_n, replacedCount) +
+        if (skippedCount > 0) "\n" + stringResource(R.string.ttcx_skipped_n, skippedCount) else "") }
 }
