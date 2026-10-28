@@ -1,6 +1,9 @@
 package com.smartdocs.editor.ui.tools5
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -81,8 +84,15 @@ fun TagsEditor(nav: NavHostController, source: File, onClose: () -> Unit, onSave
             AssistChip(onClick = { collapsed = nodes.filter { it.children > 0 }.map { it.path }.toSet() }, label = { Text(stringResource(R.string.pc_tags_collapse_all)) })
             AssistChip(onClick = { collapsed = emptySet() }, label = { Text(stringResource(R.string.pc_tags_expand_all)) })
         }
+        // ---- Order panel (Foxit 34.44): reading order of one page, drag or move up / down
+        var orderMode by remember { mutableStateOf(false) }
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            FilterChip(!orderMode, { orderMode = false }, label = { Text(stringResource(R.string.pa_tags_tree)) })
+            FilterChip(orderMode, { orderMode = true }, label = { Text(stringResource(R.string.pa_tags_order)) })
+        }
+        if (orderMode) OrderPanel(nodes, ::edit)
         // ---- tree
-        T5Card {
+        if (!orderMode) T5Card {
             nodes.forEach { n ->
                 if (collapsed.any { c -> n.path.size > c.size && n.path.subList(0, c.size) == c }) return@forEach
                 val sel = selected?.path == n.path
@@ -188,6 +198,56 @@ private fun TagProps(n: TagNode, work: File, version: Int, edit: ((PDDocument) -
             AssistChip(onClick = { edit { AccessTags.outdent(it, n.path) }; onSelect(null) }, label = { Text(stringResource(R.string.pc_tags_outdent)) })
             AssistChip(onClick = { edit { AccessTags.setType(it, n.path, "Artifact") } }, label = { Text(stringResource(R.string.pc_tags_artifact)) })
             AssistChip(onClick = { edit { AccessTags.delete(it, n.path) }; onSelect(null) }, label = { Text(stringResource(R.string.pc_tags_delete)) })
+        }
+    }
+}
+
+/**
+ * Order panel: the content tags of one page in reading order, numbered. Long-press and drag a row, or use the arrows;
+ * a tag moves among its own siblings (another group: its parent has to move, which the tree does).
+ */
+@Composable
+private fun OrderPanel(nodes: List<TagNode>, edit: ((PDDocument) -> Unit) -> Unit) {
+    val pages = remember(nodes) { nodes.map { it.page }.filter { it >= 0 }.distinct().sorted() }
+    var page by remember(pages) { mutableIntStateOf(pages.firstOrNull() ?: 0) }
+    val order = AccessTags.readingOrder(nodes, page)
+    var dragFrom by remember { mutableStateOf<Int?>(null) }
+    var dragDy by remember { mutableFloatStateOf(0f) }
+    val otherGroup = stringResource(R.string.pa_order_other_group)
+    var note by remember { mutableStateOf<String?>(null) }
+    fun moveTo(from: TagNode, to: TagNode) {
+        if (from.path.dropLast(1) != to.path.dropLast(1)) { note = otherGroup; return }
+        note = null; edit { d -> AccessTags.moveTo(d, from.path, to.path.last()) }
+    }
+    T5Card(stringResource(R.string.pa_tags_order), Icons.Default.FormatListNumbered) {
+        if (pages.size > 1) Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            pages.forEach { p -> FilterChip(page == p, { page = p }, label = { Text("${p + 1}") }) }
+        }
+        if (order.isEmpty()) Text(stringResource(R.string.pa_order_none), style = MaterialTheme.typography.bodySmall)
+        note?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+        val rowH = 48f * androidx.compose.ui.platform.LocalDensity.current.density
+        order.forEachIndexed { i, n ->
+            key(n.path) {
+                Row(Modifier.fillMaxWidth().height(48.dp)
+                    .graphicsLayer { translationY = if (dragFrom == i) dragDy else 0f }
+                    .pointerInput(n.path, order.size) {
+                        detectDragGesturesAfterLongPress(
+                            onDragStart = { dragFrom = i; dragDy = 0f },
+                            onDrag = { ch, d -> ch.consume(); dragDy += d.y },
+                            onDragEnd = {
+                                val to = (i + Math.round(dragDy / rowH)).coerceIn(0, order.lastIndex)
+                                dragFrom = null; dragDy = 0f
+                                if (to != i) moveTo(n, order[to])
+                            },
+                            onDragCancel = { dragFrom = null; dragDy = 0f },
+                        )
+                    }, verticalAlignment = Alignment.CenterVertically) {
+                    Text("${i + 1}.", Modifier.width(32.dp), style = MaterialTheme.typography.labelLarge)
+                    Text("<${n.type}> " + (n.actualText ?: n.alt ?: n.title ?: ""), Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)
+                    IconButton(onClick = { if (i > 0) moveTo(n, order[i - 1]) }, enabled = i > 0) { Icon(Icons.Default.KeyboardArrowUp, stringResource(R.string.pa_order_up, i + 1)) }
+                    IconButton(onClick = { if (i < order.lastIndex) moveTo(n, order[i + 1]) }, enabled = i < order.lastIndex) { Icon(Icons.Default.KeyboardArrowDown, stringResource(R.string.pa_order_down, i + 1)) }
+                }
+            }
         }
     }
 }

@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="pa_ocr_has_text">هذه الصفحة تحتوي نصًا بالفعل.</string>
+    <string name="pa_redact_page_q">تنقيح الصفحة %1$d بالكامل؟</string>
+    <string name="pa_redact_page_sub">يُحذف كل محتوى الصفحة (النص والصور والتعليقات) وتُملأ باللون الأسود. يمكن التراجع قبل الحفظ.</string>
+    <string name="pa_formula_alt">معادلة</string>
+    <string name="pa_fixed_n">أُصلح %1$d موضع</string>
+    <string name="pa_table_summary">جدول: %1$d صف × %2$d عمود</string>
+    <string name="pa_tags_tree">الشجرة</string>
+    <string name="pa_tags_order">ترتيب القراءة</string>
+    <string name="pa_order_other_group">هذا الوسم في مجموعة أخرى؛ انقل المجموعة نفسها من الشجرة.</string>
+    <string name="pa_order_none">لا توجد وسوم ذات محتوى في هذه الصفحة</string>
+    <string name="pa_order_up">تقديم العنصر %1$d</string>
+    <string name="pa_order_down">تأخير العنصر %1$d</string>
+    <string name="pa_cd_search">بحث</string>
+    <string name="pa_cd_choose">اختيار</string>
+    <string name="pa_report_tables">جداول: %1$d (الصف الأول خلايا رأس)</string>
+    <string name="pa_prof_ua1">PDF/UA-1 (فحوص آلية)</string>
+    <string name="pa_ua_claim">لا يوجد معرّف PDF/UA في البيانات الوصفية</string>
+    <string name="pa_ua_tagged">المستند غير موسوم</string>
+    <string name="pa_ua_marked">علامة MarkInfo /Marked غير مضبوطة</string>
+    <string name="pa_ua_title">لا يوجد عنوان للمستند</string>
+    <string name="pa_ua_display_title">العنوان لا يظهر في شريط العنوان (DisplayDocTitle)</string>
+    <string name="pa_ua_lang">لغة المستند غير محددة</string>
+    <string name="pa_ua_untagged_content">صفحات فيها محتوى غير موسوم</string>
+    <string name="pa_ua_untagged_annots">تعليقات غير موسومة</string>
+    <string name="pa_ua_tabs">صفحات لا يتبع ترتيب التنقل فيها البنية</string>
+    <string name="pa_ua_fonts">خطوط غير مضمنة</string>
+    <string name="pa_ua_unicode">خطوط بلا ترميز Unicode</string>
+    <string name="pa_ua_alt">صور بلا نص بديل</string>
+    <string name="pa_ua_other_alt">معادلات أو عناصر أخرى بلا نص بديل</string>
+    <string name="pa_ua_table_headers">جداول بلا خلايا رأس</string>
+    <string name="pa_ua_headings">مستويات عناوين متخطاة</string>
+    <string name="pa_ua_field_desc">حقول بلا وصف</string>
+    <string name="pa_ua_permission">الأذونات تمنع استخراج المحتوى لأدوات إمكانية الوصول</string>
+    <string name="pa_ua_xfa">نموذج XFA (غير مسموح في PDF/UA)</string>
+    <string name="pa_ua_rolemap">وسوم مخصصة لا تُربط بنوع قياسي</string>
+    <string name="pa_ua_note_id">ملاحظات (Note) بلا معرّف</string>
+    <string name="pa_ua_ocg_name">إعداد الطبقات بلا اسم</string>
+    <string name="pa_ua_embedded_names">مرفقات بلا اسم ملف (F/UF)</string>
+    <string name="pa_ua_ok">اجتاز المستند كل الفحوص الآلية</string>
+    <string name="pa_ua_manual">ترتيب القراءة والتباين ومعنى النص البديل تحتاج فحصًا بشريًا</string>
+</resources>

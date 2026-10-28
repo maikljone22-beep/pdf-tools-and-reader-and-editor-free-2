@@ -50,6 +50,8 @@ fun OrganizeScreen(nav: NavHostController, uri: String?) {
     var result by remember { mutableStateOf<File?>(null) }
     var saving by remember { mutableStateOf(false) }
     var snack by remember { mutableStateOf<String?>(null) }
+    var redactAsk by remember { mutableStateOf<Int?>(null) }
+    val ocrHasText = stringResource(R.string.pa_ocr_has_text)
     // thumbnail zoom (Foxit 17 / Nitro 4)
     var cellScale by remember { mutableFloatStateOf(1f) }
 
@@ -200,9 +202,9 @@ fun OrganizeScreen(nav: NavHostController, uri: String?) {
                                 state.selected = setOf(p)
                                 scope.launch { runCatching { state.selectedToTemp()?.let { com.smartdocs.editor.core.util.PrintHelper.printPdf(ctx, it) } }.onFailure { snack = it.message }; state.selected = emptySet() }
                             },
-                            // redaction and OCR work on the current version of the document
-                            pageAct(R.string.pc_page_redact) { _ -> state.work?.let { nav.navigate(com.smartdocs.editor.ui.Routes.tool("redact", Uri.fromFile(it).toString())) } },
-                            pageAct(R.string.pc_page_ocr) { p -> state.work?.let { nav.navigate(com.smartdocs.editor.ui.Routes.reader(Uri.fromFile(it).toString(), p)) } },
+                            // redaction and OCR act on the tapped page of the working version (undo brings it back)
+                            pageAct(R.string.pc_page_redact) { p -> redactAsk = p },
+                            pageAct(R.string.pc_page_ocr) { p -> state.ocrPage(p, ocrHasText) },
                         ),
                         dragEnabled = state.filter == PageFilter.ALL && !state.busy,
                         onTap = { p -> if (state.selectMode) state.toggle(p) else { state.selectMode = true; state.selected = setOf(p) } },
@@ -229,6 +231,12 @@ fun OrganizeScreen(nav: NavHostController, uri: String?) {
         com.smartdocs.editor.ui.tools.FilePasswordDialog(other, onUnlocked = { pw -> lockedInsert = null; state.insertFrom(other, at, pw) }, onRemove = { lockedInsert = null })
     }
 
+    redactAsk?.let { p ->
+        AlertDialog(onDismissRequest = { redactAsk = null }, title = { Text(stringResource(R.string.pa_redact_page_q, p + 1)) },
+            text = { Text(stringResource(R.string.pa_redact_page_sub)) },
+            confirmButton = { TextButton(onClick = { redactAsk = null; state.redactPage(p) }) { Text(stringResource(R.string.pc_page_redact)) } },
+            dismissButton = { TextButton(onClick = { redactAsk = null }) { Text(stringResource(R.string.cancel)) } })
+    }
     if (exitDialog) AlertDialog(
         onDismissRequest = { exitDialog = false },
         title = { Text(stringResource(R.string.tool_organize)) },
