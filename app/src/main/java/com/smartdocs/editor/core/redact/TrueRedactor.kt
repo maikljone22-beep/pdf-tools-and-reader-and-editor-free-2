@@ -49,7 +49,12 @@ internal object TrueRedactor {
         val touchedMcids: Set<Int> = emptySet(),
     )
 
-    fun redactPage(doc: PDDocument, pageIndex: Int, marks: List<Box>, fillRgb: Int, oc: PDOptionalContentProperties? = doc.documentCatalog.ocProperties): Result {
+    /**
+     * [textOnly] (Search & Remove Text): only glyphs under the marks are removed; paths, images, forms and
+     * annotations stay as they are.
+     */
+    fun redactPage(doc: PDDocument, pageIndex: Int, marks: List<Box>, fillRgb: Int, oc: PDOptionalContentProperties? = doc.documentCatalog.ocProperties,
+                   textOnly: Boolean = false): Result {
         val page = doc.getPage(pageIndex)
         if (marks.isEmpty()) return Result(0, 0, 0, 0, false)
         val insp = PageInspector(page, oc).run(page)
@@ -58,6 +63,7 @@ internal object TrueRedactor {
         val removedForms = HashSet<Int>()
         var objects = 0; var blanked = 0
         for (p in insp.paints) {
+            if (textOnly) break
             if (p.nested || !RedactMath.touches(p.box, marks)) continue
             val inside = RedactMath.enclosed(p.box, marks)
             when (p.kind) {
@@ -72,7 +78,7 @@ internal object TrueRedactor {
             }
         }
         // nested content (inside form XObjects that stay) under a mark cannot be rewritten in place
-        for (p in insp.paints) if (p.nested && p.op !in removedForms && p.kind != PaintKind.FILL && p.kind != PaintKind.STROKE && p.kind != PaintKind.SHADING && RedactMath.touches(p.box, marks)) raster = true
+        if (!textOnly) for (p in insp.paints) if (p.nested && p.op !in removedForms && p.kind != PaintKind.FILL && p.kind != PaintKind.STROKE && p.kind != PaintKind.SHADING && RedactMath.touches(p.box, marks)) raster = true
         var glyphs = 0
         for (g in insp.glyphs) {
             if (!RedactMath.glyphHit(g.box, marks)) continue
@@ -82,7 +88,7 @@ internal object TrueRedactor {
         }
         val mcids = HashSet<Int>()
         if (!plan.isEmpty && !apply(doc, page, insp, plan, mcids)) raster = true
-        val annots = removeAnnotations(doc, page, marks)
+        val annots = if (textOnly) 0 else removeAnnotations(doc, page, marks)
         return Result(glyphs, objects, blanked, annots, raster, mcids)
     }
 

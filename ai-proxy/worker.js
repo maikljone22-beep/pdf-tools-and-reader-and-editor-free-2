@@ -10,7 +10,7 @@
 //   TTS_FORMAT     force an audio format (e.g. "wav" for Groq Orpheus); default: what the app asks (mp3)
 //   TTS_MAX_CHARS  characters per request the app should send (Groq Orpheus: 200; OpenAI: up to 4096)
 //   VISION_MODEL   model used when a chat request carries images (e.g. meta-llama/llama-4-scout-17b-16e-instruct on Groq)
-//   IMAGE_URL / IMAGE_MODEL   OpenAI-compatible /images/generations (e.g. https://api.openai.com/v1, gpt-image-1); secret IMAGE_KEY
+//   IMAGE_URL / IMAGE_MODEL   OpenAI-compatible /images/generations and /images/edits (e.g. https://api.openai.com/v1, gpt-image-1); secret IMAGE_KEY
 //   STT_URL / STT_MODEL       OpenAI-compatible /audio/transcriptions (Groq whisper-large-v3-turbo); secret STT_KEY (or PROVIDER_KEY)
 //   EMBED_URL / EMBED_MODEL   OpenAI-compatible /embeddings (OpenAI text-embedding-3-small); secret EMBED_KEY
 //   SEARCH_KEY (secret)       Brave Search API key for /web/search
@@ -27,6 +27,7 @@
 //   GET  /capabilities       {"vision","images","transcription","embeddings","web_search","usage"} booleans
 //   GET  /usage              {"chat_used","chat_limit","tts_used","tts_limit","images_used","images_limit"} for today
 //   POST /images/generations {prompt,size} -> {data:[{b64_json}]}
+//   POST /images/edits       multipart (image PNG, prompt, size) -> {data:[{b64_json}]}   (prompt-based image editing)
 //   POST /audio/transcriptions  multipart (file, language) -> {text}
 //   POST /embeddings         {input:[...]} -> {data:[{index,embedding}]}
 //   POST /web/search         {query,count} -> {results:[{title,url,snippet}]}
@@ -39,6 +40,7 @@ const MAX_BODY = 96 * 1024;      // bytes of JSON the app may send (tool schemas
 const MAX_TTS_INPUT = 4096;      // characters per speech request (OpenAI's own limit)
 const MAX_VISION_BODY = 6 * 1024 * 1024;   // chat requests that carry images (base64)
 const MAX_AUDIO = 24 * 1024 * 1024;        // transcription upload (Whisper limit 25 MB)
+const MAX_IMAGE_EDIT = 12 * 1024 * 1024;   // image edit upload (one PNG)
 const IMAGE_DAILY_LIMIT = 20;
 const STT_DAILY_LIMIT = 30;
 const EMBED_DAILY_LIMIT = 200;
@@ -57,16 +59,18 @@ export default {
     const isCaps = req.method === "GET" && path.endsWith("/capabilities");
     const isUsage = req.method === "GET" && path.endsWith("/usage");
     const isImages = req.method === "POST" && path.endsWith("/images/generations");
+    const isImageEdit = req.method === "POST" && path.endsWith("/images/edits");
     const isStt = req.method === "POST" && path.endsWith("/audio/transcriptions");
     const isEmbed = req.method === "POST" && path.endsWith("/embeddings");
     const isSearch = req.method === "POST" && path.endsWith("/web/search");
     const isOcr = req.method === "POST" && path.endsWith("/ocr");
-    if (!isChat && !isSpeech && !isVoices && !isCaps && !isUsage && !isImages && !isStt && !isEmbed && !isSearch && !isOcr) return json({ error: "not found" }, 404);
+    if (!isChat && !isSpeech && !isVoices && !isCaps && !isUsage && !isImages && !isImageEdit && !isStt && !isEmbed && !isSearch && !isOcr) return json({ error: "not found" }, 404);
     if (req.headers.get("X-App-Token") !== env.APP_TOKEN) return json({ error: "unauthorized" }, 401);
 
     if (isCaps) return json(capabilities(env), 200);
     if (isUsage) return usage(req, env);
     if (isStt) return transcribe(req, env);
+    if (isImageEdit) return imageEdit(req, env);
 
     if (isVoices) return json({
       voices: voices(env), model: env.TTS_MODEL || "gpt-4o-mini-tts",
@@ -165,6 +169,34 @@ async function images(body, env) {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${env.IMAGE_KEY}` },
     body: JSON.stringify(payload),
+  });
+  return new Response(upstream.body, { status: upstream.status, headers: { "Content-Type": "application/json" } });
+}
+
+async function imageEdit(req, env) {
+  if (!(env.IMAGE_KEY && env.IMAGE_URL)) return json({ error: "not configured" }, 501);
+  const len = parseInt(req.headers.get("Content-Length") || "0", 10);
+  if (len > MAX_IMAGE_EDIT) return json({ error: "request too large" }, 413);
+  const limited = await rateLimit(req, env, "img", IMAGE_DAILY_LIMIT);
+  if (limited) return limited;
+  let form;
+  try { form = await req.formData(); } catch { return json({ error: "bad form" }, 400); }
+  const image = form.get("image");
+  const prompt = form.get("prompt");
+  if (!image || typeof image === "string") return json({ error: "no image" }, 400);
+  if (typeof prompt !== "string" || !prompt.trim()) return json({ error: "empty prompt" }, 400);
+  const sizeIn = form.get("size");
+  const size = ["1024x1024", "1024x1536", "1536x1024", "512x512", "256x256"].includes(sizeIn) ? sizeIn : "1024x1024";
+  const model = env.IMAGE_MODEL || "gpt-image-1";
+  const out = new FormData();
+  out.append("image", image, image.name || "image.png");
+  out.append("prompt", prompt.slice(0, 4000));
+  out.append("model", model);
+  out.append("size", size);
+  out.append("n", "1");
+  if (model.startsWith("dall-e")) out.append("response_format", "b64_json");
+  const upstream = await fetch(`${env.IMAGE_URL.replace(/\/$/, "")}/images/edits`, {
+    method: "POST", headers: { Authorization: `Bearer ${env.IMAGE_KEY}` }, body: out,
   });
   return new Response(upstream.body, { status: upstream.status, headers: { "Content-Type": "application/json" } });
 }

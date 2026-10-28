@@ -47,7 +47,7 @@ object NveZoom {
     fun percentRange(s: ReaderState): ClosedFloatingPointRange<Float> {
         val n = NveState.of(s)
         val unit = n.baseWidth(s.currentPage) / (pageWidthPt(s, s.currentPage) * pxPerPt(s)) * 100f
-        return (unit * MIN_ZOOM)..(unit * MAX_ZOOM)
+        return (unit * MIN_ZOOM)..maxOf(unit * MAX_ZOOM, com.smartdocs.editor.core.rpf.ViewMath.DEEP_MAX_PCT)   // reader-prefs: deep zoom to 6400 %
     }
 
     private fun setZoom(s: ReaderState, z: Float) {
@@ -59,6 +59,7 @@ object NveZoom {
     }
 
     fun setPercent(s: ReaderState, pct: Float) {
+        if (com.smartdocs.editor.ui.rpf.RpfDeepZoom.enterPercent(s, pct)) return      // reader-prefs: above the layout limit
         val n = NveState.of(s)
         val base = n.baseWidth(s.currentPage).coerceAtLeast(1f)
         setZoom(s, pct / 100f * pageWidthPt(s, s.currentPage) * pxPerPt(s) / base)
@@ -120,5 +121,5 @@ object NveZoom {
         apply(f, at, Offset.Zero)
     }
 
-    val PERCENTS = listOf(25, 50, 75, 100, 125, 150, 200, 300, 400, 800, 1600)
+    val PERCENTS = listOf(25, 50, 75, 100, 125, 150, 200, 300, 400, 800, 1600, 3200, 6400)
 }

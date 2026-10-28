@@ -77,7 +77,11 @@ data class CalcOutcome(val changed: Map<String, String>, val failed: Set<String>
  * display, validate (V) on commit, calculate (C) in calculation order. Thread-safe. When the runtime cannot
  * start (no engine), every call returns null / `ran = false` so the callers keep their pattern-based logic.
  */
-class FormScripts(val js: FormJs, private val limits: JsLimits = JsLimits()) {
+class FormScripts(js: FormJs, private val limits: JsLimits = JsLimits()) {
+
+    /** The document's scripts; `field.setAction` replaces a field's Keystroke / Format / Validate / Calculate. */
+    var js: FormJs = js
+        private set
 
     private var engine: AcroJs? = null
     private var engineTried = false
@@ -91,6 +95,20 @@ class FormScripts(val js: FormJs, private val limits: JsLimits = JsLimits()) {
     var unavailableReason: String? = null; private set
 
     fun script(name: String): FieldJs? = js.scripts[name]
+
+    /**
+     * 27.10 `field.setAction`: field script [key] (K, F, V or C) of [name] from now on (a blank [code] removes it);
+     * a new Calculate script joins the calculation order.
+     */
+    @Synchronized
+    fun setFieldScript(name: String, key: String, code: String) {
+        val c = code.takeIf { it.isNotBlank() }
+        val cur = js.scripts[name] ?: FieldJs()
+        val next = when (key) { "K" -> cur.copy(keystroke = c); "F" -> cur.copy(format = c); "V" -> cur.copy(validate = c); "C" -> cur.copy(calculate = c); else -> return }
+        val order = if (key == "C" && c != null && name !in js.calcOrder) js.calcOrder + name else js.calcOrder
+        js = js.copy(scripts = js.scripts + (name to next), calcOrder = order)
+        formatCache.clear()
+    }
     fun hasKeystroke(name: String) = !js.scripts[name]?.keystroke.isNullOrBlank()
     fun hasFormat(name: String) = !js.scripts[name]?.format.isNullOrBlank()
     fun hasCalculate(name: String) = !js.scripts[name]?.calculate.isNullOrBlank()

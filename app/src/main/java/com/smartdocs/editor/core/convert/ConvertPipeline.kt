@@ -29,6 +29,19 @@ data class ConvertOptions(
     val docxFlowing: Boolean = false,
     /** DOCX "precisely laid out": paragraphs, pictures and tables placed where they are on the PDF page (frames). */
     val docxExact: Boolean = false,
+    /** Detected running headers / footers are deleted (DOCX writes no Word header / footer for them). */
+    val dropFurniture: Boolean = false,
+    /** TXT: keep the PDF's line breaks (else one line per paragraph) and wrap lines at this many characters (0 = no). */
+    val txtKeepLines: Boolean = false,
+    val txtWrap: Int = 0,
+    /** XLSX: one sheet row per line of multi-line table cells; no merged cells. */
+    val xlsxSplitLines: Boolean = false,
+    val xlsxNoMerge: Boolean = false,
+    /** DOCX: character spacing added to every run (points) and pictures anchored at their place. */
+    val docxCharSpacing: Float = 0f,
+    val docxAnchorImages: Boolean = false,
+    /** Tables from text alignment too (else lined tables only). */
+    val streamTables: Boolean = true,
 )
 
 /** Where page content comes from (PdfBox on Android, desktop PdfBox in the test harness). */
@@ -63,7 +76,7 @@ object ConvertPipeline {
         val rebuilt = ArrayList<Int>()
         val furniture = if (opts.detectHeaders && opts.format != TargetFormat.PPTX && pages.size >= 2) detectFurniture(src, pages) else PageFurniture.NONE
         fun layout(i: Int, withImages: Boolean): PageLayout {
-            val l = LayoutAnalyzer.analyze(src.content(i, withImages), opts.detectTables, furniture)
+            val l = LayoutAnalyzer.analyze(src.content(i, withImages), opts.detectTables, furniture, opts.streamTables)
             if (l.hasText) textPages++
             if (l.ocrChars > 0) ocrPages++
             if (l.rebuiltByOcr) rebuilt += i
@@ -74,11 +87,12 @@ object ConvertPipeline {
         fun step(k: Int) { if (cancelled()) throw ConvertCancelled(); progress(k, total) }
         progress(0, total)
         when (opts.format) {
-            TargetFormat.DOCX -> DocxBuilder(out, title, furniture, opts.docxFlowing, exact = opts.docxExact).use { b ->
+            TargetFormat.DOCX -> DocxBuilder(out, title, furniture, opts.docxFlowing, exact = opts.docxExact, dropFurniture = opts.dropFurniture,
+                charSpacing = opts.docxCharSpacing, anchorImages = opts.docxAnchorImages).use { b ->
                 pages.forEachIndexed { k, i -> b.addPage(layout(i, opts.includeImages)); step(k + 1) }
                 b.finish()
             }
-            TargetFormat.XLSX -> XlsxBuilder(out, title).use { b ->
+            TargetFormat.XLSX -> XlsxBuilder(out, title, opts.xlsxSplitLines, opts.xlsxNoMerge).use { b ->
                 if (opts.xlsxSingleSheet) {
                     val all = pages.mapIndexed { k, i -> layout(i, false).also { step(k + 1) } }
                     b.addSheet(opts.singleSheetName, all)
@@ -116,7 +130,7 @@ object ConvertPipeline {
                 val w = OutputStreamWriter(out, Charsets.UTF_8)
                 pages.forEachIndexed { k, i ->
                     if (k > 0) w.write("\n\u000C\n")
-                    w.write(HtmlTxtBuilder.text(layout(i, false)))
+                    w.write(HtmlTxtBuilder.text(layout(i, false), opts.txtKeepLines, opts.txtWrap))
                     step(k + 1)
                 }
                 w.flush(); out.close()

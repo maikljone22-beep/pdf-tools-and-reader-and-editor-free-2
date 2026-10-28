@@ -237,9 +237,9 @@ class FormFillState internal constructor(val reader: ReaderState) {
             snapshotFlow { activeId }.collect { id ->
                 val old = focusedForTriggers?.let { o -> model.widgets.firstOrNull { it.id == o } }
                 focusedForTriggers = id
-                if (old != null) old.triggers[Trigger.BLUR]?.let { FormActions.fire(this@FormFillState, old, Trigger.BLUR, it) }
+                if (old != null) triggersOf(old)[Trigger.BLUR]?.let { FormActions.fire(this@FormFillState, old, Trigger.BLUR, it) }
                 val now = id?.let { n -> model.widgets.firstOrNull { it.id == n } }
-                if (now != null) now.triggers[Trigger.FOCUS]?.let { FormActions.fire(this@FormFillState, now, Trigger.FOCUS, it) }
+                if (now != null) triggersOf(now)[Trigger.FOCUS]?.let { FormActions.fire(this@FormFillState, now, Trigger.FOCUS, it) }
             }
         }
     }
@@ -259,7 +259,7 @@ class FormFillState internal constructor(val reader: ReaderState) {
     /** The form layer only reacts while no annotation tool, placement or text selection is active. */
     val enabled: Boolean get() = reader.tool == null && reader.placement == null && reader.selection == null
 
-    val hasPending: Boolean get() = edits.isNotEmpty() || images.isNotEmpty() || hiddenOverride.isNotEmpty()
+    val hasPending: Boolean get() = edits.isNotEmpty() || images.isNotEmpty() || hiddenOverride.isNotEmpty() || !scriptChanges().isEmpty
 
     fun isCalculated(name: String) = model.calc.isCalculated(name) || scripts?.hasCalculate(name) == true
 
@@ -395,7 +395,7 @@ class FormFillState internal constructor(val reader: ReaderState) {
         markDirty()
     }
 
-    fun setImage(name: String, file: File) { snapshot(fieldLabel(name, image = true), pageOf(name)); typingField = null; images[name] = file; markDirty() }
+    fun setImage(name: String, file: File) { snapshot(fieldLabel(name, image = true), pageOf(name)); typingField = null; images[name] = file; iconCopies.remove(name); markDirty() }
 
     fun toggle(w: FWidget) {
         if (isReadOnly(w)) return
@@ -442,20 +442,22 @@ class FormFillState internal constructor(val reader: ReaderState) {
             WKind.BUTTON -> {
                 if (w.xfaClick) { fireXfa(w, "click"); return }      // an XFA button: its click scripts
                 // Enter, Mouse Down, Mouse Up (/A + /AA U), Exit: a tap enters and leaves the widget
-                val t = w.triggers
-                val useChain = w.mouseUp.isNotEmpty() && (scripts != null || w.mouseUp.any { it !is PdfAction.JavaScript })
+                val t = triggersOf(w)
+                val up = t[Trigger.MOUSE_UP].orEmpty()
+                val useChain = up.isNotEmpty() && (scripts != null || up.any { it !is PdfAction.JavaScript })
                 if (useChain || t.isNotEmpty()) {
-                    val list = t[Trigger.ENTER].orEmpty() + t[Trigger.MOUSE_DOWN].orEmpty() + (if (useChain) w.mouseUp else emptyList()) + t[Trigger.EXIT].orEmpty()
+                    val list = t[Trigger.ENTER].orEmpty() + t[Trigger.MOUSE_DOWN].orEmpty() + (if (useChain) up else emptyList()) + t[Trigger.EXIT].orEmpty()
                     if (list.isNotEmpty()) FormActions.fire(this, w, Trigger.MOUSE_UP, list)
                 }
-                if (!useChain) w.action?.let { pendingAction = w to it }
+                // 27.10: a Mouse Up set by setAction replaces the button's own action
+                if (!useChain && scriptActions[w.name]?.containsKey("U") != true) w.action?.let { pendingAction = w to it }
                 return
             }
             // main (pdf-3c): a signature field opens the signature-field sheet (sign this field, lock, verify)
             WKind.SIGNATURE -> sigTapped = w
         }
         // other widgets: their mouse triggers run after the default behaviour
-        val t = w.triggers
+        val t = triggersOf(w)
         val list = t[Trigger.ENTER].orEmpty() + t[Trigger.MOUSE_DOWN].orEmpty() + t[Trigger.MOUSE_UP].orEmpty() + t[Trigger.EXIT].orEmpty()
         if (list.isNotEmpty()) FormActions.fire(this, w, Trigger.MOUSE_UP, list)
     }
@@ -598,10 +600,44 @@ class FormFillState internal constructor(val reader: ReaderState) {
     private val addedScripts = LinkedHashMap<String, String>()
     private val addedLocks = LinkedHashMap<String, com.smartdocs.editor.core.formsx.FxSigLock>()
     private val addedFields = ArrayList<com.smartdocs.editor.core.forms5.ScriptDocChanges.NewField>()
-    fun scriptChanges() = com.smartdocs.editor.core.forms5.ScriptDocChanges(addedScripts.toMap(), addedLocks.toMap(), addedFields.toList())
+    /** 8.84: fields removed by `this.removeField` (hidden until the save deletes them). */
+    private val removedFields = mutableStateListOf<String>()
+    /** 27.10: `field.setAction` per field name: /AA key -> script ("" = removed); they run at once and are written on save. */
+    val scriptActions = mutableStateMapOf<String, Map<String, String>>()
+    /** 27.10: `buttonSetIcon` with an icon that holds no picture: copied on save. */
+    private val iconCopies = LinkedHashMap<String, com.smartdocs.editor.core.forms5.ScriptDocChanges.IconSrc>()
+    fun scriptChanges() = com.smartdocs.editor.core.forms5.ScriptDocChanges(addedScripts.toMap(), addedLocks.toMap(), addedFields.toList(),
+        removedFields.toList(), scriptActions.toMap(), iconCopies.toMap())
+    private fun clearScriptChanges() { addedScripts.clear(); addedLocks.clear(); addedFields.clear(); removedFields.clear(); scriptActions.clear(); iconCopies.clear() }
     fun addDocScript(name: String, code: String) { addedScripts[name] = code; markDirty() }
     fun setSigLock(name: String, lock: com.smartdocs.editor.core.formsx.FxSigLock) { addedLocks[name] = lock; markDirty() }
     fun addScriptField(f: com.smartdocs.editor.core.forms5.ScriptDocChanges.NewField) { if (addedFields.none { it.name == f.name }) { addedFields += f; markDirty() } }
+    fun setIconCopy(target: String, src: com.smartdocs.editor.core.forms5.ScriptDocChanges.IconSrc) { images.remove(target); iconCopies[target] = src; markDirty() }
+    fun isRemoved(name: String) = removedFields.any { name == it || name.startsWith("$it.") }
+
+    /**
+     * 27.10 `field.setAction(cTrigger, cScript)` on [name] (and the fields under it): mouse / focus triggers run from
+     * the next event (see [triggersOf]); Keystroke / Format / Validate / Calculate go to the runtime. Written on save.
+     * Returns false for an unknown trigger.
+     */
+    fun setScriptAction(name: String, trigger: String, code: String): Boolean {
+        val key = com.smartdocs.editor.core.forms5.ScriptDocChanges.triggerKey(trigger) ?: return false
+        val targets = model.byName.keys.filter { it == name || it.startsWith("$name.") }.ifEmpty { listOf(name) }
+        targets.forEach { n ->
+            scriptActions[n] = scriptActions[n].orEmpty() + (key to code)
+            if (key !in com.smartdocs.editor.core.forms5.ScriptDocChanges.WIDGET_KEYS) scripts?.setFieldScript(n, key, code)
+        }
+        markDirty()
+        return true
+    }
+
+    /** The widget's mouse / focus actions with the ones `setAction` replaced. */
+    fun triggersOf(w: FWidget): Map<Trigger, List<PdfAction>> {
+        val over = scriptActions[w.name] ?: return w.triggers
+        val out = HashMap(w.triggers)
+        Trigger.entries.forEach { t -> over[t.key]?.let { code -> if (code.isBlank()) out.remove(t) else out[t] = listOf(PdfAction.JavaScript(code)) } }
+        return out
+    }
 
     /** 8.28: fill-time style of rich-text fields (bold / italic / underline), written to /RV and /DS on save. */
     val richStyles = mutableStateMapOf<String, com.smartdocs.editor.core.annot.AnnotStyle.Rich>()
@@ -615,13 +651,55 @@ class FormFillState internal constructor(val reader: ReaderState) {
         markDirty()
     }
 
-    private suspend fun writeTo(src: File, password: String?, out: File) {
+    /**
+     * 27.10: script document changes on a signed file go through the signed gate (SignedGuard): the allowed ones are
+     * appended to [out] as an incremental update; the others never break the signatures. When saving ([offerCopy])
+     * they are written into a copy that the reader offers to save ("signed - save a copy"); an export keeps only
+     * the allowed ones and says so in the console.
+     */
+    private suspend fun writeScriptChangesSigned(src: File, out: File, password: String?, offerCopy: Boolean) {
+        val all = scriptChanges()
+        if (all.isEmpty) return
+        val info = withContext(Dispatchers.IO) { com.smartdocs.editor.core.pdf.SignedGuard.inspect(src, password) }
+        val signedFields = withContext(Dispatchers.IO) { signedFieldNames(src, password) }
+        val decisions = HashMap<com.smartdocs.editor.core.pdf.SignedGuard.Change, com.smartdocs.editor.core.pdf.SignedGuard.Decision>()
+        fun decide(c: com.smartdocs.editor.core.pdf.SignedGuard.Change) = decisions.getOrPut(c) { com.smartdocs.editor.core.pdf.SignedGuard.decide(info, c, true) }
+        val (ok, blocked) = all.split(signedFields) { c ->
+            decide(c).let { it == com.smartdocs.editor.core.pdf.SignedGuard.Decision.PROCEED || it == com.smartdocs.editor.core.pdf.SignedGuard.Decision.SAVE_INCREMENTAL }
+        }
+        if (!ok.isEmpty) ok.appendTo(out, password)
+        if (blocked.isEmpty) return
+        if (!offerCopy) {
+            withContext(Dispatchers.Main.immediate) { consoleLog += "! " + reader.context.getString(com.smartdocs.editor.R.string.jsa_signed_changes_not_exported) }
+            return
+        }
+        // the copy: everything saved so far plus the blocked changes (a full save: its signatures no longer hold)
+        val copy = reader.app.documents.newTemp("jsa_copy")
+        val written = runCatching { withContext(Dispatchers.IO) { out.copyTo(copy, overwrite = true); blocked.applyTo(copy, password) } }.getOrDefault(0)
+        val certified = decisions.values.any { it == com.smartdocs.editor.core.pdf.SignedGuard.Decision.REFUSE }
+        withContext(Dispatchers.Main.immediate) {
+            if (written > 0) reader.offerSignedCopy(copy, if (certified) com.smartdocs.editor.core.pdf.SignedDocumentException.Reason.CERTIFIED_NO_CHANGES
+                else com.smartdocs.editor.core.pdf.SignedDocumentException.Reason.INCREMENTAL_FAILED)
+            else copy.delete()
+            consoleLog += "! " + reader.context.getString(com.smartdocs.editor.R.string.jsa_signed_changes_copy)
+        }
+    }
+
+    /** Full names of the signature fields of [src] that hold a signature. */
+    private fun signedFieldNames(src: File, password: String?): Set<String> = runCatching {
+        com.smartdocs.editor.core.pdf.PdfOps.loadRaw(src, password).use { d ->
+            d.documentCatalog.getAcroForm(null)?.fieldTree
+                ?.filter { it is com.tom_roush.pdfbox.pdmodel.interactive.form.PDSignatureField && it.cosObject.getDictionaryObject(com.tom_roush.pdfbox.cos.COSName.V) != null }
+                ?.map { it.fullyQualifiedName }?.toSet().orEmpty()
+        }
+    }.getOrDefault(emptySet())
+
+    private suspend fun writeTo(src: File, password: String?, out: File, offerCopy: Boolean = false) {
         val (values, display) = pending()
         // audit V-01: a full rewrite would invalidate the signatures of a signed form; it is appended instead
         if (com.smartdocs.editor.core.pdf.SignedSave.isSigned(src, password)) {
             FormValueWriter.writeSigned(reader.context, src, values, display, images.toMap(), hiddenOverride.toMap(), out, password, rich = richStyles.toMap())
-            // a full rewrite would break the signatures: script-requested document changes are not applied here
-            if (!scriptChanges().isEmpty) consoleLog += "! addScript / setLock / addField are not saved into a signed document"
+            writeScriptChangesSigned(src, out, password, offerCopy)
             return
         }
         FormValueWriter.write(reader.context, src, values, display, images.toMap(), out, password, dropXfa = model.xfa == XfaSupport.Kind.STATIC, rich = richStyles.toMap())
@@ -642,13 +720,14 @@ class FormFillState internal constructor(val reader: ReaderState) {
         withContext(Dispatchers.Main.immediate) { commitActive() }
         val tmp = File(file.parentFile, ".${file.nameWithoutExtension}.forms5.pdf")
         withContext(Dispatchers.Main.immediate) { runDocAction("WS") }        // document action: will save
-        try { writeTo(file, password, tmp) } catch (e: Throwable) { tmp.delete(); throw e }
+        try { writeTo(file, password, tmp, offerCopy = true) } catch (e: Throwable) { tmp.delete(); throw e }
         // audit D37: the typed values are dropped only after the new file is in place (a failed swap keeps them)
         try { swap(tmp) } catch (e: Throwable) { tmp.delete(); throw e }
         withContext(Dispatchers.Main.immediate) {
             Snapshot.withMutableSnapshot {
                 // the form steps of the unified history become the reader's save step (ReaderState.recordSaved)
                 edits.clear(); images.clear(); errors.clear(); activeId = null; menuFor = null; committed.clear(); hiddenOverride.clear()
+                clearScriptChanges()      // written (or, on a signed file, handed to the "save a copy" offer)
             }
         }
         withContext(Dispatchers.Main.immediate) { runDocAction("DS") }        // did save
@@ -700,8 +779,19 @@ class FormFillState internal constructor(val reader: ReaderState) {
         applyActionResult(r)
     }
 
-    /** Remove an Acrobat-style "remove field" from a script: the field is hidden (the form structure is kept). */
-    fun removeFieldByScript(name: String) { setHidden(listOf(name), true) }
+    /**
+     * 8.84 `this.removeField(name)`: the field is hidden at once and really deleted (with its widgets) on save;
+     * its value is no longer submitted.
+     */
+    fun removeFieldByScript(name: String) {
+        if (name.isBlank() || model.byName.keys.none { it == name || it.startsWith("$name.") }) return
+        // no undo step: the deletion itself is not undoable before the save either
+        hiddenOverride[name] = true
+        if (active?.let { isHidden(it) } == true) { activeId = null; menuFor = null }
+        if (name !in removedFields) removedFields += name
+        edits.keys.filter { it == name || it.startsWith("$name.") }.forEach { edits.remove(it) }
+        markDirty()
+    }
 
     /** Generated XFA form: remove the last instance of the repeating subform [r] (one undoable file step). */
     fun removeRow(r: XfaRepeat) {
@@ -731,6 +821,7 @@ class FormFillState internal constructor(val reader: ReaderState) {
     /** Leaving without saving. */
     fun discard() {
         edits.clear(); images.clear(); errors.clear(); activeId = null; menuFor = null; committed.clear(); alert = null; hiddenOverride.clear()
+        clearScriptChanges()
         reader.history.removeOwner(OWNER_FORMS)
     }
 }

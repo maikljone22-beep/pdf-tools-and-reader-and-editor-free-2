@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- reader-prefs: per-document reading options (#23) -->
+    <string name="rpf_doc_title">Reading options for this document</string>
+    <string name="rpf_doc_sub">These choices apply to this file only and override the general preferences.</string>
+    <string name="rpf_default">Default</string>
+    <string name="rpf_doc_layout">Page layout</string>
+    <string name="rpf_doc_zoom">Zoom</string>
+    <string name="rpf_doc_use_current">Use the current view (%1$d%%)</string>
+    <string name="rpf_doc_direction">Reading direction</string>
+    <string name="rpf_dir_ltr">Left to right</string>
+    <string name="rpf_dir_rtl">Right to left</string>
+    <string name="rpf_doc_reading">Read aloud</string>
+    <string name="rpf_doc_order">Reading order</string>
+    <string name="rpf_doc_mode">Reading mode</string>
+    <string name="rpf_mode_visible">Visible page only</string>
+    <string name="rpf_mode_document">Whole document</string>
+    <string name="rpf_doc_reset">Reset to the general preferences</string>
+    <!-- deep zoom (6400 %) -->
+    <string name="rpf_deep_zoom">%1$d%% · page %2$d</string>
+    <string name="rpf_deep_exit">Back to the page view</string>
+    <string name="rpf_zoom_in">Zoom in</string>
+    <string name="rpf_zoom_out">Zoom out</string>
+    <!-- page display preferences (§37) -->
+    <string name="rpf_facing_count">Pages side by side (facing layouts)</string>
+    <string name="rpf_page_gap">Gap between pages: %1$d dp</string>
+    <string name="rpf_show_page_size">Always show the page size</string>
+    <string name="rpf_keep_dest_zoom">Keep zoom on Go to destination</string>
+    <string name="rpf_keep_dest_zoom_sub">When off, a link to a destination also applies its zoom (fit page, fit width or a set zoom)</string>
+    <!-- full screen (§37) -->
+    <string name="rpf_fs_request">When a document asks for full screen</string>
+    <string name="rpf_fs_req_ask">Ask me</string>
+    <string name="rpf_fs_req_allow">Always allow</string>
+    <string name="rpf_fs_req_never">Never</string>
+    <string name="rpf_fs_items">Shown in full screen</string>
+    <string name="rpf_fs_toolbar">Toolbar</string>
+    <string name="rpf_fs_page_nav">Page navigation</string>
+    <string name="rpf_fs_tabs">Document tabs</string>
+    <string name="rpf_fs_ask_title">Full screen</string>
+    <string name="rpf_fs_ask_text">This document asks to be shown in full screen. Allow it?</string>
+    <string name="rpf_fs_allow">Allow</string>
+    <string name="rpf_fs_deny">Don\'t allow</string>
+    <string name="rpf_remember_choice">Remember my choice</string>
+    <string name="rpf_prev_page">Previous page</string>
+    <string name="rpf_next_page">Next page</string>
+    <!-- PDF/A view mode (§37 / PREF-5) -->
+    <string name="rpf_pdfa_view">Open PDF/A files in view mode</string>
+    <string name="rpf_pdfa_view_sub">Files that claim PDF/A open read-only, so they stay compliant; editing can be enabled per file</string>
+    <string name="rpf_pdfa_banner">This file claims %1$s and is open read-only to keep it compliant.</string>
+    <string name="rpf_pdfa_enable">Enable editing</string>
+    <string name="rpf_pdfa_blocked">PDF/A view mode: enable editing first</string>
+    <!-- print (§36) -->
+    <string name="rpf_print_view">Current view</string>
+    <!-- reading ruler (§9) -->
+    <string name="rpf_ruler_vertical">Vertical band</string>
+    <string name="rpf_ruler_opacity">Shade opacity: %1$d%%</string>
+    <string name="rpf_ruler_reset">Reset reading ruler</string>
+    <!-- form fields read aloud (§10 / §39) -->
+    <string name="rpf_field_tts">Read form fields one by one</string>
+    <string name="rpf_field_tts_sub">Each field is read when it gets the focus. Tab and Shift+Tab on a keyboard, or Next, move between fields.</string>
+    <string name="rpf_field_tts_start">Start at the first field</string>
+    <string name="rpf_ft_text">text field</string>
+    <string name="rpf_ft_check">check box</string>
+    <string name="rpf_ft_radio">radio button</string>
+    <string name="rpf_ft_combo">drop-down list</string>
+    <string name="rpf_ft_list">list box</string>
+    <string name="rpf_ft_signature">signature field</string>
+    <string name="rpf_ft_button">button</string>
+    <string name="rpf_ft_image">image field</string>
+    <string name="rpf_ft_checked">checked</string>
+    <string name="rpf_ft_unchecked">not checked</string>
+    <string name="rpf_ft_empty">empty</string>
+    <string name="rpf_ft_required">required</string>
+    <!-- tab groups (OLD SHL-5) -->
+    <string name="rpf_groups">Tab groups</string>
+    <string name="rpf_groups_empty">No tab groups yet. Long-press a tab and choose New group.</string>
+    <string name="rpf_groups_hint">Tap a group in the tab strip to collapse or expand it. A closed group keeps its documents so you can restore them later.</string>
+    <string name="rpf_group_new">New tab group</string>
+    <string name="rpf_group_new_with">New group with this tab</string>
+    <string name="rpf_group_add_to">Add to group \"%1$s\"</string>
+    <string name="rpf_group_remove">Remove from group</string>
+    <string name="rpf_group_name">Group name</string>
+    <string name="rpf_group_collapse">Collapse</string>
+    <string name="rpf_group_expand">Expand</string>
+    <string name="rpf_group_close">Close group</string>
+    <string name="rpf_group_closed">Closed</string>
+    <string name="rpf_group_restore">Restore</string>
+    <string name="rpf_group_rename">Rename</string>
+    <string name="rpf_group_delete">Delete</string>
+    <string name="rpf_group_from_open">Group all open tabs</string>
+</resources>

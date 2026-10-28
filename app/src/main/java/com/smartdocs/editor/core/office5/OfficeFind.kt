@@ -89,18 +89,52 @@ object SheetFind {
     }
 }
 
-/** A match inside one text run (`a:t`) of a slide: [ordinal] is the index of that run among the slide's `t` elements. */
-data class SlideHit(val slide: Int, val ordinal: Int, val start: Int, val end: Int)
+/**
+ * A match in a slide paragraph. It starts in text run (`a:t`) [ordinal] at [start] and ends (exclusive) in run
+ * [endOrdinal] at [end]; ordinals index the slide's `t` elements. A match inside one run has `endOrdinal == ordinal`.
+ */
+data class SlideHit(val slide: Int, val ordinal: Int, val start: Int, val end: Int, val endOrdinal: Int = ordinal)
 
 object SlideFind {
     fun runs(doc: PptDoc, slide: Int): List<XElem> = doc.slide(slide)?.root?.findAll("t").orEmpty()
 
+    /** Run ordinals grouped by paragraph (`a:p`), so a match can span runs; a run outside any paragraph is its own group. */
+    internal fun groups(all: List<XElem>, root: XElem): List<List<Int>> {
+        val at = java.util.IdentityHashMap<XElem, Int>().apply { all.forEachIndexed { i, t -> put(t, i) } }
+        val seen = BooleanArray(all.size)
+        val out = ArrayList<List<Int>>()
+        for (p in root.findAll("p")) {
+            val g = p.findAll("t").mapNotNull { at[it] }.filter { !seen[it] }
+            g.forEach { seen[it] = true }
+            if (g.isNotEmpty()) out.add(g)
+        }
+        all.indices.filter { !seen[it] }.forEach { out.add(listOf(it)) }
+        return out.sortedBy { it.first() }
+    }
+
+    /** Matches on one slide (root [root]) in document order. */
+    private fun hitsIn(root: XElem, slide: Int, query: String, o: FindOptions): List<SlideHit> {
+        val all = root.findAll("t")
+        val out = ArrayList<SlideHit>()
+        for (g in groups(all, root)) {
+            val texts = g.map { all[it].textContent() }
+            val starts = IntArray(g.size); var acc = 0
+            texts.forEachIndexed { k, t -> starts[k] = acc; acc += t.length }
+            val joined = texts.joinToString("")
+            for (s in TextMatch.indices(joined, query, o)) {
+                val e = s + query.length
+                val a = g.indices.first { texts[it].isNotEmpty() && s < starts[it] + texts[it].length }
+                val b = g.indices.first { texts[it].isNotEmpty() && e <= starts[it] + texts[it].length }
+                out.add(SlideHit(slide, g[a], s - starts[a], e - starts[b], g[b]))
+            }
+        }
+        return out
+    }
+
     fun find(doc: PptDoc, query: String, o: FindOptions = FindOptions()): List<SlideHit> {
         if (query.isEmpty()) return emptyList()
         val out = ArrayList<SlideHit>()
-        for (i in 0 until doc.slideCount) runs(doc, i).forEachIndexed { k, t ->
-            TextMatch.indices(t.textContent(), query, o).forEach { s -> out.add(SlideHit(i, k, s, s + query.length)) }
-        }
+        for (i in 0 until doc.slideCount) doc.slide(i)?.root?.let { out.addAll(hitsIn(it, i, query, o)) }
         return out
     }
 
@@ -110,12 +144,27 @@ object SlideFind {
         if (text.isNotEmpty() && (text.first() == ' ' || text.last() == ' ')) t.set("xml:space", "preserve")
     }
 
+    /** Writes [with] over a match; the text goes into the first run (its formatting), the rest of the match is removed. */
+    private fun apply(all: List<XElem>, h: SlideHit, with: String): Boolean {
+        val first = all.getOrNull(h.ordinal) ?: return false
+        val last = all.getOrNull(h.endOrdinal) ?: return false
+        val a = first.textContent()
+        if (h.endOrdinal == h.ordinal) {
+            if (h.end > a.length || h.start > h.end) return false
+            setRun(first, a.substring(0, h.start) + with + a.substring(h.end)); return true
+        }
+        val b = last.textContent()
+        if (h.start > a.length || h.end > b.length || h.endOrdinal < h.ordinal) return false
+        setRun(first, a.substring(0, h.start) + with)
+        for (k in h.ordinal + 1 until h.endOrdinal) setRun(all[k], "")
+        setRun(last, b.substring(h.end))
+        return true
+    }
+
     /** Replace one match (one undo step). */
     fun replace(doc: PptDoc, h: SlideHit, with: String): Boolean = doc.changeSlide(h.slide) {
-        val t = doc.editSlide(h.slide)?.root?.findAll("t")?.getOrNull(h.ordinal) ?: return@changeSlide false
-        val cur = t.textContent()
-        if (h.end > cur.length) return@changeSlide false
-        setRun(t, cur.substring(0, h.start) + with + cur.substring(h.end)); true
+        val all = doc.editSlide(h.slide)?.root?.findAll("t") ?: return@changeSlide false
+        apply(all, h, with)
     }
 
     /** Replace everywhere (one undo step); returns the count. */
@@ -125,10 +174,10 @@ object SlideFind {
         var n = 0
         doc.change {
             hits.map { it.slide }.distinct().forEach { i ->
-                doc.editSlide(i)?.root?.findAll("t")?.forEach { t ->
-                    val (nt, c) = TextMatch.replaceAll(t.textContent(), query, with, o)
-                    if (c > 0) { setRun(t, nt); n += c }
-                }
+                val root = doc.editSlide(i)?.root ?: return@forEach
+                val all = root.findAll("t")
+                // last match first, so the offsets of earlier matches stay valid
+                hitsIn(root, i, query, o).asReversed().forEach { if (apply(all, it, with)) n++ }
             }
         }
         return n

@@ -51,6 +51,8 @@ object ImagePlacement {
  * ai6 (AI-8): route "ai_image". Prompt + size → [AiMedia.generateImage] → preview; save to the documents folder
  * and the gallery, share, make a one-page PDF, or (with a document [uri]) place it centred on a chosen page of a
  * copy of the document — the result sheet can then replace the original (the old version goes to the trash).
+ * aor: a generated or picked image can be edited by a prompt ([AiMedia.editImage], `/images/edits`; each edit can be
+ * undone here), and "insert on the page" hands it to the reader ([AiImageInsert]) as one undoable content edit.
  */
 @Composable
 fun ImageGenScreen(nav: NavHostController, uri: String?) {
@@ -69,6 +71,28 @@ fun ImageGenScreen(nav: NavHostController, uri: String?) {
     var pageText by remember { mutableStateOf("1") }
     var result by remember { mutableStateOf<File?>(null) }
     var other by remember { mutableStateOf<File?>(null) }
+    // aor: prompt edits; [history] holds the versions before each edit (undo)
+    var editPrompt by remember { mutableStateOf("") }
+    val history = remember { mutableStateListOf<Pair<File, Bitmap>>() }
+    fun show(f: File, b: Bitmap, keepOld: Boolean) {
+        val old = image; val oldBmp = bmp
+        if (keepOld && old != null && oldBmp != null) history.add(old to oldBmp) else history.clear()
+        image = f; bmp = b
+    }
+    val pickToEdit = com.smartdocs.editor.ui.common.rememberImagePicker(multiple = false) { picked ->
+        val src = picked.firstOrNull() ?: return@rememberImagePicker
+        scope.launch {
+            val r = withContext(Dispatchers.IO) {
+                runCatching {
+                    val b = PdfOps.decodeScaled(src, 1536) ?: throw IllegalStateException("image")
+                    val out = app.documents.uniqueFile(app.documents.docsDir, "ai_image", "png")
+                    out.outputStream().use { b.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                    out to b
+                }
+            }
+            r.onSuccess { (f, b) -> show(f, b, keepOld = false) }.onFailure { error = ctx.getString(R.string.aor_img_unreadable) }
+        }
+    }
 
     Scaffold(topBar = { AppTopBar(stringResource(R.string.ai6t_image_gen), onBack = { nav.popBackStack() }) }) { pad ->
         Column(Modifier.fillMaxSize().padding(pad).verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -84,21 +108,47 @@ fun ImageGenScreen(nav: NavHostController, uri: String?) {
                 scope.launch {
                     try {
                         val bytes = AiMedia.generateImage(client, prompt.trim(), size)
+                        var generated: Bitmap? = null
                         val f = withContext(Dispatchers.IO) {
                             app.documents.uniqueFile(app.documents.docsDir, "ai_image", "png").also { out ->
                                 val b = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: throw IllegalStateException("image")
                                 out.outputStream().use { b.compress(Bitmap.CompressFormat.PNG, 100, it) }
-                                bmp = b
+                                generated = b
                             }
                         }
-                        image = f
+                        generated?.let { b -> show(f, b, keepOld = false) } ?: run { image = f }
                     } catch (e: CancellationException) { throw e } catch (e: Throwable) { error = tError(ctx, e) } finally { busy = false }
                 }
             }) { Text(stringResource(R.string.ai6t_generate)) }
+            OutlinedButton(enabled = !busy, onClick = pickToEdit) { Text(stringResource(R.string.aor_edit_pick)) }   // aor
             if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
             error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             bmp?.let { b -> Image(b.asImageBitmap(), null, Modifier.fillMaxWidth().heightIn(max = 420.dp), contentScale = ContentScale.Fit, alignment = Alignment.Center) }
             image?.let { f ->
+                // aor (AI-8): prompt-based edit of the shown image
+                OutlinedTextField(editPrompt, { editPrompt = it }, label = { Text(stringResource(R.string.aor_edit_prompt)) }, minLines = 2, modifier = Modifier.fillMaxWidth())
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Button(enabled = !busy && editPrompt.isNotBlank(), onClick = {
+                        busy = true; error = null
+                        scope.launch {
+                            try {
+                                val src = withContext(Dispatchers.IO) { f.readBytes() }
+                                val bytes = AiMedia.editImage(client, src, editPrompt.trim(), size)
+                                val (nf, nb) = withContext(Dispatchers.IO) {
+                                    val b = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: throw IllegalStateException("image")
+                                    val out = app.documents.uniqueFile(app.documents.docsDir, "ai_image_edit", "png")
+                                    out.outputStream().use { b.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                                    out to b
+                                }
+                                show(nf, nb, keepOld = true)
+                            } catch (e: CancellationException) { throw e } catch (e: Throwable) { error = tError(ctx, e) } finally { busy = false }
+                        }
+                    }) { Text(stringResource(R.string.aor_edit_apply)) }
+                    if (history.isNotEmpty()) OutlinedButton(enabled = !busy, onClick = {
+                        val (pf, pb) = history.removeAt(history.lastIndex)
+                        image = pf; bmp = pb
+                    }) { Text(stringResource(R.string.aor_edit_undo)) }
+                }
                 TFileActions(f)
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     OutlinedButton(onClick = {
@@ -136,6 +186,13 @@ fun ImageGenScreen(nav: NavHostController, uri: String?) {
                             }
                         }) { Text(stringResource(R.string.ai6t_insert)) }
                     }
+                    // aor (AI-8): place it on the page in the reader as one undoable step (no copy)
+                    Button(enabled = !busy, onClick = {
+                        val p = ((pageText.toIntOrNull() ?: 1) - 1).coerceAtLeast(0)
+                        AiImageInsert.pending = AiImageInsert.Request(doc.absolutePath, p, f.absolutePath)
+                        if (!nav.popBackStack(com.smartdocs.editor.ui.Routes.READER, inclusive = false))
+                            nav.navigate(com.smartdocs.editor.ui.Routes.reader(Uri.fromFile(doc).toString(), p))
+                    }) { Text(stringResource(R.string.aor_insert_page)) }
                 }
             }
             other?.let { TFileActions(it) }

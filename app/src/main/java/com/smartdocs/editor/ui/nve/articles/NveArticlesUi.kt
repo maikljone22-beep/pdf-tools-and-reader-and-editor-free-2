@@ -51,6 +51,9 @@ class NveArticlesState private constructor(val s: ReaderState) {
     /** Show every article box on the pages (panel open / drawing / reading). */
     var showBoxes by mutableStateOf(false)
     var askInfoForNew by mutableStateOf(false)
+    /** §22: box (article, bead) being moved / resized and its rect while dragging ([llx, lly, urx, ury], user space). */
+    var adjusting by mutableStateOf<Pair<Int, Int>?>(null)
+    var adjustRect by mutableStateOf<FloatArray?>(null)
     var busy by mutableStateOf(false)
     var error by mutableStateOf<String?>(null)
     var loadedVersion = -1
@@ -81,6 +84,12 @@ class NveArticlesState private constructor(val s: ReaderState) {
     fun startNew() { pending.clear(); target = -1; insertAt = -1; drawing = true; showBoxes = true; reading = null }
     fun startInsert(article: Int, at: Int) { pending.clear(); target = article; insertAt = at; drawing = true; showBoxes = true; reading = null }
     fun cancelDrawing() { pending.clear(); drawing = false }
+    fun startAdjust(article: Int, bead: Int) {
+        val b = articles.getOrNull(article)?.beads?.getOrNull(bead) ?: return
+        cancelDrawing(); reading = null; showBoxes = true
+        adjusting = article to bead; adjustRect = b.rect.copyOf()
+    }
+    fun cancelAdjust() { adjusting = null; adjustRect = null }
 
     companion object {
         private val map = WeakHashMap<ReaderState, NveArticlesState>()
@@ -162,6 +171,10 @@ fun NveArticlesPane(state: ReaderState, onShowRect: (Int, FloatArray) -> Unit, o
                         IconButton(onClick = { scope.launch { a.change(lbl(R.string.ns_art_h_move)) { NveArticles.moveBead(it, i, k, k - 1) } } }, enabled = k > 0 && !a.busy) { Icon(Icons.Default.ArrowUpward, stringResource(R.string.ns_up)) }
                         IconButton(onClick = { scope.launch { a.change(lbl(R.string.ns_art_h_move)) { NveArticles.moveBead(it, i, k, k + 1) } } }, enabled = k < art.beads.size - 1 && !a.busy) { Icon(Icons.Default.ArrowDownward, stringResource(R.string.ns_down)) }
                         IconButton(onClick = { a.startInsert(i, k + 1); if (a.hideAfterUse) onClose?.invoke() }) { Icon(Icons.Default.AddBox, stringResource(R.string.ns_art_insert_after)) }
+                        // §22: move / resize this box on the page
+                        IconButton(onClick = { a.startAdjust(i, k); onShowRect(b.page, b.rect); if (a.hideAfterUse) onClose?.invoke() }, enabled = !a.busy) {
+                            Icon(Icons.Default.OpenWith, stringResource(R.string.ett_art_adjust))
+                        }
                         IconButton(onClick = { scope.launch { a.change(lbl(R.string.ns_art_h_del_box)) { NveArticles.deleteBead(it, i, k) } } }, enabled = !a.busy) { Icon(Icons.Default.Delete, stringResource(R.string.ns_art_delete_box)) }
                     }
                 }
@@ -229,7 +242,7 @@ fun NveArticleDrawOverlay(state: ReaderState, pageRectsPx: () -> List<Pair<Int, 
     val a = NveArticlesState.of(state)
     val scope = rememberCoroutineScope()
     val ctx = LocalContext.current
-    if (!a.showBoxes && !a.drawing && a.reading == null) return
+    if (!a.showBoxes && !a.drawing && a.reading == null && a.adjusting == null) return
     LaunchedEffect(state.renderVersion, state.file) { if (a.loadedVersion != state.renderVersion) a.load() }
     val rectsNow by rememberUpdatedState(pageRectsPx)
     var dragStart by remember { mutableStateOf<Offset?>(null) }
@@ -259,6 +272,37 @@ fun NveArticleDrawOverlay(state: ReaderState, pageRectsPx: () -> List<Pair<Int, 
                 },
                 onDragCancel = { dragStart = null; dragNow = null },
             ) { ch, _ -> ch.consume(); dragNow = ch.position }
+        } else if (a.adjusting != null) Modifier.pointerInput(Unit) {
+            // §22: drag the box being adjusted (inside: move; a corner: resize); edits stay pending until Done
+            var handle: com.smartdocs.editor.core.nve.BoxDrag.Handle? = null
+            var screen: FloatArray? = null
+            var at: Pair<Int, Rect>? = null
+            detectDragGestures(
+                onDragStart = { p ->
+                    handle = null; screen = null; at = null
+                    val (i, k) = a.adjusting ?: return@detectDragGestures
+                    val page = a.articles.getOrNull(i)?.beads?.getOrNull(k)?.page ?: return@detectDragGestures
+                    val rect = a.adjustRect ?: return@detectDragGestures
+                    val hit = rectsNow().firstOrNull { it.first == page } ?: return@detectDragGestures
+                    val g = geometry(state, page, hit.second) ?: return@detectDragGestures
+                    val lr = g.pdfRectToLayout(android.graphics.RectF(rect[0], rect[3], rect[2], rect[1])).translate(hit.second.left, hit.second.top)
+                    val box = floatArrayOf(lr.left, lr.top, lr.right, lr.bottom)
+                    handle = com.smartdocs.editor.core.nve.BoxDrag.hit(box, p.x, p.y, 28.dp.toPx())
+                    if (handle != null) { screen = box; at = hit }
+                },
+                onDragEnd = { handle = null },
+                onDragCancel = { handle = null },
+            ) { ch, d ->
+                val h = handle ?: return@detectDragGestures
+                val box = screen ?: return@detectDragGestures
+                val (page, r) = at ?: return@detectDragGestures
+                ch.consume()
+                val moved = com.smartdocs.editor.core.nve.BoxDrag.apply(box, h, d.x, d.y, 12.dp.toPx())
+                screen = moved
+                val g = geometry(state, page, r) ?: return@detectDragGestures
+                val pdf = g.layoutRectToPdf(Rect(moved[0], moved[1], moved[2], moved[3]).translate(-r.left, -r.top))
+                a.adjustRect = floatArrayOf(pdf.left, pdf.bottom, pdf.right, pdf.top)
+            }
         } else Modifier
         Canvas(Modifier.fillMaxSize().then(drawMod)) {
             val pages = pageRectsPx()
@@ -273,7 +317,19 @@ fun NveArticleDrawOverlay(state: ReaderState, pageRectsPx: () -> List<Pair<Int, 
             if (a.showBoxes || a.reading != null) a.articles.forEachIndexed { i, art ->
                 art.beads.forEachIndexed { k, b ->
                     val cur = a.reading == (i to k)
-                    drawBead(b.page, b.rect, if (cur) Color(0xFFE65100) else Color(0xFF1565C0), "${i + 1}-${k + 1}")
+                    if (a.adjusting != (i to k)) drawBead(b.page, b.rect, if (cur) Color(0xFFE65100) else Color(0xFF1565C0), "${i + 1}-${k + 1}")
+                }
+            }
+            // §22: the box being adjusted, with its four corner handles
+            a.adjusting?.let { (i, k) ->
+                val b = a.articles.getOrNull(i)?.beads?.getOrNull(k) ?: return@let
+                val rect = a.adjustRect ?: b.rect
+                drawBead(b.page, rect, Color(0xFFE65100), "${i + 1}-${k + 1}")
+                val r = pages.firstOrNull { it.first == b.page }?.second ?: return@let
+                val g = geometry(state, b.page, r) ?: return@let
+                val lr = g.pdfRectToLayout(android.graphics.RectF(rect[0], rect[3], rect[2], rect[1])).translate(r.left, r.top)
+                listOf(lr.topLeft, lr.topRight, lr.bottomLeft, lr.bottomRight).forEach { c ->
+                    drawCircle(Color(0xFFE65100), 9.dp.toPx(), c); drawCircle(Color.White, 4.dp.toPx(), c)
                 }
             }
             a.pending.forEachIndexed { k, b -> drawBead(b.page, b.rect, Color(0xFF2E7D32), "+${k + 1}") }
@@ -296,6 +352,18 @@ fun NveArticleDrawOverlay(state: ReaderState, pageRectsPx: () -> List<Pair<Int, 
                         scope.launch { a.change(ctx.getString(R.string.ns_art_h_add_box)) { d -> beads.forEachIndexed { k, b -> NveArticles.insertBead(d, t, at + k, b) } } }
                     }
                 }) { Text(stringResource(R.string.ns_done)) }
+            }
+        }
+        if (a.adjusting != null) Surface(Modifier.align(Alignment.TopCenter).padding(top = 8.dp), shape = RoundedCornerShape(50), tonalElevation = 6.dp, shadowElevation = 6.dp) {
+            Row(Modifier.padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(stringResource(R.string.ett_art_adjust_hint), style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(horizontal = 6.dp))
+                TextButton(onClick = { a.cancelAdjust() }) { Text(stringResource(R.string.cancel)) }
+                Button(onClick = {
+                    val (i, k) = a.adjusting ?: return@Button
+                    val rect = a.adjustRect
+                    a.cancelAdjust()
+                    if (rect != null) scope.launch { a.change(ctx.getString(R.string.ett_art_h_adjust)) { d -> NveArticles.setBeadRect(d, i, k, rect) } }
+                }, enabled = !a.busy) { Text(stringResource(R.string.ns_done)) }
             }
         }
         a.reading?.let { (i, k) ->

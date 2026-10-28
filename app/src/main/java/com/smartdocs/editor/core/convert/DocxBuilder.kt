@@ -24,6 +24,12 @@ class DocxBuilder(
      * (tblpPr), placed on the page where the PDF has it; page breaks between pages. Wins over [flowing0].
      */
     private val exact: Boolean = false,
+    /** Detected running headers / footers are deleted instead of becoming the Word header / footer. */
+    private val dropFurniture: Boolean = false,
+    /** s6 "custom character spacing": points added between characters of every run (0 = as is). */
+    private val charSpacing: Float = 0f,
+    /** s6 "image anchoring": pictures float at their PDF position (anchored to the page) instead of sitting in line. */
+    private val anchorImages: Boolean = false,
 ) : Closeable {
     private val flowing = flowing0 && !exact
 
@@ -53,7 +59,7 @@ class DocxBuilder(
         // a page break before every page but the first (the old else-branch of the footer test put one before the first
         // page and skipped the one before the page that first had a footer)
         if (pages > 0 && !flowing) body.append("<w:p><w:r><w:br w:type=\"page\"/></w:r></w:p>")
-        if (!flowing) {
+        if (!flowing && !dropFurniture) {
             if (headerXml == null && page.header.isNotEmpty()) headerXml = furniturePart("hdr", page.header, page)
             if (footerXml == null && page.footer.isNotEmpty()) footerXml = furniturePart("ftr", page.footer, page)
         }
@@ -95,6 +101,7 @@ class DocxBuilder(
             if (r.italic) rp.append("<w:i/><w:iCs/>")
             if (r.strike) rp.append("<w:strike/>")
             if (r.color != 0) rp.append("<w:color w:val=\"").append(Decorations.hex(r.color)).append("\"/>")
+            if (charSpacing != 0f) rp.append("<w:spacing w:val=\"").append(Math.round(charSpacing * 20f).coerceIn(-1580, 1580)).append("\"/>")   // twentieths of a point
             if (kotlin.math.abs(r.size - bodySize) >= 0.5f) { val hp = halfPts(r.size); rp.append("<w:sz w:val=\"").append(hp).append("\"/><w:szCs w:val=\"").append(hp).append("\"/>") }
             if (r.underline) rp.append("<w:u w:val=\"single\"/>")
             r.bg?.let { rp.append("<w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"").append(Decorations.hex(it)).append("\"/>") }
@@ -216,14 +223,21 @@ class DocxBuilder(
             else -> "left"
         }
         body.append("<w:p><w:pPr>").append(if (exact) frame(b.rect) + "<w:spacing w:before=\"0\" w:after=\"0\"/>" else "")
-            .append("<w:jc w:val=\"").append(if (exact) "left" else align).append("\"/></w:pPr><w:r><w:drawing><wp:inline distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\">")
-            .append("<wp:extent cx=\"").append(cx).append("\" cy=\"").append(cy).append("\"/><wp:docPr id=\"").append(picId).append("\" name=\"Picture ").append(picId).append("\"/>")
+            .append("<w:jc w:val=\"").append(if (exact) "left" else align).append("\"/></w:pPr><w:r><w:drawing>")
+        val anchored = anchorImages && !exact
+        if (anchored) body.append("<wp:anchor distT=\"0\" distB=\"0\" distL=\"114300\" distR=\"114300\" simplePos=\"0\" relativeHeight=\"").append(picId)
+            .append("\" behindDoc=\"0\" locked=\"0\" layoutInCell=\"1\" allowOverlap=\"1\"><wp:simplePos x=\"0\" y=\"0\"/>")
+            .append("<wp:positionH relativeFrom=\"page\"><wp:posOffset>").append(emu(b.rect.x0.coerceAtLeast(0f))).append("</wp:posOffset></wp:positionH>")
+            .append("<wp:positionV relativeFrom=\"page\"><wp:posOffset>").append(emu(b.rect.y0.coerceAtLeast(0f))).append("</wp:posOffset></wp:positionV>")
+            .append("<wp:extent cx=\"").append(cx).append("\" cy=\"").append(cy).append("\"/><wp:effectExtent l=\"0\" t=\"0\" r=\"0\" b=\"0\"/><wp:wrapSquare wrapText=\"bothSides\"/>")
+        else body.append("<wp:inline distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\"><wp:extent cx=\"").append(cx).append("\" cy=\"").append(cy).append("\"/>")
+        body.append("<wp:docPr id=\"").append(picId).append("\" name=\"Picture ").append(picId).append("\"/>")
             .append("<wp:cNvGraphicFramePr><a:graphicFrameLocks noChangeAspect=\"1\"/></wp:cNvGraphicFramePr>")
             .append("<a:graphic><a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/picture\"><pic:pic>")
             .append("<pic:nvPicPr><pic:cNvPr id=\"").append(picId).append("\" name=\"").append(name).append("\"/><pic:cNvPicPr/></pic:nvPicPr>")
             .append("<pic:blipFill><a:blip r:embed=\"").append(rid).append("\"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>")
             .append("<pic:spPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"").append(cx).append("\" cy=\"").append(cy).append("\"/></a:xfrm><a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></pic:spPr>")
-            .append("</pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>")
+            .append("</pic:pic></a:graphicData></a:graphic>").append(if (anchored) "</wp:anchor>" else "</wp:inline>").append("</w:drawing></w:r></w:p>")
     }
 
     fun finish() {

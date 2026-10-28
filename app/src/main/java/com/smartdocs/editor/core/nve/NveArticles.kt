@@ -171,6 +171,14 @@ object NveArticles {
         val b = l.removeAt(from); l.add(to.coerceIn(0, l.size), b); setBeads(doc, index, l)
     }
 
+    /** §22: moves / resizes box [bead] of article [index] to [rect] ([llx, lly, urx, ury] in the page's user space). */
+    fun setBeadRect(doc: PDDocument, index: Int, bead: Int, rect: FloatArray) {
+        val l = list(doc)[index].beads.toMutableList()
+        if (bead !in l.indices) return
+        l[bead] = l[bead].copy(rect = BoxDrag.normalized(rect))
+        setBeads(doc, index, l)
+    }
+
     /** Renumbers the boxes of an article in reading order: page, then top to bottom, then left/right by [rtl]. */
     fun renumber(doc: PDDocument, index: Int, rtl: Boolean = false) {
         val l = list(doc)[index].beads
@@ -186,4 +194,42 @@ object NveArticles {
         setBeads(doc, into, merged)
         delete(doc, other)
     }
+}
+
+/**
+ * §22: dragging an article box (or another rectangle) in screen space (y down): the whole box ([Handle.MOVE]) or one
+ * corner, never smaller than [min] on a side. Pure: unit tested.
+ */
+object BoxDrag {
+    enum class Handle { MOVE, TOP_LEFT, TOP_RIGHT, BOTTOM_LEFT, BOTTOM_RIGHT }
+
+    /** [l, t, r, b] (screen, t < b) after a drag by ([dx], [dy]) of [h]. */
+    fun apply(box: FloatArray, h: Handle, dx: Float, dy: Float, min: Float): FloatArray {
+        var (l, t, r, b) = box.toList()
+        when (h) {
+            Handle.MOVE -> { l += dx; r += dx; t += dy; b += dy }
+            Handle.TOP_LEFT -> { l = minOf(l + dx, r - min); t = minOf(t + dy, b - min) }
+            Handle.TOP_RIGHT -> { r = maxOf(r + dx, l + min); t = minOf(t + dy, b - min) }
+            Handle.BOTTOM_LEFT -> { l = minOf(l + dx, r - min); b = maxOf(b + dy, t + min) }
+            Handle.BOTTOM_RIGHT -> { r = maxOf(r + dx, l + min); b = maxOf(b + dy, t + min) }
+        }
+        return floatArrayOf(l, t, r, b)
+    }
+
+    /** The handle under ([x], [y]) for the box [l, t, r, b]: a corner within [grab], else MOVE inside, else null. */
+    fun hit(box: FloatArray, x: Float, y: Float, grab: Float): Handle? {
+        val (l, t, r, b) = box.toList()
+        fun near(cx: Float, cy: Float) = kotlin.math.hypot(x - cx, y - cy) <= grab
+        return when {
+            near(l, t) -> Handle.TOP_LEFT
+            near(r, t) -> Handle.TOP_RIGHT
+            near(l, b) -> Handle.BOTTOM_LEFT
+            near(r, b) -> Handle.BOTTOM_RIGHT
+            x in l..r && y in t..b -> Handle.MOVE
+            else -> null
+        }
+    }
+
+    /** [llx, lly, urx, ury] with the lower-left corner first. */
+    fun normalized(r: FloatArray): FloatArray = floatArrayOf(minOf(r[0], r[2]), minOf(r[1], r[3]), maxOf(r[0], r[2]), maxOf(r[1], r[3]))
 }

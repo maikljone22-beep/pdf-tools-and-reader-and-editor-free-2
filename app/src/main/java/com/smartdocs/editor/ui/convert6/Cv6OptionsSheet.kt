@@ -14,6 +14,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -71,6 +72,29 @@ fun Cv6OptionsSheet(
             if (conv.inputs.isNotEmpty()) {
                 FieldLabel(stringResource(R.string.cv6_inputs, inputs.size))
                 FileListEditor(inputs, onInputs)
+                // s6 Batch: a page range per file (blank = the common range below)
+                if (Opt.RANGE in conv.opts && inputs.size > 1) {
+                    FieldLabel(stringResource(R.string.cv9_ranges_per_file))
+                    inputs.forEach { f ->
+                        val r = o.fileRanges[f.path].orEmpty()
+                        OutlinedTextField(r, { v -> onChange(o.copy(fileRanges = o.fileRanges + (f.path to v))) }, Modifier.fillMaxWidth(), singleLine = true,
+                            label = { Text(f.name, maxLines = 1) }, placeholder = { Text(stringResource(R.string.cv9_range_common)) },
+                            isError = !com.smartdocs.editor.core.pdf.PdfOps.rangeSyntaxOk(r))
+                    }
+                }
+                // s5 / s6: output folder (a copy of every output goes there too)
+                val tree = rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocumentTree()) { u ->
+                    if (u != null) {
+                        runCatching { ctx.contentResolver.takePersistableUriPermission(u, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION) }
+                        onChange(o.copy(outputTree = u.toString()))
+                    }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    val name = o.outputTree.takeIf { it.isNotBlank() }?.let { runCatching { androidx.documentfile.provider.DocumentFile.fromTreeUri(ctx, android.net.Uri.parse(it))?.name }.getOrNull() }
+                    Text(name?.let { stringResource(R.string.cv9_out_folder, it) } ?: stringResource(R.string.cv9_out_documents), Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+                    if (o.outputTree.isNotBlank()) IconButton(onClick = { onChange(o.copy(outputTree = "")) }) { Icon(Icons.Default.Close, stringResource(R.string.cancel)) }
+                    TextButton(onClick = { tree.launch(null) }) { Text(stringResource(R.string.cv9_out_choose)) }
+                }
                 if (conv.multi) OutlinedButton(onClick = onAddMore, shape = RoundedCornerShape(50)) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.cv6_add_files)) }
             }
             if (needPassword) {
@@ -81,7 +105,7 @@ fun Cv6OptionsSheet(
             }
             OptionsBody(conv, inputs.size, o, onChange)
             PrimaryButton(stringResource(R.string.cv6_convert), enabled = (conv.inputs.isEmpty() || inputs.isNotEmpty()) && (Opt.URL !in conv.opts || o.url.isNotBlank()) && (Opt.TEXT !in conv.opts || o.text.isNotBlank()) &&
-                (Opt.RANGE !in conv.opts || com.smartdocs.editor.core.pdf.PdfOps.rangeSyntaxOk(o.range)) && (!needPassword || password.isNotEmpty()),
+                (Opt.RANGE !in conv.opts || (com.smartdocs.editor.core.pdf.PdfOps.rangeSyntaxOk(o.range) && o.fileRanges.values.all { com.smartdocs.editor.core.pdf.PdfOps.rangeSyntaxOk(it) })) && (!needPassword || password.isNotEmpty()),
                 icon = Icons.Default.SwapHoriz, onClick = onConvert)
         }
     }
@@ -135,6 +159,9 @@ private fun OptionsBody(conv: Conv, inputCount: Int, o: Cv6Opts, onChange: (Cv6O
         ChoiceChips(listOf(false, true), o.singleSheet, { if (it) stringResource(R.string.cv_single_sheet) else stringResource(R.string.cv_sheet_per_page) }) { onChange(o.copy(singleSheet = it)) }
     }
     if (Opt.TABLES in opts && (Opt.PPT_MODE !in opts || o.pptEditable)) SwitchRow(stringResource(R.string.cv_detect_tables), o.tables, stringResource(R.string.cv_detect_tables_sub)) { onChange(o.copy(tables = it)) }
+    // s6 complex-table threshold: all tables, or lined tables only (fewer false tables in complex layouts)
+    if (Opt.TABLES in opts && o.tables && (Opt.PPT_MODE !in opts || o.pptEditable))
+        ChoiceChips(listOf(true, false), o.streamTables, { if (it) stringResource(R.string.cv9_tables_all) else stringResource(R.string.cv9_tables_lined) }) { onChange(o.copy(streamTables = it)) }
     if (Opt.INCLUDE_IMAGES in opts && (Opt.PPT_MODE !in opts || o.pptEditable)) SwitchRow(stringResource(R.string.cv_include_images), o.includeImages, stringResource(R.string.cv_include_images_sub)) { onChange(o.copy(includeImages = it)) }
     if (Opt.IMG_FORMAT in opts) {
         FieldLabel(stringResource(R.string.cv_img_format))
@@ -160,6 +187,50 @@ private fun OptionsBody(conv: Conv, inputCount: Int, o: Cv6Opts, onChange: (Cv6O
     if (Opt.GRAY in opts && !o.bw) SwitchRow(stringResource(R.string.cv6_gray), o.gray) { onChange(o.copy(gray = it)) }
     if (Opt.BW in opts) SwitchRow(stringResource(R.string.pc_bw), o.bw, stringResource(R.string.pc_bw_sub)) { onChange(o.copy(bw = it)) }
     if (Opt.FORM_FIELDS in opts) SwitchRow(stringResource(R.string.cv9_form_fields), o.recognizeFields, stringResource(R.string.cv9_form_fields_sub)) { onChange(o.copy(recognizeFields = it)) }
+    if (Opt.EXCEL_FIT in opts) {
+        // FINAL_CHECK_2 #9: Excel fit to page
+        FieldLabel(stringResource(R.string.cv9_xfit))
+        ChoiceChips(listOf(0, 1, 2, 3), o.excelFit, { when (it) { 0 -> stringResource(R.string.cv9_xfit_sheet); 1 -> stringResource(R.string.cv9_xfit_actual)
+            2 -> stringResource(R.string.cv9_xfit_cols); else -> stringResource(R.string.cv9_xfit_page) } }) { onChange(o.copy(excelFit = it)) }
+    }
+    if (Opt.CREATE in opts) {
+        // FINAL_CHECK_2 #3: creation presets and a tagged PDF
+        FieldLabel(stringResource(R.string.cv9_preset))
+        ChoiceChips(listOf(0, 1, 2, 3), o.preset, { when (it) { 0 -> stringResource(R.string.cv9_preset_standard); 1 -> stringResource(R.string.cv9_preset_high)
+            2 -> stringResource(R.string.cv9_preset_small); else -> stringResource(R.string.cv9_preset_archive) } }) { onChange(o.copy(preset = it)) }
+        SwitchRow(stringResource(R.string.cv9_tagged), o.tagged, stringResource(R.string.cv9_tagged_sub)) { onChange(o.copy(tagged = it)) }
+    }
+    if (Opt.DOCX_TEXT in opts) {
+        // s6 Word: custom character spacing; image anchoring
+        FieldLabel(stringResource(R.string.cv9_char_spacing))
+        ChoiceChips(listOf(-0.5f, 0f, 0.5f, 1f), o.docxCharSpacing, { if (it == 0f) stringResource(R.string.cv9_spacing_normal) else (if (it > 0) "+" else "") + it.toString() + " pt" }) { onChange(o.copy(docxCharSpacing = it)) }
+        SwitchRow(stringResource(R.string.cv9_anchor_images), o.docxAnchorImages, stringResource(R.string.cv9_anchor_images_sub)) { onChange(o.copy(docxAnchorImages = it)) }
+    }
+    if (Opt.XLSX_CELLS in opts) {
+        // s6 Excel: split multi-line text into rows; reduce merged cells
+        SwitchRow(stringResource(R.string.cv9_xlsx_split), o.xlsxSplitLines) { onChange(o.copy(xlsxSplitLines = it)) }
+        SwitchRow(stringResource(R.string.cv9_xlsx_nomerge), o.xlsxNoMerge) { onChange(o.copy(xlsxNoMerge = it)) }
+    }
+    if (Opt.HEADERS in opts) {
+        // s6: running headers / footers: automatic / keep as text / delete
+        FieldLabel(stringResource(R.string.cv9_headers))
+        ChoiceChips(listOf(0, 1, 2), o.headerMode, { when (it) { 0 -> stringResource(R.string.cv6_lang_auto); 1 -> stringResource(R.string.cv9_headers_keep); else -> stringResource(R.string.cv9_headers_delete) } }) { onChange(o.copy(headerMode = it)) }
+    }
+    if (Opt.TEXT_LAYOUT in opts) {
+        // s6 Text: paragraphs or the PDF's lines; line width
+        FieldLabel(stringResource(R.string.cv9_txt_layout))
+        ChoiceChips(listOf(false, true), o.txtKeepLines, { if (it) stringResource(R.string.cv9_txt_lines) else stringResource(R.string.cv9_txt_paragraphs) }) { onChange(o.copy(txtKeepLines = it)) }
+        FieldLabel(stringResource(R.string.cv9_txt_width))
+        ChoiceChips(listOf(0, 72, 80, 100), o.txtWrap, { if (it == 0) stringResource(R.string.cv9_txt_nowrap) else it.toString() }) { onChange(o.copy(txtWrap = it)) }
+    }
+    if (Opt.CELL_COMMENTS in opts) SwitchRow(stringResource(R.string.cv9_cell_comments), o.cellComments) { onChange(o.copy(cellComments = it)) }
+    if (Opt.SLIDES in opts) {
+        // row 103: slide range and hidden slides
+        OutlinedTextField(o.slideRange, { onChange(o.copy(slideRange = it)) }, Modifier.fillMaxWidth(), singleLine = true,
+            label = { Text(stringResource(R.string.cv9_slide_range)) }, placeholder = { Text(stringResource(R.string.cv9_all_slides)) },
+            isError = !com.smartdocs.editor.core.pdf.PdfOps.rangeSyntaxOk(o.slideRange))
+        SwitchRow(stringResource(R.string.cv9_hidden_slides), o.hiddenSlides) { onChange(o.copy(hiddenSlides = it)) }
+    }
     if (Opt.SPEAKER_NOTES in opts) SwitchRow(stringResource(R.string.cv9_speaker_notes), o.speakerNotes) { onChange(o.copy(speakerNotes = it)) }
     if (Opt.BOOKMARKS in opts) SwitchRow(stringResource(R.string.cv9_bookmarks), o.bookmarks, stringResource(R.string.cv9_bookmarks_sub)) { onChange(o.copy(bookmarks = it)) }
     if (Opt.SHEET_PER_TABLE in opts) SwitchRow(stringResource(R.string.pc_sheet_per_table), o.perTable) { onChange(o.copy(perTable = it)) }

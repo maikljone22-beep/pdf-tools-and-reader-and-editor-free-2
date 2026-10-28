@@ -232,10 +232,12 @@ table.docwrap>thead>tr>td,table.docwrap>tfoot>tr>td,table.docwrap>tbody>tr>td{bo
     fun pptx(model: PresentationModel, forPrint: Boolean = false, pageWidthPx: Int = 0): String = OfficeSlideHtml.render(model, forPrint, pageWidthPx)
 
     /** Printable sheet (Excel → PDF): see [OfficeSheetHtml.printSheet]. */
-    fun xlsxPrint(book: WorkbookModel, index: Int, rows: IntRange?, pageWidthPx: Int, title: String?, truncatedNote: String?): String =
-        OfficeSheetHtml.printSheet(book, index, rows, pageWidthPx, title, truncatedNote)
+    fun xlsxPrint(book: WorkbookModel, index: Int, rows: IntRange?, pageWidthPx: Int, title: String?, truncatedNote: String?,
+                  band: IntRange? = null, zoom: Float? = null): String =
+        OfficeSheetHtml.printSheet(book, index, rows, pageWidthPx, title, truncatedNote, band, zoom)
     fun xlsxUsedRows(s: SheetModel): IntRange = OfficeSheetHtml.usedRange(s).first
     fun xlsxLandscape(book: WorkbookModel): Boolean = OfficeSheetHtml.wantsLandscape(book)
+    fun xlsxFit(s: SheetModel, pageW: Int, pageH: Int, mode: Int): ExcelFit.Plan = OfficeSheetHtml.fitPlan(s, pageW, pageH, mode)
 
     internal fun fmt(f: Float): String = if (f == f.toInt().toFloat()) f.toInt().toString() else String.format(java.util.Locale.US, "%.2f", f)
 }

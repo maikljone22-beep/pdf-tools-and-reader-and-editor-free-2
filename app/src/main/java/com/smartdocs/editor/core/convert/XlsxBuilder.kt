@@ -11,7 +11,13 @@ import java.io.OutputStream
  * Sheets whose text is mostly Arabic are right-to-left and their table columns mirrored so the visual
  * order matches the PDF. Cell fills and text colours of the PDF become generated cell styles.
  */
-class XlsxBuilder(out: OutputStream, private val title: String) : Closeable {
+class XlsxBuilder(
+    out: OutputStream, private val title: String,
+    /** s6 "split multi-line text into rows": a table row whose cells hold several lines becomes one sheet row per line. */
+    private val splitLines: Boolean = false,
+    /** s6 "reduce merged cells": spans are not merged; the text stays in the first cell. */
+    private val noMerge: Boolean = false,
+) : Closeable {
 
     private val zip = OoxmlZip(out)
     private val strings = LinkedHashMap<String, Int>()
@@ -79,10 +85,16 @@ class XlsxBuilder(out: OutputStream, private val title: String) : Closeable {
             val f = BidiText.parseNumber(cell.text)?.format ?: continue
             if (f == 1 || f == 2) colFmt[cell.col] = maxOf(colFmt[cell.col], f)
         }
+        // split mode: extra sheet rows each table row needs for its multi-line cells (single-row cells only)
+        val extra = IntArray(t.rows)
+        if (splitLines) for (cell in t.cells) if (cell.rowSpan == 1 && cell.row in 0 until t.rows)
+            extra[cell.row] = maxOf(extra[cell.row], cell.text.take(32000).split('\n').size - 1)
+        val rowAt = IntArray(t.rows + 1).also { a -> for (r in 1..t.rows) a[r] = a[r - 1] + 1 + extra[r - 1] }
         for (cell in t.cells) {
-            val rr = startRow + cell.row
+            val rr = startRow + rowAt[cell.row.coerceIn(0, t.rows)]
             val cc = col(cell.col, cell.colSpan)
             val text = cell.text.take(32000)
+            val spanEnd = startRow + rowAt[(cell.row + cell.rowSpan).coerceIn(0, t.rows)] - 1      // last sheet row the cell covers
             val isHeader = header && cell.row == 0
             val num = if (isHeader) null else BidiText.parseNumber(text)
             // PDF cell fill and text colour; the synthetic header shading only when the PDF has no fills of its own
@@ -90,25 +102,27 @@ class XlsxBuilder(out: OutputStream, private val title: String) : Closeable {
             val fill: Int? = cell.fill ?: if (isHeader && pdfFills) StyleBook.NO_FILL else null
             fun st(base: Int) = if (fill == null && color == 0) base else styles.styled(base, fill, color)
             val textStyle = st(if (isHeader) 4 else 3)
-            sd.row(rr)[cc] = when {
+            val split = splitLines && num == null && cell.rowSpan == 1 && text.contains('\n')
+            if (split) text.split('\n').forEachIndexed { k, line -> sd.row(rr + k)[cc] = if (line.isEmpty()) S(-1, textStyle) else S(str(line), textStyle) }
+            else sd.row(rr)[cc] = when {
                 num != null -> N(num.value, st(5 + (if (num.format == 0 && cell.colSpan == 1) colFmt[cell.col] else num.format)))
                 text.isEmpty() -> S(-1, textStyle)
                 else -> S(str(text), textStyle)
             }
-            // borders on every covered cell of a merge, and the merge range itself
-            for (dr in 0 until cell.rowSpan) for (dc in 0 until cell.colSpan) {
-                if (dr == 0 && dc == 0) continue
-                sd.row(rr + dr)[cc + dc] = S(-1, textStyle)
+            // borders on every covered cell of a merge (and of the rows added for split lines), and the merge range itself
+            for (r2 in rr..spanEnd) for (dc in 0 until cell.colSpan) {
+                if ((r2 == rr && dc == 0) || (split && dc == 0)) continue
+                if (sd.row(r2)[cc + dc] == null) sd.row(r2)[cc + dc] = S(-1, textStyle)
             }
-            if (cell.rowSpan > 1 || cell.colSpan > 1) sd.merges += ref(rr, cc) + ":" + ref(rr + cell.rowSpan - 1, cc + cell.colSpan - 1)
+            if (!noMerge && !split && (spanEnd > rr || cell.colSpan > 1)) sd.merges += ref(rr, cc) + ":" + ref(spanEnd, cc + cell.colSpan - 1)
             val lines = text.split('\n')
             if (cell.colSpan == 1) {
                 val w = (lines.maxOf { it.length } * 1.15f + 2.5f).coerceIn(6f, 60f)
                 sd.widths[cc] = maxOf(sd.widths[cc] ?: 0f, w)
             }
-            if (lines.size > 1 && cell.rowSpan == 1) sd.heights[rr] = maxOf(sd.heights[rr] ?: 0f, lines.size * 15f)
+            if (lines.size > 1 && cell.rowSpan == 1 && !split) sd.heights[rr] = maxOf(sd.heights[rr] ?: 0f, lines.size * 15f)
         }
-        return startRow + t.rows
+        return startRow + rowAt[t.rows]
     }
 
     private fun str(s: String): Int {
