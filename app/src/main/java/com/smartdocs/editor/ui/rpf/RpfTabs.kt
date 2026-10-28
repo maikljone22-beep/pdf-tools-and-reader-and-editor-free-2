@@ -96,7 +96,7 @@ object RpfTabGroups {
  * Mouse wheel over the tab strip switches documents (one tab per wheel notch burst). [entries] gives the strip
  * order, [current] the shown document.
  */
-fun Modifier.rpfWheelTabs(entries: () -> List<StripEntry>, current: () -> String?, switchTo: (DocTab?) -> Unit): Modifier = pointerInput(Unit) {
+fun rpfWheelTabs(entries: () -> List<StripEntry>, current: () -> String?, switchTo: (DocTab?) -> Unit): Modifier = Modifier.pointerInput(Unit) {
     var last = 0L
     awaitPointerEventScope {
         while (true) {

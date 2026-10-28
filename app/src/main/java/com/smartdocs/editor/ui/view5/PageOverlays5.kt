@@ -5,6 +5,7 @@ import android.widget.Magnifier
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyListState
@@ -125,7 +126,7 @@ private fun ReadingRuler(v: V5State, hPx: Float) {
         }
         Box(Modifier.fillMaxSize()) {
             Surface(Modifier.align(Alignment.BottomStart).offset { androidx.compose.ui.unit.IntOffset(left.roundToInt(), 0) }.size(with(density) { bandPx.toDp() }, 36.dp)
-                .pointerInput(wPx) { androidx.compose.foundation.gestures.detectHorizontalDragGestures { ch, dx -> ch.consume(); if (wPx > 0f) v.rulerX = ((v.rulerX * wPx + dx) / wPx).coerceIn(0f, 1f) } },
+                .pointerInput(wPx) { detectHorizontalDragGestures { ch, dx -> ch.consume(); if (wPx > 0f) v.rulerX = ((v.rulerX * wPx + dx) / wPx).coerceIn(0f, 1f) } },
                 color = tint.copy(alpha = 0.85f), shape = RoundedCornerShape(topStart = 10.dp, topEnd = 10.dp)) {
                 Icon(Icons.Default.DragHandle, stringResource(R.string.v5_reading_ruler), Modifier.padding(6.dp))
             }
