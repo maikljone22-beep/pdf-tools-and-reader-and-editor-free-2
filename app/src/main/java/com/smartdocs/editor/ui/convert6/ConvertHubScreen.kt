@@ -167,7 +167,8 @@ fun ConvertHubScreen(nav: NavHostController, uri: String?) {
         val ins = if (s.pendingLocked.isNotEmpty() && !mergeRun) s.pendingLocked.filter { it in s.inputs } else s.inputs
         if (s.pendingLocked.isEmpty() || mergeRun) { s.done = emptyList(); s.doneInfo = emptyList(); s.failures = emptyList() }
         val pw = if (s.locked == null) s.password.ifBlank { null } else null
-        val pws = s.passwords
+        // audit 5 T-09 (from the old from-PDF screen): a file open in the reader uses the password it was opened with
+        val pws = ins.mapNotNull { f -> com.smartdocs.editor.core.pdf.SessionPasswords.get(f)?.let { f.absolutePath to it } }.toMap() + s.passwords
         s.sheet = false; s.password = ""
         val title = labels[c.id].orEmpty()
         Cv6JobService.start(ctx, title)
