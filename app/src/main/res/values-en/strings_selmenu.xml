@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- feature/selection-menus (ui/selmenu, core/selmenu): selection / long-press / right-click menus. Prefix sm_. -->
+<resources>
+    <string name="sm_call">Call</string>
+    <string name="sm_whatsapp">WhatsApp</string>
+    <string name="sm_sms">Send SMS</string>
+    <string name="sm_add_contact">Add to contacts</string>
+    <string name="sm_email">Send e-mail</string>
+    <string name="sm_open_link">Open link</string>
+    <string name="sm_copy_link">Copy link</string>
+    <string name="sm_share_link">Share link</string>
+    <string name="sm_map">Open in Maps</string>
+    <string name="sm_calendar">Add to calendar</string>
+    <string name="sm_copy_number">Copy number</string>
+    <string name="sm_copy_plain">Copy as plain text</string>
+    <string name="sm_copy_no_diacritics">Copy without diacritics</string>
+    <string name="sm_copy_normalized">Copy normalised</string>
+    <string name="sm_copy_latin_digits">Copy with Latin digits (123)</string>
+    <string name="sm_copy_arabic_digits">Copy with Arabic digits (١٢٣)</string>
+    <string name="sm_select_sentence">Select sentence</string>
+    <string name="sm_search_doc">Find in document</string>
+    <string name="sm_other_apps">Other apps (Translate…)</string>
+    <string name="sm_ai_define">Define (AI)</string>
+    <string name="sm_ai_summarize">Summarise (AI)</string>
+    <string name="sm_note_here">Note here</string>
+    <string name="sm_text_here">Text here</string>
+    <string name="sm_fill_text_here">Type here</string>
+    <string name="sm_image_here">Insert image</string>
+    <string name="sm_sign_here">Sign</string>
+    <string name="sm_sign_hint">Pick a signature in the Sign bar, then tap where it goes</string>
+    <string name="sm_read_page">Read page aloud</string>
+    <string name="sm_search">Search</string>
+    <string name="sm_copied">Copied</string>
+    <string name="sm_no_app">No app can do this</string>
+    <string name="sm_unavailable">Not available here</string>
+    <string name="sm_why_signed">Signed document: changes would invalidate the signature</string>
+    <string name="sm_g_smart">Smart actions</string>
+    <string name="sm_g_clipboard">Copy</string>
+    <string name="sm_g_arabic">Arabic copy</string>
+    <string name="sm_g_select">Select</string>
+    <string name="sm_g_markup">Text markup</string>
+    <string name="sm_g_comment">Comments &amp; bookmarks</string>
+    <string name="sm_g_lookup">Look up &amp; read</string>
+    <string name="sm_g_ai">AI</string>
+    <string name="sm_g_edit">Edit</string>
+    <string name="sm_g_share">Share &amp; export</string>
+    <string name="sm_g_link">Link</string>
+    <string name="sm_g_insert">Insert here</string>
+    <string name="sm_g_page">Page &amp; view</string>
+</resources>
