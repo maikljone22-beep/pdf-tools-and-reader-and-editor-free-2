@@ -73,8 +73,9 @@ fun RpfReaderHost(s: ReaderState, switchTo: (DocTab?) -> Unit) {
             if (o != null && cur != o) s.docRtl = o
         }
     }
-    // §37 / PREF-5: PDF/A view mode
-    LaunchedEffect(file, open) {
+    // §37 / PREF-5: PDF/A view mode (the Settings switch turns it off everywhere, also for the open file)
+    val pdfaOn = RpfPrefs.pdfaViewMode
+    LaunchedEffect(file, open, pdfaOn) {
         if (file == null || !open) return@LaunchedEffect
         val pw = s.password
         val claim = withContext(Dispatchers.IO) {
@@ -86,7 +87,7 @@ fun RpfReaderHost(s: ReaderState, switchTo: (DocTab?) -> Unit) {
             }.getOrNull()
         }
         r.pdfaClaim = claim
-        s.guard.pdfaView = claim != null && RpfPrefs.pdfaViewMode && !RpfReader.pdfaEditingEnabled(ctx, file.absolutePath)
+        s.guard.pdfaView = claim != null && pdfaOn && !RpfReader.pdfaEditingEnabled(ctx, file.absolutePath)
     }
     RpfFieldSpeaker(s)
 
