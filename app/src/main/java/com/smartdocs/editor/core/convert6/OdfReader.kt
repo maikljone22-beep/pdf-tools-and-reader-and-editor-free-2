@@ -215,7 +215,9 @@ object OdfReader {
     }
 
     /** Sheets: name → rows. */
-    fun readOds(entry: (String) -> ByteArray?, maxRows: Int = MAX_ROWS, maxCols: Int = MAX_COLS): List<Pair<String, List<List<String>>>> {
+    fun readOds(entry: (String) -> ByteArray?): List<Pair<String, List<List<String>>>> = readOds(entry, MAX_ROWS, MAX_COLS)
+
+    fun readOds(entry: (String) -> ByteArray?, maxRows: Int, maxCols: Int): List<Pair<String, List<List<String>>>> {
         val content = parseXml(entry("content.xml") ?: throw IllegalArgumentException("no content.xml"))
         val l = content.getElementsByTagNameNS(TABLE, "table")
         return (0 until l.length).map { i -> val t = l.item(i) as Element; (t.attr(TABLE, "name") ?: "Sheet${i + 1}") to tableRows(t, maxRows, maxCols) }
