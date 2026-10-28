@@ -70,6 +70,8 @@ data class Cv6Opts(
     val recoverAllPages: Boolean = false,
     /** PDF → Word "precisely laid out" (row 46): text boxes at their PDF position; wins over [keepLayout]. */
     val exactLayout: Boolean = false,
+    /** PowerPoint → PDF (row 103): speaker notes become note comments on their slide's page. */
+    val speakerNotes: Boolean = true,
 )
 
 enum class Stage { WORK, OCR }

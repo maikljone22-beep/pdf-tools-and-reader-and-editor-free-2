@@ -10,7 +10,7 @@ enum class Fmt { PDF, WORD, EXCEL, PPT, IMAGE, JPG, PNG, WEBP, HEIC, TIFF, ZIP, 
 
 /** Options a conversion shows in its sheet. */
 enum class Opt { RANGE, AUTO_OCR, TABLES, INCLUDE_IMAGES, SINGLE_SHEET, PPT_MODE, LAYOUT, IMG_FORMAT, DPI, QUALITY, IMG_OUTPUT, GRAY,
-    PAGE_SETUP, MERGE, NUP, RESIZE, CSV_SHEETS, OCR_LANG, URL, TEXT, PDFA_STRICT, BW, SHEET_PER_TABLE, BOOKMARKS, FORM_FIELDS, TEXT_RECOVERY }
+    PAGE_SETUP, MERGE, NUP, RESIZE, CSV_SHEETS, OCR_LANG, URL, TEXT, PDFA_STRICT, BW, SHEET_PER_TABLE, BOOKMARKS, FORM_FIELDS, TEXT_RECOVERY, SPEAKER_NOTES }
 
 /**
  * One hub conversion. [inputs] = accepted kinds (empty = no file: URL / clipboard / camera); [multi] = several inputs at once
@@ -74,7 +74,7 @@ object Cv6Catalog {
         // ---- to PDF ----
         Conv("word_pdf", listOf(Cv6Group.TO_PDF, Cv6Group.OFFICE), Fmt.WORD, Fmt.PDF, WORDS, opts = setOf(Opt.MERGE, Opt.BOOKMARKS, Opt.FORM_FIELDS), keywords = "docx doc odt rtf"),
         Conv("excel_pdf", listOf(Cv6Group.TO_PDF, Cv6Group.OFFICE), Fmt.EXCEL, Fmt.PDF, SHEETS, opts = setOf(Opt.MERGE, Opt.BOOKMARKS, Opt.FORM_FIELDS), keywords = "xlsx xls csv ods"),
-        Conv("ppt_pdf", listOf(Cv6Group.TO_PDF, Cv6Group.OFFICE), Fmt.PPT, Fmt.PDF, SLIDES + Kind6.PPT, opts = setOf(Opt.MERGE, Opt.BOOKMARKS, Opt.FORM_FIELDS), keywords = "pptx odp slides"),
+        Conv("ppt_pdf", listOf(Cv6Group.TO_PDF, Cv6Group.OFFICE), Fmt.PPT, Fmt.PDF, SLIDES + Kind6.PPT, opts = setOf(Opt.MERGE, Opt.BOOKMARKS, Opt.SPEAKER_NOTES, Opt.FORM_FIELDS), keywords = "pptx odp slides"),
         Conv("images_pdf", listOf(Cv6Group.TO_PDF, Cv6Group.IMAGES), Fmt.IMAGE, Fmt.PDF, IMG, opts = setOf(Opt.PAGE_SETUP, Opt.MERGE, Opt.QUALITY, Opt.FORM_FIELDS), keywords = "jpg png heic tiff gif bmp webp"),
         Conv("text_pdf", listOf(Cv6Group.TO_PDF, Cv6Group.TEXT_BOOKS), Fmt.TXT, Fmt.PDF, setOf(Kind6.TEXT, Kind6.CSV), opts = setOf(Opt.MERGE, Opt.FORM_FIELDS), keywords = "txt"),
         Conv("md_pdf", listOf(Cv6Group.TO_PDF, Cv6Group.TEXT_BOOKS), Fmt.MD, Fmt.PDF, setOf(Kind6.MARKDOWN, Kind6.TEXT), opts = setOf(Opt.MERGE, Opt.FORM_FIELDS), keywords = "markdown"),

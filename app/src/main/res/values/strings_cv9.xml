@@ -23,4 +23,7 @@
     <string name="cv9_pick_none">لا شيء</string>
     <string name="cv9_pick_more">تظهر أول %1$d صفحة؛ اكتب نطاقًا لما بعدها</string>
     <string name="cv9_page_n">صفحة %1$d</string>
+    <string name="cv9_speaker_notes">ملاحظات المتحدث كتعليقات</string>
+    <string name="cv9_notes_author">ملاحظات المتحدث</string>
+    <string name="cv9_info_notes">أُضيفت ملاحظات المتحدث إلى %1$d صفحة</string>
 </resources>

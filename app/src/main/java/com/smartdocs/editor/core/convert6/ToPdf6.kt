@@ -175,7 +175,7 @@ object ToPdf6 {
      * pictures left out, pages that could not be read …).
      */
     suspend fun convert(ctx: Context, f: File, out: File, setup: PageSetup = PageSetup(), quality: Int = 88, bookmarks: Boolean = false,
-                        info: (String) -> Unit = {}): File {
+                        speakerNotes: Boolean = false, info: (String) -> Unit = {}): File {
         coroutineContext.ensureActive()
         val kind = FileKind6.of(f)
         val title = f.nameWithoutExtension
@@ -209,6 +209,9 @@ object ToPdf6 {
                 ToPdf.html(ctx, OfficeHtml.pptx(model, forPrint = true, pageWidthPx = wMils * 96 / 1000), out, setupW)
                 // one bookmark per slide (its title, else "Slide n")
                 if (bookmarks) runCatching { OfficeOutline.applyPerPage(out, OfficeOutline.slideTitles(model) { n -> ctx.getString(R.string.cv9_slide_n, n) }) }
+                // row 103: speaker notes → note comments on the slide's page
+                if (speakerNotes) runCatching { SlideNotes.apply(out, model.slides.map { it.notes }, ctx.getString(R.string.cv9_notes_author)) }
+                    .getOrNull()?.takeIf { it > 0 }?.let { info(ctx.getString(R.string.cv9_info_notes, it)) }
                 out
             }
             kind == Kind6.EPUB -> {
@@ -308,7 +311,7 @@ object ToPdf6 {
             val items = files.mapIndexed { i, f ->
                 onProgress(i, files.size + 1)
                 if (FileKind6.of(f) == Kind6.PDF) ToPdf.Item(f, f.nameWithoutExtension, passwords(f))
-                else ToPdf.Item(File(tempDir, "cv6c_${i}_${System.nanoTime()}.pdf").also { temps += it; convert(ctx, f, it, setup, quality, bookmarks, info) }, f.nameWithoutExtension)
+                else ToPdf.Item(File(tempDir, "cv6c_${i}_${System.nanoTime()}.pdf").also { temps += it; convert(ctx, f, it, setup, quality, bookmarks = bookmarks, info = info) }, f.nameWithoutExtension)
             }
             return ToPdf.combine(ctx, items, out, tempDir, bookmarks = files.size > 1, onProgress = { _, _ -> onProgress(files.size, files.size + 1) },
                 signed = { s -> info(ctx.getString(R.string.cvf_info_signed, s.name)) })
