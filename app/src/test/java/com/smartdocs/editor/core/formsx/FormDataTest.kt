@@ -63,6 +63,31 @@ class FormDataTest {
         assertEquals(DataFormat.FDF, FormData.detect("data", "%FDF-1.2\n".toByteArray()))
         assertEquals(DataFormat.XFDF, FormData.detect("data", "<?xml version=\"1.0\"?><xfdf>".toByteArray()))
         assertEquals(DataFormat.CSV, FormData.detect("data", "a,b\n1,2".toByteArray()))
+        assertEquals(DataFormat.XDP, FormData.detect("data", "<?xml version=\"1.0\"?><xdp:xdp xmlns:xdp=\"http://ns.adobe.com/xdp/\">".toByteArray()))
+    }
+
+    @Test fun fillSignTargetHit() {
+        val big = FieldRecognition.Suggestion(FxType.TEXT, FxRect(50f, 500f, 250f, 520f), "a", "")
+        val box = FieldRecognition.Suggestion(FxType.CHECKBOX, FxRect(60f, 505f, 70f, 515f), "b", "")
+        assertEquals(box, FieldRecognition.at(listOf(big, box), 65f, 510f))
+        assertEquals(big, FieldRecognition.at(listOf(big, box), 200f, 510f))
+        assertEquals(null, FieldRecognition.at(listOf(big, box), 300f, 510f))
+        assertEquals(null, FieldRecognition.at(null, 65f, 510f))
+    }
+
+    @Test fun xdpPackageAndIndexedNames() {
+        val x = FormData.xdp(mapOf("form1[0].Page1[0].Name[0]" to "Sara & co", "form1[0].Page1[0].Age[0]" to "30"), "f.pdf")
+        assertTrue(x.contains("<xfa:data>") && x.contains("<pdf href=\"f.pdf\""))
+        assertTrue(x.contains("<Name>Sara &amp; co</Name>"))
+        assertEquals(mapOf("form1.Page1.Name" to "Sara & co", "form1.Page1.Age" to "30"), FormData.parseXdp(x.toByteArray()))
+        assertEquals("form1.Page1.Name", FormData.stripIndices("form1[0].Page1[0].Name[0]"))
+        // an XFDF payload inside an XDP package
+        val wrapped = "<xdp:xdp xmlns:xdp=\"http://ns.adobe.com/xdp/\"><xfdf><fields><field name=\"a\"><value>1</value></field></fields></xfdf></xdp:xdp>"
+        assertEquals(mapOf("a" to "1"), FormData.parseXdp(wrapped.toByteArray()))
+        formDoc().use { d ->
+            assertEquals(1, FormData.importInto(d, mapOf("person[0].name[0]" to "Hind")))
+            assertEquals("Hind", FormData.values(d)["person.name"])
+        }
     }
 
     @Test fun importSetsTextChecksAndRadios() {

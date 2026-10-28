@@ -91,6 +91,8 @@ fun PageCanvas(
     var tile by remember(page) { mutableStateOf<Pair<Rect, Bitmap>?>(null) }
     // section 7.65: "hide comments" renders the page without annotations (PDFium FPDF_ANNOT off)
     val showAnnots = !state.annot2.cx.hidden
+    // OLD I1: detect the fields of a flat form for Fill & Sign
+    LaunchedEffect(page, state.tab, state.renderVersion) { if (state.tab == ReaderTab.FILL_SIGN) state.loadFsTargets(page) }
     LaunchedEffect(page, renderKeyW, night, version, session, showAnnots) {
         if (session == null || session.isClosed || page !in 0 until session.pageCount) return@LaunchedEffect
         if (base != null) delay(140)
@@ -273,6 +275,12 @@ fun PageCanvas(
             ReaderAi6.ttsHighlight.value?.let { (p, rs) -> if (p == page) drawPdfRects(rs, g, Color(0x5542A5F5), multiply = true) }   // ai6 (C1): sentence read aloud
             val frameDrag = draft.active && draft.annotFrame != null
             if (showAnnots) annots.forEach { a -> if (a.page == page && !(frameDrag && a.id == pendingEditId)) drawAnnot(a, g) }
+            // OLD I1: detected fields of a flat form, dashed, while Fill & Sign has no tool active
+            if (state.tab == ReaderTab.FILL_SIGN && state.tool == null) state.fsTargets[page]?.forEach { t ->
+                val r = g.pdfRectToLayout(RectF(t.rect.left, t.rect.top, t.rect.right, t.rect.bottom))
+                drawRect(Color(0x1A3F51B5), r.topLeft, r.size)
+                drawRect(Color(0xAA3F51B5), r.topLeft, r.size, style = androidx.compose.ui.graphics.drawscope.Stroke(2f, pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(8f, 6f), 0f)))
+            }
             // sticky-note indicator on markups that carry text (Foxit 24.13, optional)
             if (showAnnots && state.annot2.cx.noteIndicators) {
                 annots.forEach { a -> if (a.page == page && a.text.isNotBlank() && a.kind in NOTE_INDICATOR_KINDS) drawNoteIndicator(annotBounds(a), g, annotColor(a.color)) }
@@ -410,6 +418,8 @@ private fun handleTap(
         null -> {
             links.firstOrNull { l -> val r = PageGeometry.normPdf(l.bounds); x >= r.left && x <= r.right && y <= r.top && y >= r.bottom }?.let { onOpenLink(it); return }
             if (com.smartdocs.editor.ui.nve.NveLinks.tapUrl(state, page, x, y)) return     // NVE: plain-text URLs are tappable
+            // OLD I1: on a flat form a tap on a detected field fills it (text, or a check mark in a box)
+            if (state.tab == ReaderTab.FILL_SIGN) state.fsTargetAt(page, x, y)?.let { t -> fillTarget(state, page, t, onPrompt); return }
             onTap(p, layout)
         }
         ReaderTool.NOTE, ReaderTool.FREETEXT, ReaderTool.TEXTBOX, ReaderTool.FS_TEXT, ReaderTool.FS_COMB -> onPrompt(TextPrompt(t, page, x, y))
@@ -506,5 +516,23 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawDraft(draft: Ge
             drawRect(c.copy(alpha = 0.25f), draft.rect.topLeft, draft.rect.size)
         ReaderTool.ERASER -> drawCircle(Color(0x66F44336), 10f, draft.current)
         else -> {}
+    }
+}
+
+/** OLD I1: fill a detected field — a check mark in a box, a text prompt at the line otherwise (the text fits the line height). */
+private fun fillTarget(state: ReaderState, page: Int, t: com.smartdocs.editor.core.formsx.FieldRecognition.Suggestion, onPrompt: (TextPrompt) -> Unit) {
+    val r = t.rect
+    val cx = (r.left + r.right) / 2; val cy = (r.bottom + r.top) / 2
+    when (t.type) {
+        com.smartdocs.editor.core.formsx.FxType.CHECKBOX, com.smartdocs.editor.core.formsx.FxType.RADIO -> {
+            val sz = minOf(r.right - r.left, r.top - r.bottom) * 0.8f
+            val a = state.newAnnot(AnnotKind.INK, page, paths = quickMarkPaths(ReaderTool.FS_CHECK, cx, cy, sz))
+            state.addAnnot(a.copy(strokeWidth = (sz / 8f).coerceAtLeast(1.5f)))
+        }
+        else -> {
+            val h = r.top - r.bottom
+            if (h > 4f) state.fontSize = state.fontSize.coerceAtMost((h * 0.7f).coerceAtLeast(6f))
+            onPrompt(TextPrompt(ReaderTool.FS_TEXT, page, r.left + 2f, cy))
+        }
     }
 }
