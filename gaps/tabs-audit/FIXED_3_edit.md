@@ -35,3 +35,5 @@ Known limits:
 - E-07: links made before this change were keyed by path and are not migrated.
 
 Tests: `core/security/EditToolPermissionsTest`, `core/pdf/XmpSyncTest`, `ui/edit/LinkBoxMatchTest` and `core/pdf/SignedGuardTest`. Not tested on a device.
+
+CI: run 40634979004 (commit c66cc54) passed build and unit tests.

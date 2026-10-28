@@ -72,3 +72,8 @@ Paths are relative to `app/src/main/java/com/smartdocs/editor/`.
 - `core/security/EditToolPermissionsTest` and `core/pdf/XmpSyncTest`, which belong to the EDIT rows.
 
 Not tested on a device. Gesture direction, immersive mode, focus restore, dialogs and TTS ownership were checked only by code reading and CI compilation.
+
+## CI
+
+Run 40634979004 (commit c66cc54, origin/main facfb11 merged) passed: assembleDebug and testDebugUnitTest.
+Earlier failures, all fixed: 40625600456 (deprecated createTempDir in a test), 40629118671 (Surface onClick overload), 40631908355 (XmpSyncTest: stray control characters in a regex).
