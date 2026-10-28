@@ -136,6 +136,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
         leaveFailure = when (reason) {
             com.smartdocs.editor.core.pdf.SignedDocumentException.Reason.CERTIFIED_NO_CHANGES -> ctx.getString(R.string.signed_doc_certified_no_changes)
             com.smartdocs.editor.core.pdf.SignedDocumentException.Reason.INCREMENTAL_FAILED -> ctx.getString(R.string.signed_doc_save_as_copy)
+            com.smartdocs.editor.core.pdf.SignedDocumentException.Reason.CONTENT_CHANGE -> ctx.getString(R.string.tc_signed_content_change)
             null -> state.error ?: ctx.getString(R.string.tvc_save_failed_generic)
         }
         state.error = null
