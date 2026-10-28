@@ -1,4 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="cf_cloud_inward">Scallops inward</string>
+    <string name="cf_script_normal">Normal</string>
+    <string name="cf_superscript">Superscript</string>
+    <string name="cf_subscript">Subscript</string>
 </resources>

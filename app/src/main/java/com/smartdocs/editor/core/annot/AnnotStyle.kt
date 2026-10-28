@@ -308,7 +308,15 @@ object AnnotStyle {
 
     data class Rich(val fontSize: Float, val color: Int, val bold: Boolean, val italic: Boolean, val underline: Boolean = false,
                     val strike: Boolean = false, val family: Int = 0, val align: Int = -1, val lineHeight: Float = 1.3f,
-                    val letterSpacing: Float = 0f, val wordSpacing: Float = 0f, val bullets: Boolean = false)
+                    val letterSpacing: Float = 0f, val wordSpacing: Float = 0f, val bullets: Boolean = false, val script: Int = 0)
+
+    /** Foxit 24.102: glyph size of super- / subscript text ([script] 1 / 2) set in [size]. */
+    fun scriptSize(size: Float, script: Int): Float = if (script == 1 || script == 2) size * 0.65f else size
+
+    /** Baseline shift (PDF units, up positive) of super- / subscript text set in [size]. */
+    fun scriptRise(size: Float, script: Int): Float = when (script) { 1 -> size * 0.35f; 2 -> -size * 0.15f; else -> 0f }
+
+    private fun scriptCss(script: Int) = when (script) { 1 -> "super"; 2 -> "sub"; else -> null }
 
     private val FAMILIES = listOf("Helvetica,sans-serif", "Times New Roman,serif", "Courier New,monospace")
 
@@ -330,6 +338,7 @@ object AnnotStyle {
         if (r.lineHeight != 1.3f) append(String.format(Locale.US, "; line-height:%.2f", r.lineHeight))
         if (r.letterSpacing != 0f) append(String.format(Locale.US, "; letter-spacing:%.1fpt", r.letterSpacing))
         if (r.wordSpacing != 0f) append(String.format(Locale.US, "; word-spacing:%.1fpt", r.wordSpacing))
+        scriptCss(r.script)?.let { append("; vertical-align:").append(it) }
     }
 
     /** XHTML rich-text body (/RC) of [text] in style [r]; [rtl] sets the direction. */
@@ -345,6 +354,7 @@ object AnnotStyle {
             if (r.lineHeight != 1.3f) append(String.format(Locale.US, ";line-height:%.2f", r.lineHeight))
             if (r.letterSpacing != 0f) append(String.format(Locale.US, ";letter-spacing:%.1fpt", r.letterSpacing))
             if (r.wordSpacing != 0f) append(String.format(Locale.US, ";word-spacing:%.1fpt", r.wordSpacing))
+            scriptCss(r.script)?.let { append(";vertical-align:").append(it) }
         }
         return buildString {
             append("<?xml version=\"1.0\"?><body xmlns=\"http://www.w3.org/1999/xhtml\" xmlns:xfa=\"http://www.xfa.org/schema/xfa-data/1.0/\" xfa:APIVersion=\"Acrobat:11.0.0\" xfa:spec=\"2.0.2\"")
@@ -379,7 +389,8 @@ object AnnotStyle {
         val ls = Regex("""letter-spacing:\s*(-?[0-9.]+)pt""").find(s)?.groupValues?.get(1)?.toFloatOrNull() ?: 0f
         val ws = Regex("""word-spacing:\s*(-?[0-9.]+)pt""").find(s)?.groupValues?.get(1)?.toFloatOrNull() ?: 0f
         val bullets = (cos.getString(RC) ?: "").contains("<li>")
-        return Rich(size, color, bold, italic, underline, strike, family, align, lh, ls, ws, bullets)
+        val script = when (Regex("vertical-align:\\s*(super|sub)\\b").find(s)?.groupValues?.get(1)) { "super" -> 1; "sub" -> 2; else -> 0 }
+        return Rich(size, color, bold, italic, underline, strike, family, align, lh, ls, ws, bullets, script)
     }
 
     /** Plain text of an /RC body (paragraphs become lines). */

@@ -521,6 +521,12 @@ fun TextFormatDialog(initial: TextFmt, onDismiss: () -> Unit, showBiu: Boolean =
                     FilterChip(f.underline, { f = f.copy(underline = !f.underline) }, label = { Text("U", textDecoration = TextDecoration.Underline) })
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(f.strike, { f = f.copy(strike = it) }); Text(stringResource(R.string.cx_strike)) }
+                // Foxit 24.102: superscript / subscript
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    listOf(R.string.cf_script_normal, R.string.cf_superscript, R.string.cf_subscript).forEachIndexed { i, r ->
+                        FilterChip(f.script == i, { f = f.copy(script = i) }, label = { Text(stringResource(r)) })
+                    }
+                }
                 Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(f.bullets, { f = f.copy(bullets = it) }); Text(stringResource(R.string.cx_bullets)) }
                 Text(stringResource(R.string.cx_line_spacing, "%.2f".format(java.util.Locale.US, f.lineSpacing)), style = MaterialTheme.typography.labelMedium)
                 Slider(f.lineSpacing, { f = f.copy(lineSpacing = it) }, valueRange = 0.9f..3f)

@@ -78,6 +78,7 @@ data class Annot(
     val wordSpacing: Float = 0f,                // Tw, points
     val hScale: Float = 1f,                     // Tz / 100
     val bullets: Boolean = false,
+    val script: Int = 0,                        // Foxit 24.102: 0 normal, 1 superscript, 2 subscript
     // ---- LINE / ARROW: show the note text on the line (/Cap, Foxit 24.42) ----
     val caption: Boolean = false,
     val video: com.smartdocs.editor.core.annot.VideoPdf.Options? = null,   // VIDEO: in-page player options
@@ -255,7 +256,7 @@ object AnnotationWriter {
                 if (a.kind == AnnotKind.STAMP_TEXT) ft.cosObject.setName(name("IT"), "FreeTextStamp")
                 else if (a.comb <= 0) com.smartdocs.editor.core.annot.AnnotStyle.applyRich(ft.cosObject, a.text,
                     com.smartdocs.editor.core.annot.AnnotStyle.Rich(a.fontSize, a.color, a.bold, a.italic, a.underline, a.strike, a.fontFamily, a.align,
-                        a.lineSpacing, a.charSpacing, a.wordSpacing, a.bullets), ArabicShaper.isArabic(a.text))
+                        a.lineSpacing, a.charSpacing, a.wordSpacing, a.bullets, a.script), ArabicShaper.isArabic(a.text))
                 ft.appearance = apDict(if (a.comb > 0) combAppearance(context, doc, rect, a) else textAppearance(context, doc, rect, a))
                 annotations.add(ft)
             }
@@ -416,11 +417,13 @@ object AnnotationWriter {
                 setColors(cs, a.color); cs.setLineWidth(2f)
                 cs.addRect(1f, 1f, rect.width - 2, rect.height - 2); cs.stroke()
             }
-            val size = a.fontSize
+            // 24.102: super- / subscript text is smaller and raised / lowered; lines keep the full line height
+            val full = a.fontSize
+            val size = com.smartdocs.editor.core.annot.AnnotStyle.scriptSize(full, a.script)
             val lines = a.text.split('\n').map { if (a.bullets && it.isNotBlank()) "\u2022 $it" else it }
             val rtl = ArabicShaper.isArabic(a.text)
             val avail = rect.width - 8f
-            var y = rect.height - size - 4f
+            var y = rect.height - full - 4f + com.smartdocs.editor.core.annot.AnnotStyle.scriptRise(full, a.script)
             val decorations = ArrayList<FloatArray>()      // x0, x1, y of underline / strike
             lines.forEachIndexed { li, raw ->
                 val line = com.smartdocs.editor.core.view5.V5Pdf.sanitize(font, raw)
@@ -450,7 +453,7 @@ object AnnotationWriter {
                 cs.endText()
                 if (a.underline) decorations += floatArrayOf(x, x + w, y - size * 0.15f)
                 if (a.strike) decorations += floatArrayOf(x, x + w, y + size * 0.3f)
-                y -= size * a.lineSpacing.coerceIn(0.8f, 4f)
+                y -= full * a.lineSpacing.coerceIn(0.8f, 4f)
             }
             if (decorations.isNotEmpty()) {
                 setColors(cs, a.color); cs.setLineWidth((size / 16f).coerceAtLeast(0.6f))
@@ -671,7 +674,7 @@ object AnnotationWriter {
                 base.copy(kind = if (stamp) AnnotKind.STAMP_TEXT else AnnotKind.FREETEXT, rects = listOf(rect), fontSize = size, color = rgb ?: 0x212121,
                     bold = rich?.bold ?: false, italic = rich?.italic ?: false, underline = rich?.underline ?: false,
                     strike = rich?.strike ?: false, fontFamily = rich?.family ?: 0, align = rich?.align ?: -1, lineSpacing = rich?.lineHeight ?: 1.3f,
-                    charSpacing = rich?.letterSpacing ?: 0f, wordSpacing = rich?.wordSpacing ?: 0f, bullets = rich?.bullets ?: false,
+                    charSpacing = rich?.letterSpacing ?: 0f, wordSpacing = rich?.wordSpacing ?: 0f, bullets = rich?.bullets ?: false, script = rich?.script ?: 0,
                     text = rich?.takeIf { it.bullets }?.let { contents.split('\n').joinToString("\n") { l -> l.removePrefix("\u2022 ") } } ?: contents,
                     comb = if (stamp) 0 else cos.getInt(FillSignKeys.COMB, 0).coerceIn(0, CombLayout.MAX_CELLS))
             }

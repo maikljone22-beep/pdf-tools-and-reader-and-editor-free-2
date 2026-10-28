@@ -78,9 +78,14 @@ fun DrawScope.drawAnnot(a: Annot, g: PageGeometry) {
             val s = g.pdfRectToScreen(r)
             if (a.kind == AnnotKind.STAMP_TEXT) drawRect(c, s.topLeft, s.size, style = Stroke(2f * g.scale))
             if (a.kind == AnnotKind.FREETEXT && a.comb > 0) drawCombText(a.text, a.comb, s, a.fontSize * g.scale, c)    // nitro-fillsign2
-            else drawTextBlock(if (a.bullets) a.text.split('\n').joinToString("\n") { if (it.isBlank()) it else "\u2022 $it" } else a.text, s, a.fontSize * g.scale, c,
-                bold = a.bold, italic = a.italic, underline = a.underline, strike = a.strike, family = a.fontFamily, align = a.align,
-                lineSpacing = a.lineSpacing, letterSpacingPx = a.charSpacing * g.scale, scaleX = a.hScale)
+            else {
+                // 24.102: smaller glyphs, subscript lowered; the line pitch stays that of the full size
+                val eff = com.smartdocs.editor.core.annot.AnnotStyle.scriptSize(a.fontSize, a.script)
+                val box = if (a.script == 2) s.translate(0f, a.fontSize * 0.43f * g.scale) else s
+                drawTextBlock(if (a.bullets) a.text.split('\n').joinToString("\n") { if (it.isBlank()) it else "\u2022 $it" } else a.text, box, eff * g.scale, c,
+                    bold = a.bold, italic = a.italic, underline = a.underline, strike = a.strike, family = a.fontFamily, align = a.align,
+                    lineSpacing = a.lineSpacing * a.fontSize / eff, letterSpacingPx = a.charSpacing * g.scale, scaleX = a.hScale)
+            }
         }
         AnnotKind.LINE, AnnotKind.ARROW -> if (a.points.size >= 2) {
             val p1 = g.pdfToScreen(a.points[0].first, a.points[0].second)
