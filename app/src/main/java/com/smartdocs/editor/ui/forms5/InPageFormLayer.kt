@@ -269,6 +269,15 @@ private fun DrawScope.drawPending(fs: FormFillState, w: FWidget, r: Rect, bg: Co
                 constraints = Constraints(maxWidth = maxW, maxHeight = r.height.roundToInt().coerceAtLeast(1)))
             val top = if (w.multiline) r.top + pad else r.top + (r.height - layout.size.height) / 2f
             drawText(layout, topLeft = Offset(r.left + pad, top))
+            // §37 overflow indicator: text that does not fit gets a "+" box in the corner (auto-size fields shrink instead)
+            if (com.smartdocs.editor.core.forms5.FormPrefs.overflowIndicator && w.kind == WKind.TEXT && layout.hasVisualOverflow) {
+                val o = com.smartdocs.editor.core.forms5.FormPrefs.overflowBox(r.left, r.top, r.right, r.bottom, 10f * scale.coerceAtLeast(0.6f))
+                val ob = Rect(o[0], o[1], o[2], o[3])
+                drawRect(bg, ob.topLeft, ob.size); drawRect(fg, ob.topLeft, ob.size, style = Stroke(1f))
+                val k = ob.width * 0.25f
+                drawLine(fg, Offset(ob.left + k, ob.center.y), Offset(ob.right - k, ob.center.y), 1.2f)
+                drawLine(fg, Offset(ob.center.x, ob.top + k), Offset(ob.center.x, ob.bottom - k), 1.2f)
+            }
         }
         else -> {}
     }
