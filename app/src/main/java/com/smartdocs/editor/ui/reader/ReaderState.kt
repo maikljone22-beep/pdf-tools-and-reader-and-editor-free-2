@@ -354,7 +354,7 @@ class ReaderState(
     @Volatile var discarded = false
         private set
 
-    fun discardChanges() { discarded = true; edit.discardOnClose(); forms5.discard() }
+    fun discardChanges() { discarded = true; autosaveRefused = false; edit.discardOnClose(); forms5.discard() }
 
     /**
      * The document is closed for good (its back-stack entry was removed, see [ReaderHolder]). Pending edits the user
@@ -374,14 +374,32 @@ class ReaderState(
         com.smartdocs.editor.ui.nve.NveState.forget(this)      // NVE
         com.smartdocs.editor.ui.nve.articles.NveArticlesState.forget(this)
         com.smartdocs.editor.ui.pageflip.PageFlipController.forget(this)
+        StampClipboard.release(this)      // tab audit D31: the "Paste here" offer held this reader
         // PdfSession.closeAsync waits for in-flight renders, so no delay is needed
         ioScope.launch {
-            if (saveFirst) withContext(NonCancellable) { runCatching { save() } }
+            if (saveFirst) withContext(NonCancellable) {
+                // tab audit D7: a save the signed / certified file refuses must not lose the edits silently: they are
+                // kept as the recovery copy the reader offers when this document is opened again
+                val ok = runCatching { save(auto = true) }.getOrDefault(false)
+                if (!ok && dirty) keepUnsavedOnClose()
+            }
             runCatching { session?.closeAsync() }; session = null
             runCatching { s?.closeAsync() }
             // discarded edits: put back the file as it was before stored annotations were taken out for editing
             restore?.let { (backup, target) -> runCatching { if (!backup.renameTo(target)) { backup.copyTo(target, overwrite = true); backup.delete() } } }
             history.dispose()      // the document is closed for good: its history folder goes too
+        }
+    }
+
+    /** Tab audit D7: the pending edits (file + annotations + form values) as the recovery copy of this document. */
+    private suspend fun keepUnsavedOnClose() {
+        val f = file ?: return
+        val out = NpfReader.recoveryFile(this, f)
+        val tmp = File(out.parentFile, out.name + ".part")
+        val kept = runCatching { exportWithAnnots(tmp); if (tmp.length() > 0) { out.delete(); tmp.renameTo(out) } else false }.getOrDefault(false)
+        tmp.delete()
+        withContext(Dispatchers.Main) {
+            runCatching { android.widget.Toast.makeText(context, str(if (kept) R.string.tfr_close_kept_copy else R.string.tfr_close_lost), android.widget.Toast.LENGTH_LONG).show() }
         }
     }
 
@@ -519,7 +537,19 @@ class ReaderState(
      * The critical section is non-cancellable so a save started from ON_PAUSE finishes even when the
      * screen is disposed meanwhile; concurrent calls (back button + autosave) are serialised.
      */
-    suspend fun save(): Boolean {
+    suspend fun save(auto: Boolean = false): Boolean {
+        if (!auto) autosaveRefused = false      // tab audit D7: the user asked: try (and explain) again
+        val ok = saveLocked()
+        // the dialog shows once; later autosaves stay quiet until the user saves / leaves (V-02 dialog) or discards
+        if (!ok && signedRefusal) autosaveRefused = true
+        return ok
+    }
+
+    /** Set by [saveLocked] when the signed / certified file refused the save (tab audit D7). */
+    @Volatile private var signedRefusal = false
+
+    private suspend fun saveLocked(): Boolean {
+        signedRefusal = false
         saveMutex.withLock {
             val f = file ?: return false
             // history: the version before this save (or before stored annotations were taken out for editing);
@@ -531,7 +561,7 @@ class ReaderState(
             try {
                 // MODULE_forms5: pending form values are written first (FormOps.fillFields -> swapFile)
                 val formsSaved = try { withContext(NonCancellable) { forms5.flushOnSave(f, password) { tmp -> swapFile(tmp, record = false) } } }
-                    catch (e: com.smartdocs.editor.core.pdf.SignedDocumentException) { signedBlock = e.reason; return false }   // audit V-01
+                    catch (e: com.smartdocs.editor.core.pdf.SignedDocumentException) { signedBlock = e.reason; signedRefusal = true; return false }   // audit V-01
                     catch (e: Exception) { error = e.message ?: e.toString(); return false }
                 wrote = formsSaved
                 if (annots.isEmpty()) {
@@ -564,7 +594,7 @@ class ReaderState(
                     return true
                 } catch (e: com.smartdocs.editor.core.pdf.SignedDocumentException) {
                     // signed / certified file: the pending annotations stay pending; the screen offers "Save a copy"
-                    signedBlock = e.reason; return false
+                    signedBlock = e.reason; signedRefusal = true; return false
                 } catch (e: Exception) { error = e.message ?: e.toString(); return false } finally { saving = false }
             } finally {
                 if (wrote && before != null) recordSaved(before, prevPw) else before?.let { runCatching { it.delete() } }
@@ -596,8 +626,15 @@ class ReaderState(
         history.replaceMemory(HistoryStep.FileSnapshot(label, before, pw, currentPage))
     }
 
+    /**
+     * Tab audit D7: a save into this signed / certified file was refused. Autosave (ON_PAUSE, the N-minute timer)
+     * then stops retrying, so it does not raise the same "signed" dialog again and again; an explicit save, a
+     * successful save or "discard" clear it.
+     */
+    @Volatile private var autosaveRefused = false
+
     /** Autosave from ON_PAUSE: runs in a scope that outlives the composable so leaving the screen cannot cut it short. */
-    fun saveInBackground() { if (dirty && !saving) ioScope.launch { runCatching { save() } } }
+    fun saveInBackground() { if (dirty && !saving && !autosaveRefused) ioScope.launch { runCatching { save(auto = true) } } }
 
     /** Write pending annotations plus the current file into [out] (used by "save as"). */
     suspend fun exportWithAnnots(out: File) {
@@ -710,6 +747,7 @@ class ReaderState(
         openedStamp = f.lastModified() to f.length()
         session = fresh
         renderVersion++
+        scope.launch { runCatching { guard.refreshSigned(f, password) } }      // tab audit D8: a signing tool may have certified it
         loadExisting()
         runCatching { app.documents.touchRecent(f, fresh.pageCount, currentPage) }
     }

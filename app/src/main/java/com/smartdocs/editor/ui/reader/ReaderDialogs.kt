@@ -112,6 +112,14 @@ fun TextPromptDialog(state: ReaderState, prompt: TextPrompt, onDismiss: () -> Un
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), label = { Text(stringResource(R.string.nf2_comb_cell_width)) })
                 }
                 Text(stringResource(R.string.nf2_comb_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                // tab audit D29: more characters than cells
+                val asked = cellsText.toIntOrNull()
+                val over = if (asked != null) com.smartdocs.editor.core.fillsign2.CombLayout.overflow(text, asked) else 0
+                if (over > 0) Text(stringResource(R.string.tfr_comb_grow, com.smartdocs.editor.core.fillsign2.CombLayout.cellsFor(text, asked)),
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                val tooMany = com.smartdocs.editor.core.fillsign2.CombLayout.chars(text).size - com.smartdocs.editor.core.fillsign2.CombLayout.MAX_CELLS
+                if (tooMany > 0) Text(stringResource(R.string.tfr_comb_too_long, com.smartdocs.editor.core.fillsign2.CombLayout.MAX_CELLS),
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             } else
             androidx.compose.foundation.layout.Column {
                 OutlinedTextField(text, { text = it }, modifier = Modifier.fillMaxWidth(), minLines = if (isLink) 1 else 3, singleLine = isLink,
@@ -123,7 +131,7 @@ fun TextPromptDialog(state: ReaderState, prompt: TextPrompt, onDismiss: () -> Un
         confirmButton = {
             Button(enabled = text.isNotBlank(), onClick = {
                 val rtl = text.any { it in '\u0600'..'\u06FF' }
-                val pageW = state.pageSizes[prompt.page]?.first ?: 595f
+                val box = state.pageBoxOf(prompt.page)      // tab audit D9: crop box + /Rotate, not the displayed width
                 when (prompt.tool) {
                     ReaderTool.NOTE -> state.addAnnot(state.newAnnot(AnnotKind.NOTE, prompt.page, rects = listOf(RectF(prompt.x, prompt.y, prompt.x + 20f, prompt.y - 20f)), text = text))
                     ReaderTool.LINK -> prompt.rect?.let { r ->
@@ -132,13 +140,14 @@ fun TextPromptDialog(state: ReaderState, prompt: TextPrompt, onDismiss: () -> Un
                     }
                     ReaderTool.FS_COMB -> {
                         val cl = com.smartdocs.editor.core.fillsign2.CombLayout
-                        val cells = (cellsText.toIntOrNull() ?: cl.defaultCells(text)).coerceIn(1, cl.MAX_CELLS)
+                        // tab audit D29: never drop characters silently: the box grows to one cell per character
+                        val cells = cl.cellsFor(text, cellsText.toIntOrNull())
                         val cellW = (cellWText.toFloatOrNull() ?: cl.defaultCellWidth(state.fontSize)).coerceIn(4f, 200f)
                         val (w, h) = cl.boxSize(cells, cellW, state.fontSize)
-                        val left = prompt.x.coerceAtMost(pageW - w).coerceAtLeast(0f)
-                        state.addAnnot(state.newAnnot(AnnotKind.FREETEXT, prompt.page, rects = listOf(RectF(left, prompt.y + h / 2, left + w, prompt.y - h / 2)), text = text).copy(comb = cells))
+                        val r = com.smartdocs.editor.core.fillsign2.FsGeom.combBox(box, prompt.x, prompt.y, w, h).toPdfRect()
+                        state.addAnnot(state.newAnnot(AnnotKind.FREETEXT, prompt.page, rects = listOf(r), text = text).copy(comb = cells))
                     }
-                    else -> state.addAnnot(state.newAnnot(AnnotKind.FREETEXT, prompt.page, rects = listOf(textRectAt(prompt.x, prompt.y, text, state.fontSize, pageW, rtl)), text = text))
+                    else -> state.addAnnot(state.newAnnot(AnnotKind.FREETEXT, prompt.page, rects = listOf(textRectAt(prompt.x, prompt.y, text, state.fontSize, box, rtl)), text = text))
                 }
                 onDismiss()
             }) { Text(stringResource(R.string.ok)) }

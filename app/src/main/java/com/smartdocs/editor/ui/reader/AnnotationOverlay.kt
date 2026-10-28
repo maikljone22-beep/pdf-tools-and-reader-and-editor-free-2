@@ -265,6 +265,17 @@ fun unrotatePoint(p: Offset, pivot: Offset, deg: Float): Offset {
 }
 
 /** Build the icon-like annotations used by Fill & Sign quick items (check, cross, dot, line) as INK strokes in PDF space. */
+/**
+ * Tab audit D9: the quick marks drawn upright for the reader of a page turned by [pageRotate] (/Rotate): the shape
+ * is built with y up as on an unrotated page, and every offset from the tap is turned into user space.
+ */
+fun quickMarkPaths(tool: ReaderTool, x: Float, y: Float, size: Float, pageRotate: Int): List<List<Pair<Float, Float>>> {
+    if (pageRotate % 360 == 0) return quickMarkPaths(tool, x, y, size)
+    return quickMarkPaths(tool, 0f, 0f, size).map { stroke ->
+        stroke.map { (ox, oy) -> val (du, dv) = com.smartdocs.editor.core.fillsign2.FsGeom.userDelta(pageRotate, ox, -oy); (x + du) to (y + dv) }
+    }
+}
+
 fun quickMarkPaths(tool: ReaderTool, x: Float, y: Float, size: Float): List<List<Pair<Float, Float>>> = when (tool) {
     ReaderTool.FS_CHECK -> listOf(listOf(x - size * .45f to y, x - size * .1f to y - size * .4f, x + size * .5f to y + size * .45f))
     ReaderTool.FS_CROSS -> listOf(listOf(x - size * .4f to y + size * .4f, x + size * .4f to y - size * .4f), listOf(x - size * .4f to y - size * .4f, x + size * .4f to y + size * .4f))
