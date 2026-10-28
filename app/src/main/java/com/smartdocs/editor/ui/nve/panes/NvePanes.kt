@@ -384,7 +384,7 @@ private fun DestinationsPane(state: ReaderState, onJump: (Int) -> Unit) {
                         leadingContent = { Icon(Icons.Default.Place, null) },
                         trailingContent = {
                             Box {
-                                IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, null) }
+                                IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, stringResource(R.string.pc_cd_more)) }
                                 DropdownMenu(menu, { menu = false }) {
                                     DropdownMenuItem(text = { Text(stringResource(R.string.np_go)) }, enabled = d.page != null, onClick = { menu = false; d.page?.let(onJump) })
                                     DropdownMenuItem(text = { Text(stringResource(R.string.np_rename)) }, onClick = { menu = false; dialog = d to d.name })

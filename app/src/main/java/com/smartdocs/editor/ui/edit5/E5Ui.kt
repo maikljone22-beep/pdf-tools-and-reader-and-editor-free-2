@@ -197,9 +197,9 @@ fun DrawScope.e5Box(r: Rect, color: Color, fill: Boolean = true) {
 @Composable
 fun PageStepper(page: Int, count: Int, onPage: (Int) -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        IconButton(onClick = { onPage((page - 1).coerceAtLeast(0)) }, enabled = page > 0) { Icon(Icons.AutoMirrored.Filled.NavigateBefore, null) }
+        IconButton(onClick = { onPage((page - 1).coerceAtLeast(0)) }, enabled = page > 0) { Icon(Icons.AutoMirrored.Filled.NavigateBefore, stringResource(R.string.pc_cd_prev_page)) }
         Text(stringResource(R.string.e5_page_of, page + 1, count), style = MaterialTheme.typography.labelLarge)
-        IconButton(onClick = { onPage((page + 1).coerceAtMost(count - 1)) }, enabled = page < count - 1) { Icon(Icons.AutoMirrored.Filled.NavigateNext, null) }
+        IconButton(onClick = { onPage((page + 1).coerceAtMost(count - 1)) }, enabled = page < count - 1) { Icon(Icons.AutoMirrored.Filled.NavigateNext, stringResource(R.string.pc_cd_next_page)) }
     }
 }
 

@@ -35,7 +35,7 @@ private fun PasswordField(value: String, label: String, onChange: (String) -> Un
     OutlinedTextField(
         value, onChange, Modifier.fillMaxWidth(), label = { Text(label) }, singleLine = true,
         visualTransformation = if (show) VisualTransformation.None else PasswordVisualTransformation(),
-        trailingIcon = { IconButton(onClick = { show = !show }) { Icon(if (show) Icons.Default.VisibilityOff else Icons.Default.Visibility, null) } },
+        trailingIcon = { IconButton(onClick = { show = !show }) { Icon(if (show) Icons.Default.VisibilityOff else Icons.Default.Visibility, stringResource(if (show) R.string.pc_cd_hide else R.string.pc_cd_show)) } },
     )
 }
 

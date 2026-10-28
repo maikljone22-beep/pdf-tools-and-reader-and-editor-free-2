@@ -161,7 +161,7 @@ private fun AutoScrollBar(v: V5State, modifier: Modifier) {
             IconButton(onClick = { v.autoSpeed = (v.autoSpeed - 1).coerceAtLeast(1); v.saveOverlays() }) { Icon(Icons.Default.Remove, stringResource(R.string.v5_slower)) }
             Text(stringResource(R.string.v5_speed_n, v.autoSpeed), style = MaterialTheme.typography.labelLarge)
             IconButton(onClick = { v.autoSpeed = (v.autoSpeed + 1).coerceAtMost(10); v.saveOverlays() }) { Icon(Icons.Default.Add, stringResource(R.string.v5_faster)) }
-            IconButton(onClick = { v.autoPaused = !v.autoPaused }) { Icon(if (v.autoPaused) Icons.Default.PlayArrow else Icons.Default.Pause, null) }
+            IconButton(onClick = { v.autoPaused = !v.autoPaused }) { Icon(if (v.autoPaused) Icons.Default.PlayArrow else Icons.Default.Pause, stringResource(if (v.autoPaused) R.string.pc_cd_play else R.string.pc_cd_pause)) }
             // NVE: reverse direction, previous / next page while scrolling
             val nve = com.smartdocs.editor.ui.nve.NveState.of(v.s)
             IconButton(onClick = { nve.autoReverse = !nve.autoReverse }) { Icon(if (nve.autoReverse) Icons.Default.ArrowUpward else Icons.Default.ArrowDownward, stringResource(R.string.nv_auto_reverse)) }

@@ -531,7 +531,7 @@ private fun FiltersPanel(filters: MutableList<FilterStep>, onApply: () -> Unit) 
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(stringResource(FILTER_LABELS.getValue(f.type)), style = MaterialTheme.typography.labelMedium, modifier = Modifier.width(110.dp))
                     if (r.start < r.endInclusive) Slider(f.amount, { v -> filters[i] = f.copy(amount = v) }, valueRange = r, modifier = Modifier.weight(1f).height(30.dp)) else Spacer(Modifier.weight(1f))
-                    IconButton(onClick = { filters.removeAt(i) }) { Icon(Icons.Default.Close, null) }
+                    IconButton(onClick = { filters.removeAt(i) }) { Icon(Icons.Default.Close, stringResource(R.string.pc_cd_remove)) }
                 }
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {

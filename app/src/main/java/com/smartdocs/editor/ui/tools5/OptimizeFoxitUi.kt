@@ -145,7 +145,7 @@ fun OptimizeBatchSection(batch: OptimizeBatch, title: String? = null, help: Stri
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("${i + 1}. ${f.name}", Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 IconButton(onClick = { batch.files = batch.files.toMutableList().apply { add(i - 1, removeAt(i)) } }, enabled = i > 0) { Icon(Icons.Default.ArrowUpward, null) }
-                IconButton(onClick = { batch.files = batch.files - f }) { Icon(Icons.Default.Close, null) }
+                IconButton(onClick = { batch.files = batch.files - f }) { Icon(Icons.Default.Close, stringResource(R.string.pc_cd_remove)) }
             }
         }
         BatchSources(batch.files) { batch.files = it }
@@ -170,7 +170,7 @@ fun BatchOutputOptions(batch: OptimizeBatch) {
             Text(batch.folder?.let { androidx.documentfile.provider.DocumentFile.fromTreeUri(ctx, it)?.name } ?: stringResource(R.string.nt_opt_folder_docs),
                 Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)
             TextButton(onClick = { outFolder.launch(null) }) { Text(stringResource(R.string.nt_opt_folder_pick)) }
-            if (batch.folder != null) IconButton(onClick = { batch.folder = null }) { Icon(Icons.Default.Close, null) }
+            if (batch.folder != null) IconButton(onClick = { batch.folder = null }) { Icon(Icons.Default.Close, stringResource(R.string.pc_cd_remove)) }
         }
         if (batch.folder != null) SwitchRow(stringResource(R.string.nt_opt_replace_same), batch.replaceSameName) { batch.replaceSameName = it }
     }

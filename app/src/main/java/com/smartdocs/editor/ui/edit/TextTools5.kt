@@ -490,8 +490,8 @@ private fun MoreSheet(c: EditController, t: TextTools5) {
             }
             Label(R.string.nt_selection_size)
             Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = { t.selectionSize(-1f) }) { Icon(Icons.Default.TextDecrease, null) }
-                IconButton(onClick = { t.selectionSize(1f) }) { Icon(Icons.Default.TextIncrease, null) }
+                IconButton(onClick = { t.selectionSize(-1f) }) { Icon(Icons.Default.TextDecrease, stringResource(R.string.pc_cd_smaller_text)) }
+                IconButton(onClick = { t.selectionSize(1f) }) { Icon(Icons.Default.TextIncrease, stringResource(R.string.pc_cd_larger_text)) }
                 if (st.runs.isNotEmpty()) TextButton(onClick = { t.clearRuns() }) { Text(stringResource(R.string.nt_clear_runs)) }
             }
             // spacing

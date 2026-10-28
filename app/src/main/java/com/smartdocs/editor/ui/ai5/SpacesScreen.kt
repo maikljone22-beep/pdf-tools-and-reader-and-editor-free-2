@@ -124,7 +124,7 @@ private fun SpaceEditor(initial: Space, onSave: (Space) -> Unit, onDismiss: () -
                 files.forEach { p ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(sourceLabel(p), Modifier.weight(1f), maxLines = 1, style = MaterialTheme.typography.bodySmall)
-                        IconButton(onClick = { files = files - p }, Modifier.size(32.dp)) { Icon(Icons.Default.Close, null, Modifier.size(16.dp)) }
+                        IconButton(onClick = { files = files - p }, Modifier.size(32.dp)) { Icon(Icons.Default.Close, stringResource(R.string.pc_cd_remove), Modifier.size(16.dp)) }
                     }
                 }
                 OutlinedButton(onClick = pick) { Icon(Icons.Default.Add, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.a5_add_files)) }
