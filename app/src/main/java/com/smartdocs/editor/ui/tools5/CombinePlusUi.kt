@@ -269,6 +269,9 @@ class WebOpts {
     var underline by mutableStateOf(false)
     var noLinks by mutableStateOf(false)
     var appendTo by mutableStateOf<File?>(null)
+    /** Row 93: one single long page; PDF tags (the app's auto-tagger runs on the result). */
+    var singlePage by mutableStateOf(false)
+    var tags by mutableStateOf(false)
 
     fun setup(): android.print.WebPdfWriter.Setup {
         val media = when (paper) {
@@ -276,7 +279,8 @@ class WebOpts {
             "A3" -> android.print.PrintAttributes.MediaSize.ISO_A3; "A5" -> android.print.PrintAttributes.MediaSize.ISO_A5
             else -> android.print.PrintAttributes.MediaSize.ISO_A4
         }
-        return android.print.WebPdfWriter.Setup(media, landscape, margin, (timeoutSec * 1000).toLong(), css = com.smartdocs.editor.core.tools5.WebCss.build(images, backgrounds, underline))
+        return android.print.WebPdfWriter.Setup(media, landscape, margin, (timeoutSec * 1000).toLong(), css = com.smartdocs.editor.core.tools5.WebCss.build(images, backgrounds, underline),
+            singlePage = singlePage)
     }
 }
 
@@ -293,11 +297,29 @@ fun WebOptionsCard(o: WebOpts) {
         SwitchRow(stringResource(R.string.pc_web_backgrounds), o.backgrounds) { o.backgrounds = it }
         SwitchRow(stringResource(R.string.pc_web_underline), o.underline) { o.underline = it }
         SwitchRow(stringResource(R.string.pc_web_no_links), o.noLinks) { o.noLinks = it }
+        SwitchRow(stringResource(R.string.cv9_web_single), o.singlePage) { o.singlePage = it }
+        SwitchRow(stringResource(R.string.cv9_web_tags), o.tags, stringResource(R.string.cv9_web_tags_sub)) { o.tags = it }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(o.appendTo?.let { stringResource(R.string.pc_append_to, it.name) } ?: stringResource(R.string.pc_append_none), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
             if (o.appendTo != null) IconButton(onClick = { o.appendTo = null }) { Icon(Icons.Default.Close, stringResource(R.string.t5_remove)) }
             TextButton(onClick = pickAppend) { Text(stringResource(R.string.pc_append_pick)) }
         }
+    }
+}
+
+/** Row 93 "create PDF tags": the app's auto-tagger (headings, lists, tables, artifacts) on a converted web page, in place. */
+suspend fun tagIfAsked(o: WebOpts, page: File) {
+    if (!o.tags) return
+    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        val tmp = File(page.parentFile, ".${page.name}.tag.pdf")
+        try {
+            com.smartdocs.editor.core.pdf.PdfOps.loadRaw(page, null).use { d ->
+                val lang = runCatching { com.tom_roush.pdfbox.text.PDFTextStripper().apply { endPage = 2 }.getText(d) }.getOrDefault("")
+                    .let { t -> if (com.smartdocs.editor.core.convert6.Text6.rtlDominant(t)) "ar" else java.util.Locale.getDefault().language.ifBlank { "en" } }
+                com.smartdocs.editor.core.tools5.AccessAutoTag.tag(d, lang, retag = false); d.save(tmp)
+            }
+            if (!tmp.renameTo(page)) tmp.copyTo(page, overwrite = true)
+        } finally { tmp.delete() }
     }
 }
 

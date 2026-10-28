@@ -71,7 +71,7 @@ fun ToPdfPlusScreen(nav: NavHostController, uri: String?) {
         bookmarks = j.optBoolean("bookmarks", bookmarks); attachSrc = j.optBoolean("attach", attachSrc); background = j.optBoolean("background", background)
         web.paper = j.optString("paper", web.paper); web.landscape = j.optBoolean("landscape", web.landscape); web.margin = j.optInt("margin", web.margin)
         web.timeoutSec = j.optDouble("timeout", web.timeoutSec.toDouble()).toFloat(); web.images = j.optBoolean("images", web.images)
-        web.backgrounds = j.optBoolean("backgrounds", web.backgrounds); web.underline = j.optBoolean("underline", web.underline); web.noLinks = j.optBoolean("noLinks", web.noLinks)
+        web.backgrounds = j.optBoolean("backgrounds", web.backgrounds); web.underline = j.optBoolean("underline", web.underline); web.noLinks = j.optBoolean("noLinks", web.noLinks); web.singlePage = j.optBoolean("singlePage", web.singlePage); web.tags = j.optBoolean("tags", web.tags)
     } }
     val savedMsg = stringResource(R.string.fcs_cv_saved)
     val pick = rememberAnyFilePicker(true, ToPdf.pickerMimes) { picked -> files = files + picked.filter { f -> files.none { it.absolutePath == f.absolutePath } } }
@@ -142,6 +142,7 @@ fun ToPdfPlusScreen(nav: NavHostController, uri: String?) {
                     job.launch(converting) {
                         val out = app.documents.uniqueFile(app.documents.docsDir, host)
                         ToPdf.url(ctx, u, out, setup, nl)
+                        tagIfAsked(web, out)
                         result = appendIfAsked(web, out) { app.documents.uniqueFile(app.documents.docsDir, it) }
                     }
                 }
@@ -153,7 +154,7 @@ fun ToPdfPlusScreen(nav: NavHostController, uri: String?) {
                     job.launch(converting) {
                         val out = app.documents.uniqueFile(app.documents.docsDir, "html_" + t5Today())
                         val page = if (h.contains("<html", true) || h.contains("<body", true)) h else HtmlBits.page("", h, HtmlBits.rtlDominant(h))
-                        result = ToPdf.html(ctx, page, out, web.setup())
+                        result = ToPdf.html(ctx, page, out, web.setup()).also { tagIfAsked(web, it) }
                     }
                 }
             }
@@ -163,7 +164,7 @@ fun ToPdfPlusScreen(nav: NavHostController, uri: String?) {
             com.smartdocs.editor.core.convert6.Cv6Defaults.saveScreen(ctx, TO_PDF_DEFAULTS, org.json.JSONObject()
                 .put("bookmarks", bookmarks).put("attach", attachSrc).put("background", background)
                 .put("paper", web.paper).put("landscape", web.landscape).put("margin", web.margin).put("timeout", web.timeoutSec.toDouble())
-                .put("images", web.images).put("backgrounds", web.backgrounds).put("underline", web.underline).put("noLinks", web.noLinks))
+                .put("images", web.images).put("backgrounds", web.backgrounds).put("underline", web.underline).put("noLinks", web.noLinks).put("singlePage", web.singlePage).put("tags", web.tags))
             android.widget.Toast.makeText(ctx, savedMsg, android.widget.Toast.LENGTH_SHORT).show()
         }) { Icon(Icons.Default.BookmarkAdd, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.fcs_cv_save_default)) }
         if (job.results.isNotEmpty()) ResultsList(job.results, nav, "application/pdf")

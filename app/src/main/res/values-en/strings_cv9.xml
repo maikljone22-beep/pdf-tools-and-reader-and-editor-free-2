@@ -27,4 +27,7 @@
     <string name="cv9_notes_author">Speaker notes</string>
     <string name="cv9_info_notes">Speaker notes added to %1$d pages</string>
     <string name="cv9_info_ppt_layout">PowerPoint 97 file (.ppt): slides with their text and pictures in place; masters, text styling and EMF/WMF pictures are not read</string>
+    <string name="cv9_web_single">One single long page</string>
+    <string name="cv9_web_tags">Add PDF tags</string>
+    <string name="cv9_web_tags_sub">Headings, lists and tables for screen readers</string>
 </resources>
