@@ -36,7 +36,8 @@ fun PrintSheet5(v: V5State, outputFile: suspend () -> File?, onMessage: (String)
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val app = ctx.applicationContext as SmartDocsApp
-    var which by remember { mutableIntStateOf(0) }           // 0 all, 1 current, 2 range
+    var which by remember { mutableIntStateOf(0) }           // 0 all, 1 current, 2 range, 3 current view (reader-prefs §36)
+    val view = remember { com.smartdocs.editor.ui.rpf.RpfPrintView.visible(s) }
     var range by remember { mutableStateOf("") }
     var settings by remember { mutableStateOf(PrintPresets.last(ctx) ?: PrintSettings()) }
     var docPrefs by remember { mutableStateOf(DocPrintPrefs()) }
@@ -54,8 +55,12 @@ fun PrintSheet5(v: V5State, outputFile: suspend () -> File?, onMessage: (String)
 
     /** Prepare the file to print with the current choices (null on error, reported). */
     suspend fun prepared(): Pair<File, Int>? = runCatching {
-        val src = outputFile() ?: error("no file")
-        val spec = when (which) { 1 -> (s.currentPage + 1).toString(); 2 -> PrintLayout.labelRange(range, labels); else -> "" }
+        val doc = outputFile() ?: error("no file")
+        // reader-prefs §36: "current view" prints the visible part of the page on screen (a one-page copy cut to it)
+        val src = if (which == 3 && view != null) File(app.documents.tempDir, "print_view_${System.currentTimeMillis()}.pdf").also { out ->
+            com.smartdocs.editor.ui.rpf.RpfPrintView.write(doc, s.password, view.first, view.second, s.rotation, out)
+        } else doc
+        val spec = if (which == 3) "1" else when (which) { 1 -> (s.currentPage + 1).toString(); 2 -> PrintLayout.labelRange(range, labels); else -> "" }
         PrintPipeline.prepare(ctx, src, s.password, settings.toOptions(spec), settings.extras(), app.documents.tempDir, printSummaryLabels(ctx),
             summaryOptions = sumOpts.copy(pageCount = s.pageCount))
     }.onFailure { onMessage(it.message ?: ctx.getString(R.string.error_generic)) }.getOrNull()
@@ -68,6 +73,7 @@ fun PrintSheet5(v: V5State, outputFile: suspend () -> File?, onMessage: (String)
                 FilterChip(which == 0, { which = 0 }, label = { Text(stringResource(R.string.v5_all_pages)) })
                 FilterChip(which == 1, { which = 1 }, label = { Text(stringResource(R.string.v5_current_page, s.currentPage + 1)) })
                 FilterChip(which == 2, { which = 2 }, label = { Text(stringResource(R.string.v5_range)) })
+                if (view != null) FilterChip(which == 3, { which = 3 }, label = { Text(stringResource(R.string.rpf_print_view)) })
             }
             if (which == 2) OutlinedTextField(range, { range = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.v5_range_hint)) },
                 supportingText = if (labels != null) ({ Text(stringResource(R.string.nbt_range_labels)) }) else null)

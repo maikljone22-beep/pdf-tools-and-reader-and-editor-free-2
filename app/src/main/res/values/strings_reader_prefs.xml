@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- reader-prefs: per-document reading options (#23) -->
+    <string name="rpf_doc_title">خيارات القراءة لهذا المستند</string>
+    <string name="rpf_doc_sub">تنطبق هذه الخيارات على هذا الملف فقط وتتقدّم على التفضيلات العامة.</string>
+    <string name="rpf_default">الافتراضي</string>
+    <string name="rpf_doc_layout">تخطيط الصفحات</string>
+    <string name="rpf_doc_zoom">التكبير</string>
+    <string name="rpf_doc_use_current">استخدام العرض الحالي (%1$d%%)</string>
+    <string name="rpf_doc_direction">اتجاه القراءة</string>
+    <string name="rpf_dir_ltr">من اليسار إلى اليمين</string>
+    <string name="rpf_dir_rtl">من اليمين إلى اليسار</string>
+    <string name="rpf_doc_reading">القراءة بصوت عالٍ</string>
+    <string name="rpf_doc_order">ترتيب القراءة</string>
+    <string name="rpf_doc_mode">وضع القراءة</string>
+    <string name="rpf_mode_visible">الصفحة الظاهرة فقط</string>
+    <string name="rpf_mode_document">المستند كله</string>
+    <string name="rpf_doc_reset">العودة إلى التفضيلات العامة</string>
+    <!-- deep zoom (6400 %) -->
+    <string name="rpf_deep_zoom">%1$d%% · صفحة %2$d</string>
+    <string name="rpf_deep_exit">العودة إلى عرض الصفحات</string>
+    <string name="rpf_zoom_in">تكبير</string>
+    <string name="rpf_zoom_out">تصغير</string>
+    <!-- page display preferences (§37) -->
+    <string name="rpf_facing_count">عدد الصفحات المتجاورة (العرض المتقابل)</string>
+    <string name="rpf_page_gap">المسافة بين الصفحات: %1$d dp</string>
+    <string name="rpf_show_page_size">إظهار مقاس الصفحة دائمًا</string>
+    <string name="rpf_keep_dest_zoom">إبقاء التكبير عند الانتقال إلى وجهة</string>
+    <string name="rpf_keep_dest_zoom_sub">عند إيقافه يطبّق الرابط إلى وجهةٍ تكبيرها أيضًا (ملاءمة الصفحة أو العرض أو تكبير محدد)</string>
+    <!-- full screen (§37) -->
+    <string name="rpf_fs_request">عندما يطلب المستند ملء الشاشة</string>
+    <string name="rpf_fs_req_ask">اسألني</string>
+    <string name="rpf_fs_req_allow">السماح دائمًا</string>
+    <string name="rpf_fs_req_never">عدم السماح أبدًا</string>
+    <string name="rpf_fs_items">ما يظهر في ملء الشاشة</string>
+    <string name="rpf_fs_toolbar">شريط الأدوات</string>
+    <string name="rpf_fs_page_nav">التنقل بين الصفحات</string>
+    <string name="rpf_fs_tabs">ألسنة المستندات</string>
+    <string name="rpf_fs_ask_title">ملء الشاشة</string>
+    <string name="rpf_fs_ask_text">يطلب هذا المستند العرض بملء الشاشة. هل تسمح بذلك؟</string>
+    <string name="rpf_fs_allow">سماح</string>
+    <string name="rpf_fs_deny">عدم السماح</string>
+    <string name="rpf_remember_choice">تذكّر اختياري</string>
+    <string name="rpf_prev_page">الصفحة السابقة</string>
+    <string name="rpf_next_page">الصفحة التالية</string>
+    <!-- PDF/A view mode (§37 / PREF-5) -->
+    <string name="rpf_pdfa_view">فتح ملفات PDF/A في وضع العرض</string>
+    <string name="rpf_pdfa_view_sub">الملفات التي تعلن توافقها مع PDF/A تُفتح للقراءة فقط لتبقى متوافقة، ويمكن تمكين التحرير لكل ملف</string>
+    <string name="rpf_pdfa_banner">يعلن هذا الملف توافقه مع %1$s، وقد فُتح للقراءة فقط ليبقى متوافقًا.</string>
+    <string name="rpf_pdfa_enable">تمكين التحرير</string>
+    <string name="rpf_pdfa_blocked">وضع عرض PDF/A: مكّن التحرير أولًا</string>
+    <!-- print (§36) -->
+    <string name="rpf_print_view">العرض الحالي</string>
+    <!-- reading ruler (§9) -->
+    <string name="rpf_ruler_vertical">شريط عمودي</string>
+    <string name="rpf_ruler_opacity">عتامة التظليل: %1$d%%</string>
+    <string name="rpf_ruler_reset">إعادة ضبط مسطرة القراءة</string>
+    <!-- form fields read aloud (§10 / §39) -->
+    <string name="rpf_field_tts">قراءة حقول النموذج حقلًا حقلًا</string>
+    <string name="rpf_field_tts_sub">يُقرأ كل حقل عندما ينتقل إليه التركيز. يتنقل Tab و Shift+Tab في لوحة المفاتيح، أو زر التالي، بين الحقول.</string>
+    <string name="rpf_field_tts_start">البدء من الحقل الأول</string>
+    <string name="rpf_ft_text">حقل نصي</string>
+    <string name="rpf_ft_check">مربع اختيار</string>
+    <string name="rpf_ft_radio">زر اختيار</string>
+    <string name="rpf_ft_combo">قائمة منسدلة</string>
+    <string name="rpf_ft_list">مربع قائمة</string>
+    <string name="rpf_ft_signature">حقل توقيع</string>
+    <string name="rpf_ft_button">زر</string>
+    <string name="rpf_ft_image">حقل صورة</string>
+    <string name="rpf_ft_checked">محدد</string>
+    <string name="rpf_ft_unchecked">غير محدد</string>
+    <string name="rpf_ft_empty">فارغ</string>
+    <string name="rpf_ft_required">مطلوب</string>
+    <!-- tab groups (OLD SHL-5) -->
+    <string name="rpf_groups">مجموعات الألسنة</string>
+    <string name="rpf_groups_empty">لا توجد مجموعات بعد. اضغط مطولًا على لسان واختر مجموعة جديدة.</string>
+    <string name="rpf_groups_hint">اضغط على مجموعة في شريط الألسنة لطيّها أو توسيعها. المجموعة المغلقة تحتفظ بمستنداتها لتستعيدها لاحقًا.</string>
+    <string name="rpf_group_new">مجموعة ألسنة جديدة</string>
+    <string name="rpf_group_new_with">مجموعة جديدة بهذا اللسان</string>
+    <string name="rpf_group_add_to">إضافة إلى المجموعة \"%1$s\"</string>
+    <string name="rpf_group_remove">إزالة من المجموعة</string>
+    <string name="rpf_group_name">اسم المجموعة</string>
+    <string name="rpf_group_collapse">طيّ</string>
+    <string name="rpf_group_expand">توسيع</string>
+    <string name="rpf_group_close">إغلاق المجموعة</string>
+    <string name="rpf_group_closed">مغلقة</string>
+    <string name="rpf_group_restore">استعادة</string>
+    <string name="rpf_group_rename">إعادة تسمية</string>
+    <string name="rpf_group_delete">حذف</string>
+    <string name="rpf_group_from_open">تجميع كل الألسنة المفتوحة</string>
+</resources>

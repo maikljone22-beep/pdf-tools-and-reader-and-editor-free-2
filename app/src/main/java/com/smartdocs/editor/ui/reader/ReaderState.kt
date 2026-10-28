@@ -498,6 +498,7 @@ class ReaderState(
         com.smartdocs.editor.ui.nve.NveState.forget(this)      // NVE
         com.smartdocs.editor.ui.nve.articles.NveArticlesState.forget(this)
         com.smartdocs.editor.ui.pageflip.PageFlipController.forget(this)
+        com.smartdocs.editor.ui.rpf.RpfState.forget(this)      // reader-prefs
         StampClipboard.release(this)      // tab audit D31: the "Paste here" offer held this reader
         // PdfSession.closeAsync waits for in-flight renders, so no delay is needed
         ioScope.launch {
