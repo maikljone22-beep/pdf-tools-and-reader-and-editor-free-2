@@ -19,4 +19,21 @@
     <string name="ett_sr_done">%1$d characters removed on %2$d pages</string>
     <string name="ett_sr_raster">Pages turned into pictures because their text could not be rewritten: %s</string>
     <string name="ett_sr_failed">Could not remove the text</string>
+    <string name="ett_fx_title">Fixups</string>
+    <string name="ett_fx_outlines_hint">Convert fonts to outlines: all visible text in the page range above becomes drawn shapes. It looks the same without the fonts, but it can no longer be searched or copied. A hidden text layer (OCR) stays as it is. The result is saved as a new copy.</string>
+    <string name="ett_fx_outlines">Convert fonts to outlines</string>
+    <string name="ett_fx_running">Converting text to outlines…</string>
+    <string name="ett_fx_done">%1$d characters converted to outlines on %2$d pages</string>
+    <string name="ett_fx_none">There is no text that can be outlined on these pages</string>
+    <string name="ett_fx_failed">Could not convert the fonts to outlines</string>
+    <string name="ett_changed_show">Show changed text in colour</string>
+    <string name="ett_changed_hide">Hide the changed-text colour</string>
+    <string name="ett_art_adjust">Move or resize the box</string>
+    <string name="ett_art_adjust_hint">Drag the box to move it, or drag a corner to resize it</string>
+    <string name="ett_art_h_adjust">Move or resize an article box</string>
+    <string name="ett_ly_all">All pages</string>
+    <string name="ett_ly_visible">Visible pages</string>
+    <string name="ett_ly_current">Current page</string>
+    <string name="ett_ly_this_page">Page %d only</string>
+    <string name="ett_ly_none_here">No layers are used on these pages</string>
 </resources>

@@ -48,9 +48,16 @@ data class TextBlock(
     val angle: Float = 0f,
     /** NVE-text: for rotated blocks, the block rect in its own upright frame (rotate by [angle] to get display space). */
     val frameRect: RectF? = null,
+    /**
+     * E10: mirrored / skewed text: the 2×2 matrix (a, b, c, d) from the block's upright frame to display space
+     * ([frameRect] is the rect in that frame, [rect] the display bounding box). Null for upright and rotated text.
+     */
+    val frame: FloatArray? = null,
 ) {
     /** NVE-text: drawn (partly) inside a form XObject. */
     val inForm: Boolean get() = ops.any { FormOps.isForm(it) }
+    /** NVE-text / E10: drawn in a frame of its own (rotated, mirrored or skewed): rewritten through TextEdit5. */
+    val framed: Boolean get() = angle != 0f || frame != null
     override fun equals(other: Any?) = other is TextBlock && other.id == id && other.ops.contentEquals(ops) && other.text == text
     override fun hashCode() = id * 31 + ops.contentHashCode()
 }
@@ -120,6 +127,13 @@ object PageTextModel {
             val rot = Affine.rotateAround(angle, 0f, 0f)
             buildBlocks(gl, fonts, blocks.size).forEach { b ->
                 blocks += b.copy(rect = Affine.box(rot, b.rect.left, b.rect.bottom, b.rect.right, b.rect.top), angle = angle, frameRect = b.rect)
+            }
+        }
+        // E10: mirrored / skewed rows, grouped in the frame that makes them upright
+        for ((f, gl) in scanner.framed) {
+            val m = Affine.of(f[0], f[1], f[2], f[3], 0f, 0f)
+            buildBlocks(gl, fonts, blocks.size).forEach { b ->
+                blocks += b.copy(rect = Affine.box(m, b.rect.left, b.rect.bottom, b.rect.right, b.rect.top), frameRect = b.rect, frame = f.toFloatArray())
             }
         }
         val images = scanner.images.mapIndexed { i, im ->

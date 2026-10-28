@@ -17,7 +17,8 @@ import com.tom_roush.pdfbox.pdmodel.interactive.documentnavigation.destination.P
  * and the standards the file claims (XMP). Pure over a [PDDocument], so it is unit-tested.
  */
 object NpfDocPanels {
-    data class Layer(val name: String, val on: Boolean, val index: Int)
+    /** [pages]: zero-based pages whose content, XObjects or annotations use the layer (pdf39 §22 #270 filter). */
+    data class Layer(val name: String, val on: Boolean, val index: Int, val pages: List<Int> = emptyList())
     data class Security(val encrypted: Boolean, val filter: String, val version: Int, val revision: Int, val keyBits: Int,
                         val print: Boolean, val modify: Boolean, val copy: Boolean, val annotate: Boolean, val fill: Boolean,
                         val assemble: Boolean, val printHigh: Boolean, val extractForA11y: Boolean)
@@ -65,10 +66,11 @@ object NpfDocPanels {
         val off = (deref(d?.getDictionaryObject(COSName.getPDFName("OFF"))) as? COSArray)?.mapNotNull { deref(it) }?.toSet().orEmpty()
         val baseOff = d?.getNameAsString(COSName.getPDFName("BaseState")) == "OFF"
         val on = (deref(d?.getDictionaryObject(COSName.getPDFName("ON"))) as? COSArray)?.mapNotNull { deref(it) }?.toSet().orEmpty()
+        val used = runCatching { com.smartdocs.editor.core.edit5.Layers.pagesOf(doc) }.getOrDefault(emptyMap())
         return (0 until ocgs.size()).mapNotNull { i ->
             val g = deref(ocgs.getObject(i)) as? COSDictionary ?: return@mapNotNull null
             val visible = if (baseOff) g in on else g !in off
-            Layer(g.getString(COSName.NAME) ?: "#${i + 1}", visible, i)
+            Layer(g.getString(COSName.NAME) ?: "#${i + 1}", visible, i, used[g].orEmpty())
         }
     }
 

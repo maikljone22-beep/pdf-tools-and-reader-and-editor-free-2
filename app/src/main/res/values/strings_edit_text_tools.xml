@@ -19,4 +19,21 @@
     <string name="ett_sr_done">حُذف %1$d حرفاً من %2$d صفحة</string>
     <string name="ett_sr_raster">صفحات تحوّلت إلى صور لأن نصها لا يمكن إعادة كتابته: %s</string>
     <string name="ett_sr_failed">تعذّرت إزالة النص</string>
+    <string name="ett_fx_title">إصلاحات</string>
+    <string name="ett_fx_outlines_hint">تحويل الخطوط إلى مسارات: كل نص ظاهر في نطاق الصفحات أعلاه يصبح أشكالاً مرسومة، فيبدو كما هو دون الحاجة إلى الخطوط، لكنه لا يعود قابلاً للبحث أو النسخ. تبقى طبقة النص المخفية (OCR) كما هي، وتُحفظ النتيجة نسخةً جديدة.</string>
+    <string name="ett_fx_outlines">تحويل الخطوط إلى مسارات</string>
+    <string name="ett_fx_running">جارٍ تحويل النص إلى مسارات…</string>
+    <string name="ett_fx_done">حُوّل %1$d حرفاً إلى مسارات في %2$d صفحة</string>
+    <string name="ett_fx_none">لا يوجد نص يمكن تحويله إلى مسارات في هذه الصفحات</string>
+    <string name="ett_fx_failed">تعذّر تحويل الخطوط إلى مسارات</string>
+    <string name="ett_changed_show">إظهار النص المعدَّل بلون مميز</string>
+    <string name="ett_changed_hide">إخفاء تلوين النص المعدَّل</string>
+    <string name="ett_art_adjust">نقل المربع أو تغيير حجمه</string>
+    <string name="ett_art_adjust_hint">اسحب المربع لنقله أو اسحب أحد أركانه لتغيير حجمه</string>
+    <string name="ett_art_h_adjust">نقل مربع مقالة أو تغيير حجمه</string>
+    <string name="ett_ly_all">كل الصفحات</string>
+    <string name="ett_ly_visible">الصفحات الظاهرة</string>
+    <string name="ett_ly_current">الصفحة الحالية</string>
+    <string name="ett_ly_this_page">الصفحة %d فقط</string>
+    <string name="ett_ly_none_here">لا توجد طبقات مستخدمة في هذه الصفحات</string>
 </resources>
