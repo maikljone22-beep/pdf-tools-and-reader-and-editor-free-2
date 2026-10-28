@@ -67,8 +67,15 @@ object CommentOps5 {
         }
     }
 
-    /** Add a private checkmark reply (hidden Text annotation, /StateModel /Marked) to a stored comment. */
-    suspend fun setChecked(src: File, out: File, pw: String?, page: Int, index: Int, checked: Boolean, author: String) = withContext(Dispatchers.IO) {
+    /**
+     * Add a private checkmark reply (hidden Text annotation, /StateModel /Marked) to a stored comment. Tabs audit CM-02:
+     * the same writer as the Comments panel ([com.smartdocs.editor.core.annot.CommentStore.setChecked]), signed-safe.
+     */
+    suspend fun setChecked(src: File, out: File, pw: String?, page: Int, index: Int, checked: Boolean, author: String) =
+        com.smartdocs.editor.core.annot.CommentStore.setChecked(src, out, pw, page, index, checked, author)
+
+    @Suppress("unused")
+    private suspend fun setCheckedOld(src: File, out: File, pw: String?, page: Int, index: Int, checked: Boolean, author: String) = withContext(Dispatchers.IO) {
         com.smartdocs.editor.core.pdf.PdfOps.load(src, pw).use { doc ->
             val p = doc.getPage(page)
             val parent = p.annotations[index]

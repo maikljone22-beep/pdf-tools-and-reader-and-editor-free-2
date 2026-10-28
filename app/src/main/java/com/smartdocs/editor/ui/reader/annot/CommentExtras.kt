@@ -157,6 +157,9 @@ class CommentExtras(private val h: Annot2Host) {
         }
     }
 
+    /** The selection holds a locked comment (the menu then offers Unlock instead of Lock — CM-28). */
+    fun selectionLocked(): Boolean = target()?.let { lockedIn(it) } == true
+
     private fun lockedIn(t: CTarget): Boolean =
         s.annots.any { it.id in t.pending && it.locked } || t.stored.any { it.locked }
 
@@ -171,7 +174,11 @@ class CommentExtras(private val h: Annot2Host) {
 
     // ================= hide / show =================
 
-    fun toggleHidden() { hidden = !hidden; s.edit.clear(); h.multi.clear() }
+    fun toggleHidden() {
+        hidden = !hidden; s.edit.clear(); h.multi.clear()
+        // tabs audit CM-11: no invisible drawing while comments are hidden
+        if (hidden && s.tool != null) s.selectTool(null)
+    }
 
     // ================= clipboard =================
 
@@ -329,7 +336,8 @@ class CommentExtras(private val h: Annot2Host) {
     }.getOrNull()
 
     /** Apply the dialog values: blank author / subject on a multi-selection leave them unchanged. */
-    fun applyProps(req: PropsReq, author: String, subject: String, name: String, contents: String, locked: Boolean, icon: String) {
+    /** [locked] = null: the lock was not touched in the dialog and stays as it is per item (tabs audit CM-28). */
+    fun applyProps(req: PropsReq, author: String, subject: String, name: String, contents: String, locked: Boolean?, icon: String) {
         props = null
         val t = req.target
         val setAuthor = author.takeIf { req.single || it.isNotBlank() }
@@ -344,7 +352,7 @@ class CommentExtras(private val h: Annot2Host) {
                 setAuthor?.let { a = a.copy(author = it) }; setSubject?.let { a = a.copy(subject = it) }
                 setName?.let { a = a.copy(nm = it.ifBlank { null }) }; setContents?.let { a = a.copy(text = it) }
                 setIcon?.let { if (a.kind == AnnotKind.NOTE || a.kind == AnnotKind.FILE_ATTACH) a = a.copy(icon = it) }
-                list[i] = a.copy(locked = locked)
+                list[i] = if (locked != null) a.copy(locked = locked) else a
             }
         }
         if (t.stored.isNotEmpty()) h.launchBusy {
@@ -459,15 +467,26 @@ class CommentExtras(private val h: Annot2Host) {
 
     // ================= previous / next comment =================
 
+    /** Tabs audit CM-33: stored and pending (not yet saved) comments, in page / top-to-bottom order. */
     fun stepComment(next: Boolean) {
-        val list = s.existing.sortedWith(compareBy({ it.page }, { -PageGeometry.normPdf(it.rect).top }, { it.rect.left }))
+        data class Stop(val page: Int, val top: Float, val left: Float, val stored: AnnotationWriter.Existing?, val pending: com.smartdocs.editor.core.pdf.Annot?)
+        val stops = s.existing.map { e -> val r = PageGeometry.normPdf(e.rect); Stop(e.page, r.top, r.left, e, null) } +
+            s.annots.mapNotNull { a ->
+                val r = a.rects.firstOrNull()?.let { PageGeometry.normPdf(it) } ?: a.points.firstOrNull()?.let { (x, y) -> android.graphics.RectF(x, y, x, y) } ?: a.paths.firstOrNull()?.firstOrNull()?.let { (x, y) -> android.graphics.RectF(x, y, x, y) }
+                r?.let { Stop(a.page, it.top, it.left, null, a) }
+            }
+        val list = stops.sortedWith(compareBy({ it.page }, { -it.top }, { it.left }))
         if (list.isEmpty()) { h.message = str(R.string.an_no_comments); return }
-        val cur = (s.edit.target as? AnnotTarget.Stored)?.e?.let { e -> list.indexOfFirst { it.page == e.page && it.index == e.index } } ?: navIndex
+        val cur = when (val t = s.edit.target) {
+            is AnnotTarget.Stored -> list.indexOfFirst { it.stored?.page == t.e.page && it.stored.index == t.e.index }
+            is AnnotTarget.Pending -> list.indexOfFirst { it.pending?.id == t.id }
+            else -> -1
+        }.takeIf { it >= 0 } ?: navIndex
         navIndex = if (next) (cur + 1).mod(list.size) else (if (cur <= 0) list.size - 1 else cur - 1)
-        val e = list[navIndex]
+        val stop = list[navIndex]
         h.multi.clear()
-        s.jumpTo(e.page)
-        s.edit.selectStored(e)
+        s.jumpTo(stop.page)
+        stop.stored?.let { s.edit.selectStored(it) } ?: stop.pending?.let { s.edit.selectPending(it) }
     }
 
     // ================= export selected =================
@@ -475,17 +494,20 @@ class CommentExtras(private val h: Annot2Host) {
     /** FDF / XFDF of the selection only (24.92); [share] opens the share sheet (e-mail, 24.93). */
     fun exportSelected(xfdf: Boolean, share: Boolean, deliver: (File) -> Unit) {
         val t = target()
+        if (!s.guard.check(com.smartdocs.editor.core.security.DocAction.COPY)) return          // tabs audit CM-12
         h.launchBusy {
-            if (s.dirty && !s.save()) return@launchBusy
-            val f = s.file ?: return@launchBusy
-            val refs: Map<Int, Set<Int>>? = t?.let { tt -> storedIndices(tt)?.let { mapOf(tt.page to it.toSet()) } }
+            val (f, cleanup) = h.exportSource() ?: return@launchBusy       // CM-36: no silent save of pending edits
             val dir = File(s.app.documents.tempDir, "cx_export_${System.nanoTime()}").apply { mkdirs() }
-            val src = if (refs == null) f else File(dir, f.name).also { CommentOps7.keepOnly(f, s.password, it, refs) }
-            val out = File(dir, f.nameWithoutExtension + if (xfdf) ".xfdf" else ".fdf")
-            val pw = if (refs == null) s.password else null
-            val n = if (xfdf) com.smartdocs.editor.core.annot.CommentExchange.exportXfdf(src, pw, out) else com.smartdocs.editor.core.annot.CommentExchange.exportFdf(src, pw, out)
-            if (n == 0) { h.message = str(R.string.an_no_comments); return@launchBusy }
-            if (share) MediaIntents.share(s.context, s.app, out, if (xfdf) "application/vnd.adobe.xfdf" else "application/vnd.fdf") else deliver(out)
+            var copy: File? = null
+            try {
+                val refs: Map<Int, Set<Int>>? = t?.let { tt -> storedIndices(tt)?.let { mapOf(tt.page to it.toSet()) } }
+                // tabs audit CM-13: the filtered copy keeps the document's encryption and is deleted right after the export
+                val src = if (refs == null) f else File(dir, f.name).also { copy = it; CommentOps7.keepOnly(f, s.password, it, refs) }
+                val out = File(dir, (s.file?.nameWithoutExtension ?: f.nameWithoutExtension) + if (xfdf) ".xfdf" else ".fdf")
+                val n = if (xfdf) com.smartdocs.editor.core.annot.CommentExchange.exportXfdf(src, s.password, out) else com.smartdocs.editor.core.annot.CommentExchange.exportFdf(src, s.password, out)
+                if (n == 0) { h.message = str(R.string.an_no_comments); return@launchBusy }
+                if (share) MediaIntents.share(s.context, s.app, out, if (xfdf) "application/vnd.adobe.xfdf" else "application/vnd.fdf") else deliver(out)
+            } finally { copy?.delete(); cleanup() }
         }
     }
 
