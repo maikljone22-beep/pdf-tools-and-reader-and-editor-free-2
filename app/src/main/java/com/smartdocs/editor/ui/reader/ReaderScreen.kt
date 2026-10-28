@@ -155,11 +155,20 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
         leaveBlocked { switchTabAfterDiscard(nav, state, target) }
     }
     fun saveThen(block: () -> Unit) { scope.launch { if (state.save()) block() } }
-    fun saveThenLeave(block: () -> Unit) { scope.launch { if (state.save()) block() else leaveBlocked(block) } }
+    // 27.10: a save that kept script changes out of a signed file (signedBlock + copy) does not leave silently
+    fun saveThenLeave(block: () -> Unit) { scope.launch { if (state.save() && state.signedBlock == null) block() else leaveBlocked(block) } }
     fun requestLeave() {
         if (!state.dirty || state.discarded) leave()
         else if (settings.autoSave) saveThenLeave { leave() }
         else { pendingLeave = { leave() }; leaveFailure = null; showDiscard = true }
+    }
+    // 8.69 / 8.84: named action Close and this.closeDoc close this document's tab (its neighbour opens, or the
+    // reader is left), with the same unsaved-changes guard as Back
+    fun requestCloseTab() {
+        val closeNow = { switchTabAfterDiscard(nav, state, com.smartdocs.editor.ui.reader.view.ReaderTabs.close(ctx, state.fileUri)) }
+        if (!state.dirty || state.discarded) closeNow()
+        else if (settings.autoSave) saveThenLeave(closeNow)
+        else { pendingLeave = closeNow; leaveFailure = null; showDiscard = true }
     }
     BackHandler {
         when {
@@ -199,7 +208,19 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
     }
     // 8.84: the form's JavaScript asked for saveAs / closeDoc
     LaunchedEffect(state.scriptSaveAs) { state.scriptSaveAs?.let { n -> state.scriptSaveAs = null; saveAs.launch(n) } }
-    LaunchedEffect(state.scriptClose) { if (state.scriptClose) { state.scriptClose = false; requestLeave() } }
+    LaunchedEffect(state.scriptClose) { if (state.scriptClose) { state.scriptClose = false; requestCloseTab() } }
+    LaunchedEffect(state.scriptQuit) { if (state.scriptQuit) { state.scriptQuit = false; requestLeave() } }
+    // 27.10 field.signatureSign: the digital signature screen opens with that field chosen (the user signs there)
+    LaunchedEffect(state.scriptSign) {
+        val field = state.scriptSign ?: return@LaunchedEffect
+        state.scriptSign = null
+        if (state.dirty && !state.save()) return@LaunchedEffect          // the save explains why (signed dialog / error)
+        if (!state.guard.check(com.smartdocs.editor.core.security.DocAction.FILL_FORMS)) return@LaunchedEffect
+        val f = state.file ?: return@LaunchedEffect
+        val signed = field in state.forms5.sigStatus
+        com.smartdocs.editor.ui.signature.SigFieldRequest.pending = com.smartdocs.editor.ui.signature.SigFieldRequest.Request(f.path, field, verify = signed)
+        nav.navigate(Routes.tool("digital_sign", state.fileUri))
+    }
     // tab-view-core E-13: cancelling the picker leaves the image tool (no dead tool mode); E-16: the temp copy goes after decoding
     val pickImage = rememberImagePicker(multiple = false, onCancel = { if (state.tool == ReaderTool.IMAGE && state.pendingImage == null) state.selectTool(null) }) { files ->
         scope.launch {
@@ -499,7 +520,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
     if (showDiscard) DiscardDialog(
         onSave = {
             showDiscard = false
-            if (leaveFailure != null) { leaveAfterCopy = true; saveAs.launch((state.file?.nameWithoutExtension ?: "document") + "_copy.pdf") }
+            if (leaveFailure != null) { leaveAfterCopy = true; exportSignedCopy = state.signedCopy != null; saveAs.launch((state.file?.nameWithoutExtension ?: "document") + "_copy.pdf") }
             else { val then = pendingLeave ?: { leave() }; saveThenLeave(then) }
         },
         onDiscard = { showDiscard = false; state.discardChanges(); val then = pendingLeave ?: { leave() }; pendingLeave = null; leaveFailure = null; then() },

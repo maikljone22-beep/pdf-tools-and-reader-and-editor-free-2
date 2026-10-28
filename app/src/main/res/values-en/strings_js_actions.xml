@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- AcroForm JavaScript document changes and named actions (prefix jsa_) -->
+<resources>
+    <string name="jsa_signed_changes_copy">The document changes the form\'s script asked for cannot be saved into this signed file without breaking the signature; they were put into a copy you can save.</string>
+    <string name="jsa_signed_changes_not_exported">The document changes the script asked for were left out of this copy because they would break the file\'s signature.</string>
+</resources>

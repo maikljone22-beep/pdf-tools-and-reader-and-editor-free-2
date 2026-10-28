@@ -221,7 +221,14 @@ fun PageView(
             // a point inside the page (JS doc.scroll): scroll that share of the page's height further
             state.pendingJumpTop?.let { f -> listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == contItemOf(p) }?.let { item -> listState.scrollBy(item.size * f) } }
         } else pagerState.animateScrollToPage(spread.pageToItem(dp(p)))
-        state.pendingJump = null; state.pendingJumpTop = null
+        // JS doc.scroll x: the point goes to the left edge when the zoomed page is wider than the view (unrotated pages)
+        state.pendingJumpLeft?.let { x ->
+            if (state.rotation % 360 == 0) {
+                panX = com.smartdocs.editor.core.forms5.NamedActions.scrollPanX(x, sizeOf(p).first, baseWidth(p) * state.zoom, viewport.width)
+                clampPan()
+            }
+        }
+        state.pendingJump = null; state.pendingJumpTop = null; state.pendingJumpLeft = null
     }
     // keep the current page in sync with what the user sees
     if (mode == ViewMode.CONTINUOUS) {
