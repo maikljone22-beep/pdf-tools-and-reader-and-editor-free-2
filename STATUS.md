@@ -1,6 +1,6 @@
 # SmartDocs — release status (single source of truth)
 
-Updated by the integrator (pdf-ad) after every merge. Last update: 2026-10-27 15:05.
+Updated by the integrator (pdf-ad) after every merge. Last update: 2026-10-28 14:15.
 
 ## Version 0.5.0 = "complete" when ALL boxes below are checked
 Scope is FROZEN for 0.5.0: no new features are started until 0.5.0 is released. New requests go to "After 0.5.0".
@@ -14,12 +14,15 @@ Scope is FROZEN for 0.5.0: no new features are started until 0.5.0 is released. 
 - [x] OCR fixes + root-cause fixes, compression fix, safe write-back
 - [x] Arabic copy fix: wrong ToUnicode maps repaired, OCR layer copies in reading order, broken duplicate lines dropped — merged ea1cb42 (ARABIC_COPY_r5.md)
 
-### A2. Feature gaps vs Nitro / old plan / Foxit (user approved for 0.5.0) — see gaps/ASSIGNMENTS.md
-- [ ] pdf-3c: Protect + Sign, then bookmarks/links/attachments/batch/cloud/settings
-- [ ] pdf-39: redaction/HF/Bates/optimize/compare/OCR, then pages/convert/layers/accessibility/PDF-A
-- [x] In-page video player (play inside the PDF box, Screen+Rendition, poster) — merged 2f2d8d2 (VIDEO_INLINE_r5.md)
-- [ ] pdf-ad: OCR quality, view/edit, comments/forms, AI/Office gaps
-- [ ] Foxit comparison (in progress) assigned when ready
+### A2. Feature gaps vs Nitro / Foxit / old plan + deep audits (user approved for 0.5.0) — see gaps/
+- [x] Nitro (868 rows) + Foxit (1,639 rows) + old-plan comparisons; owners in gaps/ASSIGNMENTS.md
+- [x] Convert section audit: 124 defects fixed (gaps/convert-audit/FIXED.md)
+- [x] Reader tab audits: View+Edit 59, Comment 37, Fill&Sign+Sign 37, Tools+Pages 98, redact sub-audit 20 — fixed (gaps/tabs-audit/FIXED_*.md)
+- [x] Central signed/certified gate (SignedGuard) used by every writer
+- [x] Open every file type, selection menus per tab, in-page video, Pro OCR (PP-OCRv5 + fine-tuned Tesseract), PDF→Word fix
+- [ ] FINAL_CHECK_2.md: remaining Medium/Low rows (pdf-39: pages/convert/forms/a11y; pdf-3c: edit/reader/AI/Low)
+- [ ] Device test with TEST_CHECKLIST.md (user)
+- [ ] Owner actions in SERVER_SETUP.md (user)
 
 ### B. Audit fixes — DONE
 - [x] Areas 1-3 stages 1, 2, 3, 4 (pdf-39) — merged

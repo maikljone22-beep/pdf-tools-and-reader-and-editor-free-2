@@ -25,7 +25,32 @@ object NpfDocPanels {
     data class StructRow(val depth: Int, val type: String, val text: String, val page: Int)
     data class Article(val title: String, val beads: Int, val firstPage: Int)
     data class Dest(val name: String, val page: Int)
-    data class Standards(val pdfVersion: String, val pdfa: String?, val pdfua: String?, val pdfx: String?, val pdfe: String?, val tagged: Boolean)
+    data class Standards(val pdfVersion: String, val pdfa: String?, val pdfua: String?, val pdfx: String?, val pdfe: String?, val tagged: Boolean,
+                         /** FINAL_CHECK "Standards panel: OutputIntent": one line per /OutputIntents entry. */
+                         val outputIntents: List<String> = emptyList())
+
+    /**
+     * The document's output intents, one readable line each: subtype (GTS_PDFA1, GTS_PDFX, ISO_PDFE1 …), the output
+     * condition (identifier / condition / info) and whether an ICC profile is embedded, with its number of channels.
+     */
+    fun outputIntents(doc: PDDocument): List<String> {
+        val arr = deref(doc.documentCatalog.cosObject.getDictionaryObject(COSName.getPDFName("OutputIntents"))) as? COSArray ?: return emptyList()
+        return (0 until arr.size()).mapNotNull { k ->
+            val d = deref(arr.get(k)) as? COSDictionary ?: return@mapNotNull null
+            val sub = d.getNameAsString(COSName.S) ?: "?"
+            val cond = listOf("OutputConditionIdentifier", "OutputCondition", "Info").firstNotNullOfOrNull { key -> d.getString(COSName.getPDFName(key))?.trim()?.takeIf { it.isNotEmpty() } }
+            val icc = deref(d.getDictionaryObject(COSName.getPDFName("DestOutputProfile"))) as? com.tom_roush.pdfbox.cos.COSStream
+            val n = icc?.getInt(COSName.N, -1)?.takeIf { it > 0 }
+            outputIntentLine(sub, cond, icc != null, n)
+        }
+    }
+
+    /** "GTS_PDFA1 · sRGB IEC61966-2.1 · ICC (3)" — pure, for [outputIntents]. */
+    fun outputIntentLine(subtype: String, condition: String?, icc: Boolean, channels: Int?): String = buildString {
+        append(subtype)
+        condition?.let { append(" · ").append(it) }
+        append(" · ").append(if (icc) "ICC" + (channels?.let { " ($it)" } ?: "") else "no ICC")
+    }
 
     private fun deref(b: COSBase?): COSBase? = if (b is COSObject) b.getObject() else b
     private fun pageOf(doc: PDDocument, d: COSDictionary?): Int = d?.let { pd -> doc.pages.indexOf(com.tom_roush.pdfbox.pdmodel.PDPage(pd)) } ?: -1
@@ -184,6 +209,6 @@ object NpfDocPanels {
         val x = doc.documentInformation?.cosObject?.getString(COSName.getPDFName("GTS_PDFXVersion")) ?: tag("pdfxid", "GTS_PDFXVersion")
         val e = tag("pdfe", "ISO_PDFEVersion")
         val tagged = (deref(doc.documentCatalog.cosObject.getDictionaryObject(COSName.MARK_INFO)) as? COSDictionary)?.getBoolean(COSName.getPDFName("Marked"), false) == true
-        return Standards(doc.version.toString(), a, ua, x, e, tagged)
+        return Standards(doc.version.toString(), a, ua, x, e, tagged, runCatching { outputIntents(doc) }.getOrDefault(emptyList()))
     }
 }

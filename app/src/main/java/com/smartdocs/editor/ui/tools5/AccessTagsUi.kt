@@ -77,6 +77,9 @@ fun TagsEditor(nav: NavHostController, source: File, onClose: () -> Unit, onSave
     }) {
         Text(source.name, style = MaterialTheme.typography.titleMedium)
         error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+        var findQ by remember { mutableStateOf("") }
+        var findType by remember { mutableStateOf<String?>(null) }
+        var bmDialog by remember { mutableStateOf(false) }
         SwitchRow(stringResource(R.string.pc_tags_flag), tagged) { v -> edit { AccessTags.setTaggedFlag(it, v) } }
         if (nodes.isEmpty()) Text(stringResource(R.string.pc_tags_none), style = MaterialTheme.typography.bodySmall)
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -84,6 +87,36 @@ fun TagsEditor(nav: NavHostController, source: File, onClose: () -> Unit, onSave
             AssistChip(onClick = { edit { AccessTags.deleteEmpty(it) } }, label = { Text(stringResource(R.string.pc_tags_delete_empty)) })
             AssistChip(onClick = { collapsed = nodes.filter { it.children > 0 }.map { it.path }.toSet() }, label = { Text(stringResource(R.string.pc_tags_collapse_all)) })
             AssistChip(onClick = { collapsed = emptySet() }, label = { Text(stringResource(R.string.pc_tags_expand_all)) })
+            AssistChip(onClick = { bmDialog = true }, label = { Text(stringResource(R.string.cmp_bm_struct)) })     // 34.18
+        }
+        // ---- 34.49 Find Element: by text and / or type; the tree then shows the matches only
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            OutlinedTextField(findQ, { findQ = it }, Modifier.weight(1f), singleLine = true, label = { Text(stringResource(R.string.cmp_find_element)) },
+                placeholder = { Text(stringResource(R.string.cmp_find_hint)) })
+            if (findQ.isNotEmpty() || findType != null) IconButton(onClick = { findQ = ""; findType = null }) { Icon(Icons.Default.Close, stringResource(R.string.cancel)) }
+        }
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            com.smartdocs.editor.core.tools5.AccessFind.TYPES.forEach { t -> FilterChip(findType == t, { findType = if (findType == t) null else t }, label = { Text(t) }) }
+        }
+        val matches = if (findQ.isBlank() && findType == null) null
+            else com.smartdocs.editor.core.tools5.AccessFind.find(nodes, setOfNotNull(findType), findQ).map { it.path }.toSet()
+        matches?.let { Text(stringResource(R.string.cmp_find_count, it.size), style = MaterialTheme.typography.labelMedium) }
+        if (bmDialog) {
+            var types by remember { mutableStateOf(setOf("H1", "H2", "H3")) }
+            val parent = stringResource(R.string.cmp_bm_parent)
+            val untitledFmt = stringResource(R.string.cmp_bm_untitled)
+            AlertDialog(onDismissRequest = { bmDialog = false }, title = { Text(stringResource(R.string.cmp_bm_struct)) },
+                text = { Column {
+                    Text(stringResource(R.string.cmp_bm_types), style = MaterialTheme.typography.bodySmall)
+                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        com.smartdocs.editor.core.tools5.AccessFind.TYPES.forEach { t -> FilterChip(t in types, { types = if (t in types) types - t else types + t }, label = { Text(t) }) }
+                    }
+                } },
+                confirmButton = { TextButton(enabled = types.isNotEmpty(), onClick = {
+                    bmDialog = false
+                    edit { d -> com.smartdocs.editor.core.tools5.AccessFind.addBookmarks(d, types, parent) { ty -> untitledFmt.format(ty) } }
+                }) { Text(stringResource(R.string.ok)) } },
+                dismissButton = { TextButton(onClick = { bmDialog = false }) { Text(stringResource(R.string.cancel)) } })
         }
         // ---- Order panel (Foxit 34.44): reading order of one page, drag or move up / down
         var orderMode by remember { mutableStateOf(false) }
@@ -95,7 +128,8 @@ fun TagsEditor(nav: NavHostController, source: File, onClose: () -> Unit, onSave
         // ---- tree
         if (!orderMode) T5Card {
             nodes.forEach { n ->
-                if (collapsed.any { c -> n.path.size > c.size && n.path.subList(0, c.size) == c }) return@forEach
+                if (matches != null) { if (n.path !in matches) return@forEach }
+                else if (collapsed.any { c -> n.path.size > c.size && n.path.subList(0, c.size) == c }) return@forEach
                 val sel = selected?.path == n.path
                 Row(Modifier.fillMaxWidth().clickable { selected = n }.padding(start = (14 * n.depth).dp, top = 2.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                     if (n.children > 0) Icon(if (n.path in collapsed) Icons.Default.ChevronRight else Icons.Default.ExpandMore, stringResource(R.string.pc_tags_toggle),
