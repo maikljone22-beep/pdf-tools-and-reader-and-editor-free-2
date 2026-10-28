@@ -564,7 +564,13 @@ fun TextFormatDialog(initial: TextFmt, onDismiss: () -> Unit, showBiu: Boolean =
                         FilterChip(f.script == i, { f = f.copy(script = i) }, label = { Text(stringResource(r)) })
                     }
                 }
-                Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(f.bullets, { f = f.copy(bullets = it) }); Text(stringResource(R.string.cx_bullets)) }
+                Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(f.bullets, { f = f.copy(bullets = it, numbering = if (it) false else f.numbering) }); Text(stringResource(R.string.cx_bullets)) }
+                // 24.105 numbering and indent, 24.107 paragraph spacing
+                Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(f.numbering, { f = f.copy(numbering = it, bullets = if (it) false else f.bullets) }); Text(stringResource(R.string.cmr_numbering)) }
+                Text(stringResource(R.string.cmr_indent, "%.0f".format(java.util.Locale.US, f.indent)), style = MaterialTheme.typography.labelMedium)
+                Slider(f.indent, { f = f.copy(indent = it) }, valueRange = 0f..72f)
+                Text(stringResource(R.string.cmr_para_spacing, "%.0f".format(java.util.Locale.US, f.paraSpacing)), style = MaterialTheme.typography.labelMedium)
+                Slider(f.paraSpacing, { f = f.copy(paraSpacing = it) }, valueRange = 0f..36f)
                 Text(stringResource(R.string.cx_line_spacing, "%.2f".format(java.util.Locale.US, f.lineSpacing)), style = MaterialTheme.typography.labelMedium)
                 Slider(f.lineSpacing, { f = f.copy(lineSpacing = it) }, valueRange = 0.9f..3f)
                 Text(stringResource(R.string.cx_char_spacing, "%.1f".format(java.util.Locale.US, f.charSpacing)), style = MaterialTheme.typography.labelMedium)

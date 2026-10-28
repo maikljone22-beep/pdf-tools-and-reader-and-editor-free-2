@@ -17,4 +17,27 @@
     <string name="cmr_set_remove">Remove the set</string>
     <string name="cmr_replace_image">Replace image</string>
     <string name="cmr_locked">Locked</string>
+    <string name="cmr_nav_order">Comment and field navigation order</string>
+    <string name="cmr_nav_order_sub">Used on pages that have no tab order of their own.</string>
+    <string name="cmr_nav_structure">Document structure</string>
+    <string name="cmr_nav_rows">Rows</string>
+    <string name="cmr_nav_columns">Columns</string>
+    <string name="cmr_pencil_hide_cursor">Hide the cursor while drawing with a stylus</string>
+    <string name="cmr_pencil_highlight">Pencil over text highlights it</string>
+    <string name="cmr_pencil_highlight_sub">A straight pencil stroke over text becomes a text highlight instead of a drawing.</string>
+    <string name="cmr_numbering">Numbering</string>
+    <string name="cmr_indent">Indent: %1$s pt</string>
+    <string name="cmr_para_spacing">Space after paragraph: %1$s pt</string>
+    <string name="cmr_tool_volume">Volume</string>
+    <string name="cmr_tool_polylength">Polylength</string>
+    <string name="cmr_tool_diameter">Diameter</string>
+    <string name="cmr_tool_radius">Radius</string>
+    <string name="cmr_tool_adjust">Adjust placed</string>
+    <string name="cmr_wall_area">Wall area %1$s</string>
+    <string name="cmr_depth">Depth / height: %1$s</string>
+    <string name="cmr_depth_title">Depth or height</string>
+    <string name="cmr_depth_hint">Volume = area × depth. A polylength with a height also shows the wall area. In the units of the current scale.</string>
+    <string name="cmr_hint_adjust">Drag the handles: ends of measurements and lines, a measurement label, the knee and tip of a callout. Save writes the changes.</string>
+    <string name="cmr_hint_diameter">Tap the centre, then a point on the edge</string>
+    <string name="cmr_adjusted">%1$d placed items changed</string>
 </resources>

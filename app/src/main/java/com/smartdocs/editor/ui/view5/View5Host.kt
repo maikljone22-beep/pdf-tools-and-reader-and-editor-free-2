@@ -47,7 +47,7 @@ fun View5ReaderHost(s: ReaderState, nav: NavHostController, snack: SnackbarHostS
 
     when (v.surface) {
         V5Surface.NONE -> {}
-        V5Surface.WORKBENCH -> WorkbenchSheet(v, measureFirst = v.workbenchTool.ordinal <= WTool.COUNT.ordinal, onMessage = msg)
+        V5Surface.WORKBENCH -> WorkbenchSheet(v, measureFirst = v.workbenchTool.ordinal <= WTool.RADIUS.ordinal, onMessage = msg)
         V5Surface.MEASURE_LIST -> MeasureListSheet(v)
         V5Surface.COMMENTS -> CommentManagerSheet(v, msg)
         V5Surface.STAMPS -> LaunchedEffect(Unit) { v.close(); actions.pickStamp() }

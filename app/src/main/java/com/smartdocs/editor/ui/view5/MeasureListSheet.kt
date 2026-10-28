@@ -27,6 +27,8 @@ import kotlinx.coroutines.withContext
 fun measureTypeLabel(t: MeasureType): Int = when (t) {
     MeasureType.DISTANCE -> R.string.v5_tool_distance; MeasureType.PERIMETER -> R.string.v5_tool_perimeter; MeasureType.AREA -> R.string.v5_tool_area
     MeasureType.CIRCLE -> R.string.v5_tool_circle; MeasureType.ANGLE -> R.string.v5_tool_angle; MeasureType.COUNT -> R.string.v5_tool_count
+    MeasureType.VOLUME -> R.string.cmr_tool_volume; MeasureType.POLYLENGTH -> R.string.cmr_tool_polylength
+    MeasureType.DIAMETER -> R.string.cmr_tool_diameter; MeasureType.RADIUS -> R.string.cmr_tool_radius
 }
 
 /** Every measurement saved in the document (ours and other viewers' /Measure annotations), totals and CSV export. */

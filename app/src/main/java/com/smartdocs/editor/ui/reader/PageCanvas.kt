@@ -27,6 +27,7 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
@@ -146,6 +147,9 @@ fun PageCanvas(
     // audit RD-05: edge zones are measured on the screen, so taps are reported in root coordinates
     var rootPos by remember { mutableStateOf(Offset.Zero) }
     val hover = remember(page) { com.smartdocs.editor.ui.reader.annot.CommentHoverState() }   // 24.66: hover tooltip
+    remember { com.smartdocs.editor.ui.reader.annot.PencilPrefs.loadAll(state.context) }
+    // §41: a stylus drawing with the pencil shows no pointer (the stroke itself is the feedback)
+    val hideCursor = state.tool == ReaderTool.INK && hover.stylus && com.smartdocs.editor.ui.reader.annot.PencilPrefs.hideStylusCursor
 
     Box(modifier.size(wDp, hDp)) {
     Canvas(
@@ -153,6 +157,7 @@ fun PageCanvas(
             .matchParentSize()
             .onGloballyPositioned { rootPos = it.positionInRoot() }
             .commentHover(state, page, g, hover)
+            .pointerHoverIcon(if (hideCursor) HIDDEN_POINTER else androidx.compose.ui.input.pointer.PointerIcon.Default)
             .pointerInput(page, g) {
                 detectTapGestures(
                     onDoubleTap = { p ->
@@ -498,10 +503,27 @@ private fun finishDraft(state: ReaderState, draft: GestureDraft, page: Int, g: P
             state.eraseStoredInk(page, draft.points.map { g.screenToPdf(it.x, it.y) }, 10f / g.scale.coerceAtLeast(0.1f))
         }
         ReaderTool.MEASURE -> {}
+        // §41: a straight pencil stroke over text becomes a highlight of that text (when the preference is on)
+        ReaderTool.INK -> {
+            val ink = draftToAnnot(state, draft, page, g, pressure)
+            val band = if (com.smartdocs.editor.ui.reader.annot.PencilPrefs.highlightOverText)
+                com.smartdocs.editor.ui.reader.annot.PencilLogic.textBand(draft.points.map { g.screenToPdf(it.x, it.y) }) else null
+            if (band == null) ink?.let { state.annot2.cx.addNew(it) }
+            else state.scope.launch {
+                val boxes = state.charBoxes(page); val text = state.pageText(page)
+                val range = TextSelectionLogic.charsInRect(boxes, RectF(band[0], band[3], band[2], band[1]))
+                if (range == null) { ink?.let { state.annot2.cx.addNew(it) }; return@launch }
+                state.addAnnot(state.newAnnot(AnnotKind.HIGHLIGHT, page, rects = TextSelectionLogic.rects(boxes, range.first, range.last),
+                    text = TextSelectionLogic.text(text, range.first, range.last, boxes).take(200)))
+            }
+        }
         else -> draftToAnnot(state, draft, page, g, pressure)?.let { state.annot2.cx.addNew(it) }
     }
     draft.end()
 }
+
+/** §41: no pointer at all (android.view.PointerIcon.TYPE_NULL). */
+private val HIDDEN_POINTER = androidx.compose.ui.input.pointer.PointerIcon(android.view.PointerIcon.TYPE_NULL)
 
 private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawDraft(draft: GestureDraft, state: ReaderState, g: PageGeometry) {
     val c = annotColor(state.color, state.opacity)

@@ -31,7 +31,37 @@ enum class MUnit(val code: String, val perInch: Double) {
     }
 }
 
-enum class MeasureType { DISTANCE, PERIMETER, AREA, CIRCLE, ANGLE, COUNT }
+/** §41: VOLUME (area x depth), POLYLENGTH (open path, wall area with a height), DIAMETER and RADIUS (circle). */
+enum class MeasureType { DISTANCE, PERIMETER, AREA, CIRCLE, ANGLE, COUNT, VOLUME, POLYLENGTH, DIAMETER, RADIUS }
+
+/** Values of the measure types (pure, shared by the workbench and the stored-measurement editor). */
+object MeasureCalc {
+    /** Points a type needs at least. */
+    fun minPoints(t: MeasureType): Int = when (t) { MeasureType.AREA, MeasureType.ANGLE, MeasureType.VOLUME -> 3; MeasureType.COUNT -> 1; else -> 2 }
+
+    /** Real-world value of [p] for [t] with [scale]; [depth] (real units) makes the volume. */
+    fun value(t: MeasureType, p: List<P>, scale: MeasureScale, depth: Double = 0.0): Double = when (t) {
+        MeasureType.DISTANCE -> if (p.size >= 2) scale.length(Geom.dist(p[0], p[1])) else 0.0
+        MeasureType.PERIMETER, MeasureType.POLYLENGTH -> scale.length(Geom.pathLength(p))
+        MeasureType.AREA -> scale.area(Geom.polygonArea(p))
+        MeasureType.VOLUME -> scale.area(Geom.polygonArea(p)) * depth.coerceAtLeast(0.0)
+        MeasureType.CIRCLE -> if (p.size >= 2) scale.area(Geom.circleArea(Geom.dist(p[0], p[1]))) else 0.0
+        MeasureType.DIAMETER -> if (p.size >= 2) scale.length(2 * Geom.dist(p[0], p[1])) else 0.0
+        MeasureType.RADIUS -> if (p.size >= 2) scale.length(Geom.dist(p[0], p[1])) else 0.0
+        MeasureType.ANGLE -> if (p.size >= 3) Geom.angleDeg(p[0], p[1], p[2]) else 0.0
+        MeasureType.COUNT -> p.size.toDouble()
+    }
+
+    /** Label of [value]: count without unit, angle in degrees, the others with [precision] decimals and the unit. */
+    fun label(t: MeasureType, value: Double, scale: MeasureScale, precision: Int, arabicDigits: Boolean): String = when (t) {
+        MeasureType.COUNT -> MeasureFormat.value(value, 0, "", arabicDigits)
+        MeasureType.ANGLE -> MeasureFormat.value(value, 1, "°", arabicDigits).replace(" °", "°")
+        else -> MeasureFormat.value(value, precision, MeasureFormat.unitFor(t, scale), arabicDigits)
+    }
+
+    /** Polylength with a height: the wall area (length x height), shown under the length. */
+    fun wallArea(p: List<P>, scale: MeasureScale, height: Double): Double = scale.length(Geom.pathLength(p)) * height.coerceAtLeast(0.0)
+}
 
 /**
  * Drawing scale: [docValue] [docUnit] on the page = [realValue] [realUnit] in the world (e.g. "1 in = 10 ft").
@@ -181,6 +211,7 @@ object MeasureFormat {
 
     fun unitFor(type: MeasureType, scale: MeasureScale): String = when (type) {
         MeasureType.AREA, MeasureType.CIRCLE -> scale.realUnit.code + "²"
+        MeasureType.VOLUME -> scale.realUnit.code + "³"
         MeasureType.ANGLE -> "°"
         MeasureType.COUNT -> ""
         else -> scale.realUnit.code

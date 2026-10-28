@@ -64,15 +64,21 @@ private enum class SortBy { PAGE, DATE, AUTHOR, TYPE, STATUS, COLOR, CHECKED }
 private sealed interface Row2 {
     val page: Int; val subtype: String; val author: String; val date: Long; val y: Float
     val color: Int?; val status: Int; val checked: Boolean
+    /** §37 navigation order: left edge and document order (pending comments come after the stored ones). */
+    val x: Float; val index: Int
+    val navKey: com.smartdocs.editor.core.annot.NavKey get() = com.smartdocs.editor.core.annot.NavKey(page, -y, x, index)
     data class P(val a: Annot) : Row2 {
         override val page get() = a.page; override val subtype get() = kindSubtype(a.kind); override val author get() = a.author
         override val date get() = a.created; override val y get() = -(a.rects.firstOrNull()?.top ?: a.points.firstOrNull()?.second ?: a.paths.firstOrNull()?.firstOrNull()?.second ?: 0f)
         override val color get() = a.color; override val status get() = 0; override val checked get() = false
+        override val x get() = a.rects.firstOrNull()?.let { minOf(it.left, it.right) } ?: a.points.firstOrNull()?.first ?: a.paths.firstOrNull()?.firstOrNull()?.first ?: 0f
+        override val index get() = Int.MAX_VALUE
     }
     data class S(val c: CommentItem) : Row2 {
         override val page get() = c.page; override val subtype get() = c.subtype; override val author get() = c.author
         override val date get() = c.date; override val y get() = -maxOf(c.rect.top, c.rect.bottom)
         override val color get() = c.color; override val status get() = c.status.ordinal; override val checked get() = c.checked
+        override val x get() = minOf(c.rect.left, c.rect.right); override val index get() = c.index
     }
 }
 
@@ -96,6 +102,8 @@ fun CommentsPanel(state: ReaderState, onJump: (Int) -> Unit) {
     val colors = remember { mutableStateListOf<Int>() }
     val noAuthor = stringResource(R.string.an_unknown_author)
 
+    val navCtx = androidx.compose.ui.platform.LocalContext.current
+    val navOrder = remember { com.smartdocs.editor.core.annot.NavOrderPrefs.load(navCtx); com.smartdocs.editor.core.annot.NavOrderPrefs }.order
     val all: List<Row2> = state.annots.map { Row2.P(it) } + h.comments.map { Row2.S(it) }
     val allTypes = all.map { it.subtype }.distinct().sorted()
     val allAuthors = all.map { it.author.ifBlank { noAuthor } }.distinct().sorted()
@@ -103,7 +111,8 @@ fun CommentsPanel(state: ReaderState, onJump: (Int) -> Unit) {
     val rows = all.filter { (types.isEmpty() || it.subtype in types) && (authors.isEmpty() || it.author.ifBlank { noAuthor } in authors) &&
         (colors.isEmpty() || it.color in colors) }
         .sortedWith(when (sort) {
-            SortBy.PAGE -> compareBy<Row2>({ it.page }, { it.y })
+            // §37: page order follows the navigation-order preference (structure / rows / columns)
+            SortBy.PAGE -> com.smartdocs.editor.core.annot.NavOrderLogic.comparator(navOrder).let { c -> Comparator<Row2> { a, b -> c.compare(a.navKey, b.navKey) } }
             SortBy.DATE -> compareByDescending<Row2> { it.date }.thenBy { it.page }
             SortBy.AUTHOR -> compareBy<Row2>({ it.author.lowercase() }, { it.page }, { it.y })
             SortBy.TYPE -> compareBy<Row2>({ it.subtype }, { it.page }, { it.y })

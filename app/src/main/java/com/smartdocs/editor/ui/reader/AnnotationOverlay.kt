@@ -82,9 +82,10 @@ fun DrawScope.drawAnnot(a: Annot, g: PageGeometry) {
                 // 24.102: smaller glyphs, subscript lowered; the line pitch stays that of the full size
                 val eff = com.smartdocs.editor.core.annot.AnnotStyle.scriptSize(a.fontSize, a.script)
                 val box = if (a.script == 2) s.translate(0f, a.fontSize * 0.43f * g.scale) else s
-                drawTextBlock(if (a.bullets) a.text.split('\n').joinToString("\n") { if (it.isBlank()) it else "\u2022 $it" } else a.text, box, eff * g.scale, c,
+                drawTextBlock(com.smartdocs.editor.core.annot.TextLists.decorate(a.text, a.bullets, a.numbering).joinToString("\n"), box, eff * g.scale, c,
                     bold = a.bold, italic = a.italic, underline = a.underline, strike = a.strike, family = a.fontFamily, align = a.align,
-                    lineSpacing = a.lineSpacing * a.fontSize / eff, letterSpacingPx = a.charSpacing * g.scale, scaleX = a.hScale)
+                    lineSpacing = a.lineSpacing * a.fontSize / eff, letterSpacingPx = a.charSpacing * g.scale, scaleX = a.hScale,
+                    indentPx = a.indent * g.scale, paraSpacingPx = a.paraSpacing * g.scale)
             }
         }
         AnnotKind.LINE, AnnotKind.ARROW -> if (a.points.size >= 2) {
@@ -204,7 +205,8 @@ fun DrawScope.drawArrowHead(from: Offset, to: Offset, color: Color, sw: Float) {
 /** Multi-line text inside a rect using the native canvas (handles Arabic shaping and RTL alignment). */
 fun DrawScope.drawTextBlock(text: String, box: Rect, textSizePx: Float, color: Color, rtl: Boolean = text.any { it in '\u0600'..'\u06FF' },
                             bold: Boolean = false, italic: Boolean = false, underline: Boolean = false, strike: Boolean = false, family: Int = 0,
-                            align: Int = -1, lineSpacing: Float = 1.3f, letterSpacingPx: Float = 0f, scaleX: Float = 1f) {
+                            align: Int = -1, lineSpacing: Float = 1.3f, letterSpacingPx: Float = 0f, scaleX: Float = 1f,
+                            indentPx: Float = 0f, paraSpacingPx: Float = 0f) {
     if (text.isBlank()) return
     drawIntoCanvas { cv ->
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -218,11 +220,16 @@ fun DrawScope.drawTextBlock(text: String, box: Rect, textSizePx: Float, color: C
         }
         val pad = 4f * (textSizePx / 14f).coerceAtLeast(0.5f)
         var y = box.top + textSizePx + pad * 0.5f
-        val x = when (paint.textAlign) { Paint.Align.CENTER -> box.center.x; Paint.Align.RIGHT -> box.right - pad; else -> box.left + pad }
+        // 24.105 indent from the reading start side (not for centred text); 24.107 space after each paragraph
+        val x = when (paint.textAlign) {
+            Paint.Align.CENTER -> box.center.x
+            Paint.Align.RIGHT -> box.right - pad - (if (rtl) indentPx else 0f)
+            else -> box.left + pad + (if (!rtl) indentPx else 0f)
+        }
         text.split('\n').forEach { line ->
             if (y > box.bottom + textSizePx) return@forEach
             cv.nativeCanvas.drawText(line, x, y, paint)
-            y += textSizePx * lineSpacing
+            y += textSizePx * lineSpacing + paraSpacingPx
         }
     }
 }

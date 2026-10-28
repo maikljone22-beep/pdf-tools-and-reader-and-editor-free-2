@@ -17,4 +17,27 @@
     <string name="cmr_set_remove">إزالة المجموعة</string>
     <string name="cmr_replace_image">استبدال الصورة</string>
     <string name="cmr_locked">مقفل</string>
+    <string name="cmr_nav_order">ترتيب التنقل بين التعليقات والحقول</string>
+    <string name="cmr_nav_order_sub">يُستخدم في الصفحات التي ليس لها ترتيب تنقل خاص بها.</string>
+    <string name="cmr_nav_structure">ترتيب المستند (البنية)</string>
+    <string name="cmr_nav_rows">صفوف</string>
+    <string name="cmr_nav_columns">أعمدة</string>
+    <string name="cmr_pencil_hide_cursor">إخفاء المؤشر عند الرسم بالقلم الرقمي</string>
+    <string name="cmr_pencil_highlight">القلم فوق النص يظلله</string>
+    <string name="cmr_pencil_highlight_sub">خط مستقيم بالقلم فوق نص يصبح تظليلًا للنص بدل رسم حر.</string>
+    <string name="cmr_numbering">ترقيم</string>
+    <string name="cmr_indent">المسافة البادئة: %1$s نقطة</string>
+    <string name="cmr_para_spacing">المسافة بعد الفقرة: %1$s نقطة</string>
+    <string name="cmr_tool_volume">حجم</string>
+    <string name="cmr_tool_polylength">طول متعدد</string>
+    <string name="cmr_tool_diameter">قطر</string>
+    <string name="cmr_tool_radius">نصف قطر</string>
+    <string name="cmr_tool_adjust">تعديل الموضوع</string>
+    <string name="cmr_wall_area">مساحة الجدار %1$s</string>
+    <string name="cmr_depth">العمق / الارتفاع: %1$s</string>
+    <string name="cmr_depth_title">العمق أو الارتفاع</string>
+    <string name="cmr_depth_hint">الحجم = المساحة × العمق. الطول المتعدد مع ارتفاع يعرض مساحة الجدار أيضًا. بوحدة المقياس الحالية.</string>
+    <string name="cmr_hint_adjust">اسحب المقابض: نهايات القياسات والخطوط، علامة القياس، وكوع وسهم وسيلة الشرح. الحفظ يكتب التغييرات.</string>
+    <string name="cmr_hint_diameter">انقر المركز ثم نقطة على المحيط</string>
+    <string name="cmr_adjusted">%1$d عنصر معدّل</string>
 </resources>

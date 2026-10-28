@@ -219,7 +219,8 @@ class MultiSelection(private val h: Annot2Host) {
         s.saveMutex.withLock {
             withContext(NonCancellable) {
                 targets.forEach { e ->
-                    AnnotationWriter.extract(f, e.page, e.index, s.password)?.let { converted += it; removed += e.index }
+                    AnnotationWriter.extract(f, e.page, e.index, s.password)?.let { com.smartdocs.editor.core.annot.ForeignKeys.capture(f, s.password, e.page, e.index, it) }
+                        ?.let { converted += it; removed += e.index }   // §41: foreign keys kept
                 }
                 if (removed.isEmpty()) return@withContext
                 s.edit.ensureBackup()

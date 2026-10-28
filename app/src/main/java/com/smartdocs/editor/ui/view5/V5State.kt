@@ -17,7 +17,8 @@ import java.util.WeakHashMap
 enum class V5Surface { NONE, WORKBENCH, MEASURE_LIST, COMMENTS, STAMPS, SPLIT, COMPARE, PRESENT, COMMANDS, PRINT, SHORTCUTS, OVERLAY_SETTINGS, AUTO_SCROLL, READ_ALOUD }
 
 /** Tools of the page workbench (measure + comment tools that need several taps). */
-enum class WTool { DISTANCE, PERIMETER, AREA, CIRCLE, ANGLE, COUNT, CALLOUT, TYPEWRITER, TEXTBOX, TICK, CROSS, AREA_HIGHLIGHT, LINE }
+/** Measure tools come first (up to RADIUS; View5Host relies on it), then the comment tools; ADJUST edits placed items (24.27 / 25.18 / 25.19). */
+enum class WTool { DISTANCE, PERIMETER, AREA, CIRCLE, ANGLE, COUNT, VOLUME, POLYLENGTH, DIAMETER, RADIUS, CALLOUT, TYPEWRITER, TEXTBOX, TICK, CROSS, AREA_HIGHLIGHT, LINE, ADJUST }
 
 /**
  * Per-reader state of MODULE view5, kept outside ReaderState (weak map keyed by the reader state) so no

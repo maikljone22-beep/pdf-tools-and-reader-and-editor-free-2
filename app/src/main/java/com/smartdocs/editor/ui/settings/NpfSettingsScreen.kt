@@ -180,6 +180,7 @@ private fun sections(nav: NavHostController): List<Section> = listOf(
         Sw(R.string.npf_retain_tools, NpfPrefs.retainTools, R.string.npf_retain_tools_sub) { NpfPrefs.setBool(K.RETAIN_TOOLS, it) }
         Sw(R.string.npf_copy_selection, NpfPrefs.copySelection) { NpfPrefs.setBool(K.COPY_SEL, it) }
         Sw(R.string.cf_auto_popup, NpfPrefs.autoOpenPopup, R.string.cf_auto_popup_sub) { NpfPrefs.setBool(K.AUTO_POPUP, it) }
+        com.smartdocs.editor.ui.reader.annot.CommentsRestSettings()   // comments-rest: navigation order (§37), pencil (§41)
         Label(stringResource(R.string.npf_note_font))
         Chips(listOf("sans" to "Sans", "serif" to "Serif", "mono" to "Mono"), NpfPrefs.noteFont) { NpfPrefs.setString(K.NOTE_FONT, it) }
         // size / opacity are the comment tools' own preferences (CommentExtras, prefs "comment_prefs"): set here for every document

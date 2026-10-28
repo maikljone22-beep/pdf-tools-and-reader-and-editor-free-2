@@ -41,7 +41,11 @@ object CommentHoverLogic {
 }
 
 /** Holder of the current tooltip of one page. */
-class CommentHoverState { var tip by mutableStateOf<HoverTip?>(null) }
+class CommentHoverState {
+    var tip by mutableStateOf<HoverTip?>(null)
+    /** §41: the pointer over the page is a hovering stylus (the pencil then hides the cursor). */
+    var stylus by mutableStateOf(false)
+}
 
 /**
  * 24.66: hover tooltip over comments. A mouse or stylus hovering over a pending or stored comment shows its author and
@@ -52,6 +56,7 @@ fun Modifier.commentHover(state: ReaderState, page: Int, g: PageGeometry, hs: Co
         while (true) {
             val ev = awaitPointerEvent()
             val c = ev.changes.firstOrNull() ?: continue
+            if (ev.type == PointerEventType.Exit) hs.stylus = false else hs.stylus = c.type == PointerType.Stylus
             hs.tip = when {
                 ev.type == PointerEventType.Exit || ev.type == PointerEventType.Press -> null
                 ev.type != PointerEventType.Move && ev.type != PointerEventType.Enter -> hs.tip

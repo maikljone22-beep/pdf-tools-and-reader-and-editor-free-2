@@ -59,50 +59,55 @@ class WorkbenchModel(val v: V5State) {
     var leaderExt by mutableFloatStateOf(v.prefs.getFloat("wb_lle", 0f))
     var leaderOffset by mutableFloatStateOf(v.prefs.getFloat("wb_llo", 0f))
     var nextLabel by mutableStateOf("")
+    /** §41: depth of a volume / height of a polylength wall, in real units (0 = none). */
+    var depth by mutableFloatStateOf(v.prefs.getFloat("wb_depth", 0f))
+    /** 24.27 / 25.19 / 25.18: stored annotations of the page with their changed handles ((page, index) -> change). */
+    val storedEdits = androidx.compose.runtime.mutableStateMapOf<Pair<Int, Int>, Pair<com.smartdocs.editor.core.view5.StoredEdit.Editable, com.smartdocs.editor.core.view5.StoredEdit.Change>>()
 
     fun persist() {
         v.prefs.edit().putInt("wb_color", color).putFloat("wb_width", width).putInt("wb_dash", dash.ordinal).putInt("wb_le0", startEnd.ordinal)
             .putInt("wb_le1", endEnd.ordinal).putFloat("wb_mark", markSize).putBoolean("wb_fill", fillArea).putBoolean("ar_digits", arabicDigits)
-            .putFloat("wb_ll", leader).putFloat("wb_lle", leaderExt).putFloat("wb_llo", leaderOffset).apply()
+            .putFloat("wb_ll", leader).putFloat("wb_lle", leaderExt).putFloat("wb_llo", leaderOffset).putFloat("wb_depth", depth).apply()
         v.workbenchTool = tool
     }
 
     fun selectTool(t: WTool) { tool = t; pts.clear(); calibrating = false }
 
-    val isMeasure get() = tool in setOf(WTool.DISTANCE, WTool.PERIMETER, WTool.AREA, WTool.CIRCLE, WTool.ANGLE, WTool.COUNT)
+    val isMeasure get() = tool in MEASURE_TOOLS
+
+    /** Something to save: pending items or changed stored annotations. */
+    val hasChanges get() = items.isNotEmpty() || storedEdits.isNotEmpty()
 
     /** Points the current tool needs before it finishes by itself (0 = finished with "Done"). */
     fun needed(): Int = if (calibrating) 2 else when (tool) {
-        WTool.DISTANCE, WTool.CIRCLE, WTool.TEXTBOX, WTool.AREA_HIGHLIGHT, WTool.LINE -> 2
+        WTool.DISTANCE, WTool.CIRCLE, WTool.TEXTBOX, WTool.AREA_HIGHLIGHT, WTool.LINE, WTool.DIAMETER, WTool.RADIUS -> 2
         WTool.ANGLE, WTool.CALLOUT -> 3
         WTool.TYPEWRITER, WTool.TICK, WTool.CROSS -> 1
-        WTool.PERIMETER, WTool.AREA, WTool.COUNT -> 0
+        WTool.PERIMETER, WTool.AREA, WTool.COUNT, WTool.VOLUME, WTool.POLYLENGTH, WTool.ADJUST -> 0
     }
 
     fun typeOf(t: WTool): MeasureType = when (t) {
         WTool.PERIMETER -> MeasureType.PERIMETER; WTool.AREA -> MeasureType.AREA; WTool.CIRCLE -> MeasureType.CIRCLE
-        WTool.ANGLE -> MeasureType.ANGLE; WTool.COUNT -> MeasureType.COUNT; else -> MeasureType.DISTANCE
+        WTool.ANGLE -> MeasureType.ANGLE; WTool.COUNT -> MeasureType.COUNT
+        WTool.VOLUME -> MeasureType.VOLUME; WTool.POLYLENGTH -> MeasureType.POLYLENGTH; WTool.DIAMETER -> MeasureType.DIAMETER; WTool.RADIUS -> MeasureType.RADIUS
+        else -> MeasureType.DISTANCE
     }
 
-    /** Real-world value of [p] for [t] with the current scale. */
-    fun valueOf(t: WTool, p: List<P>): Double = when (t) {
-        WTool.DISTANCE -> if (p.size >= 2) v.scale.length(Geom.dist(p[0], p[1])) else 0.0
-        WTool.PERIMETER -> v.scale.length(Geom.pathLength(p))
-        WTool.AREA -> v.scale.area(Geom.polygonArea(p))
-        WTool.CIRCLE -> if (p.size >= 2) v.scale.area(Geom.circleArea(Geom.dist(p[0], p[1]))) else 0.0
-        WTool.ANGLE -> if (p.size >= 3) Geom.angleDeg(p[0], p[1], p[2]) else 0.0
-        WTool.COUNT -> p.size.toDouble()
-        else -> 0.0
+    fun toolOf(t: MeasureType): WTool = when (t) {
+        MeasureType.DISTANCE -> WTool.DISTANCE; MeasureType.PERIMETER -> WTool.PERIMETER; MeasureType.AREA -> WTool.AREA
+        MeasureType.CIRCLE -> WTool.CIRCLE; MeasureType.ANGLE -> WTool.ANGLE; MeasureType.COUNT -> WTool.COUNT
+        MeasureType.VOLUME -> WTool.VOLUME; MeasureType.POLYLENGTH -> WTool.POLYLENGTH; MeasureType.DIAMETER -> WTool.DIAMETER; MeasureType.RADIUS -> WTool.RADIUS
     }
 
-    fun label(t: WTool, value: Double): String {
-        val type = typeOf(t)
-        return when (type) {
-            MeasureType.COUNT -> MeasureFormat.value(value, 0, "", arabicDigits)
-            MeasureType.ANGLE -> MeasureFormat.value(value, 1, "°", arabicDigits).replace(" °", "°")
-            else -> MeasureFormat.value(value, v.precision, MeasureFormat.unitFor(type, v.scale), arabicDigits)
-        }
-    }
+    /** Real-world value of [p] for [t] with the current scale (and depth for a volume). */
+    fun valueOf(t: WTool, p: List<P>): Double = if (t in MEASURE_TOOLS) com.smartdocs.editor.core.view5.MeasureCalc.value(typeOf(t), p, v.scale, depth.toDouble()) else 0.0
+
+    fun label(t: WTool, value: Double): String = com.smartdocs.editor.core.view5.MeasureCalc.label(typeOf(t), value, v.scale, v.precision, arabicDigits)
+
+    /** §41: the wall area line of a polylength with a height. */
+    fun extraLabel(t: WTool, p: List<P>): String =
+        if (t == WTool.POLYLENGTH && depth > 0f) v.s.context.getString(com.smartdocs.editor.R.string.cmr_wall_area,
+            MeasureFormat.value(com.smartdocs.editor.core.view5.MeasureCalc.wallArea(p, v.scale, depth.toDouble()), v.precision, v.scale.realUnit.code + "²", arabicDigits)) else ""
 
     /** Add a tapped point; finishes the item when the tool has all its points. */
     fun addPoint(p: P) {
@@ -118,10 +123,16 @@ class WorkbenchModel(val v: V5State) {
         val i = items.indexOfLast { it is WItem.Meas && it.page == page }
         if (i < 0) return
         // the value follows the (possibly moved) end points
-        val t = when (m.type) { MeasureType.DISTANCE -> WTool.DISTANCE; MeasureType.PERIMETER -> WTool.PERIMETER; MeasureType.AREA -> WTool.AREA
-            MeasureType.CIRCLE -> WTool.CIRCLE; MeasureType.ANGLE -> WTool.ANGLE; MeasureType.COUNT -> WTool.COUNT }
-        val value = valueOf(t, m.pts)
-        items[i] = WItem.Meas(m.copy(value = value, label = label(t, value)))
+        val t = toolOf(m.type)
+        val value = com.smartdocs.editor.core.view5.MeasureCalc.value(m.type, m.pts, m.scale, m.depth)
+        items[i] = WItem.Meas(m.copy(value = value, label = label(t, value), extraLabel = if (m.type == MeasureType.POLYLENGTH && m.depth > 0) extraLabel(t, m.pts) else m.extraLabel))
+    }
+
+    /** 25.18 / 25.19: a pending measurement whose points or label were dragged (the value follows). */
+    fun replaceMeasure(index: Int, m: Measurement) {
+        if (index !in items.indices) return
+        val value = com.smartdocs.editor.core.view5.MeasureCalc.value(m.type, m.pts, m.scale, m.depth)
+        items[index] = WItem.Meas(m.copy(value = value, label = label(toolOf(m.type), value)))
     }
 
     fun undoPoint() { if (pts.isNotEmpty()) pts.removeAt(pts.lastIndex) else if (items.isNotEmpty()) items.removeAt(items.lastIndex) }
@@ -131,17 +142,18 @@ class WorkbenchModel(val v: V5State) {
         if (calibrating) { if (p.size >= 2) calibrationPts = p; pts.clear(); calibrating = false; return }
         if (p.isEmpty()) return   // p[0] below
         when (tool) {
-            WTool.DISTANCE, WTool.PERIMETER, WTool.AREA, WTool.CIRCLE, WTool.ANGLE, WTool.COUNT -> {
-                val min = when (tool) { WTool.AREA, WTool.ANGLE -> 3; WTool.COUNT -> 1; else -> 2 }
-                if (p.size >= min) {
+            WTool.DISTANCE, WTool.PERIMETER, WTool.AREA, WTool.CIRCLE, WTool.ANGLE, WTool.COUNT, WTool.VOLUME, WTool.POLYLENGTH, WTool.DIAMETER, WTool.RADIUS -> {
+                if (p.size >= com.smartdocs.editor.core.view5.MeasureCalc.minPoints(typeOf(tool))) {
                     val value = valueOf(tool, p)
                     val dist = tool == WTool.DISTANCE
+                    val deep = tool == WTool.VOLUME || tool == WTool.POLYLENGTH
                     items += WItem.Meas(Measurement(typeOf(tool), page, p, value, label(tool, value), v.scale, color, width, v.s.authorName, v.precision, dash,
-                        if (fillArea && (tool == WTool.AREA || tool == WTool.CIRCLE)) color else null,
+                        if (fillArea && (tool == WTool.AREA || tool == WTool.CIRCLE || tool == WTool.VOLUME || tool == WTool.DIAMETER || tool == WTool.RADIUS)) color else null,
                         leader = if (dist) leader else 0f, leaderExt = if (dist) leaderExt else 0f, leaderOffset = if (dist) leaderOffset else 0f,
-                        customLabel = nextLabel.takeIf { it.isNotBlank() }))
+                        customLabel = nextLabel.takeIf { it.isNotBlank() }, depth = if (deep) depth.toDouble() else 0.0, extraLabel = extraLabel(tool, p)))
                 }
             }
+            WTool.ADJUST -> {}
             WTool.TICK -> items += WItem.Mark(page, MarkKind.TICK, p[0], markSize, color)
             WTool.CROSS -> items += WItem.Mark(page, MarkKind.CROSS, p[0], markSize, color)
             WTool.AREA_HIGHLIGHT -> if (p.size >= 2) items += WItem.Area(page, Box.of(p[0], p[1]), if (color == 0xE53935) 0xFFEB3B else color, 0.5f)
@@ -158,6 +170,11 @@ class WorkbenchModel(val v: V5State) {
         com.smartdocs.editor.core.pdf.SignedSave.editFile(src, out, pw) { doc ->
             var font: PDFont? = null
             val arabic: () -> PDFont = { font ?: PdfOps.arabicFont(context, doc).also { font = it } }
+            // stored annotations first: their indices are those of the file before anything is added
+            val edited = storedEdits.values.toList()
+            edited.forEach { (e, c) ->
+                if (e.page in 0 until doc.numberOfPages) runCatching { com.smartdocs.editor.core.view5.StoredEdit.apply(doc, doc.getPage(e.page), e, c, arabic) }
+            }
             items.toList().forEach { it2 ->
                 if (it2.page !in 0 until doc.numberOfPages) return@forEach
                 val pg = doc.getPage(it2.page)
@@ -171,7 +188,12 @@ class WorkbenchModel(val v: V5State) {
                     }
                 }
             }
-            items.map { it.page }.distinct()
+            (items.map { it.page } + edited.map { it.first.page }).distinct()
         }
+    }
+
+    companion object {
+        val MEASURE_TOOLS = setOf(WTool.DISTANCE, WTool.PERIMETER, WTool.AREA, WTool.CIRCLE, WTool.ANGLE, WTool.COUNT,
+            WTool.VOLUME, WTool.POLYLENGTH, WTool.DIAMETER, WTool.RADIUS)
     }
 }
