@@ -41,6 +41,7 @@ object Share5Routes {
     const val RETURNED = "share5/returned?uri={uri}"
     const val STORAGE = "share5/storage"
     const val APPDATA = "share5/appdata"
+    const val SEND_BACK = "share5/send_back?uri={uri}"   // fc-sync
 
     private fun q(uri: String?) = Uri.encode(uri ?: "")
     fun share(uri: String, page: Int = 0) = "share5/share?uri=${q(uri)}&page=$page"
@@ -50,6 +51,7 @@ object Share5Routes {
     fun view(id: String) = "share5/view/${Uri.encode(id)}"
     fun emailNew(uri: String?) = "share5/email_new?uri=${q(uri)}"
     fun returned(uri: String) = "share5/returned?uri=${q(uri)}"
+    fun sendBack(uri: String?) = "share5/send_back?uri=${q(uri)}"
 }
 
 private fun uriArg() = navArgument("uri") { type = NavType.StringType; nullable = true; defaultValue = null }
@@ -70,6 +72,7 @@ fun NavGraphBuilder.share5Routes(nav: NavHostController) {
     composable(Share5Routes.STORAGE) { StorageScreen(nav) }
     composable("storage") { StorageScreen(nav) }   // alias used by the Settings screen (gaps6)
     composable(Share5Routes.APPDATA) { AppDataScreen(nav) }
+    composable(Share5Routes.SEND_BACK, arguments = listOf(uriArg())) { e -> SendBackScreen(nav, e.arguments?.getString("uri")?.ifBlank { null }) }
 }
 
 /** Route "share5": entry point to every sharing feature. */
@@ -90,6 +93,9 @@ fun ShareHubScreen(nav: NavHostController) {
                 GroupDivider()
                 GroupRow(stringResource(R.string.sh5_email_review), stringResource(R.string.sh5_email_review_sub), icon = Icons.Default.ForwardToInbox, tile = tiles.teal,
                     onClick = { nav.navigate(Share5Routes.emailNew(null)) })
+                GroupDivider()
+                GroupRow(stringResource(R.string.fcy_back_title), stringResource(R.string.fcy_back_sub), icon = Icons.Default.Reply, tile = tiles.green,
+                    onClick = { nav.navigate(Share5Routes.sendBack(null)) })
             }
             GroupCard(stringResource(R.string.sh5_sec_links)) {
                 GroupRow(stringResource(R.string.sh5_view_new), stringResource(R.string.sh5_view_new_sub), icon = Icons.Default.Link, tile = tiles.amber,

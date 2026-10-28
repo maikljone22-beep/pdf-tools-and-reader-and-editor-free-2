@@ -50,6 +50,9 @@ fun ConnectedDocScreen(nav: NavHostController, id: String) {
     var reload by remember { mutableIntStateOf(0) }
     var confirm by remember { mutableStateOf<String?>(null) }
     var newVersion by remember { mutableStateOf<File?>(null) }
+    var editMessage by remember { mutableStateOf(false) }   // fc-sync
+    var cloneAsk by remember { mutableStateOf(false) }
+    val settings = com.smartdocs.editor.LocalSettings.current
 
     LaunchedEffect(reload) {
         val d = doc ?: return@LaunchedEffect
@@ -66,6 +69,7 @@ fun ConnectedDocScreen(nav: NavHostController, id: String) {
     Scaffold(topBar = {
         AppTopBar(doc?.title ?: "", onBack = { nav.popBackStack() }) {
             IconButton(onClick = { reload++ }) { Icon(Icons.Default.Refresh, stringResource(R.string.cn_refresh)) }
+            IconButton(onClick = { cloneAsk = true }) { Icon(Icons.Default.ContentCopy, stringResource(R.string.fcy_conn_clone)) }
             IconButton(onClick = { confirm = "delete" }) { Icon(Icons.Default.DeleteOutline, stringResource(R.string.cn_delete)) }
         }
     }) { pad ->
@@ -99,6 +103,10 @@ fun ConnectedDocScreen(nav: NavHostController, id: String) {
                     Column(Modifier.padding(12.dp)) {
                         SwitchRow(stringResource(R.string.cn_require_approval), null, i.requireApproval) { v -> act { ConnectedClient.settings(d.id, d.ownerKey, v, i.offlineDays, i.revoked) } }
                         if (i.protected) Text(stringResource(R.string.cn_offline_days_n, i.offlineDays), style = MaterialTheme.typography.bodySmall)
+                        // fc-sync: open message shown to readers
+                        Text(if (i.openMessage.isBlank()) stringResource(R.string.fcy_conn_no_message) else stringResource(R.string.fcy_conn_message_is, i.openMessage),
+                            style = MaterialTheme.typography.bodySmall)
+                        TextButton(onClick = { editMessage = true }) { Text(stringResource(R.string.fcy_conn_message)) }
                         if (i.revoked) TextButton(onClick = { act { ConnectedClient.settings(d.id, d.ownerKey, i.requireApproval, i.offlineDays, false) } }) { Text(stringResource(R.string.cn_unrevoke)) }
                         else TextButton(onClick = { confirm = "revoke" }) { Text(stringResource(R.string.cn_revoke_all), color = MaterialTheme.colorScheme.error) }
                     }
@@ -145,6 +153,41 @@ fun ConnectedDocScreen(nav: NavHostController, id: String) {
     }
 
     busy?.let { ProgressDialog(it) }
+    if (editMessage) info?.let { i ->
+        var text by remember { mutableStateOf(i.openMessage) }
+        AlertDialog(onDismissRequest = { editMessage = false }, title = { Text(stringResource(R.string.fcy_conn_message)) },
+            text = { Column {
+                Text(stringResource(R.string.fcy_conn_message_note), style = MaterialTheme.typography.bodySmall)
+                OutlinedTextField(text, { if (it.length <= 500) text = it }, Modifier.fillMaxWidth(), minLines = 2)
+            } },
+            confirmButton = { TextButton(onClick = {
+                val d = doc ?: return@TextButton
+                editMessage = false
+                act { ConnectedClient.settings(d.id, d.ownerKey, i.requireApproval, i.offlineDays, i.revoked, text.trim()) }
+            }) { Text(stringResource(R.string.save)) } },
+            dismissButton = { TextButton(onClick = { editMessage = false }) { Text(stringResource(R.string.cancel)) } })
+    }
+    if (cloneAsk) doc?.let { d ->
+        var title by remember { mutableStateOf(ctx.getString(R.string.fcy_conn_clone_title, d.title)) }
+        var upload by remember { mutableStateOf(true) }
+        AlertDialog(onDismissRequest = { cloneAsk = false }, title = { Text(stringResource(R.string.fcy_conn_clone)) },
+            text = { Column {
+                Text(stringResource(R.string.fcy_conn_clone_note), style = MaterialTheme.typography.bodySmall)
+                OutlinedTextField(title, { title = it }, Modifier.fillMaxWidth(), singleLine = true)
+                SwitchRow(stringResource(R.string.cn_upload_versions), null, upload) { upload = it }
+            } },
+            confirmButton = { TextButton(enabled = title.isNotBlank(), onClick = {
+                cloneAsk = false
+                scope.launch {
+                    busy = ctx.getString(R.string.cn_working)
+                    runCatching { ConnectedDocs.clone(ctx, d, app.documents.docsDir, title.trim(), settings.authorName, info, upload) }
+                        .onSuccess { nav.navigate(ConnRoutes.connectedDoc(it.id)) }
+                        .onFailure { error = it.message }
+                    busy = null
+                }
+            }) { Text(stringResource(R.string.fcy_conn_clone)) } },
+            dismissButton = { TextButton(onClick = { cloneAsk = false }) { Text(stringResource(R.string.cancel)) } })
+    }
     newVersion?.let { f ->
         var note by remember { mutableStateOf("") }
         var upload by remember { mutableStateOf(true) }

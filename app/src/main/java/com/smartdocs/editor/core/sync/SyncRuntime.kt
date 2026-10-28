@@ -70,8 +70,11 @@ object SyncRuntime {
                 setProgress(SyncProgress(p.id, null, 0, started), p.id)
                 val engine = SyncEngine(context, p, force = force && passes == 0, onProgress = { name, done -> setProgress(SyncProgress(p.id, name, done, started), p.id) },
                     deletes = if (passes == 0) deletes else DeleteGuard.Policy.GUARD)
+                // fc-sync: the drive's change cursor before listing; kept only when this pass ends clean ([SyncSkip])
+                val startCursor = SyncSkip.cursorNow(context, p)
                 try {
                     engine.run()
+                    SyncStore.setPairCursor(context, p.id, startCursor.takeIf { engine.withheldDeletes == 0 && engine.failed == 0 })
                     SyncStore.update(context, p.id) {
                         val held = engine.withheldDeletes
                         it.copy(status = when { held > 0 -> SyncStatus.NEEDS_CONFIRMATION; engine.failed > 0 -> SyncStatus.FAILED; else -> SyncStatus.SYNCED },

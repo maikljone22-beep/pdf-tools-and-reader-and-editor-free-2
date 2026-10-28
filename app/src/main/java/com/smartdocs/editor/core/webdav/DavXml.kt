@@ -103,6 +103,34 @@ object DavXml {
         }
     }
 
+    /**
+     * fc-sync: PROPFIND body asking only for version markers: the ETag of each resource and the collection tag
+     * (getctag, CalendarServer extension, sent by Nextcloud / ownCloud / SabreDAV), which changes whenever anything
+     * inside the folder changes.
+     */
+    val VERSION_BODY = """<?xml version="1.0" encoding="utf-8"?>
+<d:propfind xmlns:d="DAV:" xmlns:cs="http://calendarserver.org/ns/"><d:prop><d:getetag/><cs:getctag/><d:resourcetype/></d:prop></d:propfind>"""
+
+    /**
+     * fc-sync: version marker of each resource in a multistatus answer: normalized URL → getctag, else getetag. Only
+     * successful propstat blocks count; resources without either are left out.
+     */
+    fun parseVersions(xml: String, requestUrl: String): Map<String, String> {
+        val root = parse(xml).documentElement ?: return emptyMap()
+        val out = LinkedHashMap<String, String>()
+        for (r in root.kids("response")) {
+            val href = r.text("href") ?: continue
+            val ok = r.kids("propstat").filter { ps -> statusCode(ps.text("status")).let { it == 0 || it in 200..299 } }
+            fun any(local: String): String? = ok.firstNotNullOfOrNull { ps ->
+                val nl = ps.getElementsByTagNameNS("*", local)
+                (0 until nl.length).firstNotNullOfOrNull { nl.item(it).textContent?.trim()?.takeIf { t -> t.isNotEmpty() } }
+            }
+            val v = any("getctag") ?: any("getetag") ?: continue
+            out[normalize(resolve(requestUrl, href))] = v
+        }
+        return out
+    }
+
     /** The entries inside [folderUrl] (the folder itself removed), folders first, then by name. */
     fun children(entries: List<DavEntry>, folderUrl: String): List<DavEntry> {
         val self = normalize(folderUrl)

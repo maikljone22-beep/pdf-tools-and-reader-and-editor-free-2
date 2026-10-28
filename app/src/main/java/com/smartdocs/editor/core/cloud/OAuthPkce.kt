@@ -62,10 +62,12 @@ object OAuthPkce {
     data class Endpoint(val provider: ProviderId, val authUrl: String, val tokenUrl: String, val clientId: String, val redirect: String, val scope: String?, val extra: Map<String, String>,
                         val clientSecret: String? = null)
 
-    fun endpoint(id: ProviderId): Endpoint? = when (id) {
+    /** [refresh]: the endpoint for a token refresh (OneDrive keeps its old scope until a wider sign-in succeeded). */
+    fun endpoint(id: ProviderId, refresh: Boolean = false): Endpoint? = when (id) {
         ProviderId.ONEDRIVE -> CloudConfig.oneDriveClientId.takeIf { it.isNotEmpty() }?.let {
             Endpoint(id, "https://login.microsoftonline.com/common/oauth2/v2.0/authorize", "https://login.microsoftonline.com/common/oauth2/v2.0/token",
-                it, CloudConfig.oneDriveRedirect, "offline_access Files.ReadWrite User.Read", mapOf("response_mode" to "query", "prompt" to "select_account"))
+                it, CloudConfig.oneDriveRedirect, SharePoint.Scopes.scope(refresh, SharePoint.Scopes.signInWithLibraries, SharePoint.Scopes.librariesGranted),
+                mapOf("response_mode" to "query", "prompt" to "select_account"))
         }
         ProviderId.DROPBOX -> CloudConfig.dropboxAppKey.takeIf { it.isNotEmpty() }?.let {
             Endpoint(id, "https://www.dropbox.com/oauth2/authorize", "https://api.dropboxapi.com/oauth2/token",
@@ -84,6 +86,7 @@ object OAuthPkce {
 
     /** Opens the provider's sign-in page. Returns false when the provider is not configured. */
     fun start(context: Context, id: ProviderId): Boolean {
+        SharePoint.Scopes.load(context)
         val ep = endpoint(id) ?: return false
         val verifier = b64(ByteArray(48).also { random.nextBytes(it) })
         val challenge = b64(MessageDigest.getInstance("SHA-256").digest(verifier.toByteArray(Charsets.US_ASCII)))
@@ -107,6 +110,7 @@ object OAuthPkce {
     suspend fun complete(context: Context, redirect: Uri): ProviderId = withContext(Dispatchers.IO) {
         val p = pending(context)
         val id = ProviderId.of(p.getString("provider", null)) ?: throw IllegalStateException("no pending sign-in")
+        SharePoint.Scopes.load(context)
         val ep = endpoint(id) ?: throw IllegalStateException("not configured")
         redirect.getQueryParameter("error")?.let { throw IllegalStateException(redirect.getQueryParameter("error_description") ?: it) }
         if (redirect.getQueryParameter("state") != p.getString("state", null)) throw SecurityException("state mismatch")
@@ -119,6 +123,7 @@ object OAuthPkce {
         val json = JSONObject(CloudHttp.string(Request.Builder().url(ep.tokenUrl).post(form).build()))
         save(OAuthTokens(context, id.key), json)
         p.edit().clear().apply()
+        if (id == ProviderId.ONEDRIVE) SharePoint.Scopes.signedIn(context)   // fc-sync: library scopes now granted
         id
     }
 
@@ -134,7 +139,8 @@ object OAuthPkce {
         val access = t.access
         if (!force && access != null && System.currentTimeMillis() < t.expiresAt - 60_000) return@synchronized access
         val refresh = t.refresh ?: throw AuthRequiredException()
-        val ep = endpoint(id) ?: throw AuthRequiredException("not configured")
+        if (id == ProviderId.ONEDRIVE) SharePoint.Scopes.load(context)
+        val ep = endpoint(id, refresh = true) ?: throw AuthRequiredException("not configured")
         val form = FormBody.Builder().add("client_id", ep.clientId).add("grant_type", "refresh_token").add("refresh_token", refresh)
             .apply { ep.scope?.let { add("scope", it) }; ep.clientSecret?.let { add("client_secret", it) } }.build()
         val json = try { JSONObject(CloudHttp.string(Request.Builder().url(ep.tokenUrl).post(form).build())) }

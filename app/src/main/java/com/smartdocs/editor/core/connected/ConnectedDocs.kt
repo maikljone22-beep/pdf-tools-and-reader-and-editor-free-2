@@ -13,11 +13,13 @@ import java.io.File
 data class ConnectedStatus(
     val docId: String, val title: String, val owner: String, val status: String, val protected: Boolean,
     val newer: ConnVersion?, val password: String?, val offline: Boolean, val offlineUntil: Long, val isOwner: Boolean,
+    /** fc-sync: the owner's open message ("" = none). */
+    val message: String = "",
 ) {
     /** Protected file that cannot be opened now. */
     val locked: Boolean get() = protected && password == null
     /** Something to show in the banner. */
-    val noteworthy: Boolean get() = newer != null || status != "ok" || offline
+    val noteworthy: Boolean get() = newer != null || status != "ok" || offline || message.isNotBlank()
 }
 
 object ConnectedDocs {
@@ -53,7 +55,7 @@ object ConnectedDocs {
             if (a.allowed && a.key != null) { ConnKeyCache.put(c, docId, a.key, System.currentTimeMillis() + a.offlineDays.coerceAtLeast(0) * DAY); pw = a.key }
             if (!a.allowed) ConnKeyCache.remove(c, docId)
             ConnectedStatus(docId, a.title, a.owner, a.status, protected, a.latest?.takeIf { !a.isLatest }, if (a.allowed) pw else null,
-                offline = false, offlineUntil = 0L, isOwner = false)
+                offline = false, offlineUntil = 0L, isOwner = false, message = a.message)
         } catch (e: Exception) {
             if (ConnectedClient.isGone(e)) { ConnKeyCache.remove(c, docId); return@withContext ConnectedStatus(docId, "", "", "gone", protected, null, null, false, 0L, false) }
             val cached = ConnKeyCache.get(c, docId)
@@ -68,14 +70,14 @@ object ConnectedDocs {
      * first version published with its file (so readers can download updates).
      */
     suspend fun register(context: Context, src: File, outDir: File, title: String, owner: String, protected: Boolean,
-                         requireApproval: Boolean, offlineDays: Int, uploadFile: Boolean): OwnedDoc = withContext(Dispatchers.IO) {
+                         requireApproval: Boolean, offlineDays: Int, uploadFile: Boolean, srcPassword: String? = null): OwnedDoc = withContext(Dispatchers.IO) {
         val c = context.applicationContext
         val reg = ConnectedClient.register(title, owner, protected, requireApproval, offlineDays)
         val key = if (protected) reg.key ?: throw IllegalStateException("server returned no key") else null
         val base = src.nameWithoutExtension
         var out = File(outDir, "$base (connected).pdf"); var n = 2
         while (out.exists()) { out = File(outDir, "$base (connected $n).pdf"); n++ }
-        ConnectedStamp.stamp(src, out, reg.id, key)
+        ConnectedStamp.stamp(src, out, reg.id, key, srcPassword)
         if (key != null) ConnKeyCache.put(c, reg.id, key, 0L)
         val doc = OwnedDoc(reg.id, title, reg.ownerKey, protected, out.absolutePath, System.currentTimeMillis(), 1)
         ConnStore.upsert(c, doc)
@@ -93,6 +95,20 @@ object ConnectedDocs {
         val n = ConnectedClient.publishVersion(doc.id, doc.ownerKey, EsignComposer.sha256(out), out.length(), note, if (uploadFile) out else null)
         ConnStore.upsert(c, doc.copy(localPath = out.absolutePath, lastVersion = if (n > 0) n else doc.lastVersion + 1))
         out
+    }
+
+    /**
+     * fc-sync (Foxit §33 "Clone document"): a new connected document from [doc]'s current copy: new id (and key), no
+     * readers, no history; the original stays as it is. Settings are copied from [info] when given.
+     */
+    suspend fun clone(context: Context, doc: OwnedDoc, outDir: File, title: String, owner: String, info: ConnDocInfo?, uploadFile: Boolean): OwnedDoc {
+        val src = File(doc.localPath).takeIf { it.isFile } ?: throw IllegalStateException("local copy missing")
+        val srcPw = if (doc.protected) ConnKeyCache.get(context.applicationContext, doc.id) ?: throw IllegalStateException("owner key missing on this device") else null
+        val copy = register(context, src, outDir, title, owner, doc.protected, info?.requireApproval ?: false, info?.offlineDays ?: 7, uploadFile, srcPw)
+        if (!info?.openMessage.isNullOrBlank()) runCatching {
+            withContext(Dispatchers.IO) { ConnectedClient.settings(copy.id, copy.ownerKey, info!!.requireApproval, info.offlineDays, false, info.openMessage) }
+        }
+        return copy
     }
 
     suspend fun downloadLatest(context: Context, docId: String, outDir: File, title: String): File = withContext(Dispatchers.IO) {

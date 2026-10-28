@@ -11,6 +11,8 @@
 //   GET    /reviews/:id/comments        X-Review-Code → {now, comments:[{nm, participant, author, modified, deleted, page, data}]}
 //   POST   /reviews/:id/comments        X-Review-Code, JSON {participant, author, comments:[{nm, page, modified, data} | {nm, deleted:true}]}
 //                                        → 410 after the deadline or when closed
+//   POST   /reviews/:id/leave           X-Review-Code, JSON {participant} → "Remove me": the participant no longer appears
+//                                        among the reviewers (its comments stay in the review). Posting again re-joins.
 //   POST   /reviews/:id/close           X-Owner-Key
 //   DELETE /reviews/:id                 X-Owner-Key
 //   GET    /r/:id?c=CODE                share page with an "open in the app" button (smartdocs://review/:id?c=CODE)
@@ -83,6 +85,7 @@ async function route(req, env) {
   }
   if (req.method === "GET" && sub === "comments") return json({ now: Date.now(), comments: await allComments(env, id) });
   if (req.method === "POST" && sub === "comments") return postComments(req, env, id, meta);
+  if (req.method === "POST" && sub === "leave") return leaveReview(req, env, id, meta);
   return json({ error: "not found" }, 404);
 }
 
@@ -124,6 +127,7 @@ async function postComments(req, env, id, meta) {
   const key = `comments:${id}:${participant}`;
   const current = (await env.COLLAB.get(key, "json")) || { author, items: {} };
   current.author = author || current.author;
+  current.left = false;
   let accepted = 0;
   for (const c of Array.isArray(body.comments) ? body.comments : []) {
     if (!c || typeof c.nm !== "string" || c.nm.length > 128) continue;
@@ -141,6 +145,24 @@ async function postComments(req, env, id, meta) {
   return json({ now: Date.now(), accepted });
 }
 
+// fc-sync: "Remove me" — keeps the participant's comments, hides it from the reviewer list.
+async function leaveReview(req, env, id, meta) {
+  let body;
+  try { body = JSON.parse(await req.text()); } catch { return json({ error: "bad json" }, 400); }
+  const participant = String(body.participant || "").slice(0, 64);
+  if (!/^[A-Za-z0-9-]{8,64}$/.test(participant)) return json({ error: "bad participant" }, 400);
+  const key = `comments:${id}:${participant}`;
+  const current = await env.COLLAB.get(key, "json");
+  if (!current) return json({ ok: true, known: false });
+  current.left = true;
+  const count = Object.values(current.items || {}).filter((x) => !x.deleted).length;
+  await env.COLLAB.put(key, JSON.stringify(current), {
+    expirationTtl: ttlFor(meta),
+    metadata: { name: current.author || "", lastSeen: Date.now(), count, left: true },
+  });
+  return json({ ok: true, known: true });
+}
+
 async function allComments(env, id) {
   const out = [];
   for (const k of await listKeys(env, `comments:${id}:`)) {
@@ -155,7 +177,7 @@ async function allComments(env, id) {
 }
 
 async function publicMeta(env, meta) {
-  const reviewers = (await listKeys(env, `comments:${meta.id}:`)).map((k) => ({
+  const reviewers = (await listKeys(env, `comments:${meta.id}:`)).filter((k) => !(k.metadata && k.metadata.left)).map((k) => ({
     name: (k.metadata && k.metadata.name) || "", lastSeen: (k.metadata && k.metadata.lastSeen) || 0, count: (k.metadata && k.metadata.count) || 0,
   }));
   const { ownerKey, code, ...pub } = meta;

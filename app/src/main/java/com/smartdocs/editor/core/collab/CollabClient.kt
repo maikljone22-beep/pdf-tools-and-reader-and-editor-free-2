@@ -75,6 +75,16 @@ object CollabClient {
         CloudHttp.string(Request.Builder().url(url("/reviews/$id/comments")).app().header("X-Review-Code", code).post(body.toRequestBody(CloudHttp.JSON)).build())
     }
 
+    /**
+     * fc-sync "Remove me": hides this participant from the reviewer list on the server (its comments stay). Returns
+     * false when the server predates the route (HTTP 404 "not found" for the path): then leaving stays local.
+     */
+    fun leave(id: String, code: String, participant: String): Boolean = try {
+        val body = JSONObject().put("participant", participant).toString()
+        CloudHttp.string(Request.Builder().url(url("/reviews/$id/leave")).app().header("X-Review-Code", code).post(body.toRequestBody(CloudHttp.JSON)).build())
+        true
+    } catch (e: HttpException) { if (e.code == 404 || e.code == 410) false else throw e }
+
     fun close(id: String, ownerKey: String) {
         CloudHttp.string(Request.Builder().url(url("/reviews/$id/close")).app().header("X-Owner-Key", ownerKey).post(ByteArray(0).toRequestBody(null)).build())
     }
