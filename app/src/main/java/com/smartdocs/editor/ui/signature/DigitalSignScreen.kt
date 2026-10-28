@@ -81,7 +81,8 @@ fun DigitalSignScreen(nav: NavHostController, uri: String?) {
     val request = vm.request
     // audit D4: the reader's open password (memory only) reaches every call of this screen
     val password = OpenPasswords.get(file)
-    var tab by rememberSaveable { mutableIntStateOf(if (request?.verify == true) 1 else 0) }
+    val startTab = remember { SigFieldRequest.openTab.also { SigFieldRequest.openTab = null } }
+    var tab by rememberSaveable { mutableIntStateOf(startTab ?: if (request?.verify == true) 1 else 0) }
     val identity = vm.identity
     val pick = rememberPdfPicker { files -> files.firstOrNull()?.let { vm.file = it } }
 
@@ -93,7 +94,7 @@ fun DigitalSignScreen(nav: NavHostController, uri: String?) {
                 }
             }
             when (tab) {
-                0 -> SignTab(nav, vm, password, request?.field?.takeIf { !request.verify }, onPick = pick, onNeedCert = { tab = 2 })
+                0 -> SignTab(nav, vm, password, request?.field?.takeIf { !request.verify }, addField = request?.addField == true, onPick = pick, onNeedCert = { tab = 2 })
                 1 -> VerifyTab(nav, file, password, request?.field?.takeIf { request.verify }, autoVerify = request?.verify == true, onPick = pick)
                 else -> CertificateTab(identity) { vm.identity = it }
             }
@@ -107,7 +108,7 @@ private val REASONS = listOf(R.string.ns_reason_author, R.string.ns_reason_revie
 private enum class LockMode { NONE, ALL, INCLUDE, EXCLUDE }
 
 @Composable
-private fun SignTab(nav: NavHostController, vm: DigitalSignVm, password: String?, requestedField: String?, onPick: () -> Unit, onNeedCert: () -> Unit) {
+private fun SignTab(nav: NavHostController, vm: DigitalSignVm, password: String?, requestedField: String?, addField: Boolean = false, onPick: () -> Unit, onNeedCert: () -> Unit) {
     val app = LocalApp.current
     val ctx = LocalContext.current
     val settings = LocalSettings.current
@@ -197,6 +198,29 @@ private fun SignTab(nav: NavHostController, vm: DigitalSignVm, password: String?
     fun storeProfiles(list: List<SignProfiles.Profile>) { profiles = list; scope.launch(Dispatchers.IO) { runCatching { SignProfiles.save(profilesFile, list) } } }
 
     val emptyFields = sigFields.filter { !it.signed }
+
+    /** Adds an empty signature field at the chosen place, into a new copy (tabs audit D6 / D25). */
+    fun addEmptyField() {
+        val f = file ?: return
+        val box = placeBox ?: return
+        scope.launch {
+            val r = withContext(Dispatchers.IO) {
+                runCatching {
+                    val out = app.documents.uniqueFile(app.documents.docsDir, f.nameWithoutExtension + "_field")
+                    val rect = PdfOps.loadRaw(f, password).use { d -> val p = d.getPage(placePage.coerceIn(0, d.numberOfPages - 1)); SigFields.toUserSpace(box.l, box.t, box.w, box.h, p.cropBox, p.rotation) }
+                    val n = SigFields.addEmpty(f, out, placePage, rect, password = password)
+                    OpenPasswords.put(out, password)
+                    out to n
+                }
+            }
+            // audit D6: the field goes into a new copy, which this screen now works on (the reader's file is untouched)
+            r.onSuccess { (out, n) -> vm.file = out; fieldsVersion++; placeBox = null; targetField = n; localError = ctx.getString(R.string.ns3_field_added_copy, out.name) }
+                .onFailure { localError = it.message ?: it.toString() }
+        }
+    }
+    // tabs audit D25: the Sign tab's "Add signature field" chip opens the placement, then adds the field
+    var addAfterPlace by remember { mutableStateOf(false) }
+    LaunchedEffect(addField) { if (addField && file != null) { visible = true; addAfterPlace = true; placing = true } }
 
     fun lock(): SigFields.Lock? {
         val p = if (lockNoChanges) 1 else null
@@ -357,24 +381,7 @@ private fun SignTab(nav: NavHostController, vm: DigitalSignVm, password: String?
                 Text(stringResource(if (placeBox == null) R.string.ns_place_default else R.string.ns_place_set, placePage + 1), Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
                 OutlinedButton(onClick = { placing = true }, enabled = file != null) { Text(stringResource(R.string.ns_place_button)) }
             }
-            if (chosen == null && placeBox != null) TextButton(onClick = {
-                val f = file ?: return@TextButton
-                val box = placeBox ?: return@TextButton
-                scope.launch {
-                    val r = withContext(Dispatchers.IO) {
-                        runCatching {
-                            val out = app.documents.uniqueFile(app.documents.docsDir, f.nameWithoutExtension + "_field")
-                            val rect = PdfOps.loadRaw(f, password).use { d -> val p = d.getPage(placePage.coerceIn(0, d.numberOfPages - 1)); SigFields.toUserSpace(box.l, box.t, box.w, box.h, p.cropBox, p.rotation) }
-                            val n = SigFields.addEmpty(f, out, placePage, rect, password = password)
-                            OpenPasswords.put(out, password)
-                            out to n
-                        }
-                    }
-                    // audit D6: the field goes into a new copy, which this screen now works on (the reader's file is untouched)
-                    r.onSuccess { (out, n) -> vm.file = out; fieldsVersion++; placeBox = null; targetField = n; localError = ctx.getString(R.string.ns3_field_added_copy, out.name) }
-                        .onFailure { localError = it.message ?: it.toString() }
-                }
-            }) { Text(stringResource(R.string.ns2_add_empty_field)) }
+            if (chosen == null && placeBox != null) TextButton(onClick = { addEmptyField() }) { Text(stringResource(R.string.ns2_add_empty_field)) }
             OutlinedTextField(visibleText, { visibleText = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.sa_visible_text)) }, singleLine = true)
             Row(verticalAlignment = Alignment.CenterVertically) { Switch(useSaved, { useSaved = it }); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.sa_visible_use_saved)) }
             if (useSaved) Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -474,7 +481,8 @@ private fun SignTab(nav: NavHostController, vm: DigitalSignVm, password: String?
     if (placing) file?.let { f ->
         SigPlacementDialog(f, placePage, placeBox,
             taken = { pg -> sigFields.filter { it.page == pg && it.rect != null }.mapNotNull { fl -> runCatching { displayedBox(f, fl, password) }.getOrNull() } },
-            onDone = { pg, b -> placePage = pg; placeBox = b; placing = false; targetField = null }, onDismiss = { placing = false })
+            onDone = { pg, b -> placePage = pg; placeBox = b; placing = false; targetField = null; if (addAfterPlace) { addAfterPlace = false; addEmptyField() } },
+            onDismiss = { placing = false; addAfterPlace = false })
     }
     nameDialog?.let { initial ->
         var text by remember(initial) { mutableStateOf(initial) }

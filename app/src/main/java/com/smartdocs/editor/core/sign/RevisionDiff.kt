@@ -64,6 +64,43 @@ object RevisionDiff {
         return out
     }
 
+    /** [revisionEnds] of a file without reading it into memory (streamed in 64 KB blocks); same results. */
+    fun revisionEnds(file: java.io.File): List<Int> {
+        val marker = "%%EOF".toByteArray(Charsets.US_ASCII)
+        val out = ArrayList<Int>()
+        val buf = ByteArray(64 * 1024)
+        var matched = 0              // bytes of the marker matched so far
+        var end = -1L                // end of the last %%EOF while its EOL is consumed
+        var eolStage = 0             // 0 = nothing after %%EOF yet, 1 = after a CR
+        var pos = 0L
+        file.inputStream().use { input ->
+            while (true) {
+                val n = input.read(buf)
+                if (n < 0) break
+                for (i in 0 until n) {
+                    val b = buf[i]
+                    if (end >= 0) {
+                        when {
+                            eolStage == 0 && b == 13.toByte() -> { end++; eolStage = 1; pos++; continue }
+                            b == 10.toByte() -> { end++; out += end.toInt(); end = -1; pos++; continue }
+                            else -> { out += end.toInt(); end = -1 }
+                        }
+                    }
+                    // "%%EOF" starts with two '%': a third '%' keeps two matched ("%%%EOF" still matches)
+                    matched = when {
+                        b == marker[matched] -> matched + 1
+                        b == marker[0] -> if (matched >= 2) 2 else 1
+                        else -> 0
+                    }
+                    if (matched == marker.size) { end = pos + 1; eolStage = 0; matched = 0 }
+                    pos++
+                }
+            }
+        }
+        if (end >= 0) out += end.toInt()
+        return out
+    }
+
     /** Short count summary by kind (for a subtitle such as "3 annotations added · 1 page rotated"). */
     fun counts(changes: List<Change>): Map<Kind, Int> = changes.groupingBy { it.kind }.eachCount()
 }

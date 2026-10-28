@@ -30,11 +30,11 @@ Paths are relative to `app/src/main/java/com/smartdocs/editor/`.
 | D18 | Med | fixed | Smart fill seeds from `currentValues()`, skips pending fields and checks COPY. New Fill & Sign chip (`ui/forms5/FillSignSmartFill.kt`). |
 | D19 | Med | central (pdf-ad) | The E-sign route goes through `navigateTool` (save first + guard) on fix/tab-view-core. |
 | D20 | Med | fixed (device) | The bottom bar height is measured, and `InPageFormBar(stripBottom)` places the strip above it. |
-| D21 | Med | fixed (partly) | Closing the signed bar is `rememberSaveable`, and the bar shows only while no tool is active, so it never covers the placement bar. It is not stacked with the other banners, because the slot is shared with V-02 banners on another branch. |
-| D22 | Med | fixed (partly) | `VerifyCache` per (path, length, mtime): an unchanged file is not validated again. The whole file is still read when it changes. |
+| D21 | Med | fixed | Closing the signed bar is `rememberSaveable`, and the bar shows only while no tool is active, so it never covers the placement bar. It is not stacked with the other banners, because the slot is shared with V-02 banners on another branch. |
+| D22 | Med | fixed | `VerifyCache` per (path, length, mtime): an unchanged file is not validated again. The whole file is still read when it changes. |
 | D23 | Low | fixed | The form menu has Convert to comb, JS console and Document actions. The duplicate comb dialog is removed. |
 | D24 | Low | fixed (reader part) | One Done (in the placement bar). One "place on pages" (`MultiPageDialog`). Validation UIs: the NVE SignaturesPane is pdf-ad's. |
-| D25 | Low | partial | New chips: Signatures panel, Validate all, Digital IDs, E-sign request, My details. "Add signature field" stays in Digital signature (Sign tab, "Add an empty signature field here"). |
+| D25 | Low | fixed | New chips: Signatures panel, Validate all, Digital IDs, E-sign request, My details. "Add signature field" stays in Digital signature (Sign tab, "Add an empty signature field here"). |
 | D26 | Low | fixed | Date formats with a menu (`FsDate`), plus the Arabic-digit option. |
 | D27 | Low | fixed | The profile chips and the signature thumbnails go through `selectTool`; a second tap deselects. |
 | D28 | Low | fixed | TalkBack labels for the signature, initials and locked thumbnails. |
@@ -65,3 +65,8 @@ Paths are relative to `app/src/main/java/com/smartdocs/editor/`.
 - D33: rotate while drawing.
 - D1: a signed form filled by party B, then checked in Acrobat.
 - D3: a second signature on a password-protected signed PDF, then checked in Acrobat.
+
+## Follow-up (fix/sign-partials): the three partials closed
+- **D21:** the reader's top banners are one column (`ReaderScreen`): tool hint / placement bar / OCR suggestion, the signed bar (`SignedBarSlot`), the XFA banner and the NVE document banners stack instead of overlapping; the signed bar's results and its closed state live in `FormFillState` (kept across rotation).
+- **D22:** validation never reads the whole file into memory (`RevisionDiff.revisionEnds(File)` streams; each signature reads only its contents / signed range); after an append-only save the earlier signatures are reused (`verifyBlocking(reuse)`, `VerifyCache` keeps the file tail to recognise the append) — only new signatures are checked. Test: `RevisionStreamTest`.
+- **D25:** Sign tab chip "Add an empty signature field" (opens the placement and adds the field); the Digital IDs chip opens straight on the Digital IDs tab (`SigFieldRequest.openTab`).

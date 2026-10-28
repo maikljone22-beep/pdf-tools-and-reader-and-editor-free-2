@@ -30,7 +30,11 @@ import java.io.File
 
 /** Hand-over from the reader's signature-field sheet to the digital signature screen (field to sign / tab). */
 object SigFieldRequest {
-    data class Request(val path: String, val field: String?, val verify: Boolean)
+    /** [addField]: open the placement for a new empty signature field (Sign tab chip, tabs audit D25). */
+    data class Request(val path: String, val field: String?, val verify: Boolean, val addField: Boolean = false)
+
+    /** Tab the next digital-sign screen opens on (2 = Digital IDs), for entry points without a document. */
+    @Volatile var openTab: Int? = null
 
     @Volatile var pending: Request? = null
 
@@ -49,29 +53,21 @@ fun BoxScope.SigFieldSheet(reader: ReaderState, nav: NavHostController) {
     val fs = remember(reader) { FormFill.of(reader) }
     val scope = rememberCoroutineScope()
     val file = reader.file
-    // Foxit "verify signatures when the document is opened": badges + the signed / certified bar
-    var results by remember(file) { mutableStateOf<List<DigitalSignature.VerifyResult>>(emptyList()) }
-    // audit D21: closing the bar survives a rotation
-    var bannerClosed by androidx.compose.runtime.saveable.rememberSaveable(file?.path) { mutableStateOf(false) }
-    // Foxit §37 "prompt to trust untrusted signers": the first valid signature whose certificate is not trusted
-    var untrusted by remember(file) { mutableStateOf<java.security.cert.X509Certificate?>(null) }
-    var trustRound by remember { mutableIntStateOf(0) }
-    LaunchedEffect(file, reader.renderVersion, trustRound) {
+    // Foxit "verify signatures when the document is opened": badges + the results for the signed / certified bar,
+    // which is drawn in the reader's banner column (SignedBarSlot, tabs audit D21)
+    LaunchedEffect(file, reader.renderVersion, fs.sigTrustRound) {
         val f = file ?: return@LaunchedEffect
-        results = withContext(Dispatchers.IO) { runCatching { VerifyCache.results(f, reader.password) }.getOrDefault(emptyList()) }
+        val results = withContext(Dispatchers.IO) { runCatching { VerifyCache.results(f, reader.password) }.getOrDefault(emptyList()) }
+        fs.sigResults = results
         fs.sigStatus = results.mapNotNull { v -> v.fieldName?.let { it to (v.signatureValid && v.error == null) } }.toMap()
-        untrusted = if (results.isEmpty() || !com.smartdocs.editor.core.sign.SignPrefs.promptTrust(reader.context)) null else withContext(Dispatchers.IO) {
+        // Foxit §37 "prompt to trust untrusted signers": the first valid signature whose certificate is not trusted
+        fs.sigUntrusted = if (results.isEmpty() || !com.smartdocs.editor.core.sign.SignPrefs.promptTrust(reader.context)) null else withContext(Dispatchers.IO) {
             runCatching {
                 val certs = com.smartdocs.editor.core.sign.CertInspector.inspect(reader.context, f, reader.password)
                 certs.withIndex().firstOrNull { (i, c) -> c.trust == com.smartdocs.editor.core.sign.TrustPath.Status.UNTRUSTED && results.getOrNull(i)?.signatureValid == true }?.value?.signer
             }.getOrNull()
         }
     }
-    // the bar shares the top slot with the placement bar and tool hints: it shows only while no tool is active (D21)
-    if (results.isNotEmpty() && !bannerClosed && file != null && reader.tool == null) SignedBar(results, Modifier.align(Alignment.TopCenter), untrusted,
-        onTrust = { c -> com.smartdocs.editor.core.sign.TrustedCerts.add(reader.context, c); trustRound++ },
-        onOpen = { SigFieldRequest.pending = SigFieldRequest.Request(file.path, null, verify = true); nav.navigate(Routes.tool("digital_sign", reader.fileUri)) },
-        onClose = { bannerClosed = true })
     val w = fs.sigTapped ?: return
     if (file == null) { fs.sigTapped = null; return }
     var field by remember(w) { mutableStateOf<SigFields.Field?>(null) }
@@ -204,12 +200,27 @@ internal object VerifyCache {
     private val cache = object : LinkedHashMap<Key, List<DigitalSignature.VerifyResult>>(8, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Key, List<DigitalSignature.VerifyResult>>?) = size > 4
     }
+    /** Last check per path with the bytes just before its end, to recognise a later append (D22). */
+    private class Last(val length: Long, val tail: ByteArray, val results: List<DigitalSignature.VerifyResult>)
+    private val last = HashMap<String, Last>()
+
+    private fun tail(f: File, end: Long): ByteArray? = runCatching {
+        java.io.RandomAccessFile(f, "r").use { r ->
+            val n = minOf(4096L, end).toInt(); val b = ByteArray(n); r.seek(end - n); r.readFully(b); b
+        }
+    }.getOrNull()
 
     fun results(f: File, password: String?): List<DigitalSignature.VerifyResult> {
         val k = Key(f.path, f.length(), f.lastModified())
         synchronized(cache) { cache[k]?.let { return it } }
-        val r = if (SigFields.list(f, password).none { it.signed }) emptyList() else DigitalSignature.verifyBlocking(f, password)
+        val r = if (SigFields.list(f, password).none { it.signed }) emptyList() else {
+            // an append-only change (incremental save) keeps the earlier signatures' bytes: only new ones are checked
+            val prev = synchronized(last) { last[f.path] }
+            val appended = prev != null && f.length() >= prev.length && tail(f, prev.length)?.contentEquals(prev.tail) == true
+            DigitalSignature.verifyBlocking(f, password, reuse = if (appended) prev!!.results else emptyList())
+        }
         synchronized(cache) { cache[k] = r }
+        tail(f, f.length())?.let { t -> synchronized(last) { last[f.path] = Last(f.length(), t, r) } }
         return r
     }
 }
@@ -251,6 +262,22 @@ internal fun lockText(l: SigFields.Lock): String {
         1 -> stringResource(R.string.ns_lock_p1); 2 -> stringResource(R.string.ns_lock_p2); 3 -> stringResource(R.string.ns_lock_p3); else -> null
     }
     return if (p == null) base else "$base · $p"
+}
+
+/**
+ * The signed / certified bar as one entry of the reader's top banner column (tabs audit D21: stacked with the tool
+ * hint, XFA and document banners instead of overlapping them). Hidden while a tool is active and once closed.
+ */
+@Composable
+fun SignedBarSlot(reader: ReaderState, nav: NavHostController, modifier: Modifier = Modifier) {
+    val fs = remember(reader) { FormFill.of(reader) }
+    val file = reader.file ?: return
+    val results = fs.sigResults
+    if (results.isEmpty() || fs.sigBarClosedFor == file.path || reader.tool != null) return
+    SignedBar(results, modifier, fs.sigUntrusted,
+        onTrust = { c -> com.smartdocs.editor.core.sign.TrustedCerts.add(reader.context, c); fs.sigTrustRound++ },
+        onOpen = { SigFieldRequest.pending = SigFieldRequest.Request(file.path, null, verify = true); nav.navigate(Routes.tool("digital_sign", reader.fileUri)) },
+        onClose = { fs.sigBarClosedFor = file.path })
 }
 
 /** Signed / certified document bar shown when a signed PDF opens (Foxit notification bar, Acrobat signature bar). */

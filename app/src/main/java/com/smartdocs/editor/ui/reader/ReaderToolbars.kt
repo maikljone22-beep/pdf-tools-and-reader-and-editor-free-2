@@ -320,6 +320,11 @@ private fun SignToolbar(state: ReaderState, a: ReaderActions) {
             a.navigateTool("digital_sign")
         }
         ToolChip(Icons.Default.Badge, stringResource(R.string.tfr_digital_ids)) { a.navigateTool("digital_ids") }
+        // tab audit D25: add an empty signature field (placement opens on the digital-sign screen)
+        ToolChip(Icons.Default.AddBox, stringResource(R.string.ns2_add_empty_field)) {
+            state.file?.let { f -> com.smartdocs.editor.ui.signature.SigFieldRequest.pending = com.smartdocs.editor.ui.signature.SigFieldRequest.Request(f.path, null, verify = false, addField = true) }
+            a.navigateTool("digital_sign")
+        }
         ToolChip(Icons.Default.HistoryEdu, stringResource(R.string.cn_tool_esign), onClick = a.esign)
         VerticalDivider(Modifier.height(36.dp).padding(horizontal = 4.dp))
         if (sigs.isEmpty()) Text(stringResource(R.string.rd_no_signatures), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 8.dp))
