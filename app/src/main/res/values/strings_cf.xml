@@ -6,4 +6,6 @@
     <string name="cf_subscript">نص منخفض</string>
     <string name="cf_id_shared">الاسم هو نفسه اسم كاتب التعليقات.</string>
     <string name="cf_sum_connectors">خطوط ربط بين التعليقات والصفحة</string>
+    <string name="cf_ink_merge_off">دمج ضربات القلم: متوقف</string>
+    <string name="cf_ink_merge_s">دمج ضربات القلم خلال %1$d ث</string>
 </resources>

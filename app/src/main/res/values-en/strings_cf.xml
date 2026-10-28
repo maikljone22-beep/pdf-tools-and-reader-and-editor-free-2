@@ -6,4 +6,6 @@
     <string name="cf_subscript">Subscript</string>
     <string name="cf_id_shared">The name is also your comment author name.</string>
     <string name="cf_sum_connectors">Connector lines to the page</string>
+    <string name="cf_ink_merge_off">Merge pencil strokes: off</string>
+    <string name="cf_ink_merge_s">Merge pencil strokes within %1$d s</string>
 </resources>

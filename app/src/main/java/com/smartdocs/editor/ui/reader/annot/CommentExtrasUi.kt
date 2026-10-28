@@ -197,6 +197,9 @@ fun CommentExtrasMenuItems(h: Annot2Host, close: () -> Unit) {
     DropdownMenuItem(text = { Text(stringResource(R.string.cx_copy_encircled)) }, leadingIcon = { Icon(if (cx.copyEncircled) Icons.Default.CheckBox else Icons.Default.CheckBoxOutlineBlank, null) },
         onClick = { close(); cx.toggleCopyEncircled() })
     DropdownMenuItem(text = { Text(stringResource(R.string.cx_note_prefs)) }, leadingIcon = { Icon(Icons.Default.TextFormat, null) }, onClick = { close(); cx.notePrefsOpen = true })
+    // pencil stroke merge timeout: off / 1 s / 2 s / 3 s (tap cycles; the menu stays open to show the new value)
+    DropdownMenuItem(text = { Text(if (cx.inkMergeMs <= 0L) stringResource(R.string.cf_ink_merge_off) else stringResource(R.string.cf_ink_merge_s, (cx.inkMergeMs / 1000L).toInt())) },
+        leadingIcon = { Icon(Icons.Default.Gesture, null) }, onClick = { cx.cycleInkMerge() })
     DropdownMenuItem(text = { Text(stringResource(R.string.cx_prev_comment)) }, leadingIcon = { Icon(Icons.AutoMirrored.Filled.NavigateBefore, null) }, onClick = { close(); cx.stepComment(false) })
     DropdownMenuItem(text = { Text(stringResource(R.string.cx_next_comment)) }, leadingIcon = { Icon(Icons.AutoMirrored.Filled.NavigateNext, null) }, onClick = { close(); cx.stepComment(true) })
     DropdownMenuItem(text = { Text(stringResource(R.string.cx_popups_open)) }, leadingIcon = { Icon(Icons.Default.OpenInFull, null) }, onClick = { close(); cx.popupsOpen(true) })
