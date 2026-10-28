@@ -21,6 +21,13 @@ sealed class XBrush {
     class Solid(val argb: Long) : XBrush()
     /** [viewbox] in image units (x, y, w, h) drawn into [viewport] (page units). */
     class Image(val src: String, val viewbox: FloatArray, val viewport: FloatArray, val transform: XMatrix?) : XBrush()
+    /**
+     * fix/files-index: linear ([p] = x1, y1, x2, y2) or radial ([p] = centre x, y, origin x, y, radius x, y) gradient in
+     * absolute page units; [stops] (offset 0..1, ARGB) sorted; [spread] 0 pad, 1 reflect, 2 repeat.
+     */
+    class Gradient(val radial: Boolean, val p: FloatArray, val stops: List<Pair<Float, Long>>, val spread: Int, val transform: XMatrix?, val opacity: Float) : XBrush()
+    /** fix/files-index: a visual (canvas / path / glyphs) drawn from [viewbox] into [viewport], tiled unless [tile] is "None". */
+    class Visual(val visual: XEl, val viewbox: FloatArray, val viewport: FloatArray, val tile: String, val transform: XMatrix?, val opacity: Float) : XBrush()
 }
 
 sealed class XEl(val transform: XMatrix?, val opacity: Float, val clip: XGeom?)
@@ -120,11 +127,58 @@ object XpsReader {
                     val x2 = ax(); val y2 = ay(); val x = ax(); val y = ay()
                     cmds += XCmd('C', floatArrayOf(x1, y1, x2, y2, x, y)); lastCtrlX = x2; lastCtrlY = y2; cx = x; cy = y; lastWasCubic = true }
                 'Q' -> { val x1 = ax(); val y1 = ay(); val x = ax(); val y = ay(); cmds += XCmd('Q', floatArrayOf(x1, y1, x, y)); cx = x; cy = y; lastWasCubic = false }
-                'A' -> { num(); num(); num(); num(); num(); val x = ax(); val y = ay(); cmds += XCmd('L', floatArrayOf(x, y)); cx = x; cy = y; lastWasCubic = false }
+                'A' -> {
+                    val rx = num(); val ry = num(); val rot = num(); val large = num() != 0f; val sweep = num() != 0f; val x = ax(); val y = ay()
+                    arc(cx, cy, rx, ry, rot, large, sweep, x, y).forEach { cmds += XCmd('C', it) }   // fix/files-index: real arcs
+                    cx = x; cy = y; lastWasCubic = false
+                }
                 else -> i++
             }
         }
         return XGeom(cmds, evenOdd)
+    }
+
+    /**
+     * fix/files-index: elliptical arc from (x0, y0) to (x, y) as cubic Béziers (SVG endpoint parameterisation, F.6.5).
+     * [sweep] true = clockwise on the y-down page (XPS SweepDirection="Clockwise"). A zero radius gives a line.
+     */
+    fun arc(x0: Float, y0: Float, rx0: Float, ry0: Float, rotDeg: Float, large: Boolean, sweep: Boolean, x: Float, y: Float): List<FloatArray> {
+        if (x0 == x && y0 == y) return emptyList()
+        var rx = kotlin.math.abs(rx0.toDouble()); var ry = kotlin.math.abs(ry0.toDouble())
+        if (rx < 1e-9 || ry < 1e-9) return listOf(floatArrayOf(x0, y0, x, y, x, y))
+        val phi = Math.toRadians(rotDeg.toDouble()); val cp = kotlin.math.cos(phi); val sp = kotlin.math.sin(phi)
+        val dx = (x0 - x) / 2.0; val dy = (y0 - y) / 2.0
+        val x1p = cp * dx + sp * dy; val y1p = -sp * dx + cp * dy
+        val lambda = (x1p * x1p) / (rx * rx) + (y1p * y1p) / (ry * ry)
+        if (lambda > 1) { val s = kotlin.math.sqrt(lambda); rx *= s; ry *= s }
+        val num = rx * rx * ry * ry - rx * rx * y1p * y1p - ry * ry * x1p * x1p
+        val den = rx * rx * y1p * y1p + ry * ry * x1p * x1p
+        var coef = if (den == 0.0) 0.0 else kotlin.math.sqrt((num / den).coerceAtLeast(0.0))
+        if (large == sweep) coef = -coef
+        val cxp = coef * rx * y1p / ry; val cyp = -coef * ry * x1p / rx
+        val cx = cp * cxp - sp * cyp + (x0 + x) / 2.0; val cy = sp * cxp + cp * cyp + (y0 + y) / 2.0
+        fun ang(ux: Double, uy: Double, vx: Double, vy: Double): Double {
+            val a = kotlin.math.atan2(ux * vy - uy * vx, ux * vx + uy * vy); return a
+        }
+        val t1 = ang(1.0, 0.0, (x1p - cxp) / rx, (y1p - cyp) / ry)
+        var dt = ang((x1p - cxp) / rx, (y1p - cyp) / ry, (-x1p - cxp) / rx, (-y1p - cyp) / ry)
+        if (!sweep && dt > 0) dt -= 2 * Math.PI else if (sweep && dt < 0) dt += 2 * Math.PI
+        val n = kotlin.math.ceil(kotlin.math.abs(dt) / (Math.PI / 2)).toInt().coerceAtLeast(1)
+        val step = dt / n
+        val k = 4.0 / 3.0 * kotlin.math.tan(step / 4)
+        val out = ArrayList<FloatArray>(n)
+        fun px(t: Double) = cx + rx * kotlin.math.cos(t) * cp - ry * kotlin.math.sin(t) * sp
+        fun py(t: Double) = cy + rx * kotlin.math.cos(t) * sp + ry * kotlin.math.sin(t) * cp
+        fun dxdt(t: Double) = -rx * kotlin.math.sin(t) * cp - ry * kotlin.math.cos(t) * sp
+        fun dydt(t: Double) = -rx * kotlin.math.sin(t) * sp + ry * kotlin.math.cos(t) * cp
+        var t = t1
+        for (i in 0 until n) {
+            val t2 = t + step
+            val ex = if (i == n - 1) x.toDouble() else px(t2); val ey = if (i == n - 1) y.toDouble() else py(t2)
+            out += floatArrayOf((px(t) + k * dxdt(t)).toFloat(), (py(t) + k * dydt(t)).toFloat(), (px(t2) - k * dxdt(t2)).toFloat(), (py(t2) - k * dydt(t2)).toFloat(), ex.toFloat(), ey.toFloat())
+            t = t2
+        }
+        return out
     }
 
     // ---- page markup
@@ -137,7 +191,7 @@ object XpsReader {
     private val Element.local: String get() = localName ?: tagName.substringAfter(':')
     private fun Element.a(name: String): String? = getAttribute(name).takeIf { it.isNotEmpty() }
 
-    private class Ctx(val pagePath: String, val res: MutableMap<String, Element>)
+    private class Ctx(val pagePath: String, val res: MutableMap<String, Element>) { var visualDepth = 0 }
 
     private fun resourceRef(v: String?): String? = v?.trim()?.let { Regex("""^\{StaticResource\s+([^}]+)}$""").find(it)?.groupValues?.get(1)?.trim() }
 
@@ -167,9 +221,35 @@ object XpsReader {
                 XBrush.Image(EpubParser.resolve(c.pagePath, src).first, vb, vp, matrix(e.a("Transform")) ?: propElement(e, "Transform")?.let { matrix(it.a("Matrix")) })
             }
             "LinearGradientBrush", "RadialGradientBrush" -> {
-                // first gradient stop as a flat colour (approximation)
-                val stops = propElement(e, "GradientStops")?.let { listOf(it) + kids(it.parentNode as Element) }.orEmpty()
-                stops.firstOrNull { it.local == "GradientStop" }?.let { color(it.a("Color")) }?.let { XBrush.Solid(it) }
+                // fix/files-index: real gradients (all stops, spread method, brush transform)
+                val holder = kids(e).firstOrNull { it.local == "${e.local}.GradientStops" }
+                val stops = (holder?.let { kids(it) }.orEmpty()).filter { it.local == "GradientStop" }
+                    .mapNotNull { s -> color(s.a("Color"))?.let { (s.a("Offset")?.toFloatOrNull() ?: 0f).coerceIn(0f, 1f) to it } }.sortedBy { it.first }
+                if (stops.isEmpty()) return null
+                val op = e.a("Opacity")?.toFloatOrNull()?.coerceIn(0f, 1f) ?: 1f
+                if (stops.size == 1) return XBrush.Solid(stops[0].second).takeIf { op >= 1f } ?: XBrush.Gradient(false, floatArrayOf(0f, 0f, 1f, 0f), stops + (1f to stops[0].second), 0, null, op)
+                val spread = when (e.a("SpreadMethod")) { "Reflect" -> 1; "Repeat" -> 2; else -> 0 }
+                val t = matrix(e.a("Transform")) ?: propElement(e, "Transform")?.let { matrix(it.a("Matrix")) }
+                if (e.local == "LinearGradientBrush") {
+                    val a = nums(e.a("StartPoint") ?: "0,0"); val b = nums(e.a("EndPoint") ?: "0,0")
+                    XBrush.Gradient(false, floatArrayOf(a.getOrElse(0) { 0f }, a.getOrElse(1) { 0f }, b.getOrElse(0) { 0f }, b.getOrElse(1) { 0f }), stops, spread, t, op)
+                } else {
+                    val c0 = nums(e.a("Center") ?: "0,0"); val o = nums(e.a("GradientOrigin") ?: (e.a("Center") ?: "0,0"))
+                    XBrush.Gradient(true, floatArrayOf(c0.getOrElse(0) { 0f }, c0.getOrElse(1) { 0f }, o.getOrElse(0) { 0f }, o.getOrElse(1) { 0f },
+                        e.a("RadiusX")?.toFloatOrNull() ?: 0f, e.a("RadiusY")?.toFloatOrNull() ?: 0f), stops, spread, t, op)
+                }
+            }
+            "VisualBrush" -> {
+                // fix/files-index: the visual is a Canvas / Path / Glyphs (inline or a resource)
+                if (c.visualDepth > 4) return null
+                val vb = nums(e.a("Viewbox") ?: "0,0,0,0"); val vp = nums(e.a("Viewport") ?: "0,0,0,0")
+                if (vb.size < 4 || vp.size < 4 || vb[2] <= 0f || vb[3] <= 0f) return null
+                val src = e.a("Visual")?.let { resourceRef(it) }?.let { c.res[it] } ?: propElement(e, "Visual") ?: return null
+                c.visualDepth++
+                val v = try { element(src, c, 0) } finally { c.visualDepth-- }
+                v ?: return null
+                XBrush.Visual(v, vb, vp, e.a("TileMode") ?: "None", matrix(e.a("Transform")) ?: propElement(e, "Transform")?.let { matrix(it.a("Matrix")) },
+                    e.a("Opacity")?.toFloatOrNull()?.coerceIn(0f, 1f) ?: 1f)
             }
             else -> null
         }
@@ -195,6 +275,7 @@ object XpsReader {
                     val start = nums(fig.a("StartPoint") ?: "0,0")
                     cmds += XCmd('M', floatArrayOf(start.getOrElse(0) { 0f }, start.getOrElse(1) { 0f }))
                     for (seg in kids(fig)) {
+                        val last = cmds.last().p.let { p -> if (p.size >= 2) p[p.size - 2] to p[p.size - 1] else start.getOrElse(0) { 0f } to start.getOrElse(1) { 0f } }
                         when (seg.local) {
                             "PolyLineSegment" -> nums(seg.a("Points") ?: "").let { p -> var k = 0; while (k + 1 < p.size) { cmds += XCmd('L', floatArrayOf(p[k], p[k + 1])); k += 2 } }
                             "LineSegment" -> nums(seg.a("Point") ?: "").takeIf { it.size >= 2 }?.let { cmds += XCmd('L', floatArrayOf(it[0], it[1])) }
@@ -202,7 +283,12 @@ object XpsReader {
                             "BezierSegment" -> { val p = nums((seg.a("Point1") ?: "") + " " + (seg.a("Point2") ?: "") + " " + (seg.a("Point3") ?: "")); if (p.size >= 6) cmds += XCmd('C', p.copyOf(6)) }
                             "PolyQuadraticBezierSegment" -> nums(seg.a("Points") ?: "").let { p -> var k = 0; while (k + 3 < p.size) { cmds += XCmd('Q', p.copyOfRange(k, k + 4)); k += 4 } }
                             "QuadraticBezierSegment" -> { val p = nums((seg.a("Point1") ?: "") + " " + (seg.a("Point2") ?: "")); if (p.size >= 4) cmds += XCmd('Q', p.copyOf(4)) }
-                            "ArcSegment" -> nums(seg.a("Point") ?: "").takeIf { it.size >= 2 }?.let { cmds += XCmd('L', floatArrayOf(it[0], it[1])) }
+                            "ArcSegment" -> nums(seg.a("Point") ?: "").takeIf { it.size >= 2 }?.let { pt ->
+                                // fix/files-index: the real elliptical arc instead of a straight line
+                                val size = nums(seg.a("Size") ?: "0,0")
+                                arc(last.first, last.second, size.getOrElse(0) { 0f }, size.getOrElse(1) { 0f }, seg.a("RotationAngle")?.toFloatOrNull() ?: 0f,
+                                    seg.a("IsLargeArc") == "true", seg.a("SweepDirection") == "Clockwise", pt[0], pt[1]).forEach { cmds += XCmd('C', it) }
+                            }
                         }
                     }
                     if (fig.a("IsClosed") == "true") cmds += XCmd('Z', FloatArray(0))

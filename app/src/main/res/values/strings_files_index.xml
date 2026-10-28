@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="fid_app_index">فهرس التطبيق</string>
+    <string name="fid_untitled">فهرس بلا عنوان</string>
+    <string name="fid_search_in">البحث في:</string>
+    <string name="fid_manage">الفهارس</string>
+    <string name="fid_new_index">فهرس جديد</string>
+    <string name="fid_rename">تغيير العنوان</string>
+    <string name="fid_title">عنوان الفهرس</string>
+    <string name="fid_save">حفظ</string>
+    <string name="fid_delete">حذف الفهرس</string>
+    <string name="fid_delete_confirm">حذف الفهرس «%1$s»؟ لن تُمس ملفاتك.</string>
+    <string name="fid_app_sources">مستندات التطبيق والملفات الأخيرة وملفات PDF على الجهاز</string>
+    <string name="fid_include_folders">المجلدات المضمّنة</string>
+    <string name="fid_no_folders">لا توجد مجلدات مضمّنة بعد.</string>
+    <string name="fid_add_folder">إضافة مجلد</string>
+    <string name="fid_remove_folder">إزالة المجلد</string>
+    <string name="fid_rebuild">إعادة البناء</string>
+    <string name="fid_hint">لكل فهرس قاعدة بيانات خاصة به. اختر في شاشة البحث الفهارس التي تبحث فيها؛ تُفهرس المجلدات المضمّنة مع كل إعادة بناء وكل 12 ساعة.</string>
+    <string name="fid_scope_signatures">التوقيعات</string>
+    <string name="fid_scope_layers">الطبقات</string>
+    <string name="fid_info_doc_basic">ملف Word 97 (‎.doc): تُحفظ العناوين والغامق والمائل والصور؛ تبقى الجداول نصاً ولا يُقرأ بقية التنسيق</string>
+</resources>

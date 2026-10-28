@@ -54,18 +54,18 @@ fun GlobalSearchScreen(nav: NavHostController, initial: String = "") {
     val progress by FullTextIndex.progressFlow.collectAsState()
     val showTitle = remember { com.smartdocs.editor.core.search.FcsIndexPrefs.showTitle(ctx) }   // fc-settings
     val nve = remember { com.smartdocs.editor.ui.nve.search.NveGlobalSearchState() }   // NVE-search: scopes, sort, filter, criteria, export
+    val fid = remember { FidIndexState(ctx) }   // fix/files-index: named indexes, the selected ones are searched
 
     LaunchedEffect(Unit) {
-        stats = withContext(Dispatchers.IO) { runCatching { index.stats() }.getOrNull() }
-        if ((stats?.docs ?: 0) == 0) IndexWorker.runNow(ctx)
+        if ((withContext(Dispatchers.IO) { runCatching { index.stats() }.getOrNull() }?.docs ?: 0) == 0) IndexWorker.runNow(ctx)
     }
-    LaunchedEffect(progress.running) { if (!progress.running) stats = withContext(Dispatchers.IO) { runCatching { index.stats() }.getOrNull() } }
-    LaunchedEffect(query, options, kinds, progress.running, nve.scope, nve.folder) {
+    LaunchedEffect(progress.running, fid.selected) { if (!progress.running) stats = runCatching { fid.stats() }.getOrNull() }
+    LaunchedEffect(query, options, kinds, progress.running, nve.scope, nve.folder, fid.selected) {
         if (query.isBlank()) { results = emptyList(); return@LaunchedEffect }
         delay(300)
         searching = true
         results = runCatching {
-            if (nve.scope == com.smartdocs.editor.ui.nve.search.NveScope.INDEX) index.search(query, options, kinds)
+            if (nve.scope == com.smartdocs.editor.ui.nve.search.NveScope.INDEX) fid.search(query, options, kinds)
             else nve.searchScope(ctx, query, options, kinds)
         }.getOrDefault(emptyList())
         searching = false
@@ -94,6 +94,7 @@ fun GlobalSearchScreen(nav: NavHostController, initial: String = "") {
                 }
             }
             com.smartdocs.editor.ui.nve.search.NveGlobalSearchBar(nve, query, shown)   // NVE-search
+            if (nve.scope == com.smartdocs.editor.ui.nve.search.NveScope.INDEX) FidIndexChips(fid)   // fix/files-index
             if (showOptions) SearchOptionsPanel(options, { options = it }, Modifier.padding(horizontal = 16.dp))
             if (progress.running) {
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
@@ -153,4 +154,6 @@ fun kindLabel(k: PartKind): String = stringResource(when (k) {
     PartKind.FIELD -> R.string.s5_scope_fields
     PartKind.ATTACHMENT -> R.string.s5_scope_attachments
     PartKind.METADATA -> R.string.fcs_m_scope_metadata
+    PartKind.SIGNATURE -> R.string.fid_scope_signatures
+    PartKind.LAYER -> R.string.fid_scope_layers
 })

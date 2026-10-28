@@ -17,6 +17,9 @@ object OpenAllText {
 
     fun isIndexable(f: File): Boolean = f.isFile && f.length() in 1..MAX_FILE && FileSniffer.byExtension(f.name) in INDEXED
 
+    /** fix/files-index: the same test by name and size (files of a SAF include folder). */
+    fun isIndexableName(name: String, size: Long): Boolean = size in 1..MAX_FILE && FileSniffer.byExtension(name) in INDEXED
+
     private fun plain(html: String) = HtmlFlow.plain(html)
 
     private fun flowText(blocks: List<FBlock>): String = blocks.joinToString("\n") { b ->

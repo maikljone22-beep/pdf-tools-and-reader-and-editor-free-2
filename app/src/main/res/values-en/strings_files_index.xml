@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="fid_app_index">App index</string>
+    <string name="fid_untitled">Untitled index</string>
+    <string name="fid_search_in">Search in:</string>
+    <string name="fid_manage">Indexes</string>
+    <string name="fid_new_index">New index</string>
+    <string name="fid_rename">Rename</string>
+    <string name="fid_title">Index title</string>
+    <string name="fid_save">Save</string>
+    <string name="fid_delete">Delete index</string>
+    <string name="fid_delete_confirm">Delete the index «%1$s»? Your files are not touched.</string>
+    <string name="fid_app_sources">App documents, recent files and device PDFs</string>
+    <string name="fid_include_folders">Include folders</string>
+    <string name="fid_no_folders">No include folders yet.</string>
+    <string name="fid_add_folder">Add folder</string>
+    <string name="fid_remove_folder">Remove folder</string>
+    <string name="fid_rebuild">Rebuild</string>
+    <string name="fid_hint">Each index has its own database. Choose on the search screen which indexes to search; include folders are indexed on every rebuild and every 12 hours.</string>
+    <string name="fid_scope_signatures">Signatures</string>
+    <string name="fid_scope_layers">Layers</string>
+    <string name="fid_info_doc_basic">Word 97 file (.doc): headings, bold, italic and pictures are kept; tables stay as text and other formatting is not read</string>
+</resources>

@@ -103,7 +103,7 @@ class DocumentRepository(private val context: Context, private val db: AppDataba
         if (moves.isEmpty()) return
         moves.forEach { (a, b) -> if (a.absolutePath != b.absolutePath) moveOriginKeys(a.absolutePath, b.absolutePath) }
         runCatching { db.withTransaction { metadata.moved(moves) } }
-        runCatching { val idx = com.smartdocs.editor.core.search.FullTextIndex.get(context); moves.forEach { (a, b) -> idx.movePath(a.absolutePath, b) } }
+        runCatching { com.smartdocs.editor.core.search.FullTextIndex.all(context).forEach { idx -> moves.forEach { (a, b) -> idx.movePath(a.absolutePath, b) } } }   // fix/files-index: every index
     }
 
     /** [rename] for Files: also carries recents, tags, bookmarks and the index entry of the file (or a folder's files). */
@@ -137,7 +137,7 @@ class DocumentRepository(private val context: Context, private val db: AppDataba
         if (!remove(f)) return@withContext false
         (files + f).distinct().forEach { forgetOrigin(it) }
         runCatching { db.withTransaction { metadata.deleted(files, keepUserData = toTrash) } }
-        runCatching { val idx = com.smartdocs.editor.core.search.FullTextIndex.get(context); files.forEach { idx.remove(it.absolutePath) } }
+        runCatching { com.smartdocs.editor.core.search.FullTextIndex.all(context).forEach { idx -> files.forEach { idx.remove(it.absolutePath) } } }   // fix/files-index: every index
         true
     }
 
