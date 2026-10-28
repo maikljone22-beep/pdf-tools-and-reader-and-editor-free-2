@@ -61,4 +61,5 @@
     <string name="cv9_out_copied">نُسخ %1$d ملف إلى المجلد</string>
     <string name="cv9_out_failed">تعذّر النسخ إلى المجلد</string>
     <string name="cv9_not_convertible">تعذّر تحويل %1$s إلى PDF</string>
+    <string name="cv9_split_more">إضافة ملفات أخرى للتقسيم</string>
 </resources>
