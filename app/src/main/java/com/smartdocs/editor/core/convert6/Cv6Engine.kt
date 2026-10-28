@@ -97,6 +97,8 @@ data class Cv6Opts(
     /** FINAL_CHECK_2 #3: creation preset (CreatePreset) and a tagged PDF when creating one. */
     val preset: Int = CreatePreset.STANDARD,
     val tagged: Boolean = false,
+    /** FINAL_CHECK_2 #9: Excel → PDF fit to page ([com.smartdocs.editor.core.office.ExcelFit] mode). */
+    val excelFit: Int = com.smartdocs.editor.core.office.ExcelFit.AUTO,
 )
 
 enum class Stage { WORK, OCR }

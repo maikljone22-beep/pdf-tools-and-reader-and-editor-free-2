@@ -104,12 +104,16 @@ internal class XlsxReader(private val pkg: OoxmlPackage, private val maxRows: In
     private fun readSheet(ref: SheetRef): SheetModel {
         val p = pkg.parser(ref.path) ?: return SheetModel(ref.name, emptyList(), emptyList(), emptyMap(), false, ref.path)
         val rows = ArrayList<SheetRow>(); val merges = ArrayList<MergeRange>(); val widths = HashMap<Int, Float>()
-        var rtl = false; var defW = 8.43f; var truncated = false
+        var rtl = false; var defW = 8.43f; var truncated = false; var defH = 15f
+        var setup: Map<String, String>? = null; var setupPr: Map<String, String>? = null
+        fun attrs() = (0 until p.attributeCount).associate { p.getAttributeName(it) to p.getAttributeValue(it) }
         if (!p.seek("worksheet")) return SheetModel(ref.name, rows, merges, widths, false, ref.path)
         p.forEachChild { n ->
             when (n) {
                 "sheetViews" -> p.forEachChild { c -> if (c == "sheetView") rtl = rtl || p.attr("rightToLeft").let { it == "1" || it == "true" } }
-                "sheetFormatPr" -> p.attr("defaultColWidth")?.toFloatOrNull()?.let { defW = it }
+                "sheetFormatPr" -> { p.attr("defaultColWidth")?.toFloatOrNull()?.let { defW = it }; p.attr("defaultRowHeight")?.toFloatOrNull()?.let { if (it > 0) defH = it } }
+                "sheetPr" -> p.forEachChild { c -> if (c == "pageSetUpPr") setupPr = attrs() }
+                "pageSetup" -> setup = attrs()
                 "cols" -> p.forEachChild { c ->
                     if (c == "col") {
                         val min = (p.attr("min")?.toIntOrNull() ?: 1) - 1; val max = (p.attr("max")?.toIntOrNull() ?: 1) - 1
@@ -139,7 +143,7 @@ internal class XlsxReader(private val pkg: OoxmlPackage, private val maxRows: In
                 "mergeCells" -> p.forEachChild { c -> if (c == "mergeCell") p.attr("ref")?.let { CellRef.range(it) }?.let { merges.add(it) } }
             }
         }
-        return SheetModel(ref.name, rows, merges, widths, rtl, ref.path, defW, truncated)
+        return SheetModel(ref.name, rows, merges, widths, rtl, ref.path, defW, truncated, SheetPrint.of(setup, setupPr), defH)
     }
 
     private fun readCell(p: org.xmlpull.v1.XmlPullParser, col: Int): SheetCell? {

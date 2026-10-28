@@ -144,6 +144,10 @@ data class SheetModel(
     val partPath: String = "",
     val defaultColWidth: Float = 8.43f,
     val truncated: Boolean = false,
+    /** The sheet's own print setup (FINAL_CHECK_2 #9), null when it has none. */
+    val print: SheetPrint? = null,
+    /** Default row height in points (`sheetFormatPr defaultRowHeight`). */
+    val defaultRowPt: Float = 15f,
 ) {
     val maxCol: Int get() = rows.maxOfOrNull { r -> r.cells.maxOfOrNull { it.col } ?: -1 } ?: -1
     val maxRow: Int get() = rows.maxOfOrNull { it.index } ?: -1

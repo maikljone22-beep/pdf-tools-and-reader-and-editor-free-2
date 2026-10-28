@@ -187,6 +187,12 @@ private fun OptionsBody(conv: Conv, inputCount: Int, o: Cv6Opts, onChange: (Cv6O
     if (Opt.GRAY in opts && !o.bw) SwitchRow(stringResource(R.string.cv6_gray), o.gray) { onChange(o.copy(gray = it)) }
     if (Opt.BW in opts) SwitchRow(stringResource(R.string.pc_bw), o.bw, stringResource(R.string.pc_bw_sub)) { onChange(o.copy(bw = it)) }
     if (Opt.FORM_FIELDS in opts) SwitchRow(stringResource(R.string.cv9_form_fields), o.recognizeFields, stringResource(R.string.cv9_form_fields_sub)) { onChange(o.copy(recognizeFields = it)) }
+    if (Opt.EXCEL_FIT in opts) {
+        // FINAL_CHECK_2 #9: Excel fit to page
+        FieldLabel(stringResource(R.string.cv9_xfit))
+        ChoiceChips(listOf(0, 1, 2, 3), o.excelFit, { when (it) { 0 -> stringResource(R.string.cv9_xfit_sheet); 1 -> stringResource(R.string.cv9_xfit_actual)
+            2 -> stringResource(R.string.cv9_xfit_cols); else -> stringResource(R.string.cv9_xfit_page) } }) { onChange(o.copy(excelFit = it)) }
+    }
     if (Opt.CREATE in opts) {
         // FINAL_CHECK_2 #3: creation presets and a tagged PDF
         FieldLabel(stringResource(R.string.cv9_preset))
