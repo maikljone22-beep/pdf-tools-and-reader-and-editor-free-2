@@ -32,9 +32,26 @@ fun NveDocBanners(state: ReaderState, onOpenTool: (String) -> Unit, modifier: Mo
     val hits by produceState<List<NoticeHit>>(emptyList(), f, state.password, state.renderVersion, state.session != null) {
         value = if (f == null || state.session == null) emptyList() else runCatching { readDoc(f, state.password) { DocNotices.detect(it) } }.getOrDefault(emptyList())
     }
-    val shown = hits.filter { it.kind.name !in n.dismissedBanners }
+    // tab-view-core V-18: JavaScript (action inspector banner), pending redactions (redaction marks banner) and portfolios
+    // (portfolio prompt) are already announced elsewhere; dismissals are remembered per file; the rest is one notice
+    // that expands
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val prefs = remember { ctx.getSharedPreferences("tvc_doc_banners", android.content.Context.MODE_PRIVATE) }
+    val fileKey = f?.absolutePath?.hashCode()?.let { Integer.toHexString(it) } ?: ""
+    var stored by remember(fileKey) { mutableStateOf(prefs.getStringSet(fileKey, emptySet()) ?: emptySet()) }
+    val elsewhere = setOf(DocNotice.JAVASCRIPT, DocNotice.PENDING_REDACTIONS, DocNotice.PORTFOLIO)
+    val shownAll = hits.filter { it.kind !in elsewhere && it.kind.name !in n.dismissedBanners && it.kind.name !in stored }
+    var expanded by remember(fileKey) { mutableStateOf(false) }
+    val shown = if (expanded) shownAll else shownAll.take(1)
+    fun dismiss(kind: String) {
+        n.dismissedBanners += kind
+        stored = stored + kind; prefs.edit().putStringSet(fileKey, stored).apply()
+    }
     AnimatedVisibility(shown.isNotEmpty(), modifier) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            if (shownAll.size > 1) TextButton(onClick = { expanded = !expanded }, Modifier.align(Alignment.End)) {
+                Text(if (expanded) stringResource(R.string.tvc_notices_less) else stringResource(R.string.tvc_notices_more, shownAll.size - 1))
+            }
             shown.forEach { h ->
                 val (icon, text) = when (h.kind) {
                     DocNotice.FORMS -> Icons.Default.Checklist to stringResource(R.string.np_bn_forms, h.count)
@@ -56,7 +73,7 @@ fun NveDocBanners(state: ReaderState, onOpenTool: (String) -> Unit, modifier: Mo
                     DocNotice.PORTFOLIO -> stringResource(R.string.np_bn_portfolio_act) to { onOpenTool("portfolio") }
                     else -> null
                 }
-                Banner(icon, text, action) { n.dismissedBanners += h.kind.name }
+                Banner(icon, text, action) { dismiss(h.kind.name) }
             }
         }
     }

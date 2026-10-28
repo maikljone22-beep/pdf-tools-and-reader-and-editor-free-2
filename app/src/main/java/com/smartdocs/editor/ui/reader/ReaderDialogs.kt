@@ -226,42 +226,4 @@ private fun InfoRow(label: String, value: String) {
     }
 }
 
-/**
- * Reflow: the page text in a scrollable column. Font scale \u00D71.25 / \u00D70.8 within 1\u20138 (reference values),
- * colours follow the page-colour preset (background + matching text colour) or night mode.
- */
-@Composable
-fun ReflowView(state: ReaderState, modifier: Modifier = Modifier) {
-    val page = state.currentPage
-    val vx = state.vx
-    val text by produceState("", page, state.session) { value = state.pageText(page) }
-    val rtl = text.any { it in '\u0600'..'\u06FF' }
-    val fontSp = com.smartdocs.editor.ui.reader.view.ViewExtras.REFLOW_BASE_SP * vx.reflowScale
-    val bg = if (state.nightMode) Color(0xFF121212) else Color(state.pageColor or 0xFF000000L)
-    val fg = if (state.nightMode) Color(0xFFE0E0E0) else Color(com.smartdocs.editor.ui.reader.view.pageTextColor(state.pageColor) or 0xFF000000L)
-    Column(modifier.fillMaxSize().background(bg)) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = { vx.reflowSmaller() }, enabled = vx.reflowScale > com.smartdocs.editor.ui.reader.view.ViewExtras.REFLOW_MIN + 0.001f) {
-                Icon(Icons.Default.TextDecrease, stringResource(R.string.vw_font_smaller))
-            }
-            Text("\u00D7%.2f".format(java.util.Locale.US, vx.reflowScale), style = MaterialTheme.typography.labelMedium)
-            IconButton(onClick = { vx.reflowLarger() }, enabled = vx.reflowScale < com.smartdocs.editor.ui.reader.view.ViewExtras.REFLOW_MAX - 0.001f) {
-                Icon(Icons.Default.TextIncrease, stringResource(R.string.vw_font_larger))
-            }
-            Spacer(Modifier.weight(1f))
-            IconButton(onClick = { if (page > 0) state.jumpTo(page - 1) }) { Icon(Icons.Default.KeyboardArrowUp, stringResource(R.string.previous)) }
-            Text(stringResource(R.string.page_of, page + 1, state.pageCount), style = MaterialTheme.typography.labelMedium)
-            IconButton(onClick = { if (page < state.pageCount - 1) state.jumpTo(page + 1) }) { Icon(Icons.Default.KeyboardArrowDown, stringResource(R.string.next)) }
-            IconButton(onClick = { state.reflow = false }) { Icon(Icons.Default.Close, stringResource(R.string.close)) }
-        }
-        CopyableIf(state.guard.allows(com.smartdocs.editor.core.security.DocAction.COPY)) {   // nitro-protect2
-            Text(
-                text.ifBlank { stringResource(R.string.ocr_no_text) },
-                Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
-                fontSize = fontSp.sp, lineHeight = (fontSp * 1.6f).sp,
-                textAlign = if (rtl) TextAlign.Right else TextAlign.Left,
-                color = fg,
-            )
-        }
-    }
-}
+// tab-view-core V-23: the unused page-text ReflowView was removed (view5 ReflowReader replaces it)

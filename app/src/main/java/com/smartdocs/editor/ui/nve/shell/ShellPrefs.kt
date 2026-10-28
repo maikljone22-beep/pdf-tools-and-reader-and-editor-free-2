@@ -30,8 +30,9 @@ object NveShellPrefs {
     fun setCustomTabName(ctx: Context, t: String) { prefs(ctx).edit().putString("custom_tab", t.trim()).apply(); bump() }
 
     // ---- auto recovery ----
-    fun recoveryMinutes(ctx: Context): Int = prefs(ctx).getInt("recovery_min", 5)
-    fun setRecoveryMinutes(ctx: Context, m: Int) { prefs(ctx).edit().putInt("recovery_min", m).apply(); bump() }
+    // tab-view-core V-12: ONE recovery interval (Settings → more preferences and the shell settings edit the same value)
+    fun recoveryMinutes(@Suppress("UNUSED_PARAMETER") ctx: Context): Int = com.smartdocs.editor.core.data.NpfPrefs.recoveryMinutes
+    fun setRecoveryMinutes(@Suppress("UNUSED_PARAMETER") ctx: Context, m: Int) { com.smartdocs.editor.core.data.NpfPrefs.setInt(com.smartdocs.editor.core.data.NpfPrefs.K.RECOVERY_MIN, m); bump() }
 }
 
 /** SHL-3: reader toolbar customisation read by the reader (tabs order / hidden tabs / hidden View chips). */

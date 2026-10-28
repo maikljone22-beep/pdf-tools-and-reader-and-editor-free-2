@@ -846,7 +846,7 @@ class ReaderState(
     fun runSearch(query: String) {
         searchQuery = query
         searchJob?.cancel()
-        if (query.isBlank()) { searchHits = emptyList(); searchIndex = -1; return }
+        if (query.isBlank()) { searchHits = emptyList(); searchIndex = -1; searching = false; return }   // tab-view-core V-20
         val s = session ?: return
         searchJob = scope.launch {
             searching = true
@@ -872,7 +872,7 @@ class ReaderState(
         jumpTo(searchHits[searchIndex].page)
     }
 
-    fun closeSearch() { searchOpen = false; searchHits = emptyList(); searchIndex = -1; searchQuery = "" }
+    fun closeSearch() { searchJob?.cancel(); searching = false; searchOpen = false; searchHits = emptyList(); searchIndex = -1; searchQuery = "" }   // tab-view-core V-20
 
     // ================= tools =================
 

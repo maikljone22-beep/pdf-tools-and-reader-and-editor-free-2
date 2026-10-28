@@ -7,4 +7,6 @@
     <string name="tvc_leave">إغلاق المستند</string>
     <string name="tvc_reading_bookmark">إشارة قراءة</string>
     <string name="tvc_info_panel">لوحة المعلومات</string>
+    <string name="tvc_notices_more">إشعارات أخرى (%1$d)</string>
+    <string name="tvc_notices_less">إخفاء الإشعارات الأخرى</string>
 </resources>

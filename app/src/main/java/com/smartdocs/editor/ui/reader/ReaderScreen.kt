@@ -82,13 +82,14 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
     var showGoTo by remember { mutableStateOf(false) }
     var showDiscard by remember { mutableStateOf(false) }
     var showStamps by remember { mutableStateOf(false) }
-    var aiText by remember { mutableStateOf<String?>(null) }
     var showAi by remember { mutableStateOf(false) }
     var textTools by remember { mutableStateOf<Pair<TextSelection, com.smartdocs.editor.core.ai5.TextAction?>?>(null) }
     var contentEdit by remember { mutableStateOf(false) }          // MODULE_edit: real text/image editing
     var prompt by remember { mutableStateOf<TextPrompt?>(null) }
     var menu by remember { mutableStateOf(false) }
     var tabsMenu by remember { mutableStateOf(false) }      // tab-view-core V-03: tabs menu opened from ⋮
+    // tab-view-core V-29: a tool picked in full screen (keyboard shortcut) brings the bars back, so taps keep working
+    LaunchedEffect(state.tool) { if (state.tool != null) chrome = true }
     var showHistory by remember { mutableStateOf(false) }           // MODULE_history: unified undo / redo sheet
     val tts by ReadAloudController.status.collectAsState()
     SideEffect { com.smartdocs.editor.core.voice.AiVoiceEngine.aiSwitchOn = settings.aiEnabled }   // ai6: AI switch off -> no AI voice in read aloud
@@ -260,7 +261,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                 if (state.dirty) saveThen(go) else go()      // tools read the file: pending edits go in first
                 }
             },
-            ai = { if (com.smartdocs.editor.core.gaps6.AiGate.enabled(settings) && state.guard.check(com.smartdocs.editor.core.security.DocAction.COPY)) { aiText = null; showAi = true } },   // nav-prefs (PREF-8)
+            ai = { if (com.smartdocs.editor.core.gaps6.AiGate.enabled(settings) && state.guard.check(com.smartdocs.editor.core.security.DocAction.COPY)) { showAi = true } },   // nav-prefs (PREF-8)
             quick = { qa ->
                 quick.open(qa,
                     onShare = { showShare5 = true },   // share6: Share5Sheet
@@ -361,6 +362,8 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                     }
                     if (state.session != null) BottomToolbar(state, actions)
                 }
+                // tab-view-core V-29: in full screen the read-aloud controls stay reachable
+                else if (tts.state != ReadAloudController.State.IDLE && ReaderAi6.ownsTts(state)) TtsBar(tts) { r -> ReadAloudController.setRate(r); scope.launch { app.settings.update { it.copy(ttsRate = r) } } }
             },
         ) { pad ->
             Row(Modifier.fillMaxSize().padding(pad)) {
@@ -386,8 +389,8 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                             val openLink: (com.smartdocs.editor.core.pdf.PageLink) -> Unit = { l -> if (l.destPage == null && l.uri.isNullOrBlank()) scope.launch { runCatching { com.smartdocs.editor.ui.edit5.followFileLinkAt(state, state.currentPage, l.bounds.centerX(), l.bounds.centerY()) { f, p -> nav.navigate(Routes.reader(android.net.Uri.fromFile(f).toString(), p)) } } } else if (l.destPage == null && com.smartdocs.editor.ui.nve.NveLinks.openWeb(state, l.uri)) Unit /* NVE: show the URL first */ else ReaderIntents.openLink(ctx, l) { p -> state.jumpTo(p) } }
                             // MODULE_pageflip6: page-turn / horizontal-scroll view modes replace the page list when chosen
                             if (com.smartdocs.editor.ui.pageflip.PageFlipController.of(state).hosts())
-                                com.smartdocs.editor.ui.pageflip.PageFlipHost(state, chrome, onTapCenter = { if (state.tool == null) chrome = !chrome }, onOpenLink = openLink, onPrompt = { prompt = it })
-                            else PageView(state, onTapCenter = { if (state.tool == null) chrome = !chrome }, onOpenLink = openLink, onPrompt = { prompt = it })
+                                com.smartdocs.editor.ui.pageflip.PageFlipHost(state, chrome, onTapCenter = { if (state.tool == null || !chrome) chrome = !chrome }, onOpenLink = openLink, onPrompt = { prompt = it })
+                            else PageView(state, onTapCenter = { if (state.tool == null || !chrome) chrome = !chrome }, onOpenLink = openLink, onPrompt = { prompt = it })
                             com.smartdocs.editor.ui.view5.View5PageOverlays(state)
                             com.smartdocs.editor.ui.nve.NvePageOverlays(state)      // NVE: marquee zoom, column select, snapshot, paste, guides
                             com.smartdocs.editor.ui.nve.articles.NveArticleDrawOverlay(state,      // NVE: article boxes (draw / read)
@@ -462,7 +465,12 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
         confirmButton = { TextButton(onClick = { nveRevert = false; state.file?.let { com.smartdocs.editor.ui.nve.shell.NveRecovery.discard(ctx, it) }; scope.launch { state.revertToSaved() } }) { Text(stringResource(R.string.ok)) } },
         dismissButton = { TextButton(onClick = { nveRevert = false }) { Text(stringResource(R.string.cancel)) } })
     if (showGoTo) GoToPageDialog(state.currentPage, state.pageCount, onGo = { state.jumpTo(it); showGoTo = false }, onDismiss = { showGoTo = false }, labels = pageLabels)
-    if (showViewMode) ViewModeSheet(state, tablet = tablet) { showViewMode = false; scope.launch { app.settings.update { it.copy(continuousScroll = state.viewMode == ViewMode.CONTINUOUS, nightMode = state.nightMode) } } }
+    if (showViewMode) ViewModeSheet(state, tablet = tablet) { showViewMode = false; com.smartdocs.editor.core.data.NpfPrefs.setString("last_layout", state.viewMode.name); scope.launch { app.settings.update { it.copy(continuousScroll = state.viewMode == ViewMode.CONTINUOUS, nightMode = state.nightMode) } } }
+    // tab-view-core V-17: night mode is remembered however it is switched (chip, page-colour sheet, reflow, Ctrl+N, command)
+    LaunchedEffect(state) {
+        var first = true
+        snapshotFlow { state.nightMode }.collect { n -> if (first) first = false else app.settings.update { it.copy(nightMode = n) } }
+    }
     com.smartdocs.editor.ui.pageflip.PageFlipSheetHost(state)   // MODULE_pageflip6: page turning settings + remembered reading mode
     if (showPageColor) PageColorSheet(state, onPersist = { c -> scope.launch { app.settings.update { it.copy(pageColor = c) } } }) { showPageColor = false }
     if (showAutoFlip) AutoFlipDialog(state) { showAutoFlip = false }
@@ -493,7 +501,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
     if (showAi) state.file?.let { f -> com.smartdocs.editor.ui.ai5.DocAssistantSheet(agentHost, f, state.password, state.pageCount, { state.pageText(it) },
         onCitation = { c -> showAi = false; if (c.filePath == f.absolutePath) ReaderAi6.highlightQuote(scope, state, c.page, c.quote) else nav.navigate(com.smartdocs.editor.ui.ai5.citationRoute(c)) },   // ai6 (B1): highlight the passage
         onDismiss = { showAi = false },
-        initialQuestion = aiText?.let { "\u0627\u0634\u0631\u062D \u0647\u0630\u0627 \u0627\u0644\u0646\u0635:\n$it" },
+        // tab-view-core V-23: the never-set aiText and its hard-coded Arabic question are gone
         onPodcast = { showAi = false; nav.navigate(Routes.tool("podcast", state.fileUri)) }, currentPage = state.currentPage) }   // ai6: snapshot page
     textTools?.let { (sel, act) -> com.smartdocs.editor.ui.ai5.TextToolsSheet(sel.text, act, docContext = null,
         onReplace = if (sel.rects.isNotEmpty() && state.session != null) ({ t: String -> ReaderAi6.replaceSelection(ctx, state, quick, sel, t) }) else null,   // ai6 (B11): replace in the document, undoable
@@ -508,7 +516,18 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
     com.smartdocs.editor.ui.reader.annot.Annot2Dialogs(state, nav, snack)      // MODULE_annot2 pickers & dialogs
     if (state.session != null && !state.needPassword) com.smartdocs.editor.ui.onboarding.ReaderCoachMarks()   // share6
     // share6: share sheet (whole/page/range, compressed, without comments, flattened, images, XFDF, e-mail)
-    if (showShare5) { var f by remember { mutableStateOf<java.io.File?>(null) }; LaunchedEffect(Unit) { f = outputFile() }
+    // tab-view-core V-14: a failed export is an error message (not a crash), Share works again afterwards, and old temp
+    // "share" copies are deleted (not the new one: the receiving app may still be reading it)
+    if (showShare5) { var f by remember { mutableStateOf<java.io.File?>(null) }
+        LaunchedEffect(Unit) {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                val old = System.currentTimeMillis() - 60 * 60_000L
+                app.documents.tempDir.listFiles { x -> x.name.startsWith("share_") && x.lastModified() < old }?.forEach { it.delete() }
+            }
+            val r = runCatching { outputFile() }
+            r.onFailure { e -> if (e is kotlinx.coroutines.CancellationException) throw e; state.error = e.message ?: e.toString(); showShare5 = false }
+            r.onSuccess { out -> if (out == null) showShare5 = false else f = out }
+        }
         f?.let { com.smartdocs.editor.ui.share5.Share5Sheet(it, if (it == state.file) state.password else null, state.currentPage, nav) { showShare5 = false } } }
     com.smartdocs.editor.ui.view5.View5ReaderHost(state, nav, snack, actions) { outputFile() }
     com.smartdocs.editor.ui.nve.NveReaderHost(state, nav, snack, actions)     // NVE (feature/nitro-view-edit)
