@@ -131,9 +131,45 @@ class VideoPdfTest {
             val info = VideoPdf.detect(list[0])!!
             assertEquals(VideoPdf.Options(), info.options)
             assertEquals("video/webm", info.mime)
-            assertNull(list[0].cosObject.getDictionaryObject(COSName.getPDFName("AA")))
+            // no play action on page open / visible; the default stop actions on page hidden / closed (OP 1)
+            val aa = d(list[0].cosObject.getDictionaryObject(COSName.getPDFName("AA")))
+            assertNull(aa.getDictionaryObject(COSName.getPDFName("PV"))); assertNull(aa.getDictionaryObject(COSName.getPDFName("PO")))
+            assertEquals(1, d(aa.getDictionaryObject(COSName.getPDFName("PI"))).getInt(COSName.getPDFName("OP")))
             assertNull(VideoPdf.posterJpeg(list[0].cosObject))
         }
+    }
+
+    /** FINAL_CHECK_2 #15: volume, repeat, keep open, full screen, start trigger, stop actions, poster mode, alt text. */
+    @Test fun playbackSettingsAndMediaActionsRoundTrip() {
+        val out = tmp.newFile("props.pdf")
+        val o = VideoPdf.Options(autoplay = true, volume = 40, repeat = 3, keepOpen = false, fullscreen = true, startOn = VideoPdf.START_OPEN,
+            stopWhenHidden = true, poster = VideoPdf.POSTER_NONE, alt = "A lab demo")
+        PDDocument().use { doc ->
+            doc.addPage(PDPage())
+            VideoPdf.writeScreen(doc, doc.getPage(0), 10f, 10f, 170f, 100f, fakeVideo(1000), "demo.mp4", "video/mp4", o, poster = null)
+            doc.save(out)
+        }
+        val (doc, list) = annots(out)
+        doc.use {
+            val cos = list[0].cosObject
+            assertEquals(o, VideoPdf.detect(list[0])!!.options)
+            assertEquals("A lab demo", cos.getString(COSName.CONTENTS))
+            val aa = d(cos.getDictionaryObject(COSName.getPDFName("AA")))
+            assertNotNull(aa.getDictionaryObject(COSName.getPDFName("PO"))); assertNull(aa.getDictionaryObject(COSName.getPDFName("PV")))
+            assertEquals(1, d(aa.getDictionaryObject(COSName.getPDFName("PC"))).getInt(COSName.getPDFName("OP")))
+            val r = d(d(cos.getDictionaryObject(COSName.A)).getDictionaryObject(COSName.getPDFName("R")))
+            val be = d(d(r.getDictionaryObject(COSName.P)).getDictionaryObject(COSName.getPDFName("BE")))
+            assertEquals(40, be.getInt(COSName.getPDFName("V"))); assertEquals(3, be.getInt(COSName.getPDFName("RC")))
+            assertEquals(1, d(d(r.getDictionaryObject(COSName.getPDFName("SP"))).getDictionaryObject(COSName.getPDFName("BE"))).getInt(COSName.getPDFName("W")))
+            val alt = d(r.getDictionaryObject(COSName.C)).getDictionaryObject(COSName.getPDFName("Alt")) as COSArray
+            assertEquals("A lab demo", (alt.getObject(1) as COSString).string)
+            // without our private /SDVideo keys (another viewer's file) the same settings come from the standard ones
+            cos.removeItem(VideoPdf.SD_VIDEO)
+            val std = VideoPdf.detect(list[0])!!.options
+            assertEquals(40, std.volume); assertEquals(3, std.repeat); assertTrue(std.fullscreen)
+            assertEquals(VideoPdf.START_OPEN, std.startOn); assertTrue(std.stopWhenHidden); assertEquals("A lab demo", std.alt)
+        }
+        assertEquals(0.4f, o.gain, 1e-4f); assertEquals(0f, o.copy(muted = true).gain, 1e-4f)
     }
 
     @Test fun oldFileAttachmentFormIsAVideo() {
@@ -257,7 +293,7 @@ class VideoPdfTest {
             val v = VideoPdf.detect(list[0])!!
             assertEquals(VideoPdf.Form.SCREEN, v.form); assertFalse(v.ours); assertFalse(v.hasAppearance)
             assertEquals("video/quicktime", v.mime); assertEquals("x.mov", v.name)
-            assertEquals(VideoPdf.Options(autoplay = true, loop = true, muted = true, controls = true), v.options)
+            assertEquals(VideoPdf.Options(autoplay = true, loop = true, muted = true, controls = true, startOn = VideoPdf.START_OPEN, stopWhenHidden = false), v.options)
             assertArrayEquals(bytes, ByteArrayOutputStream().also { VideoPdf.copyVideo(list[0].cosObject, it) }.toByteArray())
             assertNull(VideoPdf.detect(list[1]))
             assertEquals(0, VideoPdf.findIndex(it.getPage(0), 5, "Screen", floatArrayOf(0f, 0f, 200f, 100f)))
