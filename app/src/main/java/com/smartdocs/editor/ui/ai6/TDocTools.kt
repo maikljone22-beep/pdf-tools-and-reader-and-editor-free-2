@@ -90,10 +90,13 @@ internal suspend fun indexWithPasswords(ctx: Context, files: List<File>, passwor
 
 // ------------------------------------------------------------------ B13 / B15: slides + narrated video
 
-/** Generate a presentation from [files] (one document or a Space) and export it as PPTX / PDF / Markdown / narrated MP4. */
+/**
+ * Generate a presentation from [files] (one document or a Space) and export it as PPTX / PDF / Markdown / narrated MP4.
+ * aor: [onExported] gets every exported file (a Space keeps them in its crafts list).
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SlidesSheet(nav: NavHostController, files: List<File>, onDismiss: () -> Unit, passwords: Map<String, String> = emptyMap()) {
+fun SlidesSheet(nav: NavHostController, files: List<File>, onDismiss: () -> Unit, passwords: Map<String, String> = emptyMap(), onExported: ((File) -> Unit)? = null) {
     val ctx = LocalContext.current
     val app = LocalApp.current
     val settings = LocalSettings.current
@@ -109,6 +112,10 @@ fun SlidesSheet(nav: NavHostController, files: List<File>, onDismiss: () -> Unit
     var other by remember { mutableStateOf<File?>(null) }
     val base = files.firstOrNull()?.nameWithoutExtension ?: "slides"
     val working = stringResource(R.string.a5_working)
+    // aor (B15): narrate the video with the AI voice (server TTS) when AI voices are available; device TTS otherwise
+    val aiVoiceOk = com.smartdocs.editor.core.voice.AiSpeech.available(settings)
+    var aiVoice by remember { mutableStateOf(aiVoiceOk) }
+    var voiceNote by remember { mutableStateOf<String?>(null) }
 
     fun export(kind: String) {
         val d = deck ?: return
@@ -121,11 +128,15 @@ fun SlidesSheet(nav: NavHostController, files: List<File>, onDismiss: () -> Unit
                         "pdf" -> app.documents.uniqueFile(app.documents.docsDir, base + "_slides", "pdf").also { f -> SlideRender.pdf(d, f) }
                         "md" -> app.documents.uniqueFile(app.documents.docsDir, base + "_slides", "md").also { f -> f.writeText(SlidesGen.markdown(d)) }
                         else -> app.documents.uniqueFile(app.documents.docsDir, base + "_video", "mp4").also { f ->
-                            VideoSummary.make(ctx, d, f, settings.ttsRate) { p -> busy = ctx.getString(R.string.ai6t_video_progress, p.step + 1, p.total) }
+                            val voice = if (aiVoice && aiVoiceOk) com.smartdocs.editor.core.voice.VoicePrefs.load(ctx).voice else null
+                            VideoSummary.make(ctx, d, f, settings.ttsRate, aiVoice = voice,
+                                usedAi = { used -> voiceNote = if (voice != null && !used) ctx.getString(R.string.aor_video_device_voice) else null },
+                            ) { p -> busy = ctx.getString(R.string.ai6t_video_progress, p.step + 1, p.total) }
                         }
                     }
                 }
                 if (kind == "pptx" || kind == "pdf") pdfOrPptx = f else other = f
+                onExported?.invoke(f)
             } catch (e: CancellationException) { throw e } catch (e: Throwable) { error = e.message ?: e.toString() } finally { busy = null }
         }
     }
@@ -170,7 +181,15 @@ fun SlidesSheet(nav: NavHostController, files: List<File>, onDismiss: () -> Unit
                     FilledTonalButton(enabled = busy == null, onClick = { export("mp4") }) { Text(stringResource(R.string.ai6t_video)) }
                     TextButton(enabled = busy == null, onClick = { deck = null }) { Text(stringResource(R.string.ai6t_again)) }
                 }
-                Text(stringResource(R.string.ai6t_video_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(if (aiVoiceOk) R.string.aor_video_note else R.string.ai6t_video_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (aiVoiceOk) Row(verticalAlignment = Alignment.CenterVertically) {
+                    Switch(aiVoice, { aiVoice = it }, enabled = busy == null); Spacer(Modifier.width(8.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(stringResource(R.string.aor_ai_voice), style = MaterialTheme.typography.bodyMedium)
+                        Text(stringResource(R.string.aor_ai_voice_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                voiceNote?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.tertiary) }
                 other?.let { TFileActions(it) }
             }
             busy?.let { Row(verticalAlignment = Alignment.CenterVertically) { CircularProgressIndicator(Modifier.size(20.dp)); Spacer(Modifier.width(8.dp)); Text(it) } }
