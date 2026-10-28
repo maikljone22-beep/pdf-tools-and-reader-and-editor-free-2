@@ -132,7 +132,8 @@ internal class Cv6Engine2(private val ctx: Context, private val docs: DocumentRe
         val notes = ArrayList<String>()
         suspend fun one(f: File, target: File): File =
             if (conv.id == "md_pdf") ToPdf6.flowToPdf(ctx, withContext(Dispatchers.IO) { MdFlow.parse(ToPdf.readText(f), f.nameWithoutExtension, resolve = ToPdf6.siblingResolver(f)) }, target)
-            else ToPdf6.convert(ctx, f, target, o.setup, o.quality, bookmarks = o.bookmarks, speakerNotes = o.speakerNotes && conv.id == "ppt_pdf") { notes += it }
+            else ToPdf6.convert(ctx, f, target, o.setup, o.quality, bookmarks = o.bookmarks, speakerNotes = o.speakerNotes && conv.id == "ppt_pdf",
+                cellComments = o.cellComments && conv.id == "excel_pdf", slideRange = if (conv.id == "ppt_pdf") o.slideRange else "", hiddenSlides = o.hiddenSlides || conv.id != "ppt_pdf") { notes += it }
         if (inputs.size > 1 && o.merge) {
             val target = out(inputs.first().nameWithoutExtension + "_" + ctx.getString(R.string.cv6_combined_suffix), "pdf")
             if (conv.id == "images_pdf" || conv.id == "tiff_pdf") {

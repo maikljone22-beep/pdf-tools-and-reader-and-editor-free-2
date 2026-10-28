@@ -174,7 +174,9 @@ sealed class SlideShape {
     data class Table(override val x: Long, override val y: Long, override val w: Long, override val h: Long, val rows: List<List<List<SlideParagraph>>>, val colWidths: List<Long>) : SlideShape()
 }
 
-data class SlideModel(val width: Long, val height: Long, val shapes: List<SlideShape>, val background: String? = null, val notes: String? = null)
+data class SlideModel(val width: Long, val height: Long, val shapes: List<SlideShape>, val background: String? = null, val notes: String? = null,
+                      /** Hidden in the slide show (PPTX `show="0"`). */
+                      val hidden: Boolean = false)
 
 data class PresentationModel(val slides: List<SlideModel>)
 

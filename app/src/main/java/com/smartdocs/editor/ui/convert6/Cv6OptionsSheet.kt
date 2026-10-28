@@ -160,6 +160,14 @@ private fun OptionsBody(conv: Conv, inputCount: Int, o: Cv6Opts, onChange: (Cv6O
     if (Opt.GRAY in opts && !o.bw) SwitchRow(stringResource(R.string.cv6_gray), o.gray) { onChange(o.copy(gray = it)) }
     if (Opt.BW in opts) SwitchRow(stringResource(R.string.pc_bw), o.bw, stringResource(R.string.pc_bw_sub)) { onChange(o.copy(bw = it)) }
     if (Opt.FORM_FIELDS in opts) SwitchRow(stringResource(R.string.cv9_form_fields), o.recognizeFields, stringResource(R.string.cv9_form_fields_sub)) { onChange(o.copy(recognizeFields = it)) }
+    if (Opt.CELL_COMMENTS in opts) SwitchRow(stringResource(R.string.cv9_cell_comments), o.cellComments) { onChange(o.copy(cellComments = it)) }
+    if (Opt.SLIDES in opts) {
+        // row 103: slide range and hidden slides
+        OutlinedTextField(o.slideRange, { onChange(o.copy(slideRange = it)) }, Modifier.fillMaxWidth(), singleLine = true,
+            label = { Text(stringResource(R.string.cv9_slide_range)) }, placeholder = { Text(stringResource(R.string.cv9_all_slides)) },
+            isError = !com.smartdocs.editor.core.pdf.PdfOps.rangeSyntaxOk(o.slideRange))
+        SwitchRow(stringResource(R.string.cv9_hidden_slides), o.hiddenSlides) { onChange(o.copy(hiddenSlides = it)) }
+    }
     if (Opt.SPEAKER_NOTES in opts) SwitchRow(stringResource(R.string.cv9_speaker_notes), o.speakerNotes) { onChange(o.copy(speakerNotes = it)) }
     if (Opt.BOOKMARKS in opts) SwitchRow(stringResource(R.string.cv9_bookmarks), o.bookmarks, stringResource(R.string.cv9_bookmarks_sub)) { onChange(o.copy(bookmarks = it)) }
     if (Opt.SHEET_PER_TABLE in opts) SwitchRow(stringResource(R.string.pc_sheet_per_table), o.perTable) { onChange(o.copy(perTable = it)) }

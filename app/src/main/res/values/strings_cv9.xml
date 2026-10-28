@@ -30,4 +30,10 @@
     <string name="cv9_web_single">صفحة واحدة طويلة</string>
     <string name="cv9_web_tags">إضافة وسوم PDF</string>
     <string name="cv9_web_tags_sub">عناوين وقوائم وجداول للقارئات الصوتية</string>
+    <string name="cv9_cell_comment">تعليق خلية</string>
+    <string name="cv9_cell_comments">تعليقات الخلايا كتعليقات PDF</string>
+    <string name="cv9_info_comments">أُضيف %1$d تعليقًا من تعليقات الخلايا</string>
+    <string name="cv9_slide_range">الشرائح</string>
+    <string name="cv9_all_slides">كل الشرائح</string>
+    <string name="cv9_hidden_slides">تضمين الشرائح المخفية</string>
 </resources>

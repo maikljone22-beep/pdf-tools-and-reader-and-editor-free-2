@@ -72,6 +72,11 @@ data class Cv6Opts(
     val exactLayout: Boolean = false,
     /** PowerPoint → PDF (row 103): speaker notes become note comments on their slide's page. */
     val speakerNotes: Boolean = true,
+    /** Excel → PDF (row 103): cell comments become note comments. */
+    val cellComments: Boolean = true,
+    /** PowerPoint → PDF (row 103): slides to print (blank = all) and whether hidden slides are printed. */
+    val slideRange: String = "",
+    val hiddenSlides: Boolean = false,
 )
 
 enum class Stage { WORK, OCR }

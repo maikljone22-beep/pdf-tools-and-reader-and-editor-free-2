@@ -30,4 +30,10 @@
     <string name="cv9_web_single">One single long page</string>
     <string name="cv9_web_tags">Add PDF tags</string>
     <string name="cv9_web_tags_sub">Headings, lists and tables for screen readers</string>
+    <string name="cv9_cell_comment">Cell comment</string>
+    <string name="cv9_cell_comments">Cell comments as PDF comments</string>
+    <string name="cv9_info_comments">%1$d cell comments added</string>
+    <string name="cv9_slide_range">Slides</string>
+    <string name="cv9_all_slides">All slides</string>
+    <string name="cv9_hidden_slides">Include hidden slides</string>
 </resources>
