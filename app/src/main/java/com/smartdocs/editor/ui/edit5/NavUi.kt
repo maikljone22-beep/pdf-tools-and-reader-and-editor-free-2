@@ -137,7 +137,9 @@ private fun NumField(label: String, value: Float?, modifier: Modifier = Modifier
 /** What the add menu of [ActionListEditor] creates. */
 private enum class NewAction(val label: Int) {
     PAGE(R.string.nbm_act_goto), URI(R.string.nbm_act_uri), REMOTE(R.string.nbm_act_remote), LAUNCH(R.string.nbm_act_launch),
-    NAMED(R.string.nbm_act_named), JS(R.string.nbm_act_js), PRINT(R.string.nbm_act_print), EXTRACT(R.string.nbm_act_extract)
+    NAMED(R.string.nbm_act_named), JS(R.string.nbm_act_js), PRINT(R.string.nbm_act_print), EXTRACT(R.string.nbm_act_extract),
+    // fix/links-bookmarks: destination inside an attachment, play media, play a sound
+    EMBEDDED(R.string.lbm_act_embedded), MEDIA(R.string.lbm_act_media), SOUND(R.string.lbm_act_sound)
 }
 
 /** Label of an action for lists. */
@@ -150,6 +152,8 @@ fun actionSummary(a: NavAction): String = when (a) {
     is NavAction.Named -> stringResource(R.string.nbm_act_named) + ": " + a.name
     is NavAction.Js -> NavActions.pageScript(a.script)?.let { (k, f, t) -> stringResource(if (k == "print") R.string.nbm_sum_print else R.string.nbm_sum_extract, f, t) }
         ?: (stringResource(R.string.nbm_act_js) + ": " + a.script.lineSequence().firstOrNull().orEmpty().take(40))
+    is NavAction.GoToE -> stringResource(R.string.lbm_sum_embedded, a.attachment.ifBlank { "?" }) + " • " + (if (a.named.isNotBlank()) a.named else stringResource(R.string.e5_link_to_page, a.page + 1))
+    is NavAction.Media -> stringResource(if (a.sound) R.string.lbm_act_sound else R.string.lbm_act_media) + ": " + a.name
     is NavAction.Kept -> stringResource(R.string.nbm_act_kept, a.type)
 }
 
@@ -183,6 +187,9 @@ fun ActionListEditor(actions: List<NavAction>, pageCount: Int, onChange: (List<N
                             NewAction.NAMED -> NavAction.Named("NextPage"); NewAction.JS -> NavAction.Js("")
                             NewAction.PRINT -> NavAction.Js(NavActions.printScript(1, pageCount.coerceAtLeast(1)))
                             NewAction.EXTRACT -> NavAction.Js(NavActions.extractScript(1, pageCount.coerceAtLeast(1)))
+                            NewAction.EMBEDDED -> NavAction.GoToE("")
+                            NewAction.MEDIA -> NavAction.Media("")
+                            NewAction.SOUND -> NavAction.Media("", sound = true, mime = "audio/wav")
                         }
                         onChange(actions + a); editing = actions.size
                     })
@@ -198,6 +205,60 @@ fun ActionListEditor(actions: List<NavAction>, pageCount: Int, onChange: (List<N
 /** Named destinations of the document being edited, for the "go to named destination" pickers (FINAL_CHECK §16). */
 val LocalDestNames = androidx.compose.runtime.staticCompositionLocalOf { emptyList<String>() }
 
+/**
+ * fix/links-bookmarks (GoToE): the embedded files of the document being edited ([keys] = their name-tree keys) and a
+ * loader of the named destinations inside one of them.
+ */
+class NavAttachments(val keys: List<String>, val dests: suspend (String) -> List<String>)
+
+val LocalNavAttachments = androidx.compose.runtime.staticCompositionLocalOf<NavAttachments?> { null }
+
+/** [NavAttachments] of [file] (reloaded when [version] changes); null while loading or without a file. */
+@Composable
+fun rememberNavAttachments(file: java.io.File?, password: String?, version: Any?): NavAttachments? {
+    val ctx = LocalContext.current
+    val v by produceState<NavAttachments?>(null, file, version) {
+        value = if (file == null) null else withContext(Dispatchers.IO) {
+            val keys = runCatching { com.smartdocs.editor.core.pdf.AttachmentOps.list(file, password).filter { it.isDocumentLevel }.map { it.key.ifBlank { it.name } } }.getOrDefault(emptyList())
+            NavAttachments(keys) { key ->
+                withContext(Dispatchers.IO) {
+                    runCatching {
+                        val dir = java.io.File(ctx.cacheDir, "lbm_att/" + System.nanoTime())
+                        try {
+                            val f = com.smartdocs.editor.core.edit5.NavFollow.embedded(file, password, key, dir)
+                            if (f == null) emptyList() else com.smartdocs.editor.core.edit5.NamedDests.load(f, null).map { it.name }
+                        } finally { dir.deleteRecursively() }
+                    }.getOrDefault(emptyList())
+                }
+            }
+        }
+    }
+    return v
+}
+
+/** fix/links-bookmarks (Foxit §15): a URL field with the recently used URLs under it. */
+@Composable
+fun RecentUrlField(value: String, onChange: (String) -> Unit, modifier: Modifier = Modifier.fillMaxWidth()) {
+    val ctx = LocalContext.current
+    var recent by remember { mutableStateOf(com.smartdocs.editor.core.edit5.RecentUrls.load(ctx)) }
+    var open by remember { mutableStateOf(false) }
+    Column(modifier) {
+        OutlinedTextField(value, onChange, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.e5_link_url)) },
+            placeholder = { Text("https://") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+            trailingIcon = { if (recent.isNotEmpty()) IconButton(onClick = { open = !open }) { Icon(Icons.Default.History, stringResource(R.string.lbm_recent_urls)) } })
+        // the list opens from the history button; while typing, up to three matches are offered
+        val shown = if (open) recent else if (value.trim().length > 8) com.smartdocs.editor.core.edit5.RecentUrls.matching(recent, value).take(3) else emptyList()
+        if (shown.isNotEmpty()) {
+            if (open) Text(stringResource(R.string.lbm_recent_urls), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            shown.forEach { u ->
+                Text(u, Modifier.fillMaxWidth().clickable { onChange(u); open = false }.padding(vertical = 6.dp, horizontal = 4.dp), maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+            }
+            if (open) TextButton(onClick = { com.smartdocs.editor.core.edit5.RecentUrls.clear(ctx); recent = emptyList(); open = false }) { Text(stringResource(R.string.lbm_recent_clear)) }
+        }
+    }
+}
+
 /** Edit one action. */
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
@@ -205,16 +266,23 @@ private fun ActionDialog(initial: NavAction, pageCount: Int, onDismiss: () -> Un
     var a by remember { mutableStateOf(initial) }
     val app = com.smartdocs.editor.LocalApp.current
     val scope = rememberCoroutineScope()
+    var mediaError by remember { mutableStateOf(false) }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) scope.launch {
             val f = runCatching { app.documents.localFile(uri) }.getOrNull() ?: return@launch
-            a = when (val c = a) { is NavAction.GoToR -> c.copy(file = f.absolutePath); is NavAction.Launch -> c.copy(file = f.absolutePath); else -> c }
+            a = when (val c = a) {
+                is NavAction.GoToR -> c.copy(file = f.absolutePath); is NavAction.Launch -> c.copy(file = f.absolutePath)
+                // fix/links-bookmarks: a sound must be a PCM WAV file (it is stored as PDF sound samples)
+                is NavAction.Media -> if (c.sound && withContext(Dispatchers.IO) { com.smartdocs.editor.core.edit5.NavMedia.parseWav(f.readBytes()) } == null) { mediaError = true; c }
+                    else { mediaError = false; c.copy(file = f.absolutePath, name = f.name, mime = if (c.sound) "audio/wav" else (app.contentResolver.getType(uri) ?: com.smartdocs.editor.core.annot.MediaAnnots.mimeOf(f.name))) }
+                else -> c
+            }
         }
     }
     val pageRange = (a as? NavAction.Js)?.let { NavActions.pageScript(it.script) }
     var from by remember { mutableStateOf(pageRange?.second?.toString() ?: "1") }
     var to by remember { mutableStateOf(pageRange?.third?.toString() ?: pageCount.toString()) }
-    var page by remember { mutableStateOf(((initial as? NavAction.GoTo)?.page ?: (initial as? NavAction.GoToR)?.page ?: 0).plus(1).toString()) }
+    var page by remember { mutableStateOf(((initial as? NavAction.GoTo)?.page ?: (initial as? NavAction.GoToR)?.page ?: (initial as? NavAction.GoToE)?.page ?: 0).plus(1).toString()) }
     AlertDialog(onDismissRequest = onDismiss, title = { Text(actionSummary(initial).take(40)) }, text = {
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             when (val c = a) {
@@ -231,8 +299,7 @@ private fun ActionDialog(initial: NavAction, pageCount: Int, onDismiss: () -> Un
                         DestViewFields(c.view) { a = c.copy(view = it) }
                     }
                 }
-                is NavAction.Uri -> OutlinedTextField(c.uri, { a = c.copy(uri = it) }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.e5_link_url)) },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))
+                is NavAction.Uri -> RecentUrlField(c.uri, { a = c.copy(uri = it) })
                 is NavAction.GoToR -> {
                     OutlinedButton(onClick = { picker.launch(arrayOf("application/pdf")) }, Modifier.fillMaxWidth()) {
                         Icon(Icons.Default.FolderOpen, null); Spacer(Modifier.width(8.dp)); Text(if (c.file.isBlank()) stringResource(R.string.e5_link_pick_file) else java.io.File(c.file).name, maxLines = 1)
@@ -259,6 +326,15 @@ private fun ActionDialog(initial: NavAction, pageCount: Int, onDismiss: () -> Un
                         textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace))
                     Text(stringResource(R.string.nbm_js_store_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
+                is NavAction.GoToE -> GoToEFields(c, page, { page = it }) { a = it }
+                is NavAction.Media -> {
+                    OutlinedButton(onClick = { picker.launch(if (c.sound) arrayOf("audio/wav", "audio/x-wav", "audio/*") else arrayOf("audio/*", "video/*")) }, Modifier.fillMaxWidth()) {
+                        Icon(if (c.sound) Icons.Default.MusicNote else Icons.Default.Movie, null); Spacer(Modifier.width(8.dp))
+                        Text(c.name.ifBlank { stringResource(R.string.lbm_media_pick) }, maxLines = 1)
+                    }
+                    Text(stringResource(if (c.sound) R.string.lbm_sound_note else R.string.lbm_media_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (mediaError) Text(stringResource(R.string.lbm_sound_not_wav), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                }
                 is NavAction.Kept -> Text(stringResource(R.string.nbm_act_kept, c.type))
             }
         }
@@ -268,7 +344,8 @@ private fun ActionDialog(initial: NavAction, pageCount: Int, onDismiss: () -> Un
             onSave(when (val c = a) {
                 is NavAction.GoTo -> c.copy(page = p.coerceAtMost((pageCount - 1).coerceAtLeast(0)))
                 is NavAction.GoToR -> c.copy(page = p)
-                is NavAction.Uri -> c.copy(uri = com.smartdocs.editor.core.edit5.LinkDetect.normalizeUrl(c.uri))
+                is NavAction.GoToE -> c.copy(page = p)
+                is NavAction.Uri -> c.copy(uri = com.smartdocs.editor.core.edit5.LinkDetect.normalizeUrl(c.uri)).also { com.smartdocs.editor.core.edit5.RecentUrls.add(app, it.uri) }
                 is NavAction.Js -> if (pageRange != null) {
                     val f = (from.toIntOrNull() ?: 1).coerceIn(1, pageCount.coerceAtLeast(1)); val t = (to.toIntOrNull() ?: f).coerceIn(f, pageCount.coerceAtLeast(1))
                     NavAction.Js(if (pageRange.first == "print") NavActions.printScript(f, t) else NavActions.extractScript(f, t))
@@ -277,6 +354,32 @@ private fun ActionDialog(initial: NavAction, pageCount: Int, onDismiss: () -> Un
             })
         }) { Text(stringResource(R.string.nbm_ok)) }
     }, dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } })
+}
+
+/** fix/links-bookmarks (Foxit §15 GoToE): the attachment, then a page view or a named destination inside it. */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun GoToEFields(c: NavAction.GoToE, page: String, onPage: (String) -> Unit, onChange: (NavAction.GoToE) -> Unit) {
+    val atts = LocalNavAttachments.current
+    Text(stringResource(R.string.lbm_attachment), style = MaterialTheme.typography.labelLarge)
+    if (atts == null || atts.keys.isEmpty()) Text(stringResource(R.string.lbm_no_attachments), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    else androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        atts.keys.take(40).forEach { k -> FilterChip(c.attachment == k, { onChange(c.copy(attachment = k, named = "")) }, label = { Text(k, maxLines = 1) }) }
+    }
+    // the named destinations inside the chosen attachment (read from a temporary copy)
+    val names by produceState(emptyList<String>(), c.attachment, atts) {
+        value = if (atts == null || c.attachment.isBlank()) emptyList() else atts.dests(c.attachment)
+    }
+    OutlinedTextField(c.named, { onChange(c.copy(named = it)) }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.nbm_named_dest_opt)) })
+    if (names.isNotEmpty()) androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        names.take(40).forEach { n -> FilterChip(c.named == n, { onChange(c.copy(named = if (c.named == n) "" else n)) }, label = { Text(n, maxLines = 1) }) }
+    }
+    if (c.named.isBlank()) {
+        OutlinedTextField(page, { onPage(it.filter(Char::isDigit).take(6)) }, Modifier.fillMaxWidth(), singleLine = true,
+            label = { Text(stringResource(R.string.e5_link_page)) }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+        DestViewFields(c.view) { onChange(c.copy(view = it)) }
+    }
+    SwitchRow(stringResource(R.string.e5_link_new_window), c.newWindow) { onChange(c.copy(newWindow = it)) }
 }
 
 @Composable

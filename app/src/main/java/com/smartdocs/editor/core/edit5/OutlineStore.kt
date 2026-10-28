@@ -54,6 +54,9 @@ object OutlineStore {
         return out
     }
 
+    /** fix/links-bookmarks: the dictionary of outline item [index] (pre-order), or null. */
+    fun itemDict(doc: PDDocument, index: Int): COSDictionary? = items(doc).getOrNull(index)?.first
+
     suspend fun load(src: File, password: String?): Pair<List<E5Bookmark>, Int> = withContext(Dispatchers.IO) {
         E5Io.load(src, password).use { doc -> read(doc) to doc.numberOfPages }
     }

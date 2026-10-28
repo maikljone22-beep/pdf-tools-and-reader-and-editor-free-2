@@ -43,7 +43,8 @@ fun ReaderBookmarkFromSelection(state: ReaderState, onDismiss: () -> Unit) {
         Button(enabled = title.isNotBlank(), onClick = {
             onDismiss()
             val top = sel.rects.maxOfOrNull { maxOf(it.top, it.bottom) }?.let { it + 4f }
-            val bm = E5Bookmark(OutlineModel.newKey(), title.trim(), sel.page, 0, fit = DestFit.XYZ, top = top)
+            // fix/links-bookmarks: the default zoom and appearance for new bookmarks
+            val bm = com.smartdocs.editor.core.edit5.BookmarkDefaults.apply(state.context, E5Bookmark(OutlineModel.newKey(), title.trim(), sel.page, 0, fit = DestFit.XYZ, top = top))
             state.selection = null
             state.scope.launch {
                 runCatching {
@@ -55,6 +56,38 @@ fun ReaderBookmarkFromSelection(state: ReaderState, onDismiss: () -> Unit) {
             }
         }) { Text(stringResource(R.string.save)) }
     }, dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } })
+}
+
+/**
+ * fix/links-bookmarks: the reader's current view as a destination: the page, its zoom and the top of the visible
+ * part (continuous view on an unrotated page; else the top is left as it is).
+ */
+fun currentDestView(state: ReaderState): Pair<Int, com.smartdocs.editor.core.edit5.DestView> {
+    val page = state.currentPage
+    val h = state.pageSizes[page]?.second
+    val frame = state.pageFrames[page]
+    val top = if (h == null || (frame != null && frame.rotate != 0)) null else (frame?.cropY ?: 0f) + h * (1f - state.viewTopFraction)
+    return page to com.smartdocs.editor.core.edit5.DestView(DestFit.XYZ, null, top, state.zoom)
+}
+
+/** fix/links-bookmarks (Foxit §16 "Set destination"): outline item [index] (pre-order) now goes to the current view. */
+fun setBookmarkToCurrentView(state: ReaderState, index: Int) {
+    val (page, view) = currentDestView(state)
+    val ctx = state.context
+    state.scope.launch {
+        runCatching {
+            state.applyInPlace(label = { ctx.getString(R.string.lbm_bm_set_view) }) { src, out, pw ->
+                withContext(Dispatchers.IO) {
+                    NavIo.edit(src, out, pw) { doc, _ ->
+                        val l = OutlineStore.read(doc)
+                        val b = l.getOrNull(index) ?: return@edit
+                        OutlineStore.write(doc, l.toMutableList().also { it[index] = com.smartdocs.editor.core.edit5.BookmarkDefaults.retarget(b, page, view) })
+                    }
+                }
+            }
+        }.onSuccess { if (it != null) Toast.makeText(ctx, ctx.getString(R.string.lbm_bm_view_set, page + 1), Toast.LENGTH_SHORT).show() }
+            .onFailure { Toast.makeText(ctx, it.message ?: it.toString(), Toast.LENGTH_LONG).show() }
+    }
 }
 
 /** Outline panel options kept per device: wrap long titles, text size step (-2..4). */
@@ -95,14 +128,16 @@ fun OutlineToolbar(query: String, onQuery: (String) -> Unit, onFindCurrent: () -
 /**
  * Run the actions of outline item [index] (pre-order) of the open file, for bookmarks without a page target:
  * go to, page navigation, web links (through the Internet access gate), JavaScript (only when allowed).
+ * fix/links-bookmarks: a destination inside an attachment opens it through [openPdf]; media / sound clips open in
+ * the device's player.
  */
-fun runOutlineActions(state: ReaderState, index: Int, onJump: (Int) -> Unit) {
+fun runOutlineActions(state: ReaderState, index: Int, onJump: (Int) -> Unit, openPdf: ((java.io.File, Int) -> Unit)? = null) {
     val f = state.file ?: return
     state.scope.launch {
         val b = runCatching { OutlineStore.load(f, state.password).first.getOrNull(index) }.getOrNull() ?: return@launch
         val ctx = state.context
         if (b.actions.isEmpty()) { if (b.page >= 0) onJump(b.page); return@launch }
-        for (a in b.actions) when (a) {
+        for ((ai, a) in b.actions.withIndex()) when (a) {
             is NavAction.GoTo -> if (a.page >= 0) onJump(a.page)
             is NavAction.Named -> when (a.name) {
                 "NextPage" -> onJump(state.currentPage + 1); "PrevPage" -> onJump((state.currentPage - 1).coerceAtLeast(0))
@@ -113,9 +148,38 @@ fun runOutlineActions(state: ReaderState, index: Int, onJump: (Int) -> Unit) {
             is NavAction.Js -> runCatching { DocJsConsole.run(f, state.password, a.script, 500) }
                 .onSuccess { r -> (r.alerts + r.log).firstOrNull()?.let { Toast.makeText(ctx, it, Toast.LENGTH_LONG).show() } }
                 .onFailure { if (it is DocJsConsole.Disabled) Toast.makeText(ctx, ctx.getString(R.string.nbm_js_console_off), Toast.LENGTH_SHORT).show() }
+            is NavAction.GoToE -> if (openPdf == null || !openEmbedded(state, a, openPdf)) Toast.makeText(ctx, ctx.getString(R.string.nbm_action_not_run, a.attachment), Toast.LENGTH_SHORT).show()
+            is NavAction.Media -> {
+                val dir = java.io.File(ctx.cacheDir, "lbm_media/" + System.nanoTime())
+                val clip = runCatching { com.smartdocs.editor.core.edit5.NavFollow.outlineMedia(f, state.password, index, ai, dir) }.getOrNull()
+                if (clip == null) Toast.makeText(ctx, ctx.getString(R.string.lbm_media_missing), Toast.LENGTH_SHORT).show() else playMedia(state, clip.first, clip.second)
+            }
             is NavAction.GoToR, is NavAction.Launch, is NavAction.Kept -> Toast.makeText(ctx, ctx.getString(R.string.nbm_action_not_run, actionLabelPlain(ctx, a)), Toast.LENGTH_SHORT).show()
         }
     }
+}
+
+/**
+ * fix/links-bookmarks (GoToE): extract the attachment of [a] and open it at its page / named destination. False when
+ * the attachment is missing (a message is shown by the caller).
+ */
+suspend fun openEmbedded(state: ReaderState, a: NavAction.GoToE, openPdf: (java.io.File, Int) -> Unit): Boolean {
+    val f = state.file ?: return false
+    val dir = java.io.File(state.context.cacheDir, "lbm_gotoe/" + System.nanoTime())
+    val target = runCatching { com.smartdocs.editor.core.edit5.NavFollow.embedded(f, state.password, a.attachment, dir) }.getOrNull() ?: return false
+    if (!target.extension.equals("pdf", true)) { playMedia(state, target, com.smartdocs.editor.core.annot.MediaAnnots.mimeOf(target.name)); return true }
+    openPdf(target, com.smartdocs.editor.core.edit5.NavFollow.pageIn(target, a))
+    return true
+}
+
+/** fix/links-bookmarks: open an extracted clip in the device's player (or any app for its type). */
+fun playMedia(state: ReaderState, file: java.io.File, mime: String) {
+    runCatching {
+        val uri = state.app.documents.shareUri(file)
+        state.context.startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, mime.ifBlank { com.smartdocs.editor.core.annot.MediaAnnots.mimeOf(file.name) }); addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }, null).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+    }.onFailure { Toast.makeText(state.context, it.message ?: it.toString(), Toast.LENGTH_SHORT).show() }
 }
 
 private fun actionLabelPlain(ctx: Context, a: NavAction): String = when (a) {
