@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- fix/links-bookmarks: GoToE, media / sound actions, recent URLs, web links, bookmark defaults, tags, auto-bookmark titles -->
+<resources>
+    <string name="lbm_act_embedded">Go to a view in an attachment</string>
+    <string name="lbm_act_media">Play media</string>
+    <string name="lbm_act_sound">Play a sound</string>
+    <string name="lbm_sum_embedded">Attachment %1$s</string>
+    <string name="lbm_attachment">Attachment</string>
+    <string name="lbm_no_attachments">This document has no attached files. Add one in Attachments first.</string>
+    <string name="lbm_media_pick">Choose an audio or video file</string>
+    <string name="lbm_media_note">The file is embedded in the PDF and plays in a floating window in Acrobat, Foxit and Nitro. In SmartDocs it opens in your media player.</string>
+    <string name="lbm_sound_note">Choose a WAV file (PCM). It is stored as a PDF sound and plays in most PDF readers.</string>
+    <string name="lbm_sound_not_wav">This is not a PCM WAV file. Choose another file, or use Play media.</string>
+    <string name="lbm_media_missing">The clip is not embedded in this file</string>
+    <string name="lbm_recent_urls">Recently used URLs</string>
+    <string name="lbm_recent_clear">Clear the list</string>
+    <string name="lbm_bm_set_view">Set destination to the current view</string>
+    <string name="lbm_bm_view_set">The bookmark now goes to page %1$d at the current zoom and position</string>
+    <string name="lbm_bm_use_default">Use this appearance as the new default</string>
+    <string name="lbm_bm_defaults">New bookmark defaults</string>
+    <string name="lbm_bm_defaults_help">Bookmarks you add by hand (here and from selected text in the reader) start with this view and appearance.</string>
+    <string name="lbm_bm_from_tags">Bookmarks from tags</string>
+    <string name="lbm_tags_help">A bookmark is made for each structure element of the chosen types (headings H1 to H6 become levels 1 to 6). The title is the element\'s text.</string>
+    <string name="lbm_tags_none">No tagged elements of these types were found (the document may not be tagged)</string>
+    <string name="lbm_title_text">Bookmark text</string>
+    <string name="lbm_case_keep">As is</string>
+    <string name="lbm_case_upper">UPPER CASE</string>
+    <string name="lbm_case_lower">lower case</string>
+    <string name="lbm_case_title">Title Case</string>
+    <string name="lbm_case_sentence">Sentence case</string>
+    <string name="lbm_text_before">Text before</string>
+    <string name="lbm_text_after">Text after</string>
+    <string name="lbm_alnum_only">Remove non-alphanumeric characters</string>
+    <string name="lbm_stop_words">Stop words</string>
+    <string name="lbm_stop_words_help">Words removed from the titles, separated by commas</string>
+    <string name="lbm_title_sample">1. Introduction to the Report</string>
+    <string name="lbm_title_preview">Example: %1$s</string>
+    <string name="lbm_web_links">Web links</string>
+    <string name="lbm_web_none">No web links on these pages</string>
+    <string name="lbm_web_n">%1$d of %2$d selected</string>
+    <string name="lbm_web_pages">Pages: %1$s</string>
+    <string name="lbm_web_append_opts">When appending</string>
+    <string name="lbm_web_bookmarks">Add a bookmark for each web page</string>
+    <string name="lbm_web_by_domain">Group the bookmarks by domain</string>
+    <string name="lbm_web_relink">Point the links at the appended pages</string>
+    <string name="lbm_web_download">Download</string>
+    <string name="lbm_web_convert">Save as PDF</string>
+    <string name="lbm_web_append">Append to document</string>
+    <string name="lbm_web_working">Working on %1$d of %2$d…</string>
+    <string name="lbm_web_done">Done: %1$d, failed or blocked: %2$d</string>
+    <string name="lbm_web_appended">%1$d pages appended</string>
+</resources>

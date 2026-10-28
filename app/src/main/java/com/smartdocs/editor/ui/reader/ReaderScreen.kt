@@ -515,7 +515,8 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                     VerticalDivider()
                     Surface(Modifier.width(com.smartdocs.editor.core.data.NpfPrefs.panelWidthDp.dp).fillMaxHeight(), tonalElevation = 1.dp) {
                         PanelsContent(state, panel!!, onPanel = { panel = it }, onJump = { state.jumpTo(it) }, onAiOutline = { nav.navigate(Routes.tool("ai", state.fileUri)) }, onClose = { panel = null },
-                            onOpenPdf = { f -> nav.navigate(Routes.reader(android.net.Uri.fromFile(f).toString())) })
+                            onOpenPdf = { f -> nav.navigate(Routes.reader(android.net.Uri.fromFile(f).toString())) },
+                            onOpenPdfAt = { f, p -> nav.navigate(Routes.reader(android.net.Uri.fromFile(f).toString(), p)) })   // fix/links-bookmarks: GoToE
                     }
                 }
                 com.smartdocs.editor.ui.nve.NveSidePane(state, nav)      // NVE: attachments / signatures / tags / fields / destinations / articles
@@ -524,7 +525,8 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
         // captured value: the sheet's own composition can recompose after panel became null (NPE with panel!!)
         if (!tablet && !(fold.isTabletop && fold.hinge != null)) panel?.let { shownPanel -> ModalBottomSheet(onDismissRequest = { panel = null }) {
             PanelsContent(state, shownPanel, onPanel = { panel = it }, onJump = { state.jumpTo(it); panel = null }, onAiOutline = { panel = null; nav.navigate(Routes.tool("ai", state.fileUri)) }, onClose = { panel = null },
-                onOpenPdf = { f -> panel = null; nav.navigate(Routes.reader(android.net.Uri.fromFile(f).toString())) })
+                onOpenPdf = { f -> panel = null; nav.navigate(Routes.reader(android.net.Uri.fromFile(f).toString())) },
+                onOpenPdfAt = { f, p -> panel = null; nav.navigate(Routes.reader(android.net.Uri.fromFile(f).toString(), p)) })   // fix/links-bookmarks: GoToE
         } }
         com.smartdocs.editor.ui.forms5.InPageFormBar(state, Modifier.align(Alignment.BottomCenter),    // MODULE_forms5
             stripBottom = with(androidx.compose.ui.platform.LocalDensity.current) { (if (chrome) bottomBarPx else 0).toDp() },      // tab audit D20

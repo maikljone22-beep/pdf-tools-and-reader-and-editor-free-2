@@ -123,6 +123,8 @@ class ReaderState(
     var pendingJump by mutableStateOf<Int?>(null)
     /** With [pendingJump]: how far down the page to scroll (0 = top, 1 = bottom; continuous view), e.g. JS doc.scroll. */
     var pendingJumpTop by mutableStateOf<Float?>(null)
+    /** fix/links-bookmarks: share of the current page scrolled above the view's top (0..1; continuous view), for "current view" destinations. */
+    var viewTopFraction by mutableFloatStateOf(0f)
     /** x (page user space) of a JS doc.scroll, applied with [pendingJumpTop] by the page view. */
     var pendingJumpLeft by mutableStateOf<Float?>(null)
     /** Crop, magnifier, auto-flip interval, orientation lock, screen timeout, reflow scale (ui/reader/view). */
