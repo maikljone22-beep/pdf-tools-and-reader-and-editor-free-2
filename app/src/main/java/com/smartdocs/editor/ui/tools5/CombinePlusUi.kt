@@ -195,7 +195,11 @@ fun CombineTab(initial: List<File>, job: T5Job, attachSrc: Boolean, srcDesc: Str
     SwitchRow(stringResource(R.string.pc_toc_page), toc) { toc = it }
     SwitchRow(stringResource(R.string.pc_save_pdfa), pdfa, stringResource(R.string.pc_save_pdfa_sub)) { pdfa = it }
     OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.t5_file_name_optional)) })
+    // FINAL_CHECK_2 #2: an output folder for the combined file
+    var outTree by remember { mutableStateOf("") }
+    com.smartdocs.editor.ui.common.OutputFolderRow(outTree) { outTree = it }
     PrimaryButton(stringResource(R.string.t5_combine), enabled = entries.isNotEmpty() && unsupported.isEmpty() && !badRange && !job.running && !busy, icon = Icons.Default.CallMerge) {
+        val tree = outTree
         val list = entries.toList()
         val o = CombineOpts(perFile, keepBm, headings, toc, tocTitle)
         val base = name.ifBlank { if (list.size == 1) list[0].file.nameWithoutExtension else defaultName }
@@ -217,6 +221,7 @@ fun CombineTab(initial: List<File>, job: T5Job, attachSrc: Boolean, srcDesc: Str
             runCatching { app.documents.touchRecent(out) }
             // signed inputs lose their signatures in the combined copy: say so (convert audit A-L14)
             info = signedNames.joinToString("\n") { ctx.getString(R.string.cvf_info_signed, it) }.ifBlank { null }
+            com.smartdocs.editor.ui.common.copyToOutputFolder(ctx, tree, listOf(out))
             result = out
         }
     }
