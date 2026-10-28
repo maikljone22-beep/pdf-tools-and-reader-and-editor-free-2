@@ -194,8 +194,11 @@ fun ResultSheet(file: File, nav: NavHostController, onDismiss: () -> Unit, extra
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val writeBack = rememberWriteBack()
-    // a PDF result of a tool opened on a document can replace that document (the default, one tap)
-    val source = LocalToolSource.current?.takeIf { it.exists() && file.extension.equals("pdf", true) && it.absolutePath != file.absolutePath }
+    // a PDF result of a tool opened on a document can replace that document (with a confirmation). audit 5 E-1 / C-2:
+    // only when the tool recorded the result as a transformation of exactly that document (ToolOutputs) — not when
+    // the user picked another file in the tool, and never for reports, comparisons, summaries or translations
+    val source = LocalToolSource.current?.takeIf { it.exists() && file.extension.equals("pdf", true) && it.absolutePath != file.absolutePath &&
+        com.smartdocs.editor.core.pdf.ToolOutputs.replaces(file, it) }
     // the "save as" document type and the share mime follow the file's extension (txt/docx/png/zip results exist)
     val mime = remember(file.extension) { mimeFor(file.extension) }
     val contract = remember(mime) { ActivityResultContracts.CreateDocument(mime) }

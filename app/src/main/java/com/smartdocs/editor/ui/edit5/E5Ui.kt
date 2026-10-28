@@ -106,7 +106,9 @@ class E5Doc(initial: File?) {
     suspend fun export(docsDir: File, unique: (File, String) -> File, suffix: String): File = withContext(Dispatchers.IO) {
         val w = work ?: error("no document")
         val out = unique(docsDir, (source?.nameWithoutExtension ?: "document") + "_" + suffix)
-        w.copyTo(out, overwrite = true); out
+        w.copyTo(out, overwrite = true)
+        // audit 5 E-1: the result is this tool's document, transformed (the result sheet may offer "Save in original")
+        com.smartdocs.editor.core.pdf.ToolOutputs.record(out, source)
     }
 }
 

@@ -79,6 +79,29 @@ object PdfOps {
         return StandardProtectionPolicy(owner, user, perms).apply { encryptionKeyLength = bits; setPreferAES(aes) }
     }
 
+    /**
+     * audit 5 T-03 / T-05 / E-3: the ONE helper that keeps the protection on a derived output. A newly built
+     * [target] (extract, split, mix, impose, compress, …) is protected like the encrypted [source] (opened with
+     * [password]): same cipher, key length and permission bits ([keepProtection]). Nothing happens for an unencrypted source.
+     */
+    fun protectLike(target: PDDocument, source: PDDocument, password: String?) {
+        if (source.isEncrypted) target.protect(keepProtection(source, password))
+    }
+
+    /** A random owner password (never shown unless the caller returns it to the user). */
+    fun randomOwnerPassword(): String = java.util.UUID.randomUUID().toString().replace("-", "")
+
+    /**
+     * audit 5 T-12 / P-2 / P-5: the policy for a NEW protection the user asked for. AES-256 (revision 6: the passwords
+     * are UTF-8 / SASLprep, so Arabic passwords work; revision 2–4 squeeze them through ISO-8859-1 into "?").
+     * The owner password is never the literal "owner" and never equal to the open password: an empty one (or one
+     * equal to the open password) becomes a random one. Returns the policy and the owner password used.
+     */
+    fun newProtection(openPassword: String, ownerPassword: String, perms: AccessPermission): Pair<StandardProtectionPolicy, String> {
+        val owner = ownerPassword.takeIf { it.isNotEmpty() && it != openPassword } ?: randomOwnerPassword()
+        return StandardProtectionPolicy(owner, openPassword, perms).apply { encryptionKeyLength = 256; setPreferAES(true) } to owner
+    }
+
     /** The user password of a document opened with its owner password [ownerPw], when it can be determined. */
     private fun recoverUserPassword(doc: PDDocument, ownerPw: String): String? = runCatching {
         val enc = doc.encryption
@@ -134,13 +157,13 @@ object PdfOps {
     }
 
     /** Keep only [pages] (zero-based) in the given order. Used for extract / reorder / delete. */
+    /**
+     * audit 5 T-05 / G-03: the output keeps the source's protection (same open password, cipher and permissions),
+     * the form fields, bookmarks and internal links of the kept pages ([PageExtract]).
+     */
     suspend fun keepPages(src: File, pages: List<Int>, out: File, password: String? = null) = withContext(Dispatchers.IO) {
-        load(src, password).use { doc ->
-            PDDocument().use { nd ->
-                pages.forEach { nd.importPage(doc.getPage(it)) }
-                nd.documentInformation = doc.documentInformation
-                saveTo(nd, out)
-            }
+        loadRaw(src, password).use { doc ->
+            PageExtract.build(doc, pages, password).use { nd -> saveTo(nd, out) }
         }
     }
 
@@ -180,7 +203,7 @@ object PdfOps {
      * widgets still point at them. The tree is flattened under its root after the inheritable attributes were pushed
      * down to each page.
      */
-    internal fun arrangeInPlace(doc: PDDocument, order: List<Int>) {
+    fun arrangeInPlace(doc: PDDocument, order: List<Int>) {
         val pages = (0 until doc.numberOfPages).map { doc.getPage(it).cosObject }
         // every page stays (deleting is [deletePages]); indexes may repeat (paste)
         require(order.all { it in pages.indices } && order.toSet().size == pages.size) { "bad page order" }
@@ -229,22 +252,32 @@ object PdfOps {
     }
 
 
-    /** Split into one file per page or per range chunk. Returns the files created. */
-    suspend fun split(src: File, outDir: File, baseName: String, chunk: Int = 1): List<File> = withContext(Dispatchers.IO) {
+    /**
+     * Split into one file per page or per range chunk. Returns the files created. audit 5 C-4 / C-25 / E-3: opens
+     * with [password], every part keeps the source's protection, and names never overwrite an existing file.
+     */
+    suspend fun split(src: File, outDir: File, baseName: String, chunk: Int = 1, password: String? = null): List<File> = withContext(Dispatchers.IO) {
         outDir.mkdirs()
         val files = ArrayList<File>()
-        load(src).use { doc ->
+        loadRaw(src, password).use { doc ->
             var start = 0; var n = 1
+            val step = chunk.coerceAtLeast(1)
             while (start < doc.numberOfPages) {
-                val end = minOf(start + chunk, doc.numberOfPages)
-                PDDocument().use { nd ->
-                    for (i in start until end) nd.importPage(doc.getPage(i))
-                    val f = File(outDir, "${baseName}_$n.pdf"); nd.save(f); files += f
+                val end = minOf(start + step, doc.numberOfPages)
+                PageExtract.build(doc, (start until end).toList(), password).use { nd ->
+                    val f = uniqueIn(outDir, "${baseName}_$n"); saveTo(nd, f); files += f
                 }
                 start = end; n++
             }
         }
         files
+    }
+
+    /** "<base>.pdf" in [dir], or "<base> (2).pdf", … when it exists (never overwrites). */
+    fun uniqueIn(dir: File, base: String, ext: String = "pdf"): File {
+        var f = File(dir, "$base.$ext"); var k = 2
+        while (f.exists()) f = File(dir, "$base ($k).$ext").also { k++ }
+        return f
     }
 
     enum class PageStyle { BLANK, LINED, GRID, DOTS }
@@ -287,8 +320,12 @@ object PdfOps {
 
     suspend fun insertBlankPage(src: File, atIndex: Int, out: File, style: PageStyle = PageStyle.BLANK, password: String? = null) = withContext(Dispatchers.IO) {
         load(src, password).use { doc ->
-            val ref = if (doc.numberOfPages > 0) doc.getPage(atIndex.coerceIn(0, doc.numberOfPages - 1)).mediaBox else PDRectangle.A4
+            // audit 5 T-11: the new page looks like its neighbour (the page before it; the first page when inserted
+            // at the start): the neighbour's visible (crop) size and its /Rotate
+            val refPage = if (doc.numberOfPages > 0) doc.getPage((atIndex - 1).coerceIn(0, doc.numberOfPages - 1)) else null
+            val ref = refPage?.cropBox ?: PDRectangle.A4
             val p = stylePage(doc, PDRectangle(ref.width, ref.height), false, style, 0xFFFFFF)
+            refPage?.let { p.rotation = ((it.rotation % 360) + 360) % 360 }
             if (atIndex >= doc.numberOfPages) doc.addPage(p) else doc.pages.insertBefore(p, doc.getPage(atIndex))
             saveTo(doc, out)
         }
@@ -380,14 +417,21 @@ object PdfOps {
             val shaped = ArabicShaper.shape(text)
             val targets = pages ?: (0 until doc.numberOfPages).toList()
             targets.forEach { i ->
-                val page = doc.getPage(i); val box = page.mediaBox
+                val page = doc.getPage(i)
+                // audit 5 T-10: centred on the visible (crop) box, at [rotation] as the page is DISPLAYED (/Rotate applied)
+                val place = DisplayPlace.of(page)
                 PDPageContentStream(doc, page, PDPageContentStream.AppendMode.APPEND, true, true).use { cs ->
+                    // audit 5 E-16: tagged like the edit5 watermark, so the edit5 watermark "Remove" finds it
+                    cs.appendRawCommands(com.smartdocs.editor.core.edit5.Marked.open("quick_watermark", "Watermark"))
                     val gs = PDExtendedGraphicsState(); gs.nonStrokingAlphaConstant = opacity; cs.setGraphicsStateParameters(gs)
                     val tw = runCatching { font.getStringWidth(shaped) / 1000f * fontSize }.getOrDefault(fontSize * text.length * 0.5f)
                     cs.beginText(); cs.setFont(font, fontSize)
                     cs.setNonStrokingColor((color shr 16) and 0xFF, (color shr 8) and 0xFF, color and 0xFF)
-                    cs.setTextMatrix(PdfMatrix.getRotateInstance(Math.toRadians(rotation.toDouble()), box.width / 2 - tw / 2 * Math.cos(Math.toRadians(rotation.toDouble())).toFloat(), box.height / 2 - tw / 2 * Math.sin(Math.toRadians(rotation.toDouble())).toFloat()))
+                    val rad = Math.toRadians(rotation.toDouble())
+                    val dx = place.width / 2 - tw / 2 * Math.cos(rad).toFloat(); val dy = place.height / 2 - tw / 2 * Math.sin(rad).toFloat()
+                    cs.setTextMatrix(place.textMatrix(dx, dy, rotation))
                     cs.showArabic(text, shaped); cs.endText()
+                    cs.appendRawCommands(com.smartdocs.editor.core.edit5.Marked.CLOSE)
                 }
             }
             saveTo(doc, out)
@@ -400,36 +444,41 @@ object PdfOps {
         load(src, password).use { doc ->
             val font = arabicFont(context, doc)
             for (i in 0 until doc.numberOfPages) {
-                val page = doc.getPage(i); val box = page.mediaBox
+                val page = doc.getPage(i)
+                // audit 5 T-10: positions on the displayed page (crop box, /Rotate applied)
+                val place = DisplayPlace.of(page)
                 var label = (start + i).toString()
                 if (arabicDigits) label = label.map { '٠' + (it - '0') }.joinToString("")
                 val tw = runCatching { font.getStringWidth(label) / 1000f * fontSize }.getOrDefault(fontSize * label.length * 0.6f)
                 val (x, y) = when (position) {
-                    NumberPosition.BOTTOM_CENTER -> (box.width - tw) / 2 to 24f
-                    NumberPosition.BOTTOM_RIGHT -> box.width - tw - 36f to 24f
+                    NumberPosition.BOTTOM_CENTER -> (place.width - tw) / 2 to 24f
+                    NumberPosition.BOTTOM_RIGHT -> place.width - tw - 36f to 24f
                     NumberPosition.BOTTOM_LEFT -> 36f to 24f
-                    NumberPosition.TOP_CENTER -> (box.width - tw) / 2 to box.height - 30f
+                    NumberPosition.TOP_CENTER -> (place.width - tw) / 2 to place.height - 30f
                 }
                 PDPageContentStream(doc, page, PDPageContentStream.AppendMode.APPEND, true, true).use { cs ->
-                    cs.beginText(); cs.setFont(font, fontSize); cs.setNonStrokingColor(60, 60, 60); cs.newLineAtOffset(x, y); cs.showText(label); cs.endText()
+                    cs.beginText(); cs.setFont(font, fontSize); cs.setNonStrokingColor(60, 60, 60); cs.setTextMatrix(place.textMatrix(x, y, 0f)); cs.showText(label); cs.endText()
                 }
             }
             saveTo(doc, out)
         }
     }
 
-    /** Encrypt with an open password and/or an owner (permissions) password. */
-    suspend fun protect(src: File, out: File, openPassword: String, ownerPassword: String, allowPrint: Boolean = true, allowCopy: Boolean = true, allowModify: Boolean = true, allowAnnotate: Boolean = true, allowFillForms: Boolean = true, currentPassword: String? = null) = withContext(Dispatchers.IO) {
+    /**
+     * Encrypt with an open password and/or an owner (permissions) password. audit 5 T-12 / P-2 / P-5: AES-256
+     * (Unicode / Arabic passwords work), the owner password is never "owner" nor the open password (a random one is
+     * used then, see [newProtection]). Returns the owner password used (shown to the user when they typed none).
+     */
+    suspend fun protect(src: File, out: File, openPassword: String, ownerPassword: String, allowPrint: Boolean = true, allowCopy: Boolean = true, allowModify: Boolean = true, allowAnnotate: Boolean = true, allowFillForms: Boolean = true, currentPassword: String? = null): String = withContext(Dispatchers.IO) {
         load(src, currentPassword).use { doc ->
             val ap = AccessPermission().apply {
                 setCanPrint(allowPrint); setCanExtractContent(allowCopy); setCanModify(allowModify)
                 setCanModifyAnnotations(allowAnnotate); setCanFillInForm(allowFillForms); setCanAssembleDocument(allowModify)
             }
-            val policy = StandardProtectionPolicy(ownerPassword.ifEmpty { openPassword.ifEmpty { "owner" } }, openPassword, ap).apply {
-                encryptionKeyLength = 128; setPreferAES(true)
-            }
+            val (policy, owner) = newProtection(openPassword, ownerPassword, ap)
             doc.protect(policy)
             saveTo(doc, out)
+            owner
         }
     }
 
@@ -449,15 +498,13 @@ object PdfOps {
         // old callers pass a pixel limit for an A4-ish page; the optimizer works in dpi of each page
         val dpi = (maxDim / 11.7f).toInt().coerceIn(72, 300)
         val opts = com.smartdocs.editor.core.tools5.OptimizeOptions(imageDpi = dpi, jpegQuality = quality.coerceIn(20, 95),
-            stripMetadata = false, stripJavaScript = false, onlyIfSmaller = false, keepProtection = false)
+            stripMetadata = false, stripJavaScript = false, onlyIfSmaller = false, keepProtection = true)
+        // audit 5 T-03: the optimizer keeps the protection itself (PdfOps.reprotect: same cipher, key length,
+        // permission bits and passwords) — also for a permissions-only file opened without a password
         val tmp = File(out.absoluteFile.parentFile, ".${out.nameWithoutExtension}.${System.nanoTime()}.opt.pdf")
         try {
             com.smartdocs.editor.core.tools5.Optimizer.optimize(src, password, tmp, opts)
-            val result = if (!password.isNullOrEmpty()) {
-                // the optimizer saves without encryption: protect again with the same password
-                val prot = File(tmp.parentFile, tmp.name + ".p.pdf")
-                protect(tmp, prot, password, password); tmp.delete(); prot
-            } else tmp
+            val result = tmp
             val smaller = result.length() in 1 until src.length()
             if (smaller) { if (!result.renameTo(out)) { result.copyTo(out, overwrite = true); result.delete() } }
             else { result.delete(); src.copyTo(out, overwrite = true) }
@@ -541,6 +588,8 @@ object PdfOps {
     suspend fun setInfo(src: File, info: Info, out: File, password: String? = null) = withContext(Dispatchers.IO) {
         load(src, password).use { doc ->
             doc.documentInformation.apply { title = info.title; author = info.author; subject = info.subject; keywords = info.keywords; creator = info.creator; producer = info.producer }
+            // audit 5 T-16: viewers that prefer XMP (and PDF/A files) must show the same title / author / subject
+            runCatching { XmpInfo.sync(doc, info.title, info.author, info.subject, info.keywords, info.creator, info.producer) }
             saveTo(doc, out)
         }
     }
