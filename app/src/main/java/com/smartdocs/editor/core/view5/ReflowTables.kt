@@ -109,7 +109,7 @@ object ReflowTables {
                 if (!gapOk) break
                 if (l.segs.size >= 2) { run += j; j++; continue }
                 val next = lines.getOrNull(j + 1)
-                if (next != null && next.segs.size >= 2 && l.bottom - next.top <= 2.5f * max(l.size, next.size) && l.segs.size == 1) { run += j; j++; continue }
+                if (next != null && next.segs.size >= 2 && l.bottom - next.top <= 2.5f * max(l.size, next.size)) { run += j; j++; continue }
                 break
             }
             val t = tableOf(lines, run, rules)
