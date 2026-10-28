@@ -177,7 +177,8 @@ class FillRuntimeTest {
         """.trimIndent(), mapOf("a" to "1"), page = 0)!!
         assertTrue(r.ok)
         val kinds = r.requests.map { it.kind }
-        assertEquals(listOf("submit", "page", "url", "print", "unsupported"), kinds)
+        assertEquals(listOf("submit", "page", "url", "print", "saveas"), kinds)      // 8.84: saveAs is carried out now
+        assertEquals("/x.pdf", r.requests[4]["p"])
         assertEquals("https://x.test/s", r.requests[0]["u"]); assertEquals("XFDF", r.requests[0]["f"]); assertEquals("1", r.requests[0]["e"])
         assertEquals("2", r.requests[1]["p"])
         assertEquals("Hello|2", r.setValues["a"])

@@ -26,16 +26,17 @@ class ScriptDocChangesTest {
             val ch = ScriptDocChanges(
                 scripts = mapOf("init" to "var x = 1;"),
                 locks = mapOf("sig" to ScriptDocChanges.lockOf("Include", listOf("name", "date"))),
-                fields = listOf(ScriptDocChanges.NewField("added", FxType.TEXT, 0, FxRect(50f, 700f, 250f, 720f)),
-                    ScriptDocChanges.NewField("offpage", FxType.TEXT, 5, FxRect(0f, 0f, 10f, 10f))),
+                // signature fields: no standard-font metrics needed on the JVM
+                fields = listOf(ScriptDocChanges.NewField("added", FxType.SIGNATURE, 0, FxRect(50f, 700f, 250f, 720f)),
+                    ScriptDocChanges.NewField("offpage", FxType.SIGNATURE, 5, FxRect(0f, 0f, 10f, 10f))),
             )
             assertEquals(3, ch.apply(d))
             assertTrue(DocScripts.named(d).any { it.first == "init" && it.second.contains("var x") })
-            val sig = d.documentCatalog.acroForm.getField("sig").cosObject
+            val sig = d.documentCatalog.getAcroForm(null).getField("sig").cosObject
             val lock = FxSigLocks.read(sig.getDictionaryObject(COSName.getPDFName("Lock")) as COSDictionary)
             assertEquals(FxSigLock.Mode.INCLUDE, lock.mode); assertEquals(listOf("name", "date"), lock.fields)
-            assertNotNull(d.documentCatalog.acroForm.getField("added"))
-            assertNull(d.documentCatalog.acroForm.getField("offpage"))
+            assertNotNull(d.documentCatalog.getAcroForm(null).getField("added"))
+            assertNull(d.documentCatalog.getAcroForm(null).getField("offpage"))
         }
     }
 
