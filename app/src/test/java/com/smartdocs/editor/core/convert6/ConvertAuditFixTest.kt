@@ -138,7 +138,7 @@ class ConvertAuditFixTest {
         val kept = MdFlow.parse("سطر 1\nسطر 2", hardBreaks = true).blocks.single() as FBlock.Para
         assertTrue(Text6.plain(kept.runs).contains("\n"))
         // the same parser for md → PDF and any → PDF: a table is a table
-        val f = File.createTempFile("n", ".md"); f.writeText("| a | b |\n|---|---|\n| 1 | 2 |\n\n- [x] done\n\nTitle\n=====\n")
+        val f = File.createTempFile("notes", ".md"); f.writeText("| a | b |\n|---|---|\n| 1 | 2 |\n\n- [x] done\n\nTitle\n=====\n")
         try {
             val doc = ToPdf6.readWordLike(f, Kind6.MARKDOWN)
             assertTrue(doc.blocks.any { it is FBlock.Table }); assertTrue(doc.blocks.any { it is FBlock.Heading })

@@ -102,7 +102,7 @@ object CsvIO {
         val d = com.smartdocs.editor.core.office5.FxCoerce.normalizeDigits(t)
         if (Regex("""^[+-]?0\d+$""").matches(d)) return true
         if (d.count { it.isDigit() } > 15 && Regex("""^[+-]?[\d\s]+$""").matches(d)) return true
-        if (Regex("""^\d{1,2}[-/.]\d{1,2}$""").matches(d)) return true
+        if (Regex("""^\d{1,2}[-/]\d{1,2}$""").matches(d)) return true
         return false
     }
 
