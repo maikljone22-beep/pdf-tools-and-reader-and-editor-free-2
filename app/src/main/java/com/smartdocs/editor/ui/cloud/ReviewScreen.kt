@@ -166,9 +166,16 @@ private fun ReviewDetail(nav: NavHostController, ref: ReviewRef, onBack: () -> U
     val published = stringResource(R.string.ac_review_published)
     val nothing = stringResource(R.string.ac_review_nothing_new)
 
+    var takeFrom by remember { mutableStateOf<String?>(null) }   // fc-sync: reviewer whose comments to take over
+    var remind by remember { mutableStateOf(com.smartdocs.editor.core.collab.ReviewReminder.enabled(ctx)) }
+    val tookMsg = stringResource(R.string.fcy_took_over)
+    val openMsg = stringResource(R.string.fcy_take_close_doc)
+
     suspend fun refresh(manual: Boolean) {
         runCatching {
             meta = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { CollabClient.meta(ref.id, ref.code) }
+            // fc-sync: keep the stored deadline current (the local reminder follows it)
+            meta?.let { m -> if (m.deadline != ref.deadline || (m.closed && !ref.closed)) CollabStore.upsert(ctx, ref.copy(deadline = m.deadline, closed = ref.closed || m.closed)) }
             val n = CollabStore.fetch(ctx, ref)
             if (n > 0) status = newComments.format(n) else if (manual) status = nothing
         }.onFailure { status = if (CollabClient.isGone(it)) gone else it.message }
@@ -194,6 +201,11 @@ private fun ReviewDetail(nav: NavHostController, ref: ReviewRef, onBack: () -> U
                         Text(if (dl > 0) stringResource(R.string.ac_review_due, DocumentRepository.formatDate(dl)) else stringResource(R.string.ac_review_no_deadline), style = MaterialTheme.typography.bodySmall)
                         if (ref.lastSync > 0) Text(stringResource(R.string.ac_review_synced, DocumentRepository.formatDate(ref.lastSync)), style = MaterialTheme.typography.bodySmall)
                         status?.let { Text(it, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp)) }
+                        // fc-sync: local reminder a day before the deadline
+                        if (dl > 0 && !ended) Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(stringResource(R.string.fcy_remind_switch), Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+                            Switch(remind, { remind = it; com.smartdocs.editor.core.collab.ReviewReminder.setEnabled(ctx, it) })
+                        }
                     }
                 }
             }
@@ -220,6 +232,8 @@ private fun ReviewDetail(nav: NavHostController, ref: ReviewRef, onBack: () -> U
                     leadingContent = { Icon(Icons.Default.Person, null) },
                     headlineContent = { Text(r.name.ifBlank { stringResource(R.string.ac_anonymous) }) },
                     supportingContent = { Text(stringResource(R.string.ac_review_reviewer_line, r.count, DocumentRepository.formatDate(r.lastSeen))) },
+                    // fc-sync: take over this reviewer's comments (not my own entry)
+                    trailingContent = { if (r.count > 0 && r.name != CollabStore.authorName(ctx)) TextButton(onClick = { takeFrom = r.name }) { Text(stringResource(R.string.fcy_take_over)) } },
                 )
             }
             item {
@@ -233,6 +247,24 @@ private fun ReviewDetail(nav: NavHostController, ref: ReviewRef, onBack: () -> U
     }
 
     if (share) ShareDialog(ref) { share = false }
+    takeFrom?.let { who ->
+        AlertDialog(
+            onDismissRequest = { takeFrom = null },
+            title = { Text(stringResource(R.string.fcy_take_over)) },
+            text = { Text(stringResource(R.string.fcy_take_over_q, who.ifBlank { stringResource(R.string.ac_anonymous) })) },
+            confirmButton = {
+                TextButton(onClick = {
+                    takeFrom = null
+                    scope.launch {
+                        runCatching { CollabStore.takeOver(ctx, ref, who) }
+                            .onSuccess { status = tookMsg.format(it) }
+                            .onFailure { status = if (it is CollabStore.DocumentOpen) openMsg else it.message }
+                    }
+                }) { Text(stringResource(R.string.ok)) }
+            },
+            dismissButton = { TextButton(onClick = { takeFrom = null }) { Text(stringResource(R.string.cancel)) } },
+        )
+    }
     confirm?.let { what ->
         AlertDialog(
             onDismissRequest = { confirm = null },
@@ -247,7 +279,8 @@ private fun ReviewDetail(nav: NavHostController, ref: ReviewRef, onBack: () -> U
                                 when (what) {
                                     "close" -> { CollabClient.close(ref.id, ref.ownerKey!!); CollabStore.upsert(ctx, ref.copy(closed = true)) }
                                     "delete" -> { CollabClient.delete(ref.id, ref.ownerKey!!); CollabStore.remove(ctx, ref.id) }
-                                    else -> CollabStore.remove(ctx, ref.id)
+                                    // fc-sync "Remove me": also off the server's reviewer list (older servers: local only)
+                                    else -> { runCatching { CollabClient.leave(ref.id, ref.code, CollabStore.participantId(ctx)) }; CollabStore.remove(ctx, ref.id) }
                                 }
                             }
                         }.onFailure { status = it.message }

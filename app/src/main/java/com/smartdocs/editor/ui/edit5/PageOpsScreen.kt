@@ -74,6 +74,8 @@ fun PageOpsScreen(nav: NavHostController, uri: String?, initial: PageOp = PageOp
     val n = doc.pageCount
     ToolScaffold(stringResource(R.string.e5_pageops_title), nav, runner) {
         E5FileRow(doc)
+        // audit 5 E-17: composed for the whole screen, so switching the operation never hides a pending prompt
+        E5UnlockDialog(unlocker)
         ChoiceChips(PageOp.values().toList(), op, { stringResource(opLabel(it)) }) { op = it }
         when (op) {
             PageOp.REVERSE -> E5Section(stringResource(R.string.e5_op_reverse)) {
@@ -87,7 +89,6 @@ fun PageOpsScreen(nav: NavHostController, uri: String?, initial: PageOp = PageOp
             PageOp.REPLACE, PageOp.COPY_PAGES, PageOp.INTERLEAVE -> E5Section(stringResource(opLabel(op))) {
                 FilePickRow(other, stringResource(if (op == PageOp.INTERLEAVE) R.string.e5_second_file else R.string.e5_from_file), pickOther)
                 other?.takeIf { unlocker.isLocked(it) }?.let { Text(stringResource(R.string.e5_lock_second_ok), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                E5UnlockDialog(unlocker)
                 if (op != PageOp.INTERLEAVE) OutlinedTextField(otherRange, { otherRange = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.e5_pages_from_other)) }, placeholder = { Text(stringResource(R.string.e5_all_pages)) })
                 when (op) {
                     PageOp.REPLACE -> OutlinedTextField(range, { range = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.e5_pages_to_replace)) })
@@ -138,6 +139,9 @@ fun PageOpsScreen(nav: NavHostController, uri: String?, initial: PageOp = PageOp
             val c = cols; val r = rows; val rt = rtl; val xcs = xCuts; val ycs = yCuts; val rb = reverseB; val sb = splitBy; val mk = marker; val dr = drop
             val opw = of?.let { unlocker.password(it) }
             val sel = PageSet.parse(rg, n)
+            // audit 5 E-15: a range that selects nothing is an error, not a "success" with an unchanged copy
+            val usesRange = o in setOf(PageOp.REVERSE, PageOp.DUPLICATE, PageOp.REPLACE, PageOp.SPLIT_PAGE)
+            if (usesRange && rg.isNotBlank() && sel.isEmpty()) { runner.error = ctx.getString(R.string.tte5_bad_range); return@PrimaryButton }
             if (o == PageOp.SMART_SPLIT) runner.runMany(processing) {
                 val src = doc.work!!
                 val seps = if (sb == SplitBy.BLANK) PageOps5.blankPages(ctx, src, doc.password) else PageOps5.markerPages(ctx, src, doc.password, mk)
@@ -147,8 +151,18 @@ fun PageOpsScreen(nav: NavHostController, uri: String?, initial: PageOp = PageOp
                     when (o) {
                         PageOp.REVERSE -> PageOps5.reverse(s, out, p, if (rg.isBlank()) null else sel)
                         PageOp.DUPLICATE -> PageOps5.duplicate(s, out, p, sel, tm, ae)
-                        PageOp.REPLACE -> { val oc = PdfOps.pageCount(of!!, opw); PageOps5.replace(s, out, p, sel, of, opw, PageSet.parse(orr, oc)) }
-                        PageOp.COPY_PAGES -> { val oc = PdfOps.pageCount(of!!, opw); PageOps5.copyPages(s, out, p, of, opw, PageSet.parse(orr, oc), a) }
+                        PageOp.REPLACE -> {
+                            val oc = PdfOps.pageCount(of!!, opw); val with = PageSet.parse(orr, oc)
+                            // audit 5 E-15: every target page needs a replacement (extra replacement pages are inserted after the last target)
+                            if (orr.isNotBlank() && with.isEmpty()) throw IllegalArgumentException(ctx.getString(R.string.tte5_bad_range_other))
+                            if (with.size < sel.size) throw IllegalArgumentException(ctx.getString(R.string.tte5_replace_count, sel.size, with.size))
+                            PageOps5.replace(s, out, p, sel, of, opw, with)
+                        }
+                        PageOp.COPY_PAGES -> {
+                            val oc = PdfOps.pageCount(of!!, opw); val pagesB = PageSet.parse(orr, oc)
+                            if (orr.isNotBlank() && pagesB.isEmpty()) throw IllegalArgumentException(ctx.getString(R.string.tte5_bad_range_other))
+                            PageOps5.copyPages(s, out, p, of, opw, pagesB, a)
+                        }
                         PageOp.INTERLEAVE -> PageOps5.interleave(s, of!!, out, p, opw, rb)
                         PageOp.SPLIT_PAGE -> {
                             // splitParts takes row cuts from the bottom of the page

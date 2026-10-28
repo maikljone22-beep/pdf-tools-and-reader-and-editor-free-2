@@ -63,6 +63,22 @@ object CloudHttp {
         }
     }
 
+    /**
+     * fc-sync: like [string] on [http], but the call is cancelled together with the coroutine (long-polls are held
+     * open for minutes; leaving the app must not leave a thread blocked on them).
+     */
+    suspend fun stringCancellable(http: OkHttpClient, req: Request): String = suspendCancellableCoroutine { cont ->
+        val call = http.newCall(req)
+        cont.invokeOnCancellation { runCatching { call.cancel() } }
+        call.enqueue(object : okhttp3.Callback {
+            override fun onFailure(call: okhttp3.Call, e: IOException) { if (cont.isActive) cont.resumeWithException(e) }
+            override fun onResponse(call: okhttp3.Call, response: Response) {
+                val out = runCatching { response.use { r -> check(r); r.body?.string().orEmpty() } }
+                if (cont.isActive) out.fold({ cont.resume(it) }, { cont.resumeWithException(it) })
+            }
+        })
+    }
+
     fun check(r: Response) {
         if (r.isSuccessful) return
         val msg = runCatching { r.peekBody(2048).string() }.getOrDefault("")

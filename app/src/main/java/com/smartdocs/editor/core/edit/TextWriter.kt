@@ -105,6 +105,36 @@ internal class FontSet(private val context: Context, private val doc: PDDocument
     }
 }
 
+/**
+ * audit 5 C-7: the characters of [text] that no font can draw ([fontFor] returns null): [TextLayout] silently drops
+ * them (`fontFor() ?: continue`). Whitespace and control characters are ignored. Pure, see TextEncodeCheckTest.
+ */
+internal fun unencodableChars(text: String, fontFor: (Char) -> PDFont?): Set<Char> {
+    val out = LinkedHashSet<Char>()
+    for (c in text) if (!c.isWhitespace() && !c.isISOControl() && c !in out && fontFor(c) == null) out += c
+    return out
+}
+
+/** audit 5 C-7: pre-check of new text before it is written into the page content. */
+object TextEncodeCheck {
+    /**
+     * The characters of [text] that the edit engine's fonts (a standard-14 font, the bundled Arabic font) cannot
+     * encode; written text would silently lose them. Surrogate pairs (emoji) are reported as one string each.
+     */
+    fun missing(context: Context, text: String): List<String> = PDDocument().use { d ->
+        val fonts = FontSet(context, d, null, EditTextStyle())
+        val bad = unencodableChars(text) { c -> if (Character.isSurrogate(c)) null else fonts.fontFor(c) }
+        val out = LinkedHashSet<String>()
+        var i = 0
+        while (i < text.length) {
+            val cp = text.codePointAt(i); val n = Character.charCount(cp)
+            if (text.substring(i, i + n).any { it in bad }) out += String(Character.toChars(cp))
+            i += n
+        }
+        out.toList()
+    }
+}
+
 internal class Run(val font: PDFont, val text: String, val width: Float)
 
 /** One laid-out line: [logical] text (for /ActualText), visual-order runs and total width in points. */

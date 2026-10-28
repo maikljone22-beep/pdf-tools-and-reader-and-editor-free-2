@@ -40,9 +40,11 @@ import java.io.File
 /**
  * Asks for the password of one locked input file (merge, insert pages from file). The password is checked before it
  * is accepted: a wrong one keeps the dialog open with an error. "Remove file" drops the file from the operation.
+ * audit 5 C-4: single-input tools pass their own [message] / [removeLabel] (the defaults speak of adding a file).
  */
 @Composable
-fun FilePasswordDialog(file: File, onUnlocked: (String) -> Unit, onRemove: () -> Unit, onDismiss: () -> Unit = onRemove) {
+fun FilePasswordDialog(file: File, onUnlocked: (String) -> Unit, onRemove: () -> Unit, onDismiss: () -> Unit = onRemove,
+                       message: String? = null, removeLabel: String? = null) {
     val scope = rememberCoroutineScope()
     var pw by remember(file) { mutableStateOf("") }
     var show by remember { mutableStateOf(false) }
@@ -63,7 +65,7 @@ fun FilePasswordDialog(file: File, onUnlocked: (String) -> Unit, onRemove: () ->
         title = { Text(stringResource(R.string.fd_locked_title)) },
         text = {
             Column {
-                Text(stringResource(R.string.fd_locked_msg, file.name), style = MaterialTheme.typography.bodyMedium)
+                Text(message ?: stringResource(R.string.fd_locked_msg, file.name), style = MaterialTheme.typography.bodyMedium)
                 Spacer(Modifier.height(12.dp))
                 OutlinedTextField(
                     pw, { pw = it; wrong = false }, Modifier.fillMaxWidth(), singleLine = true,
@@ -84,6 +86,6 @@ fun FilePasswordDialog(file: File, onUnlocked: (String) -> Unit, onRemove: () ->
                 if (checking) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Text(stringResource(R.string.fd_unlock))
             }
         },
-        dismissButton = { TextButton(onClick = onRemove) { Text(stringResource(R.string.fd_remove_file)) } },
+        dismissButton = { TextButton(onClick = onRemove) { Text(removeLabel ?: stringResource(R.string.fd_remove_file)) } },
     )
 }

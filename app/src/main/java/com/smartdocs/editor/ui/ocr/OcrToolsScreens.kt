@@ -61,6 +61,8 @@ fun OcrZoneScreen(nav: NavHostController, uri: String?) {
     var text by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var runJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }     // audit 5 OCR-5: the zone run can be cancelled
+    var exported by remember { mutableStateOf<java.io.File?>(null) }              // audit 5 OCR-8: "Add to page" exports once
     val scope = rememberCoroutineScope()
     val processing = stringResource(R.string.processing)
     val noText = stringResource(R.string.nt_ocr_zone_empty)
@@ -79,22 +81,36 @@ fun OcrZoneScreen(nav: NavHostController, uri: String?) {
             E5PageView(doc.work, doc.password, page, info, doc.version, Modifier.fillMaxWidth(), onRect = { r -> zone = r; result = null; text = "" }) { map ->
                 zone?.let { z -> val r = map(z); drawRect(Color(0x332196F3), r.topLeft, r.size); drawRect(Color(0xFF2196F3), r.topLeft, r.size, style = Stroke(3f)) }
             }
+            // audit 5 OCR-8: areas that need no drag (TalkBack / switch access): whole page, top / bottom half
+            // (display points, origin bottom-left: top > bottom, as the dragged zone)
+            @OptIn(ExperimentalLayoutApi::class)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                val W = info.displayW; val H = info.displayH
+                listOf(
+                    R.string.ttoc_zone_whole to RectF(0f, H, W, 0f),
+                    R.string.ttoc_zone_top to RectF(0f, H, W, H / 2f),
+                    R.string.ttoc_zone_bottom to RectF(0f, H / 2f, W, 0f),
+                ).forEach { (label, r) ->
+                    AssistChip(onClick = { zone = r; result = null; text = "" }, label = { Text(stringResource(label)) }, leadingIcon = { Icon(Icons.Default.CropFree, null) })
+                }
+            }
+            if (zone != null) Text(stringResource(R.string.ttoc_zone_selected), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             val z = zone
             Button(onClick = {
                 val f = doc.work ?: return@Button
                 val pw = doc.password; val l = langs.joinToString("+"); val t = tuning; val pi = page
                 busy = true; error = null
-                scope.launchCatching({ error = it; busy = false }) {
+                runJob = scope.launchCatching(ctx, { error = it; busy = false }) {
                     val engine = OcrPipeline.engineFor(ctx, null, t)
-                    try {
+                    try { OcrPipeline.cancelling(engine) {
                         engine.ensureLanguages(l)
-                        if (!engine.init(l)) throw IllegalStateException("ocr init")
+                        if (!engine.init(l)) throw com.smartdocs.editor.core.ocr.OcrException(com.smartdocs.editor.core.ocr.OcrException.Kind.INIT)
                         val (crop, full) = withContext(Dispatchers.IO) {
                             val s = PdfSession.open(ctx, f, pw)
                             try {
                                 val (w, h) = s.pageSize(pi)
-                                var k = 300f / 72f
-                                if (maxOf(w, h) * k > 4000f) k = 4000f / maxOf(w, h)
+                                // audit 5 OCR-4: the same render cap as the page OCR, so zone words join the stored page words
+                                val k = OcrPipeline.renderScale(w, h)
                                 val bmp = s.render(pi, (w * k).toInt().coerceAtLeast(1), (h * k).toInt().coerceAtLeast(1), annotations = false)
                                     .copy(android.graphics.Bitmap.Config.ARGB_8888, false)
                                 s.invalidateCache()
@@ -103,19 +119,26 @@ fun OcrZoneScreen(nav: NavHostController, uri: String?) {
                                 val x0 = (z!!.left * sx).toInt().coerceIn(0, bmp.width - 1); val x1 = (z.right * sx).toInt().coerceIn(x0 + 1, bmp.width)
                                 val y0 = ((info.displayH - z.top) * sy).toInt().coerceIn(0, bmp.height - 1); val y1 = ((info.displayH - z.bottom) * sy).toInt().coerceIn(y0 + 1, bmp.height)
                                 val c = android.graphics.Bitmap.createBitmap(bmp, x0, y0, x1 - x0, y1 - y0)
-                                val r = Triple(c, x0 to y0, bmp.width to bmp.height); bmp.recycle(); r
-                            } finally { s.closeAsync() }
+                                // createBitmap may return the page bitmap itself (zone = whole page): recycle only a separate one
+                                val r = Triple(c, x0 to y0, bmp.width to bmp.height); if (c !== bmp) bmp.recycle(); r
+                            } finally { withContext(kotlinx.coroutines.NonCancellable) { s.closeAsync() } }
                         }.let { (c, o, wh) -> c to Triple(o.first, o.second, wh) }
-                        val filtered = OcrPrep.filter(crop, t)
-                        val pg = try { engine.recognize(filtered, wantWords = true) } finally { if (filtered !== crop) filtered.recycle(); crop.recycle() }
+                        // audit 5 OCR-2: filters off the main thread; OCR-8: the bitmaps are freed also on cancel
+                        val pg = try {
+                            val filtered = OcrPrep.filterAsync(crop, t)
+                            try { engine.recognize(filtered, wantWords = true) } finally { if (filtered !== crop) filtered.recycle() }
+                        } finally { crop.recycle() }
                         val (x0, y0, wh) = full
                         result = OcrReview.placeZone(pg, x0, y0, wh.first, wh.second)
                         text = pg.text.trim().ifEmpty { noText }
-                    } finally { engine.close(); busy = false }
+                    } } finally { OcrPipeline.closeQuietly(engine); busy = false; runJob = null }
                 }
             }, enabled = z != null && !busy && langs.isNotEmpty(), modifier = Modifier.fillMaxWidth()) {
                 if (busy) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Icon(Icons.Default.TextFields, null)
                 Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.nt_ocr_zone_run))
+            }
+            if (busy) OutlinedButton(onClick = { runJob?.cancel() }, Modifier.fillMaxWidth()) {
+                Icon(Icons.Default.Close, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.cancel))
             }
             error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
             if (text.isNotEmpty()) {
@@ -128,7 +151,11 @@ fun OcrZoneScreen(nav: NavHostController, uri: String?) {
                     val pg = r ?: return@PrimaryButton; val pi = page
                     runner.run(processing) {
                         doc.apply(app.documents.tempDir) { s, o, p -> SearchablePdfWriter(ctx, s, p).use { w -> w.addLayer(pi, pg); w.save(o) } }
-                        doc.export(app.documents.docsDir, { d, b -> app.documents.uniqueFile(d, b) }, "ocr")
+                        // audit 5 OCR-8: the first "Add to page" makes the _ocr copy, later ones update that same copy
+                        val prev = exported
+                        val w = doc.work
+                        if (prev != null && prev.exists() && w != null) { w.copyTo(prev, overwrite = true); com.smartdocs.editor.core.pdf.ToolOutputs.record(prev, doc.source) }
+                        else doc.export(app.documents.docsDir, { d, b -> app.documents.uniqueFile(d, b) }, "ocr").also { exported = it }
                     }
                 }
             }
@@ -137,9 +164,9 @@ fun OcrZoneScreen(nav: NavHostController, uri: String?) {
     if (moreLangs) OcrLanguagePicker(langs, onDismiss = { moreLangs = false }) { langs = it; moreLangs = false }
 }
 
-/** Launches [block], reporting a failure through [onError] (message) instead of crashing. */
-private fun kotlinx.coroutines.CoroutineScope.launchCatching(onError: (String) -> Unit, block: suspend () -> Unit) = launch {
-    try { block() } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Throwable) { onError(e.message ?: e.toString()) }
+/** Launches [block], reporting a failure through [onError] (a string resource text, audit 5 OCR-8) instead of crashing. */
+private fun kotlinx.coroutines.CoroutineScope.launchCatching(ctx: android.content.Context, onError: (String) -> Unit, block: suspend () -> Unit) = launch {
+    try { block() } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Throwable) { onError(ocrErrorText(ctx, e)) }
 }
 
 /**
@@ -153,6 +180,7 @@ fun OcrReviewScreen(nav: NavHostController, uri: String?) {
     val ctx = LocalContext.current
     val doc = rememberE5Doc(uri)
     val runner = rememberToolRunner()
+    var exported by remember { mutableStateOf<java.io.File?>(null) }              // audit 5 OCR-8: Save exports once
     var pages by remember { mutableStateOf<Map<Int, OcrPage>>(emptyMap()) }
     val edits = remember { mutableStateMapOf<Int, Map<Int, String?>>() }   // page → (word → new text / null = not text)
     var minConf by remember { mutableFloatStateOf(65f) }
@@ -198,7 +226,9 @@ fun OcrReviewScreen(nav: NavHostController, uri: String?) {
                 OcrReview.suspects(p, minConf).map { wi -> Triple(pi, wi, p.words[wi]) }
             }
             Text(stringResource(R.string.nt_ocr_review_count, rows.count { (pi, wi, _) -> wi !in edits[pi].orEmpty() }, rows.size), style = MaterialTheme.typography.titleSmall)
-            rows.take(400).forEach { (pi, wi, w) ->
+            // audit 5 OCR-8: the list shows the first rows only; say so (the page view and "Accept all" still cover every suspect)
+            if (rows.size > REVIEW_ROWS) Text(stringResource(R.string.ttoc_review_cut, REVIEW_ROWS, rows.size), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            rows.take(REVIEW_ROWS).forEach { (pi, wi, w) ->
                 val done = wi in edits[pi].orEmpty()
                 var v by remember(pi, wi) { mutableStateOf(edits[pi]?.get(wi) ?: w.text) }
                 Row(Modifier.fillMaxWidth().clickable { page = pi }, verticalAlignment = Alignment.CenterVertically) {
@@ -219,9 +249,15 @@ fun OcrReviewScreen(nav: NavHostController, uri: String?) {
                     doc.apply(app.documents.tempDir) { s, o, p -> OcrReview.rewrite(ctx, s, p, o, changed) }
                     edits.clear()
                     pages = OcrReview.load(doc.work!!, doc.password)
-                    doc.export(app.documents.docsDir, { d, b -> app.documents.uniqueFile(d, b) }, "reviewed")
+                    val prev = exported
+                    val w = doc.work
+                    if (prev != null && prev.exists() && w != null) { w.copyTo(prev, overwrite = true); com.smartdocs.editor.core.pdf.ToolOutputs.record(prev, doc.source) }
+                    else doc.export(app.documents.docsDir, { d, b -> app.documents.uniqueFile(d, b) }, "reviewed").also { exported = it }
                 }
             }
         }
     }
 }
+
+/** Rows of the suspect list shown at once (audit 5 OCR-8: the cut is said on screen). */
+private const val REVIEW_ROWS = 400

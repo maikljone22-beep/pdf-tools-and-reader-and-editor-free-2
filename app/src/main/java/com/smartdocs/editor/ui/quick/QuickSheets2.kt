@@ -37,8 +37,10 @@ fun ProtectSheet(c: QuickController, onDismiss: () -> Unit) {
     var annotate by remember { mutableStateOf(true) }
     var forms by remember { mutableStateOf(true) }
     val mismatch = confirm.isNotEmpty() && confirm != pw
+    // audit 5 P-5: an owner password equal to the open password would lift the restrictions for everyone who can open
+    val ownerSame = owner.isNotEmpty() && owner == pw
     val vt = if (show) VisualTransformation.None else PasswordVisualTransformation()
-    QuickSheet(stringResource(R.string.qk_pr_title), stringResource(R.string.qk_pr_btn), primaryEnabled = pw.isNotEmpty() && pw == confirm,
+    QuickSheet(stringResource(R.string.qk_pr_title), stringResource(R.string.qk_pr_btn), primaryEnabled = pw.isNotEmpty() && pw == confirm && !ownerSame,
         onPrimary = { c.protect(pw, owner, print, copy, modify, annotate, forms) }, onDismiss = onDismiss) {
         OutlinedTextField(pw, { pw = it }, label = { Text(stringResource(R.string.qk_pr_password)) }, singleLine = true, visualTransformation = vt,
             trailingIcon = { IconButton(onClick = { show = !show }) { Icon(if (show) Icons.Default.VisibilityOff else Icons.Default.Visibility, stringResource(if (show) R.string.pc_cd_hide else R.string.pc_cd_show)) } },
@@ -51,7 +53,8 @@ fun ProtectSheet(c: QuickController, onDismiss: () -> Unit) {
             Icon(if (options) Icons.Default.ExpandLess else Icons.Default.ExpandMore, null)
         }
         if (options) {
-            OutlinedTextField(owner, { owner = it }, label = { Text(stringResource(R.string.qk_pr_owner)) }, singleLine = true, visualTransformation = vt, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(owner, { owner = it }, label = { Text(stringResource(R.string.qk_pr_owner)) }, singleLine = true, visualTransformation = vt,
+                isError = ownerSame, supportingText = { Text(stringResource(if (ownerSame) R.string.tttl_pr_owner_same else R.string.tttl_pr_owner_hint)) }, modifier = Modifier.fillMaxWidth())
             CheckRow(stringResource(R.string.qk_pr_print), print) { print = it }
             CheckRow(stringResource(R.string.qk_pr_copy), copy) { copy = it }
             CheckRow(stringResource(R.string.qk_pr_modify), modify) { modify = it }

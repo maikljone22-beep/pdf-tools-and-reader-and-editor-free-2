@@ -31,7 +31,12 @@ class RepairedInput private constructor(val file: File, val result: ToUnicodeRep
                     val r = ToUnicodeRepair.repair(doc, removeOldOcr = true)
                     var cleared = r.ocrLayersRemoved
                     for (pi in rerun ?: (0 until doc.numberOfPages).toList()) {
-                        if (pi in 0 until doc.numberOfPages) cleared += runCatching { OcrLayerCleanup.removeOurs(doc.getPage(pi)) }.getOrDefault(0)
+                        if (pi !in 0 until doc.numberOfPages) continue
+                        val page = doc.getPage(pi)
+                        // audit 5 OCR-3: a page with stored OCR words carries our layer, also a Latin-only one (Helvetica);
+                        // the stored words go with the layer, so the new run does not append to them
+                        val n = runCatching { OcrLayerCleanup.removeOurs(page, latinOnly = OcrStore.has(page)) }.getOrDefault(0)
+                        if (n > 0) { runCatching { OcrStore.remove(page) }; cleared += n }
                     }
                     if (r.fonts > 0 || cleared > 0) { doc.save(tmp); RepairedInput(tmp, r, cleared, tmp) }
                     else { tmp.delete(); RepairedInput(src, r, 0, null) }

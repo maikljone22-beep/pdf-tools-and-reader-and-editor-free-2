@@ -45,6 +45,7 @@ internal fun SelectionTopBar(
     count: Int, allPdf: Boolean,
     onClose: () -> Unit, onSelectAll: () -> Unit, onShare: () -> Unit, onZip: () -> Unit, onMove: () -> Unit, onDelete: () -> Unit, onMerge: () -> Unit,
     onCopy: (() -> Unit)? = null,
+    onConvert: (() -> Unit)? = null,
 ) {
     TopAppBar(
         navigationIcon = { IconButton(onClick = onClose) { Icon(Icons.Default.Close, stringResource(R.string.close)) } },
@@ -58,6 +59,7 @@ internal fun SelectionTopBar(
             IconButton(onClick = onMove) { Icon(Icons.Default.DriveFileMove, stringResource(R.string.move_to)) }
             if (onCopy != null) IconButton(onClick = onCopy) { Icon(Icons.Default.FileCopy, stringResource(R.string.g6_copy_to)) }
             if (allPdf) IconButton(onClick = onMerge) { Icon(Icons.Default.CallMerge, stringResource(R.string.merge)) }
+            if (onConvert != null) IconButton(onClick = onConvert) { Icon(Icons.Default.SwapHoriz, stringResource(R.string.fcy_batch_convert)) }   // fc-sync 16b
             IconButton(onClick = onDelete) { Icon(Icons.Default.DeleteOutline, stringResource(R.string.delete)) }
         },
     )

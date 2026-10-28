@@ -109,9 +109,10 @@ fun CropScreen(nav: NavHostController, uri: String?) {
                     busy = 0f
                     scope.launch {
                         var n = 0
-                        runCatching { doc.apply(app.documents.tempDir) { s, o, p -> n = PageBoxOps.autoCrop(ctx, s, o, p, t, pd, sm) { busy = it } } }
-                            .onFailure { snack.showSnackbar(it.message ?: it.toString()) }
-                        busy = null; snack.showSnackbar(autoDone.format(n))
+                        val r = runCatching { doc.apply(app.documents.tempDir) { s, o, p -> n = PageBoxOps.autoCrop(ctx, s, o, p, t, pd, sm) { busy = it } } }
+                        busy = null
+                        // audit 5 E-14: "done" only after a success (no "done 0" after the failure message)
+                        r.onSuccess { snack.showSnackbar(autoDone.format(n)) }.onFailure { snack.showSnackbar(it.message ?: it.toString()) }
                     }
                 }, Modifier.fillMaxWidth()) { Icon(Icons.Default.AutoFixHigh, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.e5_crop_auto_run)) }
             }
@@ -147,6 +148,9 @@ fun CropScreen(nav: NavHostController, uri: String?) {
 @Composable
 fun ResizeScreen(nav: NavHostController, uri: String?) {
     val app = LocalApp.current
+    val ctx = LocalContext.current
+    // audit 5 E-10: locked batch files ask for their password once each
+    val unlocker = rememberE5Unlocker()
     val doc = rememberE5Doc(uri)
     val runner = rememberToolRunner()
     val scope = rememberCoroutineScope()
@@ -170,6 +174,7 @@ fun ResizeScreen(nav: NavHostController, uri: String?) {
         IconButton(onClick = { scope.launch { doc.undo() } }, enabled = doc.canUndo) { Icon(Icons.AutoMirrored.Filled.Undo, stringResource(R.string.e5_undo)) }
     }) {
         E5FileRow(doc)
+        E5UnlockDialog(unlocker)
         E5Section(stringResource(R.string.e5_paper)) {
             ChoiceChips(PageBoxOps.PAPERS.map { it.first } + custom, paper, { it }) { p ->
                 paper = p; PageBoxOps.PAPERS.firstOrNull { it.first == p }?.second?.let { (a, b) -> w = a; h = b }
@@ -199,27 +204,47 @@ fun ResizeScreen(nav: NavHostController, uri: String?) {
             }
             OutlinedButton(onClick = pickBatch) { Text(stringResource(R.string.pc_add_pdfs)) }
         }
-        PrimaryButton(stringResource(R.string.apply), enabled = doc.work != null || batch.isNotEmpty(), icon = Icons.Default.AspectRatio) {
-            val (tw, th) = if (force) (if (landscape) maxOf(w, h) to minOf(w, h) else minOf(w, h) to maxOf(w, h)) else w to h
-            val md = mode; val fo = force; val mg = margin; val rg = range; val sb = subset; val more = batch.toList()
-            val unique: (java.io.File, String) -> java.io.File = { d, b -> app.documents.uniqueFile(d, b) }
-            runner.runMany(processing) {
-                val outs = ArrayList<java.io.File>()
-                if (doc.work != null) {
-                    val t = doc.targets(rg, sb)
-                    doc.apply(app.documents.tempDir) { s, o, p -> PageBoxOps.resize(s, o, p, t, tw, th, md, fo, mg) }
-                    outs += doc.export(app.documents.docsDir, unique, "resized")
-                }
-                // batch: the same size for every page of each extra file
-                more.forEach { f ->
-                    val o = unique(app.documents.docsDir, f.nameWithoutExtension + "_resized")
-                    val n = com.smartdocs.editor.core.pdf.PdfOps.pageCount(f, null)
-                    PageBoxOps.resize(f, o, null, PageSet.filter(PageSet.parse(rg, n), sb), tw, th, md, fo, mg)
-                    outs += o
-                }
-                outs
+        val (tw, th) = if (force) (if (landscape) maxOf(w, h) to minOf(w, h) else minOf(w, h) to maxOf(w, h)) else w to h
+        val unique: (java.io.File, String) -> java.io.File = { d, b -> app.documents.uniqueFile(d, b) }
+        // audit 5 E-9: the document resizes through the working copy and shows the result sheet ("save in original");
+        // Undo steps back and "save copy" writes the state after it
+        PrimaryButton(stringResource(R.string.apply), enabled = doc.work != null, icon = Icons.Default.AspectRatio) {
+            val md = mode; val fo = force; val mg = margin; val rg = range; val sb = subset; val ww = tw; val hh = th
+            if (rg.isNotBlank() && PageSet.parse(rg, doc.pageCount).isEmpty()) { runner.error = ctx.getString(R.string.tte5_bad_range); return@PrimaryButton }
+            runner.run(processing) {
+                val t = doc.targets(rg, sb)
+                doc.apply(app.documents.tempDir) { s, o, p -> PageBoxOps.resize(s, o, p, t, ww, hh, md, fo, mg) }
+                doc.export(app.documents.docsDir, unique, "resized")
             }
         }
+        if (doc.canUndo || doc.changed) OutlinedButton(onClick = {
+            runner.run(processing) { doc.export(app.documents.docsDir, unique, "resized") }
+        }, enabled = doc.changed, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.Save, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.e5_save_copy)) }
+        // batch: the same size for every page of each extra file; a locked file asks for its password, a failing
+        // file is reported and does not stop the others (audit 5 E-10)
+        OutlinedButton(onClick = {
+            val md = mode; val fo = force; val mg = margin; val rg = range; val sb = subset; val more = batch.toList(); val ww = tw; val hh = th
+            scope.launch {
+                val skipped = runCatching { unlocker.unlockAll(more) }.getOrElse { emptyList() }
+                skipped.forEach { batch.remove(it) }
+                val list = more - skipped.toSet()
+                if (list.isEmpty()) return@launch
+                val pw = unlocker.book.lookup()
+                runner.runMany(processing) {
+                    val outs = ArrayList<java.io.File>(); val failed = ArrayList<String>()
+                    list.forEach { f ->
+                        val o = unique(app.documents.docsDir, f.nameWithoutExtension + "_resized")
+                        try {
+                            val n = com.smartdocs.editor.core.pdf.PdfOps.pageCount(f, pw(f))
+                            PageBoxOps.resize(f, o, pw(f), PageSet.filter(PageSet.parse(rg, n), sb), ww, hh, md, fo, mg)
+                            outs += o
+                        } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { o.delete(); failed += f.name }
+                    }
+                    if (failed.isNotEmpty()) runner.error = ctx.getString(R.string.tte5_batch_failed, failed.joinToString(", "))
+                    outs
+                }
+            }
+        }, enabled = batch.isNotEmpty(), modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.AspectRatio, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.tte5_resize_batch_run)) }
         com.smartdocs.editor.ui.tools.ResultsList(runner.results, nav, "application/pdf")
     }
 }

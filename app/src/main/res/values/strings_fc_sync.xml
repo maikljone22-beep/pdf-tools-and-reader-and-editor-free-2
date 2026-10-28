@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- fc-sync: change detection -->
+    <string name="fcy_watch_notify">فوري (إشعارات التغيير)</string>
+    <string name="fcy_watch_poll">يُفحص سجل التغييرات كل 30 ثانية إلى 5 دقائق</string>
+    <string name="fcy_watch_net">بانتظار شبكة صالحة</string>
+    <string name="fcy_watch_backoff">تعذّر الوصول إلى الخادم، ستُعاد المحاولة لاحقًا</string>
+    <string name="fcy_watch_signin">سجّل الدخول مجددًا لمراقبة التغييرات</string>
+
+    <!-- WebDAV -->
+    <string name="fcy_dav_changed">تغيّر على الخادم</string>
+    <string name="fcy_dav_egnyte_domain">نطاق Egnyte (مثل acme)</string>
+    <string name="fcy_dav_egnyte_note">يستخدم وصول WebDAV في Egnyte، ويجب أن يسمح به مسؤول Egnyte لديك.</string>
+    <string name="fcy_dav_server">عنوان الخادم (مثل cloud.example.com)</string>
+    <string name="fcy_dav_user_note">املأ اسم المستخدم في الأسفل أيضًا.</string>
+
+    <!-- Dropbox team space / SharePoint -->
+    <string name="fcy_space_member">مجلدي</string>
+    <string name="fcy_space_team">مساحة الفريق</string>
+    <string name="fcy_space_team_named">مساحة الفريق: %1$s</string>
+    <string name="fcy_team_blocked">احذف مجلدات مزامنة Dropbox أولًا: مساراتها مرتبطة بالجذر.</string>
+    <string name="fcy_sp_libraries">مكتبات SharePoint</string>
+    <string name="fcy_sp_consent">تحتاج مكتبات المستندات في مواقع SharePoint التي تتابعها إلى إذن إضافي (قراءة المواقع وكل الملفات). سجّل الدخول مجددًا لمنحه.</string>
+    <string name="fcy_sign_in_again">تسجيل الدخول مجددًا</string>
+    <string name="fcy_not_configured">هذه الخدمة غير مهيّأة في هذا الإصدار.</string>
+
+    <!-- Shared review -->
+    <string name="fcy_remind_switch">ذكّرني قبل الموعد النهائي بيوم</string>
+    <string name="fcy_remind_title">المراجعة تنتهي قريبًا: %1$s</string>
+    <string name="fcy_remind_text">الموعد النهائي: %1$s</string>
+    <string name="fcy_take_over">تولَّ التعليقات</string>
+    <string name="fcy_take_over_q">هل تتولى تعليقات %1$s؟ ستصبح تعليقاتك: يمكنك تعديلها وتُنشر باسمك.</string>
+    <string name="fcy_took_over">أصبحت %1$d تعليقات لك.</string>
+    <string name="fcy_take_close_doc">أغلق المستند في القارئ أولًا.</string>
+
+    <!-- E-mail review -->
+    <string name="fcy_cc">نسخة إلى</string>
+    <string name="fcy_back_title">إعادة تعليقاتي</string>
+    <string name="fcy_back_sub">أعد النسخة التي راجعتها بالبريد؛ الملفات الكبيرة تُرسل تعليقاتها فقط</string>
+    <string name="fcy_back_explain">أرسل النسخة التي راجعتها إلى من طلب المراجعة. فوق حد الحجم تُرسل تعليقاتك فقط (FDF) ويدمجها في نسخته.</string>
+    <string name="fcy_back_subject">تعليقات: %1$s</string>
+    <string name="fcy_back_no_comments">لا توجد في هذا الملف تعليقات لإرسالها.</string>
+    <string name="fcy_fdf_rule">أرسل التعليقات فقط (FDF) فوق %1$d ميغابايت</string>
+    <string name="fcy_will_send_fdf">%1$s: ستُرسل التعليقات فقط (FDF).</string>
+    <string name="fcy_will_send_pdf">%1$s: سيُرسل ملف PDF كاملًا.</string>
+
+    <!-- ConnectedPDF -->
+    <string name="fcy_conn_message">رسالة الفتح</string>
+    <string name="fcy_conn_message_note">يرى القرّاء هذه الرسالة عند فتح المستند (فارغة = بلا رسالة).</string>
+    <string name="fcy_conn_no_message">لا توجد رسالة فتح.</string>
+    <string name="fcy_conn_message_is">رسالة الفتح: %1$s</string>
+    <string name="fcy_conn_clone">استنساخ</string>
+    <string name="fcy_conn_clone_title">%1$s (نسخة)</string>
+    <string name="fcy_conn_clone_note">مستند متصل جديد بمعرّف وقرّاء وسجل خاصين به. يبقى الأصل كما هو.</string>
+
+    <!-- Files / convert -->
+    <string name="fcy_batch_convert">تحويل</string>
+    <string name="fcy_batch_hint">%1$d ملفات محددة: اختر تحويلًا.</string>
+</resources>

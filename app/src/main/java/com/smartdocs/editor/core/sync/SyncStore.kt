@@ -77,6 +77,7 @@ object SyncStore {
     fun add(context: Context, pair: SyncPair) = synchronized(this) { save(context, load(context) + pair) }
     fun remove(context: Context, id: String) = synchronized(this) {
         save(context, load(context).filterNot { it.id == id })
+        setPairCursor(context, id, null)
         snapshotFile(context, id).delete()
         queueFile(context, id).delete()
         _queues.value = _queues.value - id
@@ -137,6 +138,10 @@ object SyncStore {
     // ---- change-feed cursor per provider (remote watcher) ----
     fun cursor(context: Context, provider: ProviderId): String? = prefs(context).getString("cursor_${provider.key}", null)
     fun setCursor(context: Context, provider: ProviderId, cursor: String?) = prefs(context).edit().putString("cursor_${provider.key}", cursor).apply()
+
+    /** fc-sync: the provider cursor taken when the last clean run of a pair started ([SyncSkip]). */
+    fun pairCursor(context: Context, pairId: String): String? = prefs(context).getString("pcur_$pairId", null)
+    fun setPairCursor(context: Context, pairId: String, cursor: String?) = prefs(context).edit().putString("pcur_$pairId", cursor).apply()
 
     private fun writeAtomically(f: File, text: String) {
         val tmp = File(f.parentFile, f.name + ".tmp")

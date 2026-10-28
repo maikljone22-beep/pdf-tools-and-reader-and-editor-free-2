@@ -58,7 +58,8 @@ fun PageLabelsScreen(nav: NavHostController, uri: String?) {
             }
             val labels = remember(ranges, n) { PageLabelFormat.labels(ranges, n) }
             E5Section(stringResource(R.string.e5_preview)) {
-                Text(labels.take(40).mapIndexed { i, l -> "${i + 1}→$l" }.joinToString("   ") + if (n > 40) " …" else "", style = MaterialTheme.typography.bodySmall)
+                // audit 5 E-19: "page → label" from a string resource (bidi-isolated, arrow per direction, locale digits)
+                Text(labels.take(40).mapIndexed { i, l -> stringResource(R.string.tte5_label_preview, i + 1, l) }.joinToString("   ") + if (n > 40) " …" else "", style = MaterialTheme.typography.bodySmall)
             }
             PrimaryButton(stringResource(R.string.apply), icon = Icons.Default.Label) {
                 val rs = ranges

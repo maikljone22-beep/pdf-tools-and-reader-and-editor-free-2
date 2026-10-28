@@ -109,7 +109,13 @@ object PageOrganize {
         if (gone.isEmpty()) return
         if (removeBookmarks) pruneOutline(doc, gone)
         pruneLinks(doc, gone)
-        pages.filter { it in 0 until doc.numberOfPages }.sortedDescending().forEach { doc.removePage(it) }
+        // audit 5 E-7: fields whose widgets were all on the deleted pages leave the form
+        val goneWidgets = FormPrune.widgetsOn(pages.filter { it in 0 until doc.numberOfPages }.distinct().map { doc.getPage(it) })
+        // audit 5 E-5: the remaining pages keep their labels
+        PageLabelRemap.keep(doc) {
+            pages.filter { it in 0 until doc.numberOfPages }.distinct().sortedDescending().forEach { doc.removePage(it) }
+        }
+        FormPrune.prune(doc, goneWidgets)
     }
 
     /**
@@ -189,14 +195,11 @@ object PageOrganize {
             E5Io.load(other, otherPassword).use { od ->
                 var pos = at.coerceIn(0, doc.numberOfPages)
                 val map = HashMap<COSDictionary, PDPage>()
-                var first: PDPage? = null
-                od.pages.forEach { sp ->
-                    val imported = doc.importPage(sp)
-                    doc.pages.remove(imported); PageOps5.insertAt(doc, imported, pos++)
-                    map[sp.cosObject] = imported
-                    if (first == null) first = imported
-                }
-                val firstPage = first
+                // audit 5 E-4 / E-6: inherited resources, own annotations, links onto the copies, merged fields; E-5 labels
+                val imported = PageImport.importPages(doc, od, (0 until od.numberOfPages).toList())
+                PageLabelRemap.keep(doc) { imported.forEach { PageOps5.insertAt(doc, it, pos++) } }
+                (0 until od.numberOfPages).forEach { i -> imported.getOrNull(i)?.let { map[od.getPage(i).cosObject] = it } }
+                val firstPage = imported.firstOrNull()
                 if (keepBookmarks && firstPage != null && od.documentCatalog.documentOutline != null) {
                     val holder = PDOutlineItem().apply { this.title = title; destination = com.tom_roush.pdfbox.pdmodel.interactive.documentnavigation.destination.PDPageFitDestination().apply { setPage(firstPage) } }
                     val outline = doc.documentCatalog.documentOutline ?: PDDocumentOutline().also { doc.documentCatalog.documentOutline = it }
@@ -204,6 +207,7 @@ object PageOrganize {
                     copyOutline(od, doc, map, holder.cosObject)
                 }
                 if (keepAttachments) copyAttachments(od, doc)
+                PageImport.protectForImport(doc, od, otherPassword)
                 E5Io.save(doc, out)
             }
         }
@@ -286,39 +290,23 @@ object PageOrganize {
      * [base] and [scheme]. Returns the files.
      */
     suspend fun writeParts(src: File, password: String?, groups: List<List<Int>>, outDir: File, base: String, scheme: PartName,
-                           keepNavigation: Boolean = true, unique: (File, String) -> File = { d, b -> File(d, "$b.pdf") }): List<File> = withContext(Dispatchers.IO) {
+                           keepNavigation: Boolean = true, unique: (File, String) -> File = { d, b -> com.smartdocs.editor.core.pdf.PdfOps.uniqueIn(d, b) }): List<File> = withContext(Dispatchers.IO) {
         outDir.mkdirs()
         E5Io.load(src, password).use { doc ->
             groups.filter { it.isNotEmpty() }.let { gs ->
                 gs.mapIndexed { k, list ->
-                    PDDocument().use { nd ->
-                        val map = HashMap<COSDictionary, PDPage>()
-                        list.filter { it in 0 until doc.numberOfPages }.forEach { i -> val sp = doc.getPage(i); map[sp.cosObject] = nd.importPage(sp) }
-                        nd.documentInformation = doc.documentInformation
-                        if (keepNavigation) {
-                            copyOutline(doc, nd, map)
-                            // links that jump outside the part would lead nowhere
-                            val inside = map.values.map { it.cosObject }.toSet()
-                            nd.pages.forEach { p -> runCatching { p.annotations }.getOrNull()?.let { an ->
-                                val keep = an.filterNot { a -> a.subtype == "Link" && itemPage(doc, a.cosObject)?.let { pg -> map[pg]?.cosObject ?: pg }?.let { it !in inside } == true }
-                                // re-point the kept internal links onto the copied pages
-                                keep.filter { it.subtype == "Link" }.forEach { a -> repointLink(doc, a.cosObject, map) }
-                                if (keep.size != an.size) p.annotations = keep
-                            } }
-                        }
+                    // audit 5 E-3 / E-6: one implementation for every part: the source's protection, its inherited
+                    // resources, own annotation copies, the fields of the kept widgets, and (when asked) the bookmarks
+                    // and internal links of the part (links out of the part are dropped). E-5: the pages keep their labels.
+                    val pages = list.filter { it in 0 until doc.numberOfPages }
+                    com.smartdocs.editor.core.pdf.PageExtract.build(doc, pages, password, keepNavigation = keepNavigation).use { nd ->
+                        PageLabelRemap.copyTo(doc, nd, pages)
                         val f = unique(outDir, partName(base, scheme, k, gs.size, list))
                         E5Io.save(nd, f); f
                     }
                 }
             }
         }
-    }
-
-    private fun repointLink(src: PDDocument, link: COSDictionary, map: Map<COSDictionary, PDPage>) {
-        val pg = itemPage(src, link) ?: return
-        val np = map[pg] ?: return
-        val a = COSArray(); a.add(np.cosObject); a.add(COSName.getPDFName("Fit"))
-        link.removeItem(COSName.A); link.setItem(COSName.DEST, a)
     }
 
     /** Parts at bookmarks of [level]: each part runs from a bookmarked page to the page before the next one. */
@@ -356,7 +344,18 @@ object PageOrganize {
         val docs = files.map { (f, pw) -> E5Io.load(f, pw) }
         try {
             PDDocument().use { nd ->
-                mixOrder(docs.map { it.numberOfPages }, reversed).forEach { (f, p) -> nd.importPage(docs[f].getPage(p)) }
+                val order = mixOrder(docs.map { it.numberOfPages }, reversed)
+                // audit 5 E-6: each file's pages are imported together, so links between them are re-pointed and
+                // its form fields come along
+                val copies = HashMap<Pair<Int, Int>, PDPage>()
+                docs.indices.forEach { f ->
+                    val mine = order.filter { it.first == f }.map { it.second }
+                    PageImport.importPages(nd, docs[f], mine).forEachIndexed { k, p -> copies[f to mine[k]] = p }
+                }
+                order.forEach { key -> copies[key]?.let { nd.pages.add(it) } }
+                // audit 5 E-3: the mixed file is protected like the FIRST encrypted input (same cipher, key length and
+                // permissions, opened with that file's password); unprotected inputs never lift another's restrictions
+                docs.indices.firstOrNull { docs[it].isEncrypted }?.let { i -> com.smartdocs.editor.core.pdf.PdfOps.protectLike(nd, docs[i], files[i].second) }
                 E5Io.save(nd, out)
             }
         } finally { docs.forEach { runCatching { it.close() } } }
@@ -372,9 +371,11 @@ object PageOrganize {
             targets.map { (t, tpw) ->
                 E5Io.load(t, tpw).use { td ->
                     var at = when (pos) { IntoPos.START -> 0; IntoPos.END -> td.numberOfPages; IntoPos.AFTER -> afterPage.coerceIn(0, td.numberOfPages) }
-                    pages.filter { it in 0 until sd.numberOfPages }.forEach { i ->
-                        val imp = td.importPage(sd.getPage(i)); td.pages.remove(imp); PageOps5.insertAt(td, imp, at++)
-                    }
+                    // audit 5 E-4 / E-6 / E-5: imported with their resources, annotations and fields; labels kept
+                    val imported = PageImport.importPages(td, sd, pages)
+                    PageLabelRemap.keep(td) { imported.forEach { PageOps5.insertAt(td, it, at++) } }
+                    // audit 5 E-3: an unprotected target receiving pages of a protected source gets its protection
+                    PageImport.protectForImport(td, sd, password)
                     val o = outFor(t); E5Io.save(td, o); o
                 }
             }
@@ -435,6 +436,8 @@ object PageOrganize {
     fun redactPagesIn(doc: PDDocument, pages: Collection<Int>, rgb: Int = 0x000000) {
         pages.filter { it in 0 until doc.numberOfPages }.forEach { i ->
             val page = doc.getPage(i)
+            // audit 5 R-3: field values, structure ActualText / Alt and every reference go with the page content
+            com.smartdocs.editor.core.redact.PageScrub.wipePage(doc, page)
             page.annotations = mutableListOf()
             listOf("Thumb", "PieceInfo", "AA", "StructParents").forEach { page.cosObject.removeItem(COSName.getPDFName(it)) }
             page.resources = com.tom_roush.pdfbox.pdmodel.PDResources()

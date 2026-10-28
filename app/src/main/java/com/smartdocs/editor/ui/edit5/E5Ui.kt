@@ -56,8 +56,13 @@ import java.io.File
 class E5Doc(initial: File?) {
     var source by mutableStateOf(initial); private set
     var work by mutableStateOf<File?>(null); private set
-    var password by mutableStateOf<String?>(null)
+    // audit 5 E-13: the reader's password for the route file, so an open document is not asked for again
+    var password by mutableStateOf(com.smartdocs.editor.core.pdf.SessionPasswords.get(initial))
     var needPassword by mutableStateOf(false)
+    /** audit 5 E-13: the password prompt was cancelled; nothing opens until [retry]. */
+    var cancelled by mutableStateOf(false); private set
+    /** The last password typed was wrong (the prompt says so). */
+    var wrongPassword by mutableStateOf(false); private set
     var infos by mutableStateOf<List<PageInfo>>(emptyList()); private set
     var version by mutableIntStateOf(0); private set
     var error by mutableStateOf<String?>(null)
@@ -66,7 +71,25 @@ class E5Doc(initial: File?) {
     val canUndo get() = undo.isNotEmpty()
     val pageCount get() = infos.size
 
-    fun pick(f: File) { source = f; work = null; password = null; error = null; infos = emptyList(); undo.clear(); changed = false; version++ }
+    fun pick(f: File) {
+        dispose()
+        source = f; password = com.smartdocs.editor.core.pdf.SessionPasswords.get(f); error = null; cancelled = false; wrongPassword = false
+        infos = emptyList(); changed = false; version++
+    }
+
+    /** audit 5 E-13: the prompt was dismissed: no error line, the screen offers [retry]. */
+    fun cancelPassword() { needPassword = false; cancelled = true; error = null }
+
+    fun retry() { cancelled = false; error = null; needPassword = false; version++ }
+
+    /** A password was typed in the prompt. */
+    fun submitPassword(pw: String) { password = pw; error = null; cancelled = false; needPassword = false }
+
+    /** audit 5 E-18: the working copy and the undo copies are temp files: removed when the screen goes away. */
+    fun dispose() {
+        runCatching { work?.delete() }; undo.forEach { runCatching { it.delete() } }
+        undo.clear(); work = null
+    }
 
     /** Open (or reopen after a password was typed): copy to a temp working file and read page geometry. */
     suspend fun open(tempDir: File) {
@@ -74,11 +97,12 @@ class E5Doc(initial: File?) {
         error = null
         try {
             val w = work ?: File(tempDir, "e5_${System.nanoTime()}.pdf").also { withContext(Dispatchers.IO) { src.copyTo(it, overwrite = true) } }
-            infos = PageBoxOps.pageInfos(w, password)
-            work = w; needPassword = false
+            work = w
+            try { infos = PageBoxOps.pageInfos(w, password) } catch (e: Exception) { work = null; w.delete(); throw e }
+            needPassword = false; wrongPassword = false
         } catch (e: Exception) {
-            val msg = (e.message ?: e.toString()).lowercase()
-            if (e is com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException || msg.contains("password")) needPassword = true else error = e.message ?: e.toString()
+            if (com.smartdocs.editor.core.edit5.E5Locks.isPasswordError(e)) { wrongPassword = !password.isNullOrEmpty(); needPassword = true }
+            else error = e.message ?: e.toString()
         }
     }
 
@@ -106,7 +130,9 @@ class E5Doc(initial: File?) {
     suspend fun export(docsDir: File, unique: (File, String) -> File, suffix: String): File = withContext(Dispatchers.IO) {
         val w = work ?: error("no document")
         val out = unique(docsDir, (source?.nameWithoutExtension ?: "document") + "_" + suffix)
-        w.copyTo(out, overwrite = true); out
+        w.copyTo(out, overwrite = true)
+        // audit 5 E-1: the result is this tool's document, transformed (the result sheet may offer "Save in original")
+        com.smartdocs.editor.core.pdf.ToolOutputs.record(out, source)
     }
 }
 
@@ -114,7 +140,10 @@ class E5Doc(initial: File?) {
 fun rememberE5Doc(uri: String?): E5Doc {
     val doc = remember(uri) { E5Doc(uri?.let { u -> runCatching { File(Uri.parse(u).path!!) }.getOrNull()?.takeIf { it.exists() } }) }
     val app = LocalApp.current
-    LaunchedEffect(doc.source, doc.needPassword, doc.password) { if (doc.source != null && doc.work == null && !doc.needPassword && doc.error == null) doc.open(app.documents.tempDir) }
+    LaunchedEffect(doc.source, doc.needPassword, doc.password, doc.cancelled, doc.version) {
+        if (doc.source != null && doc.work == null && !doc.needPassword && !doc.cancelled && doc.error == null) doc.open(app.documents.tempDir)
+    }
+    DisposableEffect(doc) { onDispose { doc.dispose() } }
     return doc
 }
 
@@ -125,13 +154,23 @@ fun E5FileRow(doc: E5Doc) {
     FilePickRow(doc.source, stringResource(R.string.e5_document), pick)
     if (doc.pageCount > 0) Text(stringResource(R.string.e5_pages_n, doc.pageCount), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     doc.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+    // audit 5 E-13: a cancelled prompt leaves no empty error line and can be opened again
+    if (doc.cancelled && doc.work == null && doc.source != null) Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(stringResource(R.string.tte5_password_cancelled), Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        TextButton(onClick = { doc.retry() }) { Text(stringResource(R.string.tte5_retry)) }
+    }
     if (doc.needPassword) {
         var pw by remember { mutableStateOf("") }
-        AlertDialog(onDismissRequest = { doc.needPassword = false; doc.error = "" },
+        AlertDialog(onDismissRequest = { doc.cancelPassword() },
             title = { Text(stringResource(R.string.password_enter)) },
-            text = { OutlinedTextField(pw, { pw = it }, singleLine = true, visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)) },
-            confirmButton = { Button(onClick = { doc.password = pw; doc.error = null; doc.needPassword = false }) { Text(stringResource(R.string.ok)) } },
-            dismissButton = { TextButton(onClick = { doc.needPassword = false; doc.error = "" }) { Text(stringResource(R.string.cancel)) } })
+            text = {
+                Column {
+                    if (doc.wrongPassword) Text(stringResource(R.string.e5_lock_wrong), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    OutlinedTextField(pw, { pw = it }, singleLine = true, visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password))
+                }
+            },
+            confirmButton = { Button(onClick = { doc.submitPassword(pw) }, enabled = pw.isNotEmpty()) { Text(stringResource(R.string.ok)) } },
+            dismissButton = { TextButton(onClick = { doc.cancelPassword() }) { Text(stringResource(R.string.cancel)) } })
     }
 }
 

@@ -180,9 +180,10 @@ object FormOps {
     suspend fun fillFields(
         src: File, values: Map<String, String>, out: File, password: String? = null,
         context: android.content.Context? = null, display: Map<String, String> = emptyMap(), dropXfa: Boolean = false,
+        rich: Map<String, com.smartdocs.editor.core.annot.AnnotStyle.Rich> = emptyMap(),
     ): Int = withContext(Dispatchers.IO) {
         load(src, password).use { doc ->
-            val applied = fillIn(doc, values, context, display, dropXfa)
+            val applied = fillIn(doc, values, context, display, dropXfa, rich = rich)
             doc.save(out)
             applied
         }
@@ -192,6 +193,7 @@ object FormOps {
     fun fillIn(
         doc: PDDocument, values: Map<String, String>, context: android.content.Context? = null,
         display: Map<String, String> = emptyMap(), dropXfa: Boolean = false, fixup: Boolean = true,
+        rich: Map<String, com.smartdocs.editor.core.annot.AnnotStyle.Rich> = emptyMap(),
     ): Int {
         // signed files skip PdfBox's AcroForm fix-up (it would add /DR and /DA to the form in the update)
         val acro = (if (fixup) doc.documentCatalog.acroForm else doc.documentCatalog.getAcroForm(null)) ?: throw IllegalStateException("no form")
@@ -212,6 +214,8 @@ object FormOps {
             if (name in values) applied++
         }
         if (needViewer) acro.needAppearances = true
+        // 8.28: rich-text fields get their /RV again from the new value (and the style chosen while filling)
+        runCatching { com.smartdocs.editor.core.forms5.RichFields.updateIn(acro, values, rich) }
         if (dropXfa && acro.hasXFA()) acro.cosObject.removeItem(com.tom_roush.pdfbox.cos.COSName.XFA)
         return applied
     }

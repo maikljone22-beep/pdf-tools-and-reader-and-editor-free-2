@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- audit 5 (reader Tools tab, sub-audit c): tools / search / forms / compare / AI hub -->
+    <string name="ttcx_locked_msg">الملف «%1$s» محمي. أدخل كلمة المرور لفتحه.</string>
+    <string name="ttcx_text_failed">تعذر استخراج النص من هذا الملف</string>
+    <string name="ttcx_owner_same">يجب أن تختلف كلمة مرور الأذونات عن كلمة مرور الفتح، وإلا حصل كل من يفتح الملف على كل الصلاحيات</string>
+    <string name="ttcx_owner_generated">كلمة مرور الأذونات التي أُنشئت لهذا الملف (احتفظ بها لتغيير القيود لاحقًا):</string>
+    <string name="ttcx_copy_owner">نسخ كلمة مرور الأذونات</string>
+    <string name="ttcx_copied">تم النسخ</string>
+    <string name="ttcx_search_failed">تعذر البحث في هذا الملف</string>
+    <string name="ttcx_out_of_memory">الملف كبير جدًا على الذاكرة المتاحة. جرّب نطاق صفحات أصغر.</string>
+    <string name="ttcx_open_failed">تعذر فتح هذا الملف</string>
+    <string name="ttcx_signed_replace_warning">هذا المستند موقّع رقميًا. الاستبدال يعيد كتابة الملف فتصبح التوقيعات غير صالحة؛ تُحفظ النتيجة نسخةً جديدة.</string>
+    <string name="ttcx_relayout_note">ستُعاد كتابة الفقرة كاملة التي تحتوي كل تطابق بخط بديل، لذلك قد يتغير شكلها أكثر من الكلمات المستبدلة.</string>
+    <string name="ttcx_missing_glyphs">لا يوجد خط يرسم هذه الأحرف وستُحذف من النص المكتوب: %1$s</string>
+    <string name="ttcx_nothing_replaced">لم يُستبدل أي نص: تغيّرت الكتل المحددة أو تعذر تحديد موضعها</string>
+    <string name="ttcx_skipped_n">تُخطّيت %1$d من الكتل المحددة لأنه تعذر تحديد موضعها بعد التعديلات السابقة</string>
+    <string name="ttcx_export_failed">تعذر التصدير: لم يُكتب الملف</string>
+    <string name="ttcx_extract_failed">تعذر استخراج الصور من هذا الملف</string>
+    <string name="ttcx_save_failed">تعذر الحفظ (قد تكون مساحة التخزين ممتلئة)</string>
+    <string name="ttcx_color_black">أسود</string>
+    <string name="ttcx_color_white">أبيض</string>
+    <string name="ttcx_color_gray">رمادي</string>
+    <string name="ttcx_color_red">أحمر</string>
+    <string name="ttcx_color_orange">برتقالي</string>
+    <string name="ttcx_color_yellow">أصفر</string>
+    <string name="ttcx_color_green">أخضر</string>
+    <string name="ttcx_color_cyan">أزرق فاتح</string>
+    <string name="ttcx_color_blue">أزرق</string>
+    <string name="ttcx_color_purple">بنفسجي</string>
+    <string name="ttcx_color_pink">وردي</string>
+</resources>

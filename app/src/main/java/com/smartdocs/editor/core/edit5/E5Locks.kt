@@ -90,14 +90,17 @@ object E5Locks {
         return if (openedAsOwner || ownerFallback.isEmpty()) pw to pw else pw to ownerFallback
     }
 
-    private fun randomOwner(): String = java.util.UUID.randomUUID().toString().replace("-", "")
-
+    /**
+     * audit 5 E-3: the KEEP protection is the one shared helper [com.smartdocs.editor.core.pdf.PdfOps.keepProtection]
+     * (same cipher, key length and permission bits as the source, never a downgrade to AES-128).
+     */
     private fun policyLike(source: PDDocument, password: String?, protection: OutProtection): StandardProtectionPolicy? {
-        val ap = runCatching { source.currentAccessPermission }.getOrNull() ?: AccessPermission()
-        val p = plan(source.isEncrypted, password, protection, ap.isOwnerPermission, randomOwner()) ?: return null
-        val perms = if (ap.isOwnerPermission) AccessPermission() else AccessPermission(ap.permissionBytes)
-        return StandardProtectionPolicy(p.second, p.first, perms).apply { encryptionKeyLength = 128; setPreferAES(true) }
+        if (!source.isEncrypted || protection == OutProtection.REMOVE) return null
+        return com.smartdocs.editor.core.pdf.PdfOps.keepProtection(source, password)
     }
+
+    /** audit 5 E-3: "remove protection" is offered only with owner access to the source (or an unencrypted one). Pure. */
+    fun canRemove(sourceEncrypted: Boolean, ownerAccess: Boolean): Boolean = !sourceEncrypted || ownerAccess
 
     /**
      * Apply [protection] to [doc] loaded from a source by `PdfOps.load` (which re-protects an encrypted file with
@@ -106,8 +109,10 @@ object E5Locks {
      */
     fun applyTo(doc: PDDocument, protection: OutProtection, password: String? = null) {
         if (!doc.isEncrypted) return
-        if (protection == OutProtection.REMOVE) { doc.isAllSecurityToBeRemoved = true; return }
-        policyLike(doc, password, protection)?.let { runCatching { doc.protect(it) } }
+        // audit 5 E-3: REMOVE needs owner access; without it the output stays protected like the source
+        val owner = runCatching { doc.currentAccessPermission.isOwnerPermission }.getOrDefault(false)
+        if (protection == OutProtection.REMOVE && owner) { doc.isAllSecurityToBeRemoved = true; return }
+        policyLike(doc, password, OutProtection.KEEP)?.let { runCatching { doc.protect(it) } }
     }
 
     /**
@@ -115,6 +120,7 @@ object E5Locks {
      * is KEEP and the source is encrypted. Used by outputs that are new documents (N-up, booklet, poster).
      */
     fun protectLike(target: PDDocument, source: PDDocument, password: String?, protection: OutProtection) {
-        policyLike(source, password, protection)?.let { target.protect(it) }
+        val owner = runCatching { source.currentAccessPermission.isOwnerPermission }.getOrDefault(false)
+        policyLike(source, password, if (protection == OutProtection.REMOVE && !owner) OutProtection.KEEP else protection)?.let { target.protect(it) }
     }
 }

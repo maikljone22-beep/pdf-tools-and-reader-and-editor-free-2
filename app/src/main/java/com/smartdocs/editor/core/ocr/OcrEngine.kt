@@ -20,6 +20,15 @@ data class OcrWord(val text: String, val box: Rect, val confidence: Float, val l
 data class OcrPage(val text: String, val words: List<OcrWord>, val imageWidth: Int, val imageHeight: Int)
 
 /**
+ * audit 5 OCR-8: an OCR failure with a [kind] the UI turns into a string resource (no raw English text such as
+ * "HTTP 404" or "ocr init" in the Arabic UI). Still an [IllegalStateException] for callers that catch that.
+ */
+class OcrException(val kind: Kind, val lang: String? = null, cause: Throwable? = null) :
+    IllegalStateException(kind.name + (lang?.let { " $it" } ?: ""), cause) {
+    enum class Kind { DOWNLOAD, VERIFY, NO_PACK, INIT, IMAGE }
+}
+
+/**
  * Tesseract wrapper. Language packs (`tessdata_best`, pinned commit, SHA-256 verified) are downloaded on first use into
  * `filesDir/ocr_best/tessdata/<lang>.traineddata`. Nitro additions: every language of tessdata_best / tessdata_fast
  * ([OcrModels], pinned by size + git blob id), recognition quality [fast] (tessdata_fast in `ocr_fast/tessdata`),
@@ -139,14 +148,16 @@ class OcrEngine(private val context: Context, val fast: Boolean = false) : AutoC
         val tmp = File(target.parentFile, target.name + ".part")
         val sha = if (!fastPack) PINNED[lang] else null
         val git = when { sha != null -> null; fastPack -> OcrModels.FAST[lang]; else -> OcrModels.BEST[lang] }
-        if (sha == null && git == null) throw IllegalStateException("no verified language pack for $lang")
+        if (sha == null && git == null) throw OcrException(OcrException.Kind.NO_PACK, lang)
         val url = if (sha != null) modelUrl(lang) else OcrModels.url(fastPack, lang)
         val client = OkHttpClient.Builder().addInterceptor(com.smartdocs.editor.core.data.NpfNet.interceptor).connectTimeout(30, TimeUnit.SECONDS).readTimeout(120, TimeUnit.SECONDS).followRedirects(true).build()
         val ctx = coroutineContext
         onProgress(lang, 0f)
+        // audit 5 OCR-8: a failed / cancelled download leaves no .part file behind
+        try {
         client.newCall(Request.Builder().url(url).build()).execute().use { resp ->
-            if (!resp.isSuccessful) throw IllegalStateException("HTTP ${resp.code} for $lang")
-            val body = resp.body ?: throw IllegalStateException("empty body")
+            if (!resp.isSuccessful) throw OcrException(OcrException.Kind.DOWNLOAD, lang)
+            val body = resp.body ?: throw OcrException(OcrException.Kind.DOWNLOAD, lang)
             val total = body.contentLength()
             var read = 0L
             body.byteStream().use { input ->
@@ -161,12 +172,16 @@ class OcrEngine(private val context: Context, val fast: Boolean = false) : AutoC
                 }
             }
         }
-        if (tmp.length() < 10_000) { tmp.delete(); throw IllegalStateException("download incomplete for $lang") }
+        if (tmp.length() < 10_000) throw OcrException(OcrException.Kind.DOWNLOAD, lang)
         // integrity: the file must be byte-for-byte the pinned one (size + SHA-256, or size + git blob id)
         val ok = if (sha != null) tmp.length() == sha.size && sha256(tmp).equals(sha.sha256, ignoreCase = true)
             else tmp.length() == git!!.size && OcrModels.gitBlobId(tmp).equals(git.blob, ignoreCase = true)
-        if (!ok) { tmp.delete(); throw IllegalStateException("language pack $lang failed verification") }
+        if (!ok) throw OcrException(OcrException.Kind.VERIFY, lang)
         if (!tmp.renameTo(target)) { tmp.copyTo(target, overwrite = true); tmp.delete() }
+        } catch (e: OcrException) { tmp.delete(); throw e
+        } catch (e: kotlinx.coroutines.CancellationException) { tmp.delete(); throw e
+        } catch (e: java.io.IOException) { tmp.delete(); throw OcrException(OcrException.Kind.DOWNLOAD, lang, e)
+        } catch (e: Throwable) { tmp.delete(); throw e }
         onProgress(lang, 1f)
     }
 
@@ -207,7 +222,7 @@ class OcrEngine(private val context: Context, val fast: Boolean = false) : AutoC
                     c.map { k -> OcrWord(k.text, Rect(k.left, k.top, k.right, k.bottom), k.conf, k.line) }, bitmap.width, bitmap.height)
             }
             // read the handle under the lock: close() may have recycled it meanwhile
-            val t = api ?: throw IllegalStateException("engine not initialised")
+            val t = api ?: throw OcrException(OcrException.Kind.INIT)
             val w0 = bitmap.width; val h0 = bitmap.height
             t.setImage(bitmap)
             var text = t.utF8Text ?: ""

@@ -61,8 +61,17 @@ class RedactState(private val context: Context) {
     private var seq = 0
     private fun newId() = "sd-${System.currentTimeMillis()}-${seq++}"
 
-    /** Page geometry and the /Redact marks already in the file. */
-    suspend fun load(file: File, password: String?) = withContext(Dispatchers.IO) {
+    /** The document the marks belong to (set once [load] finished), for the draft (audit 5 R-L7). */
+    var loadedFile by mutableStateOf<File?>(null)
+        private set
+    /** The marks as stored in the file (what needs no draft). */
+    var baseline: List<RedactMark> = emptyList()
+
+    /**
+     * Page geometry and the /Redact marks already in the file. audit 5 R-L7: an unsaved draft of this document
+     * replaces them; returns how many draft marks were restored (0 when there was no different draft).
+     */
+    suspend fun load(file: File, password: String?): Int = withContext(Dispatchers.IO) {
         val g = HashMap<Int, PageGeo>()
         val existing = runCatching {
             PdfOps.load(file, password).use { doc ->
@@ -73,12 +82,27 @@ class RedactState(private val context: Context) {
                 RedactMarks.read(doc)
             }
         }.getOrDefault(emptyList())
+        val draft = runCatching { com.smartdocs.editor.core.redact.RedactDrafts.load(context, file) }.getOrNull()
+            ?.takeIf { it.marks != existing || it.excluded.isNotEmpty() }
         withContext(Dispatchers.Main) {
             geo = g
-            marks.clear(); marks.addAll(existing); excluded = emptySet()
+            baseline = existing
+            marks.clear(); marks.addAll(draft?.marks ?: existing); excluded = draft?.excluded ?: emptySet()
             found = emptyList(); checked = emptySet(); searched = false
+            loadedFile = file
         }
+        draft?.marks?.size ?: 0
     }
+
+    /** audit 5 R-L7: stores (or removes, when nothing differs from the file) the draft of the loaded document. */
+    fun saveDraft(file: File, list: List<RedactMark>, ex: Set<String>) {
+        if (loadedFile != file) return
+        if (list == baseline && ex.isEmpty()) com.smartdocs.editor.core.redact.RedactDrafts.clear(context, file)
+        else com.smartdocs.editor.core.redact.RedactDrafts.save(context, file, list, ex)
+    }
+
+    /** After the marks were applied or saved: the draft is done with. */
+    fun draftDone(file: File) { baseline = marks.toList(); runCatching { com.smartdocs.editor.core.redact.RedactDrafts.clear(context, file) } }
 
     /** Phrases of the word list and their own overlay texts ("phrase | overlay"). */
     fun phrases() = com.smartdocs.editor.core.redact.PhraseList.parse(wordsText)

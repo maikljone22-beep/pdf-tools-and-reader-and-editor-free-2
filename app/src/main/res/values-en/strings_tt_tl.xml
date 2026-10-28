@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- audit 5 (reader Tools / Pages tabs): Tools tab groups and names -->
+    <string name="tttl_grp_pages">Pages</string>
+    <string name="tttl_grp_protect">Protect</string>
+    <string name="tttl_grp_text">Text &amp; OCR</string>
+    <string name="tttl_grp_edit">Add</string>
+    <string name="tttl_grp_convert">Convert</string>
+    <string name="tttl_grp_more">More</string>
+    <string name="tttl_blank_after">Blank page after this one</string>
+    <string name="tttl_e5_organize">Advanced organize</string>
+    <string name="tttl_pr_owner_same">The owner password must differ from the open password, or anyone who can open the file could lift the restrictions</string>
+    <string name="tttl_pr_owner_hint">Leave empty to generate a random owner password, shown to you after protecting</string>
+    <string name="tttl_pr_owner_title">Owner password</string>
+    <string name="tttl_pr_owner_text">You did not type an owner password, so a random one was created. Keep it: only it lifts the print, copy and edit restrictions of this file.</string>
+    <string name="tttl_pr_owner_copied">Owner password copied</string>
+    <string name="tttl_copy">Copy</string>
+    <string name="tttl_out_of_memory">The file is too large for the device memory. Close other apps or try a smaller file.</string>
+</resources>

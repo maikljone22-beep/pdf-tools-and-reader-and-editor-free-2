@@ -82,6 +82,23 @@ fun QuickActionHost(c: QuickController, snack: SnackbarHostState, onTool: ((Stri
         )
         else -> Unit
     }
+    // audit 5 T-12 / P-5: the generated owner (permissions) password, shown once, with a copy button
+    c.generatedOwner?.let { ownerPw ->
+        val clip = androidx.compose.ui.platform.LocalClipboardManager.current
+        AlertDialog(
+            onDismissRequest = { c.generatedOwner = null },
+            title = { Text(stringResource(R.string.tttl_pr_owner_title)) },
+            text = {
+                Column {
+                    Text(stringResource(R.string.tttl_pr_owner_text))
+                    Spacer(Modifier.height(8.dp))
+                    androidx.compose.foundation.text.selection.SelectionContainer { Text(ownerPw, style = MaterialTheme.typography.titleMedium) }
+                }
+            },
+            confirmButton = { TextButton(onClick = { clip.setText(androidx.compose.ui.text.AnnotatedString(ownerPw)); c.message = c.state.context.getString(R.string.tttl_pr_owner_copied) }) { Text(stringResource(R.string.tttl_copy)) } },
+            dismissButton = { TextButton(onClick = { c.generatedOwner = null }) { Text(stringResource(R.string.ok)) } },
+        )
+    }
     if (c.running) Dialog(onDismissRequest = {}, properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false)) {
         Card(shape = RoundedCornerShape(20.dp)) {
             Column(Modifier.padding(24.dp).widthIn(min = 240.dp), horizontalAlignment = Alignment.CenterHorizontally) {

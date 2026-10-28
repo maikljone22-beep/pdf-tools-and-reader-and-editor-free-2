@@ -39,12 +39,13 @@ internal object S5Share {
     }
 
     /** Mail with attachments: ACTION_SEND(_MULTIPLE) limited to mail apps through a mailto selector. */
-    fun email(ctx: Context, files: List<File>, mime: String, to: List<String>, subject: String, body: String) {
+    fun email(ctx: Context, files: List<File>, mime: String, to: List<String>, subject: String, body: String, cc: List<String> = emptyList()) {
         val app = ctx.applicationContext as SmartDocsApp
         val uris = ArrayList(files.map { app.documents.shareUri(it) })
         val i = Intent(if (uris.size > 1) Intent.ACTION_SEND_MULTIPLE else Intent.ACTION_SEND).apply {
             type = mime
             putExtra(Intent.EXTRA_EMAIL, to.toTypedArray()); putExtra(Intent.EXTRA_SUBJECT, subject); putExtra(Intent.EXTRA_TEXT, body)
+            if (cc.isNotEmpty()) putExtra(Intent.EXTRA_CC, cc.toTypedArray())   // fc-sync
             if (uris.size > 1) putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris) else if (uris.size == 1) putExtra(Intent.EXTRA_STREAM, uris[0])
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             selector = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:"))

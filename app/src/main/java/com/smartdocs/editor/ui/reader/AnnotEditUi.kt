@@ -68,6 +68,10 @@ fun AnnotActionBar(state: ReaderState, annot: Annot?, frame: Rect) {
                 if (!video) AeButton(Icons.Default.Opacity, R.string.ae_opacity, enabled, sub == AeSub.OPACITY) { sub = if (sub == AeSub.OPACITY) AeSub.NONE else AeSub.OPACITY }
                 if (hasStroke(annot)) AeButton(Icons.Default.LineWeight, R.string.ae_thickness, enabled, sub == AeSub.THICKNESS) { sub = if (sub == AeSub.THICKNESS) AeSub.NONE else AeSub.THICKNESS }
                 if (hasEditableText(annot)) AeButton(Icons.Default.Edit, R.string.ae_edit_text, enabled, false) { sub = AeSub.NONE; ed.editingText = true }
+                // 7.10: the note in a floating window that stays open
+                if (hasEditableText(annot) && annot?.kind != AnnotKind.FREETEXT && annot?.kind != AnnotKind.STAMP_TEXT) AeButton(Icons.Default.OpenInNew, R.string.cf_float_note, enabled, false) {
+                    sub = AeSub.NONE; ed.target?.let { t -> state.annot2.cx.floating = com.smartdocs.editor.ui.reader.annot.FloatingNote(t, annot!!.author, annot.text) }
+                }
                 if (annot?.kind == AnnotKind.FREETEXT) AeButton(Icons.Default.FormatSize, R.string.cx_text_format, enabled, false) { sub = AeSub.NONE; fmtOpen = true }
                 AeButton(Icons.Default.ContentCopy, R.string.ae_copy, enabled, false) { sub = AeSub.NONE; ed.copy() }
                 val nativeAudio = (ed.target as? AnnotTarget.Stored)?.e?.let { it.subtype == "Sound" || (it.subtype == "Screen" && it.video == null) } == true

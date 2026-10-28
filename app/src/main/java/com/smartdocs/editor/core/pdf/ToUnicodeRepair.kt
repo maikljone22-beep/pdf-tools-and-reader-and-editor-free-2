@@ -281,7 +281,10 @@ object ToUnicodeRepair {
                 if (runCatching { OcrLayerCleanup.removeOurs(page, dryRun = true) }.getOrDefault(0) > 0) kept += pi
                 continue
             }
-            removed += runCatching { OcrLayerCleanup.removeOurs(page) }.getOrDefault(0)
+            val n = runCatching { OcrLayerCleanup.removeOurs(page) }.getOrDefault(0)
+            // audit 5 OCR-3: the stored words of that layer go with it (OCR review must not list / write them again)
+            if (n > 0) runCatching { com.smartdocs.editor.core.ocr.OcrStore.remove(page) }
+            removed += n
         }
         return Result(fonts, letters, ligatures, touched, removed, kept)
     }

@@ -9,6 +9,8 @@ import android.print.PrintAttributes
 import android.print.PrintDocumentAdapter
 import android.print.PrintDocumentInfo
 import android.print.PrintManager
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -33,6 +35,37 @@ object PdfPrint {
         val b = PrintAttributes.Builder().setMediaSize(size).setColorMode(if (mono) PrintAttributes.COLOR_MODE_MONOCHROME else PrintAttributes.COLOR_MODE_COLOR)
         if (duplex != null) b.setDuplexMode(duplex)
         pm.print(jobName, StreamAdapter(file, jobName, pageCount), b.build())
+    }
+
+    /** audit 5 G-03 / G-09: the document's author forbids printing. */
+    class PrintRestricted : Exception("print restricted")
+
+    /**
+     * audit 5 G-09: the ONE print path for a document outside the reader's print sheet (Organize "Print pages" and the
+     * per-page Print): the V5 print pipeline with the same options as the print sheet (its last used settings and the
+     * document's /ViewerPreferences). [range] is a page range like "1-3,5" (blank = all pages). Throws
+     * [PrintRestricted] when the author's permissions forbid printing. Returns the number of pages sent.
+     */
+    suspend fun printDocument(context: Context, src: File, password: String?, range: String, jobName: String, tempDir: File): Int {
+        val allowed = withContext(Dispatchers.IO) {
+            if (!com.smartdocs.editor.core.security.SecurityInfoReader.mentionsEncrypt(src)) true
+            else runCatching {
+                com.smartdocs.editor.core.pdf.PdfOps.loadRaw(src, password).use { d ->
+                    com.smartdocs.editor.core.security.ReaderRestrictions.check(
+                        com.smartdocs.editor.core.security.SecurityInfoReader.of(d), false, com.smartdocs.editor.core.security.DocAction.PRINT) == null
+                }
+            }.getOrDefault(true)   // an unreadable file fails in the pipeline below
+        }
+        if (!allowed) throw PrintRestricted()
+        val last = com.smartdocs.editor.core.view5.PrintPresets.last(context) ?: com.smartdocs.editor.core.view5.PrintSettings()
+        val prefs = com.smartdocs.editor.core.view5.DocPrintPrefs.read(src, password)
+        val settings = if (prefs.noScaling) last.copy(scale = com.smartdocs.editor.core.view5.PrintLayout.Scale.ACTUAL) else last
+        val (file, n) = com.smartdocs.editor.core.view5.PrintPipeline.prepare(context, src, password, settings.toOptions(range), settings.extras(), tempDir)
+        withContext(Dispatchers.Main) {
+            print(context, file, jobName, n, mono = settings.grayscale, media = settings.paper,
+                duplex = com.smartdocs.editor.core.view5.DocPrintPrefs.duplexMode(prefs.duplex))
+        }
+        return n
     }
 
     private class StreamAdapter(private val file: File, private val name: String, private val pageCount: Int) : PrintDocumentAdapter() {

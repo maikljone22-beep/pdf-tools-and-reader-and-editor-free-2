@@ -187,7 +187,11 @@ internal object CompareCore {
         val oldSeq = pairs.mapNotNull { it.old }.flatMap { os.byPage[it].orEmpty() }
         val newSeq = pairs.mapNotNull { it.new }.flatMap { ns.byPage[it].orEmpty() }
         val ow = oldSeq.map { os.words[it] }; val nw = newSeq.map { ns.words[it] }
-        val changes = WordDiff.diff(ow.map { it.text }, nw.map { it.text })
+        // audit 5 C-12: diffed per page pair (same concatenated order as oldSeq / newSeq), so a long document never
+        // hits the whole-document edit limit and reports "everything changed"
+        val changes = WordDiff.diffPaged(
+            pairs.map { p -> p.old?.let { os.byPage[it].orEmpty().map { i -> os.words[i].text } }.orEmpty() },
+            pairs.map { p -> p.new?.let { ns.byPage[it].orEmpty().map { i -> ns.words[i].text } }.orEmpty() })
         val om = Marks(); val nm = Marks()
         if (o.text) changes.forEach { c ->
             if (c.type == ChangeType.EQUAL) return@forEach

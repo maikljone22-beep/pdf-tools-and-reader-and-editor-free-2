@@ -42,11 +42,21 @@ fun OrganizeScreen(nav: NavHostController, uri: String?) {
     val scope = rememberCoroutineScope()
     val state = remember { OrganizeState(ctx.applicationContext, app.documents, scope) }
     DisposableEffect(Unit) { onDispose { state.dispose() } }
+    // audit 5 G-06: back from a tool screen that got a copy of the current version (Redact): adopt its change, if any
+    @Suppress("DEPRECATION") val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val obs = androidx.lifecycle.LifecycleEventObserver { _, e -> if (e == androidx.lifecycle.Lifecycle.Event.ON_RESUME) state.takeBack() }
+        lifecycleOwner.lifecycle.addObserver(obs)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(obs) }
+    }
 
     var pendingPassword by remember { mutableStateOf("") }
     var insertDialog by remember { mutableStateOf<InsertKind?>(null) }
     var lockedInsert by remember { mutableStateOf<Pair<java.io.File, Int>?>(null) }   // share6 (fid)
     var exitDialog by remember { mutableStateOf(false) }
+    // audit 5 G-02: Overwrite of a file opened without owner access replaces the author's owner password; warned once
+    var ownerWarned by remember { mutableStateOf(false) }
+    var ownerDialog by remember { mutableStateOf<Boolean?>(null) }   // pending overwrite; true = leave afterwards
     var result by remember { mutableStateOf<File?>(null) }
     var saving by remember { mutableStateOf(false) }
     var snack by remember { mutableStateOf<String?>(null) }
@@ -79,7 +89,8 @@ fun OrganizeScreen(nav: NavHostController, uri: String?) {
                 val uris = (0 until clip.itemCount).mapNotNull { clip.getItemAt(it).uri }
                 if (uris.isEmpty()) return false
                 scope.launch {
-                    val files = uris.mapNotNull { u -> runCatching { app.documents.localFile(u) }.getOrNull() }
+                    // audit 5 (PAGES, Low): the dropped files are copied off the main thread
+                    val files = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { uris.mapNotNull { u -> runCatching { app.documents.localFile(u) }.getOrNull() } }
                     val pdf = files.firstOrNull { it.extension.equals("pdf", true) }
                     val images = files.filter { it.extension.lowercase() in setOf("jpg", "jpeg", "png", "webp", "bmp", "gif") }
                     insertDialog = when { pdf != null -> InsertKind.File(pdf); images.isNotEmpty() -> InsertKind.Images(images); else -> null }
@@ -92,7 +103,45 @@ fun OrganizeScreen(nav: NavHostController, uri: String?) {
     val cannotDeleteAll = stringResource(R.string.pg_cannot_delete_all)
 
     fun requireSelection(block: () -> Unit) { if (state.selected.isEmpty()) snack = noSel else block() }
+    // audit 5 G-03: the author's permissions, checked by the organizer itself
+    val restrictedMsg = stringResource(R.string.np2_restricted_author)
+    val saveFailedMsg = stringResource(R.string.ttpg_save_failed)
+    val openSaveFirst = stringResource(R.string.ttpg_open_save_first)
+    fun requirePermission(action: com.smartdocs.editor.core.security.DocAction, block: () -> Unit) { if (!state.allows(action)) snack = restrictedMsg else block() }
+
+    /** Overwrite the original; [leave] = then close the organizer (exit dialog). */
+    fun doOverwrite(leave: Boolean) {
+        saving = true
+        scope.launch {
+            try {
+                val saved = state.saveOverwrite()
+                if (saved != null && leave) {
+                    // the write-back to the origin must finish before the screen (and its scope) goes away
+                    when (app.documents.writeBack(saved)) {
+                        com.smartdocs.editor.core.files.DocumentRepository.WriteBack.Done -> { android.widget.Toast.makeText(ctx, ctx.getString(R.string.wb_saved_original), android.widget.Toast.LENGTH_SHORT).show(); nav.popBackStack() }
+                        com.smartdocs.editor.core.files.DocumentRepository.WriteBack.NotNeeded -> nav.popBackStack()
+                        else -> writeBackOrganize(saved)   // asks for access / offers a copy; the user leaves afterwards
+                    }
+                } else { result = saved; saved?.let { writeBackOrganize(it) } }
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e
+            } catch (e: Exception) { snack = saveFailedMsg } finally { saving = false }
+        }
+    }
+    fun overwrite(leave: Boolean) { if (state.ownerPasswordWillChange && !ownerWarned) ownerDialog = leave else doOverwrite(leave) }
     fun leave() { if (state.dirty) exitDialog = true else nav.popBackStack() }
+
+    /** audit 5 G-14: open page [p] in the reader (the one under the organizer when there is one). */
+    fun openPage(p: Int) {
+        val o = state.original ?: return
+        if (state.dirty) { snack = openSaveFirst; return }
+        val prev = nav.previousBackStackEntry
+        val fromReader = uri != null && runCatching { Uri.parse(uri).path == o.path }.getOrDefault(false)
+        if (fromReader && prev != null && prev.destination.route == com.smartdocs.editor.ui.Routes.READER) {
+            // the reader under us shows this file: it jumps to the page on return (key read by ReaderScreen)
+            prev.savedStateHandle["ttpg_open_page"] = p
+            nav.popBackStack()
+        } else nav.navigate(com.smartdocs.editor.ui.Routes.reader(Uri.fromFile(o).toString(), p))
+    }
     BackHandler(enabled = state.selectMode || state.dirty) { if (state.selectMode) { state.selectMode = false; state.selected = emptySet() } else leave() }
 
     val snackHost = remember { SnackbarHostState() }
@@ -108,21 +157,18 @@ fun OrganizeScreen(nav: NavHostController, uri: String?) {
             ) {
                 if (state.original != null) {
                     IconButton(onClick = { state.undo() }, enabled = state.canUndo && !state.busy) { Icon(Icons.AutoMirrored.Filled.Undo, stringResource(R.string.undo)) }
-                    IconButton(onClick = {
-                        if (state.selectMode && state.selected.size == state.pageCount) { state.selected = emptySet(); state.selectMode = false }
-                        else { state.selected = state.visiblePages().toSet(); state.selectMode = true }
-                    }) { Icon(Icons.Default.SelectAll, stringResource(R.string.select_all)) }
+                    // audit 5 G-12: toggles on the visible (filtered) pages
+                    IconButton(onClick = { state.toggleSelectAll() }) { Icon(Icons.Default.SelectAll, stringResource(R.string.select_all)) }
                     var menu by remember { mutableStateOf(false) }
                     Box {
                         IconButton(onClick = { menu = true }) { Icon(Icons.Default.Save, stringResource(R.string.save)) }
                         DropdownMenu(menu, { menu = false }) {
-                            DropdownMenuItem(text = { Text(stringResource(R.string.pg_save_overwrite)) }, enabled = state.dirty, onClick = {
-                                menu = false; saving = true
-                                scope.launch { try { result = state.saveOverwrite(); result?.let { writeBackOrganize(it) } } catch (e: Exception) { snack = com.smartdocs.editor.ui.common.signedOrMessage(ctx, e) } finally { saving = false } }
+                            DropdownMenuItem(text = { Text(stringResource(R.string.pg_save_overwrite)) }, enabled = state.dirty && !state.busy, onClick = {
+                                menu = false; overwrite(leave = false)
                             })
                             DropdownMenuItem(text = { Text(stringResource(R.string.pg_save_copy)) }, onClick = {
                                 menu = false; saving = true
-                                scope.launch { try { result = state.saveAsNew() } catch (e: Exception) { snack = e.message } finally { saving = false } }
+                                scope.launch { try { result = state.saveAsNew() } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { snack = saveFailedMsg } finally { saving = false } }
                             })
                         }
                     }
@@ -138,26 +184,30 @@ fun OrganizeScreen(nav: NavHostController, uri: String?) {
                 onInsertCamera = scanPages,
                 onDelete = { requireSelection { if (state.selected.size >= state.pageCount) snack = cannotDeleteAll else state.deleteSelected() } },
                 onExtract = {
-                    requireSelection { saving = true; scope.launch { try { result = state.extractSelected() } catch (e: Exception) { snack = e.message } finally { saving = false } } }
+                    // audit 5 G-03: extracting pages is copying content
+                    requireSelection { requirePermission(com.smartdocs.editor.core.security.DocAction.COPY) {
+                        saving = true; scope.launch { try { result = state.extractSelected() } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { snack = state.message(e) } finally { saving = false } }
+                    } }
                 },
                 onShare = {
-                    requireSelection {
+                    requireSelection { requirePermission(com.smartdocs.editor.core.security.DocAction.COPY) {
                         saving = true
                         scope.launch {
                             try { state.selectedToTemp()?.let { ctx.startActivity(Intent.createChooser(app.documents.shareIntent(listOf(it)), null)) } }
-                            catch (e: Exception) { snack = e.message } finally { saving = false }
+                            catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { snack = state.message(e) } finally { saving = false }
                         }
-                    }
+                    } }
                 },
                 onPrint = {
                     // nav-batch: Foxit "Print Pages" from the thumbnails selection
-                    requireSelection {
+                    // audit 5 G-03 / G-09: PRINT permission, and the one shared print path (V5 pipeline)
+                    requireSelection { requirePermission(com.smartdocs.editor.core.security.DocAction.PRINT) {
                         saving = true
                         scope.launch {
-                            try { state.selectedToTemp()?.let { com.smartdocs.editor.core.util.PdfPrint.print(ctx, it, state.original?.nameWithoutExtension ?: "pages", state.selected.size) } }
-                            catch (e: Exception) { snack = e.message } finally { saving = false }
+                            try { state.printPages(state.selected) }
+                            catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { snack = state.message(e) } finally { saving = false }
                         }
-                    }
+                    } }
                 },
                 onMessage = { snack = it },
             )
@@ -196,15 +246,24 @@ fun OrganizeScreen(nav: NavHostController, uri: String?) {
                     PageGrid(
                         state = state, pages = pages, minCell = (if (tablet) 150.dp else 105.dp) * cellScale,
                         pageActions = listOf(
-                            pageAct(R.string.pc_page_rotate) { p -> state.selected = setOf(p); state.rotateSelected(90) },
-                            pageAct(R.string.pc_page_delete) { p -> if (state.pageCount <= 1) snack = cannotDeleteAll else { state.selected = setOf(p); state.deleteSelected() } },
+                            // audit 5 G-14: open the page in the reader
+                            pageAct(R.string.ttpg_open_page) { p -> openPage(p) },
+                            // audit 5 G-08: the page's own action; the user's multi-selection is kept
+                            pageAct(R.string.pc_page_rotate) { p -> state.rotatePages(setOf(p), 90, keepSelection = true) },
+                            pageAct(R.string.pc_page_delete) { p -> if (state.pageCount <= 1) snack = cannotDeleteAll else state.deletePages(setOf(p), keepSelection = true) },
                             pageAct(R.string.pc_page_print) { p ->
-                                state.selected = setOf(p)
-                                scope.launch { runCatching { state.selectedToTemp()?.let { com.smartdocs.editor.core.util.PrintHelper.printPdf(ctx, it) } }.onFailure { snack = it.message }; state.selected = emptySet() }
+                                requirePermission(com.smartdocs.editor.core.security.DocAction.PRINT) {
+                                    saving = true
+                                    scope.launch {
+                                        try { state.printPages(listOf(p)) }
+                                        catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { snack = state.message(e) } finally { saving = false }
+                                    }
+                                }
                             },
-                            // redaction and OCR act on the tapped page of the working version (undo brings it back)
-                            pageAct(R.string.pc_page_redact) { p -> redactAsk = p },
-                            pageAct(R.string.pc_page_ocr) { p -> state.ocrPage(p, ocrHasText) },
+                            // redaction acts on the tapped page of the working version (undo brings it back); audit 5 G-03: MODIFY
+                            pageAct(R.string.pc_page_redact) { p -> requirePermission(com.smartdocs.editor.core.security.DocAction.MODIFY) { redactAsk = p } },
+                            // audit 5 G-06: OCR of this page in place (one undoable organizer step), no second reader
+                            pageAct(R.string.pc_page_ocr) { p -> requirePermission(com.smartdocs.editor.core.security.DocAction.MODIFY) { state.ocrPage(p) } },
                         ),
                         dragEnabled = state.filter == PageFilter.ALL && !state.busy,
                         onTap = { p -> if (state.selectMode) state.toggle(p) else { state.selectMode = true; state.selected = setOf(p) } },
@@ -221,7 +280,7 @@ fun OrganizeScreen(nav: NavHostController, uri: String?) {
         }
     }
 
-    if (state.busy && state.original != null) ProgressDialog(stringResource(R.string.pg_applying))
+    if (state.busy && state.original != null) ProgressDialog(state.progress ?: stringResource(R.string.pg_applying))
     if (saving) ProgressDialog(stringResource(R.string.processing))
     result?.let { ResultSheet(it, nav, onDismiss = { result = null }) }
 
@@ -231,6 +290,7 @@ fun OrganizeScreen(nav: NavHostController, uri: String?) {
         com.smartdocs.editor.ui.tools.FilePasswordDialog(other, onUnlocked = { pw -> lockedInsert = null; state.insertFrom(other, at, pw) }, onRemove = { lockedInsert = null })
     }
 
+    // audit 5 (PAGES, Low): the exit dialog also offers Save (overwrite the original, then leave)
     redactAsk?.let { p ->
         AlertDialog(onDismissRequest = { redactAsk = null }, title = { Text(stringResource(R.string.pa_redact_page_q, p + 1)) },
             text = { Text(stringResource(R.string.pa_redact_page_sub)) },
@@ -240,10 +300,32 @@ fun OrganizeScreen(nav: NavHostController, uri: String?) {
     if (exitDialog) AlertDialog(
         onDismissRequest = { exitDialog = false },
         title = { Text(stringResource(R.string.tool_organize)) },
-        text = { Text(stringResource(R.string.pg_unsaved)) },
-        confirmButton = { TextButton(onClick = { exitDialog = false; nav.popBackStack() }) { Text(stringResource(R.string.pg_discard)) } },
-        dismissButton = { TextButton(onClick = { exitDialog = false }) { Text(stringResource(R.string.cancel)) } },
+        text = { Text(stringResource(R.string.ttpg_unsaved_save)) },
+        confirmButton = { TextButton(onClick = { exitDialog = false; overwrite(leave = true) }, enabled = !state.busy) { Text(stringResource(R.string.save)) } },
+        dismissButton = {
+            Row {
+                TextButton(onClick = { exitDialog = false; nav.popBackStack() }) { Text(stringResource(R.string.pg_discard)) }
+                TextButton(onClick = { exitDialog = false }) { Text(stringResource(R.string.cancel)) }
+            }
+        },
     )
+    ownerDialog?.let { leaveAfter ->
+        AlertDialog(
+            onDismissRequest = { ownerDialog = null },
+            title = { Text(stringResource(R.string.ttpg_owner_title)) },
+            text = { Text(stringResource(R.string.ttpg_owner_warn)) },
+            confirmButton = { TextButton(onClick = { ownerDialog = null; ownerWarned = true; doOverwrite(leaveAfter) }) { Text(stringResource(R.string.ttpg_owner_continue)) } },
+            dismissButton = {
+                Row {
+                    TextButton(onClick = {
+                        ownerDialog = null; saving = true
+                        scope.launch { try { result = state.saveAsNew() } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { snack = saveFailedMsg } finally { saving = false } }
+                    }) { Text(stringResource(R.string.pg_save_copy)) }
+                    TextButton(onClick = { ownerDialog = null }) { Text(stringResource(R.string.cancel)) }
+                }
+            },
+        )
+    }
 }
 
 @Composable

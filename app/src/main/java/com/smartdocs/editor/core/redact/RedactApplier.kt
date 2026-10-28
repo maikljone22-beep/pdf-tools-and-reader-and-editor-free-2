@@ -41,6 +41,10 @@ object RedactApplier {
     data class Report(
         val marks: Int, val pages: Int, val glyphs: Int, val objects: Int, val images: Int, val annots: Int,
         val wholePages: Int, val rasterPages: List<Int>, val sanitized: Map<SanitizeItem, Int>,
+        /** audit 5 R-8: hidden content the sanitising step could not remove (reported, never silent). */
+        val sanitizeSkipped: List<SanitizeSkip> = emptyList(),
+        /** audit 5 R-4: signature values removed from the output (a rewritten file is no longer validly signed). */
+        val signaturesRemoved: Int = 0,
     )
 
     suspend fun apply(context: Context, src: File, out: File, password: String?, marks: List<RedactMark>, options: Options = Options()): Report = withContext(Dispatchers.IO) {
@@ -49,6 +53,8 @@ object RedactApplier {
         var glyphs = 0; var objects = 0; var images = 0; var annots = 0; var whole = 0
         val raster = sortedSetOf<Int>()
         var sanitized: Map<SanitizeItem, Int> = emptyMap()
+        val skipped = ArrayList<SanitizeSkip>()
+        var sigs = 0
         try {
             PdfOps.load(src, password).use { doc ->
                 val byPage = marks.filter { it.page in 0 until doc.numberOfPages }.groupBy { it.page }
@@ -58,7 +64,7 @@ object RedactApplier {
                 for ((pi, list) in byPage) {
                     val page = doc.getPage(pi)
                     if (list.any { it.wholePage }) {
-                        wipe(doc, page); whole++
+                        PageScrub.wipePage(doc, page); whole++   // audit 5 R-3: also form values and structure text
                     } else {
                         val boxes = list.flatMap { it.boxes() }
                         val fill = list.groupingBy { it.style.fill }.eachCount().maxByOrNull { it.value }?.key ?: 0
@@ -75,25 +81,19 @@ object RedactApplier {
                     val frame = PageFrame.of(page)
                     list.forEach { m -> runCatching { drawMark(doc, page, frame, m, fontFor, chosen) } }
                 }
-                if (options.sanitize) sanitized = Sanitizer.clean(doc, options.sanitizeItems)
-                // after sanitising, which would drop the review replies of the marks kept pending
-                if (options.keepPending.isNotEmpty()) RedactMarks.writeAll(doc, options.keepPending, options.author)
+                if (options.sanitize) sanitized = Sanitizer.clean(doc, options.sanitizeItems, skipped)
+                // after sanitising, which would drop the review replies of the marks kept pending. audit 5 R-6: when
+                // pages are rasterised, the pending marks are written after that (else they are burned into the image)
+                if (options.keepPending.isNotEmpty() && raster.isEmpty()) RedactMarks.writeAll(doc, options.keepPending, options.author)
+                sigs = PageScrub.stripSignatures(doc)   // audit 5 R-4
                 // audit AN-07: removed / blanked images and forms must not stay in /Resources (and so in the file)
                 RedactCleanup.pruneUnusedXObjects(doc)
                 doc.save(tmp)
             }
-            if (raster.isNotEmpty()) rasterize(context, tmp, out, password, raster.toList(), options.rasterDpi)
+            if (raster.isNotEmpty()) rasterize(context, tmp, out, password, raster.toList(), options.rasterDpi, options.keepPending, options.author)
             else if (!tmp.renameTo(out)) { tmp.copyTo(out, overwrite = true) }
         } finally { if (tmp.exists()) tmp.delete() }
-        Report(marks.size, marks.map { it.page }.distinct().size, glyphs, objects, images, annots, whole, raster.toList(), sanitized)
-    }
-
-    /** Empties a page: no content, no resources, no annotations. */
-    private fun wipe(doc: PDDocument, page: PDPage) {
-        page.setContents(PDStream(doc))
-        page.resources = PDResources()
-        page.annotations = emptyList()
-        page.cosObject.removeItem(com.tom_roush.pdfbox.cos.COSName.getPDFName("Thumb"))
+        Report(marks.size, marks.map { it.page }.distinct().size, glyphs, objects, images, annots, whole, raster.toList(), sanitized, skipped, sigs)
     }
 
     private fun rgb(c: Int) = floatArrayOf(((c shr 16) and 0xFF) / 255f, ((c shr 8) and 0xFF) / 255f, (c and 0xFF) / 255f)
@@ -163,14 +163,20 @@ object RedactApplier {
         return f to safe
     }
 
-    /** Replaces [pages] of [src] by images rendered with PDFium (boxes already drawn), then saves to [out]. */
-    internal suspend fun rasterize(context: Context, src: File, out: File, password: String?, pages: List<Int>, dpi: Int) {
+    /**
+     * Replaces [pages] of [src] by images rendered with PDFium (boxes already drawn), then saves to [out].
+     * audit 5 R-1: the old pages become unreachable ([PageScrub.replacePage]). audit 5 R-6: [pending] marks are
+     * written afterwards (moved into the new page's space on rasterised pages), so they stay pending marks.
+     */
+    internal suspend fun rasterize(context: Context, src: File, out: File, password: String?, pages: List<Int>, dpi: Int,
+                                   pending: List<RedactMark> = emptyList(), author: String = "") {
         val scale = dpi / 72f
         // one page at a time: render → JPEG-encode → recycle. Keeping every page bitmap in memory (up to 6000² px each)
         // ran out of memory on multi-page documents (OutOfMemoryError is not caught by the tool runner → app crash).
         val session = PdfSession.open(context, src, password)
         try {
             PdfOps.load(src, password).use { doc ->
+                val moved = HashMap<Int, FloatArray>()   // page → user-to-display matrix of the replaced page
                 for (i in pages) {
                     if (i !in 0 until session.pageCount || i >= doc.numberOfPages) continue
                     val (w, h) = session.pageSize(i)
@@ -181,14 +187,23 @@ object RedactApplier {
                     session.invalidateCache()
                     try {
                         val old = doc.getPage(i)
+                        val toDisplay = Affine.values(PageFrame.of(old).toDisplay)
                         val np = PDPage(PDRectangle(w, h))
                         val img = JPEGFactory.createFromImage(doc, bmp, 0.9f)
                         PDPageContentStream(doc, np).use { it.drawImage(img, 0f, 0f, w, h) }
-                        doc.pages.insertAfter(np, old); doc.removePage(old)
+                        PageScrub.replacePage(doc, old, np)
+                        moved[i] = toDisplay
                     } finally { bmp.recycle() }
                 }
                 RedactCleanup.pruneUnusedXObjects(doc)   // audit AN-07: inherited resources of the replaced pages
-                doc.save(out)
+                if (pending.isNotEmpty()) {
+                    val marks = pending.map { m ->
+                        val t = moved[m.page] ?: return@map m
+                        m.copy(rects = m.rects.map { r -> RedactMath.map(t, Box.of(r.left, r.bottom, r.right, r.top)).let { b -> android.graphics.RectF(b.l, b.t, b.r, b.b) } })
+                    }
+                    RedactMarks.writeAll(doc, marks, author)
+                }
+                RedactIo.saveAtomic(doc, out)   // audit 5 R-10
             }
         } finally { session.closeAsync() }
     }

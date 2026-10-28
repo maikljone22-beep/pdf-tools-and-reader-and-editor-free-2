@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- audit 5 (tab tools, PAGES): page organizer -->
+    <string name="ttpg_owner_title">كلمة مرور المالك</string>
+    <string name="ttpg_owner_warn">فُتح هذا الملف بكلمة مرور الفتح وليس بكلمة مرور المالك. الحفظ فوق الأصل يُبقي القيود، لكنه يستبدل كلمة مرور المالك التي وضعها المؤلف بكلمة جديدة عشوائية، فلن ترفع كلمة المرور الأصلية القيود بعد ذلك. احفظ كملف جديد إن أردت إبقاء الأصل كما هو.</string>
+    <string name="ttpg_owner_continue">استبدال الأصل على أي حال</string>
+    <string name="ttpg_unsaved_save">هناك تغييرات غير محفوظة. هل تريد حفظها في الملف الأصلي قبل الخروج؟</string>
+    <string name="ttpg_busy">ما زالت عملية أخرى على الصفحات قيد التنفيذ. حاول مرة أخرى عند انتهائها.</string>
+    <string name="ttpg_ocr_page">التعرف الضوئي على الصفحة</string>
+    <string name="ttpg_ocr_running">جارٍ التعرف الضوئي على الصفحة %1$d…</string>
+    <string name="ttpg_open_page">فتح الصفحة</string>
+    <string name="ttpg_open_save_first">احفظ التغييرات أو تراجع عنها أولًا، ثم افتح الصفحة في القارئ.</string>
+    <string name="ttpg_save_failed">تعذّر الحفظ: لم يمكن الاحتفاظ بنسخة من الأصل أو كتابته (هل المساحة ممتلئة؟).</string>
+    <string name="ttpg_op_failed">تعذّر تنفيذ العملية على الصفحات.</string>
+</resources>

@@ -54,6 +54,10 @@ suspend fun runOcrToFile(
     val engine = com.smartdocs.editor.core.ocr.OcrPipeline.engineFor(ctx, engine0, t)
     var fixed: File? = null
     try {
+    // audit 5 OCR-5: a cancel of the caller's coroutine (QuickController job.cancel) stops the engine actually running,
+    // also the "fast" engine created here
+    // audit 5 OCR-8: any other failure reaches the caller as a string resource (QuickInfo), not a raw English message
+    return try { com.smartdocs.editor.core.ocr.OcrPipeline.cancelling(engine) {
     val langs = opt.langs.joinToString("+")
     try {
         engine.ensureLanguages(langs) { lang, f ->
@@ -89,7 +93,7 @@ suspend fun runOcrToFile(
         val todo = if (opt.redo || opt.pages?.size == 1) range else plan.pages
         if (todo.isEmpty()) {
             // nothing to recognise, but the text layer was repaired: that is the result
-            if (input.repaired) { withContext(Dispatchers.IO) { src.copyTo(out, overwrite = true) }; return 0 }
+            if (input.repaired) { withContext(Dispatchers.IO) { src.copyTo(out, overwrite = true) }; return@cancelling 0 }
             throw QuickInfo(ctx.getString(R.string.qk_ocr_nothing))
         }
         val searchable = if (!opt.editable) withContext(Dispatchers.IO) { SearchablePdfWriter(ctx, src, password) } else null
@@ -99,31 +103,41 @@ suspend fun runOcrToFile(
                 coroutineContext.ensureActive()
                 onProgress(ctx.getString(R.string.qk_ocr_page, n + 1, todo.size), n.toFloat() / todo.size)
                 val (w, h) = session.pageSize(pi)
-                var scale = 300f / 72f
-                if (maxOf(w, h) * scale > 3500f) scale = 3500f / maxOf(w, h)
+                // audit 5 OCR-4: the same render cap as the zone OCR (OcrPipeline.MAX_RENDER_PX)
+                val scale = com.smartdocs.editor.core.ocr.OcrPipeline.renderScale(w, h)
                 val bmp = session.render(pi, (w * scale).toInt().coerceAtLeast(1), (h * scale).toInt().coerceAtLeast(1), annotations = false)
                 session.invalidateCache()            // the bitmap is ours now (the editable writer paints on it)
-                val ocrBmp = com.smartdocs.editor.core.ocr.OcrPrep.filter(bmp, t)
-                val page = try { engine.recognize(ocrBmp, wantWords = true) } finally { if (ocrBmp !== bmp) ocrBmp.recycle() }
-                coroutineContext.ensureActive()
-                searchable?.addLayer(pi, com.smartdocs.editor.core.ocr.MixedPageOcr.dropExisting(session, pi, page, plan))
-                // only a page with NO text objects (a scan / picture) is rebuilt. A page that has text — even a text layer
-                // that extracts as garbage or wrongly mapped Arabic — draws real glyphs: rebuilding it would replace them
-                // by a picture plus re-typed OCR words (lost style, duplicated / misplaced words). It gets invisible words.
-                if (editable != null) {
-                    val txt = runCatching { session.text(pi) }.getOrDefault("")
-                    if (txt.isNotBlank())
-                        editable.addInvisible(pi, com.smartdocs.editor.core.ocr.MixedPageOcr.dropExisting(session, pi, page, plan))
-                    else editable.replacePage(pi, bmp, page)
-                }
-                bmp.recycle()
+                // audit 5 OCR-8: recycled also when the run is cancelled or fails on this page
+                try {
+                    // audit 5 OCR-2: image filters (adaptive threshold…) on Dispatchers.Default, not on the caller's Main
+                    val ocrBmp = com.smartdocs.editor.core.ocr.OcrPrep.filterAsync(bmp, t)
+                    val page = try { engine.recognize(ocrBmp, wantWords = true) } finally { if (ocrBmp !== bmp) ocrBmp.recycle() }
+                    coroutineContext.ensureActive()
+                    searchable?.addLayer(pi, com.smartdocs.editor.core.ocr.MixedPageOcr.dropExisting(session, pi, page, plan))
+                    // only a page with NO text objects (a scan / picture) is rebuilt. A page that has text — even a text layer
+                    // that extracts as garbage or wrongly mapped Arabic — draws real glyphs: rebuilding it would replace them
+                    // by a picture plus re-typed OCR words (lost style, duplicated / misplaced words). It gets invisible words.
+                    if (editable != null) {
+                        val txt = runCatching { session.text(pi) }.getOrDefault("")
+                        if (txt.isNotBlank())
+                            editable.addInvisible(pi, com.smartdocs.editor.core.ocr.MixedPageOcr.dropExisting(session, pi, page, plan))
+                        else editable.replacePage(pi, bmp, page)
+                    }
+                } finally { bmp.recycle() }
             }
             onProgress(ctx.getString(R.string.qk_ocr_saving), 1f)
             searchable?.save(out); editable?.save(out)
-        } finally { searchable?.close(); editable?.close() }
+        } finally { withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) { searchable?.close(); editable?.close() } }
         com.smartdocs.editor.core.ocr.OcrPipeline.shrinkOutput(out, password, t)
-        return todo.size
-    } finally { session.closeAsync() }
+        todo.size
+    } finally { withContext(kotlinx.coroutines.NonCancellable) { session.closeAsync() } }   // closed also after a cancel
     } finally { input.close(); stripped?.delete() }
-    } finally { fixed?.delete(); if (engine !== engine0) engine.close() }
+    } } catch (e: CancellationException) { throw e
+    } catch (e: QuickInfo) { throw e
+    } catch (e: Exception) { throw QuickInfo(ocrErrorText(ctx, e))
+    } catch (e: OutOfMemoryError) { throw QuickInfo(ocrErrorText(ctx, e)) }
+    } finally {
+        fixed?.delete()
+        if (engine !== engine0) com.smartdocs.editor.core.ocr.OcrPipeline.closeQuietly(engine)
+    }
 }

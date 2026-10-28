@@ -68,6 +68,18 @@ interface CloudProvider {
 
     /** Returns (something changed?, next cursor) since [cursor]. A reset cursor counts as a change. */
     suspend fun changesSince(cursor: String): Pair<Boolean, String> = true to cursor
+
+    /** fc-sync: false when the drive-wide change feed does not see changes inside [folderId] (then no skip, no notify). */
+    fun feedCovers(folderId: String): Boolean = true
+
+    /** fc-sync: true when [waitForChange] is a real change notification (long-poll); otherwise the feed is polled. */
+    val notifies: Boolean get() = false
+
+    /**
+     * fc-sync: blocks until the server reports a change after [cursor] (true), [maxSeconds] pass without one (false),
+     * or returns null at once when this provider has no notification channel. Run on Dispatchers.IO.
+     */
+    suspend fun waitForChange(cursor: String, maxSeconds: Int): Boolean? = null
 }
 
 object Clouds {

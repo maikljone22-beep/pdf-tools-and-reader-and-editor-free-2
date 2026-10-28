@@ -25,7 +25,8 @@ import java.util.concurrent.TimeUnit
 /**
  * Runs sync pairs through [SyncRuntime.runPair].
  *  - Periodic: every 15 minutes, two jobs (Wi‑Fi-only pairs on unmetered networks, the others on any network),
- *    battery not low. Disabled by the [SyncPrefs.autoSync] master switch.
+ *    battery not low. Disabled by the [SyncPrefs.autoSync] master switch. fc-sync: pairs whose delta feed and local
+ *    listing show no change are skipped ([SyncSkip]), with a full run at least every 6 hours.
  *  - [syncNow]: manual, expedited, retries failed files immediately.
  *  - [request]: automatic trigger (save, local change, cloud change, app opened); expedited, coalesced per pair.
  */
@@ -59,9 +60,11 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
         }
         // Android 12+: a long sync keeps running as a dataSync foreground service with the "syncing" notification
         // (Settings → notifications can turn it off; refused while the app is in the background, then it runs as plain work)
-        if (targets.isNotEmpty()) showForeground(applicationContext)
+        // fc-sync: a periodic run first asks the delta feed and the local listing; nothing changed = no re-listing
+        val toRun = if (only == null && !force) targets.filterNot { SyncSkip.canSkip(ctx, it) } else targets
+        if (toRun.isNotEmpty()) showForeground(applicationContext)
         var retry = false
-        for (p in targets) {
+        for (p in toRun) {
             try { SyncRuntime.runPair(ctx, p.id, force, if (only != null) deletes else DeleteGuard.Policy.GUARD) }
             catch (e: AuthRequiredException) { /* status stored; needs the user */ }
             catch (e: SecurityException) { /* permission lost; needs the user */ }

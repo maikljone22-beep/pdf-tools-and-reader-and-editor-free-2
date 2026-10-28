@@ -20,7 +20,8 @@ class OneDrive private constructor(private val context: Context) : CloudProvider
     private val tokens = OAuthTokens(context, id.key)
 
     companion object {
-        private const val API = "https://graph.microsoft.com/v1.0/me/drive"
+        private const val GRAPH = "https://graph.microsoft.com/v1.0"
+        private const val API = "$GRAPH/me/drive"
         private const val SELECT = "id,name,size,lastModifiedDateTime,folder,file,parentReference"
         private const val SIMPLE_LIMIT = 4L * 1024 * 1024
         private const val CHUNK = 320 * 1024 * 32 // 10 MiB, multiple of 320 KiB as Graph requires
@@ -38,21 +39,33 @@ class OneDrive private constructor(private val context: Context) : CloudProvider
     }
 
     private fun req(url: String, t: String) = Request.Builder().url(url).header("Authorization", "Bearer $t")
-    private fun item(path: String?) = if (path == null || path == rootId) "$API/root" else "$API/items/$path"
+    /** URL of an item: the personal drive, or (fc-sync) an item of a SharePoint library ([SharePoint.encode]). */
+    private fun itemUrl(path: String?): String {
+        if (path == null || path == rootId) return "$API/root"
+        val sp = SharePoint.decode(path) ?: return "$API/items/$path"
+        return if (sp.second == "root") "$GRAPH/drives/${sp.first}/root" else "$GRAPH/drives/${sp.first}/items/${sp.second}"
+    }
 
-    private fun parse(o: JSONObject) = CloudItem(
-        id = o.getString("id"), name = o.optString("name"), isFolder = o.has("folder"), size = o.optLong("size"),
-        modified = o.optString("lastModifiedDateTime").takeIf { it.isNotEmpty() }?.let { runCatching { Instant.parse(it).toEpochMilli() }.getOrNull() } ?: 0L,
-        mime = o.optJSONObject("file")?.optString("mimeType"), parentId = o.optJSONObject("parentReference")?.optString("id"),
-    )
+    /** Drive of a library item (null = the personal drive): results are re-encoded with it. */
+    private fun driveOf(id: String?): String? = SharePoint.decode(id)?.first
 
-    private fun pages(first: String, t: String): List<CloudItem> {
+    private fun parse(o: JSONObject, drive: String? = null): CloudItem {
+        val raw = o.getString("id")
+        val parent = o.optJSONObject("parentReference")?.optString("id")?.ifEmpty { null }
+        return CloudItem(
+            id = if (drive == null) raw else SharePoint.encode(drive, raw), name = o.optString("name"), isFolder = o.has("folder"), size = o.optLong("size"),
+            modified = o.optString("lastModifiedDateTime").takeIf { it.isNotEmpty() }?.let { runCatching { Instant.parse(it).toEpochMilli() }.getOrNull() } ?: 0L,
+            mime = o.optJSONObject("file")?.optString("mimeType"), parentId = if (drive == null || parent == null) parent else SharePoint.encode(drive, parent),
+        )
+    }
+
+    private fun pages(first: String, t: String, drive: String? = null): List<CloudItem> {
         val out = ArrayList<CloudItem>()
         var url: String? = first
         while (url != null && out.size < 2000) {
             val json = JSONObject(CloudHttp.string(req(url, t).build()))
             val arr = json.optJSONArray("value")
-            if (arr != null) for (i in 0 until arr.length()) out += parse(arr.getJSONObject(i))
+            if (arr != null) for (i in 0 until arr.length()) out += parse(arr.getJSONObject(i), drive)
             url = json.optString("@odata.nextLink").takeIf { it.isNotEmpty() }
         }
         return out.sortedWith(compareBy({ !it.isFolder }, { it.name.lowercase() }))
@@ -64,7 +77,21 @@ class OneDrive private constructor(private val context: Context) : CloudProvider
         tokens.account = me.optString("userPrincipalName").ifEmpty { me.optString("displayName") }
     }
 
-    override suspend fun list(folderId: String?) = authed { t -> pages("${item(folderId)}/children?\$select=$SELECT&\$top=200", t) }
+    override suspend fun list(folderId: String?) = authed { t ->
+        if (folderId == SharePoint.LIBRARIES) libraries(t) else pages("${itemUrl(folderId)}/children?\$select=$SELECT&\$top=200", t, driveOf(folderId))
+    }
+
+    /** fc-sync: the document libraries of the sites the user follows, as folders (needs the library scopes). */
+    private fun libraries(t: String): List<CloudItem> {
+        val sites = SharePoint.sites(CloudHttp.string(req("$GRAPH/me/followedSites?\$select=id,displayName", t).build()))
+        return sites.flatMap { (siteId, siteName) ->
+            runCatching { SharePoint.libraries(siteName, CloudHttp.string(req("$GRAPH/sites/$siteId/drives?\$select=id,name,driveType", t).build())) }.getOrDefault(emptyList())
+        }.map { (driveId, label) -> CloudItem(SharePoint.encode(driveId, "root"), label, isFolder = true, parentId = SharePoint.LIBRARIES) }
+            .sortedBy { it.name.lowercase() }
+    }
+
+    /** fc-sync: the drive-wide delta feed covers only the personal drive; library folders rely on the periodic run. */
+    override fun feedCovers(folderId: String): Boolean = !SharePoint.isLibraryId(folderId)
 
     override suspend fun search(query: String) = authed { t ->
         val q = query.replace("'", "''")
@@ -72,25 +99,26 @@ class OneDrive private constructor(private val context: Context) : CloudProvider
     }
 
     override suspend fun download(item: CloudItem, dest: File, onProgress: ((Long, Long) -> Unit)?) = authed { t ->
-        CloudHttp.download(req("$API/items/${item.id}/content", t).build(), dest, onProgress)
+        CloudHttp.download(req("${itemUrl(item.id)}/content", t).build(), dest, onProgress)
     }
 
     override suspend fun upload(local: File, parentId: String?, name: String): CloudItem = authed { t ->
-        val target = "${item(parentId)}:/${Uri.encode(name)}:"
+        val target = "${itemUrl(parentId)}:/${Uri.encode(name)}:"
+        val drive = driveOf(parentId)
         if (local.length() <= SIMPLE_LIMIT) {
             parse(JSONObject(CloudHttp.string(req("$target/content?@microsoft.graph.conflictBehavior=rename", t)
-                .put(local.asRequestBody(mimeOf(name).toMediaType())).build())))
-        } else session("$target/createUploadSession", local, t, conflict = "rename")
+                .put(local.asRequestBody(mimeOf(name).toMediaType())).build())), drive)
+        } else session("$target/createUploadSession", local, t, conflict = "rename", drive = drive)
     }
 
     override suspend fun update(item: CloudItem, local: File): CloudItem = authed { t ->
         if (local.length() <= SIMPLE_LIMIT) {
-            parse(JSONObject(CloudHttp.string(req("$API/items/${item.id}/content", t).put(local.asRequestBody(mimeOf(local.name).toMediaType())).build())))
-        } else session("$API/items/${item.id}/createUploadSession", local, t, conflict = "replace")
+            parse(JSONObject(CloudHttp.string(req("${itemUrl(item.id)}/content", t).put(local.asRequestBody(mimeOf(local.name).toMediaType())).build())), driveOf(item.id))
+        } else session("${itemUrl(item.id)}/createUploadSession", local, t, conflict = "replace", drive = driveOf(item.id))
     }
 
     /** Resumable upload in 10 MiB chunks for files above 4 MB. */
-    private fun session(createUrl: String, local: File, t: String, conflict: String): CloudItem {
+    private fun session(createUrl: String, local: File, t: String, conflict: String, drive: String? = null): CloudItem {
         val body = JSONObject().put("item", JSONObject().put("@microsoft.graph.conflictBehavior", conflict)).toString()
         val uploadUrl = JSONObject(CloudHttp.string(req(createUrl, t).post(body.toRequestBody(CloudHttp.JSON)).build())).getString("uploadUrl")
         val total = local.length()
@@ -105,7 +133,7 @@ class OneDrive private constructor(private val context: Context) : CloudProvider
                     .put(buf.toRequestBody(CloudHttp.OCTET, 0, n)).build()
                 val text = CloudHttp.string(r)
                 offset += n
-                if (offset >= total) return parse(JSONObject(text))
+                if (offset >= total) return parse(JSONObject(text), drive)
             }
         }
         throw IllegalStateException("upload incomplete")
@@ -113,14 +141,14 @@ class OneDrive private constructor(private val context: Context) : CloudProvider
 
     override suspend fun createFolder(parentId: String?, name: String): CloudItem = authed { t ->
         val body = JSONObject().put("name", name).put("folder", JSONObject()).put("@microsoft.graph.conflictBehavior", "rename").toString()
-        parse(JSONObject(CloudHttp.string(req("${item(parentId)}/children", t).post(body.toRequestBody(CloudHttp.JSON)).build())))
+        parse(JSONObject(CloudHttp.string(req("${itemUrl(parentId)}/children", t).post(body.toRequestBody(CloudHttp.JSON)).build())), driveOf(parentId))
     }
 
     /** Moves the item to the OneDrive recycle bin. */
-    override suspend fun delete(item: CloudItem) = authed { t -> CloudHttp.string(req("$API/items/${item.id}", t).delete().build()); Unit }
+    override suspend fun delete(item: CloudItem) = authed { t -> CloudHttp.string(req(itemUrl(item.id), t).delete().build()); Unit }
 
     override suspend fun metadataOf(item: CloudItem): CloudItem? = authed { t ->
-        try { parse(JSONObject(CloudHttp.string(req("$API/items/${item.id}?\$select=$SELECT", t).build()))) }
+        try { parse(JSONObject(CloudHttp.string(req("${itemUrl(item.id)}?\$select=$SELECT", t).build())), driveOf(item.id)) }
         catch (e: HttpException) { if (e.code == 404) null else throw e }
     }
 
@@ -130,14 +158,14 @@ class OneDrive private constructor(private val context: Context) : CloudProvider
     override suspend fun shareLink(item: CloudItem, anyone: Boolean): String = authed { t ->
         val anon = if (!anyone) null else runCatching {
             val body = JSONObject().put("type", "view").put("scope", "anonymous").toString()
-            JSONObject(CloudHttp.string(req("$API/items/${item.id}/createLink", t).post(body.toRequestBody(CloudHttp.JSON)).build()))
+            JSONObject(CloudHttp.string(req("${itemUrl(item.id)}/createLink", t).post(body.toRequestBody(CloudHttp.JSON)).build()))
                 .optJSONObject("link")?.optString("webUrl")?.takeIf { it.isNotEmpty() }
         }.getOrNull()
-        anon ?: JSONObject(CloudHttp.string(req("$API/items/${item.id}?\$select=webUrl", t).build())).optString("webUrl").ifEmpty { throw IllegalStateException("no link") }
+        anon ?: JSONObject(CloudHttp.string(req("${itemUrl(item.id)}?\$select=webUrl", t).build())).optString("webUrl").ifEmpty { throw IllegalStateException("no link") }
     }
 
     override suspend fun changeCursor(): String? = authed { t ->
-        JSONObject(CloudHttp.string(req("$API/root/delta?token=latest", t).build())).optString("@odata.deltaLink").ifEmpty { null }
+        ChangeFeeds.graph(CloudHttp.string(req("$API/root/delta?token=latest", t).build())).steady
     }
 
     override suspend fun changesSince(cursor: String): Pair<Boolean, String> = authed { t ->
@@ -145,23 +173,18 @@ class OneDrive private constructor(private val context: Context) : CloudProvider
         var changed = false
         try {
             for (round in 0 until 20) {
-                val o = JSONObject(CloudHttp.string(req(url, t).build()))
-                val arr = o.optJSONArray("value")
-                // the root itself is always reported; anything else is a real change
-                if (arr != null) for (i in 0 until arr.length()) if (!arr.getJSONObject(i).has("root")) changed = true
-                val delta = o.optString("@odata.deltaLink")
-                if (delta.isNotEmpty()) { url = delta; break }
-                val next = o.optString("@odata.nextLink")
-                if (next.isEmpty()) break
-                url = next
+                val page = ChangeFeeds.graph(CloudHttp.string(req(url, t).build()))
+                if (page.changed) changed = true
+                if (page.steady != null) { url = page.steady; break }
+                url = page.next ?: break
             }
             changed to url
         } catch (e: HttpException) {
             if (e.code == 410 || e.code == 404)
-                true to JSONObject(CloudHttp.string(req("$API/root/delta?token=latest", t).build())).optString("@odata.deltaLink").ifEmpty { cursor }
+                true to (ChangeFeeds.graph(CloudHttp.string(req("$API/root/delta?token=latest", t).build())).steady ?: cursor)
             else throw e
         }
     }
 
-    override suspend fun disconnect() { tokens.clear() }
+    override suspend fun disconnect() { tokens.clear(); SharePoint.Scopes.reset(context) }
 }

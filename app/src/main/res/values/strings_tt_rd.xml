@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- audit 5 (Redact / Sanitize / Advanced protect) -->
+    <string name="ttrd_signed_warning">هذا المستند موقَّع رقميًا. الناتج ملف جديد لا يحمل توقيعات صالحة: تُزال قيم التوقيعات منه، ويبقى الملف الأصلي كما هو.</string>
+    <string name="ttrd_sig_removed">أُزيلت قيم %1$d من التوقيعات الرقمية من الناتج.</string>
+    <string name="ttrd_wrong_password">كلمة المرور غير صحيحة. أدخلها مرة أخرى.</string>
+    <string name="ttrd_failed">تعذّر إكمال العملية على هذا الملف.</string>
+    <string name="ttrd_latin1_only">هذه الخوارزمية لا تقبل في كلمات المرور إلا الأحرف اللاتينية (تتحول الأحرف العربية إلى «?»). اختر AES-256 أو غيّر كلمة المرور.</string>
+    <string name="ttrd_owner_same">يجب أن تختلف كلمة مرور الأذونات عن كلمة مرور الفتح.</string>
+    <string name="ttrd_owner_title">كلمة مرور الأذونات</string>
+    <string name="ttrd_owner_body">أُنشئت كلمة مرور الأذونات هذه تلقائيًا. احفظها الآن، فلن تُعرض مرة أخرى.</string>
+    <string name="ttrd_copy">نسخ</string>
+    <string name="ttrd_copied">نُسخت إلى الحافظة.</string>
+    <string name="ttrd_details">التفاصيل</string>
+    <string name="ttrd_skipped_title">لم يُنظَّف كل المحتوى المخفي:</string>
+    <string name="ttrd_skip_unreadable">صفحة %1$d: تعذّر فحص محتواها</string>
+    <string name="ttrd_skip_nested">صفحة %1$d: %2$d من العناصر داخل كائنات نموذج (Form XObject)</string>
+    <string name="ttrd_skip_vertical">صفحة %1$d: %2$d من الأحرف بنص عمودي</string>
+    <string name="ttrd_skip_size">صفحة %1$d: %2$d من الأحرف بحجم غير صالح</string>
+    <string name="ttrd_skip_rewrite">صفحة %1$d: تعذّرت إعادة كتابة المحتوى (%2$d من العناصر)</string>
+    <string name="ttrd_skip_hint">لإزالة ما بقي حوِّل هذه الصفحات إلى صور (التنقيح بأقصى أمان).</string>
+    <string name="ttrd_draft_restored">استُعيدت %1$d من العلامات غير المحفوظة.</string>
+</resources>
