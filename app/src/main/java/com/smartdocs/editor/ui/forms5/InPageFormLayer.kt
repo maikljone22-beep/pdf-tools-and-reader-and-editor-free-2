@@ -145,7 +145,8 @@ fun InPageFormLayer(reader: ReaderState, pageIndex: Int, g: PageGeometry) {
                 if (highlight && interactive && w.id != editing?.id) drawRect(HIGHLIGHT, r.topLeft, r.size)
                 if (highlight && w.required && interactive) drawRect(REQUIRED, r.topLeft, r.size, style = Stroke(1.5f))
                 if (w.id == editing?.id) return@forEach
-                if (fs.isPendingValue(w.name)) {
+                // pending values, and XFA picture fields (their saved appearance holds the raw value)
+                if (fs.isPendingValue(w.name) || (w.picture != null && fs.display(w).text.isNotEmpty())) {
                     val p = fs.props(w.name)
                     val fill = p?.fillColor?.takeIf { it ushr 24 != 0 }?.let { Color(it) } ?: w.background?.let { Color(0xFF000000 or it.toLong()) }
                     val ink = p?.textColor?.takeIf { it ushr 24 != 0 }?.let { Color(it) } ?: Color(0xFF000000 or w.textColor.toLong())

@@ -270,6 +270,8 @@ class FormFillState internal constructor(val reader: ReaderState) {
             val parts = raw.split('\n').filter { it.isNotEmpty() }.map { v -> w.exports.indexOf(v).takeIf { it >= 0 }?.let { w.options.getOrNull(it) } ?: v }
             return Display(parts.joinToString(", "))
         }
+        // XFA picture clause of a generated XFA form (values that do not match it show as stored)
+        w.picture?.let { pic -> com.smartdocs.editor.core.forms.XfaPicture.format(pic, raw)?.let { return Display(it) } }
         scripts?.takeIf { it.hasFormat(w.name) }?.let { sc -> runCatching { sc.format(w.name, raw) }.getOrNull()?.let { return Display(it.first, it.second) } }
         val spec = model.calc.scripts[w.name]?.format ?: return Display(raw)
         return AfFormat.format(spec, raw)

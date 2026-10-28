@@ -88,6 +88,8 @@ class XFieldT(
     val tooltip: String,
     /** nav-prefs: `<barcode type="…">` of a barcode field ("" otherwise). */
     val barcodeType: String = "",
+    /** `<format><picture>`: how the value is displayed (XfaPicture); "" = as stored. */
+    val picture: String = "",
 ) : XNode()
 
 class XDraw(
@@ -312,7 +314,8 @@ object XfaTemplateParser {
             checkSize = XfaUnits.pt(uiEl?.attr("size"), 10f), roundCheck = uiEl?.attr("shape") == "round",
             listOpen = uiEl?.attr("open") ?: "userControl", textEntry = uiEl?.attr("textEntry") == "1",
             tooltip = e.kid("assist")?.kid("toolTip")?.textContent?.trim().orEmpty(),
-            barcodeType = if (uiEl?.local() == "barcode") uiEl.attr("type").orEmpty() else "")
+            barcodeType = if (uiEl?.local() == "barcode") uiEl.attr("type").orEmpty() else "",
+            picture = e.kid("format")?.kid("picture")?.textContent?.trim().orEmpty())
     }
 
     private fun draw(e: Element): XDraw {

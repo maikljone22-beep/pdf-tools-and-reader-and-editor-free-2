@@ -66,6 +66,8 @@ data class FWidget(
     val triggers: Map<Trigger, List<PdfAction>> = emptyMap(),
     /** Text field with the FileSelect flag: its value is a file path picked by the user. */
     val fileSelect: Boolean = false,
+    /** XFA picture clause of a field generated from XFA (XfaPicture), null otherwise. */
+    val picture: String? = null,
 ) {
     val mouseUp: List<PdfAction> get() = triggers[Trigger.MOUSE_UP].orEmpty()
 }
@@ -285,6 +287,7 @@ object FormModelLoader {
             }
             val states = ws.map { onStates(it.cosObject).firstOrNull() ?: "" }
             val fileSelect = f is PDTextField && (f.cosObject.getInt(COSName.FF, 0) and FF_FILE_SELECT) != 0
+            val picture = (f as? PDTextField)?.cosObject?.getString(COSName.getPDFName(com.smartdocs.editor.core.forms.XfaPicture.KEY))?.takeIf { it.isNotBlank() }
             values[name] = fieldValue(f, if (f is PDButton) exports else emptyList(), states)
             val da = (f as? PDTextField)?.defaultAppearance ?: (f as? PDChoice)?.defaultAppearance
             val (fs, tc) = parseDa(runCatching { da }.getOrNull())
@@ -345,7 +348,7 @@ object FormModelLoader {
                     action = action, validate = validate,
                     hidden = runCatching { w.isHidden || w.isNoView }.getOrDefault(false),
                     mkRotation = runCatching { AppearanceRotation.rotationOf(w.cosObject) }.getOrDefault(0), pageRotation = FieldRotation.norm(g[4].toInt()),
-                    triggers = trig, fileSelect = fileSelect,
+                    triggers = trig, fileSelect = fileSelect, picture = picture,
                 )
             }
         }
