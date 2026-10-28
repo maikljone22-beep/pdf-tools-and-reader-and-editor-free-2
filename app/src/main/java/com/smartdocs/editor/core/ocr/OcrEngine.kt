@@ -32,6 +32,8 @@ class OcrEngine(private val context: Context, val fast: Boolean = false) : AutoC
     // Arabic script model for the second reading of doubtful words in Arabic lines (OcrRefine); null when not installed
     private var helper: TessBaseAPI? = null
     private var helperTried = false
+    // the main engine runs the fine-tuned Arabic model: the second readings (made for ara+eng) are skipped, as measured
+    private var usingFt = false
     @Volatile private var cancelled = false
     private var whitelist: String? = null
 
@@ -92,7 +94,7 @@ class OcrEngine(private val context: Context, val fast: Boolean = false) : AutoC
     private fun expectedSize(lang: String, fastPack: Boolean = fast): Long? =
         if (!fastPack) PINNED[lang]?.size ?: OcrModels.BEST[lang]?.size else OcrModels.FAST[lang]?.size
 
-    fun isLanguageInstalled(lang: String): Boolean = isInstalledIn(lang, if (lang == ARABIC_SCRIPT) bestDir else tessdataDir, lang != ARABIC_SCRIPT && fast)
+    fun isLanguageInstalled(lang: String): Boolean = isInstalledIn(lang, if (lang in BEST_ONLY) bestDir else tessdataDir, lang !in BEST_ONLY && fast)
 
     private fun isInstalledIn(lang: String, dir: File, fastPack: Boolean): Boolean = fileOf(lang, dir).let { f ->
         // a pinned pack must have its exact size (a truncated or swapped file is downloaded again)
@@ -115,6 +117,12 @@ class OcrEngine(private val context: Context, val fast: Boolean = false) : AutoC
             catch (e: kotlinx.coroutines.CancellationException) { throw e }
             catch (_: Exception) { }
         }
+        // optional: the script/Arabic model fine-tuned on the chemistry-book fonts (PRO_OCR_r5 §6), only while it is hosted
+        if ("ara" in list && !fast && mode != OcrEngineMode.TESSERACT && FT_URL.isNotEmpty() && !isLanguageInstalled(ARABIC_FT)) {
+            try { download(ARABIC_FT, onProgress) }
+            catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (_: Exception) { }
+        }
         // optional too: the PP-OCRv5 AI models (12.8 MB) for the AUTO / AI recogniser choice
         if ("ara" in list && mode != OcrEngineMode.TESSERACT && !ProOcr.isInstalled(context)) {
             try { ProOcr.ensureModels(context) { f -> onProgress("AI", f) } }
@@ -125,8 +133,8 @@ class OcrEngine(private val context: Context, val fast: Boolean = false) : AutoC
 
     private suspend fun download(lang: String, onProgress: (String, Float) -> Unit) {
         // the Arabic script helper is a best model whatever the quality
-        val fastPack = fast && lang != ARABIC_SCRIPT
-        val dir = if (lang == ARABIC_SCRIPT) bestDir else tessdataDir
+        val fastPack = fast && lang !in BEST_ONLY
+        val dir = if (lang in BEST_ONLY) bestDir else tessdataDir
         val target = fileOf(lang, dir)
         val tmp = File(target.parentFile, target.name + ".part")
         val sha = if (!fastPack) PINNED[lang] else null
@@ -169,8 +177,11 @@ class OcrEngine(private val context: Context, val fast: Boolean = false) : AutoC
             closeLocked()
             // Tesseract wants the PARENT of the "tessdata" folder: filesDir/tessdata/<lang>.traineddata
             val parent = tessdataDir.parentFile ?: context.filesDir
+            val eff = effectiveLangs(langs, isLanguageInstalled(ARABIC_FT), mode, fast)
             val t = TessBaseAPI()
-            val ok = runCatching { t.init(parent.absolutePath, langs, TessBaseAPI.OEM_LSTM_ONLY) }.getOrDefault(false)
+            var ok = runCatching { t.init(parent.absolutePath, eff, TessBaseAPI.OEM_LSTM_ONLY) }.getOrDefault(false)
+            usingFt = ok && eff != langs
+            if (!ok && eff != langs) ok = runCatching { t.init(parent.absolutePath, langs, TessBaseAPI.OEM_LSTM_ONLY) }.getOrDefault(false)
             if (!ok) { runCatching { t.recycle() }; return@withContext false }
             t.setPageSegMode(TessBaseAPI.PageSegMode.PSM_AUTO)
             whitelist?.let { runCatching { t.setVariable(TessBaseAPI.VAR_CHAR_WHITELIST, it) } }
@@ -223,7 +234,7 @@ class OcrEngine(private val context: Context, val fast: Boolean = false) : AutoC
             if (words.isNotEmpty() && !cancelled) {
                 val toks = words.map { OcrRefine.Tok(it.text, it.box.left, it.box.top, it.box.right, it.box.bottom, it.confidence, it.line) }
                 var out = toks
-                val hp = if (initialisedLangs?.split('+')?.contains("ara") == true) helperLocked() else null
+                val hp = if (!usingFt && initialisedLangs?.split('+')?.contains("ara") == true) helperLocked() else null
                 if (hp != null) {
                     runCatching {
                         hp.setImage(bitmap)
@@ -295,7 +306,7 @@ class OcrEngine(private val context: Context, val fast: Boolean = false) : AutoC
         runCatching { api?.recycle() }
         runCatching { helper?.recycle() }
         runCatching { pro?.close() }
-        api = null; initialisedLangs = null; helper = null; helperTried = false; pro = null; proTried = false
+        api = null; initialisedLangs = null; helper = null; helperTried = false; pro = null; proTried = false; usingFt = false
     }
 
     companion object {
@@ -311,7 +322,24 @@ class OcrEngine(private val context: Context, val fast: Boolean = false) : AutoC
         /** tessdata_best/script/Arabic: Arabic script model with every Arabic-Indic digit (second readings, [OcrRefine]). */
         const val ARABIC_SCRIPT = "Arabic"
 
-        fun modelUrl(lang: String) = if (lang == ARABIC_SCRIPT)
+        /**
+         * script/Arabic fine-tuned on synthetic lines in the books' fonts (PRO_OCR_r5 §6; mean bag char accuracy alone
+         * 0.818 -> 0.854, in Auto with PP-OCR 0.866 -> 0.895; integer model, 10 MB). Hosted by the project as a release asset; until it is
+         * uploaded the download fails quietly and Auto uses ara+eng.
+         */
+        const val ARABIC_FT = "ArabicFT"
+        const val FT_URL = "https://github.com/maikljone22-beep/pdf-tools-and-reader-and-editor-free-2/releases/download/ocr-models-1/ArabicFT.traineddata"
+        /** Models kept in the best folder whatever the recognition quality. */
+        val BEST_ONLY = setOf(ARABIC_SCRIPT, ARABIC_FT)
+
+        /** The languages Tesseract is started with: the fine-tuned model replaces «ara» (and «eng», which it reads too). */
+        fun effectiveLangs(langs: String, ftInstalled: Boolean, mode: OcrEngineMode, fast: Boolean): String {
+            val parts = langs.split('+').map { it.trim() }.filter { it.isNotEmpty() }
+            if (!ftInstalled || fast || mode == OcrEngineMode.TESSERACT || "ara" !in parts) return langs
+            return parts.filter { it != "eng" }.map { if (it == "ara") ARABIC_FT else it }.distinct().joinToString("+")
+        }
+
+        fun modelUrl(lang: String) = if (lang == ARABIC_FT) FT_URL else if (lang == ARABIC_SCRIPT)
             "https://github.com/tesseract-ocr/tessdata_best/raw/$TESSDATA_COMMIT/script/$lang.traineddata"
         else "https://github.com/tesseract-ocr/tessdata_best/raw/$TESSDATA_COMMIT/$lang.traineddata"
 
@@ -335,6 +363,8 @@ class OcrEngine(private val context: Context, val fast: Boolean = false) : AutoC
             // script/Arabic.traineddata at the same commit (git blob 54a6fd7e612bf839169eca536c7680bd5069331a, checked with
             // git ls-tree), fetched with Arabic as a helper model (OCR_QUALITY_r5)
             ARABIC_SCRIPT to Pin(17095279, "a80454f72df35c6f52550551dd69b8521ea6a62d834396d1c7dce4c35493902e"),
+            // the fine-tuned model of PRO_OCR_r5 §6 (scratchpad train/ArabicFT.traineddata)
+            ARABIC_FT to Pin(10021428, "3620be6eba8cbee6049aa19125ae3e863a7c8639b0627820c05d32ccdc1ff72e"),
         )
 
         /** Lower-case hex SHA-256 of [f]. */
@@ -347,7 +377,7 @@ class OcrEngine(private val context: Context, val fast: Boolean = false) : AutoC
         /** Human label for a language code. */
         fun label(lang: String): String = when (lang) {
             "ara" -> "العربية"; "eng" -> "English"; "fra" -> "Français"; "deu" -> "Deutsch"; "spa" -> "Español"
-            "tur" -> "Türkçe"; "fas" -> "فارسی"; "urd" -> "اردو"; ARABIC_SCRIPT -> "العربية ٠١٢٣"; else -> displayName(lang)
+            "tur" -> "Türkçe"; "fas" -> "فارسی"; "urd" -> "اردو"; ARABIC_SCRIPT -> "العربية ٠١٢٣"; ARABIC_FT -> "العربية (كتب الكيمياء)"; else -> displayName(lang)
         }
 
         private val SPECIAL = mapOf("chi_sim" to "中文 (简体)", "chi_tra" to "中文 (繁體)", "chi_sim_vert" to "中文 (简体, ↓)", "chi_tra_vert" to "中文 (繁體, ↓)",

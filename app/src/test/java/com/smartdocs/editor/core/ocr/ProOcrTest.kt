@@ -160,6 +160,17 @@ class ProOcrTest {
         assertEquals(listOf("ar", "en"), CloudOcr.languages("ara+eng"))
     }
 
+    @Test fun theFineTunedModelReplacesAraAndEngOnlyWhenInstalledAndAllowed() {
+        assertEquals("ArabicFT", OcrEngine.effectiveLangs("ara+eng", true, OcrEngineMode.AUTO, false))
+        assertEquals("ArabicFT+fra", OcrEngine.effectiveLangs("ara+fra", true, OcrEngineMode.AI, false))
+        assertEquals("ara+eng", OcrEngine.effectiveLangs("ara+eng", false, OcrEngineMode.AUTO, false))
+        assertEquals("ara+eng", OcrEngine.effectiveLangs("ara+eng", true, OcrEngineMode.TESSERACT, false))
+        assertEquals("ara+eng", OcrEngine.effectiveLangs("ara+eng", true, OcrEngineMode.AUTO, true))   // fast quality
+        assertEquals("eng+fra", OcrEngine.effectiveLangs("eng+fra", true, OcrEngineMode.AUTO, false))
+        val pin = OcrEngine.PINNED[OcrEngine.ARABIC_FT]!!
+        assertEquals(64, pin.sha256.length); assertTrue(pin.size > 1_000_000)
+    }
+
     @Test fun engineChoiceIsSavedWithTheOcrOptions() {
         val t = OcrTuning(engine = OcrEngineMode.CLOUD)
         assertEquals(t, OcrTuning.fromJson(t.toJson()))
