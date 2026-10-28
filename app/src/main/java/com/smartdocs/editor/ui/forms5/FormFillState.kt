@@ -399,11 +399,14 @@ class FormFillState internal constructor(val reader: ReaderState) {
 
     fun toggle(w: FWidget) {
         if (isReadOnly(w)) return
+        val before = value(w.name)
         when (w.kind) {
             WKind.CHECK -> setValue(w.name, (!isOn(w)).toString())
             WKind.RADIO -> w.onValue?.let { if (value(w.name) != it) setValue(w.name, it) }
             else -> {}
         }
+        // XFA interactive events: click, then change when the state changed
+        if (model.generatedFromXfa) { fireXfa(w, "click", before); if (value(w.name) != before) fireXfa(w, "change", before) }
     }
 
     /** Field-bar undo: the reader's unified undo while its newest step is a form step. */
@@ -504,7 +507,31 @@ class FormFillState internal constructor(val reader: ReaderState) {
         val issue = validate(w, requiredToo = false)
         if (issue == null) committed[w.name] = v
         remember(w)
+        // XFA interactive events of a generated form: change (when the value changed), then exit
+        if (model.generatedFromXfa && textual) { if (v != previous) fireXfa(w, "change", previous); fireXfa(w, "exit", previous) }
         return true
+    }
+
+    // ------------------------------------------------------------------ XFA interactive events
+
+    private var xfaEvents: com.smartdocs.editor.core.forms5.XfaEventRuntime? = null
+    private var xfaEventsFor: String? = null
+
+    /**
+     * Run the XFA [activity] script of [w] (exit / change / click) on the source template with the current values;
+     * the values and presence it changes are applied as one undo step / Hide-action change.
+     */
+    fun fireXfa(w: FWidget, activity: String, prev: String = "") {
+        if (!model.generatedFromXfa) return
+        val f = reader.file ?: return
+        val values = allValues()
+        reader.scope.launch {
+            val rt = if (xfaEventsFor == f.path) xfaEvents else com.smartdocs.editor.core.forms5.XfaEventRuntime.load(f, reader.password).also { xfaEvents = it; xfaEventsFor = f.path }
+            rt ?: return@launch
+            val r = withContext(kotlinx.coroutines.Dispatchers.Default) { runCatching { rt.fire(w.name, activity, values, prev) }.getOrNull() } ?: return@launch
+            if (r.values.isNotEmpty()) setValues(r.values.filterKeys { it != w.name || activity != "change" })
+            r.presence.entries.groupBy({ it.value in setOf("hidden", "invisible", "inactive") }, { it.key }).forEach { (hide, names) -> setHidden(names, hide) }
+        }
     }
 
     private fun remember(w: FWidget) {

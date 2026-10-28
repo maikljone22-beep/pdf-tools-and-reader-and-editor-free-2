@@ -42,7 +42,9 @@ data class XBreak(val page: Boolean = false, val contentArea: Boolean = false, v
 /** Data binding: [match] once / none / global / dataRef. */
 data class XBind(val match: String = "once", val ref: String? = null)
 /** [ready]: the `ready` / `docReady` event scripts (form:ready, layout:ready, docReady), run once after initialize. */
-data class XScripts(val initialize: String? = null, val calculate: String? = null, val ready: List<String> = emptyList())
+data class XScripts(val initialize: String? = null, val calculate: String? = null, val ready: List<String> = emptyList(),
+                    /** Interactive event scripts by activity (exit, enter, change, click), run while filling (XfaJs.runEvent). */
+                    val events: Map<String, List<String>> = emptyMap())
 
 /** Static content of a draw element. */
 sealed class XContent {
@@ -245,12 +247,15 @@ object XfaTemplateParser {
         fun js(s: Element?): String? = s?.takeIf { it.attr("contentType")?.contains("javascript", true) == true }?.textContent?.takeIf { it.isNotBlank() }
         var init: String? = null
         val ready = ArrayList<String>()
-        for (ev in e.kids().filter { it.local() == "event" }) when (ev.attr("activity")) {
+        val events = LinkedHashMap<String, MutableList<String>>()
+        for (ev in e.kids().filter { it.local() == "event" }) when (val a = ev.attr("activity")) {
             "initialize" -> init = js(ev.kid("script")) ?: init
             "ready", "docReady" -> js(ev.kid("script"))?.let { ready += it }
+            "exit", "enter", "change", "click", "mouseUp" -> js(ev.kid("script"))?.let { events.getOrPut(if (a == "mouseUp") "click" else a) { ArrayList() } += it }
+            else -> {}
         }
         val calc = js(e.kid("calculate")?.kid("script"))
-        return XScripts(init, calc, ready)
+        return XScripts(init, calc, ready, events)
     }
 
     private fun breakOf(e: Element, before: Boolean): XBreak? {
