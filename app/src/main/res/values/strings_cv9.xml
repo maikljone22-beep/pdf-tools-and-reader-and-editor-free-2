@@ -60,4 +60,5 @@
     <string name="cv9_out_choose">اختيار مجلد</string>
     <string name="cv9_out_copied">نُسخ %1$d ملف إلى المجلد</string>
     <string name="cv9_out_failed">تعذّر النسخ إلى المجلد</string>
+    <string name="cv9_not_convertible">تعذّر تحويل %1$s إلى PDF</string>
 </resources>

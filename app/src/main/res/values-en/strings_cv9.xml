@@ -60,4 +60,5 @@
     <string name="cv9_out_choose">Choose folder</string>
     <string name="cv9_out_copied">%1$d files copied to the folder</string>
     <string name="cv9_out_failed">Could not copy to the folder</string>
+    <string name="cv9_not_convertible">%1$s could not be converted to PDF</string>
 </resources>
