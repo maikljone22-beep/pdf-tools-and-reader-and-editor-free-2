@@ -111,7 +111,7 @@ fun TagsEditor(nav: NavHostController, source: File, onClose: () -> Unit, onSave
             }
         }
         // ---- selected tag
-        selected?.let { s -> nodes.firstOrNull { it.path == s.path }?.let { n -> TagProps(n, work, version, ::edit) { selected = it } } }
+        selected?.let { s -> nodes.firstOrNull { it.path == s.path }?.let { n -> TagProps(n, work, version, ::edit, password) { selected = it } } }
         // ---- role map
         T5Card(stringResource(R.string.pc_tags_rolemap), Icons.Default.SwapHoriz) {
             roles.forEach { (k, v) -> Row(verticalAlignment = Alignment.CenterVertically) {
@@ -147,7 +147,7 @@ fun TagsEditor(nav: NavHostController, source: File, onClose: () -> Unit, onSave
 
 /** Properties and actions of one tag. */
 @Composable
-private fun TagProps(n: TagNode, work: File, version: Int, edit: ((PDDocument) -> Unit) -> Unit, onSelect: (TagNode?) -> Unit) {
+private fun TagProps(n: TagNode, work: File, version: Int, edit: ((PDDocument) -> Unit) -> Unit, password: String?, onSelect: (TagNode?) -> Unit) {
     var type by remember(n.path, version) { mutableStateOf(n.type) }
     var title by remember(n.path, version) { mutableStateOf(n.title.orEmpty()) }
     var alt by remember(n.path, version) { mutableStateOf(n.alt.orEmpty()) }
