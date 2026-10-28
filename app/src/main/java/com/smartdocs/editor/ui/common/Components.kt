@@ -158,7 +158,17 @@ fun ProgressDialog(message: String, progress: Float? = null) {
 }
 
 /** State holder for long-running tool operations with a result file. */
-class ToolRunner(private val scope: CoroutineScope) {
+class ToolRunner(private val scope: CoroutineScope, private val ctx: android.content.Context? = null) {
+    /** audit 5 C-4 / C-18: password and memory failures in the user's language, not PdfBox's English text. */
+    private fun messageOf(e: Throwable): String {
+        val c = ctx
+        if (c != null) {
+            if (e is OutOfMemoryError) return c.getString(R.string.tttl_out_of_memory)
+            if (com.smartdocs.editor.core.edit5.E5Locks.isPasswordError(e) || (e.message ?: "").contains("encryption dictionary")) return c.getString(R.string.password_wrong)
+        }
+        return e.message ?: e.toString()
+    }
+
     var running by mutableStateOf(false); private set
     var message by mutableStateOf("")
     var error by mutableStateOf<String?>(null)
@@ -170,7 +180,7 @@ class ToolRunner(private val scope: CoroutineScope) {
         running = true; message = msg; error = null
         scope.launch {
             // Throwable: OutOfMemoryError / NoClassDefFoundError from PdfBox on big or odd files must show an error, not kill the app
-            try { result = withContext(Dispatchers.IO) { block() } } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Throwable) { error = e.message ?: e.toString() } finally { running = false }
+            try { result = withContext(Dispatchers.IO) { block() } } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Throwable) { error = messageOf(e) } finally { running = false }
         }
     }
 
@@ -178,13 +188,13 @@ class ToolRunner(private val scope: CoroutineScope) {
         if (running) return
         running = true; message = msg; error = null
         scope.launch {
-            try { results = withContext(Dispatchers.IO) { block() } } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Throwable) { error = e.message ?: e.toString() } finally { running = false }
+            try { results = withContext(Dispatchers.IO) { block() } } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Throwable) { error = messageOf(e) } finally { running = false }
         }
     }
 }
 
 @Composable
-fun rememberToolRunner(): ToolRunner { val scope = rememberCoroutineScope(); return remember { ToolRunner(scope) } }
+fun rememberToolRunner(): ToolRunner { val scope = rememberCoroutineScope(); val ctx = LocalContext.current.applicationContext; return remember { ToolRunner(scope, ctx) } }
 
 /** Bottom sheet shown after a tool produced a file: open / share / save elsewhere. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -194,8 +204,11 @@ fun ResultSheet(file: File, nav: NavHostController, onDismiss: () -> Unit, extra
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val writeBack = rememberWriteBack()
-    // a PDF result of a tool opened on a document can replace that document (the default, one tap)
-    val source = LocalToolSource.current?.takeIf { it.exists() && file.extension.equals("pdf", true) && it.absolutePath != file.absolutePath }
+    // a PDF result of a tool opened on a document can replace that document (with a confirmation). audit 5 E-1 / C-2:
+    // only when the tool recorded the result as a transformation of exactly that document (ToolOutputs) — not when
+    // the user picked another file in the tool, and never for reports, comparisons, summaries or translations
+    val source = LocalToolSource.current?.takeIf { it.exists() && file.extension.equals("pdf", true) && it.absolutePath != file.absolutePath &&
+        com.smartdocs.editor.core.pdf.ToolOutputs.replaces(file, it) }
     // the "save as" document type and the share mime follow the file's extension (txt/docx/png/zip results exist)
     val mime = remember(file.extension) { mimeFor(file.extension) }
     val contract = remember(mime) { ActivityResultContracts.CreateDocument(mime) }
@@ -221,7 +234,7 @@ fun ResultSheet(file: File, nav: NavHostController, onDismiss: () -> Unit, extra
                 replacing = true
                 scope.launch {
                     // audit UX-02: the old version is kept in the trash; a failure is shown and the document stays as it was
-                    val r = runCatching { app.documents.replaceOriginal(source, file) }
+                    val r = runCatching { app.documents.replaceOriginal(source, file, com.smartdocs.editor.core.pdf.SessionPasswords.get(source)) }
                     replacing = false; confirmReplace = false
                     if (r.isFailure) {
                         Toast.makeText(ctx, ctx.getString(R.string.fx_save_failed, signedOrMessage(ctx, r.exceptionOrNull())), Toast.LENGTH_LONG).show()   // tab-view-core E-01

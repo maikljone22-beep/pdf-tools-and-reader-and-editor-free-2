@@ -48,7 +48,13 @@ fun OcrBatchScreen(nav: NavHostController, uri: String?) {
     var pendingReview by remember { mutableStateOf<OcrDoc?>(null) }
     var tuning by remember { mutableStateOf(com.smartdocs.editor.core.ocr.OcrTuning.load(ctx)) }
     var pendingFixed by remember { mutableStateOf<File?>(null) }
+    // audit 5 OCR-6: the repaired copy the review run recognised (its file is the source of the pending OcrDoc)
+    var pendingInput by remember { mutableStateOf<com.smartdocs.editor.core.ocr.RepairedInput?>(null) }
     var moreLangs by remember { mutableStateOf(false) }
+    // audit 5 OCR-6: passwords of locked inputs (path -> password), starting from the reader's password (T-09)
+    val passwords = remember { mutableStateMapOf<String, String>() }
+    val locked = remember { mutableStateMapOf<String, Boolean>() }
+    var asking by remember { mutableStateOf<File?>(null) }
     val job = rememberT5Job()
     val pick = rememberAnyFilePicker(true, arrayOf("application/pdf", "image/*")) { picked -> files = files + picked }
     val working = stringResource(R.string.t5_ocr_working)
@@ -56,6 +62,30 @@ fun OcrBatchScreen(nav: NavHostController, uri: String?) {
     val queued = stringResource(R.string.t5_batch_queued)
     fun plan() = OcrPlan(langs = if (auto) null else langs.sorted().joinToString("+").ifBlank { "ara+eng" }, preClean = clean, minConfidence = minConf, tuning = tuning, redo = redo)
     fun save() { prefs.edit().putBoolean("auto", auto).putString("langs", langs.joinToString("+")).putBoolean("clean", clean).putFloat("conf", minConf).apply(); com.smartdocs.editor.core.ocr.OcrTuning.save(ctx, tuning) }
+    fun pw(f: File): String? = passwords[f.absolutePath]
+    fun dropPending() {
+        pendingFixed?.delete(); pendingFixed = null
+        pendingInput?.close(); pendingInput = null
+    }
+
+    LaunchedEffect(files) {
+        files.forEach { f ->
+            val k = f.absolutePath
+            if (locked.containsKey(k) || OcrRunner.isImage(f)) return@forEach
+            val needs = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.smartdocs.editor.core.pdf.LockedPdf.needsPassword(f) }
+            if (needs) {
+                val known = com.smartdocs.editor.core.pdf.SessionPasswords.get(f)
+                if (known != null && kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.smartdocs.editor.core.pdf.LockedPdf.checkPassword(f, known) })
+                    passwords[k] = known
+            }
+            locked[k] = needs
+        }
+    }
+    LaunchedEffect(files, passwords.size, locked.size) { asking = files.firstOrNull { locked[it.absolutePath] == true && passwords[it.absolutePath] == null } }
+    asking?.let { f ->
+        com.smartdocs.editor.ui.tools.FilePasswordDialog(f, onUnlocked = { p -> passwords[f.absolutePath] = p; asking = null }, onRemove = { files = files - f; asking = null })
+    }
+    val lockedLeft = files.any { locked[it.absolutePath] == true && passwords[it.absolutePath] == null }
 
     ToolScaffold(stringResource(R.string.t5_ocr_title), nav, snackbar = snackbar) {
         OutlinedButton(onClick = pick, Modifier.fillMaxWidth()) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.t5_add_files)) }
@@ -73,12 +103,14 @@ fun OcrBatchScreen(nav: NavHostController, uri: String?) {
             SwitchRow(stringResource(R.string.t5_run_background), background, stringResource(R.string.t5_run_background_hint)) { background = it }
         }
         com.smartdocs.editor.ui.ocr.OcrTuningSection(tuning) { tuning = it }
-        PrimaryButton(stringResource(R.string.t5_ocr_run, files.size), enabled = files.isNotEmpty() && !job.running, icon = Icons.Default.TextFields) {
+        if (lockedLeft) Text(stringResource(R.string.ttoc_locked_left), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+        PrimaryButton(stringResource(R.string.t5_ocr_run, files.size), enabled = files.isNotEmpty() && !job.running && !lockedLeft, icon = Icons.Default.TextFields) {
             save()
             val list = files.toList(); val p = plan()
+            val pws = list.associateWith { pw(it) }
             if (background) {
                 val r = Recipe(RecipeJson.newId(), "OCR", listOf(Step(StepType.OCR, mapOf("langs" to (p.langs ?: "auto"), "clean" to p.preClean.toString()))), OutputOptions("{name}_ocr"))
-                BatchJobs.enqueue(ctx, working, list.map { it to null }, r, false, app.documents.docsDir)
+                BatchJobs.enqueue(ctx, working, list.map { it to pws[it] }, r, false, app.documents.docsDir)
                 job.info = queued
                 nav.navigate(com.smartdocs.editor.ui.Routes.tool("batch"))
                 return@PrimaryButton
@@ -88,30 +120,45 @@ fun OcrBatchScreen(nav: NavHostController, uri: String?) {
                 val engine = com.smartdocs.editor.core.ocr.OcrPipeline.engineFor(ctx, null, p.tuning)
                 try {
                     if (wantReview) {
-                        val fixed0 = OcrRunner.prepare(ctx, engine, list[0], null, p)
+                        val src = list[0]; val spw = pws[src]
+                        val fixed0 = OcrRunner.prepare(ctx, engine, src, spw, p)
                         // redo: recognise and write from a copy without the old invisible OCR text
-                        val fixed = if (p.redo && !OcrRunner.isImage(list[0]))
-                            com.smartdocs.editor.core.ocr.OcrRedo.strippedCopy(fixed0 ?: list[0], null, null, ctx.cacheDir).first.also { fixed0?.delete() }
+                        val fixed = if (p.redo && !OcrRunner.isImage(src))
+                            com.smartdocs.editor.core.ocr.OcrRedo.strippedCopy(fixed0 ?: src, spw, null, ctx.cacheDir).first.also { fixed0?.delete() }
                         else fixed0
-                        val d = OcrRunner.recognize(ctx, engine, fixed ?: list[0], null, p) { a, b -> step(a, b) }
-                        pendingFixed = fixed
-                        if (d.pages.isEmpty()) { error = nothing; return@launch }
-                        if (d.suspects.isEmpty()) {
-                            val out = app.documents.uniqueFile(app.documents.docsDir, list[0].nameWithoutExtension + "_ocr")
-                            result = OcrRunner.write(ctx, d, out)
-                        } else pendingReview = d
+                        // audit 5 OCR-6: broken Arabic maps of old Word PDFs are repaired first (no duplicated reversed text)
+                        val input = try { OcrRunner.repairedInput(ctx, fixed ?: src, spw) } catch (e: Throwable) { fixed?.delete(); throw e }
+                        val d = try { OcrRunner.recognize(ctx, engine, input?.file ?: fixed ?: src, spw, p) { a, b -> step(a, b) } }
+                            catch (e: Throwable) { input?.close(); fixed?.delete(); throw e }
+                        if (d.pages.isEmpty()) {
+                            if (input != null && input.repaired) {
+                                val out = app.documents.uniqueFile(app.documents.docsDir, src.nameWithoutExtension + "_ocr")
+                                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { input.file.copyTo(out, overwrite = true) }
+                                result = com.smartdocs.editor.core.pdf.ToolOutputs.record(out, src)
+                            } else error = nothing
+                            input?.close(); fixed?.delete()
+                        } else if (d.suspects.isEmpty()) {
+                            try {
+                                val out = app.documents.uniqueFile(app.documents.docsDir, src.nameWithoutExtension + "_ocr")
+                                val w = OcrRunner.write(ctx, d, out).also { com.smartdocs.editor.core.ocr.OcrPipeline.shrinkOutput(it, spw, p.tuning) }
+                                result = com.smartdocs.editor.core.pdf.ToolOutputs.record(w, src)
+                            } finally { input?.close(); fixed?.delete() }
+                        } else { pendingFixed = fixed; pendingInput = input; pendingReview = d }
                     } else {
                         val out = ArrayList<File>()
                         list.forEachIndexed { i, f ->
                             message = ctx.getString(R.string.t5_ocr_file, i + 1, list.size, f.name)
                             val dst = app.documents.uniqueFile(app.documents.docsDir, f.nameWithoutExtension + "_ocr")
-                            val r = if (!OcrRunner.isImage(f) && Portfolio.isPortfolio(f)) OcrRunner.ocrPortfolio(ctx, engine, f, null, p, dst) { a, b -> step(a, b) }
-                                else OcrRunner.ocrFile(ctx, engine, f, null, p, dst) { a, b -> step(a, b) }
-                            r?.let { out += it }
+                            val r = if (!OcrRunner.isImage(f) && Portfolio.isPortfolio(f, pws[f])) OcrRunner.ocrPortfolio(ctx, engine, f, pws[f], p, dst) { a, b -> step(a, b) }
+                                else OcrRunner.ocrFile(ctx, engine, f, pws[f], p, dst) { a, b -> step(a, b) }
+                            // the OCR result is the input transformed (the result sheet may offer "Save in original"); an image becomes a new PDF
+                            r?.let { out += if (OcrRunner.isImage(f)) it else com.smartdocs.editor.core.pdf.ToolOutputs.record(it, f) }
                         }
                         if (out.isEmpty()) error = nothing else if (out.size == 1) result = out[0] else results = out
                     }
-                } finally { engine.close() }
+                } catch (e: kotlinx.coroutines.CancellationException) { throw e
+                } catch (e: Throwable) { error = com.smartdocs.editor.ui.ocr.ocrErrorText(ctx, e)   // audit 5 OCR-8: no raw English error
+                } finally { com.smartdocs.editor.core.ocr.OcrPipeline.closeQuietly(engine) }
             }
         }
         Text(stringResource(R.string.t5_ocr_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -121,32 +168,43 @@ fun OcrBatchScreen(nav: NavHostController, uri: String?) {
     pendingReview?.let { d ->
         OcrReviewDialog(d, onDone = { decisions ->
             pendingReview = null
+            val src = files.firstOrNull() ?: d.src
+            val outTuning = tuning
             job.launch(working) {
-                OcrRunner.applyReview(d, decisions)
-                val out = app.documents.uniqueFile(app.documents.docsDir, (files.firstOrNull()?.nameWithoutExtension ?: d.src.nameWithoutExtension) + "_ocr")
-                result = OcrRunner.write(ctx, d, out).also { com.smartdocs.editor.core.ocr.OcrPipeline.shrinkOutput(it, null, tuning) }
-                pendingFixed?.delete(); pendingFixed = null
+                try {
+                    OcrRunner.applyReview(d, decisions)
+                    val out = app.documents.uniqueFile(app.documents.docsDir, src.nameWithoutExtension + "_ocr")
+                    val w = OcrRunner.write(ctx, d, out).also { com.smartdocs.editor.core.ocr.OcrPipeline.shrinkOutput(it, d.password, outTuning) }
+                    result = if (d.isPdf) com.smartdocs.editor.core.pdf.ToolOutputs.record(w, src) else w
+                } catch (e: kotlinx.coroutines.CancellationException) { throw e
+                } catch (e: Throwable) { error = com.smartdocs.editor.ui.ocr.ocrErrorText(ctx, e)
+                } finally { dropPending() }
             }
-        }, onCancel = { pendingReview = null; pendingFixed?.delete(); pendingFixed = null })
+        }, onCancel = { pendingReview = null; dropPending() })
     }
     if (moreLangs) com.smartdocs.editor.ui.ocr.OcrLanguagePicker(langs, onDismiss = { moreLangs = false }) { langs = it; moreLangs = false }
 }
 
-/** Pager over low-confidence words: crop, editable text, accept / not text. */
+/**
+ * Pager over low-confidence words: crop, editable text, accept / not text. audit 5 OCR-6: a tap outside or Cancel asks
+ * before the whole run is thrown away; OCR-8: the word pictures are freed when the dialog goes.
+ */
 @Composable
 fun OcrReviewDialog(doc: OcrDoc, onDone: (Map<Pair<Int, Int>, String?>) -> Unit, onCancel: () -> Unit) {
     val list = doc.suspects
     var i by remember { mutableIntStateOf(0) }
     val decisions = remember { mutableStateMapOf<Pair<Int, Int>, String?>() }
+    var confirmDiscard by remember { mutableStateOf(false) }
+    DisposableEffect(doc) { onDispose { OcrRunner.releaseCrops(doc) } }
     val s = list[i.coerceIn(0, list.size - 1)]
     var text by remember(i) { mutableStateOf(decisions[s.page to s.index] ?: s.text) }
     fun commit() { if (text != s.text) decisions[s.page to s.index] = text }
     AlertDialog(
-        onDismissRequest = onCancel,
+        onDismissRequest = { confirmDiscard = true },
         title = { Text(stringResource(R.string.t5_review_title, i + 1, list.size)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                s.crop?.let { Image(it.asImageBitmap(), stringResource(R.string.t5_word_picture), Modifier.fillMaxWidth().heightIn(max = 120.dp), contentScale = ContentScale.Fit) }
+                s.crop?.takeIf { !it.isRecycled }?.let { Image(it.asImageBitmap(), stringResource(R.string.t5_word_picture), Modifier.fillMaxWidth().heightIn(max = 120.dp), contentScale = ContentScale.Fit) }
                 Text(stringResource(R.string.t5_review_meta, s.page + 1, s.confidence.toInt()), style = MaterialTheme.typography.bodySmall)
                 OutlinedTextField(text, { text = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.t5_word)) })
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -161,6 +219,19 @@ fun OcrReviewDialog(doc: OcrDoc, onDone: (Map<Pair<Int, Int>, String?>) -> Unit,
                 TextButton(onClick = { commit(); if (i < list.size - 1) i++ else onDone(decisions.toMap()) }) { Text(stringResource(if (i < list.size - 1) R.string.t5_next else R.string.t5_finish)) }
             }
         },
-        dismissButton = { TextButton(onClick = onCancel) { Text(stringResource(R.string.cancel)) } },
+        dismissButton = { TextButton(onClick = { confirmDiscard = true }) { Text(stringResource(R.string.cancel)) } },
+    )
+    if (confirmDiscard) AlertDialog(
+        onDismissRequest = { confirmDiscard = false },
+        title = { Text(stringResource(R.string.ttoc_discard_title)) },
+        text = { Text(stringResource(R.string.ttoc_discard_msg)) },
+        confirmButton = { TextButton(onClick = { confirmDiscard = false; onCancel() }) { Text(stringResource(R.string.ttoc_discard)) } },
+        dismissButton = {
+            Row {
+                // keep the recognised text as it is (no more corrections) instead of losing the run
+                TextButton(onClick = { confirmDiscard = false; commit(); onDone(decisions.toMap()) }) { Text(stringResource(R.string.ttoc_save_as_is)) }
+                TextButton(onClick = { confirmDiscard = false }) { Text(stringResource(R.string.ttoc_keep_reviewing)) }
+            }
+        },
     )
 }

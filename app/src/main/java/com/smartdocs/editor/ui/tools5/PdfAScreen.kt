@@ -20,7 +20,6 @@ import com.smartdocs.editor.ui.common.FilePickRow
 import com.smartdocs.editor.ui.common.rememberPdfPicker
 import com.smartdocs.editor.ui.tools.PrimaryButton
 import com.smartdocs.editor.ui.tools.ToolScaffold
-import com.tom_roush.pdfbox.pdmodel.PDDocument
 
 @Composable
 private fun findingTitle(code: String): String = stringResource(
@@ -82,10 +81,14 @@ fun PdfAScreen(nav: NavHostController, uri: String?) {
     val ctx = LocalContext.current
     val snackbar = remember { SnackbarHostState() }
     var file by remember { mutableStateOf(fileOf(uri)) }
-    var password by remember { mutableStateOf("") }
+    // audit 5 A-01 / A-02: the reader's password first; [origin] is the document the outputs transform
+    var origin by remember { mutableStateOf(fileOf(uri)) }
+    var password by remember { mutableStateOf(com.smartdocs.editor.core.pdf.SessionPasswords.get(fileOf(uri)).orEmpty()) }
+    var rasterPages by remember { mutableStateOf<List<Int>?>(null) }
     var report by remember { mutableStateOf<PreflightReport?>(null) }
     var after by remember { mutableStateOf<Pair<PreflightReport, Set<String>>?>(null) }
-    var raster by remember { mutableStateOf(true) }
+    // audit 5 A-02: off by default; when on, the pages that become pictures are listed
+    var raster by remember { mutableStateOf(false) }
     var flatten by remember { mutableStateOf(false) }
     var dropAttach by remember { mutableStateOf(true) }
     // Stage G (Foxit 8 / Nitro 20): level, PDF/UA claim, preflight profile + favourites, page range, standards panel
@@ -99,7 +102,10 @@ fun PdfAScreen(nav: NavHostController, uri: String?) {
     var claims by remember { mutableStateOf<Claims?>(null) }
     var pageCount by remember { mutableIntStateOf(0) }
     val job = rememberT5Job()
-    val pick = rememberPdfPicker { file = it.firstOrNull(); report = null; after = null }
+    val pick = rememberPdfPicker {
+        val f = it.firstOrNull()
+        file = f; origin = f; password = com.smartdocs.editor.core.pdf.SessionPasswords.get(f).orEmpty(); report = null; after = null; rasterPages = null
+    }
     val checking = stringResource(R.string.t5_pf_checking)
     val convertingMsg = stringResource(R.string.t5_pdfa_converting)
 
@@ -108,13 +114,27 @@ fun PdfAScreen(nav: NavHostController, uri: String?) {
         val pw = password.ifBlank { null }
         val prof = profile; val rg = range
         job.launch(checking) {
-            report = io { (if (pw == null) PDDocument.load(f) else PDDocument.load(f, pw)).use { d ->
-                claims = Standards.claims(d); pageCount = d.numberOfPages
-                Standards.preflight(d, prof, com.smartdocs.editor.core.edit5.PageSet.parse(rg, d.numberOfPages))
-            } }
+            try {
+                report = io { com.smartdocs.editor.core.pdf.PdfOps.loadRaw(f, pw).use { d ->
+                    claims = Standards.claims(d); pageCount = d.numberOfPages
+                    Standards.preflight(d, prof, com.smartdocs.editor.core.edit5.PageSet.parse(rg, d.numberOfPages))
+                } }
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) {
+                report = null; claims = null
+                error = ctx.getString(if (com.smartdocs.editor.core.edit5.E5Locks.isPasswordError(e)) R.string.tte5_pdfa_password else R.string.tte5_pdfa_failed)
+            }
         }
     }
-    LaunchedEffect(file) { if (file != null) check() }
+    // audit 5 A-02: checked again when the password changes (after a short pause in typing)
+    LaunchedEffect(file, password) { if (file != null) { kotlinx.coroutines.delay(if (password.isEmpty()) 0L else 600L); check() } }
+    // audit 5 A-02: the pages the conversion would turn into pictures
+    LaunchedEffect(file, password, raster, flatten, level, report) {
+        val f = file
+        rasterPages = if (f == null || report == null || !(raster || flatten || level.strict1)) null else runCatching {
+            val opt = PdfAOptions(rasterizeProblemPages = raster, flattenTransparency = flatten, level = level)
+            io { com.smartdocs.editor.core.pdf.PdfOps.loadRaw(f, password.ifBlank { null }).use { d -> PdfA.rasterPages(d, opt) } }
+        }.getOrNull()
+    }
 
     ToolScaffold(stringResource(R.string.t5_pdfa_title), nav, snackbar = snackbar) {
         FilePickRow(file, stringResource(R.string.t5_input_pdf), pick)
@@ -162,9 +182,12 @@ fun PdfAScreen(nav: NavHostController, uri: String?) {
                         Text(v, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
                         if (prefix != "pdfvtid" && prefix != "fx") TextButton(onClick = {
                             val f = file ?: return@TextButton
+                            val pw = password.ifBlank { null }; val src = origin
                             job.launch(convertingMsg) {
                                 val out = app.documents.uniqueFile(app.documents.docsDir, f.nameWithoutExtension + "_no_" + prefix)
-                                io { PDDocument.load(f).use { d -> Standards.removeClaims(d, setOf(prefix)); d.save(out) } }
+                                try { io { com.smartdocs.editor.core.pdf.PdfOps.load(f, pw).use { d -> Standards.removeClaims(d, setOf(prefix)); d.save(out) } } }
+                                catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { out.delete(); error = ctx.getString(R.string.tte5_pdfa_failed); return@launch }
+                                com.smartdocs.editor.core.pdf.ToolOutputs.record(out, src)
                                 file = out; result = out
                             }
                         }) { Text(stringResource(R.string.pc_std_remove)) }
@@ -175,9 +198,12 @@ fun PdfAScreen(nav: NavHostController, uri: String?) {
                     listOf(1.4f, 1.5f, 1.6f, 1.7f).forEach { v ->
                         AssistChip(onClick = {
                             val f = file ?: return@AssistChip
+                            val pw = password.ifBlank { null }; val src = origin
                             job.launch(convertingMsg) {
                                 val out = app.documents.uniqueFile(app.documents.docsDir, f.nameWithoutExtension + "_v" + v.toString().replace('.', '_'))
-                                io { PDDocument.load(f).use { d -> d.version = v; d.save(out) } }
+                                try { io { com.smartdocs.editor.core.pdf.PdfOps.load(f, pw).use { d -> d.version = v; d.save(out) } } }
+                                catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { out.delete(); error = ctx.getString(R.string.tte5_pdfa_failed); return@launch }
+                                com.smartdocs.editor.core.pdf.ToolOutputs.record(out, src)
                                 result = out; profile = PreflightProfile.VERSION; file = out
                             }
                         }, label = { Text(v.toString()) })
@@ -188,6 +214,10 @@ fun PdfAScreen(nav: NavHostController, uri: String?) {
         T5Card(stringResource(R.string.t5_options), Icons.Default.Tune) {
             SwitchRow(stringResource(R.string.t5_pdfa_raster), raster, stringResource(R.string.t5_pdfa_raster_hint)) { raster = it }
             SwitchRow(stringResource(R.string.t5_pdfa_flatten), flatten, stringResource(R.string.t5_pdfa_flatten_hint)) { flatten = it }
+            rasterPages?.takeIf { it.isNotEmpty() }?.let { pages ->
+                Text(stringResource(R.string.tte5_pdfa_raster_pages, pages.size, pages.take(20).joinToString(", ") { (it + 1).toString() } + if (pages.size > 20) " …" else ""),
+                    style = MaterialTheme.typography.bodySmall, color = T5Orange)
+            }
             if (!level.anyAttachments) SwitchRow(stringResource(R.string.t5_pdfa_attach), dropAttach, stringResource(R.string.t5_pdfa_attach_hint)) { dropAttach = it }
             Text(stringResource(R.string.pc_pdfa_level), style = MaterialTheme.typography.labelLarge)
             com.smartdocs.editor.ui.tools.ChoiceChips(PdfALevel.entries, level, { it.label }) { level = it }
@@ -201,9 +231,16 @@ fun PdfAScreen(nav: NavHostController, uri: String?) {
             val pw = password.ifBlank { null }
             val opt = PdfAOptions(rasterizeProblemPages = raster, flattenTransparency = flatten, removeAttachments = dropAttach && !level.anyAttachments,
                 level = level, uaPart = if (ua) 1 else null, lang = lang)
+            val src = origin
             job.launch(convertingMsg) {
                 val out = app.documents.uniqueFile(app.documents.docsDir, f.nameWithoutExtension + "_" + opt.level.label.replace("/", "").replace("-", ""))
-                val r = PdfA.convert(ctx, f, pw, out, opt, title = f.nameWithoutExtension)
+                val r = try { PdfA.convert(ctx, f, pw, out, opt, title = f.nameWithoutExtension) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) {
+                    out.delete()
+                    error = ctx.getString(when { e is PdfA.OwnerRequired -> R.string.tte5_pdfa_owner; com.smartdocs.editor.core.edit5.E5Locks.isPasswordError(e) -> R.string.tte5_pdfa_password; else -> R.string.tte5_pdfa_failed })
+                    return@launch
+                }
+                // the converted file is the document transformed: the result sheet may offer "save in original"
+                com.smartdocs.editor.core.pdf.ToolOutputs.record(out, src)
                 after = r
                 info = if (r.first.passes) ctx.getString(R.string.t5_pdfa_ok) else ctx.getString(R.string.t5_pdfa_partial, r.first.errors)
                 result = out

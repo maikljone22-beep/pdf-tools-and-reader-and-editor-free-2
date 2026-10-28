@@ -67,7 +67,7 @@ fun ImposeScreen(nav: NavHostController, uri: String?) {
     ToolScaffold(stringResource(R.string.e5_impose_title), nav, runner) {
         FilePickRow(file, stringResource(R.string.e5_document), pick)
         E5UnlockDialog(unlocker)
-        file?.takeIf { unlocker.isLocked(it) }?.let { ProtectionChoice(protection) { protection = it } }
+        file?.takeIf { unlocker.isLocked(it) }?.let { f -> ProtectionChoice(protection, unlocker.canRemove(f)) { protection = it } }
         ChoiceChips(ImposeMode.values().toList(), mode, { stringResource(when (it) { ImposeMode.NUP -> R.string.e5_imp_nup; ImposeMode.BOOKLET -> R.string.e5_imp_booklet; ImposeMode.POSTER -> R.string.e5_imp_poster }) }) { mode = it }
         E5Section(stringResource(R.string.e5_paper)) {
             val names = (if (mode == ImposeMode.POSTER) emptyList() else listOf(auto)) + PageBoxOps.PAPERS.map { it.first }

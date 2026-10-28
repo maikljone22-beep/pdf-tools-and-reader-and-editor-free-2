@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- audit 5 (tab tools, edit5 page tools / accessibility / PDF/A), key "e5" -->
+    <string name="tte5_remove_needs_owner">إزالة الحماية متاحة فقط عند فتح الملف بكلمة مرور المالك.</string>
+    <string name="tte5_password_cancelled">لم يُفتح الملف لأنه يحتاج إلى كلمة مرور.</string>
+    <string name="tte5_retry">إدخال كلمة المرور</string>
+    <string name="tte5_bad_range">نطاق الصفحات لا يحدّد أي صفحة من هذا المستند.</string>
+    <string name="tte5_bad_range_other">نطاق الصفحات لا يحدّد أي صفحة من الملف الآخر.</string>
+    <string name="tte5_replace_count">اخترت %1$d صفحة للاستبدال لكن الملف الآخر يعطي %2$d صفحة فقط. اختر صفحات بعدد كافٍ.</string>
+    <string name="tte5_open_failed">تعذّر فتح أحد الملفات.</string>
+    <string name="tte5_batch_failed">تعذّرت معالجة هذه الملفات: %1$s</string>
+    <string name="tte5_resize_batch_run">تطبيق على ملفات الدفعة</string>
+    <string name="tte5_label_preview">&#x2068;%1$d&#x2069; ← &#x2068;%2$s&#x2069;</string>
+    <string name="tte5_acc_failed">تعذّر فتح المستند أو حفظه. قد يكون الملف تالفًا أو محميًا من التعديل.</string>
+    <string name="tte5_pdfa_password">هذا الملف محمي: اكتب كلمة المرور.</string>
+    <string name="tte5_pdfa_failed">تعذّرت معالجة المستند. قد يكون الملف تالفًا.</string>
+    <string name="tte5_pdfa_owner">لا يمكن أن يكون ملف PDF/A مشفّرًا، وإزالة الحماية تحتاج إلى كلمة مرور المالك. افتح الملف بكلمة مرور المالك.</string>
+    <string name="tte5_pdfa_raster_pages">ستتحوّل %1$d صفحة إلى صور ولن يكون نصّها قابلًا للبحث أو النسخ: %2$s</string>
+</resources>

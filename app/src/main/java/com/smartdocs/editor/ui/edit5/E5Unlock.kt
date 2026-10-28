@@ -54,7 +54,13 @@ class E5Unlocker {
     /** True when [f] is encrypted and its password is known. */
     fun isLocked(f: File): Boolean { version; return book.get(f) != null }
 
-    fun forget(f: File) { book.forget(f); version++ }
+    fun forget(f: File) { book.forget(f); owner.remove(f.absolutePath); version++ }
+
+    /** audit 5 E-3: files (by path) whose known password gives owner access. */
+    private val owner = HashMap<String, Boolean>()
+
+    /** True when "remove protection" may be offered for [f]: not encrypted, or opened with owner access. */
+    fun canRemove(f: File): Boolean { version; return owner[f.absolutePath] ?: false }
 
     /**
      * Password of [file] (null = not encrypted), asking when needed and again after a wrong one. Returns false when
@@ -68,7 +74,11 @@ class E5Unlocker {
         var wrong = false
         while (true) {
             when (E5Locks.probe(file, pw)) {
-                LockState.OPEN, LockState.UNLOCKED -> { book.put(file, pw); version++; return true }
+                LockState.OPEN -> { book.put(file, pw); owner[file.absolutePath] = true; version++; return true }
+                LockState.UNLOCKED -> {
+                    owner[file.absolutePath] = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.smartdocs.editor.core.edit5.E5Owner.ownerAccess(file, pw) }
+                    book.put(file, pw); version++; return true
+                }
                 LockState.WRONG_PASSWORD -> wrong = true
                 LockState.NEEDS_PASSWORD -> Unit
             }
@@ -113,10 +123,16 @@ fun E5UnlockDialog(u: E5Unlocker) {
         dismissButton = { TextButton(onClick = { u.answer(null) }) { Text(stringResource(R.string.cancel)) } })
 }
 
-/** "Keep protection" / "remove protection" choice for outputs derived from locked files. */
+/**
+ * "Keep protection" / "remove protection" choice for outputs derived from locked files. audit 5 E-3: "remove" is
+ * offered only when [canRemove] (owner access to every locked source, [E5Locks.canRemove]); otherwise the output
+ * keeps the protection and the choice is forced back to KEEP.
+ */
 @Composable
-fun ProtectionChoice(value: OutProtection, onChange: (OutProtection) -> Unit) {
-    SwitchRow(stringResource(R.string.e5_lock_remove_out), value == OutProtection.REMOVE) { onChange(if (it) OutProtection.REMOVE else OutProtection.KEEP) }
-    Text(stringResource(if (value == OutProtection.REMOVE) R.string.e5_lock_out_plain else R.string.e5_lock_out_keep),
+fun ProtectionChoice(value: OutProtection, canRemove: Boolean, onChange: (OutProtection) -> Unit) {
+    androidx.compose.runtime.LaunchedEffect(canRemove, value) { if (!canRemove && value == OutProtection.REMOVE) onChange(OutProtection.KEEP) }
+    if (canRemove) SwitchRow(stringResource(R.string.e5_lock_remove_out), value == OutProtection.REMOVE) { onChange(if (it) OutProtection.REMOVE else OutProtection.KEEP) }
+    Text(stringResource(if (canRemove && value == OutProtection.REMOVE) R.string.e5_lock_out_plain else R.string.e5_lock_out_keep),
         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    if (!canRemove) Text(stringResource(R.string.tte5_remove_needs_owner), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }

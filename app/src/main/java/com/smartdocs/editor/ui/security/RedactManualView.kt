@@ -60,9 +60,10 @@ fun RedactManualView(
 
     Column(modifier) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = { onPage(page - 1) }, enabled = page > 0) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, stringResource(R.string.previous)) }
+            // audit 5 R-L1: auto-mirrored "Left" points back in LTR and RTL alike (it was swapped with Next)
+            IconButton(onClick = { onPage(page - 1) }, enabled = page > 0) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, stringResource(R.string.previous)) }
             Text(stringResource(R.string.page_of, page + 1, session.pageCount), Modifier.weight(1f), style = MaterialTheme.typography.labelLarge, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-            IconButton(onClick = { onPage(page + 1) }, enabled = page < session.pageCount - 1) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, stringResource(R.string.next)) }
+            IconButton(onClick = { onPage(page + 1) }, enabled = page < session.pageCount - 1) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, stringResource(R.string.next)) }
             FilterChip(drawMode, { drawMode = !drawMode }, label = { Text(stringResource(if (drawMode) R.string.pg_redact_draw else R.string.pg_redact_pan)) },
                 leadingIcon = { Icon(if (drawMode) Icons.Default.Draw else Icons.Default.PanTool, null, Modifier.size(16.dp)) })
         }

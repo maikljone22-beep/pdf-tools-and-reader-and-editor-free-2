@@ -191,23 +191,18 @@ object AnnotationWriter {
                 }
                 val rects = a.rects.map(::norm); if (rects.isEmpty()) return
                 val m = PDAnnotationTextMarkup(sub)
+                // audit 5 C-6: PDF quad order is upper-left, upper-right, lower-left, lower-right AS THE TEXT IS READ:
+                // after norm() r.top is the LOWER y, so the upper corners are at r.bottom (max y); on a /Rotate 90/180/270
+                // page "up" on screen is another user-space direction (MarkupFrame)
+                val rot = runCatching { page.rotation }.getOrDefault(0)
+                val frames = rects.map { r -> MarkupFrame.of(r.left, r.top, r.right, r.bottom, rot) }
                 val quads = FloatArray(rects.size * 8)
-                rects.forEachIndexed { i, r ->
-                    val o = i * 8
-                    quads[o] = r.left; quads[o + 1] = r.bottom; quads[o + 2] = r.right; quads[o + 3] = r.bottom
-                    quads[o + 4] = r.left; quads[o + 5] = r.top; quads[o + 6] = r.right; quads[o + 7] = r.top
-                }
-                // PDF quad order: upper-left, upper-right, lower-left, lower-right
-                rects.forEachIndexed { i, r ->
-                    val o = i * 8
-                    quads[o] = r.left; quads[o + 1] = r.top; quads[o + 2] = r.right; quads[o + 3] = r.top
-                    quads[o + 4] = r.left; quads[o + 5] = r.bottom; quads[o + 6] = r.right; quads[o + 7] = r.bottom
-                }
+                frames.forEachIndexed { i, f -> f.quad().copyInto(quads, i * 8) }
                 m.quadPoints = quads
                 m.rectangle = union(rects)
                 m.color = rgb(a.color); m.constantOpacity = a.opacity
                 m.contents = a.text; m.titlePopup = a.author; m.setCreationDate(now); m.setModifiedDate(now)
-                m.appearance = apDict(markupAppearance(doc, m.rectangle, rects, a))
+                m.appearance = apDict(markupAppearance(doc, m.rectangle, rects, frames, a))
                 annotations.add(m)
             }
             AnnotKind.INK -> {
@@ -365,19 +360,28 @@ object AnnotationWriter {
         cs.setNonStrokingColor((c shr 16) and 0xFF, (c shr 8) and 0xFF, c and 0xFF)
     }
 
-    private fun markupAppearance(doc: PDDocument, bounds: PDRectangle, rects: List<RectF>, a: Annot): PDAppearanceStream {
+    private fun markupAppearance(doc: PDDocument, bounds: PDRectangle, rects: List<RectF>, frames: List<MarkupFrame>, a: Annot): PDAppearanceStream {
         val form = newForm(doc, bounds)
         PDPageContentStream(doc, form).use { cs ->
             alpha(cs, a, if (a.kind == AnnotKind.HIGHLIGHT) BlendMode.MULTIPLY else null)
             setColors(cs, a.color)
-            rects.forEach { r ->
+            val ox = bounds.lowerLeftX; val oy = bounds.lowerLeftY
+            fun move(f: MarkupFrame, u: Float, v: Float) { val (x, y) = f.point(u, v); cs.moveTo(x - ox, y - oy) }
+            fun line(f: MarkupFrame, u: Float, v: Float) { val (x, y) = f.point(u, v); cs.lineTo(x - ox, y - oy) }
+            rects.forEachIndexed { i, r ->
                 // rects are normalised with top = smaller y, so the lower edge in PDF space is min(top, bottom)
-                val x = r.left - bounds.lowerLeftX; val y = minOf(r.top, r.bottom) - bounds.lowerLeftY
+                val x = r.left - ox; val y = minOf(r.top, r.bottom) - oy
+                // audit 5 C-6: lines follow the text direction (frame u = along the text, v = towards its top)
+                val f = frames[i]
                 when (a.kind) {
                     AnnotKind.HIGHLIGHT -> { cs.addRect(x, y, r.width(), r.height()); cs.fill() }
-                    AnnotKind.UNDERLINE -> { cs.setLineWidth(1.2f); cs.moveTo(x, y + 1f); cs.lineTo(x + r.width(), y + 1f); cs.stroke() }
-                    AnnotKind.STRIKEOUT -> { cs.setLineWidth(1.2f); cs.moveTo(x, y + r.height() / 2); cs.lineTo(x + r.width(), y + r.height() / 2); cs.stroke() }
-                    else -> { cs.setLineWidth(1f); var xx = x; var up = true; cs.moveTo(xx, y); while (xx < x + r.width()) { xx += 2.5f; cs.lineTo(xx, if (up) y + 2.5f else y); up = !up }; cs.stroke() }
+                    AnnotKind.UNDERLINE -> { cs.setLineWidth(1.2f); move(f, 0f, 1f); line(f, f.w, 1f); cs.stroke() }
+                    AnnotKind.STRIKEOUT -> { cs.setLineWidth(1.2f); move(f, 0f, f.h / 2); line(f, f.w, f.h / 2); cs.stroke() }
+                    else -> {
+                        cs.setLineWidth(1f); var uu = 0f; var up = true; move(f, 0f, 0f)
+                        while (uu < f.w) { uu += 2.5f; line(f, uu, if (up) 2.5f else 0f); up = !up }
+                        cs.stroke()
+                    }
                 }
             }
         }
@@ -727,6 +731,37 @@ object AnnotationWriter {
                 if (index in p.annotations.indices) com.smartdocs.editor.core.annot.AnnotStyle.removeWithPopups(p, listOf(index))
             }
             Unit to listOf(page)
+        }
+    }
+}
+
+/**
+ * audit 5 C-6: the text frame of one text-markup rectangle ([minX]..[maxX] × [minY]..[maxY], user space) on a page
+ * shown with /Rotate [rotation]: origin at the lower-left corner as the text is read, u = along the text (length [w]),
+ * v = towards the top of the text (length [h]). Pure (no Android types), see MarkupFrameTest.
+ */
+internal class MarkupFrame(val ox: Float, val oy: Float, val ux: Float, val uy: Float, val vx: Float, val vy: Float, val w: Float, val h: Float) {
+    /** User-space point at (u along the text, v up from its lower edge). */
+    fun point(u: Float, v: Float): Pair<Float, Float> = (ox + u * ux + v * vx) to (oy + u * uy + v * vy)
+
+    /** QuadPoints of the rectangle: upper-left, upper-right, lower-left, lower-right (in reading orientation). */
+    fun quad(): FloatArray {
+        val (ulx, uly) = point(0f, h); val (urx, ury) = point(w, h)
+        val (llx, lly) = point(0f, 0f); val (lrx, lry) = point(w, 0f)
+        return floatArrayOf(ulx, uly, urx, ury, llx, lly, lrx, lry)
+    }
+
+    companion object {
+        fun of(minX: Float, minY: Float, maxX: Float, maxY: Float, rotation: Int): MarkupFrame {
+            val x0 = minOf(minX, maxX); val x1 = maxOf(minX, maxX); val y0 = minOf(minY, maxY); val y1 = maxOf(minY, maxY)
+            val dx = x1 - x0; val dy = y1 - y0
+            // /Rotate turns the page clockwise for display: 90 → user +y reads to the right, user −x is up
+            return when (((rotation % 360) + 360) % 360 / 90 * 90) {
+                90 -> MarkupFrame(x1, y0, 0f, 1f, -1f, 0f, dy, dx)
+                180 -> MarkupFrame(x1, y1, -1f, 0f, 0f, -1f, dx, dy)
+                270 -> MarkupFrame(x0, y1, 0f, -1f, 1f, 0f, dy, dx)
+                else -> MarkupFrame(x0, y0, 1f, 0f, 0f, 1f, dx, dy)
+            }
         }
     }
 }

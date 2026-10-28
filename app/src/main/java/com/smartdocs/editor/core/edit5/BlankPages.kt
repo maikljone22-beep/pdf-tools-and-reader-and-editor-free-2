@@ -23,7 +23,8 @@ object BlankPages {
             var h = size?.second ?: ref?.displayH ?: 841.89f
             if (size != null && landscape != (w > h)) { val t = w; w = h; h = t }
             var pos = at.coerceIn(0, n)
-            repeat(count.coerceIn(1, 500)) { PageOps5.insertAt(doc, page(doc, w, h, style, lineColor, paper, rtl), pos++) }
+            // audit 5 E-5: the other pages keep their labels
+            PageLabelRemap.keep(doc) { repeat(count.coerceIn(1, 500)) { PageOps5.insertAt(doc, page(doc, w, h, style, lineColor, paper, rtl), pos++) } }
         }
     }
 

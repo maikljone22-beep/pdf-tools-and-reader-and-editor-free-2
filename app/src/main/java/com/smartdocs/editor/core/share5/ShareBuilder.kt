@@ -28,7 +28,7 @@ object ShareBuilder {
     fun safe(name: String) = name.replace(Regex("""[\\/:*?"<>|]"""), "_")
 
     /**
-     * [pages] zero-based (null = all). [password] opens [src]. Subsets are written unencrypted (they are new documents);
+     * [pages] zero-based (null = all). [password] opens [src]. Subsets keep the source's protection (audit 5 T-05);
      * "as is" with every page shares a plain copy of the file (still protected when the source is).
      * [strip] (nav-attach, "remove hidden information on share"): what [Sanitizer] removes from PDF results
      * (metadata, scripts, attachments…); the shared copy only, never the original.
@@ -44,7 +44,8 @@ object ShareBuilder {
         // working copy limited to the chosen pages (decrypted when it is a subset)
         var work = src; var pw = password
         if (!all && format != Format.IMAGES) {
-            work = File(dir, ".subset.pdf"); PdfOps.keepPages(src, sel, work, password); pw = null
+            // audit 5 T-05: the subset keeps the source's protection, so it opens with the same password
+            work = File(dir, ".subset.pdf"); PdfOps.keepPages(src, sel, work, password)
         }
         when (format) {
             Format.AS_IS -> {

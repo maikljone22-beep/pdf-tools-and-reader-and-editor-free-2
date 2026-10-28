@@ -37,7 +37,8 @@ import java.io.File
  * working copy; [onSaved] gets the saved file.
  */
 @Composable
-fun TagsEditor(nav: NavHostController, source: File, onClose: () -> Unit, onSaved: (File) -> Unit) {
+/** audit 5 A-01: [password] opens [source] (PdfOps.load keeps its protection on save). */
+fun TagsEditor(nav: NavHostController, source: File, onClose: () -> Unit, onSaved: (File) -> Unit, password: String? = null) {
     val app = LocalApp.current
     val scope = rememberCoroutineScope()
     val job = rememberT5Job()
@@ -59,13 +60,13 @@ fun TagsEditor(nav: NavHostController, source: File, onClose: () -> Unit, onSave
     LaunchedEffect(source) { io { source.copyTo(work, true) }; ready = true; version++ }
     LaunchedEffect(version) {
         if (!ready) return@LaunchedEffect
-        runCatching { io { PDDocument.load(work).use { d -> listOf(AccessTags.tree(d), AccessTags.roleMap(d), AccessTags.isTaggedFlag(d), AccessTags.unmarked(d)) } } }
+        runCatching { io { com.smartdocs.editor.core.pdf.PdfOps.load(work, password).use { d -> listOf(AccessTags.tree(d), AccessTags.roleMap(d), AccessTags.isTaggedFlag(d), AccessTags.unmarked(d)) } } }
             .onSuccess { l -> @Suppress("UNCHECKED_CAST") run { nodes = l[0] as List<TagNode>; roles = l[1] as Map<String, String>; tagged = l[2] as Boolean; unmarked = l[3] as List<Unmarked> } }
             .onFailure { error = it.message }
     }
     fun edit(block: (PDDocument) -> Unit) {
         scope.launch {
-            runCatching { io { PDDocument.load(work).use { d -> block(d); val tmp = File(work.parentFile, work.name + ".new"); d.save(tmp); tmp.copyTo(work, true); tmp.delete() } } }
+            runCatching { io { com.smartdocs.editor.core.pdf.PdfOps.load(work, password).use { d -> block(d); val tmp = File(work.parentFile, work.name + ".new"); d.save(tmp); tmp.copyTo(work, true); tmp.delete() } } }
                 .onSuccess { dirty = true; version++ }.onFailure { error = it.message ?: it.toString() }
         }
     }
@@ -110,7 +111,7 @@ fun TagsEditor(nav: NavHostController, source: File, onClose: () -> Unit, onSave
             }
         }
         // ---- selected tag
-        selected?.let { s -> nodes.firstOrNull { it.path == s.path }?.let { n -> TagProps(n, work, version, ::edit) { selected = it } } }
+        selected?.let { s -> nodes.firstOrNull { it.path == s.path }?.let { n -> TagProps(n, work, version, ::edit, password) { selected = it } } }
         // ---- role map
         T5Card(stringResource(R.string.pc_tags_rolemap), Icons.Default.SwapHoriz) {
             roles.forEach { (k, v) -> Row(verticalAlignment = Alignment.CenterVertically) {
@@ -146,7 +147,7 @@ fun TagsEditor(nav: NavHostController, source: File, onClose: () -> Unit, onSave
 
 /** Properties and actions of one tag. */
 @Composable
-private fun TagProps(n: TagNode, work: File, version: Int, edit: ((PDDocument) -> Unit) -> Unit, onSelect: (TagNode?) -> Unit) {
+private fun TagProps(n: TagNode, work: File, version: Int, edit: ((PDDocument) -> Unit) -> Unit, password: String?, onSelect: (TagNode?) -> Unit) {
     var type by remember(n.path, version) { mutableStateOf(n.type) }
     var title by remember(n.path, version) { mutableStateOf(n.title.orEmpty()) }
     var alt by remember(n.path, version) { mutableStateOf(n.alt.orEmpty()) }
@@ -155,7 +156,7 @@ private fun TagProps(n: TagNode, work: File, version: Int, edit: ((PDDocument) -
     var exp by remember(n.path, version) { mutableStateOf(n.expansion.orEmpty()) }
     var id by remember(n.path, version) { mutableStateOf(n.id.orEmpty()) }
     var attrs by remember(n.path, version) { mutableStateOf(TagAttrs()) }
-    LaunchedEffect(n.path, version) { attrs = runCatching { io { PDDocument.load(work).use { AccessTags.attrs(it, n.path) } } }.getOrDefault(TagAttrs()) }
+    LaunchedEffect(n.path, version) { attrs = runCatching { io { com.smartdocs.editor.core.pdf.PdfOps.load(work, password).use { AccessTags.attrs(it, n.path) } } }.getOrDefault(TagAttrs()) }
     val table = type in setOf("TH", "TD", "Table", "TR")
     T5Card(stringResource(R.string.pc_tags_props, n.type), Icons.Default.Label) {
         Text(stringResource(R.string.pc_tags_type), style = MaterialTheme.typography.labelLarge)

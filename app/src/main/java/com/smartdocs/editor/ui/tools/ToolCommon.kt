@@ -7,6 +7,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -116,10 +119,13 @@ fun ColorChips(colors: List<Int>, selected: Int, onSelect: (Int) -> Unit) {
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         colors.forEach { c ->
             val sel = c == selected
+            val name = colorLabel(c)
             Box(
                 Modifier.size(36.dp).clip(CircleShape).background(Color(0xFF000000.toInt() or c))
                     .border(if (sel) 3.dp else 1.dp, if (sel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline, CircleShape)
-                    .clickable { onSelect(c) },
+                    // audit 5 C-22: TalkBack reads the colour name and the selected state
+                    .selectable(selected = sel, role = androidx.compose.ui.semantics.Role.RadioButton, onClick = { onSelect(c) })
+                    .semantics { contentDescription = name },
                 contentAlignment = Alignment.Center,
             ) { if (sel) Icon(Icons.Default.Check, null, tint = if (isLight(c)) Color.Black else Color.White) }
         }

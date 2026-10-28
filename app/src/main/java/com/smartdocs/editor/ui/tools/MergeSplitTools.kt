@@ -42,6 +42,12 @@ fun MergeScreen(nav: NavHostController, uri: String?) {
     var asking by remember { mutableStateOf<File?>(null) }
     var protectOut by remember { mutableStateOf(false) }
     var protectPw by remember { mutableStateOf("") }
+    // audit 5 T-09: the document the tool was opened on starts with the reader's password (when it still opens the file)
+    LaunchedEffect(Unit) {
+        val f = preset.value ?: return@LaunchedEffect
+        val pw = com.smartdocs.editor.core.pdf.SessionPasswords.get(f) ?: return@LaunchedEffect
+        if (withContext(Dispatchers.IO) { com.smartdocs.editor.core.pdf.LockedPdf.checkPassword(f, pw) }) { passwords[f.absolutePath] = pw; counts.remove(f.absolutePath) }
+    }
 
     LaunchedEffect(files, passwords.size) {
         files.forEach { f ->
@@ -136,7 +142,7 @@ internal object SplitOps {
 
     /** Top-level outline entries with their 0-based target page (entries without a resolvable page are skipped). */
     suspend fun topBookmarks(src: File, password: String? = null): List<Pair<String, Int>> = withContext(Dispatchers.IO) {
-        PdfOps.load(src, password).use { doc ->
+        PdfOps.loadRaw(src, password).use { doc ->
             val outline = doc.documentCatalog.documentOutline ?: return@use emptyList()
             outline.children().mapNotNull { item ->
                 val page = runCatching { item.findDestinationPage(doc) }.getOrNull()
@@ -156,14 +162,14 @@ internal object SplitOps {
         if (marks.isEmpty()) throw IllegalStateException("no bookmarks")
         outDir.mkdirs()
         val files = ArrayList<File>()
-        PdfOps.load(src, password).use { doc ->
+        // audit 5 C-4: every part keeps the source's protection, fields and links (PageExtract)
+        PdfOps.loadRaw(src, password).use { doc ->
             val n = doc.numberOfPages
             marks.forEachIndexed { i, (title, start) ->
                 val from = if (i == 0) 0 else start
                 val to = if (i + 1 < marks.size) marks[i + 1].second - 1 else n - 1
                 if (to < from) return@forEachIndexed
-                PDDocument().use { nd ->
-                    for (p in from..to) nd.importPage(doc.getPage(p))
+                com.smartdocs.editor.core.pdf.PageExtract.build(doc, (from..to).toList(), password).use { nd ->
                     val f = uniqueIn(outDir, String.format(java.util.Locale.US, "%02d_%s", i + 1, safeName(title.ifBlank { "part_${i + 1}" })))
                     nd.save(f); files += f
                 }
@@ -172,11 +178,8 @@ internal object SplitOps {
         files
     }
 
-    private fun uniqueIn(dir: File, base: String): File {
-        var f = File(dir, "$base.pdf"); var k = 2
-        while (f.exists()) { f = File(dir, "${base}_$k.pdf"); k++ }
-        return f
-    }
+    /** audit 5 C-25: never overwrites (the shared helper). */
+    private fun uniqueIn(dir: File, base: String): File = PdfOps.uniqueIn(dir, base)
 
     private fun sizeOf(doc: PDDocument, pages: List<Int>): Long = PDDocument().use { nd ->
         pages.forEach { nd.importPage(doc.getPage(it)) }
@@ -197,7 +200,7 @@ internal object SplitOps {
         require(maxBytes > 10_000) { "limit too small" }
         outDir.mkdirs()
         val files = ArrayList<File>()
-        PdfOps.load(src, password).use { doc ->
+        PdfOps.loadRaw(src, password).use { doc ->
             val n = doc.numberOfPages
             val single = (0 until n).map { sizeOf(doc, listOf(it)) }
             val overhead = (single.minOrNull() ?: 0L) / 3   // rough per-file overhead counted once per group
@@ -211,8 +214,7 @@ internal object SplitOps {
             }
             if (cur.isNotEmpty()) groups += cur
             fun write(pages: List<Int>) {
-                PDDocument().use { nd ->
-                    pages.forEach { nd.importPage(doc.getPage(it)) }
+                com.smartdocs.editor.core.pdf.PageExtract.build(doc, pages, password).use { nd ->
                     val f = uniqueIn(outDir, "${baseName}_part${files.size + 1}")
                     nd.save(f)
                     if (f.length() > maxBytes && pages.size > 1) {
@@ -244,12 +246,19 @@ fun SplitScreen(nav: NavHostController, uri: String?) {
     val processing = stringResource(R.string.processing)
     val noBookmarks = stringResource(R.string.ps_split_no_bookmarks)
     val badSize = stringResource(R.string.ps_split_size_invalid)
+    val wrongPw = stringResource(R.string.password_wrong)
+    // audit 5 C-4: a protected input is opened with the reader's password or asks for one (like Merge)
+    val lock = rememberToolPassword(file) { file = null }
+    val pw = lock.password
 
-    LaunchedEffect(file) { pages = file?.let { f -> runCatching { PdfOps.pageCount(f) }.getOrDefault(0) } ?: 0 }
-    LaunchedEffect(file, mode) {
+    LaunchedEffect(file, lock.ready, pw) {
+        val f = file
+        pages = if (f != null && lock.ready) runCatching { PdfOps.pageCount(f, pw) }.getOrDefault(0) else 0
+    }
+    LaunchedEffect(file, mode, lock.ready, pw) {
         bookmarks = null
         val f = file
-        if (mode == SplitMode.BOOKMARKS && f != null) bookmarks = runCatching { SplitOps.topBookmarks(f) }.getOrDefault(emptyList())
+        if (mode == SplitMode.BOOKMARKS && f != null && lock.ready) bookmarks = runCatching { SplitOps.topBookmarks(f, pw) }.getOrDefault(emptyList())
     }
 
     ToolScaffold(stringResource(R.string.tool_split), nav, runner) {
@@ -277,30 +286,32 @@ fun SplitScreen(nav: NavHostController, uri: String?) {
             }
             else -> Unit
         }
-        PrimaryButton(stringResource(R.string.tl_split), enabled = file != null, icon = Icons.Default.CallSplit) {
+        PrimaryButton(stringResource(R.string.tl_split), enabled = file != null && lock.ready, icon = Icons.Default.CallSplit) {
             val src = file ?: return@PrimaryButton
             val m = mode; val chunk = (n.toIntOrNull() ?: 1).coerceAtLeast(1); val spec = ranges; val total = pages
             val limit = ((maxMb.toDoubleOrNull() ?: 0.0) * 1024 * 1024).toLong()
             if (m == SplitMode.SIZE && limit < 50_000) { runner.error = badSize; return@PrimaryButton }
             if (m == SplitMode.BOOKMARKS && bookmarks?.isEmpty() == true) { runner.error = noBookmarks; return@PrimaryButton }
-            runner.runMany(processing) {
+            val password = pw
+            // audit 5 C-25: the parts never overwrite earlier ones (PdfOps.split / uniqueIn / uniqueFile pick free names)
+            runner.runMany(processing) { withPasswordMessage(wrongPw) {
                 val dir = File(app.documents.docsDir, src.nameWithoutExtension + "_split").apply { mkdirs() }
                 val base = src.nameWithoutExtension
                 when (m) {
-                    SplitMode.BOOKMARKS -> try { SplitOps.byBookmarks(src, dir) } catch (e: IllegalStateException) { throw IllegalStateException(noBookmarks) }
-                    SplitMode.SIZE -> SplitOps.bySize(src, dir, base, limit)
-                    SplitMode.EVERY_PAGE -> PdfOps.split(src, dir, base, 1)
-                    SplitMode.EVERY_N -> PdfOps.split(src, dir, base, chunk)
+                    SplitMode.BOOKMARKS -> try { SplitOps.byBookmarks(src, dir, password) } catch (e: IllegalStateException) { throw IllegalStateException(noBookmarks) }
+                    SplitMode.SIZE -> SplitOps.bySize(src, dir, base, limit, password)
+                    SplitMode.EVERY_PAGE -> PdfOps.split(src, dir, base, 1, password)
+                    SplitMode.EVERY_N -> PdfOps.split(src, dir, base, chunk, password)
                     SplitMode.RANGES -> {
-                        val count = if (total > 0) total else PdfOps.pageCount(src)
+                        val count = if (total > 0) total else PdfOps.pageCount(src, password)
                         val parts = spec.replace('؛', ';').split(';', '\n').map { it.trim() }.filter { it.isNotEmpty() }
                         parts.mapIndexedNotNull { i, part ->
                             val idx = PdfOps.parseRange(part, count)
-                            if (idx.isEmpty()) null else app.documents.uniqueFile(dir, "${base}_${i + 1}").also { PdfOps.keepPages(src, idx, it) }
+                            if (idx.isEmpty()) null else app.documents.uniqueFile(dir, "${base}_${i + 1}").also { PdfOps.keepPages(src, idx, it, password) }
                         }
                     }
                 }
-            }
+            } }
         }
         ResultsList(runner.results, nav, "application/pdf")
     }

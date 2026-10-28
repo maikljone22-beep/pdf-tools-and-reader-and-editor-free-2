@@ -275,10 +275,10 @@ object RedactMarks {
         return ap
     }
 
-    /** Loads [src], replaces its marks with [marks] and saves to [out] (full save). */
+    /** Loads [src], replaces its marks with [marks] and saves to [out] (full save; audit 5 R-10: temp file + rename). */
     suspend fun save(src: File, out: File, password: String?, marks: List<RedactMark>, author: String = "") = withContext(Dispatchers.IO) {
         require(out.canonicalPath != src.canonicalPath) { "out must differ from src" }
-        PdfOps.load(src, password).use { doc -> writeAll(doc, marks, author); doc.save(out) }
+        PdfOps.load(src, password).use { doc -> writeAll(doc, marks, author); RedactIo.saveAtomic(doc, out) }
     }
 
     /** Marks stored in [src]. */

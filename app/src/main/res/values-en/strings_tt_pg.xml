@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- audit 5 (tab tools, PAGES): page organizer -->
+    <string name="ttpg_owner_title">Owner password</string>
+    <string name="ttpg_owner_warn">This file was opened with its open password, not the owner password. Saving over the original keeps the restrictions, but replaces the author\'s owner password with a new random one, so the original owner password will no longer lift them. Save as a new file to keep the original as it is.</string>
+    <string name="ttpg_owner_continue">Replace the original anyway</string>
+    <string name="ttpg_unsaved_save">There are unsaved changes. Save them to the original file before leaving?</string>
+    <string name="ttpg_busy">Another page operation is still running. Try again when it finishes.</string>
+    <string name="ttpg_ocr_page">Recognize text (OCR) on this page</string>
+    <string name="ttpg_ocr_running">Recognizing text on page %1$d…</string>
+    <string name="ttpg_open_page">Open page</string>
+    <string name="ttpg_open_save_first">Save or undo the changes first, then open the page in the reader.</string>
+    <string name="ttpg_save_failed">Could not save: the original could not be backed up or written (storage full?).</string>
+    <string name="ttpg_op_failed">The page operation could not be completed.</string>
+</resources>

@@ -5,6 +5,7 @@ import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.font.PDFont
 import com.tom_roush.pdfbox.pdmodel.font.PDType3Font
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import java.io.File
 import kotlin.math.abs
@@ -90,6 +91,21 @@ object PageTextModel {
     /** Analyse page [page] of [file] (read only). */
     suspend fun load(file: File, password: String?, page: Int): PageModel = withContext(Dispatchers.IO) {
         EditIo.load(file, password).use { doc -> analyze(doc, page).model }
+    }
+
+    /**
+     * audit 5 C-8: analyse several [pages] of [file] with ONE load (find & replace used to load the whole document
+     * once per page). Returns (page, model) pairs; a page that fails to analyse is skipped, but errors (out of
+     * memory) and cancellation propagate.
+     */
+    suspend fun loadPages(file: File, password: String?, pages: List<Int>, onPage: (Int) -> Unit = {}): List<Pair<Int, PageModel>> = withContext(Dispatchers.IO) {
+        EditIo.load(file, password).use { doc ->
+            pages.filter { it in 0 until doc.numberOfPages }.mapNotNull { p ->
+                ensureActive()
+                onPage(p)
+                try { p to analyze(doc, p).model } catch (e: Exception) { null }
+            }
+        }
     }
 
     internal fun analyze(doc: PDDocument, pageIndex: Int): PageAnalysis {

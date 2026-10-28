@@ -4,12 +4,46 @@ import android.content.Context
 import com.smartdocs.editor.core.pdf.PdfSession
 import com.smartdocs.editor.core.tools5.OptimizeOptions
 import com.smartdocs.editor.core.tools5.Optimizer
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 
 /** The steps [OcrTuning] adds around a recognition run (used by the reader OCR, OCR plus and the batch). */
 object OcrPipeline {
+
+    /**
+     * audit 5 OCR-4: largest side (px) of a page rendered for recognition — one cap for the page OCR and the zone OCR,
+     * so their stored words share the image size.
+     */
+    const val MAX_RENDER_PX = 3500f
+
+    /** Render scale (px per point) of a page [w]×[h] points at [dpi], capped at [MAX_RENDER_PX]. */
+    fun renderScale(w: Float, h: Float, dpi: Int = 300): Float {
+        var k = dpi / 72f
+        if (maxOf(w, h) * k > MAX_RENDER_PX) k = MAX_RENDER_PX / maxOf(w, h)
+        return k
+    }
+
+    /**
+     * audit 5 OCR-5: runs [block]; when the calling coroutine is cancelled meanwhile, [engine] is asked to stop at once
+     * ([OcrEngine.cancel]) — a recognition already running is native code that a coroutine cancel alone does not reach
+     * (the "fast" engine a run creates for itself, or the engine of OCR plus, kept recognising for 10–30 s).
+     */
+    suspend fun <T> cancelling(engine: OcrEngine, block: suspend () -> T): T = coroutineScope {
+        var finished = false
+        val watcher = launch(start = CoroutineStart.UNDISPATCHED) {
+            try { awaitCancellation() } finally { if (!finished) engine.cancel() }
+        }
+        try { block() } finally { finished = true; watcher.cancel() }
+    }
+
+    /** Closes an engine off the caller's thread (close waits for a running recognition) and even when cancelled. */
+    suspend fun closeQuietly(engine: OcrEngine) = withContext(NonCancellable + Dispatchers.IO) { runCatching { engine.close() } }
 
     /** [engine] when its quality matches [t], otherwise a new engine of the right quality (the caller closes it). */
     fun engineFor(ctx: Context, engine: OcrEngine?, t: OcrTuning): OcrEngine {
@@ -31,15 +65,17 @@ object OcrPipeline {
         val n = try {
             OcrPrep.correctPages(src, password, out, pages.filter { it in 0 until s.pageCount }, t,
                 render = { pi ->
-                    runCatching {
+                    try {
                         val (w, h) = s.pageSize(pi)
                         val k = 1100f / maxOf(w, h).coerceAtLeast(1f)
-                        s.render(pi, (w * k).toInt().coerceAtLeast(1), (h * k).toInt().coerceAtLeast(1), annotations = false)
-                            .copy(android.graphics.Bitmap.Config.ARGB_8888, false).also { s.invalidateCache() }
-                    }.getOrNull()
+                        val b = s.render(pi, (w * k).toInt().coerceAtLeast(1), (h * k).toInt().coerceAtLeast(1), annotations = false)
+                        // audit 5 OCR-2: the bitmap copy is done off the main thread
+                        withContext(Dispatchers.Default) { b.copy(android.graphics.Bitmap.Config.ARGB_8888, false) }.also { s.invalidateCache() }
+                    } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { null }
                 },
                 score = { b -> engine.score(b) }, onPage = onPage)
-        } finally { s.closeAsync() }
+        } catch (e: Throwable) { out.delete(); throw e
+        } finally { withContext(NonCancellable) { s.closeAsync() } }
         if (n == 0) { out.delete(); return null }
         return out
     }

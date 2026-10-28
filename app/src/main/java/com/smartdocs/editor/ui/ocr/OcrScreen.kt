@@ -60,7 +60,8 @@ fun OcrScreen(nav: NavHostController, uri: String?) {
     var langs by remember { mutableStateOf(settings.ocrLanguages.ifBlank { "ara+eng" }) }
     var mode by remember { mutableStateOf(if (com.smartdocs.editor.core.data.NpfPrefs.ocrOutput == "text") OcrMode.TEXT else OcrMode.SEARCHABLE) }   // nav-prefs: OCR default
     var range by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf<String?>(null) }
+    // audit 5 T-09: start from the reader's password of this file
+    var password by remember { mutableStateOf<String?>(file?.let { com.smartdocs.editor.core.pdf.SessionPasswords.get(it) }) }
     var askPassword by remember { mutableStateOf(false) }
 
     var job by remember { mutableStateOf<Job?>(null) }
@@ -69,7 +70,7 @@ fun OcrScreen(nav: NavHostController, uri: String?) {
     var error by remember { mutableStateOf<String?>(null) }
     var textPages by remember { mutableStateOf<List<Pair<Int, OcrPage>>>(emptyList()) }
     var result by remember { mutableStateOf<File?>(null) }
-    val pick = rememberPdfPicker { it.firstOrNull()?.let { f -> file = f; textPages = emptyList() } }
+    val pick = rememberPdfPicker { it.firstOrNull()?.let { f -> file = f; password = com.smartdocs.editor.core.pdf.SessionPasswords.get(f); textPages = emptyList() } }
     val snack = remember { SnackbarHostState() }
     LaunchedEffect(error) { error?.let { snack.showSnackbar(it); error = null } }
 
@@ -102,11 +103,11 @@ fun OcrScreen(nav: NavHostController, uri: String?) {
                     pages.forEachIndexed { n, pi ->
                         progressMsg = ctx.getString(R.string.ocr_recognizing, pi + 1); progress = n.toFloat() / pages.size
                         val (w, h) = session.pageSize(pi)
-                        var scale = 300f / 72f
-                        if (maxOf(w, h) * scale > 3500f) scale = 3500f / maxOf(w, h)
-                        val bmp = session.render(pi, (w * scale).toInt(), (h * scale).toInt(), annotations = false)
-                        val page = withContext(Dispatchers.Default) { engine.recognize(bmp, wantWords = writer != null) }
+                        val scale = com.smartdocs.editor.core.ocr.OcrPipeline.renderScale(w, h)
+                        val bmp = session.render(pi, (w * scale).toInt().coerceAtLeast(1), (h * scale).toInt().coerceAtLeast(1), annotations = false)
                         session.invalidateCache()
+                        // audit 5 OCR-8: the page bitmap is freed also when the run is cancelled on this page
+                        val page = try { withContext(Dispatchers.Default) { engine.recognize(bmp, wantWords = writer != null) } } finally { bmp.recycle() }
                         // a page that already has some selectable text only gets the words that are new
                         if (writer != null) writer.addLayer(pi, com.smartdocs.editor.core.ocr.MixedPageOcr.dropExisting(session, pi, page, plan))
                         collected += pi to page
@@ -116,12 +117,13 @@ fun OcrScreen(nav: NavHostController, uri: String?) {
                         val out = app.documents.uniqueFile(app.documents.docsDir, src.nameWithoutExtension + "_ocr")
                         writer.save(out)
                         runCatching { app.documents.touchRecent(out, session.pageCount) }
-                        result = out
+                        // the searchable copy is the input transformed: the result sheet may offer "Save in original"
+                        result = com.smartdocs.editor.core.pdf.ToolOutputs.record(out, src)
                     }
-                } finally { session.closeAsync(); writer?.close(); input?.close() }
+                } finally { withContext(kotlinx.coroutines.NonCancellable) { session.closeAsync() }; writer?.close(); input?.close() }
             } catch (e: CancellationException) {
                 error = cancelledMsg
-            } catch (e: Exception) { error = e.message ?: e.toString() } finally { progress = null; progressMsg = ""; running = false }
+            } catch (e: Exception) { error = ocrErrorText(ctx, e) } finally { progress = null; progressMsg = ""; running = false }
         }
     }
     fun cancel() { engine.cancel(); job?.cancel() }

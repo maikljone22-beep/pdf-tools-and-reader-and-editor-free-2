@@ -71,7 +71,8 @@ fun OptimizeScreen(nav: NavHostController, uri: String?) {
     val app = LocalApp.current
     val snackbar = remember { SnackbarHostState() }
     var file by remember { mutableStateOf(fileOf(uri)) }
-    var password by remember { mutableStateOf<String?>(null) }
+    // audit 5 T-09: opened from the reader, the file opens with the reader's password
+    var password by remember { mutableStateOf<String?>(com.smartdocs.editor.core.pdf.SessionPasswords.get(fileOf(uri))) }
     var askPassword by remember { mutableStateOf(false) }
     var audit by remember { mutableStateOf<SpaceAudit?>(null) }
     var after by remember { mutableStateOf<SpaceAudit?>(null) }
@@ -170,7 +171,8 @@ fun OptimizeScreen(nav: NavHostController, uri: String?) {
                     outs += out
                 }
                 folder?.let { saveToTree(ctx, it, outs, replace) }
-                if (outs.size == 1) result = outs[0] else results = outs
+                // audit 5 E-1: the single result is this document optimised ("Save in original" may replace exactly it)
+                if (outs.size == 1) result = if (inputs.size == 1 && inputs[0] == file) com.smartdocs.editor.core.pdf.ToolOutputs.record(outs[0], file) else outs[0] else results = outs
             }
         }
         if (job.results.isNotEmpty()) ResultsList(job.results, nav, "application/pdf")

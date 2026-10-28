@@ -86,7 +86,7 @@ object PageTemplates {
                 d.setItem(COSName.TYPE, TEMPLATE)
                 hidden += clean to d
                 visible.removeAll { it.second == p.cosObject }
-                doc.pages.remove(p)
+                PageLabelRemap.keep(doc) { doc.pages.remove(p) }   // audit 5 E-5
             } else visible += clean to p.cosObject
             writeTree(doc, PAGES, visible); writeTree(doc, TEMPLATES, hidden)
         }
@@ -97,10 +97,12 @@ object PageTemplates {
         E5Io.edit(src, out, password) { doc ->
             val d = (leaves(tree(doc, TEMPLATES)) + leaves(tree(doc, PAGES))).firstOrNull { it.first == name }?.second ?: throw IllegalArgumentException(name)
             var pos = at.coerceIn(0, doc.numberOfPages)
-            repeat(count.coerceIn(1, 500)) {
-                val copy = PageOps5.clonePage(PDPage(d))
-                copy.cosObject.setItem(COSName.TYPE, COSName.PAGE)
-                PageOps5.insertAt(doc, copy, pos++)
+            PageLabelRemap.keep(doc) {   // audit 5 E-5
+                repeat(count.coerceIn(1, 500)) {
+                    val copy = PageOps5.clonePage(PDPage(d))
+                    copy.cosObject.setItem(COSName.TYPE, COSName.PAGE)
+                    PageOps5.insertAt(doc, copy, pos++)
+                }
             }
         }
     }
@@ -121,7 +123,7 @@ object PageTemplates {
                 val e = hid.firstOrNull { it.first == name } ?: return@edit
                 hid.remove(e)
                 val page = PDPage(e.second); page.cosObject.setItem(COSName.TYPE, COSName.PAGE)
-                doc.pages.add(page); vis += name to page.cosObject
+                PageLabelRemap.keep(doc) { doc.pages.add(page) }; vis += name to page.cosObject
             } else {
                 val e = vis.firstOrNull { it.first == name } ?: return@edit
                 if (doc.numberOfPages <= 1) throw IllegalStateException("last page")
@@ -129,7 +131,7 @@ object PageTemplates {
                 val page = PDPage(e.second)
                 val d = PageOps5.clonePage(page).cosObject; d.setItem(COSName.TYPE, TEMPLATE)
                 hid += name to d
-                doc.pages.remove(page)
+                PageLabelRemap.keep(doc) { doc.pages.remove(page) }
             }
             writeTree(doc, PAGES, vis); writeTree(doc, TEMPLATES, hid)
         }

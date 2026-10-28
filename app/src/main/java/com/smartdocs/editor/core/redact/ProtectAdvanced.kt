@@ -49,6 +49,13 @@ data class ProtectOptions(
 )
 
 /**
+ * audit 5 P-2: security handler revisions 2–4 (AES-128, RC4) turn a password into bytes with ISO-8859-1, so Arabic
+ * (or any non-Latin-1) characters become '?' and very different passwords open the file. Such passwords are only
+ * accepted with AES-256 (revision 6: UTF-8).
+ */
+class NonLatinPasswordException : IllegalArgumentException("passwords with these characters need AES-256")
+
+/**
  * Detailed encryption (J6): AES-256 / AES-128 / RC4-128 / RC4-40 (PdfBox-Android 2.0.27 StandardProtectionPolicy), the
  * eight permission bits with print and change presets. Without an owner password a random one is used, so the
  * permissions cannot be lifted by re-entering the open password. [ProtectOptions.scope] also offers "everything
@@ -67,26 +74,45 @@ object ProtectAdvanced {
         setCanFillInForm(p.fillForms)
     }
 
+    /** True when [pw] survives the ISO-8859-1 encoding of revisions 2–4 unchanged. */
+    fun latin1(pw: String): Boolean = Charsets.ISO_8859_1.newEncoder().canEncode(pw)
+
+    /** audit 5 P-2: false when a revision 2–4 algorithm is chosen with a password it would mangle. */
+    fun passwordsFit(o: ProtectOptions): Boolean = o.algo == EncAlgo.AES_256 || (latin1(o.openPassword) && latin1(o.ownerPassword))
+
+    /**
+     * audit 5 P-5 / T-12: the owner password used. Never empty and never the open password (that would let
+     * whoever opens the file lift the restrictions): a random one then.
+     */
+    fun ownerFor(o: ProtectOptions): String = o.ownerPassword.takeIf { it.isNotEmpty() && it != o.openPassword } ?: randomPassword()
+
     fun randomPassword(len: Int = 24): String {
         val chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#%*-_"
         val r = SecureRandom()
         return (1..len).map { chars[r.nextInt(chars.length)] }.joinToString("")
     }
 
-    /** Encrypts [src] into [out]. [currentPassword] opens an already protected file. Returns the owner password used. */
+    /**
+     * Encrypts [src] into [out]. [currentPassword] opens an already protected file. Returns the owner password used
+     * (differs from [ProtectOptions.ownerPassword] when that was empty or equal to the open password).
+     * Throws [NonLatinPasswordException] (audit 5 P-2). Signature values are removed from the output (audit 5 R-4)
+     * and it is written atomically (audit 5 R-10).
+     */
     suspend fun protect(src: File, out: File, currentPassword: String?, o: ProtectOptions): String = withContext(Dispatchers.IO) {
         require(out.canonicalPath != src.canonicalPath) { "out must differ from src" }
         require(o.openPassword.isNotEmpty() || o.permissions != Permissions()) { "nothing to protect" }
         require(o.scope == EncScope.ALL || o.algo.aes) { "this scope needs AES" }
         require(o.scope != EncScope.ATTACHMENTS_ONLY || o.openPassword.isNotEmpty()) { "attachments need an open password" }
-        val owner = o.ownerPassword.ifEmpty { randomPassword() }
+        if (!passwordsFit(o)) throw NonLatinPasswordException()
+        val owner = ownerFor(o)
         PdfOps.load(src, currentPassword).use { doc ->
             val policy = StandardProtectionPolicy(owner, o.openPassword, accessPermission(o.permissions))
             policy.encryptionKeyLength = o.algo.keyLength
             policy.setPreferAES(o.algo.aes)
+            PageScrub.stripSignatures(doc)
             if (o.scope == EncScope.ALL) doc.protect(policy)
             else { ScopedSecurityHandler.register(); doc.protect(ScopedProtectionPolicy(policy, o.scope)) }
-            doc.save(out)
+            RedactIo.saveAtomic(doc, out)
         }
         owner
     }

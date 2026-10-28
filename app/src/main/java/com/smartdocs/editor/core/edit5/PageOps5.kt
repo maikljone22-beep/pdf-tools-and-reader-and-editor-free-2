@@ -50,13 +50,36 @@ object PageOps5 {
         return np
     }
 
-    /** Re-arrange the page tree to [order] (indexes may repeat: repeats become copies). */
+    /**
+     * Re-arrange the page tree to [order] (indexes may repeat: repeats become copies; pages not listed are removed).
+     * audit 5 E-4: the inherited /Resources /MediaBox /CropBox /Rotate are pushed down onto the pages before they are
+     * re-parented ([com.smartdocs.editor.core.pdf.PdfOps.arrangeInPlace] when every page stays). audit 5 E-5 / E-7:
+     * page labels follow the pages, fields whose widgets were on removed pages leave the form. An order without any
+     * valid page changes nothing.
+     */
     fun arrange(doc: PDDocument, order: List<Int>) {
-        val pages = doc.pages.toList()
-        val used = HashSet<Int>()
-        val seq = order.filter { it in pages.indices }.map { i -> if (used.add(i)) pages[i] else clonePage(pages[i]) }
-        pages.forEach { doc.pages.remove(it) }
-        seq.forEach { doc.pages.add(it) }
+        val n = doc.numberOfPages
+        val valid = order.filter { it in 0 until n }
+        if (valid.isEmpty()) return
+        if (valid.toSet().size == n) { com.smartdocs.editor.core.pdf.PdfOps.arrangeInPlace(doc, valid); return }
+        PageLabelRemap.keep(doc) {
+            com.smartdocs.editor.core.pdf.PageExtract.pushDownInherited(doc)
+            val pages = doc.pages.toList()
+            val kept = valid.toSet()
+            val gone = FormPrune.widgetsOn(pages.indices.filter { it !in kept }.map { pages[it] })
+            val used = HashSet<Int>()
+            setPages(doc, valid.map { i -> if (used.add(i)) pages[i] else clonePage(pages[i]) })
+            FormPrune.prune(doc, gone)
+        }
+    }
+
+    /** Make [seq] the flat page tree of [doc] (inherited attributes must have been pushed down first). */
+    private fun setPages(doc: PDDocument, seq: List<PDPage>) {
+        val root = doc.pages.cosObject
+        val kids = COSArray()
+        seq.forEach { p -> p.cosObject.setItem(COSName.PARENT, root); kids.add(p.cosObject) }
+        root.setItem(COSName.KIDS, kids)
+        root.setInt(COSName.COUNT, kids.size())
     }
 
     /** Insert [page] at [at] (0..count). */
@@ -140,11 +163,12 @@ object PageOps5 {
     suspend fun copyPages(src: File, out: File, password: String?, other: File, otherPassword: String?, pagesB: List<Int>, at: Int) = withContext(Dispatchers.IO) {
         E5Io.load(src, password).use { doc ->
             E5Io.load(other, otherPassword).use { od ->
-                var pos = at.coerceIn(0, doc.numberOfPages)
-                pagesB.filter { it in 0 until od.numberOfPages }.forEach { j ->
-                    val imported = doc.importPage(od.getPage(j))
-                    doc.pages.remove(imported); insertAt(doc, imported, pos++)
+                // audit 5 E-4 / E-5 / E-6: own resources, annotations and fields for the copies; labels kept
+                PageLabelRemap.keep(doc) {
+                    var pos = at.coerceIn(0, doc.numberOfPages)
+                    PageImport.importPages(doc, od, pagesB).forEach { insertAt(doc, it, pos++) }
                 }
+                PageImport.protectForImport(doc, od, otherPassword)
                 E5Io.save(doc, out)
             }
         }
@@ -155,10 +179,14 @@ object PageOps5 {
         E5Io.load(a, passwordA).use { doc ->
             E5Io.load(b, passwordB).use { bd ->
                 val na = doc.numberOfPages; val nb = bd.numberOfPages
+                // audit 5 E-4: inherited attributes onto A's pages before they are re-parented
+                com.smartdocs.editor.core.pdf.PageExtract.pushDownInherited(doc)
                 val aPages = doc.pages.toList()
-                val bPages = (0 until nb).map { doc.importPage(bd.getPage(it)) }
-                (aPages + bPages).forEach { doc.pages.remove(it) }
-                ImposeOrder.interleave(na, nb, reverseB).forEach { (which, i) -> doc.pages.add(if (which == 0) aPages[i] else bPages[i]) }
+                val bPages = PageImport.importPages(doc, bd, (0 until nb).toList())
+                PageLabelRemap.keep(doc) {
+                    setPages(doc, ImposeOrder.interleave(na, nb, reverseB).map { (which, i) -> if (which == 0) aPages[i] else bPages[i] })
+                }
+                PageImport.protectForImport(doc, bd, passwordB)
                 E5Io.save(doc, out)
             }
         }
@@ -172,16 +200,24 @@ object PageOps5 {
         E5Io.load(src, password).use { doc ->
             E5Io.load(other, otherPassword).use { od ->
                 val olds = targets.filter { it in 0 until doc.numberOfPages }.map { doc.getPage(it) }
-                val news = with.filter { it in 0 until od.numberOfPages }.map { j -> doc.importPage(od.getPage(j)).also { doc.pages.remove(it) } }
+                // audit 5 E-6: own resources / annotations / merged fields for the replacement pages
+                val news = PageImport.importPages(doc, od, with.filter { it in 0 until od.numberOfPages })
                 val map = HashMap<COSDictionary, COSDictionary>()
-                var anchor: PDPage? = null
-                news.forEachIndexed { k, np ->
-                    val old = olds.getOrNull(k)
-                    if (old != null) { doc.pages.insertBefore(np, old); map[old.cosObject] = np.cosObject; anchor = np }
-                    else { val a = anchor; if (a != null) doc.pages.insertAfter(np, a) else doc.pages.add(np); anchor = np }
+                PageLabelRemap.keep(doc) {
+                    var anchor: PDPage? = null
+                    news.forEachIndexed { k, np ->
+                        val old = olds.getOrNull(k)
+                        if (old != null) { doc.pages.insertBefore(np, old); map[old.cosObject] = np.cosObject; anchor = np }
+                        else { val a = anchor; if (a != null) doc.pages.insertAfter(np, a) else doc.pages.add(np); anchor = np }
+                    }
+                    val replaced = olds.take(news.size)
+                    // audit 5 E-7: fields whose widgets were only on the replaced pages go
+                    val gone = FormPrune.widgetsOn(replaced)
+                    replaced.forEach { doc.pages.remove(it) }
+                    FormPrune.prune(doc, gone)
                 }
-                olds.take(news.size).forEach { doc.pages.remove(it) }
                 repoint(doc, map)
+                PageImport.protectForImport(doc, od, otherPassword)
                 // nav-prefs: Preferences → bookmarks "import bookmarks when replacing pages"
                 if (com.smartdocs.editor.core.data.NpfPrefs.importBookmarksOnReplace) runCatching {
                     val srcPages = with.filter { it in 0 until od.numberOfPages }.map { od.getPage(it).cosObject }
@@ -197,7 +233,7 @@ object PageOps5 {
      * ([rtl] = right to left). [xCuts]/[yCuts] are optional cut positions as fractions of the visible page.
      */
     suspend fun splitPages(src: File, out: File, password: String?, pages: List<Int>, cols: Int, rows: Int, rtl: Boolean, xCuts: List<Float>? = null, yCuts: List<Float>? = null) = withContext(Dispatchers.IO) {
-        E5Io.edit(src, out, password) { doc ->
+        E5Io.edit(src, out, password) { doc -> PageLabelRemap.keep(doc) {
             for (i in pages.sortedDescending()) {
                 if (i !in 0 until doc.numberOfPages) continue
                 val page = doc.getPage(i)
@@ -211,7 +247,7 @@ object PageOps5 {
                     if (k > 0) { doc.pages.insertAfter(p, last); last = p }
                 }
             }
-        }
+        } }
     }
 
     /** Blank pages (no text and almost no ink) found by rendering small thumbnails. */
@@ -257,10 +293,11 @@ object PageOps5 {
             }
             if (cur.isNotEmpty()) parts += cur
             parts.mapIndexed { k, list ->
-                PDDocument().use { nd ->
-                    list.forEach { nd.importPage(doc.getPage(it)) }
-                    nd.documentInformation = doc.documentInformation
-                    val f = File(outDir, "${base}_${k + 1}.pdf"); E5Io.save(nd, f); f
+                // audit 5 E-3: protection, forms, navigation and inherited resources kept (PageExtract); E-5 labels;
+                // E-8: a name that never overwrites an earlier part or another file
+                com.smartdocs.editor.core.pdf.PageExtract.build(doc, list, password).use { nd ->
+                    PageLabelRemap.copyTo(doc, nd, list)
+                    val f = com.smartdocs.editor.core.pdf.PdfOps.uniqueIn(outDir, "${base}_${k + 1}"); E5Io.save(nd, f); f
                 }
             }
         }

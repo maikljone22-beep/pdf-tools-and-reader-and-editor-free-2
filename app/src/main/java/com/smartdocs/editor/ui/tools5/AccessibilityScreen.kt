@@ -24,7 +24,6 @@ import com.smartdocs.editor.ui.common.FilePickRow
 import com.smartdocs.editor.ui.common.rememberPdfPicker
 import com.smartdocs.editor.ui.tools.PrimaryButton
 import com.smartdocs.editor.ui.tools.ToolScaffold
-import com.tom_roush.pdfbox.pdmodel.PDDocument
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import java.io.File
@@ -88,6 +87,13 @@ fun AccessibilityScreen(nav: NavHostController, uri: String?) {
     val settings = LocalSettings.current
     val snackbar = remember { SnackbarHostState() }
     var file by remember { mutableStateOf(fileOf(uri)) }
+    // audit 5 A-01: the file opens with its password (the reader's one first); a full save keeps its protection
+    // (PdfOps.load). [origin] is the document the outputs transform (for "save in original").
+    var origin by remember { mutableStateOf(fileOf(uri)) }
+    var password by remember { mutableStateOf(com.smartdocs.editor.core.pdf.SessionPasswords.get(fileOf(uri))) }
+    var needPw by remember { mutableStateOf(false) }
+    var wrongPw by remember { mutableStateOf(false) }
+    var pwCancelled by remember { mutableStateOf(false) }
     var results by remember { mutableStateOf<List<AccResult>>(emptyList()) }
     var figures by remember { mutableStateOf<List<Pair<Int, String>>>(emptyList()) }   // page, alt
     var fixDialog by remember { mutableStateOf(false) }
@@ -100,7 +106,11 @@ fun AccessibilityScreen(nav: NavHostController, uri: String?) {
     var report by remember { mutableStateOf<AccessAutoTag.Report?>(null) }
     var isUa by remember { mutableStateOf(false) }
     val job = rememberT5Job()
-    val pick = rememberPdfPicker { file = it.firstOrNull(); results = emptyList(); figures = emptyList() }
+    val pick = rememberPdfPicker {
+        val f = it.firstOrNull()
+        file = f; origin = f; password = com.smartdocs.editor.core.pdf.SessionPasswords.get(f); needPw = false; wrongPw = false; pwCancelled = false
+        results = emptyList(); figures = emptyList()
+    }
     val checking = stringResource(R.string.t5_acc_checking)
     val fixing = stringResource(R.string.t5_acc_fixing)
     val formulaAlt = stringResource(R.string.pa_formula_alt)
@@ -111,17 +121,26 @@ fun AccessibilityScreen(nav: NavHostController, uri: String?) {
     val groupLabels = AccGroup.entries.associateWith { groupTitle(it) }
     val reportTitle = stringResource(R.string.t5_acc_report_title)
 
-    fun check(f: File) = job.launch(checking) {
-        val (res, figs) = io {
-            PDDocument.load(f).use { d ->
-                val facts = AccessInspect.facts(d, PdfInspect.inspect(d))
-                isUa = AccessUa.isUa(d)
-                AccessRules.evaluate(facts) to AccessInspect.figures(d).map { it.page to (it.alt ?: "") }
-            }
-        }
-        results = res; figures = figs
+    /** audit 5 A-01: a password problem opens the prompt; any other failure is shown as a sentence, not PdfBox text. */
+    fun failed(e: Throwable) {
+        if (com.smartdocs.editor.core.edit5.E5Locks.isPasswordError(e)) { wrongPw = !password.isNullOrEmpty(); needPw = true }
+        else job.error = ctx.getString(R.string.tte5_acc_failed)
     }
-    LaunchedEffect(file) { file?.let { check(it) } }
+    fun check(f: File) = job.launch(checking) {
+        val pw = password
+        try {
+            val (res, figs) = io {
+                com.smartdocs.editor.core.pdf.PdfOps.loadRaw(f, pw).use { d ->
+                    val facts = AccessInspect.facts(d, PdfInspect.inspect(d))
+                    isUa = AccessUa.isUa(d)
+                    AccessRules.evaluate(facts) to AccessInspect.figures(d).map { it.page to (it.alt ?: "") }
+                }
+            }
+            results = res; figures = figs; wrongPw = false
+        } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { results = emptyList(); figures = emptyList(); failed(e) }
+    }
+    // re-checked when the password changes (typed in the prompt)
+    LaunchedEffect(file, password) { if (!pwCancelled) file?.let { check(it) } }
     /** The Fix of rule [id]: a direct structure fix on a copy, the fix dialog, the tool that fixes it, or what to check by hand. */
     fun fixRule(id: String) {
         val f = file ?: return
@@ -133,7 +152,7 @@ fun AccessibilityScreen(nav: NavHostController, uri: String?) {
             id in AccessFix2.STRUCTURE_FIXES -> job.launch(fixing) {
                 val out = app.documents.uniqueFile(app.documents.docsDir, f.nameWithoutExtension + "_accessible")
                 val n = io {
-                    PDDocument.load(f).use { d ->
+                    com.smartdocs.editor.core.pdf.PdfOps.load(f, password).use { d ->   // audit 5 A-01: with the password
                         val k = when (id) {
                             "nested_alt" -> AccessFix2.removeNestedAlt(d)
                             "alt_content" -> AccessFix2.removeAltWithoutContent(d)
@@ -155,18 +174,22 @@ fun AccessibilityScreen(nav: NavHostController, uri: String?) {
                         d.save(out); k
                     }
                 }
-                file = out; result = out; info = fixedN.format(n)
+                file = out; result = com.smartdocs.editor.core.pdf.ToolOutputs.record(out, origin ?: f); info = fixedN.format(n)
             }
             else -> explain = id        // contrast, scripts, flicker, timed, table_regular: a person checks; Explain says what to look for
         }
     }
     val tf = file
-    if (tags && tf != null) { TagsEditor(nav, tf, onClose = { tags = false }, onSaved = { file = it }); return }
+    if (tags && tf != null) { TagsEditor(nav, tf, onClose = { tags = false }, onSaved = { file = it }, password = password); return }
     val shown = AccessRules.apply(results, groups, verdicts, skipped)
     val attachedMsg = stringResource(R.string.pc_acc_attached)
 
     ToolScaffold(stringResource(R.string.t5_acc_title), nav, snackbar = snackbar) {
         FilePickRow(file, stringResource(R.string.t5_input_pdf), pick)
+        if (pwCancelled && file != null) Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(stringResource(R.string.tte5_password_cancelled), Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            TextButton(onClick = { pwCancelled = false; needPw = true }) { Text(stringResource(R.string.tte5_retry)) }
+        }
         if (results.isNotEmpty()) {
             // checker options: which rule categories count
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -200,9 +223,12 @@ fun AccessibilityScreen(nav: NavHostController, uri: String?) {
                 OutlinedButton(onClick = {
                     val f = file ?: return@OutlinedButton
                     val html = AccessRules.htmlReport(f.name, shown, com.smartdocs.editor.core.data.AppLang.isArabic(settings), reportTitle, { ruleLabels[it] ?: it }, { statusLabels[it] ?: it.name }, { groupLabels[it] ?: it.name })
+                    val pw = password
                     job.launch(checking) {
                         val out = app.documents.uniqueFile(app.documents.docsDir, f.nameWithoutExtension + "_report")
-                        io { PDDocument.load(f).use { d -> Embed.addFiles(d, listOf(Attachment(f.nameWithoutExtension + "_accessibility.html", "text/html", html.toByteArray()))); d.save(out) } }
+                        try {
+                            io { com.smartdocs.editor.core.pdf.PdfOps.load(f, pw).use { d -> Embed.addFiles(d, listOf(Attachment(f.nameWithoutExtension + "_accessibility.html", "text/html", html.toByteArray()))); d.save(out) } }
+                        } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { out.delete(); failed(e); return@launch }
                         file = out; result = out; info = attachedMsg
                     }
                 }, enabled = !job.running) { Icon(Icons.Default.AttachFile, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.pc_acc_attach_report)) }
@@ -235,11 +261,25 @@ fun AccessibilityScreen(nav: NavHostController, uri: String?) {
                     }
                 }
             }
-            val ff = file; if (figures.isNotEmpty() && ff != null) FiguresPanel(ff, figures, onSaved = { out -> file = out })
+            val ff = file; if (figures.isNotEmpty() && ff != null) FiguresPanel(ff, password, origin, figures, onSaved = { out -> file = out }, onError = { failed(it) })
         }
         Text(stringResource(R.string.t5_acc_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
     T5JobUi(job, nav, snackbar)
+    if (needPw) {
+        var pw by remember { mutableStateOf("") }
+        AlertDialog(onDismissRequest = { needPw = false; pwCancelled = true },
+            title = { Text(stringResource(R.string.password_enter)) },
+            text = {
+                Column {
+                    if (wrongPw) Text(stringResource(R.string.e5_lock_wrong), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    OutlinedTextField(pw, { pw = it }, Modifier.fillMaxWidth(), singleLine = true, visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Password))
+                }
+            },
+            confirmButton = { Button(onClick = { needPw = false; pwCancelled = false; if (pw == password) { file?.let { check(it) } } else { password = pw } }, enabled = pw.isNotEmpty()) { Text(stringResource(R.string.ok)) } },
+            dismissButton = { TextButton(onClick = { needPw = false; pwCancelled = true }) { Text(stringResource(R.string.cancel)) } })
+    }
     explain?.let { id ->
         AlertDialog(onDismissRequest = { explain = null }, title = { Text(ruleLabels[id].orEmpty()) }, text = { Text(ruleExplain(id)) },
             confirmButton = { TextButton(onClick = { explain = null }) { Text(stringResource(R.string.ok)) } })
@@ -259,12 +299,13 @@ fun AccessibilityScreen(nav: NavHostController, uri: String?) {
     }
     if (fixDialog) {
         val f = file
-        if (f == null) fixDialog = false else FixDialog(f, onDismiss = { fixDialog = false }) { lang, title, tabs, fields, bookmarks, tag, retag, ua ->
+        val pw = password; val src = origin
+        if (f == null) fixDialog = false else FixDialog(f, pw, onDismiss = { fixDialog = false }) { lang, title, tabs, fields, bookmarks, tag, retag, ua ->
             fixDialog = false
             job.launch(fixing) {
                 val out = app.documents.uniqueFile(app.documents.docsDir, f.nameWithoutExtension + "_accessible")
-                io {
-                    PDDocument.load(f).use { d ->
+                try { io {
+                    com.smartdocs.editor.core.pdf.PdfOps.load(f, pw).use { d ->
                         // headings / lists / artifacts recognition (re-tags a tagged file when asked), with a report
                         if (tag) report = AccessAutoTag.tag(d, lang, retag)
                         if (lang.isNotBlank()) AccessFix.setLanguage(d, lang)
@@ -275,7 +316,9 @@ fun AccessibilityScreen(nav: NavHostController, uri: String?) {
                         if (ua) AccessUa.markUa(d)
                         d.save(out)
                     }
-                }
+                } } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { out.delete(); failed(e); return@launch }
+                // the fixed file is the document transformed: the result sheet may offer "save in original"
+                com.smartdocs.editor.core.pdf.ToolOutputs.record(out, src)
                 file = out
                 result = out
             }
@@ -284,10 +327,10 @@ fun AccessibilityScreen(nav: NavHostController, uri: String?) {
 }
 
 @Composable
-private fun FixDialog(f: File, onDismiss: () -> Unit, onApply: (String, String, Boolean, Boolean, Boolean, Boolean, Boolean, Boolean) -> Unit) {
+private fun FixDialog(f: File, password: String?, onDismiss: () -> Unit, onApply: (String, String, Boolean, Boolean, Boolean, Boolean, Boolean, Boolean) -> Unit) {
     var lang by remember { mutableStateOf("ar") }
     var title by remember { mutableStateOf("") }
-    LaunchedEffect(f) { title = runCatching { io { PDDocument.load(f).use { AccessFix.suggestTitle(it, f.nameWithoutExtension) } } }.getOrDefault(f.nameWithoutExtension) }
+    LaunchedEffect(f) { title = runCatching { io { com.smartdocs.editor.core.pdf.PdfOps.loadRaw(f, password).use { AccessFix.suggestTitle(it, f.nameWithoutExtension) } } }.getOrDefault(f.nameWithoutExtension) }
     var tabs by remember { mutableStateOf(true) }
     var fields by remember { mutableStateOf(true) }
     var bookmarks by remember { mutableStateOf(true) }
@@ -316,7 +359,7 @@ private fun FixDialog(f: File, onDismiss: () -> Unit, onApply: (String, String, 
 
 /** Alt text of tagged figures: edit, AI suggestion (vision hook or page-text prompt), decorative. */
 @Composable
-private fun FiguresPanel(file: File, figures: List<Pair<Int, String>>, onSaved: (File) -> Unit) {
+private fun FiguresPanel(file: File, password: String?, origin: File?, figures: List<Pair<Int, String>>, onSaved: (File) -> Unit, onError: (Throwable) -> Unit) {
     val app = LocalApp.current
     val ctx = LocalContext.current
     val settings = LocalSettings.current
@@ -335,7 +378,7 @@ private fun FiguresPanel(file: File, figures: List<Pair<Int, String>>, onSaved: 
                         scope.launchSafe({ busy = -1 }) {
                             var pageText = ""; var img: Bitmap? = null
                             if (page >= 0) runCatching {
-                                val s = PdfSession.open(ctx, file, null)
+                                val s = PdfSession.open(ctx, file, password)
                                 try {
                                     pageText = s.text(page)
                                     // the page picture goes to the vision hook when one is installed (T5Hooks.describeImage)
@@ -358,14 +401,18 @@ private fun FiguresPanel(file: File, figures: List<Pair<Int, String>>, onSaved: 
         PrimaryButton(stringResource(R.string.t5_acc_save_alt), enabled = busy < 0) {
             scope.launchSafe({}) {
                 val out = app.documents.uniqueFile(app.documents.docsDir, file.nameWithoutExtension + "_alt")
-                io {
-                    PDDocument.load(file).use { d ->
-                        AccessInspect.figures(d).forEachIndexed { i, fig ->
-                            if (i < alts.size) { if (decorative[i]) AccessFix.markDecorative(fig) else AccessFix.setAlt(fig, alts[i]) }
+                try {
+                    io {
+                        com.smartdocs.editor.core.pdf.PdfOps.load(file, password).use { d ->
+                            AccessInspect.figures(d).forEachIndexed { i, fig ->
+                                if (i < alts.size) { if (decorative[i]) AccessFix.markDecorative(fig) else AccessFix.setAlt(fig, alts[i]) }
+                            }
+                            d.save(out)
                         }
-                        d.save(out)
                     }
-                }
+                } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { out.delete(); onError(e); return@launchSafe }
+                // audit 5 A-01: a transformation of the document (the result sheet may offer "save in original")
+                com.smartdocs.editor.core.pdf.ToolOutputs.record(out, origin)
                 onSaved(out)
             }
         }

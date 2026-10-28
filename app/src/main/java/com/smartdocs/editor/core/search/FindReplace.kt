@@ -7,6 +7,7 @@ import com.smartdocs.editor.core.edit.EditTextStyle
 import com.smartdocs.editor.core.edit.PageTextModel
 import com.smartdocs.editor.core.edit.TextBlock
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import java.io.File
 import kotlin.math.abs
@@ -22,6 +23,12 @@ data class ReplaceOutcome(val count: Int, val fontWarning: Boolean, val lossy: B
 data class ReplaceMatch(val page: Int, val blockId: Int, val text: String, val rect: RectF, val ranges: List<IntRange>, val fontWarning: Boolean, val lossy: Boolean)
 
 /**
+ * audit 5 C-8: what [FindReplace.applyDetailed] did: occurrences [replaced], and selected blocks [skipped] because
+ * they could no longer be located (or no longer matched) after the earlier rewrites.
+ */
+data class ApplyResult(val replaced: Int, val skipped: Int)
+
+/**
  * Find & replace in the real page content, with the content-edit engine (MODULE_edit): [find] matches inside
  * [PageTextModel] blocks; [apply] rewrites each selected block with [ContentEdit.replaceText] and looks the block up
  * again after every rewrite, because operator indexes move. The replacement is literal text; Arabic replacements are
@@ -33,9 +40,8 @@ object FindReplace {
     suspend fun find(file: File, password: String?, query: String, options: SearchOptions, pages: List<Int>, onPage: (Int) -> Unit = {}): List<ReplaceMatch> = withContext(Dispatchers.IO) {
         if (query.isBlank()) return@withContext emptyList()
         val out = ArrayList<ReplaceMatch>()
-        for (p in pages) {
-            onPage(p)
-            val model = runCatching { PageTextModel.load(file, password, p) }.getOrNull() ?: continue
+        // audit 5 C-8: one load for all pages (was one full load per page searched)
+        for ((p, model) in PageTextModel.loadPages(file, password, pages, onPage)) {
             for (b in model.blocks) {
                 if (b.unreadable) continue          // undecodable glyphs: nothing reliable to match or rewrite
                 val r = matches(b.text, query, options)
@@ -82,28 +88,39 @@ object FindReplace {
     suspend fun apply(
         context: Context, src: File, out: File, password: String?, selected: List<ReplaceMatch>, query: String, options: SearchOptions,
         replacement: String, workDir: File, progress: (Int, Int) -> Unit = { _, _ -> },
-    ): Int = withContext(Dispatchers.IO) {
+    ): Int = applyDetailed(context, src, out, password, selected, query, options, replacement, workDir, progress).replaced
+
+    /**
+     * [apply] that also reports the blocks it had to skip (audit 5 C-8: they used to be skipped silently). The document
+     * is loaded and saved once for the whole run (no per-block temporaries), and the run stops on cancellation.
+     */
+    suspend fun applyDetailed(
+        context: Context, src: File, out: File, password: String?, selected: List<ReplaceMatch>, query: String, options: SearchOptions,
+        replacement: String, workDir: File, progress: (Int, Int) -> Unit = { _, _ -> },
+    ): ApplyResult = withContext(Dispatchers.IO) {
         require(out.canonicalPath != src.canonicalPath) { "out must differ from src" }
-        var cur = src
         var replaced = 0
-        val temps = ArrayList<File>()
-        try {
+        var skipped = 0
+        // audit 5 C-8: one load and one save for the whole run (was a full load + save per block); each block is
+        // looked up again on its re-analysed page, because operator indexes move after a rewrite
+        com.smartdocs.editor.core.edit.EditIo.load(src, password).use { doc ->
             selected.sortedWith(compareBy<ReplaceMatch> { it.page }.thenBy { it.blockId }).forEachIndexed { i, m ->
-                val model = runCatching { PageTextModel.load(cur, password, m.page) }.getOrNull() ?: return@forEachIndexed
-                val block = locate(model.blocks, m) ?: return@forEachIndexed
-                if (block.unreadable) return@forEachIndexed
-                val ranges = matches(block.text, query, options)
-                if (ranges.isEmpty()) return@forEachIndexed
-                val next = File(workDir, "fr_${System.nanoTime()}.pdf").also { temps += it }
+                ensureActive()
+                progress(i, selected.size)
+                val model = if (m.page !in 0 until doc.numberOfPages) null else try { PageTextModel.analyze(doc, m.page).model } catch (e: Exception) { null }
+                val block = model?.let { locate(it.blocks, m) }
+                val ranges = block?.takeIf { !it.unreadable }?.let { matches(it.text, query, options) }.orEmpty()
+                if (block == null || ranges.isEmpty()) { skipped++; return@forEachIndexed }
                 val style = EditTextStyle(size = block.size, color = block.color, bold = block.bold, italic = block.italic, align = block.align, family = block.family)
-                ContentEdit.replaceText(context, cur, next, password, m.page, block.ops, replaceIn(block.text, ranges, replacement), style)
-                cur = next
+                try {
+                    ContentEdit.replaceTextIn(context, doc, m.page, block.ops, replaceIn(block.text, ranges, replacement), style)
+                } catch (e: com.smartdocs.editor.core.edit.StalePageException) { skipped++; return@forEachIndexed }
                 replaced += ranges.size
                 progress(i + 1, selected.size)
             }
-            if (cur == src) src.copyTo(out, overwrite = true) else cur.copyTo(out, overwrite = true)
-        } finally { temps.forEach { runCatching { it.delete() } } }
-        replaced
+            if (replaced > 0) com.smartdocs.editor.core.edit.EditIo.save(doc, out) else src.copyTo(out, overwrite = true)
+        }
+        ApplyResult(replaced, skipped)
     }
 
     /** Replaces every occurrence on every page of [src] into [out] (reader «استبدال الكل»). */
