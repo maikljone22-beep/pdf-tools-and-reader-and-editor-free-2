@@ -234,7 +234,9 @@ object ToPdf6 {
                 out
             }
             kind == Kind6.MARKDOWN -> ToPdf.html(ctx, FlowHtml.write(withContext(Dispatchers.IO) { MdFlow.parse(ToPdf.readText(f), title, resolve = siblingResolver(f)) }), out)
-            kind == Kind6.HTML -> ToPdf.html(ctx, withContext(Dispatchers.IO) { HtmlBits.sanitize(ToPdf.readHtml(f)) }, out)
+            kind == Kind6.HTML -> ToPdf.html(ctx, withContext(Dispatchers.IO) { HtmlBits.sanitize(ToPdf.readHtml(f)) }, out).also {
+                if (bookmarks) runCatching { OfficeOutline.applyDetected(out) }      // row 93: headings → bookmarks
+            }
             kind == Kind6.TEXT -> ToPdf.htmlParts(ctx, ToPdf.textChunks(f).map { HtmlBits.page(title, TextHtml.body(it), HtmlBits.rtlDominant(it.take(20000)), TextHtml.CSS) }, out, tmp)
             kind.isSheetLike -> {
                 val sheets = withContext(Dispatchers.IO) { readSheetsInfo(f, kind, maxRows = 65_536, maxCols = 512) }

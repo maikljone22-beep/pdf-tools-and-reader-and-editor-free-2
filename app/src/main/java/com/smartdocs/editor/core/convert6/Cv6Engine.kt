@@ -142,7 +142,10 @@ class Cv6Engine(private val ctx: Context, private val docs: DocumentRepository) 
             // ---- no-file sources ----
             "url_pdf" -> {
                 val host = runCatching { android.net.Uri.parse(if (o.url.contains("://")) o.url else "https://" + o.url).host }.getOrNull()?.ifBlank { null } ?: "webpage"
-                Cv6Result(listOf(ToPdf.url(ctx, o.url, out(host, "pdf"))))
+                val pdf = ToPdf.url(ctx, o.url, out(host, "pdf"))
+                // row 93: bookmarks from the page's headings (detected by size in the printed pages)
+                if (o.bookmarks) runCatching { OfficeOutline.applyDetected(pdf) }
+                Cv6Result(listOf(pdf))
             }
             "clipboard_pdf" -> {
                 // Markdown only with strong signs, and line breaks are always kept (convert audit A-M9)

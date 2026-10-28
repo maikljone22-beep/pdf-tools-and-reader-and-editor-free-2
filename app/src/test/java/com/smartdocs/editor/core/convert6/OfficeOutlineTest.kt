@@ -44,4 +44,11 @@ class OfficeOutlineTest {
         ))
         assertEquals(listOf("Agenda", "Slide 2"), OfficeOutline.slideTitles(model) { "Slide $it" })
     }
+
+    @Test fun bookmarkSwitchOnTheOfficeAndWebCards() {
+        listOf("word_pdf", "excel_pdf", "ppt_pdf", "url_pdf", "html_pdf").forEach { id ->
+            assertEquals(id, true, Opt.BOOKMARKS in Cv6Catalog.byId(id)!!.opts)
+        }
+        assertEquals(true, Cv6Opts().bookmarks)
+    }
 }

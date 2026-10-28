@@ -97,6 +97,15 @@ object OfficeOutline {
         write(pdf, list); list.size
     }
 
+    /**
+     * Web page / HTML → PDF (row 93 "create bookmarks"): headings detected in the printed pages by their size
+     * (OutlineTools.detectHeadings, three levels). Returns how many bookmarks were added.
+     */
+    suspend fun applyDetected(pdf: File): Int {
+        val list = runCatching { com.smartdocs.editor.core.edit5.OutlineTools.toBookmarks(com.smartdocs.editor.core.edit5.OutlineTools.detectHeadings(pdf, null)) }.getOrDefault(emptyList())
+        return withContext(Dispatchers.IO) { write(pdf, list); list.size }
+    }
+
     /** One bookmark per page (slides): [titles][i] → page i. */
     suspend fun applyPerPage(pdf: File, titles: List<String>): Int = withContext(Dispatchers.IO) {
         if (titles.isEmpty()) return@withContext 0
