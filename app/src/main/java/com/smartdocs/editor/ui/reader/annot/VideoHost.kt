@@ -49,6 +49,15 @@ data class VideoItem(
     val stored: AnnotationWriter.Existing? = null,
 )
 
+/** The video properties dialog's values: player options, title (/T), locked, and a picked poster image (JPEG). */
+data class VideoProps(val options: VideoPdf.Options, val title: String, val locked: Boolean, val posterPath: String?)
+
+/** Playback rules shared by the in-page player and the tests. */
+object VideoPlayback {
+    /** How many times a video plays before it stops (looping: no limit). */
+    fun plays(o: VideoPdf.Options): Int = if (o.loop) Int.MAX_VALUE else o.repeat.coerceIn(1, VideoPdf.MAX_REPEAT)
+}
+
 /** A picked video waiting for its box on the page (Video tool). [aspect] = width / height. */
 data class PickedVideo(val file: File, val name: String, val mime: String, val aspect: Float, val posterPath: String?)
 
@@ -83,6 +92,8 @@ class VideoHost(private val s: ReaderState) {
     var launchSave: (name: String, file: File) -> Unit = { _, _ -> }
 
     private val autoplayed = HashSet<String>()
+    /** Times the active video has played (repeat count). */
+    private var plays = 1
     private var job: Job? = null
 
     val cacheDir: File get() = File(s.context.cacheDir, "video_play").apply { mkdirs() }
@@ -132,7 +143,12 @@ class VideoHost(private val s: ReaderState) {
             aspect = if (rot % 180 != 0) 1f / a else a
         }
         override fun onPlaybackStateChanged(state: Int) {
-            if (state == Player.STATE_ENDED) controlsVisible = true
+            if (state != Player.STATE_ENDED) return
+            // FINAL_CHECK_2 #15: play N times, then keep the player open or show the poster again
+            val o = active?.options
+            if (o != null && !loop && plays < VideoPlayback.plays(o)) { plays++; player?.seekTo(0); player?.play(); return }
+            if (o != null && !o.keepOpen) { s.scope.launch { deactivate() }; return }
+            controlsVisible = true
         }
     }
 
@@ -144,8 +160,9 @@ class VideoHost(private val s: ReaderState) {
         if (auto) autoplayed += item.key
         activeKey = item.key; active = item
         error = null; loading = true; aspect = 0f; rotation = 0
-        muted = item.options.muted; loop = item.options.loop
+        muted = item.options.muted; loop = item.options.loop; plays = 1
         controlsVisible = true
+        if (item.options.fullscreen) fullscreen = true
         val key = item.key
         job = s.scope.launch {
             try {
@@ -157,7 +174,7 @@ class VideoHost(private val s: ReaderState) {
                         addListener(listener)
                         setMediaItem(MediaItem.fromUri(Uri.fromFile(f)))
                         repeatMode = if (loop) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
-                        volume = if (muted) 0f else 1f
+                        volume = item.options.gain
                         playWhenReady = true
                         prepare()
                     }
@@ -190,7 +207,7 @@ class VideoHost(private val s: ReaderState) {
 
     fun seekTo(ms: Long) { player?.seekTo(ms.coerceAtLeast(0)) }
 
-    fun toggleMute() { muted = !muted; player?.volume = if (muted) 0f else 1f }
+    fun toggleMute() { muted = !muted; player?.volume = if (muted) 0f else (active?.options?.copy(muted = false)?.gain ?: 1f) }
 
     fun toggleLoop() { loop = !loop; player?.repeatMode = if (loop) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF }
 
@@ -292,13 +309,23 @@ class VideoHost(private val s: ReaderState) {
         }
     }
 
-    /** Options dialog result: one undoable edit of the selected video (a stored one becomes pending). */
-    fun applyOptions(o: VideoPdf.Options) {
+    /**
+     * Properties dialog result: one undoable edit of the selected video (a stored one becomes pending): options,
+     * title (/T), locked, and the poster ([posterPath] a picked image; the automatic frame when the mode is auto).
+     */
+    fun applyOptions(p: VideoProps) {
         optionsOpen = false
-        s.edit.edit { it.copy(video = o) }
+        s.edit.edit { a ->
+            val poster = when (p.options.poster) { VideoPdf.POSTER_FILE -> p.posterPath ?: a.posterPath; VideoPdf.POSTER_NONE -> a.posterPath; else -> if (a.video?.poster == VideoPdf.POSTER_FILE) null else a.posterPath }
+            a.copy(video = p.options, author = p.title, locked = p.locked, posterPath = poster)
+        }
     }
 
-    fun selectedOptions(): VideoPdf.Options = s.edit.current()?.video ?: selectedItem()?.options ?: VideoPdf.Options()
+    /** The selected video's properties for the dialog. */
+    fun selectedProps(): VideoProps {
+        val a = s.edit.current()
+        return VideoProps(a?.video ?: selectedItem()?.options ?: VideoPdf.Options(), a?.author ?: "", a?.locked ?: false, a?.posterPath)
+    }
 
     // =============== Video tool: picked file → box ===============
 

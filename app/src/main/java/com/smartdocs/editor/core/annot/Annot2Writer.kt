@@ -243,13 +243,17 @@ object Annot2Writer {
         val file = a.filePath?.let(::File)?.takeIf { it.isFile } ?: throw java.io.FileNotFoundException("video file missing")
         val box = a.rects.firstOrNull() ?: throw IllegalArgumentException("video without a box")
         val r = pdRect(box)
-        val poster = a.posterPath?.let(::File)?.takeIf { it.isFile }?.let { pf -> posterOf(pf.readBytes()) }
-            ?: runCatching { VideoPoster.makeJpeg(file)?.let(::posterOf) }.getOrNull()
+        val opts = a.video ?: VideoPdf.Options()
+        // FINAL_CHECK_2 #15 poster: none, an image the user picked, or a frame of the video
+        val poster = if (opts.poster == VideoPdf.POSTER_NONE) null
+            else a.posterPath?.let(::File)?.takeIf { it.isFile }?.let { pf -> posterOf(pf.readBytes()) }
+                ?: runCatching { VideoPoster.makeJpeg(file)?.let(::posterOf) }.getOrNull()
         val name = a.text.ifBlank { file.name.substringAfter('_') }
         val an = VideoPdf.writeScreen(doc, page, r.lowerLeftX, r.lowerLeftY, r.upperRightX, r.upperRightY, file, name,
-            a.mime.ifBlank { VideoPdf.videoMime(file.name) }, a.video ?: VideoPdf.Options(), poster,
+            a.mime.ifBlank { VideoPdf.videoMime(file.name) }, opts, poster,
             title = a.author.ifBlank { name }, contents = name, color = a.color)
         an.cosObject.setDate(COSName.M, Calendar.getInstance())
+        if (a.locked) AnnotStyle.setLocked(an.cosObject, true)
     }
 
     private fun posterOf(jpeg: ByteArray): VideoPdf.Poster? = VideoPdf.jpegSize(jpeg)?.let { (w, h) -> VideoPdf.Poster(jpeg, w, h) }
@@ -399,7 +403,7 @@ object Annot2Writer {
         }
         val title = cos.getString(COSName.T) ?: ""
         return base.copy(kind = AnnotKind.VIDEO, rects = listOf(rect), filePath = path, mime = v.mime,
-            text = an.contents?.takeIf { it.isNotBlank() } ?: v.name, author = title.ifBlank { base.author },
+            text = an.contents?.takeIf { it.isNotBlank() && it != v.options.alt } ?: v.name, author = title.ifBlank { base.author },
             video = v.options, posterPath = poster, color = if (v.ours) base.color else 0x000000)
     }
 
