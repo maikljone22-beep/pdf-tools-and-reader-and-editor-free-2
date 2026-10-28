@@ -160,6 +160,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
         when {
             com.smartdocs.editor.ui.view5.V5State.of(state).onBack() -> {}
             com.smartdocs.editor.ui.nve.NveState.of(state).onBack() -> {}      // NVE
+            com.smartdocs.editor.ui.selmenu.SelHooks.onBack(state) -> {}      // selmenu: close the object / right-click menu
             state.searchOpen -> state.closeSearch()
             state.selection != null -> state.selection = null
             state.edit.target != null -> state.edit.clear()
@@ -347,7 +348,8 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
             bottomBar = {
                 if (chrome) Column {
                     if (tts.state != ReadAloudController.State.IDLE && ReaderAi6.ownsTts(state)) TtsBar(tts) { r -> ReadAloudController.setRate(r); scope.launch { app.settings.update { it.copy(ttsRate = r) } } }
-                    state.selection?.let { sel ->
+                    // selmenu: the floating selection menu (SelMenuLayer below) replaced this bottom bar
+                    if (com.smartdocs.editor.ui.selmenu.SelHooks.LEGACY_BAR) state.selection?.let { sel ->
                         SelectionMenu(sel, state,
                             // nitro-protect2: copying / sending the text out follows the document's copy permission
                             onCopy = { if (state.guard.check(com.smartdocs.editor.core.security.DocAction.COPY)) { ReaderIntents.copy(ctx, it); state.selection = null; scope.launch { snack.showSnackbar(ctx.getString(R.string.copy_text)) } } },
@@ -368,6 +370,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                         if (contentEdit) return@onPreviewKeyEvent false      // tab-view-core E-19: Edit content owns the keyboard
                         // volume (if enabled) / arrows / page keys: spread-aware screen flips (view module)
                         // MODULE_pageflip6: Space / arrows in the document's direction while the page-turn view is shown
+                        com.smartdocs.editor.ui.selmenu.SelHooks.onKey(state, e.nativeKeyEvent) ||     // selmenu: Shift+F10 / Menu key
                         com.smartdocs.editor.ui.nve.NveKeys.onKey(state, e.nativeKeyEvent, switchTab) ||     // NVE: tabs / Ctrl+Home… / customised keys
                         com.smartdocs.editor.ui.pageflip.PageFlipKeys.onKey(state, e.nativeKeyEvent, rtl) ||
                         com.smartdocs.editor.ui.view5.V5Keys.onKey(state, e.nativeKeyEvent) || com.smartdocs.editor.ui.gaps6.G6Keys.handle(state, e.nativeKeyEvent.keyCode, settings, rtl)
@@ -402,6 +405,10 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                             // NVE: document notifications (forms, JavaScript, PDF/A, redactions, 3D, portfolio) + crash-recovery copy
                             com.smartdocs.editor.ui.nve.panes.NveDocBanners(state, onOpenTool = { actions.navigateTool(it) }, modifier = Modifier.align(Alignment.TopCenter).padding(top = 96.dp))
                             com.smartdocs.editor.ui.nve.shell.NveRecoveryBanner(state, onOpen = { f -> nav.navigate(Routes.reader(android.net.Uri.fromFile(f).toString())) }, modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 48.dp))
+                            // selmenu: floating selection / long-press / right-click menus (one registry, core/selmenu)
+                            com.smartdocs.editor.ui.selmenu.SelMenuLayer(state, actions, quick, snack,
+                                onTextTool = { s, a -> if (state.guard.check(com.smartdocs.editor.core.security.DocAction.COPY)) textTools = s to a },
+                                onReadAloud = { p, c -> startReadAloud(c, p) }, onPrompt = { prompt = it }, onOpenLink = openLink)
                         }
                     }
                 }
