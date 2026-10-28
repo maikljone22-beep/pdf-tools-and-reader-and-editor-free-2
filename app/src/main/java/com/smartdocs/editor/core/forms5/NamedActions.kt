@@ -16,6 +16,9 @@ object NamedActions {
 
     fun resolve(name: String): NamedOp = MAP[name.trim().lowercase()] ?: NamedOp.UNSUPPORTED
 
+    /** JS doc.scroll: a y of the page's user space (0 = bottom) → share of the page height from the top (0..1). */
+    fun scrollFraction(y: Float, pageH: Float): Float = if (pageH <= 0f) 0f else (1f - y / pageH).coerceIn(0f, 1f)
+
     /** One zoom step of ZoomViewIn / ZoomViewOut, kept within [min]..[max]. */
     fun zoomStep(zoom: Float, inward: Boolean, min: Float, max: Float): Float = (if (inward) zoom * 1.25f else zoom / 1.25f).coerceIn(min, max)
 }

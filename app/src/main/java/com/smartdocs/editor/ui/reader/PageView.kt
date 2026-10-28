@@ -1,6 +1,7 @@
 package com.smartdocs.editor.ui.reader
 
 import androidx.compose.animation.core.animateDecay
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -215,8 +216,12 @@ fun PageView(
     // jumps requested by the toolbar / panels / search / auto flip / keys
     LaunchedEffect(state.pendingJump, mode) {
         val p = state.pendingJump ?: return@LaunchedEffect
-        if (mode == ViewMode.CONTINUOUS) listState.scrollToItem(contItemOf(p)) else pagerState.animateScrollToPage(spread.pageToItem(dp(p)))
-        state.pendingJump = null
+        if (mode == ViewMode.CONTINUOUS) {
+            listState.scrollToItem(contItemOf(p))
+            // a point inside the page (JS doc.scroll): scroll that share of the page's height further
+            state.pendingJumpTop?.let { f -> listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == contItemOf(p) }?.let { item -> listState.scrollBy(item.size * f) } }
+        } else pagerState.animateScrollToPage(spread.pageToItem(dp(p)))
+        state.pendingJump = null; state.pendingJumpTop = null
     }
     // keep the current page in sync with what the user sees
     if (mode == ViewMode.CONTINUOUS) {
