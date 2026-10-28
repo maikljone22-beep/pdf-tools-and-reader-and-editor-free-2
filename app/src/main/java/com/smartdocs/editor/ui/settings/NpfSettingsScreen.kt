@@ -136,7 +136,7 @@ private fun sections(nav: NavHostController): List<Section> = listOf(
             trailing = if (tree.isNotBlank()) ({ TextButton(onClick = { NpfPrefs.setString(K.SAVE_TREE, "") }) { Text(stringResource(R.string.npf_clear)) } }) else null)
         Hint(stringResource(R.string.npf_save_folder_hint))
         Label(stringResource(R.string.npf_recent_limit))
-        Chips(listOf(0 to stringResource(R.string.npf_all), 10 to "10", 25 to "25", 50 to "50"), NpfPrefs.recentLimit) { NpfPrefs.setInt(K.RECENT_LIMIT, it) }
+        Chips(NpfPrefs.RECENT_CHOICES.map { it to if (it == 0) stringResource(R.string.npf_all) else "$it" }, NpfPrefs.recentLimit) { NpfPrefs.setInt(K.RECENT_LIMIT, it) }   // fc-settings: one setting (also Settings → General)
         Label(stringResource(R.string.npf_autosave_every))
         Chips(listOf(0 to stringResource(R.string.npf_on_leave), 2 to "2", 5 to "5", 10 to "10", 15 to "15").map { (v, l) -> v to if (v == 0) l else stringResource(R.string.npf_minutes, l) }, NpfPrefs.autoSaveMinutes) { NpfPrefs.setInt(K.AUTOSAVE_MIN, it) }
         Hint(stringResource(R.string.npf_autosave_hint))
@@ -219,6 +219,7 @@ private fun sections(nav: NavHostController): List<Section> = listOf(
             val i = Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, ctx.packageName).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             runCatching { ctx.startActivity(i) }
         })
+        FcsNotificationChannels()   // fc-settings: per-message settings (gear per notification channel)
     },
     // ---------------- search ----------------
     Section(R.string.npf_s_search, "search case whole words attachments comments results colour بحث حالة كلمات مرفقات نتائج لون") {
@@ -232,9 +233,10 @@ private fun sections(nav: NavHostController): List<Section> = listOf(
         Column(Modifier.padding(horizontal = 16.dp)) { NpfColorRow(NpfPrefs.hitColor, SWATCHES) { NpfPrefs.setInt(K.S_HIT, 0x66000000 or it) } }
         Label(stringResource(R.string.npf_s_hit_cur))
         Column(Modifier.padding(horizontal = 16.dp)) { NpfColorRow(NpfPrefs.hitCurrentColor, SWATCHES) { NpfPrefs.setInt(K.S_HIT_CUR, 0x99000000.toInt() or it) } }
+        com.smartdocs.editor.ui.nve.search.FcsIndexPrefsRows()   // fc-settings: index / search preferences (XMP, properties, tags, log, title, width, size cap)
     },
     // ---------------- accessibility ----------------
-    Section(R.string.npf_s_a11y, "accessibility contrast colours reading order وصول تباين ألوان ترتيب القراءة") {
+    Section(R.string.npf_s_a11y, "accessibility contrast colours reading order assistant وصول تباين ألوان ترتيب القراءة مساعد") {
         Sw(R.string.npf_a11y_override, NpfPrefs.a11yOverride, R.string.npf_a11y_override_sub) { NpfPrefs.setBool(K.A11Y_ON, it) }
         Label(stringResource(R.string.npf_a11y_presets))
         val presets = listOf(0x000000 to 0xFFFF00, 0x000000 to 0xFFFFFF, 0x000000 to 0x00FF00, 0xFFFFFF to 0x000000, 0xFFF8E1 to 0x4E342E, 0x0D1B2A to 0xE0E1DD)
@@ -252,12 +254,14 @@ private fun sections(nav: NavHostController): List<Section> = listOf(
         Column(Modifier.padding(horizontal = 16.dp)) { NpfColorRow(NpfPrefs.a11yBackground, listOf(0x000000, 0xFFFFFF, 0xFFF8E1, 0x0D1B2A, 0x263238, 0xE8F5E9)) { NpfPrefs.setInt(K.A11Y_BG, it) } }
         Label(stringResource(R.string.npf_read_order))
         Chips(listOf("infer" to stringResource(R.string.npf_read_infer), "raw" to stringResource(R.string.npf_read_raw)), NpfPrefs.readingOrder) { NpfPrefs.setString(K.READ_ORDER, it) }
+        FcsA11yAssistantRow()   // fc-settings: Accessibility Setup Assistant
     },
     // ---------------- privacy & appearance ----------------
-    Section(R.string.npf_s_general, "offline internet accent colour theme دون اتصال إنترنت لون مميز مظهر") {
+    Section(R.string.npf_s_general, "offline internet accent colour theme connected debug log pinned quick access دون اتصال إنترنت لون مميز مظهر متصل تصحيح سجل مثبتة") {
         val ctx = LocalContext.current
         Sw(R.string.npf_offline, NpfPrefs.offline, R.string.npf_offline_sub) { NpfPrefsActions.setOffline(ctx, it) }
         Hint(stringResource(R.string.npf_offline_hint))
+        FcsGeneralRows()   // fc-settings: pinned-command position, ConnectedPDF, debug log
         Label(stringResource(R.string.npf_accent))
         Column(Modifier.padding(horizontal = 16.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
@@ -304,6 +308,7 @@ private fun ToolDefaults(nav: NavHostController) {
     GroupRow(stringResource(R.string.npf_convert_hub), stringResource(R.string.npf_convert_hub_sub), icon = Icons.Default.SwapHoriz, onClick = { nav.navigate(Routes.tool("convert_hub")) })
     GroupRow(stringResource(R.string.npf_to_pdf), icon = Icons.Default.PictureAsPdf, onClick = { nav.navigate(Routes.tool("to_pdf_plus")) })
     GroupRow(stringResource(R.string.npf_export), icon = Icons.Default.IosShare, onClick = { nav.navigate(Routes.tool("export_plus")) })
+    FcsConvDefaultsRows()   // fc-settings: saved per-conversion defaults
     GroupDivider()
     // OCR defaults: the OCR tool's output, OCR plus pre-clean / language auto-detect (its own prefs "t5_ocr")
     Label(stringResource(R.string.npf_ocr_output))
