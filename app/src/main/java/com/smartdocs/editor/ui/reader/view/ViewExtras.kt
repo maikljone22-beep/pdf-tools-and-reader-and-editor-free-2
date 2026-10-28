@@ -64,7 +64,7 @@ class ViewExtras(private val state: ReaderState) {
 
     // ---------------- page stepping (spread aware) ----------------
 
-    fun spread(): PageSpread = PageSpread(state.viewMode)
+    fun spread(): PageSpread = PageSpread(state.viewMode, com.smartdocs.editor.core.rpf.RpfPrefs.facingCount)   // reader-prefs: 2-up / 3-up
 
     /** First page of the screen [delta] screens away from the current one, or null when out of range. */
     fun flipTarget(delta: Int): Int? = spread().step(state.currentPage, delta, state.pageCount)
@@ -116,26 +116,28 @@ class ViewExtras(private val state: ReaderState) {
 /**
  * Pager item <-> page mapping for the paged modes.
  * SINGLE / CONTINUOUS: one page per item. FACING: (0,1) (2,3)…  COVER: (0) (1,2) (3,4)…
+ * reader-prefs (§37): [n] pages side by side in the facing modes (2 or 3): FACING (0,1,2) (3,4,5)…, COVER (0) (1,2,3)…
  */
-class PageSpread(val mode: ViewMode) {
+class PageSpread(val mode: ViewMode, n: Int = 2) {
+    private val n = n.coerceIn(2, 3)
     val paired: Boolean get() = mode == ViewMode.FACING || mode == ViewMode.COVER
-    val perItem: Int get() = if (paired) 2 else 1
+    val perItem: Int get() = if (paired) n else 1
 
     fun itemCount(pageCount: Int): Int = when (mode) {
-        ViewMode.FACING -> (pageCount + 1) / 2
-        ViewMode.COVER -> if (pageCount <= 1) pageCount else 1 + pageCount / 2
+        ViewMode.FACING -> (pageCount + n - 1) / n
+        ViewMode.COVER -> if (pageCount <= 1) pageCount else 1 + (pageCount - 1 + n - 1) / n
         else -> pageCount
     }
 
     fun pageToItem(page: Int): Int = when (mode) {
-        ViewMode.FACING -> (page / 2).coerceAtLeast(0)
-        ViewMode.COVER -> if (page <= 0) 0 else (page + 1) / 2
+        ViewMode.FACING -> (page / n).coerceAtLeast(0)
+        ViewMode.COVER -> if (page <= 0) 0 else (page - 1) / n + 1
         else -> page.coerceAtLeast(0)
     }
 
     fun firstPage(item: Int): Int = when (mode) {
-        ViewMode.FACING -> item * 2
-        ViewMode.COVER -> if (item <= 0) 0 else item * 2 - 1
+        ViewMode.FACING -> item * n
+        ViewMode.COVER -> if (item <= 0) 0 else (item - 1) * n + 1
         else -> item
     }
 
@@ -155,7 +157,7 @@ class PageSpread(val mode: ViewMode) {
         val list = when {
             !paired -> listOf(f)
             mode == ViewMode.COVER && item == 0 -> listOf(0)
-            else -> listOf(f, f + 1)
+            else -> (f until f + n).toList()
         }
         return list.filter { it in 0 until pageCount }
     }
