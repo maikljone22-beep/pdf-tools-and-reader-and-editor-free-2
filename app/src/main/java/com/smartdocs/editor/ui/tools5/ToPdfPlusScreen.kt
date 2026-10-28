@@ -49,6 +49,14 @@ fun ToPdfPlusScreen(nav: NavHostController, uri: String?) {
     val srcDesc = stringResource(R.string.nat_source_desc)
     val job = rememberT5Job()
     val web = remember { WebOpts() }
+    // fc-settings: saved defaults of this screen (bookmarks, attach source, background, web page layout)
+    LaunchedEffect(Unit) { com.smartdocs.editor.core.convert6.Cv6Defaults.screen(ctx, TO_PDF_DEFAULTS)?.let { j ->
+        bookmarks = j.optBoolean("bookmarks", bookmarks); attachSrc = j.optBoolean("attach", attachSrc); background = j.optBoolean("background", background)
+        web.paper = j.optString("paper", web.paper); web.landscape = j.optBoolean("landscape", web.landscape); web.margin = j.optInt("margin", web.margin)
+        web.timeoutSec = j.optDouble("timeout", web.timeoutSec.toDouble()).toFloat(); web.images = j.optBoolean("images", web.images)
+        web.backgrounds = j.optBoolean("backgrounds", web.backgrounds); web.underline = j.optBoolean("underline", web.underline); web.noLinks = j.optBoolean("noLinks", web.noLinks)
+    } }
+    val savedMsg = stringResource(R.string.fcs_cv_saved)
     val pick = rememberAnyFilePicker(true, ToPdf.pickerMimes) { picked -> files = files + picked.filter { f -> files.none { it.absolutePath == f.absolutePath } } }
     val unsupported = files.filter { ToPdf.kindOf(it.name) == SourceKind.UNKNOWN }
     val combining = stringResource(R.string.t5_combining)
@@ -135,11 +143,22 @@ fun ToPdfPlusScreen(nav: NavHostController, uri: String?) {
                 }
             }
         }
+        // fc-settings: "Save as default" for the options of all three tabs
+        OutlinedButton(onClick = {
+            com.smartdocs.editor.core.convert6.Cv6Defaults.saveScreen(ctx, TO_PDF_DEFAULTS, org.json.JSONObject()
+                .put("bookmarks", bookmarks).put("attach", attachSrc).put("background", background)
+                .put("paper", web.paper).put("landscape", web.landscape).put("margin", web.margin).put("timeout", web.timeoutSec.toDouble())
+                .put("images", web.images).put("backgrounds", web.backgrounds).put("underline", web.underline).put("noLinks", web.noLinks))
+            android.widget.Toast.makeText(ctx, savedMsg, android.widget.Toast.LENGTH_SHORT).show()
+        }) { Icon(Icons.Default.BookmarkAdd, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.fcs_cv_save_default)) }
         if (job.results.isNotEmpty()) ResultsList(job.results, nav, "application/pdf")
         Text(stringResource(R.string.t5_print_service_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
     T5JobUi(job, nav, snackbar)
 }
+
+/** fc-settings: [com.smartdocs.editor.core.convert6.Cv6Defaults] screen name of To PDF+. */
+const val TO_PDF_DEFAULTS = "to_pdf_plus"
 
 /** Target of "Share to PDF" from other apps (MainActivity puts the payload in [ShareImport.pending]). */
 @Composable

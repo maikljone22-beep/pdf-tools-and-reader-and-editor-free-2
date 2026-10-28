@@ -25,8 +25,8 @@ object CloudPath {
         return a / 2f
     }
 
-    /** Bumps along every edge of the closed polygon [pts], bulging outwards. */
-    fun build(pts: List<Pair<Float, Float>>, intensity: Int, lineWidth: Float): List<Cubic> {
+    /** Bumps along every edge of the closed polygon [pts], bulging outwards (inwards when [inward], Foxit 24.33). */
+    fun build(pts: List<Pair<Float, Float>>, intensity: Int, lineWidth: Float, inward: Boolean = false): List<Cubic> {
         if (pts.size < 2) return emptyList()
         val r = radius(intensity, lineWidth)
         val ccw = signedArea(pts) >= 0f            // y-up: counter-clockwise has positive area
@@ -38,7 +38,8 @@ object CloudPath {
             val n = max(1, ceil(len / (2f * r)).toInt())
             val dx = (bx - ax) / len; val dy = (by - ay) / len
             // outward normal: right-hand side of the direction for a CCW polygon in y-up space
-            val nx = if (ccw) dy else -dy; val ny = if (ccw) -dx else dx
+            val out1 = if (ccw != inward) 1f else -1f
+            val nx = dy * out1; val ny = -dx * out1
             val chord = len / n
             val k = chord / 2f * 4f / 3f           // one-cubic semicircle approximation
             for (j in 0 until n) {
@@ -46,6 +47,31 @@ object CloudPath {
                 val ex = ax + dx * chord * (j + 1); val ey = ay + dy * chord * (j + 1)
                 out += Cubic(sx, sy, sx + nx * k, sy + ny * k, ex + nx * k, ey + ny * k, ex, ey)
             }
+        }
+        return out
+    }
+
+    /**
+     * Nitro 7.27 cloudy oval: the ellipse inside ([l], [b])-([r], [t]) as a counter-clockwise polygon with one edge per
+     * bump, ready for [build].
+     */
+    fun ellipse(l: Float, b: Float, r: Float, t: Float, intensity: Int, lineWidth: Float): List<Pair<Float, Float>> {
+        val rx = kotlin.math.abs(r - l) / 2f; val ry = kotlin.math.abs(t - b) / 2f
+        val cx = (l + r) / 2f; val cy = (b + t) / 2f
+        // dense outline, then points spaced evenly along its length so every bump has the same size
+        val dense = 720
+        val ring = (0..dense).map { i -> val a = 2.0 * Math.PI * i / dense; (cx + rx * kotlin.math.cos(a)).toFloat() to (cy + ry * kotlin.math.sin(a)).toFloat() }
+        val cum = FloatArray(dense + 1)
+        for (i in 1..dense) cum[i] = cum[i - 1] + hypot(ring[i].first - ring[i - 1].first, ring[i].second - ring[i - 1].second)
+        val perim = cum[dense]
+        val n = max(8, ceil(perim / (2f * radius(intensity, lineWidth))).toInt()).coerceAtMost(dense)
+        val out = ArrayList<Pair<Float, Float>>(n)
+        var j = 0
+        for (k in 0 until n) {
+            val target = perim * k / n
+            while (j < dense - 1 && cum[j + 1] < target) j++
+            val seg = (cum[j + 1] - cum[j]).coerceAtLeast(1e-6f); val t = ((target - cum[j]) / seg).coerceIn(0f, 1f)
+            out += (ring[j].first + (ring[j + 1].first - ring[j].first) * t) to (ring[j].second + (ring[j + 1].second - ring[j].second) * t)
         }
         return out
     }

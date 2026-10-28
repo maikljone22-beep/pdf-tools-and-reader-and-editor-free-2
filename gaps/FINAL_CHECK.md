@@ -37,7 +37,7 @@
 ## Where the check disagrees with a DONE file
 - **PAGES_CONVERT_LOG stage A, Organize per-page Redact and OCR:** these do not act on the tapped page. Redact opens the whole-document tool, and OCR only opens the reader (`OrganizeScreen.kt:203-204`). → STILL MISSING.
 - **DONE_view_edit §9, reading ruler vertical / opacity / reset:** the `rulerVertical` / `rulerOpacity` settings belong to the measurement rulers. The reading band still has only on/off, dim, height and colour. → STILL MISSING.
-- **DONE_pdf3c_nav, reading order preference:** `NpfPrefs.readingOrder` is never read, so it is code-only. → STILL MISSING.
+- ~~DONE_pdf3c_nav, reading order preference: never read~~ **Correction (pdf-3c):** it is read in `ReaderAi6.orderedPage` (ReaderAi6.kt:86), which read-aloud calls; the preference is DONE. Only a *per-document* reading option (34.27) is open.
 - **DONE_comments_forms 24.33, cloud scallops:** marked not feasible there, but the app draws its own cloud path (`CloudPath`). → STILL MISSING.
 - **DONE_view_edit.md:** its header still says "Not merged", but it was merged in 315a67b.
 
@@ -2150,7 +2150,7 @@ Paths are under `app/src/main/java/com/smartdocs/editor/`. Only rows that were P
 | 34.24 Nested alt / alt hiding annotations fix | MISSING | STILL MISSING | only explanations (pc_accx_nested_alt, pc_accx_alt_hides); no fix |
 | 34.25 Tables / lists / headings fixes | MISSING | DONE | auto-tag headings/lists (`AccessAutoTag.classify`); manual fix in tags editor (type, Scope/Headers/RowSpan/ColSpan/Summary). No automatic table recognition |
 | 34.26 Setup Assistant | MISSING | STILL MISSING | OPEN in PAGES_CONVERT_LOG |
-| 34.27 Reading Option (per document) | MISSING | STILL MISSING | `NpfPrefs.readingOrder` (`core/data/NpfPrefs.kt:162`) has no reader (0 callers) — code-only; per-document option OPEN |
+| 34.27 Reading Option (per document) | MISSING | STILL MISSING | the preference is DONE (`ReaderAi6.orderedPage` reads `NpfPrefs.readingOrder`); only the per-document option is OPEN |
 | 34.29 TalkBack labels | PARTIAL | DONE | 41 `pc_cd_*` descriptions (PAGES_CONVERT_LOG stage F); not device-tested |
 | 34.34 Autotag headings/lists, re-tag | PARTIAL | DONE | `AccessibilityScreen.kt:226` → `AccessAutoTag.tag(d, lang, retag)` |
 | 34.35 Autotag form fields separately | PARTIAL | DONE | `AccessTags.tagAnnotations` (Widget → Form OBJR, `AccessTags.kt:285-305`) |
@@ -2798,3 +2798,51 @@ Low
 | NOT-FEASIBLE | 0 | 0 | 1 | 2 | 3 |
 | OWNER-ACTION | 1 | 1 | 0 | 0 | 2 |
 | N/A | 0 | 0 | 0 | 0 | 0 |
+
+
+## Status update — fix/fc-sign (pdf-3c)
+
+| Row (part / section) | Now | How / files |
+|---|---|---|
+| §28 Certificate protection saved as a policy | DONE | `core/sign/CertPolicies.kt` (recipients' certificates + permissions + cipher + metadata, JSON); `ui/security/CertPolicyUi.kt` in the certificate-protect tool (save / apply / delete); test `CertPoliciesTest` |
+| §37 Prompt to trust untrusted signers on open | DONE | the signed bar offers "Trust <signer>" for the first valid, untrusted signature (`SigFieldActions.kt` SignedBar, CertInspector); switch in Verify options (`SignPrefs.promptTrust`) |
+| §37 "Use expired timestamps" | DONE | `DigitalSignature.verify(acceptExpiredTimestamps)`: a time-stamp whose TSA certificate expired counts only when on (`SignPrefs.acceptExpiredTimestamps`, default on) |
+| §37 "Ignore document validation info" | DONE | `verify(useDocumentValidationInfo = false)` ignores the embedded DSS for revocation (`SignPrefs.useDocumentValidationInfo`) |
+| §37 "Ask if verification info is too big" | DONE | `SignOptions.ltvAskAboveBytes`: when the DSS adds more than the limit (chips 256 KB–4 MB / never), a copy without it is kept and the result asks Keep / Remove (`SignReport.ltvBytes / withoutLtv`) |
+| 26.68 Signing / verifying dynamic-XFA XML signatures (XAdES) | NOT-FEASIBLE | Android has no XML Digital Signature API (`javax.xml.crypto` is absent) and no bundled XAdES library; PDF signatures over XFA forms are done with the normal PDF signature |
+| §15 Link destination "Set this position" | DONE | link editor "Use current view" (page + zoom from the reader) — `ui/edit5/LinkEditor.kt` `currentView`, passed by `ReaderLinks` |
+| §16 Bookmark action: named destination picked from a list | DONE | `LocalDestNames` chips in `NavUi.ActionDialog` (GoTo), provided by `BookmarksScreen` and the link editor's action lists; link "named" kind also picks from the list |
+| §15 Link menu "convert the linked page to PDF" | DONE | link preview "Open as PDF" (`ui/nve/NveLinks.kt`, `ToPdf.url`, opens the result in the reader) |
+| 34.27 reading-order preference | DONE (correction) | `NpfPrefs.readingOrder` is read by `ReaderAi6.orderedPage`; the per-document option stays STILL MISSING |
+
+## Status update — fix/fc-settings
+Every STILL MISSING row of area nav/settings (parts A–D), plus the merge of the duplicate recent-list size. Each row was re-checked on main 7c30b70 before it was built. Paths are under `app/src/main/java/com/smartdocs/editor/`. There was no device test (see "needs device test" in the branch report).
+
+| row (part/section) | now | how / files |
+|---|---|---|
+| B §23 Conversion defaults in Settings (Med) | DONE | `core/convert6/Cv6Defaults.kt` keeps one JSON object per conversion id (prefs "fcs_conv_defaults"). The page range, URL and text are never saved. The hub starts from it (`ConvertHubScreen.open` → `Cv6Defaults.load(…, defaultsFor(c))`). The options sheet has "Save as default" / "Forget saved default" (`Cv6OptionsSheet.kt`). To PDF+ saves its bookmarks, attach-source, background and web-layout options (`ToPdfPlusScreen.kt`, key `screen:to_pdf_plus`). Settings → More preferences → Tools lists the saved defaults, with forget one / forget all (`ui/settings/FcsSettings.kt` `FcsConvDefaultsRows`) |
+| D §37 Languages: follow the system (Med) | DONE | `core/data/AppLang.kt`: the Settings row offers System / العربية / English (`SettingsScreen.kt`). Android 13+ uses the per-app language (`LocaleManager`, `res/xml/locales_config.xml`, `android:localeConfig`), so the system "App languages" screen works too and `MainActivity.syncLanguage` reads it back. Android 12 and older use `MainActivity.attachBaseContext` → `AppLang.wrap` (prefs mirror "fcs_lang") plus a recreate. The old "lang" key always held "ar" (its default was written with every change), so `AppLang.migrate` keeps only an explicit "en". The code that asked `settings.language == "ar"` now calls `AppLang.isArabic` (LayoutDir, Compare, Accessibility report, Side-by-side, handwriting). Before this, the setting changed only the layout direction, never the strings |
+| D §37 Languages: more than Arabic / English | NOT-FEASIBLE | It needs human translations of every string file (about 10 000 strings). The plumbing (`AppLang`, `locales_config.xml`) takes a new `values-xx` folder with no code change |
+| C §1 QAT: position of the pinned commands | DONE | Top bar or bottom row: `V5Commands.qatPosition` / `setQatPosition` (prefs "view5"), chips in the Tell-me sheet and in More preferences → General. `V5PinnedBottomRow` is hooked into the reader's bottom bar (`ReaderScreen.kt`, one line). `ui/view5/Commands5.kt` |
+| D §33 Disable-ConnectedPDF preference | DONE | `core/data/FcsPrefs.connectedOff`; switch in More preferences → General. When it is off, `ConnectedConfig.enabled` is false and `ConnectedDocs.checkOnOpen` returns null. The reader makes no status call, and a protected connected file falls back to the normal password prompt (`ReaderState.kt`) |
+| D §34.26 Accessibility Setup Assistant | DONE | 4-step wizard (contrast colours, reading order, page layout / zoom, read-aloud speed / keep screen on). It writes the existing `NpfPrefs` / `AppSettings` values only on Finish. Entry: More preferences → Accessibility (`FcsSettings.kt` `FcsA11yAssistant`) |
+| D §36 / OLD G8 Bleed / crop / registration marks; hairline fix | DONE | Crop marks were already there for single-page printing. Added registration and bleed marks with a bleed size (`core/view5/PrinterMarks.kt`, `PrintSettings`, `PrintPrep`, print sheet `PrintForm.kt`). Hairline fix: line widths in the page content and its form XObjects are raised to 0.25 / 0.5 / 1 pt. ExtGState /LW and nested forms are not changed. Test `PrinterMarksTest` |
+| D §37 Per-message notification settings gear | DONE | More preferences → Notifications lists each notification channel of the app (review, sync, batch, print, read aloud), with a gear that opens the system settings for that channel (`FcsNotificationChannels`) |
+| D §37 Startup: debug mode | DONE | `core/util/DebugLog.kt` + switch in More preferences → General. While it is on, log lines and uncaught crashes go to `files/debug_log.txt` (capped at 512 KB). "Share log" exports the header, that log and the app's own logcat; "Clear log" deletes it. Hooks: `SmartDocsApp`, `CrashLog` |
+| D §37 Index preferences: XMP, custom properties, structure tags, logging | DONE | `core/search/FcsIndexPrefs.kt` (prefs "fcs_index"), `PartKind.METADATA`, `IndexWorker`, index log `files/index_log.txt` (view / clear). UI `ui/nve/search/FcsIndexPrefsUi.kt` in the search section |
+| D §37 Search: ignore Asian character width | DONE | Full-width / half-width folding in `ArabicNormalizer` / `IndexText` (the index always folds width). The user switch is in `SearchPrefs`, in Settings and in the search options panel (`SearchUiCommon.kt`) |
+| D §37 Search: document title in results | DONE | `search_index.db` v2 adds `docs.title` (the upgrade keeps the indexed content). `GlobalSearchScreen` shows the title under the file name |
+| D §37 Search: Fast Find cache size limit | DONE | Limit choice none / 50 / 100 / 250 / 500 MB. `FullTextIndex.evictToLimit` drops the text of the oldest indexed documents after each index run. Test `FcsIndexPrefsTest` |
+| D §39 Ctrl+L / Ctrl+I / Ctrl+8 / Ctrl+Shift+8 / Ctrl+Enter / Ctrl+Alt+V | DONE | `ui/nve/NveKeys.kt`: EXPORT_COMMENTS is on **Ctrl+Alt+L**, because Ctrl+L stays presentation / Foxit-layout comment manager (it can be rebound in the keys sheet). Also EXPORT_HIGHLIGHTS, HIDE_COMMENTS / SHOW_COMMENTS, REPLY (expands the selected comment's card, `CommentsPanel.kt` hook) and PASTE_IN_PLACE |
+| D §39 Ctrl+X, Ctrl+Shift+A, annotation copy / paste | DONE | CUT (annotations), DESELECT. Ctrl+C with no text copies the selected annotation, and Ctrl+V pastes it after an annotation copy (`NveKeys.annotClipNewer`) |
+| D §39 Ctrl+Shift+C cross-reference; Ctrl+B adds a bookmark | DONE | CROSS_REF in the Foxit layout only (in the default layout Ctrl+Shift+C stays the comment manager, `Keys5.kt:50`). Ctrl+B now adds a bookmark for the current page |
+| D §39 Ctrl+Alt+D duplicate page | DONE | DUPLICATE_PAGE → `PageOps5.duplicate` through `applyInPlace` (one undo step, restrictions checked) |
+| D §39 read-aloud keys B / P / Y | DONE | Ctrl+Shift+B reads to the end, Ctrl+Shift+P pauses or resumes, Ctrl+Shift+Y turns read aloud on or off (Acrobat meanings) |
+| D §39 F10 / Shift+F10 / Ctrl+F11 | DONE | F10 opens the command search (MENU_BAR). Shift+F10 was already on main (`ui/selmenu/SelMenuState.kt:125`). Ctrl+F11 hides or shows the toolbars (TOOLBARS, `ReaderScreen.kt` hook). Test `NveKeyDefaultsTest` |
+| D §39 Ctrl+Shift+K e-mail all tabs | DONE | EMAIL_TABS → `emailOpenTabs` (`ShareOptionsSheet.kt`, now internal). With one tab it falls back to Share. (Also done here, from a comments/forms row: Ctrl+J opens the document JavaScript console) |
+| D OLD M5 icon-only buttons without `contentDescription` | DONE (on main) | Main fixed it first (fix/pages-a11y 846774f: "last 16 unlabeled icon buttons", which also covers the cloud and signature buttons this branch could not touch). In the merge with main, main's version of the shared files was kept |
+| D OLD Ads banner in ResultSheet | DONE | `ui/common/Components.kt` `ResultSheet` shows the existing `AdBanner` (no ads without consent, for Pro users or with ads off) |
+| D OLD Invite deep link intent-filter | DONE (+ OWNER-ACTION) | One `<intent-filter android:autoVerify="true">` for `https://smartdocs.app/invite…` on MainActivity (the only manifest change besides `android:localeConfig`). `MainActivity.handleIntent` → `Referral.isInviteLink` → `ReferralStore.redeem` → invite screen. The owner must publish `/.well-known/assetlinks.json` on smartdocs.app for verification |
+| Duplicate recent-list size (`NpfPrefs.RECENT_LIMIT` / `NveFolders.recentSize`) | MERGED | One setting, `NpfPrefs.recentLimit` (0 = all). Both rows (Settings → General shell rows and More preferences → Files) edit it. `NveFolders.recentSize` was removed, and an old "recent_size" value is migrated once in `NpfPrefs.init`. HomeScreen applies it once |
+
+Tests: `app/src/test/java/com/smartdocs/editor/core/data/FcSettingsTest.kt` (language normalise / migrate / resolve, conversion-default JSON round trip, recent-size merge, invite links, debug-log trimming), plus `PrinterMarksTest`, `FcsIndexPrefsTest` and `NveKeyDefaultsTest`.

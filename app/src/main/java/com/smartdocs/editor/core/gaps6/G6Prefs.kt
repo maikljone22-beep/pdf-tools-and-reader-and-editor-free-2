@@ -26,7 +26,7 @@ object LayoutDir {
     fun isRtl(s: AppSettings): Boolean = when (s.layoutDirection) {
         RTL -> true
         LTR -> false
-        else -> s.language == "ar"
+        else -> com.smartdocs.editor.core.data.AppLang.isArabic(s)
     }
 }
 

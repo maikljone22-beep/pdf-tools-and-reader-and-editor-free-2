@@ -53,13 +53,23 @@ fun BoxScope.SigFieldSheet(reader: ReaderState, nav: NavHostController) {
     var results by remember(file) { mutableStateOf<List<DigitalSignature.VerifyResult>>(emptyList()) }
     // audit D21: closing the bar survives a rotation
     var bannerClosed by androidx.compose.runtime.saveable.rememberSaveable(file?.path) { mutableStateOf(false) }
-    LaunchedEffect(file, reader.renderVersion) {
+    // Foxit §37 "prompt to trust untrusted signers": the first valid signature whose certificate is not trusted
+    var untrusted by remember(file) { mutableStateOf<java.security.cert.X509Certificate?>(null) }
+    var trustRound by remember { mutableIntStateOf(0) }
+    LaunchedEffect(file, reader.renderVersion, trustRound) {
         val f = file ?: return@LaunchedEffect
         results = withContext(Dispatchers.IO) { runCatching { VerifyCache.results(f, reader.password) }.getOrDefault(emptyList()) }
         fs.sigStatus = results.mapNotNull { v -> v.fieldName?.let { it to (v.signatureValid && v.error == null) } }.toMap()
+        untrusted = if (results.isEmpty() || !com.smartdocs.editor.core.sign.SignPrefs.promptTrust(reader.context)) null else withContext(Dispatchers.IO) {
+            runCatching {
+                val certs = com.smartdocs.editor.core.sign.CertInspector.inspect(reader.context, f, reader.password)
+                certs.withIndex().firstOrNull { (i, c) -> c.trust == com.smartdocs.editor.core.sign.TrustPath.Status.UNTRUSTED && results.getOrNull(i)?.signatureValid == true }?.value?.signer
+            }.getOrNull()
+        }
     }
     // the bar shares the top slot with the placement bar and tool hints: it shows only while no tool is active (D21)
-    if (results.isNotEmpty() && !bannerClosed && file != null && reader.tool == null) SignedBar(results, Modifier.align(Alignment.TopCenter),
+    if (results.isNotEmpty() && !bannerClosed && file != null && reader.tool == null) SignedBar(results, Modifier.align(Alignment.TopCenter), untrusted,
+        onTrust = { c -> com.smartdocs.editor.core.sign.TrustedCerts.add(reader.context, c); trustRound++ },
         onOpen = { SigFieldRequest.pending = SigFieldRequest.Request(file.path, null, verify = true); nav.navigate(Routes.tool("digital_sign", reader.fileUri)) },
         onClose = { bannerClosed = true })
     val w = fs.sigTapped ?: return
@@ -245,7 +255,10 @@ internal fun lockText(l: SigFields.Lock): String {
 
 /** Signed / certified document bar shown when a signed PDF opens (Foxit notification bar, Acrobat signature bar). */
 @Composable
-private fun SignedBar(results: List<DigitalSignature.VerifyResult>, modifier: Modifier, onOpen: () -> Unit, onClose: () -> Unit) {
+private fun SignedBar(
+    results: List<DigitalSignature.VerifyResult>, modifier: Modifier, untrusted: java.security.cert.X509Certificate?,
+    onTrust: (java.security.cert.X509Certificate) -> Unit, onOpen: () -> Unit, onClose: () -> Unit,
+) {
     val allValid = results.all { it.signatureValid && it.error == null }
     val certified = results.firstOrNull { it.certifyLevel != null }
     val text = when {
@@ -260,6 +273,7 @@ private fun SignedBar(results: List<DigitalSignature.VerifyResult>, modifier: Mo
             Icon(if (allValid) Icons.Default.Verified else Icons.Default.Info, null)
             Spacer(Modifier.width(8.dp))
             Text(text, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+            untrusted?.let { c -> TextButton(onClick = { onTrust(c) }) { Text(stringResource(R.string.fsg_trust_signer, DigitalSignature.friendlyName(c.subjectX500Principal.name))) } }
             TextButton(onClick = onOpen) { Text(stringResource(R.string.ns2_bar_details)) }
             IconButton(onClick = onClose) { Icon(Icons.Default.Close, stringResource(R.string.close)) }
         }

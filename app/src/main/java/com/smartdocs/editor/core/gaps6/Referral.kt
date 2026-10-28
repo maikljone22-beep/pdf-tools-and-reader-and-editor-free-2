@@ -35,6 +35,10 @@ object Referral {
         return c.length == CODE_LEN && c.all { it in ALPHABET }
     }
 
+    /** fc-settings: true for an invite link opened from outside ([BASE_URL], http or https). */
+    fun isInviteLink(scheme: String?, host: String?, path: String?): Boolean =
+        (scheme == "https" || scheme == "http") && host.equals("smartdocs.app", ignoreCase = true) && (path ?: "").trimEnd('/') == "/invite"
+
     /** Code from an invite link or a bare code; null when neither. */
     fun parse(input: String): String? {
         val t = input.trim()

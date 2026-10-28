@@ -415,7 +415,7 @@ private fun MailDataDialog(fs: FormFillState, onDismiss: () -> Unit) {
         title = { Text(stringResource(R.string.f8_mail_data)) },
         text = {
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                listOf(DataFormat.FDF, DataFormat.XFDF, DataFormat.XML, DataFormat.CSV).forEach { f ->
+                listOf(DataFormat.FDF, DataFormat.XFDF, DataFormat.XML, DataFormat.CSV, DataFormat.XDP).forEach { f ->
                     FilterChip(fmt == f, { fmt = f }, label = { Text(f.ext.uppercase()) })
                 }
             }

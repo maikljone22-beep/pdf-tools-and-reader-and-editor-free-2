@@ -159,7 +159,7 @@ fun Compare2Screen(nav: NavHostController, uri: String?) {
         stringResource(R.string.nt_cmp_page_rotated), stringResource(R.string.nt_cmp_page_cropped),
         stringResource(R.string.nt_cmp_old_only), stringResource(R.string.nt_cmp_new_only),
     )
-    val arabicUi = settings.language == "ar"
+    val arabicUi = com.smartdocs.editor.core.data.AppLang.isArabic(settings)
 
     ToolScaffold(stringResource(R.string.t5_cmp_title), nav, snackbar = snackbar, actions = {
         IconButton(onClick = { showCount = true }, enabled = old != null || new != null) { Icon(Icons.Default.Numbers, stringResource(R.string.nt_wc_title)) }

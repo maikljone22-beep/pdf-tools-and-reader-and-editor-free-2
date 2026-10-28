@@ -108,6 +108,7 @@ fun SearchOptionsPanel(options: SearchOptions, onChange: (SearchOptions) -> Unit
             CheckRow(stringResource(R.string.sr_unify_letters), options.norm.unifyLetters) { setNorm(options.norm.copy(unifyLetters = it)) }
             CheckRow(stringResource(R.string.sr_ta_marbuta), options.norm.taMarbuta) { setNorm(options.norm.copy(taMarbuta = it)) }
             CheckRow(stringResource(R.string.sr_unify_digits), options.norm.unifyDigits) { setNorm(options.norm.copy(unifyDigits = it)) }
+            CheckRow(stringResource(R.string.fcs_m_ignore_width), options.norm.ignoreWidth) { setNorm(options.norm.copy(ignoreWidth = it)) }   // fc-settings
         }
     }
 }

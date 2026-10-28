@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="fsg_expired_ts">Use expired time-stamps</string>
+    <string name="fsg_link_as_pdf">Open as PDF</string>
+    <string name="fsg_link_current_view">Use current view</string>
+    <string name="fsg_link_pdf_working">Converting the page to PDF…</string>
+    <string name="fsg_ltv_ask">Ask if the verification info (LTV) is larger than</string>
+    <string name="fsg_ltv_big_text">The long-term verification info added %1$d KB to the signed file. Keeping it lets the signature be checked after the certificates expire; removing it keeps the file smaller.</string>
+    <string name="fsg_ltv_big_title">Large verification info</string>
+    <string name="fsg_ltv_keep">Keep</string>
+    <string name="fsg_ltv_never">Never ask</string>
+    <string name="fsg_ltv_remove">Remove</string>
+    <string name="fsg_policies">Policies</string>
+    <string name="fsg_policy_apply">Apply</string>
+    <string name="fsg_policy_name">Policy name</string>
+    <string name="fsg_policy_none">No saved policies</string>
+    <string name="fsg_policy_save">Save as policy</string>
+    <string name="fsg_prompt_trust">Offer to trust untrusted signers when a document opens</string>
+    <string name="fsg_trust_signer">Trust %1$s</string>
+    <string name="fsg_use_dss">Use the validation info embedded in the document</string>
+</resources>

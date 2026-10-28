@@ -27,10 +27,10 @@ import com.smartdocs.editor.ui.reader.drawAnnotFrame
 import com.smartdocs.editor.ui.reader.frameRect
 
 /** Path of a polygon / polyline (cloudy when [cloud] > 0) in unrotated screen space. */
-fun polyPath(pts: List<Pair<Float, Float>>, g: PageGeometry, closed: Boolean, cloud: Int, lineWidth: Float): Path {
+fun polyPath(pts: List<Pair<Float, Float>>, g: PageGeometry, closed: Boolean, cloud: Int, lineWidth: Float, inward: Boolean = false): Path {
     val p = Path()
     if (cloud > 0 && pts.size >= 3) {
-        CloudPath.build(pts, cloud, lineWidth).forEachIndexed { i, c ->
+        CloudPath.build(pts, cloud, lineWidth, inward).forEachIndexed { i, c ->
             val s0 = g.pdfToScreen(c.x0, c.y0); val s1 = g.pdfToScreen(c.x1, c.y1); val s2 = g.pdfToScreen(c.x2, c.y2); val s3 = g.pdfToScreen(c.x3, c.y3)
             if (i == 0) p.moveTo(s0.x, s0.y)
             p.cubicTo(s1.x, s1.y, s2.x, s2.y, s3.x, s3.y)
@@ -49,7 +49,7 @@ fun DrawScope.drawAnnot2(a: Annot, g: PageGeometry) {
     when (a.kind) {
         AnnotKind.POLYGON, AnnotKind.POLYLINE, AnnotKind.CLOUD -> {
             val closed = a.kind != AnnotKind.POLYLINE
-            val path = polyPath(a.points, g, closed, if (a.kind == AnnotKind.CLOUD) a.cloud.coerceIn(1, 3) else 0, a.strokeWidth)
+            val path = polyPath(a.points, g, closed, if (a.kind == AnnotKind.CLOUD) a.cloud.coerceIn(1, 3) else 0, a.strokeWidth, a.cloudInward)
             if (closed) a.fillColor?.let { drawPath(path, annotColor(it, a.opacity), style = Fill) }
             if (!(a.noBorder && closed && a.fillColor != null))
                 drawPath(path, c, style = Stroke(sw, cap = StrokeCap.Round, join = StrokeJoin.Round, pathEffect = com.smartdocs.editor.ui.reader.dashEffectOf(a, g)))

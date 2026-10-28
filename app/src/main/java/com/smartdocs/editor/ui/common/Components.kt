@@ -283,6 +283,8 @@ fun ResultSheet(file: File, nav: NavHostController, onDismiss: () -> Unit, extra
                 OutlinedButton(onClick = { runCatching { ctx.startActivity(Intent.createChooser(app.documents.shareIntent(listOf(file), mime), null)) } }, Modifier.weight(1f).height(48.dp), shape = PillShape) { Icon(Icons.Default.Share, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.share)) }
                 OutlinedButton(onClick = { saver.launch(file.name) }, Modifier.weight(1f).height(48.dp), shape = PillShape) { Icon(Icons.Default.SaveAlt, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.save_as)) }
             }
+            // fc-settings: banner under the result actions (a natural pause); AdBanner renders nothing when ads are off, without consent or with Pro
+            com.smartdocs.editor.core.ads.AdBanner(Modifier.padding(top = 16.dp))
         }
     }
 }
