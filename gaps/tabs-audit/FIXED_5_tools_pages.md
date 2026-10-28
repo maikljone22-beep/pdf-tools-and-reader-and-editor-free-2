@@ -135,6 +135,12 @@ fix/tab-view-core (T-01, G-01, E-2, OCR-1), as are the signature parts of C-1 an
 - core/ocr/OcrStoreMergeTest; ui/pages/OrganizeLogicTest; core/pdf/MarkupFrameTest; core/edit/TextEncodeCheckTest;
   core/tools5/WordDiffPagedTest; ui/tools/ColorNamesTest.
 
-## Follow-up once fix/tab-view-core is on main
-Writers added or touched here that write over an original go through `DocumentRepository.replaceOriginal`
-(ResultSheet, Forms, Organize). When that branch is on main, its `SignedGuard.checkWrite` covers them with no further change.
+## Central signed gate (fix/tab-view-core, merged from main facfb11)
+The writers this branch touches that write over an original go through the central gate, and none has its own check:
+- ResultSheet "Save in original", Forms "save in place" and Organize Overwrite call
+  `DocumentRepository.replaceOriginal(target, result, password)`, which runs `SignedGuard.checkWrite`. The
+  password is passed so that an encrypted signed file is inspected too.
+- The quick actions go through `ReaderState.applyInPlace`.
+- The e5 tools go through `E5Io.save` (`checkFullSave`).
+- The organizer reports a refusal with `signedOrMessage`.
+- The signed-input notes in Redact, Sanitize, Advanced protect and Find & replace are warnings only; none of them gates a write.
