@@ -16,4 +16,11 @@
     <string name="cv9_recovery_problem">Problem pages only</string>
     <string name="cv9_recovery_all">All pages</string>
     <string name="cv9_layout_exact">Precise (text boxes)</string>
+    <string name="cv9_pick_pages">Pick pages on thumbnails</string>
+    <string name="cv9_pick_failed">The file could not be opened (it may need a password)</string>
+    <string name="cv9_picked">%1$d of %2$d picked</string>
+    <string name="cv9_pick_all">All</string>
+    <string name="cv9_pick_none">None</string>
+    <string name="cv9_pick_more">The first %1$d pages are shown; type a range for later pages</string>
+    <string name="cv9_page_n">Page %1$d</string>
 </resources>
