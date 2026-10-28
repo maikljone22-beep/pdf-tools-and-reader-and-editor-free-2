@@ -419,6 +419,7 @@ fun nveMouseModifier(s: ReaderState): Modifier = Modifier.pointerInput(s) {
 /** Right-click (or long-press-free) context menu of the page area. */
 @Composable
 fun NveContextMenu(s: ReaderState, actions: com.smartdocs.editor.ui.reader.ReaderActions) {
+    if (com.smartdocs.editor.ui.selmenu.SelHooks.ownsContextMenu()) return     // selmenu: drawn by SelMenuLayer from the shared registry
     val n = NveState.of(s)
     val at = n.contextMenuAt ?: return
     val density = LocalDensity.current
