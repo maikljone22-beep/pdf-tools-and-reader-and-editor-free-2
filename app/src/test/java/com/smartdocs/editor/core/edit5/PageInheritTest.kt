@@ -147,7 +147,7 @@ class PageInheritTest {
         val out = File(tmp.root, "fields_out.pdf")
         PageOps5.copyPages(a, out, null, b, null, listOf(0), 2)
         PDDocument.load(out).use { d ->
-            val form = d.documentCatalog.acroForm
+            val form = d.documentCatalog.getAcroForm(null)   // no fix-up: it would load the standard-14 fonts (not on the JVM)
             assertNotNull(form)
             val names = form!!.fields.map { it.fullyQualifiedName }.sorted()
             assertEquals(listOf("name", "name_2"), names)
@@ -163,7 +163,7 @@ class PageInheritTest {
         PDDocument.load(a).use { d ->
             PageOrganize.deleteIn(d, listOf(0), removeBookmarks = false)
             assertEquals(1, d.numberOfPages)
-            assertNull(d.documentCatalog.acroForm?.getField("gone"))
+            assertNull(d.documentCatalog.getAcroForm(null)?.getField("gone"))
         }
     }
 }
