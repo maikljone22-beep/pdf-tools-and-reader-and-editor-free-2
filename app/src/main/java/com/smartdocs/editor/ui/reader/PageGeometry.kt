@@ -30,6 +30,10 @@ class PageGeometry(
     private val cropW: Float get() = if (pageRotate % 180 == 0) pageW else pageH
     private val cropH: Float get() = if (pageRotate % 180 == 0) pageH else pageW
 
+    /** Tab audit D9 / D10: the crop box in user space with the page's /Rotate (Fill & Sign layout, FsGeom). */
+    fun pageBox(): com.smartdocs.editor.core.fillsign2.FsGeom.PageBox =
+        com.smartdocs.editor.core.fillsign2.FsGeom.PageBox(pageRotate, cropX, cropY, cropW, cropH)
+
     val bitmapW: Float get() = pageW * scale
     val bitmapH: Float get() = pageH * scale
 

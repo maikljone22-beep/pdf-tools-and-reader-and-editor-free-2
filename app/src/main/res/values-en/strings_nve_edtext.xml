@@ -92,6 +92,8 @@
     <string name="nt_pref_warn_fonts">Warn about embedded / substituted fonts</string>
     <string name="nt_pref_system_fonts">Use device fonts</string>
     <string name="nt_pref_alert_no_text">Alert when there is no editable text</string>
+    <string name="nt_pref_auto_ocr">Recognise scanned pages automatically when editing</string>
+    <string name="nt_auto_ocr_running">Scanned page: recognising the text to make it editable…</string>
     <string name="nt_pref_live_spell">Check spelling while typing</string>
     <string name="nt_reflow">Edit page as flowing text</string>
     <string name="nt_reflow_note">All the page text is rewritten in reading order inside the area of its blocks, in the style of the first block. Images and shapes stay; rotated text is kept.</string>

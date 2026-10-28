@@ -83,7 +83,8 @@ class ReaderState(
     // ---- document ----
     var file by mutableStateOf<File?>(null); private set
     var session by mutableStateOf<PdfSession?>(null); private set
-    var password: String? = null; internal set
+    var password: String? = null
+        internal set(value) { field = value; file?.let { com.smartdocs.editor.core.pdf.OpenPasswords.put(it, value) } }   // audit D4
     var needPassword by mutableStateOf(false)
     var wrongPassword by mutableStateOf(false)
     var error by mutableStateOf<String?>(null)
@@ -129,7 +130,16 @@ class ReaderState(
     /** The active tool. nitro-protect2: a tool the document's restrictions or Protected View forbid is refused here. */
     var tool: ReaderTool?
         get() = toolState
-        set(v) { if (v != null && v != toolState && ReaderGuard.actionFor(v)?.let { guard.check(it) } == false) return; toolState = v }
+        set(v) {
+            if (v != null && v != toolState && ReaderGuard.actionFor(v)?.let { guard.check(it) } == false) return
+            // tabs audit CM-06: the settings of the tool being left are kept on every change, also when a tool clears itself
+            val old = toolState
+            if (old != null && old != v) {
+                val mem = com.smartdocs.editor.ui.reader.annot.ToolMemory
+                if (old in mem.REMEMBERED && mem.enabled(context)) runCatching { mem.save(context, old, mem.capture(this)) }
+            }
+            toolState = v
+        }
     var color by mutableIntStateOf(0xFFEB3B)
     var opacity by mutableFloatStateOf(1f)
     var thickness by mutableFloatStateOf(3f)
@@ -164,7 +174,7 @@ class ReaderState(
     val canRedo: Boolean get() = history.canRedo && !saving
     var dirty by mutableStateOf(false); private set
     var existing by mutableStateOf<List<AnnotationWriter.Existing>>(emptyList()); private set
-    var saving by mutableStateOf(false); private set
+    var saving by mutableStateOf(false); internal set   // internal: Annot2Host.fileOp (audit CM-15)
     /** In-page form filling (MODULE_forms5): pending field values, live calculations, field bar. */
     val forms5 = com.smartdocs.editor.ui.forms5.FormFill.of(this).also { it.markDirty = { dirty = true } }
     /** nitro-protect2: restrictions, Protected View, Safe Reading Mode, action inspector. */
@@ -194,6 +204,42 @@ class ReaderState(
     /** A save into a signed / certified document was refused (audit AN-28 hook): the screen offers "Save a copy". */
     var signedBlock by mutableStateOf<com.smartdocs.editor.core.pdf.SignedDocumentException.Reason?>(null)
 
+    /**
+     * tab-view-core V-06 / E-01: the result of a change that [applyInPlace] refused to write into the signed /
+     * certified original; the "signed" dialog's "Save a copy" exports it (the change is kept, the original is not
+     * touched). Deleted by [dropSignedCopy].
+     */
+    var signedCopy by mutableStateOf<File?>(null); private set
+
+    fun dropSignedCopy() { signedCopy?.delete(); signedCopy = null }
+
+    private fun keepSignedCopy(out: File) {
+        dropSignedCopy()
+        val keep = File(app.documents.tempDir, "signed_copy_${System.nanoTime()}.pdf")
+        runCatching { if (!out.renameTo(keep)) { out.copyTo(keep, overwrite = true); out.delete() } }.onSuccess { signedCopy = keep }.onFailure { out.delete() }
+    }
+
+    private var signedInfoCache: Pair<Pair<Long, Long>, com.smartdocs.editor.core.pdf.SignedGuard.Info>? = null
+
+    /** tab-view-core V-06: signature / certification state of the open file (cached until the file changes). */
+    suspend fun signedInfo(): com.smartdocs.editor.core.pdf.SignedGuard.Info {
+        val f = file ?: return com.smartdocs.editor.core.pdf.SignedGuard.Info.NONE
+        val stamp = f.lastModified() to f.length()
+        signedInfoCache?.takeIf { it.first == stamp }?.let { return it.second }
+        val pw = password
+        val info = withContext(Dispatchers.IO) { com.smartdocs.editor.core.pdf.SignedGuard.inspect(f, pw) }
+        signedInfoCache = stamp to info
+        return info
+    }
+
+    /**
+     * tab-view-core V-06 / E-01 / D2: THE signed-file gate of the reader. What a [change] may do to the open file:
+     * PROCEED, SAVE_INCREMENTAL (append with SignedSave.saveIncremental), OFFER_COPY or REFUSE (certified).
+     * [incremental]: whether the writer can append (null = not known). [applyInPlace] applies it to every change.
+     */
+    suspend fun guardSigned(change: com.smartdocs.editor.core.pdf.SignedGuard.Change, incremental: Boolean? = null): com.smartdocs.editor.core.pdf.SignedGuard.Decision =
+        com.smartdocs.editor.core.pdf.SignedGuard.decide(signedInfo(), change, incremental)
+
     /** Why the document could not be opened; stays until [retryOpen] (the snackbar clears [error], not this). */
     var openError by mutableStateOf<OpenError?>(null)
 
@@ -220,7 +266,7 @@ class ReaderState(
                     if (pw != null) throw e
                     markChecked = true
                     val mark = withContext(Dispatchers.IO) { com.smartdocs.editor.core.connected.ConnectedDocs.markOf(f) }
-                    if (mark?.protected != true) throw e
+                    if (mark?.protected != true || com.smartdocs.editor.core.data.FcsPrefs.connectedOff) throw e   // fc-settings: ConnectedPDF off → the password prompt
                     val st = com.smartdocs.editor.core.connected.ConnectedDocs.checkOnOpen(context, f)
                     connected = st
                     if (st == null || st.locked) { connectedLocked = true; return@launch }
@@ -229,6 +275,7 @@ class ReaderState(
                 }
                 if (disposed) { runCatching { s.closeAsync() }; return@launch }
                 password = openPw
+                com.smartdocs.editor.core.pdf.OpenPasswords.put(f, openPw)   // audit D4: tool screens open it too
                 pageCount = s.pageCount
                 val recent = app.db.docs().get(Uri.fromFile(f).toString())
                 initialPage = (if (startPage >= 0) startPage else recent?.lastPage ?: 0).coerceIn(0, (s.pageCount - 1).coerceAtLeast(0))
@@ -241,7 +288,7 @@ class ReaderState(
                 session = s
                 scope.launch { runCatching { s.pageSizes() }.getOrNull()?.let { all -> androidx.compose.runtime.snapshots.Snapshot.withMutableSnapshot { all.forEach { (i, sz) -> pageSizes[i] = sz } } } }
                 needPassword = false; wrongPassword = false; error = null
-                if (!markChecked) scope.launch {
+                if (!markChecked && !com.smartdocs.editor.core.data.FcsPrefs.connectedOff) scope.launch {
                     // after the first render: connected status for the banner; a revoked protected copy still locks
                     val mark = withContext(Dispatchers.IO) { com.smartdocs.editor.core.connected.ConnectedDocs.markOf(f) } ?: return@launch
                     val st = com.smartdocs.editor.core.connected.ConnectedDocs.checkOnOpen(context, f)
@@ -292,6 +339,35 @@ class ReaderState(
         scope.launch { runCatching { app.db.docs().updatePage(Uri.fromFile(f).toString(), page) } }
     }
 
+    // ---- OLD I1: Fill & Sign on flat forms — detected fields are tap targets ----
+    /** Likely fields of pages without form fields (lines, boxes, label gaps), per page; filled when the page is shown. */
+    val fsTargets = androidx.compose.runtime.mutableStateMapOf<Int, List<com.smartdocs.editor.core.formsx.FieldRecognition.Suggestion>>()
+    private var fsTargetsKey: Any? = null
+
+    fun loadFsTargets(page: Int) {
+        val f = file ?: return
+        val key = f.absolutePath to renderVersion
+        if (fsTargetsKey != key) { fsTargets.clear(); fsTargetsKey = key }
+        if (fsTargets.containsKey(page)) return
+        fsTargets[page] = emptyList()
+        val pw = password
+        scope.launch {
+            val found = withContext(Dispatchers.IO) {
+                runCatching {
+                    com.smartdocs.editor.core.pdf.PdfOps.loadRaw(f, pw).use { d ->
+                        // a real form is filled through its fields; only flat pages get detected targets
+                        if (d.documentCatalog.acroForm?.fields?.isNotEmpty() == true || page !in 0 until d.numberOfPages) emptyList()
+                        else com.smartdocs.editor.core.formsx.FieldRecognition.scanPage(d, page)
+                    }
+                }.getOrDefault(emptyList())
+            }
+            if (fsTargetsKey == key) fsTargets[page] = found
+        }
+    }
+
+    /** The detected target under PDF point ([x], [y]) of [page], if any. */
+    fun fsTargetAt(page: Int, x: Float, y: Float) = com.smartdocs.editor.core.formsx.FieldRecognition.at(fsTargets[page], x, y)
+
     fun jumpTo(page: Int) { pendingJump = page.coerceIn(0, (pageCount - 1).coerceAtLeast(0)) }
 
     /**
@@ -318,7 +394,7 @@ class ReaderState(
     @Volatile var discarded = false
         private set
 
-    fun discardChanges() { discarded = true; edit.discardOnClose(); forms5.discard() }
+    fun discardChanges() { discarded = true; autosaveRefused = false; edit.discardOnClose(); forms5.discard() }
 
     /**
      * The document is closed for good (its back-stack entry was removed, see [ReaderHolder]). Pending edits the user
@@ -338,14 +414,32 @@ class ReaderState(
         com.smartdocs.editor.ui.nve.NveState.forget(this)      // NVE
         com.smartdocs.editor.ui.nve.articles.NveArticlesState.forget(this)
         com.smartdocs.editor.ui.pageflip.PageFlipController.forget(this)
+        StampClipboard.release(this)      // tab audit D31: the "Paste here" offer held this reader
         // PdfSession.closeAsync waits for in-flight renders, so no delay is needed
         ioScope.launch {
-            if (saveFirst) withContext(NonCancellable) { runCatching { save() } }
+            if (saveFirst) withContext(NonCancellable) {
+                // tab audit D7: a save the signed / certified file refuses must not lose the edits silently: they are
+                // kept as the recovery copy the reader offers when this document is opened again
+                val ok = runCatching { save(auto = true) }.getOrDefault(false)
+                if (!ok && dirty) keepUnsavedOnClose()
+            }
             runCatching { session?.closeAsync() }; session = null
             runCatching { s?.closeAsync() }
             // discarded edits: put back the file as it was before stored annotations were taken out for editing
             restore?.let { (backup, target) -> runCatching { if (!backup.renameTo(target)) { backup.copyTo(target, overwrite = true); backup.delete() } } }
             history.dispose()      // the document is closed for good: its history folder goes too
+        }
+    }
+
+    /** Tab audit D7: the pending edits (file + annotations + form values) as the recovery copy of this document. */
+    private suspend fun keepUnsavedOnClose() {
+        val f = file ?: return
+        val out = NpfReader.recoveryFile(this, f)
+        val tmp = File(out.parentFile, out.name + ".part")
+        val kept = runCatching { exportWithAnnots(tmp); if (tmp.length() > 0) { out.delete(); tmp.renameTo(out) } else false }.getOrDefault(false)
+        tmp.delete()
+        withContext(Dispatchers.Main) {
+            runCatching { android.widget.Toast.makeText(context, str(if (kept) R.string.tfr_close_kept_copy else R.string.tfr_close_lost), android.widget.Toast.LENGTH_LONG).show() }
         }
     }
 
@@ -398,6 +492,21 @@ class ReaderState(
         annots.clear(); annots += copy; dirty = true
         annotStep(R.string.hi_batch_annot, copy.firstOrNull { it !in before }?.page ?: before.firstOrNull { it !in copy }?.page ?: currentPage, before)
         edit.validate()
+    }
+
+    /** Eraser stroke (tabs audit CM-08): pending ink removed while dragging, one undo step at the end ([endErase]); locked ink stays. */
+    private var eraseBefore: List<Annot>? = null
+
+    fun eraseHits(ids: List<Long>) {
+        if (ids.isEmpty() || !guard.check(com.smartdocs.editor.core.security.DocAction.ANNOTATE)) return
+        if (eraseBefore == null) eraseBefore = annots.toList()
+        if (annots.removeAll { it.id in ids && !it.locked }) dirty = true
+    }
+
+    fun endErase(page: Int) {
+        val b = eraseBefore ?: return
+        eraseBefore = null
+        if (annots.size != b.size) annotStep(R.string.hi_del_annot, page, b)
     }
 
     fun removeAnnot(id: Long) {
@@ -483,7 +592,19 @@ class ReaderState(
      * The critical section is non-cancellable so a save started from ON_PAUSE finishes even when the
      * screen is disposed meanwhile; concurrent calls (back button + autosave) are serialised.
      */
-    suspend fun save(): Boolean {
+    suspend fun save(auto: Boolean = false): Boolean {
+        if (!auto) autosaveRefused = false      // tab audit D7: the user asked: try (and explain) again
+        val ok = saveLocked()
+        // the dialog shows once; later autosaves stay quiet until the user saves / leaves (V-02 dialog) or discards
+        if (!ok && signedRefusal) autosaveRefused = true
+        return ok
+    }
+
+    /** Set by [saveLocked] when the signed / certified file refused the save (tab audit D7). */
+    @Volatile private var signedRefusal = false
+
+    private suspend fun saveLocked(): Boolean {
+        signedRefusal = false
         saveMutex.withLock {
             val f = file ?: return false
             // history: the version before this save (or before stored annotations were taken out for editing);
@@ -495,6 +616,7 @@ class ReaderState(
             try {
                 // MODULE_forms5: pending form values are written first (FormOps.fillFields -> swapFile)
                 val formsSaved = try { withContext(NonCancellable) { forms5.flushOnSave(f, password) { tmp -> swapFile(tmp, record = false) } } }
+                    catch (e: com.smartdocs.editor.core.pdf.SignedDocumentException) { signedBlock = e.reason; signedRefusal = true; return false }   // audit V-01
                     catch (e: Exception) { error = e.message ?: e.toString(); return false }
                 wrote = formsSaved
                 if (annots.isEmpty()) {
@@ -527,7 +649,7 @@ class ReaderState(
                     return true
                 } catch (e: com.smartdocs.editor.core.pdf.SignedDocumentException) {
                     // signed / certified file: the pending annotations stay pending; the screen offers "Save a copy"
-                    signedBlock = e.reason; return false
+                    signedBlock = e.reason; signedRefusal = true; return false
                 } catch (e: Exception) { error = e.message ?: e.toString(); return false } finally { saving = false }
             } finally {
                 if (wrote && before != null) recordSaved(before, prevPw) else before?.let { runCatching { it.delete() } }
@@ -559,8 +681,15 @@ class ReaderState(
         history.replaceMemory(HistoryStep.FileSnapshot(label, before, pw, currentPage))
     }
 
+    /**
+     * Tab audit D7: a save into this signed / certified file was refused. Autosave (ON_PAUSE, the N-minute timer)
+     * then stops retrying, so it does not raise the same "signed" dialog again and again; an explicit save, a
+     * successful save or "discard" clear it.
+     */
+    @Volatile private var autosaveRefused = false
+
     /** Autosave from ON_PAUSE: runs in a scope that outlives the composable so leaving the screen cannot cut it short. */
-    fun saveInBackground() { if (dirty && !saving) ioScope.launch { runCatching { save() } } }
+    fun saveInBackground() { if (dirty && !saving && !autosaveRefused) ioScope.launch { runCatching { save(auto = true) } } }
 
     /** Write pending annotations plus the current file into [out] (used by "save as"). */
     suspend fun exportWithAnnots(out: File) {
@@ -579,7 +708,7 @@ class ReaderState(
     fun eraseStoredInk(page: Int, pts: List<Pair<Float, Float>>, radius: Float) {
         if (!guard.check(com.smartdocs.editor.core.security.DocAction.ANNOTATE)) return      // nitro-protect2
         if (pts.isEmpty() || saving) return
-        val candidates = existing.filter { it.page == page && it.subtype == "Ink" && EraseLogic.nearRect(it.rect.left, it.rect.bottom, it.rect.right, it.rect.top, pts, radius + 4f) }
+        val candidates = existing.filter { it.page == page && it.subtype == "Ink" && !it.locked && EraseLogic.nearRect(it.rect.left, it.rect.bottom, it.rect.right, it.rect.top, pts, radius + 4f) }
         if (candidates.isEmpty()) return
         scope.launch {
             saveMutex.withLock {
@@ -673,6 +802,7 @@ class ReaderState(
         openedStamp = f.lastModified() to f.length()
         session = fresh
         renderVersion++
+        scope.launch { runCatching { guard.refreshSigned(f, password) } }      // tab audit D8: a signing tool may have certified it
         loadExisting()
         runCatching { app.documents.touchRecent(f, fresh.pageCount, currentPage) }
     }
@@ -688,6 +818,7 @@ class ReaderState(
      */
     suspend fun applyInPlace(newPassword: String? = password, label: (() -> String)? = null,
                              action: com.smartdocs.editor.core.security.DocAction? = com.smartdocs.editor.core.security.DocAction.MODIFY,
+                             change: com.smartdocs.editor.core.pdf.SignedGuard.Change? = null,
                              op: suspend (src: File, out: File, pw: String?) -> Unit): File? {
         // nitro-protect2: the author's restrictions / Protected View ([action] = what the change needs; null = none)
         action?.let { guard.require(it) }
@@ -701,6 +832,15 @@ class ReaderState(
                 withContext(Dispatchers.IO) { out.delete() }
                 op(f, out, password)
                 if (!out.exists() || out.length() == 0L) throw IllegalStateException("empty result")
+                // tab-view-core V-06 / E-01 / D2: one signed-file gate for every in-place change. A result that is not
+                // an incremental update of a signed original (or that a certification forbids) never replaces it:
+                // it is kept as [signedCopy] and the screen offers "Save a copy".
+                val info = signedInfo()
+                if (info.protectedBySignature) {
+                    val incr = withContext(Dispatchers.IO) { com.smartdocs.editor.core.pdf.SignedGuard.isIncrementalOf(f, out) }
+                    val d = com.smartdocs.editor.core.pdf.SignedGuard.decide(info, signedChangeOf(change, action, incr, newPassword != prevPw), incr)
+                    com.smartdocs.editor.core.pdf.SignedGuard.reasonOf(d)?.let { r -> keepSignedCopy(out); signedBlock = r; return@withLock null }
+                }
                 withContext(NonCancellable) {
                     val lbl = runCatching { label?.invoke() }.getOrNull()?.takeIf { it.isNotBlank() } ?: str(R.string.hi_doc_change)
                     password = newPassword
@@ -708,10 +848,30 @@ class ReaderState(
                     writeBackResult = runCatching { app.documents.writeBack(f) }.getOrNull().also { com.smartdocs.editor.core.cloud.SaveHooks.onSaved(app, f) }
                     snap
                 }
+            } catch (e: com.smartdocs.editor.core.pdf.SignedDocumentException) {
+                // tabs audit CM-01 / CM-14: signed / certified file -> "save a copy" dialog, nothing written
+                out.delete(); signedBlock = e.reason; null
             } catch (e: Throwable) {
                 out.delete(); throw e
             }
         }
+    }
+
+    /**
+     * The kind of change for the signed gate: explicit [change], else from the permission [action]. A writer that
+     * appended an incremental update knows about signatures (NavIo, CommentOps, AttachmentOps): it is judged as an
+     * annotation-level change. A password change always rewrites the file.
+     */
+    private fun signedChangeOf(change: com.smartdocs.editor.core.pdf.SignedGuard.Change?, action: com.smartdocs.editor.core.security.DocAction?,
+                               incremental: Boolean, passwordChanged: Boolean): com.smartdocs.editor.core.pdf.SignedGuard.Change {
+        val C = com.smartdocs.editor.core.pdf.SignedGuard.Change.MODIFY
+        if (passwordChanged) return C
+        val c = change ?: when (action) {
+            com.smartdocs.editor.core.security.DocAction.ANNOTATE -> com.smartdocs.editor.core.pdf.SignedGuard.Change.ANNOTATE
+            com.smartdocs.editor.core.security.DocAction.FILL_FORMS -> com.smartdocs.editor.core.pdf.SignedGuard.Change.FORM_FILL
+            else -> C
+        }
+        return if (incremental && c == C) com.smartdocs.editor.core.pdf.SignedGuard.Change.ANNOTATE else c
     }
 
     /** Put a previous version (from [applyInPlace]) back in place: used by "undo" and "save as copy". */
@@ -791,9 +951,11 @@ class ReaderState(
     fun selectTool(t: ReaderTool?) {
         // remember the settings of the tool being left, restore those of the new one (OLD_PLAN: settings per tool)
         val mem = com.smartdocs.editor.ui.reader.annot.ToolMemory
-        tool?.takeIf { it in mem.REMEMBERED }?.let { old -> mem.save(context, old, mem.capture(this)) }
-        tool = if (tool == t) null else t
-        val restored = tool?.takeIf { it in mem.REMEMBERED }?.let { nt -> mem.load(context, nt) }?.also { mem.apply(this, it) } != null
+        val prevTool = tool
+        tool = if (tool == t) null else t                 // the setter saved the old tool's settings
+        // tabs audit CM-27: the stamp picker starts empty (a picture of the image / signature tool is not a stamp)
+        if (tool == ReaderTool.STAMP && prevTool != ReaderTool.STAMP) { pendingImage = null; placement = null }
+        val restored = mem.enabled(context) && tool?.takeIf { it in mem.REMEMBERED }?.let { nt -> mem.load(context, nt) }?.also { mem.apply(this, it) } != null
         if (restored) { selection = null; measure = null; edit.clear(); placement = null; pendingImage = null; pendingText = ""; return }
         selection = null; measure = null; edit.clear()
         if (tool != ReaderTool.SIGNATURE && tool != ReaderTool.STAMP && tool != ReaderTool.IMAGE) { placement = null; pendingImage = null }

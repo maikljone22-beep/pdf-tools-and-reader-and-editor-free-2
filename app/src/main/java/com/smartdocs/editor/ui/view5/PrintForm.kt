@@ -110,6 +110,10 @@ fun PrintOptionsForm(s: PrintSettings, onChange: (PrintSettings) -> Unit) {
                 Toggle(stringResource(R.string.v5_borders), s.borders) { onChange(s.copy(borders = it)) }
             }
             Toggle(stringResource(R.string.nbt_cut_marks), s.cutMarks) { onChange(s.copy(cutMarks = it)) }
+            // fc-settings: registration / bleed marks for normal printing
+            Toggle(stringResource(R.string.fcs_m_reg_marks), s.regMarks) { onChange(s.copy(regMarks = it)) }
+            Toggle(stringResource(R.string.fcs_m_bleed_marks), s.bleedMarks) { onChange(s.copy(bleedMarks = it)) }
+            if (s.bleedMarks || s.regMarks) NumberField(stringResource(R.string.fcs_m_bleed_pt), s.bleed.toInt().toString(), Modifier.fillMaxWidth()) { v -> v.toIntOrNull()?.let { onChange(s.copy(bleed = it.coerceIn(0, 36).toFloat())) } }
         }
         PrintMode.NUP -> {
             Chips {
@@ -157,6 +161,9 @@ fun PrintOptionsForm(s: PrintSettings, onChange: (PrintSettings) -> Unit) {
     HorizontalDivider()
     Toggle(stringResource(R.string.nbt_grayscale), s.grayscale) { onChange(s.copy(grayscale = it)) }
     Toggle(stringResource(R.string.nbt_as_image), s.asImage) { onChange(s.copy(asImage = it)) }
+    // fc-settings (G8): hairline fix — minimum stroke width
+    Text(stringResource(R.string.fcs_m_hairline), style = MaterialTheme.typography.labelLarge)
+    Chips { listOf(0f, 0.25f, 0.5f, 1f).forEach { w -> FilterChip(s.hairline == w, { onChange(s.copy(hairline = w)) }, label = { Text(if (w == 0f) stringResource(R.string.fcs_m_off) else stringResource(R.string.fcs_m_pt, w.toString())) }) } }
     if (s.asImage) Chips { listOf(100, 150, 200, 300).forEach { d -> FilterChip(s.dpi == d, { onChange(s.copy(dpi = d)) }, label = { Text("$d dpi") }) } }
 }
 

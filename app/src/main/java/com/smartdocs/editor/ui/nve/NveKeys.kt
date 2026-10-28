@@ -108,6 +108,26 @@ enum class NveKey(val label: Int, val def: Chord?, val foxitOnly: Boolean = fals
     EMAIL(R.string.share, Chord(KeyEvent.KEYCODE_L, ctrl = true, shift = true)),
     WORD_COUNT(R.string.nv_word_count, null),
     SNAPSHOT(R.string.nv_page_snapshot, Chord(KeyEvent.KEYCODE_7, alt = true)),
+    // fc-settings (§39): comment keys. Plain Ctrl+L stays presentation (view5) / comment manager (Foxit layout), so
+    // "export comments" takes Ctrl+Alt+L; it can be rebound in the sheet.
+    EXPORT_COMMENTS(R.string.fcs_key_export_comments, Chord(KeyEvent.KEYCODE_L, ctrl = true, alt = true)),
+    EXPORT_HIGHLIGHTS(R.string.v5_export_highlights, Chord(KeyEvent.KEYCODE_I, ctrl = true)),
+    HIDE_COMMENTS(R.string.cx_hide_comments, Chord(KeyEvent.KEYCODE_8, ctrl = true)),
+    SHOW_COMMENTS(R.string.cx_show_comments, Chord(KeyEvent.KEYCODE_8, ctrl = true, shift = true)),
+    REPLY(R.string.fcs_key_reply, Chord(KeyEvent.KEYCODE_ENTER, ctrl = true)),
+    PASTE_IN_PLACE(R.string.cx_paste_in_place, Chord(KeyEvent.KEYCODE_V, ctrl = true, alt = true)),
+    CUT(R.string.cx_cut, Chord(KeyEvent.KEYCODE_X, ctrl = true)),
+    DESELECT(R.string.fcs_key_deselect, Chord(KeyEvent.KEYCODE_A, ctrl = true, shift = true)),
+    // Ctrl+Shift+C is the comment manager in the default layout (view5); the Foxit layout gives it to cross-references
+    CROSS_REF(R.string.nbm_xref_title, Chord(KeyEvent.KEYCODE_C, ctrl = true, shift = true), foxitOnly = true),
+    DUPLICATE_PAGE(R.string.fcs_key_duplicate_page, Chord(KeyEvent.KEYCODE_D, ctrl = true, alt = true)),
+    READ_TO_END(R.string.fcs_key_read_to_end, Chord(KeyEvent.KEYCODE_B, ctrl = true, shift = true)),
+    READ_PAUSE(R.string.fcs_key_read_pause, Chord(KeyEvent.KEYCODE_P, ctrl = true, shift = true)),
+    READ_TOGGLE(R.string.fcs_key_read_toggle, Chord(KeyEvent.KEYCODE_Y, ctrl = true, shift = true)),
+    MENU_BAR(R.string.v5_tell_me, Chord(KeyEvent.KEYCODE_F10)),
+    TOOLBARS(R.string.fcs_key_toolbars, Chord(KeyEvent.KEYCODE_F11, ctrl = true)),
+    EMAIL_TABS(R.string.fcs_key_email_tabs, Chord(KeyEvent.KEYCODE_K, ctrl = true, shift = true)),
+    JS_CONSOLE(R.string.nbm_js_title, Chord(KeyEvent.KEYCODE_J, ctrl = true)),
     ;
 }
 
@@ -132,6 +152,9 @@ object NveKeys {
     }
     fun bind(ctx: Context, k: NveKey, c: Chord?) = prefs(ctx).edit().putString("k." + k.name, c?.encode() ?: "-").apply()
     fun reset(ctx: Context, k: NveKey) = prefs(ctx).edit().remove("k." + k.name).apply()
+    /** fc-settings: the last Ctrl+C / Ctrl+X took annotations (Ctrl+V then pastes them instead of the system clipboard). */
+    @Volatile var annotClipNewer = false
+
     fun resetAll(ctx: Context) { val e = prefs(ctx).edit(); NveKey.entries.forEach { e.remove("k." + it.name) }; e.apply() }
 
     /** Single-key accelerators (preference): letters without modifiers pick comment tools, as in Foxit. */
@@ -168,7 +191,9 @@ object NveKeys {
         val a = v.env?.actions
         val nav = v.env?.nav
         val ctx = s.context
-        fun tool(t: ReaderTool) { s.tab = ReaderTab.COMMENT; s.selectTool(t) }
+        val cx = s.annot2.cx
+        // tabs audit CM-24: the same path as the chips (caret / replace act on the selection), and the Comment toolbar shows
+        fun tool(t: ReaderTool) { s.tab = ReaderTab.COMMENT; n.userTab = null; if (a != null) com.smartdocs.editor.ui.reader.annot.clickTool(s, a, t) else s.selectTool(t) }
         fun tabStep(d: Int) {
             val tabs = ReaderTabs.tabs.toList(); if (tabs.size < 2) return
             val i = tabs.indexOfFirst { it.uri == s.fileUri }
@@ -196,9 +221,21 @@ object NveKeys {
             NveKey.ROTATE_CW -> s.rotation = (s.rotation + 90) % 360
             NveKey.ROTATE_CCW -> s.rotation = (s.rotation + 270) % 360
             NveKey.SELECT_ALL -> s.scope.launch { NveSelectionOps.selectAll(s, s.currentPage) }
-            NveKey.COPY -> { val sel = s.selection ?: return false; if (s.guard.check(com.smartdocs.editor.core.security.DocAction.COPY)) com.smartdocs.editor.ui.reader.ReaderIntents.copy(ctx, sel.text) }
-            NveKey.PASTE -> NveClipboard.paste(ctx, s)
-            NveKey.ADD_BOOKMARK -> a?.panels?.invoke(com.smartdocs.editor.ui.reader.ReaderPanel.BOOKMARKS)
+            NveKey.COPY -> {
+                val sel = s.selection
+                // fc-settings: no text selected → copy the selected annotation(s) to the comment clipboard
+                if (sel == null) { if (cx.target() == null) return false; cx.copy(); annotClipNewer = true }
+                else if (s.guard.check(com.smartdocs.editor.core.security.DocAction.COPY)) { com.smartdocs.editor.ui.reader.ReaderIntents.copy(ctx, sel.text); annotClipNewer = false }
+            }
+            // fc-settings: an annotation copied with Ctrl+C / Ctrl+X is pasted (offset) until text is copied again
+            NveKey.PASTE -> if (annotClipNewer && cx.canPaste) cx.paste(false) else NveClipboard.paste(ctx, s)
+            NveKey.ADD_BOOKMARK -> {   // fc-settings: Ctrl+B adds a bookmark for the current page (the panel lists it)
+                val page = s.currentPage
+                s.scope.launch {
+                    runCatching { s.app.db.bookmarks().insert(com.smartdocs.editor.core.data.ReadingBookmark(uri = s.fileUri, page = page, title = ctx.getString(R.string.page_of, page + 1, s.pageCount))) }
+                    NveSelectionOps.toast(ctx, ctx.getString(R.string.nv_bookmark_added))
+                }
+            }
             NveKey.FIND_REPLACE -> a?.navigateTool?.invoke("find_replace")
             NveKey.DELETE_PAGE -> a?.quick?.invoke(QuickAction.DELETE_PAGE)
             NveKey.INSERT_BLANK -> a?.quick?.invoke(QuickAction.ADD_BLANK)
@@ -230,6 +267,41 @@ object NveKeys {
             NveKey.EMAIL -> a?.share?.invoke()
             NveKey.WORD_COUNT -> { n.wordCountText = null; n.open(NveSurface.WORD_COUNT) }
             NveKey.SNAPSHOT -> n.dragMode = NveDrag.SNAPSHOT
+            // ---- fc-settings (§39) ----
+            NveKey.EXPORT_COMMENTS -> { n.commentExport = "menu"; v.open(V5Surface.COMMENTS) }
+            NveKey.EXPORT_HIGHLIGHTS -> { n.commentExport = "highlights"; v.open(V5Surface.COMMENTS) }
+            NveKey.HIDE_COMMENTS -> if (!cx.hidden) cx.toggleHidden()
+            NveKey.SHOW_COMMENTS -> if (cx.hidden) cx.toggleHidden()
+            NveKey.REPLY -> {
+                val t = s.edit.target as? com.smartdocs.editor.ui.reader.AnnotTarget.Stored ?: return false
+                n.replyTo = t.e.page to t.e.index
+                a?.panels?.invoke(com.smartdocs.editor.ui.reader.ReaderPanel.ANNOTATIONS)
+            }
+            NveKey.PASTE_IN_PLACE -> { if (!cx.canPaste) return false; cx.paste(true) }
+            NveKey.CUT -> { if (cx.target() == null) return false; cx.copy(cut = true); annotClipNewer = true }
+            NveKey.DESELECT -> { s.selection = null; s.edit.clear(); s.annot2.multi.clear() }
+            NveKey.CROSS_REF -> a?.navigateTool?.invoke("e5_xref")
+            NveKey.DUPLICATE_PAGE -> {
+                val page = s.currentPage
+                s.scope.launch {
+                    runCatching { s.applyInPlace(label = { ctx.getString(R.string.e5_op_duplicate) }) { src, out, pw -> com.smartdocs.editor.core.edit5.PageOps5.duplicate(src, out, pw, listOf(page), 1, false) } }
+                        .onFailure { s.error = it.message ?: it.toString() }
+                }
+            }
+            NveKey.READ_TO_END -> a?.readAloud?.invoke()
+            NveKey.READ_PAUSE -> { if (!com.smartdocs.editor.core.tts.ReadAloudController.isActive) return false; com.smartdocs.editor.core.tts.ReadAloudController.toggle() }
+            NveKey.READ_TOGGLE -> if (com.smartdocs.editor.core.tts.ReadAloudController.isActive) com.smartdocs.editor.core.tts.ReadAloudController.stop() else a?.readAloud?.invoke()
+            NveKey.MENU_BAR -> v.open(V5Surface.COMMANDS)
+            NveKey.TOOLBARS -> n.chromeToggle++
+            NveKey.EMAIL_TABS -> {
+                val f = s.file ?: return false
+                if (ReaderTabs.tabs.size < 2) { a?.share?.invoke(); return true }
+                s.scope.launch {
+                    runCatching { com.smartdocs.editor.ui.share5.emailOpenTabs(ctx, f, com.smartdocs.editor.core.share5.ShareStrip.items(com.smartdocs.editor.core.share5.ShareStrip.load(ctx))) }
+                        .onFailure { s.error = it.message ?: it.toString() }
+                }
+            }
+            NveKey.JS_CONSOLE -> a?.navigateTool?.invoke("e5_doc_js")
         }
         return true
     }

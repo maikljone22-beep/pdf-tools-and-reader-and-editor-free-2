@@ -88,11 +88,14 @@ fun CreationExtrasRow(state: ReaderState) {
                     leadingIcon = { Icon(Icons.Default.LineStyle, null, Modifier.size(16.dp)) }, modifier = Modifier.height(30.dp))
             if (shapes || (poly && t != ReaderTool.POLYLINE))
                 FilterChip(h.noBorder, { h.noBorder = !h.noBorder }, label = { Text(stringResource(R.string.cx_no_border)) }, enabled = h.fillColor != null, modifier = Modifier.height(30.dp))
-            if (t == ReaderTool.RECT) {
+            if (t == ReaderTool.RECT || t == ReaderTool.OVAL) {   // Nitro 7.27: cloudy oval as well
                 Text(stringResource(R.string.cx_cloud), style = MaterialTheme.typography.labelSmall)
                 (0..3).forEach { lv -> FilterChip(h.rectCloud == lv, { h.rectCloud = lv }, label = { Text(if (lv == 0) "—" else lv.toString()) }, modifier = Modifier.height(30.dp)) }
             }
             if (t == ReaderTool.CLOUD) FilterChip(h.cloudIntensity == 3, { h.cloudIntensity = 3 }, label = { Text("3") }, modifier = Modifier.height(30.dp))
+            // Foxit 24.33: scallops inward / outward
+            if (t == ReaderTool.CLOUD || ((t == ReaderTool.RECT || t == ReaderTool.OVAL) && h.rectCloud > 0))
+                FilterChip(h.cloudInward, { h.cloudInward = !h.cloudInward }, label = { Text(stringResource(R.string.cf_cloud_inward)) }, modifier = Modifier.height(30.dp))
             if (shapes) FilterChip(h.constrain, { h.constrain = !h.constrain }, label = { Text(stringResource(R.string.cx_square_constraint)) }, modifier = Modifier.height(30.dp))
             if (t == ReaderTool.INK) FilterChip(h.inkToShapes, { h.inkToShapes = !h.inkToShapes }, label = { Text(stringResource(R.string.cx_ink_shapes)) },
                 leadingIcon = { Icon(Icons.Default.AutoFixHigh, null, Modifier.size(16.dp)) }, modifier = Modifier.height(30.dp))
@@ -148,8 +151,8 @@ fun SelectionMoreButton(state: ReaderState, multi: Boolean) {
         IconButton(onClick = { open = true }) { Icon(Icons.Default.MoreVert, stringResource(R.string.cx_more)) }
         DropdownMenu(open, { open = false }) {
             CxItem(R.string.cx_props, Icons.Default.Info) { open = false; cx.openProps() }
-            CxItem(R.string.cx_lock, Icons.Default.Lock) { open = false; cx.setLocked(true) }
-            CxItem(R.string.cx_unlock, Icons.Default.LockOpen) { open = false; cx.setLocked(false) }
+            if (cx.selectionLocked()) CxItem(R.string.cx_unlock, Icons.Default.LockOpen) { open = false; cx.setLocked(false) }
+            else CxItem(R.string.cx_lock, Icons.Default.Lock) { open = false; cx.setLocked(true) }
             CxItem(R.string.cx_cut, Icons.Default.ContentCut) { open = false; cx.copy(cut = true) }
             CxItem(R.string.cx_copy, Icons.Default.ContentCopy) { open = false; cx.copy() }
             if (cx.canPaste) CxItem(R.string.cx_paste_in_place, Icons.Default.ContentPaste) { open = false; cx.paste(true) }
@@ -186,14 +189,17 @@ fun CommentExtrasMenuItems(h: Annot2Host, close: () -> Unit) {
     DropdownMenuItem(text = { Text(stringResource(if (cx.hidden) R.string.cx_show_comments else R.string.cx_hide_comments)) },
         leadingIcon = { Icon(if (cx.hidden) Icons.Default.Visibility else Icons.Default.VisibilityOff, null) }, onClick = { close(); cx.toggleHidden() })
     if (cx.canPaste) {
-        DropdownMenuItem(text = { Text(stringResource(R.string.cx_paste)) }, leadingIcon = { Icon(Icons.Default.ContentPaste, null) }, onClick = { close(); cx.paste(false) })
-        DropdownMenuItem(text = { Text(stringResource(R.string.cx_paste_in_place)) }, leadingIcon = { Icon(Icons.Default.ContentPasteGo, null) }, onClick = { close(); cx.paste(true) })
+        DropdownMenuItem(text = { Text(stringResource(R.string.tc_paste_comment)) }, leadingIcon = { Icon(Icons.Default.ContentPaste, null) }, onClick = { close(); cx.paste(false) })
+        DropdownMenuItem(text = { Text(stringResource(R.string.tc_paste_comment_in_place)) }, leadingIcon = { Icon(Icons.Default.ContentPasteGo, null) }, onClick = { close(); cx.paste(true) })
     }
     DropdownMenuItem(text = { Text(stringResource(R.string.cx_note_indicators)) }, leadingIcon = { Icon(if (cx.noteIndicators) Icons.Default.CheckBox else Icons.Default.CheckBoxOutlineBlank, null) },
         onClick = { close(); cx.toggleNoteIndicators() })
     DropdownMenuItem(text = { Text(stringResource(R.string.cx_copy_encircled)) }, leadingIcon = { Icon(if (cx.copyEncircled) Icons.Default.CheckBox else Icons.Default.CheckBoxOutlineBlank, null) },
         onClick = { close(); cx.toggleCopyEncircled() })
     DropdownMenuItem(text = { Text(stringResource(R.string.cx_note_prefs)) }, leadingIcon = { Icon(Icons.Default.TextFormat, null) }, onClick = { close(); cx.notePrefsOpen = true })
+    // pencil stroke merge timeout: off / 1 s / 2 s / 3 s (tap cycles; the menu stays open to show the new value)
+    DropdownMenuItem(text = { Text(if (cx.inkMergeMs <= 0L) stringResource(R.string.cf_ink_merge_off) else stringResource(R.string.cf_ink_merge_s, (cx.inkMergeMs / 1000L).toInt())) },
+        leadingIcon = { Icon(Icons.Default.Gesture, null) }, onClick = { cx.cycleInkMerge() })
     DropdownMenuItem(text = { Text(stringResource(R.string.cx_prev_comment)) }, leadingIcon = { Icon(Icons.AutoMirrored.Filled.NavigateBefore, null) }, onClick = { close(); cx.stepComment(false) })
     DropdownMenuItem(text = { Text(stringResource(R.string.cx_next_comment)) }, leadingIcon = { Icon(Icons.AutoMirrored.Filled.NavigateNext, null) }, onClick = { close(); cx.stepComment(true) })
     DropdownMenuItem(text = { Text(stringResource(R.string.cx_popups_open)) }, leadingIcon = { Icon(Icons.Default.OpenInFull, null) }, onClick = { close(); cx.popupsOpen(true) })
@@ -210,15 +216,14 @@ fun CommentExtrasDialogs(state: ReaderState) {
     val cx = h.cx
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
-    var pendingOut by remember { mutableStateOf<File?>(null) }
     val saver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
-        val f = pendingOut; pendingOut = null
+        val f = h.pendingExport; h.pendingExport = null
         if (uri != null && f != null) scope.launch { runCatching { MediaIntents.writeTo(ctx, f, uri) }.onFailure { state.error = it.message } }
     }
     SideEffect {
         h.launchExportSelected = { xfdf, share, all ->
             if (all) { h.multi.clear(); state.edit.clear() }
-            cx.exportSelected(xfdf, share) { out -> pendingOut = out; saver.launch(out.name) }
+            cx.exportSelected(xfdf, share) { out -> h.pendingExport = out; saver.launch(out.name) }
         }
     }
     cx.props?.let { p -> PropsDialog(p, onDismiss = { cx.props = null }) { a, s, n, c, l, i -> cx.applyProps(p, a, s, n, c, l, i) } }
@@ -241,7 +246,7 @@ fun CommentExtrasDialogs(state: ReaderState) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun PropsDialog(p: PropsReq, onDismiss: () -> Unit, onOk: (String, String, String, String, Boolean, String) -> Unit) {
+private fun PropsDialog(p: PropsReq, onDismiss: () -> Unit, onOk: (String, String, String, String, Boolean?, String) -> Unit) {
     var author by remember { mutableStateOf(p.author) }
     var subject by remember { mutableStateOf(p.subject) }
     var name by remember { mutableStateOf(p.name) }
@@ -267,7 +272,7 @@ private fun PropsDialog(p: PropsReq, onDismiss: () -> Unit, onOk: (String, Strin
                 }
             }
         },
-        confirmButton = { TextButton(onClick = { onOk(author.trim(), subject.trim(), name.trim(), contents, locked, icon) }) { Text(stringResource(R.string.ok)) } },
+        confirmButton = { TextButton(onClick = { onOk(author.trim(), subject.trim(), name.trim(), contents, locked.takeIf { it != p.locked }, icon) }) { Text(stringResource(R.string.ok)) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } })
 }
 
@@ -403,10 +408,16 @@ private fun CalculatorDialog(state: ReaderState, onDismiss: () -> Unit) {
  */
 @Composable
 fun PlacementBar(state: ReaderState, modifier: Modifier = Modifier) {
+    // tab audit D24: the stamp just placed with "place on pages" (one multi-page implementation: FillSign2Reader)
+    var multiFor by remember { mutableStateOf<com.smartdocs.editor.core.pdf.Annot?>(null) }
+    multiFor?.let { a -> com.smartdocs.editor.ui.reader.PlaceOnPagesDialog(state, a) { multiFor = null } }
     val p = state.placement ?: return
     var sizeOpen by remember { mutableStateOf(false) }
     var opacity by remember(p.image) { mutableFloatStateOf(1f) }
     var opOpen by remember { mutableStateOf(false) }
+    // tabs audit CM-35: copies made by the opacity slider; one that is replaced again is ours to recycle
+    val ownCopies = remember { mutableSetOf<android.graphics.Bitmap>() }
+    val recycleScope = rememberCoroutineScope()
     Surface(modifier, shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp), tonalElevation = 3.dp, shadowElevation = 4.dp) {
         Column(Modifier.padding(4.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -415,14 +426,19 @@ fun PlacementBar(state: ReaderState, modifier: Modifier = Modifier) {
                 TextButton(onClick = {
                     val before = state.annots.map { it.id }.toSet()
                     state.confirmPlacement()
-                    state.annots.firstOrNull { it.id !in before }?.let { a -> state.annot2.cx.pagesReq = PagesReq(CTarget(a.page, listOf(a.id), emptyList())) }
+                    state.annots.firstOrNull { it.id !in before }?.let { a -> multiFor = a }
                 }) { Icon(Icons.Default.FileCopy, null, Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)); Text(stringResource(R.string.cx_place_pages)) }
                 IconButton(onClick = { state.confirmPlacement() }) { Icon(Icons.Default.Check, stringResource(R.string.done)) }
             }
             if (opOpen) Row(Modifier.width(280.dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Slider(opacity, { opacity = it }, Modifier.weight(1f), valueRange = 0.1f..1f, onValueChangeFinished = {
                     val cur = state.placement ?: return@Slider
-                    state.placement = cur.copy(image = com.smartdocs.editor.ui.view5.StampProcess.apply(cur.image.copy(android.graphics.Bitmap.Config.ARGB_8888, true), opacity, false))
+                    val old = cur.image
+                    val made = com.smartdocs.editor.ui.view5.StampProcess.apply(old.copy(android.graphics.Bitmap.Config.ARGB_8888, true), opacity, false)
+                    state.placement = cur.copy(image = made)
+                    ownCopies += made
+                    // the previous slider copy is no longer shown or placed: released after two frames
+                    if (old in ownCopies && old !== made && old !== state.pendingImage) { ownCopies -= old; recycleScope.launch { com.smartdocs.editor.ui.common.recycleLater(old) } }
                     opacity = 1f
                 })
                 Text("${(opacity * 100).toInt()}%", style = MaterialTheme.typography.labelMedium)
@@ -473,6 +489,7 @@ fun SummaryOptionsFields(o: com.smartdocs.editor.core.annot.SummaryOptions, page
     }
     SwRow(o.thumbnails, R.string.cx_sum_thumbs) { onChange(o.copy(thumbnails = it)) }
     SwRow(o.includeEmptyPages, R.string.cx_sum_empty_pages) { onChange(o.copy(includeEmptyPages = it)) }
+    if (o.thumbnails) SwRow(o.connectors, R.string.cf_sum_connectors) { onChange(o.copy(connectors = it)) }   // 24.87
     SwRow(o.replies, R.string.cx_sum_replies) { onChange(o.copy(replies = it)) }
     SwRow(o.status, R.string.cx_sum_status) { onChange(o.copy(status = it)) }
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -519,6 +536,12 @@ fun TextFormatDialog(initial: TextFmt, onDismiss: () -> Unit, showBiu: Boolean =
                     FilterChip(f.underline, { f = f.copy(underline = !f.underline) }, label = { Text("U", textDecoration = TextDecoration.Underline) })
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(f.strike, { f = f.copy(strike = it) }); Text(stringResource(R.string.cx_strike)) }
+                // Foxit 24.102: superscript / subscript
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    listOf(R.string.cf_script_normal, R.string.cf_superscript, R.string.cf_subscript).forEachIndexed { i, r ->
+                        FilterChip(f.script == i, { f = f.copy(script = i) }, label = { Text(stringResource(r)) })
+                    }
+                }
                 Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(f.bullets, { f = f.copy(bullets = it) }); Text(stringResource(R.string.cx_bullets)) }
                 Text(stringResource(R.string.cx_line_spacing, "%.2f".format(java.util.Locale.US, f.lineSpacing)), style = MaterialTheme.typography.labelMedium)
                 Slider(f.lineSpacing, { f = f.copy(lineSpacing = it) }, valueRange = 0.9f..3f)

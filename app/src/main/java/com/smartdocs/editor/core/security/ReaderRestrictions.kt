@@ -61,8 +61,11 @@ object PermissionBits {
 /** Things a reader user can do that a document's restrictions (or Protected View) may forbid. */
 enum class DocAction { PRINT, COPY, ANNOTATE, MODIFY, FILL_FORMS, ASSEMBLE, SAVE_UNPROTECTED, CHANGE_SECURITY }
 
-/** Why an action is refused: the author's permissions, or the file is shown in Protected View. */
-enum class Block { AUTHOR, PROTECTED_VIEW }
+/**
+ * Why an action is refused: the author's permissions, the file is shown in Protected View, or (tab audit D8) a
+ * certification / FieldMDP lock of a signature forbids it ([CertifiedLock]).
+ */
+enum class Block { AUTHOR, PROTECTED_VIEW, CERTIFIED }
 
 /**
  * Decision table of the reader's restrictions (rows 2 and 6). A document opened with its user password (or an
@@ -92,8 +95,13 @@ object ReaderRestrictions {
     /** True when any action is refused by the author's permissions (the reader shows a "restricted" note). */
     fun restricted(info: SecurityInfo?): Boolean = DocAction.values().any { check(info, false, it) == Block.AUTHOR }
 
+    /** Tabs audit CM-21: tool screens that do not work on the open document (scan, new PDF, batch …). */
+    val DOCUMENT_FREE = setOf("scan", "scan_studio", "images_to_pdf", "blank", "templates", "to_pdf_plus", "mail_merge", "recipes", "batch",
+        "batch_print", "ai_spaces", "esign", "office", "search_all")
+
     /** The permission a reader tool screen (Routes.tool id) needs on the open document; null = none (read only). */
     fun actionForTool(id: String): DocAction? = when (id) {
+        in DOCUMENT_FREE -> null
         "organize", "merge", "split" -> DocAction.ASSEMBLE
         "forms", "digital_sign" -> DocAction.FILL_FORMS
         "search_highlight" -> DocAction.ANNOTATE

@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="pa_ocr_has_text">This page already has text.</string>
+    <string name="pa_redact_page_q">Redact all of page %1$d?</string>
+    <string name="pa_redact_page_sub">All content of the page (text, images, comments) is removed and the page is filled black. You can undo before saving.</string>
+    <string name="pa_formula_alt">Formula</string>
+    <string name="pa_fixed_n">%1$d places fixed</string>
+    <string name="pa_table_summary">Table: %1$d rows × %2$d columns</string>
+    <string name="pa_tags_tree">Tree</string>
+    <string name="pa_tags_order">Reading order</string>
+    <string name="pa_order_other_group">This tag is in another group; move the group itself in the tree.</string>
+    <string name="pa_order_none">No tags with content on this page</string>
+    <string name="pa_order_up">Move item %1$d earlier</string>
+    <string name="pa_order_down">Move item %1$d later</string>
+    <string name="pa_cd_search">Search</string>
+    <string name="pa_cd_choose">Choose</string>
+    <string name="pa_report_tables">Tables: %1$d (first row as header cells)</string>
+    <string name="pa_prof_ua1">PDF/UA-1 (machine checks)</string>
+    <string name="pa_ua_claim">No PDF/UA identifier in the metadata</string>
+    <string name="pa_ua_tagged">The document is not tagged</string>
+    <string name="pa_ua_marked">MarkInfo /Marked is not set</string>
+    <string name="pa_ua_title">The document has no title</string>
+    <string name="pa_ua_display_title">The title is not shown in the title bar (DisplayDocTitle)</string>
+    <string name="pa_ua_lang">The document language is not set</string>
+    <string name="pa_ua_untagged_content">Pages with untagged content</string>
+    <string name="pa_ua_untagged_annots">Untagged annotations</string>
+    <string name="pa_ua_tabs">Pages whose tab order does not follow the structure</string>
+    <string name="pa_ua_fonts">Fonts not embedded</string>
+    <string name="pa_ua_unicode">Fonts without a Unicode mapping</string>
+    <string name="pa_ua_alt">Figures without alternate text</string>
+    <string name="pa_ua_other_alt">Formulas or other elements without alternate text</string>
+    <string name="pa_ua_table_headers">Tables without header cells</string>
+    <string name="pa_ua_headings">Skipped heading levels</string>
+    <string name="pa_ua_field_desc">Fields without a description</string>
+    <string name="pa_ua_permission">Permissions block content extraction for accessibility</string>
+    <string name="pa_ua_xfa">XFA form (not allowed in PDF/UA)</string>
+    <string name="pa_ua_rolemap">Custom tags not mapped to a standard type</string>
+    <string name="pa_ua_note_id">Note elements without an ID</string>
+    <string name="pa_ua_ocg_name">The layer configuration has no name</string>
+    <string name="pa_ua_embedded_names">Attachments without a file name (F/UF)</string>
+    <string name="pa_ua_ok">The document passes every machine check</string>
+    <string name="pa_ua_manual">Reading order, contrast and the meaning of alternate text need a human check</string>
+</resources>

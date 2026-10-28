@@ -19,6 +19,8 @@ class SignedDocumentException(val reason: Reason, message: String, cause: Throwa
         CERTIFIED_NO_CHANGES,
         /** The incremental update could not be written. */
         INCREMENTAL_FAILED,
+        /** A change of page content (flatten …) on a signed file: an incremental update would still invalidate it. */
+        CONTENT_CHANGE,
     }
 }
 
@@ -55,6 +57,17 @@ object SignedSave {
         2
     }.getOrNull()
 
+    /**
+     * Throws [SignedDocumentException] when the certification of [doc] (or a signature's FieldMDP /P lock) forbids
+     * filling in forms: only P=1 ("no changes"); P=2 and P=3 allow form filling.
+     */
+    fun requireFormFillAllowed(doc: PDDocument) {
+        val locked = runCatching { doc.signatureDictionaries.mapNotNull { com.smartdocs.editor.core.sign.SigFields.lockOf(doc, it)?.docPermission }.minOrNull() }.getOrNull()
+        val p = listOfNotNull(certifyLevel(doc), locked).minOrNull() ?: return
+        if (p < 2) throw SignedDocumentException(SignedDocumentException.Reason.CERTIFIED_NO_CHANGES,
+            "this file is certified (DocMDP P=$p) and does not allow form filling; save as a copy")
+    }
+
     /** Throws [SignedDocumentException] when the certification of [doc] forbids adding or removing annotations. */
     fun requireAnnotationsAllowed(doc: PDDocument) {
         // a FieldMDP lock with /P (PDF 2.0, "lock document after signing") restricts changes like a certification
@@ -62,6 +75,24 @@ object SignedSave {
         val p = listOfNotNull(certifyLevel(doc), locked).minOrNull() ?: return
         if (p < 3) throw SignedDocumentException(SignedDocumentException.Reason.CERTIFIED_NO_CHANGES,
             "this file is certified (DocMDP P=$p) and does not allow annotation changes; save as a copy")
+    }
+
+    /** Throws [SignedDocumentException] (CONTENT_CHANGE) for a signed [doc]: page content must not change after signing. */
+    fun requireContentChangeAllowed(doc: PDDocument) {
+        if (isSigned(doc)) throw SignedDocumentException(SignedDocumentException.Reason.CONTENT_CHANGE,
+            "this file is signed: flattening changes the page content and would invalidate the signature; save a copy")
+    }
+
+    /**
+     * Tabs audit CM-01 / CM-02 / CM-04: the one write path of the comment tools. Loads [src] without removing its
+     * security, applies [change] (it returns the zero-based pages it touched; empty = every page) and saves with
+     * [saveEdited] — incremental and refused on certified files when signed, re-protected otherwise.
+     */
+    fun editFile(src: java.io.File, out: java.io.File, password: String?, change: (PDDocument) -> Collection<Int>) {
+        PdfOps.loadRaw(src, password).use { doc ->
+            val pages = change(doc)
+            saveEdited(doc, out, password, pages.ifEmpty { (0 until doc.numberOfPages).toList() })
+        }
     }
 
     /** Flag [pages] (their /Annots array and their /Parent chain) and the catalog for the incremental update. */
@@ -75,6 +106,9 @@ object SignedSave {
                 // edited existing annotations (moved, regrouped, unlinked) and their popups must be rewritten too
                 for (i in 0 until annots.size()) {
                     val an = annots.getObject(i) as? COSDictionary ?: continue
+                    // audit D34: an untouched signed signature widget is not rewritten (validators would report
+                    // "signature field modified"); writers that edit one flag it themselves
+                    if (isSignedSigWidget(an)) continue
                     an.isNeedToBeUpdated = true
                     (an.getDictionaryObject(POPUP) as? COSDictionary)?.isNeedToBeUpdated = true
                 }
@@ -85,6 +119,13 @@ object SignedSave {
                 node = node.getDictionaryObject(COSName.PARENT) as? COSDictionary
             }
         }
+    }
+
+    /** A widget of a signature field that holds a signature (/FT /Sig with /V, on the widget or its parent field). */
+    internal fun isSignedSigWidget(an: COSDictionary): Boolean {
+        if (an.getCOSName(COSName.SUBTYPE) != COSName.getPDFName("Widget")) return false
+        val field = if (an.containsKey(COSName.FT)) an else an.getDictionaryObject(COSName.PARENT) as? COSDictionary ?: return false
+        return field.getCOSName(COSName.FT) == COSName.SIG && field.getDictionaryObject(COSName.V) != null
     }
 
     /**

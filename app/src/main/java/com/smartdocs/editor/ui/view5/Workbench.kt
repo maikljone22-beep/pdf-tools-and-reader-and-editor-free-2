@@ -55,18 +55,21 @@ fun WorkbenchSheet(v: V5State, measureFirst: Boolean, onMessage: (String) -> Uni
     val s = v.s
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
-    val m = remember { WorkbenchModel(v).also { if (measureFirst && !it.isMeasure) it.tool = WTool.DISTANCE; if (!measureFirst && it.isMeasure) it.tool = WTool.CALLOUT } }
+    // tabs audit CM-16: the model outlives the dialog (rotation, split-screen resize); a new workbench starts a new one
+    val m = remember { v.workbenchModel ?: WorkbenchModel(v).also { if (measureFirst && !it.isMeasure) it.tool = WTool.DISTANCE; if (!measureFirst && it.isMeasure) it.tool = WTool.CALLOUT; v.workbenchModel = it } }
     var showScale by remember { mutableStateOf(false) }
     var showStyle by remember { mutableStateOf(false) }
     var saving by remember { mutableStateOf(false) }
     var confirmClose by remember { mutableStateOf(false) }
     val size = s.pageSizes[m.page] ?: (595f to 842f)
-    val view = remember(m.page, size) { WbView(size.first.coerceAtLeast(1f), size.second.coerceAtLeast(1f)) }   // 0 → NaN → roundToInt crash
+    val frame = s.pageFrames[m.page]
+    val view = remember(m.page, size, frame) { WbView(size.first.coerceAtLeast(1f), size.second.coerceAtLeast(1f), frame) }   // 0 → NaN → roundToInt crash
     // page bitmap (about two screens wide for sharp zoom)
-    val bitmap by produceState<Bitmap?>(null, m.page, s.session, s.renderVersion) {
-        val sess = s.session ?: return@produceState
+    // tabs audit CM-16: owned by the workbench (not the reader's page cache) and recycled when replaced / closed
+    val bitmap = com.smartdocs.editor.ui.common.rememberOwnedBitmap(m.page, s.session, s.renderVersion) {
+        val sess = s.session ?: return@rememberOwnedBitmap null
         val w = 2000; val h = if (size.first > 0f && size.second > 0f) (w * size.second / size.first).toInt().coerceIn(1, 6000) else 2828   // 0-size page boxes → no Infinity
-        value = runCatching { sess.render(m.page, w, h, false, true) }.getOrNull()
+        sess.renderOwned(m.page, w, h, false, true)
     }
     // snapping targets: vector path segments + text glyph corners
     val segments by produceState<List<Pair<P, P>>>(emptyList(), m.page, s.renderVersion) {
@@ -83,7 +86,7 @@ fun WorkbenchSheet(v: V5State, measureFirst: Boolean, onMessage: (String) -> Uni
         val own = m.pts.toList() + m.items.filter { it.page == m.page }.flatMap { (it as? WItem.Meas)?.m?.pts ?: emptyList() }
         Geom.snapToSegments(p, segments, tol.toDouble(), own + glyphCorners)
     }
-    fun close() { m.persist(); v.close() }
+    fun close() { m.persist(); v.workbenchModel = null; v.close() }
     var showLeader by remember { mutableStateOf(false) }
     var showEditLast by remember { mutableStateOf(false) }
     // scales stored in the document (/VP or measurements): the page's own scale is used (7.47 / 25.10)
@@ -109,7 +112,8 @@ fun WorkbenchSheet(v: V5State, measureFirst: Boolean, onMessage: (String) -> Uni
                         scope.launch {
                             val r = runCatching { s.applyInPlace(label = { s.context.getString(R.string.hi_workbench) }, action = com.smartdocs.editor.core.security.DocAction.ANNOTATE) { src, out, pw -> m.writeAll(ctx, src, out, pw) } }
                             saving = false
-                            r.onSuccess { m.items.clear(); onMessage(ctx.getString(R.string.v5_saved_items)); close() }
+                            // null = nothing written (signed / certified file: the "save a copy" dialog is shown); the items stay
+                            r.onSuccess { f -> if (f != null) { m.items.clear(); onMessage(ctx.getString(R.string.v5_saved_items)); close() } }
                                 .onFailure { onMessage(it.message ?: ctx.getString(R.string.error_generic)) }
                         }
                     }) { Text(stringResource(R.string.save) + if (m.items.isNotEmpty()) " (${m.items.size})" else "") }

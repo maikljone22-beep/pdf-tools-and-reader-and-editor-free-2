@@ -91,6 +91,8 @@ fun PageCanvas(
     var tile by remember(page) { mutableStateOf<Pair<Rect, Bitmap>?>(null) }
     // section 7.65: "hide comments" renders the page without annotations (PDFium FPDF_ANNOT off)
     val showAnnots = !state.annot2.cx.hidden
+    // OLD I1: detect the fields of a flat form for Fill & Sign
+    LaunchedEffect(page, state.tab, state.renderVersion) { if (state.tab == ReaderTab.FILL_SIGN) state.loadFsTargets(page) }
     LaunchedEffect(page, renderKeyW, night, version, session, showAnnots) {
         if (session == null || session.isClosed || page !in 0 until session.pageCount) return@LaunchedEffect
         if (base != null) delay(140)
@@ -234,7 +236,7 @@ fun PageCanvas(
                         if (draft.tool == null && draft.handle != PlacementHandle.NONE) { moveSelectionHandle(state, page, g, s, draft.handle == PlacementHandle.TL); return@pageDragLabel }
                         draft.move(s, if (pressure) change.pressure else 1f)
                         when (draft.tool) {
-                            ReaderTool.ERASER -> { val (x, y) = g.screenToPdf(s.x, s.y); inkHits(annots, page, x, y, 10f / scale.coerceAtLeast(0.1f)).forEach { state.removeAnnot(it) } }
+                            ReaderTool.ERASER -> { val (x, y) = g.screenToPdf(s.x, s.y); state.eraseHits(inkHits(annots, page, x, y, 10f / scale.coerceAtLeast(0.1f))) }
                             ReaderTool.MEASURE -> { val (x, y) = g.screenToPdf(s.x, s.y); state.measure = state.measure?.copy(b = x to y) }
                             else -> {}
                         }
@@ -273,6 +275,12 @@ fun PageCanvas(
             ReaderAi6.ttsHighlight.value?.let { (p, rs) -> if (p == page) drawPdfRects(rs, g, Color(0x5542A5F5), multiply = true) }   // ai6 (C1): sentence read aloud
             val frameDrag = draft.active && draft.annotFrame != null
             if (showAnnots) annots.forEach { a -> if (a.page == page && !(frameDrag && a.id == pendingEditId)) drawAnnot(a, g) }
+            // OLD I1: detected fields of a flat form, dashed, while Fill & Sign has no tool active
+            if (state.tab == ReaderTab.FILL_SIGN && state.tool == null) state.fsTargets[page]?.forEach { t ->
+                val r = g.pdfRectToLayout(RectF(t.rect.left, t.rect.top, t.rect.right, t.rect.bottom))
+                drawRect(Color(0x1A3F51B5), r.topLeft, r.size)
+                drawRect(Color(0xAA3F51B5), r.topLeft, r.size, style = androidx.compose.ui.graphics.drawscope.Stroke(2f, pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(8f, 6f), 0f)))
+            }
             // sticky-note indicator on markups that carry text (Foxit 24.13, optional)
             if (showAnnots && state.annot2.cx.noteIndicators) {
                 annots.forEach { a -> if (a.page == page && a.text.isNotBlank() && a.kind in NOTE_INDICATOR_KINDS) drawNoteIndicator(annotBounds(a), g, annotColor(a.color)) }
@@ -410,16 +418,18 @@ private fun handleTap(
         null -> {
             links.firstOrNull { l -> val r = PageGeometry.normPdf(l.bounds); x >= r.left && x <= r.right && y <= r.top && y >= r.bottom }?.let { onOpenLink(it); return }
             if (com.smartdocs.editor.ui.nve.NveLinks.tapUrl(state, page, x, y)) return     // NVE: plain-text URLs are tappable
+            // OLD I1: on a flat form a tap on a detected field fills it (text, or a check mark in a box)
+            if (state.tab == ReaderTab.FILL_SIGN) state.fsTargetAt(page, x, y)?.let { t -> fillTarget(state, page, t, g, onPrompt); return }
             onTap(p, layout)
         }
         ReaderTool.NOTE, ReaderTool.FREETEXT, ReaderTool.TEXTBOX, ReaderTool.FS_TEXT, ReaderTool.FS_COMB -> onPrompt(TextPrompt(t, page, x, y))
         ReaderTool.FS_PROFILE, ReaderTool.FS_DATE -> {
             val text = state.pendingText.ifBlank { return }
-            state.addAnnot(state.newAnnot(AnnotKind.FREETEXT, page, rects = listOf(textRectAt(x, y, text, state.fontSize, g.pageW, text.any { it in '؀'..'ۿ' })), text = text))
+            state.addAnnot(state.newAnnot(AnnotKind.FREETEXT, page, rects = listOf(textRectAt(x, y, text, state.fontSize, g.pageBox(), text.any { it in '؀'..'ۿ' })), text = text))
         }
         ReaderTool.FS_CHECK, ReaderTool.FS_CROSS, ReaderTool.FS_DOT, ReaderTool.FS_LINE -> {
             val sz = state.fontSize * 1.2f
-            val a = state.newAnnot(AnnotKind.INK, page, paths = quickMarkPaths(t, x, y, sz))
+            val a = state.newAnnot(AnnotKind.INK, page, paths = quickMarkPaths(t, x, y, sz, g.pageRotate))      // tab audit D9: upright on a turned page
             state.addAnnot(if (t == ReaderTool.FS_DOT) a.copy(strokeWidth = sz * 0.4f) else a.copy(strokeWidth = (state.thickness).coerceAtLeast(2f)))
         }
         ReaderTool.SIGNATURE, ReaderTool.STAMP, ReaderTool.IMAGE -> {
@@ -427,7 +437,8 @@ private fun handleTap(
             // nitro-fillsign2: a signature's remembered default size ("Set current size as default" / "Keep original size")
             val pref = if (t == ReaderTool.SIGNATURE && state.pendingText.isNotBlank()) com.smartdocs.editor.core.data.SignatureMetaStore.get(state.context, state.pendingText).widthPt else 0f
             val w = if (pref > 0f) pref.coerceIn(8f, g.pageW * 0.95f) else (g.pageW * 0.35f).coerceAtLeast(40f); val h = w * img.height / img.width.coerceAtLeast(1)
-            state.placement = Placement(page, RectF(x - w / 2, y + h / 2, x + w / 2, y - h / 2), img)
+            // tab audit D9: w x h is the upright (displayed) size; on a turned page its user space box is turned too
+            state.placement = Placement(page, com.smartdocs.editor.core.fillsign2.FsGeom.stampBox(g.pageBox(), x, y, w, h).toPdfRect(), img)
         }
         ReaderTool.LINK -> onPrompt(TextPrompt(t, page, x, y))
         ReaderTool.MEASURE -> {
@@ -435,7 +446,7 @@ private fun handleTap(
             state.measure = if (m == null || m.b != null || m.page != page) Measure(page, x to y, null) else m.copy(b = x to y)
         }
         ReaderTool.ERASER -> {
-            inkHits(state.annots, page, x, y, 10f / g.scale.coerceAtLeast(0.1f)).forEach { state.removeAnnot(it) }
+            state.eraseHits(inkHits(state.annots, page, x, y, 10f / g.scale.coerceAtLeast(0.1f))); state.endErase(page)
             state.eraseStoredInk(page, listOf(x to y), 10f / g.scale.coerceAtLeast(0.1f))   // audit AN-13: saved ink too
         }
         ReaderTool.INK, ReaderTool.LINE, ReaderTool.ARROW, ReaderTool.RECT, ReaderTool.OVAL, ReaderTool.FS_RRECT -> {
@@ -476,7 +487,10 @@ private fun finishDraft(state: ReaderState, draft: GestureDraft, page: Int, g: P
         }
         ReaderTool.LINK -> { val r = draft.rect; if (r.width > 4f && r.height > 4f) onPrompt(TextPrompt(tool, page, 0f, 0f, g.screenRectToPdf(r))) }
         // audit AN-13: the pending ink went while dragging; saved ink is erased in one write at the end
-        ReaderTool.ERASER -> state.eraseStoredInk(page, draft.points.map { g.screenToPdf(it.x, it.y) }, 10f / g.scale.coerceAtLeast(0.1f))
+        ReaderTool.ERASER -> {
+            state.endErase(page)                // tabs audit CM-08: the whole stroke is one undo step
+            state.eraseStoredInk(page, draft.points.map { g.screenToPdf(it.x, it.y) }, 10f / g.scale.coerceAtLeast(0.1f))
+        }
         ReaderTool.MEASURE -> {}
         else -> draftToAnnot(state, draft, page, g, pressure)?.let { state.annot2.cx.addNew(it) }
     }
@@ -503,5 +517,31 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawDraft(draft: Ge
             drawRect(c.copy(alpha = 0.25f), draft.rect.topLeft, draft.rect.size)
         ReaderTool.ERASER -> drawCircle(Color(0x66F44336), 10f, draft.current)
         else -> {}
+    }
+}
+
+/**
+ * OLD I1: fill a detected field — a check mark in a box, a text prompt on the line otherwise (the text fits the line
+ * height). Laid out upright in display space (FsGeom), so it also works on /Rotate and cropped pages.
+ */
+private fun fillTarget(state: ReaderState, page: Int, t: com.smartdocs.editor.core.formsx.FieldRecognition.Suggestion, g: PageGeometry, onPrompt: (TextPrompt) -> Unit) {
+    val r = t.rect
+    val box = g.pageBox()
+    val d = com.smartdocs.editor.core.fillsign2.FsGeom.userToDisplayRect(box, com.smartdocs.editor.core.fillsign2.MultiPage.Box(r.left, r.bottom, r.right, r.top))
+    val dw = d[2] - d[0]; val dh = d[3] - d[1]
+    when (t.type) {
+        com.smartdocs.editor.core.formsx.FxType.CHECKBOX, com.smartdocs.editor.core.formsx.FxType.RADIO -> {
+            val sz = minOf(dw, dh) * 0.8f
+            val (cx, cy) = com.smartdocs.editor.core.fillsign2.FsGeom.fromDisplay(box, (d[0] + d[2]) / 2, (d[1] + d[3]) / 2)
+            val a = state.newAnnot(AnnotKind.INK, page, paths = quickMarkPaths(ReaderTool.FS_CHECK, cx, cy, sz, g.pageRotate))
+            state.addAnnot(a.copy(strokeWidth = (sz / 8f).coerceAtLeast(1.5f)))
+        }
+        else -> {
+            if (dh > 4f) state.fontSize = state.fontSize.coerceAtMost((dh * 0.7f).coerceAtLeast(6f))
+            // the text box (top edge at the prompt point) sits with its bottom on the line
+            val boxH = state.fontSize * 1.3f + 8f
+            val (x, y) = com.smartdocs.editor.core.fillsign2.FsGeom.fromDisplay(box, d[0] + 1f, (d[3] - boxH).coerceAtLeast(0f))
+            onPrompt(TextPrompt(ReaderTool.FS_TEXT, page, x, y))
+        }
     }
 }

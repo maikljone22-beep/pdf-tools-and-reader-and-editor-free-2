@@ -28,6 +28,8 @@ class V5State private constructor(val s: ReaderState) {
 
     var surface by mutableStateOf(V5Surface.NONE)
     var workbenchTool by mutableStateOf(WTool.DISTANCE)
+    /** Tabs audit CM-16: the open workbench (pending measurements / callouts) lives here, so a rotation keeps it. */
+    var workbenchModel: WorkbenchModel? = null
 
     // ---- page overlays ----
     var rulers by mutableStateOf(prefs.getBoolean("rulers", false))

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cf_cloud_inward">Scallops inward</string>
+    <string name="cf_script_normal">Normal</string>
+    <string name="cf_superscript">Superscript</string>
+    <string name="cf_subscript">Subscript</string>
+    <string name="cf_id_shared">The name is also your comment author name.</string>
+    <string name="cf_sum_connectors">Connector lines to the page</string>
+    <string name="cf_ink_merge_off">Merge pencil strokes: off</string>
+    <string name="cf_ink_merge_s">Merge pencil strokes within %1$d s</string>
+    <string name="cf_mail_defaults">Default e-mail</string>
+    <string name="cf_mail_subject">Subject</string>
+    <string name="cf_mail_body">Message</string>
+    <string name="cf_mail_hint">Used when you e-mail a document from the share sheet. {file} becomes the document name.</string>
+    <string name="cf_show_note">Show note</string>
+    <string name="cf_auto_popup">Open comment pop-ups automatically</string>
+    <string name="cf_auto_popup_sub">The selected comment\'s note shows at once; when off, a Show note button opens it.</string>
+</resources>

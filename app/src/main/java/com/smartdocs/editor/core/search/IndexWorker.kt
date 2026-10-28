@@ -49,7 +49,6 @@ class Indexer(private val context: Context) {
     /** Indexes [only] (one file) or every source. Returns the number of files (re)indexed. */
     suspend fun run(only: File? = null, force: Boolean = false): Int {
         val index = FullTextIndex.get(context)
-        IndexExtras.apply(context)   // fc-sync: width folding / metadata options
         val files = if (only != null) listOf(only) else sources()
         val todo = files.filter { force || runCatching { index.needsIndex(it) }.getOrDefault(true) }
         var done = 0
@@ -57,12 +56,14 @@ class Indexer(private val context: Context) {
         try {
             for (f in todo) {
                 FullTextIndex.progressState.value = IndexProgress(true, done, todo.size, f.name)
-                val r = runCatching { indexFile(index, f) }
-                IndexExtras.log(context, f, r.exceptionOrNull())   // fc-sync: optional indexing log
+                val t0 = System.currentTimeMillis()
+                runCatching { indexFile(index, f) }.onFailure { FcsIndexPrefs.log(context, "FAILED ${f.absolutePath}: ${it.message}") }
+                    .onSuccess { FcsIndexPrefs.log(context, "indexed ${f.absolutePath} (${System.currentTimeMillis() - t0} ms)") }   // fc-settings: index log
                 done++
             }
-            if (only == null) runCatching { index.prune() }
-            runCatching { index.enforceLimit(IndexExtras.limitBytes(context)) }   // fc-sync: cache size limit
+            if (only == null) runCatching { index.prune().let { if (it > 0) FcsIndexPrefs.log(context, "pruned $it missing file(s)") } }
+            // fc-settings: index size cap
+            runCatching { FcsIndexPrefs.cacheMb(context).takeIf { it > 0 }?.let { mb -> index.evictToLimit(mb * 1024L * 1024L).let { if (it > 0) FcsIndexPrefs.log(context, "size cap $mb MB: emptied $it document(s)") } } }
         } finally {
             FullTextIndex.progressState.value = IndexProgress(false, done, todo.size, null)
         }
@@ -76,7 +77,7 @@ class Indexer(private val context: Context) {
             return
         }
         val session = try { PdfSession.open(context, f, null) }
-        catch (e: PdfSession.Companion.PasswordRequiredException) { index.put(f, 0, emptyList(), locked = true); return }
+        catch (e: PdfSession.Companion.PasswordRequiredException) { index.put(f, 0, emptyList(), locked = true); FcsIndexPrefs.log(context, "locked ${f.absolutePath}"); return }
         val parts = ArrayList<DocPart>()
         val pages = session.pageCount
         try {
@@ -85,9 +86,9 @@ class Indexer(private val context: Context) {
                 if (t.isNotBlank()) parts += DocPart(PartKind.TEXT, i, t)
             }
         } finally { session.closeAsync() }
-        parts += DocParts.load(f, null)
-        parts += DocMeta.load(f, IndexExtras.options(context))   // fc-sync: title, XMP, custom properties, tags
-        index.put(f, pages, parts, locked = false)
+        val (extra, title) = DocParts.loadForIndex(f, null, FcsIndexPrefs.meta(context))   // fc-settings: XMP / custom properties / tags, title
+        parts += extra
+        index.put(f, pages, parts, locked = false, title = title)
     }
 }
 

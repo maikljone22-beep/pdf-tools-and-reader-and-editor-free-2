@@ -111,7 +111,8 @@ fun ConvertHubScreen(nav: NavHostController, uri: String?) {
     fun open(c: Conv) {
         Cv6Recent.push(ctx, c.id); recentVersion++
         c.route?.let { r -> nav.navigate(Routes.tool(r, if (currentKind != null && currentKind in c.inputs) uri else null)); return }
-        conv = c; opts = defaultsFor(c); needPassword = false; password = ""
+        conv = c; opts = com.smartdocs.editor.core.convert6.Cv6Defaults.load(ctx, c.id, defaultsFor(c));   // fc-settings: saved per-conversion defaults
+        needPassword = false; password = ""
         val fromFiles = batch.filter { FileKind6.of(it) in c.inputs }
         when {
             c.inputs.isEmpty() -> { inputs = emptyList(); sheet = true }

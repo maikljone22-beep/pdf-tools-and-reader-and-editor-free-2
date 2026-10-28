@@ -23,7 +23,8 @@ import java.io.OutputStream
 import javax.xml.parsers.DocumentBuilderFactory
 
 enum class DataFormat(val ext: String, val mime: String) {
-    FDF("fdf", "application/vnd.fdf"), XFDF("xfdf", "application/vnd.adobe.xfdf"), XML("xml", "application/xml"), CSV("csv", "text/csv"), TXT("txt", "text/plain")
+    FDF("fdf", "application/vnd.fdf"), XFDF("xfdf", "application/vnd.adobe.xfdf"), XML("xml", "application/xml"), CSV("csv", "text/csv"), TXT("txt", "text/plain"),
+    XDP("xdp", "application/vnd.adobe.xdp+xml")
 }
 
 /**
@@ -67,6 +68,7 @@ object FormData {
             DataFormat.XML -> xml(v).toByteArray(Charsets.UTF_8)
             DataFormat.CSV -> (csvRow(v.keys.toList(), ',') + "\r\n" + csvRow(v.values.toList(), ',') + "\r\n").toByteArray(Charsets.UTF_8).let { byteArrayOf(0xEF.toByte(), 0xBB.toByte(), 0xBF.toByte()) + it }
             DataFormat.TXT -> (csvRow(v.keys.toList(), '\t') + "\r\n" + csvRow(v.values.toList(), '\t') + "\r\n").toByteArray(Charsets.UTF_8)
+            DataFormat.XDP -> xdp(v, pdfName ?: "").toByteArray(Charsets.UTF_8)
         }
         out.write(bytes)
     }
@@ -146,6 +148,44 @@ object FormData {
         append("</fields>\n")
     }
 
+    /** XML element name for one segment of a field name ("Page1[0]" -> "Page1"; invalid characters -> '_'). */
+    private fun xdpName(seg: String): String {
+        val s = seg.replace(Regex("\\[\\d+]"), "").map { c -> if (c.isLetterOrDigit() || c == '_' || c == '-' || c == '.') c else '_' }.joinToString("")
+        return if (s.isEmpty() || !(s[0].isLetter() || s[0] == '_')) "_$s" else s
+    }
+
+    /** Field name without XFA instance indices: "form1[0].Name[0]" -> "form1.Name". */
+    fun stripIndices(name: String): String = name.replace(Regex("\\[\\d+]"), "")
+
+    /**
+     * Nitro 8.73 XDP: the values as XFA data (<xfa:datasets><xfa:data>, one element per name segment) inside an
+     * <xdp:xdp> package that points back at the PDF.
+     */
+    fun xdp(values: Map<String, String>, fileName: String): String {
+        class Node(val name: String) { val kids = LinkedHashMap<String, Node>(); var value: String? = null }
+        val root = Node("")
+        values.forEach { (k, v) ->
+            var n = root
+            k.split('.').filter { it.isNotEmpty() }.forEach { seg -> val e = xdpName(seg); n = n.kids.getOrPut(e) { Node(e) } }
+            if (n !== root) n.value = v
+        }
+        return buildString {
+            append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<xdp:xdp xmlns:xdp=\"http://ns.adobe.com/xdp/\">\n")
+            append("<xfa:datasets xmlns:xfa=\"http://www.xfa.org/schema/xfa-data/1.0/\">\n<xfa:data>\n")
+            fun write(n: Node, depth: Int) {
+                val pad = "  ".repeat(depth)
+                if (n.kids.isEmpty()) { append(pad).append('<').append(n.name).append('>').append(esc(n.value ?: "")).append("</").append(n.name).append(">\n"); return }
+                append(pad).append('<').append(n.name).append(">\n")
+                n.kids.values.forEach { write(it, depth + 1) }
+                append(pad).append("</").append(n.name).append(">\n")
+            }
+            root.kids.values.forEach { write(it, 1) }
+            append("</xfa:data>\n</xfa:datasets>\n")
+            if (fileName.isNotEmpty()) append("<pdf href=\"").append(esc(fileName)).append("\" xmlns=\"http://ns.adobe.com/xdp/pdf/\"/>\n")
+            append("</xdp:xdp>\n")
+        }
+    }
+
     fun csvRow(cells: List<String>, sep: Char): String = cells.joinToString(sep.toString()) { c ->
         if (c.any { it == sep || it == '"' || it == '\n' || it == '\r' }) "\"" + c.replace("\"", "\"\"") + "\"" else c
     }
@@ -159,6 +199,7 @@ object FormData {
         return when {
             s.startsWith("%FDF") -> DataFormat.FDF
             s.contains("<xfdf") -> DataFormat.XFDF
+            s.contains("<xdp:xdp") || s.contains("<xfa:datasets") -> DataFormat.XDP
             s.startsWith("<?xml") || s.startsWith("<") -> DataFormat.XML
             s.lineSequence().firstOrNull()?.contains('\t') == true -> DataFormat.TXT
             s.lineSequence().firstOrNull()?.contains(',') == true -> DataFormat.CSV
@@ -172,6 +213,7 @@ object FormData {
         DataFormat.XML -> parseXml(bytes)
         DataFormat.CSV -> parseTable(bytes, ',').firstRow()
         DataFormat.TXT -> parseTable(bytes, '\t').firstRow()
+        DataFormat.XDP -> parseXdp(bytes)
     }
 
     private fun List<Map<String, String>>.firstRow() = firstOrNull() ?: emptyMap()
@@ -255,6 +297,34 @@ object FormData {
         return out
     }
 
+    /** XDP / bare XFA datasets: leaf element paths under <xfa:data> (a <fields> / XFDF payload is read as such). */
+    fun parseXdp(bytes: ByteArray): Map<String, String> {
+        val out = LinkedHashMap<String, String>()
+        val root = dom(bytes).documentElement
+        fun find(e: Element, tag: String, depth: Int): Element? {
+            if (e.tagName.substringAfter(':') == tag) return e
+            if (depth > 8) return null
+            return (0 until e.childNodes.length).firstNotNullOfOrNull { (e.childNodes.item(it) as? Element)?.let { k -> find(k, tag, depth + 1) } }
+        }
+        find(root, "xfdf", 0)?.let { x -> return parseXml(serialize(x)) }
+        val data = find(root, "data", 0) ?: return out
+        fun walk(e: Element, prefix: String, depth: Int) {
+            if (depth > 32) return
+            val kids = (0 until e.childNodes.length).mapNotNull { e.childNodes.item(it) as? Element }
+            if (kids.isEmpty()) { out[prefix] = e.textContent ?: ""; return }
+            kids.forEach { k -> walk(k, "$prefix.${k.tagName}", depth + 1) }
+        }
+        (0 until data.childNodes.length).mapNotNull { data.childNodes.item(it) as? Element }.forEach { walk(it, it.tagName, 1) }
+        return out
+    }
+
+    private fun serialize(e: Element): ByteArray {
+        val t = javax.xml.transform.TransformerFactory.newInstance().newTransformer()
+        val bo = java.io.ByteArrayOutputStream()
+        t.transform(javax.xml.transform.dom.DOMSource(e), javax.xml.transform.stream.StreamResult(bo))
+        return bo.toByteArray()
+    }
+
     /** RFC 4180 table (header row + data rows) -> one map per data row. */
     fun parseTable(bytes: ByteArray, sep: Char): List<Map<String, String>> {
         var text = String(bytes, Charsets.UTF_8)
@@ -285,8 +355,10 @@ object FormData {
     fun importInto(doc: PDDocument, values: Map<String, String>): Int {
         val form = doc.documentCatalog.getAcroForm(null) ?: return 0
         var count = 0
+        // XDP data paths carry no instance indices: match "form1.Name" to "form1[0].Name[0]" when there is no exact name
+        val byStripped by lazy { form.fieldTree.filterIsInstance<PDTerminalField>().groupBy { stripIndices(it.fullyQualifiedName) }.filterValues { it.size == 1 }.mapValues { it.value[0] } }
         values.forEach { (name, v) ->
-            val f = form.getField(name) as? PDTerminalField ?: return@forEach
+            val f = (form.getField(name) as? PDTerminalField ?: byStripped[stripIndices(name)]) ?: return@forEach
             if (f is PDPushButton || f is PDSignatureField) return@forEach
             val ok = when (f) {
                 is PDCheckBox -> {

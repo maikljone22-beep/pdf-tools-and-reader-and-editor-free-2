@@ -2,14 +2,13 @@ package com.smartdocs.editor.core.share5
 
 import com.smartdocs.editor.core.collab.CommentMerge
 import com.smartdocs.editor.core.collab.ReviewReminder
-import com.smartdocs.editor.core.connected.ConnPrefs
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** fc-sync: recipient auto-complete, the FDF size rule, review reminders, take-over and the Connected switch. */
+/** fc-sync: recipient auto-complete, the FDF size rule, review reminders and take-over. */
 class FcShareTest {
     @Test fun recipientBookRanksAndCompletes() {
         var list = RecipientBook.add(emptyList(), listOf("Ann@Example.com", "bad-address", "bob@work.org"), now = 100)
@@ -53,8 +52,4 @@ class FcShareTest {
         assertEquals(emptySet<String>(), CommentMerge.takeOver(comments, foreign, "Me"))
     }
 
-    @Test fun connectedOffSwitch() {
-        assertNull(ConnPrefs.offOutcome(false))
-        assertEquals("offline", ConnPrefs.offOutcome(true))
-    }
 }

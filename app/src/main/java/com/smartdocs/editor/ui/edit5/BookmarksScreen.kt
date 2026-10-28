@@ -147,10 +147,10 @@ fun BookmarksScreen(nav: NavHostController, uri: String?) {
                         Text(sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                     if (!selecting) {
-                        IconButton(onClick = { update(OutlineStore.tree2(list) { OutlineModel.moveUp(it, i) }.first) }) { Icon(Icons.Default.ArrowUpward, null) }
-                        IconButton(onClick = { update(OutlineStore.tree2(list) { OutlineModel.moveDown(it, i) }.first) }) { Icon(Icons.Default.ArrowDownward, null) }
-                        IconButton(onClick = { update(OutlineStore.tree(list) { OutlineModel.outdent(it, i) }) }) { Icon(Icons.AutoMirrored.Filled.FormatIndentDecrease, null) }
-                        IconButton(onClick = { update(OutlineStore.tree(list) { OutlineModel.indent(it, i) }) }) { Icon(Icons.AutoMirrored.Filled.FormatIndentIncrease, null) }
+                        IconButton(onClick = { update(OutlineStore.tree2(list) { OutlineModel.moveUp(it, i) }.first) }) { Icon(Icons.Default.ArrowUpward, stringResource(R.string.pc_move_up)) }
+                        IconButton(onClick = { update(OutlineStore.tree2(list) { OutlineModel.moveDown(it, i) }.first) }) { Icon(Icons.Default.ArrowDownward, stringResource(R.string.pc_move_down)) }
+                        IconButton(onClick = { update(OutlineStore.tree(list) { OutlineModel.outdent(it, i) }) }) { Icon(Icons.AutoMirrored.Filled.FormatIndentDecrease, stringResource(R.string.pc_tags_outdent)) }
+                        IconButton(onClick = { update(OutlineStore.tree(list) { OutlineModel.indent(it, i) }) }) { Icon(Icons.AutoMirrored.Filled.FormatIndentIncrease, stringResource(R.string.pc_tags_indent)) }
                         IconButton(onClick = { update(OutlineStore.tree(list) { OutlineModel.delete(it, i) }) }) { Icon(Icons.Default.Delete, stringResource(R.string.delete)) }
                         var menu by remember { mutableStateOf(false) }
                         Box {
@@ -214,10 +214,17 @@ fun BookmarksScreen(nav: NavHostController, uri: String?) {
     }
     editing?.let { idx ->
         val b = list.getOrNull(idx) ?: E5Bookmark(OutlineModel.newKey(), "", 0, list.getOrNull(list.lastIndex)?.level ?: 0)
+        val destNames by produceState(emptyList<String>(), doc.work) {
+            value = doc.work?.let { w -> kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                runCatching { PdfOps.loadRaw(w, doc.password).use { d -> com.smartdocs.editor.core.edit5.NamedDests.list(d).map { it.name } } }.getOrDefault(emptyList())
+            } } ?: emptyList()
+        }
+        CompositionLocalProvider(LocalDestNames provides destNames) {
         BookmarkSheet(b, doc.pageCount, doc.infos.getOrNull(b.page.coerceAtLeast(0)), onDismiss = { editing = null }) { nb ->
             editing = null
             if (idx >= 0) update(list.toMutableList().also { it[idx] = nb })
             else update(OutlineStore.tree(list + nb) { OutlineModel.normalize(it) })
+        }
         }
     }
     if (showAuto) AutoBookmarksDialog(onDismiss = { showAuto = false }) { settings ->

@@ -18,9 +18,7 @@ data class IndexStats(val docs: Int, val locked: Int, val parts: Int)
 /** One match in an indexed file: [snippet] with [highlights] (ranges inside the snippet). */
 data class IndexHit(val page: Int, val kind: PartKind, val snippet: String, val highlights: List<IntRange>)
 
-data class FileResult(val path: String, val name: String, val pages: Int, val hits: List<IndexHit>, val total: Int,
-                      /** fc-sync: the document title (/Info or XMP), when indexed and shown ([IndexExtras.showTitle]). */
-                      val title: String? = null)
+data class FileResult(val path: String, val name: String, val pages: Int, val hits: List<IndexHit>, val total: Int, val title: String = "")   // fc-settings: PDF /Title
 
 /**
  * Full-text index across files, in its own SQLite file `search_index.db` (FTS4; the Room database is untouched).
@@ -28,17 +26,19 @@ data class FileResult(val path: String, val name: String, val pages: Int, val hi
  * `parts_fts(body)` whose rowid is the part id and whose body is [IndexText.body] (folded words + light stems).
  * [search] takes FTS stem-prefix candidates and verifies them with [TextMatcher] using the user's options.
  */
-class FullTextIndex private constructor(context: Context) : SQLiteOpenHelper(context.applicationContext, DB_NAME, null, 1) {
+class FullTextIndex private constructor(context: Context) : SQLiteOpenHelper(context.applicationContext, DB_NAME, null, 2) {
     private val appCtx: Context = context.applicationContext   // NVE-search
 
     override fun onCreate(db: SQLiteDatabase) {
-        db.execSQL("CREATE TABLE docs(id INTEGER PRIMARY KEY AUTOINCREMENT, path TEXT NOT NULL UNIQUE, name TEXT, size INTEGER, mtime INTEGER, pages INTEGER, locked INTEGER NOT NULL DEFAULT 0, indexed INTEGER)")
+        db.execSQL("CREATE TABLE docs(id INTEGER PRIMARY KEY AUTOINCREMENT, path TEXT NOT NULL UNIQUE, name TEXT, size INTEGER, mtime INTEGER, pages INTEGER, locked INTEGER NOT NULL DEFAULT 0, indexed INTEGER, title TEXT)")
         db.execSQL("CREATE TABLE parts(id INTEGER PRIMARY KEY AUTOINCREMENT, doc INTEGER NOT NULL, page INTEGER NOT NULL, kind INTEGER NOT NULL, raw TEXT NOT NULL)")
         db.execSQL("CREATE INDEX parts_doc ON parts(doc)")
         db.execSQL("CREATE VIRTUAL TABLE parts_fts USING fts4(body)")
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+        // fc-settings: v2 only adds the document title; the indexed content is kept
+        if (oldVersion == 1 && newVersion == 2) { db.execSQL("ALTER TABLE docs ADD COLUMN title TEXT"); return }
         db.execSQL("DROP TABLE IF EXISTS parts_fts"); db.execSQL("DROP TABLE IF EXISTS parts"); db.execSQL("DROP TABLE IF EXISTS docs")
         onCreate(db)
     }
@@ -49,7 +49,7 @@ class FullTextIndex private constructor(context: Context) : SQLiteOpenHelper(con
     }
 
     /** Replaces the index entry of [file]. [locked] files (password) are recorded without content. */
-    fun put(file: File, pages: Int, parts: List<DocPart>, locked: Boolean) {
+    fun put(file: File, pages: Int, parts: List<DocPart>, locked: Boolean, title: String = "") {
         val db = writableDatabase
         val opts = com.smartdocs.editor.ui.nve.search.NveIndexPrefs.load(appCtx)   // NVE-search: stop words / numbers
         db.beginTransaction()
@@ -57,7 +57,7 @@ class FullTextIndex private constructor(context: Context) : SQLiteOpenHelper(con
             deleteLocked(db, file.absolutePath)
             val id = db.insert("docs", null, ContentValues().apply {
                 put("path", file.absolutePath); put("name", file.name); put("size", file.length()); put("mtime", file.lastModified())
-                put("pages", pages); put("locked", if (locked) 1 else 0); put("indexed", System.currentTimeMillis())
+                put("pages", pages); put("locked", if (locked) 1 else 0); put("indexed", System.currentTimeMillis()); put("title", title)
             })
             for (p in parts) {
                 if (p.text.isBlank()) continue
@@ -102,6 +102,30 @@ class FullTextIndex private constructor(context: Context) : SQLiteOpenHelper(con
         return gone.size
     }
 
+    /**
+     * fc-settings ("Fast Find" cache size): drops the stored text of the oldest indexed documents until the stored text
+     * is at most [limitBytes]. Their docs rows stay (unchanged files are not re-indexed); a changed file is indexed again.
+     * Returns the number of documents emptied.
+     */
+    fun evictToLimit(limitBytes: Long): Int {
+        if (limitBytes <= 0) return 0
+        val entries = readableDatabase.rawQuery("SELECT d.id, IFNULL(d.indexed, 0), IFNULL(SUM(LENGTH(p.raw)), 0) * 2 FROM docs d LEFT JOIN parts p ON p.doc = d.id GROUP BY d.id", null).use { c ->
+            val l = ArrayList<FcsIndexPrefs.Entry>(); while (c.moveToNext()) l += FcsIndexPrefs.Entry(c.getLong(0), c.getLong(1), c.getLong(2)); l
+        }
+        val ids = FcsIndexPrefs.evict(entries, limitBytes)
+        if (ids.isEmpty()) return 0
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            for (id in ids) {
+                db.execSQL("DELETE FROM parts_fts WHERE rowid IN (SELECT id FROM parts WHERE doc = ?)", arrayOf<Any>(id))
+                db.execSQL("DELETE FROM parts WHERE doc = ?", arrayOf<Any>(id))
+            }
+            db.setTransactionSuccessful()
+        } finally { db.endTransaction() }
+        return ids.size
+    }
+
     fun clear() { val db = writableDatabase; db.execSQL("DELETE FROM parts_fts"); db.execSQL("DELETE FROM parts"); db.execSQL("DELETE FROM docs") }
 
     fun stats(): IndexStats = readableDatabase.rawQuery("SELECT (SELECT COUNT(*) FROM docs), (SELECT COUNT(*) FROM docs WHERE locked = 1), (SELECT COUNT(*) FROM parts)", null).use { c ->
@@ -119,16 +143,16 @@ class FullTextIndex private constructor(context: Context) : SQLiteOpenHelper(con
      */
     suspend fun search(query: String, options: SearchOptions, kinds: Set<PartKind> = PartKind.values().toSet(), perFile: Int = 20, maxFiles: Int = 200, scanLimit: Int = 30_000): List<FileResult> = withContext(Dispatchers.IO) {
         if (query.isBlank() || kinds.isEmpty()) return@withContext emptyList()
-        IndexExtras.apply(appCtx)   // fc-sync: width folding of the query follows the index
         // forward terms plus the reversed terms of visual-order Arabic, united (audit AN-15)
         val fts = IndexText.ftsQueries(com.smartdocs.editor.core.nve.NveSearchCore.stripQuery(query, com.smartdocs.editor.ui.nve.search.NveIndexPrefs.load(appCtx)), options.mode)   // NVE-search
         val kindList = kinds.joinToString(",") { it.ordinal.toString() }
         val sql = if (fts.isNotEmpty()) {
             val match = fts.joinToString(" UNION ") { "SELECT rowid FROM parts_fts WHERE parts_fts MATCH ?" }
-            "SELECT p.doc, p.page, p.kind, p.raw, d.path, d.name, d.pages FROM parts p JOIN docs d ON d.id = p.doc WHERE p.id IN ($match) AND p.kind IN ($kindList) ORDER BY p.doc, p.page LIMIT $scanLimit"
-        } else "SELECT p.doc, p.page, p.kind, p.raw, d.path, d.name, d.pages FROM parts p JOIN docs d ON d.id = p.doc WHERE p.kind IN ($kindList) ORDER BY p.doc, p.page LIMIT $scanLimit"
+            "SELECT p.doc, p.page, p.kind, p.raw, d.path, d.name, d.pages, d.title FROM parts p JOIN docs d ON d.id = p.doc WHERE p.id IN ($match) AND p.kind IN ($kindList) ORDER BY p.doc, p.page LIMIT $scanLimit"
+        } else "SELECT p.doc, p.page, p.kind, p.raw, d.path, d.name, d.pages, d.title FROM parts p JOIN docs d ON d.id = p.doc WHERE p.kind IN ($kindList) ORDER BY p.doc, p.page LIMIT $scanLimit"
         val args = if (fts.isNotEmpty()) fts.toTypedArray() else null
         val groups = LinkedHashMap<Long, Triple<String, String, Int>>()
+        val titles = HashMap<Long, String>()
         val hits = HashMap<Long, MutableList<IndexHit>>()
         val totals = HashMap<Long, Int>()
         runCatching {
@@ -137,7 +161,7 @@ class FullTextIndex private constructor(context: Context) : SQLiteOpenHelper(con
                     val doc = c.getLong(0); val raw = c.getString(3)
                     val ranges = TextMatcher.find(raw, query, options)
                     if (ranges.isEmpty()) continue
-                    groups.getOrPut(doc) { Triple(c.getString(4), c.getString(5) ?: "", c.getInt(6)) }
+                    groups.getOrPut(doc) { titles[doc] = c.getString(7) ?: ""; Triple(c.getString(4), c.getString(5) ?: "", c.getInt(6)) }
                     totals[doc] = (totals[doc] ?: 0) + ranges.size
                     val list = hits.getOrPut(doc) { ArrayList() }
                     for (r in ranges) {
@@ -147,28 +171,8 @@ class FullTextIndex private constructor(context: Context) : SQLiteOpenHelper(con
                 }
             }
         }
-        val showTitle = IndexExtras.showTitle(appCtx)
-        groups.entries.map { (id, g) -> FileResult(g.first, g.second, g.third, hits[id].orEmpty(), totals[id] ?: 0, if (showTitle) titleOf(id) else null) }
+        groups.entries.map { (id, g) -> FileResult(g.first, g.second, g.third, hits[id].orEmpty(), totals[id] ?: 0, titles[id].orEmpty()) }
             .sortedByDescending { it.total }.take(maxFiles)
-    }
-
-    /** fc-sync: the title part ([DocMeta.TITLE_PAGE]) of document row [docId], when the metadata was indexed. */
-    private fun titleOf(docId: Long): String? = runCatching {
-        readableDatabase.rawQuery("SELECT raw FROM parts WHERE doc = ? AND kind = ? AND page = ? LIMIT 1",
-            arrayOf(docId.toString(), PartKind.METADATA.ordinal.toString(), DocMeta.TITLE_PAGE.toString())).use { c -> if (c.moveToFirst()) c.getString(0) else null }
-    }.getOrNull()?.takeIf { it.isNotBlank() }
-
-    /** fc-sync (Foxit §37 "cache size limit"): size of the index database file in bytes. */
-    fun sizeBytes(): Long = appCtx.getDatabasePath(DB_NAME).length()
-
-    /** Drops the oldest-indexed documents until the database is under [maxBytes] (then compacts it). Returns how many. */
-    fun enforceLimit(maxBytes: Long): Int {
-        if (maxBytes <= 0 || sizeBytes() <= maxBytes) return 0
-        val rows = readableDatabase.rawQuery("SELECT path FROM docs ORDER BY indexed ASC", null).use { c -> val l = ArrayList<String>(); while (c.moveToNext()) l += c.getString(0); l }
-        val n = IndexExtras.toDrop(rows.size, sizeBytes(), maxBytes)
-        rows.take(n).forEach { remove(it) }
-        if (n > 0) runCatching { writableDatabase.execSQL("VACUUM") }
-        return n
     }
 
     private fun snippet(raw: String, r: IntRange, page: Int, kind: PartKind, pad: Int = 40): IndexHit {

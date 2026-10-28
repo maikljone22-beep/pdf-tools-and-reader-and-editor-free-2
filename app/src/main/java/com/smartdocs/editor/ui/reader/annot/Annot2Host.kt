@@ -59,6 +59,7 @@ class Annot2Host(val s: ReaderState) {
     var lineStart by mutableStateOf("None")
     var lineEnd by mutableStateOf("")
     var rectCloud by mutableIntStateOf(0)
+    var cloudInward by mutableStateOf(false)
     var bold by mutableStateOf(false)
     var italic by mutableStateOf(false)
     var underline by mutableStateOf(false)
@@ -155,7 +156,14 @@ class Annot2Host(val s: ReaderState) {
     fun onToolChanged(t: ReaderTool?) {
         if (t !in polyTools) { vertices.clear(); polyPage = -1 }
         if (t != null && t != ReaderTool.SELECT) multi.clear()
+        // tabs audit CM-26: a picked video that was not placed is dropped when another tool is chosen
+        if (t != ReaderTool.VIDEO) runCatching { s.video.picked = null }
+        // tabs audit CM-11: picking a tool while comments are hidden shows them again (and says so)
+        if (t != null && cx.hidden) { cx.hidden = false; message = s.context.getString(com.smartdocs.editor.R.string.tc_comments_shown) }
     }
+
+    /** Tabs audit CM-25: a tab switch ends the multi-selection (its frame and drag would move comments elsewhere). */
+    fun onTabChanged() { multi.clear(); vertices.clear(); polyPage = -1 }
 
     // =============== page hooks ===============
 
@@ -224,6 +232,7 @@ class Annot2Host(val s: ReaderState) {
         val a = s.newAnnot(kind, page, points = pts).copy(
             fillColor = if (kind == AnnotKind.POLYLINE) null else fillColor,
             cloud = if (kind == AnnotKind.CLOUD) cloudIntensity else 0,
+            cloudInward = kind == AnnotKind.CLOUD && cloudInward,
         )
         cx.addNew(a)
     }
@@ -449,16 +458,44 @@ class Annot2Host(val s: ReaderState) {
         s.guard.require(com.smartdocs.editor.core.security.DocAction.ANNOTATE)      // nitro-protect2: restrictions / Protected View
         s.saveMutex.withLock {
             val f = s.file ?: return
-            withContext(NonCancellable) {
-                val tmp = File(f.parentFile, ".${f.nameWithoutExtension}.annot2.pdf")
-                tmp.delete()
-                op(f, tmp, s.password)
-                if (!tmp.exists() || tmp.length() == 0L) throw IllegalStateException("empty result")
-                s.swapFile(tmp, s.context.getString(com.smartdocs.editor.R.string.hi_comments_file))
-                s.writeBackResult = runCatching { s.app.documents.writeBack(f) }.getOrNull()
-            }
+            // audit CM-15: the save button / undo wait while the file is written
+            s.saving = true
+            try {
+                withContext(NonCancellable) {
+                    val tmp = File(f.parentFile, ".${f.nameWithoutExtension}.annot2.pdf")
+                    tmp.delete()
+                    try { op(f, tmp, s.password) } catch (e: com.smartdocs.editor.core.pdf.SignedDocumentException) {
+                        tmp.delete(); s.signedBlock = e.reason; return@withContext
+                    }
+                    if (!tmp.exists() || tmp.length() == 0L) throw IllegalStateException("empty result")
+                    s.swapFile(tmp, s.context.getString(com.smartdocs.editor.R.string.hi_comments_file))
+                    // audit CM-15: cloud upload / listeners and the trusted-document hash, like every other save
+                    s.writeBackResult = runCatching { s.app.documents.writeBack(f) }.getOrNull().also { com.smartdocs.editor.core.cloud.SaveHooks.onSaved(s.app, f) }
+                    s.guard.afterSave(f)
+                }
+            } finally { s.saving = false }
         }
         reloadComments()
+    }
+
+    /**
+     * Tabs audit CM-17: a comment export waiting for the system "save as" result. Held here (with the reader state),
+     * not in a composable, so a rotation while the picker is open does not lose it. [pendingExportMsg] is shown only
+     * after the file was written.
+     */
+    var pendingExport: File? = null
+    var pendingExportMsg: String? = null
+
+    /**
+     * Tabs audit CM-36: the file a comment export reads. With pending edits it is a temporary copy that includes them
+     * (the original is not saved behind the user's back); [cleanup] deletes it.
+     */
+    suspend fun exportSource(): Pair<File, () -> Unit>? {
+        val f = s.file ?: return null
+        if (!s.dirty) return f to {}
+        val tmp = s.app.documents.newTemp("cx_src")
+        s.exportWithAnnots(tmp)
+        return tmp to { runCatching { tmp.delete() } }
     }
 
     /** Run [block] showing the busy indicator; errors go to the reader's snackbar. */

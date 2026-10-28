@@ -139,6 +139,21 @@ class OrganizeState(
         }
     }
 
+    /** Thumbnail menu: redact the whole page (audit FINAL_CHECK: acts on the tapped page). */
+    fun redactPage(p: Int) = apply(setOf(p)) { src, out -> com.smartdocs.editor.core.edit5.PageOrganize.redactPages(src, out, password, listOf(p)) }
+
+    /** Thumbnail menu: OCR only this page and put the searchable page back in its place (bookmarks / links kept). */
+    fun ocrPage(p: Int, hasText: String) = apply(setOf(p)) { src, out ->
+        val one = documents.newTemp("org_ocr_in"); val ocr = documents.newTemp("org_ocr_out")
+        try {
+            PdfOps.keepPages(src, listOf(p), one, password)
+            val engine = com.smartdocs.editor.core.ocr.OcrEngine(context.applicationContext)
+            val made = try { com.smartdocs.editor.core.tools5.OcrRunner.ocrFile(context, engine, one, null, com.smartdocs.editor.core.tools5.OcrPlan(), ocr) } finally { engine.close() }
+            if (made == null) throw IllegalStateException(hasText)
+            com.smartdocs.editor.core.edit5.PageOps5.replace(src, out, password, listOf(p), ocr, null, listOf(0))
+        } finally { one.delete(); ocr.delete() }
+    }
+
     fun undo() {
         if (history.isEmpty() || busy) return
         scope.launch {
@@ -244,6 +259,8 @@ class OrganizeState(
     suspend fun saveOverwrite(): File? {
         val o = original ?: return null; val w = work ?: return null
         if (w != o) {
+            // tab-view-core G-01: page changes are never written over a signed / certified original (save as new instead)
+            withContext(Dispatchers.IO) { com.smartdocs.editor.core.pdf.SignedGuard.checkWrite(o, w, password) }
             // close our session first, then replace atomically (sibling temp + rename) so a crash mid-copy
             // never leaves a truncated original behind
             sessionLock.withLock { session?.closeAsync(); session = null }

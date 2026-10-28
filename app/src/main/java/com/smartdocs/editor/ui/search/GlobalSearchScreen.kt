@@ -52,6 +52,7 @@ fun GlobalSearchScreen(nav: NavHostController, initial: String = "") {
     var searching by remember { mutableStateOf(false) }
     var stats by remember { mutableStateOf<IndexStats?>(null) }
     val progress by FullTextIndex.progressFlow.collectAsState()
+    val showTitle = remember { com.smartdocs.editor.core.search.FcsIndexPrefs.showTitle(ctx) }   // fc-settings
     val nve = remember { com.smartdocs.editor.ui.nve.search.NveGlobalSearchState() }   // NVE-search: scopes, sort, filter, criteria, export
 
     LaunchedEffect(Unit) {
@@ -119,8 +120,9 @@ fun GlobalSearchScreen(nav: NavHostController, initial: String = "") {
                                 Spacer(Modifier.width(8.dp))
                                 Column(Modifier.weight(1f)) {
                                     Text(fr.name, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    // fc-sync (Foxit §37): the document title under the file name
-                                    fr.title?.let { Text(it, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                                    // fc-settings: the document /Title next to the file name (Settings → search → index)
+                                    if (showTitle && fr.title.isNotBlank() && fr.title != fr.name.substringBeforeLast('.'))
+                                        Text(fr.title, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 }
                                 Text(stringResource(R.string.s5_n_hits, fr.total), style = MaterialTheme.typography.labelMedium)
                             }
@@ -150,5 +152,5 @@ fun kindLabel(k: PartKind): String = stringResource(when (k) {
     PartKind.BOOKMARK -> R.string.s5_scope_bookmarks
     PartKind.FIELD -> R.string.s5_scope_fields
     PartKind.ATTACHMENT -> R.string.s5_scope_attachments
-    PartKind.METADATA -> R.string.fcy_scope_metadata   // fc-sync
+    PartKind.METADATA -> R.string.fcs_m_scope_metadata
 })

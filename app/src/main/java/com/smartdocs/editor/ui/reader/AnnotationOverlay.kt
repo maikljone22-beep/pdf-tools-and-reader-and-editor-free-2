@@ -78,9 +78,14 @@ fun DrawScope.drawAnnot(a: Annot, g: PageGeometry) {
             val s = g.pdfRectToScreen(r)
             if (a.kind == AnnotKind.STAMP_TEXT) drawRect(c, s.topLeft, s.size, style = Stroke(2f * g.scale))
             if (a.kind == AnnotKind.FREETEXT && a.comb > 0) drawCombText(a.text, a.comb, s, a.fontSize * g.scale, c)    // nitro-fillsign2
-            else drawTextBlock(if (a.bullets) a.text.split('\n').joinToString("\n") { if (it.isBlank()) it else "\u2022 $it" } else a.text, s, a.fontSize * g.scale, c,
-                bold = a.bold, italic = a.italic, underline = a.underline, strike = a.strike, family = a.fontFamily, align = a.align,
-                lineSpacing = a.lineSpacing, letterSpacingPx = a.charSpacing * g.scale, scaleX = a.hScale)
+            else {
+                // 24.102: smaller glyphs, subscript lowered; the line pitch stays that of the full size
+                val eff = com.smartdocs.editor.core.annot.AnnotStyle.scriptSize(a.fontSize, a.script)
+                val box = if (a.script == 2) s.translate(0f, a.fontSize * 0.43f * g.scale) else s
+                drawTextBlock(if (a.bullets) a.text.split('\n').joinToString("\n") { if (it.isBlank()) it else "\u2022 $it" } else a.text, box, eff * g.scale, c,
+                    bold = a.bold, italic = a.italic, underline = a.underline, strike = a.strike, family = a.fontFamily, align = a.align,
+                    lineSpacing = a.lineSpacing * a.fontSize / eff, letterSpacingPx = a.charSpacing * g.scale, scaleX = a.hScale)
+            }
         }
         AnnotKind.LINE, AnnotKind.ARROW -> if (a.points.size >= 2) {
             val p1 = g.pdfToScreen(a.points[0].first, a.points[0].second)
@@ -94,9 +99,12 @@ fun DrawScope.drawAnnot(a: Annot, g: PageGeometry) {
             if (a.kind == AnnotKind.OVAL && a.subject == com.smartdocs.editor.core.annot.AnnotStyle.TICKMARK) { drawTickmark(a, s); return@let }
             val fill = a.fillColor?.let { annotColor(it, a.opacity) }
             val stroke = Stroke(sw, pathEffect = dashEffectOf(a, g))
-            if (a.kind == AnnotKind.RECT && a.cloud > 0) {
-                val n = PageGeometry.normPdf(r)
-                val path = com.smartdocs.editor.ui.reader.annot.polyPath(listOf(n.left to n.bottom, n.right to n.bottom, n.right to n.top, n.left to n.top), g, true, a.cloud.coerceIn(1, 3), a.strokeWidth)
+            if (a.cloud > 0 && a.corner <= 0f) {
+                // cloudy rectangle / oval (Nitro 7.27), scallops in or out (Foxit 24.33)
+                val n = PageGeometry.normPdf(r); val lv = a.cloud.coerceIn(1, 3)
+                val pts = if (a.kind == AnnotKind.OVAL) com.smartdocs.editor.core.annot.CloudPath.ellipse(n.left, n.bottom, n.right, n.top, lv, a.strokeWidth)
+                    else listOf(n.left to n.bottom, n.right to n.bottom, n.right to n.top, n.left to n.top)
+                val path = com.smartdocs.editor.ui.reader.annot.polyPath(pts, g, true, lv, a.strokeWidth, a.cloudInward)
                 fill?.let { drawPath(path, it) }
                 if (!a.noBorder) drawPath(path, c, style = Stroke(sw))
             } else if (a.kind == AnnotKind.RECT && a.corner > 0f) {
@@ -265,6 +273,17 @@ fun unrotatePoint(p: Offset, pivot: Offset, deg: Float): Offset {
 }
 
 /** Build the icon-like annotations used by Fill & Sign quick items (check, cross, dot, line) as INK strokes in PDF space. */
+/**
+ * Tab audit D9: the quick marks drawn upright for the reader of a page turned by [pageRotate] (/Rotate): the shape
+ * is built with y up as on an unrotated page, and every offset from the tap is turned into user space.
+ */
+fun quickMarkPaths(tool: ReaderTool, x: Float, y: Float, size: Float, pageRotate: Int): List<List<Pair<Float, Float>>> {
+    if (pageRotate % 360 == 0) return quickMarkPaths(tool, x, y, size)
+    return quickMarkPaths(tool, 0f, 0f, size).map { stroke ->
+        stroke.map { (ox, oy) -> val (du, dv) = com.smartdocs.editor.core.fillsign2.FsGeom.userDelta(pageRotate, ox, -oy); (x + du) to (y + dv) }
+    }
+}
+
 fun quickMarkPaths(tool: ReaderTool, x: Float, y: Float, size: Float): List<List<Pair<Float, Float>>> = when (tool) {
     ReaderTool.FS_CHECK -> listOf(listOf(x - size * .45f to y, x - size * .1f to y - size * .4f, x + size * .5f to y + size * .45f))
     ReaderTool.FS_CROSS -> listOf(listOf(x - size * .4f to y + size * .4f, x + size * .4f to y - size * .4f), listOf(x - size * .4f to y - size * .4f, x + size * .4f to y + size * .4f))

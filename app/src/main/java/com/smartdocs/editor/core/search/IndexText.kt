@@ -6,12 +6,7 @@ package com.smartdocs.editor.core.search
  * document is indexed once whatever the user's switches; [TextMatcher] verifies candidates with the real options.
  */
 object IndexText {
-    private val BASE_NORM = NormOptions(ignoreDiacritics = true, unifyLetters = true, taMarbuta = true, unifyDigits = true, matchCase = false)
-
-    /** fc-sync: also fold character width ([IndexExtras.widthFold]; switching it rebuilds the index). */
-    @Volatile var foldWidth: Boolean = false
-
-    val INDEX_NORM: NormOptions get() = if (foldWidth) BASE_NORM.copy(ignoreWidth = true) else BASE_NORM
+    val INDEX_NORM = NormOptions(ignoreDiacritics = true, unifyLetters = true, taMarbuta = true, unifyDigits = true, matchCase = false, ignoreWidth = true)
 
     /** Folded words plus their light stems (when different), space separated: only letters and digits. */
     fun body(raw: String): String {

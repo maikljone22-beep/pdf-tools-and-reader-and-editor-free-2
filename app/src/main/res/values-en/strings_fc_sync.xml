@@ -45,8 +45,6 @@
     <string name="fcy_will_send_pdf">%1$s: the whole PDF will be sent.</string>
 
     <!-- ConnectedPDF -->
-    <string name="fcy_conn_switch">Connected documents</string>
-    <string name="fcy_conn_switch_sub">Check connected documents with the server when they open (updates, access, owner messages)</string>
     <string name="fcy_conn_message">Open message</string>
     <string name="fcy_conn_message_note">Readers see this message when they open the document (empty = none).</string>
     <string name="fcy_conn_no_message">No open message.</string>
@@ -58,19 +56,4 @@
     <!-- Files / convert -->
     <string name="fcy_batch_convert">Convert</string>
     <string name="fcy_batch_hint">%1$d selected files: choose a conversion.</string>
-
-    <!-- Search index -->
-    <string name="fcy_scope_metadata">Properties</string>
-    <string name="fcy_idx_title">Also index</string>
-    <string name="fcy_idx_custom">Custom document properties</string>
-    <string name="fcy_idx_xmp">XMP metadata</string>
-    <string name="fcy_idx_tags">Structure tags (alternate text)</string>
-    <string name="fcy_idx_width">Ignore Asian character width (rebuilds the index)</string>
-    <string name="fcy_idx_show_title">Show the document title in results</string>
-    <string name="fcy_idx_limit">Index size limit</string>
-    <string name="fcy_idx_no_limit">No limit</string>
-    <string name="fcy_idx_mb">%1$d MB</string>
-    <string name="fcy_idx_log">Keep an indexing log</string>
-    <string name="fcy_idx_share_log">Share the log</string>
-    <string name="fcy_idx_note">Property options apply to files indexed from now on; rebuild the index to apply them to all.</string>
 </resources>

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ns3_encryption_removed">Signing with the protection kept was not possible, so the signed copy is not password-protected</string>
+    <string name="ns3_field_added_copy">The field was added to a new copy: %1$s</string>
+    <string name="ns3_field_edit_step">Signature field edit</string>
+    <string name="ns3_saved_sig">Saved signature</string>
+    <string name="ns3_saved_sig_locked">Locked saved signature</string>
+</resources>

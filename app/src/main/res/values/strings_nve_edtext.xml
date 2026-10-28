@@ -92,6 +92,8 @@
     <string name="nt_pref_warn_fonts">تنبيه عند استبدال الخط أو تضمينه</string>
     <string name="nt_pref_system_fonts">استخدام خطوط الجهاز</string>
     <string name="nt_pref_alert_no_text">تنبيه عند عدم وجود نص قابل للتحرير</string>
+    <string name="nt_pref_auto_ocr">تعرّف تلقائي على الصفحات الممسوحة عند التحرير</string>
+    <string name="nt_auto_ocr_running">صفحة ممسوحة: جارٍ التعرف على النص لجعله قابلاً للتحرير…</string>
     <string name="nt_pref_live_spell">تدقيق إملائي أثناء الكتابة</string>
     <string name="nt_reflow">تحرير الصفحة كنص متدفق</string>
     <string name="nt_reflow_note">يُكتب نص الصفحة كله من جديد بترتيب القراءة في مساحة الكتل، بتنسيق الكتلة الأولى. الصور والأشكال لا تتغير، والنص المدور يبقى كما هو.</string>

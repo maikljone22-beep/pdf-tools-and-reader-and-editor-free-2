@@ -195,7 +195,11 @@ fun ActionListEditor(actions: List<NavAction>, pageCount: Int, onChange: (List<N
     if (ei != null && ea != null) ActionDialog(ea, pageCount, onDismiss = { editing = null }) { na -> editing = null; onChange(actions.toMutableList().also { it[ei] = na }) }
 }
 
+/** Named destinations of the document being edited, for the "go to named destination" pickers (FINAL_CHECK §16). */
+val LocalDestNames = androidx.compose.runtime.staticCompositionLocalOf { emptyList<String>() }
+
 /** Edit one action. */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 private fun ActionDialog(initial: NavAction, pageCount: Int, onDismiss: () -> Unit, onSave: (NavAction) -> Unit) {
     var a by remember { mutableStateOf(initial) }
@@ -216,6 +220,11 @@ private fun ActionDialog(initial: NavAction, pageCount: Int, onDismiss: () -> Un
             when (val c = a) {
                 is NavAction.GoTo -> {
                     OutlinedTextField(c.named, { a = c.copy(named = it) }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.nbm_named_dest_opt)) })
+                    // pick one of the document's named destinations instead of typing it
+                    val names = LocalDestNames.current
+                    if (names.isNotEmpty()) androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        names.take(40).forEach { n -> FilterChip(c.named == n, { a = c.copy(named = if (c.named == n) "" else n) }, label = { Text(n, maxLines = 1) }) }
+                    }
                     if (c.named.isBlank()) {
                         OutlinedTextField(page, { page = it.filter(Char::isDigit).take(6) }, Modifier.fillMaxWidth(), singleLine = true,
                             label = { Text(stringResource(R.string.e5_link_page_of, pageCount)) }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))

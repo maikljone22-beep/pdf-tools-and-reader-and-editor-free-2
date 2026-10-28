@@ -59,19 +59,6 @@ fun ConnectedHomeScreen(nav: NavHostController, uri: String?) {
         if (!ConnectedConfig.enabled) { NotConfigured(Modifier.padding(pad)); return@Scaffold }
         LazyColumn(Modifier.padding(pad).fillMaxSize(), contentPadding = PaddingValues(16.dp, 8.dp, 16.dp, 96.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             item { Text(stringResource(R.string.cn_connected_explain), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-            // fc-sync (Foxit §33): turn the open-time check with the connected server off
-            item {
-                var on by remember { mutableStateOf(com.smartdocs.editor.core.connected.ConnPrefs.enabled(ctx)) }
-                Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
-                    Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text(stringResource(R.string.fcy_conn_switch), style = MaterialTheme.typography.titleSmall)
-                            Text(stringResource(R.string.fcy_conn_switch_sub), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        Switch(on, { on = it; com.smartdocs.editor.core.connected.ConnPrefs.setEnabled(ctx, it) })
-                    }
-                }
-            }
             if (owned.isEmpty()) item { EmptyState(Icons.Default.Link, stringResource(R.string.cn_connected_empty)) }
             items(owned.sortedByDescending { it.created }, key = { it.id }) { d ->
                 Surface(onClick = { nav.navigate(ConnRoutes.connectedDoc(d.id)) }, shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainerLow, modifier = Modifier.fillMaxWidth()) {

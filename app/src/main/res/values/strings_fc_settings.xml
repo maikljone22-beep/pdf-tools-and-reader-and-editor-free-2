@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- fc-settings: Settings gaps (FINAL_CHECK nav/settings) -->
+<resources>
+    <string name="fcs_lang_system">لغة النظام</string>
+    <string name="fcs_cv_save_default">حفظ كافتراضي</string>
+    <string name="fcs_cv_forget_default">نسيان الافتراضي المحفوظ</string>
+    <string name="fcs_cv_saved">حُفظت الخيارات كافتراضي لهذا التحويل</string>
+    <string name="fcs_qat_pos">موضع الأوامر المثبتة</string>
+    <string name="fcs_qat_top">الشريط العلوي</string>
+    <string name="fcs_qat_bottom">أسفل الشاشة</string>
+    <string name="fcs_invite_ok">تم تسجيل رمز الدعوة من صديقك</string>
+    <string name="fcs_invite_bad">رابط الدعوة غير صالح أو استُخدم رمز من قبل</string>
+    <string name="fcs_cv_title">افتراضيات التحويل المحفوظة</string>
+    <string name="fcs_cv_none">لا توجد افتراضيات محفوظة. اضبط الخيارات في أي تحويل ثم اضغط «حفظ كافتراضي».</string>
+    <string name="fcs_cv_forget_all">نسيان كل الافتراضيات المحفوظة</string>
+    <string name="fcs_connected_on">المستندات المتصلة (ConnectedPDF)</string>
+    <string name="fcs_connected_on_sub">عند الإيقاف لا يتصل التطبيق بخادم المستندات المتصلة: لا تتبع ولا تحقق من الإصدارات</string>
+    <string name="fcs_debug">سجل التصحيح</string>
+    <string name="fcs_debug_sub">يحفظ سجلاً تقنياً لإرساله إلى الدعم عند حدوث مشكلة</string>
+    <string name="fcs_debug_share">مشاركة السجل</string>
+    <string name="fcs_debug_clear">مسح السجل</string>
+    <string name="fcs_n_channels">إعدادات كل رسالة</string>
+    <string name="fcs_n_channels_none">تظهر أنواع الإشعارات هنا بعد أول إشعار من التطبيق</string>
+    <string name="fcs_n_gear">إعدادات هذا الإشعار</string>
+    <string name="fcs_n_off">متوقف</string>
+    <string name="fcs_a11y_assistant">مساعد إعداد إمكانية الوصول</string>
+    <string name="fcs_a11y_assistant_sub">خطوات قصيرة لضبط الألوان وترتيب القراءة والعرض والقراءة الصوتية</string>
+    <string name="fcs_a11y_s1">هل تريد استبدال ألوان المستندات بألوان عالية التباين؟</string>
+    <string name="fcs_a11y_s2">ترتيب قراءة الصفحات لقارئ الشاشة والقراءة الصوتية:</string>
+    <string name="fcs_a11y_s3">طريقة عرض الصفحات والتكبير عند فتح مستند:</string>
+    <string name="fcs_a11y_s4">القراءة الصوتية والشاشة:</string>
+    <string name="fcs_a11y_single">صفحة واحدة</string>
+    <string name="fcs_a11y_continuous">تمرير متصل</string>
+    <string name="fcs_a11y_auto">تلقائي</string>
+    <string name="fcs_next">التالي</string>
+    <string name="fcs_prev">السابق</string>
+    <string name="fcs_finish">إنهاء</string>
+</resources>

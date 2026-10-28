@@ -34,7 +34,7 @@ import java.io.File
 private fun applyLinks(state: ReaderState, msgOk: String, op: suspend (File, File, String?) -> Unit) {
     state.scope.launch {
         runCatching { state.applyInPlace(label = { state.context.getString(R.string.hi_links) }) { src, out, pw -> op(src, out, pw) } }
-            .onSuccess { Toast.makeText(state.context, msgOk, Toast.LENGTH_SHORT).show() }
+            .onSuccess { if (it != null) Toast.makeText(state.context, msgOk, Toast.LENGTH_SHORT).show() }   // null: nothing written (signed file dialog)
             .onFailure { Toast.makeText(state.context, it.message ?: it.toString(), Toast.LENGTH_LONG).show() }
     }
 }
@@ -43,7 +43,8 @@ private fun applyLinks(state: ReaderState, msgOk: String, op: suspend (File, Fil
 @Composable
 fun ReaderLinkCreateSheet(state: ReaderState, page: Int, rect: RectF, onDismiss: () -> Unit) {
     val ok = stringResource(R.string.e5_link_saved)
-    LinkEditorSheet(LinkSpec(rect = rect.normalized()), state.pageCount, isNew = true, onDismiss = onDismiss) { spec ->
+    LinkEditorSheet(LinkSpec(rect = rect.normalized()), state.pageCount, isNew = true, onDismiss = onDismiss,
+        currentView = { state.currentPage to state.zoom }, destNames = rememberDestNames(state)) { spec ->
         onDismiss()
         applyLinks(state, ok) { s, o, p -> LinkOps.add(s, o, p, mapOf(page to listOf(spec))) }
     }
@@ -64,7 +65,8 @@ fun ReaderLinkFromSelection(state: ReaderState, onDismiss: () -> Unit) {
             else -> LinkSpec(union, LinkKind.URI, uri = guess, quads = lines)
         }
     }
-    LinkEditorSheet(initial, state.pageCount, isNew = true, onDismiss = onDismiss) { spec ->
+    LinkEditorSheet(initial, state.pageCount, isNew = true, onDismiss = onDismiss,
+        currentView = { state.currentPage to state.zoom }, destNames = rememberDestNames(state)) { spec ->
         onDismiss(); state.selection = null
         applyLinks(state, ok) { s, o, p -> LinkOps.add(s, o, p, mapOf(sel.page to listOf(spec))) }
     }
@@ -90,6 +92,7 @@ fun ReaderPageLinksSheet(state: ReaderState, page: Int, initial: PageLinkInfo? =
     val e = editing
     if (e != null) {
         LinkEditorSheet(e.spec, state.pageCount, isNew = false, onDismiss = { if (initial != null) onDismiss() else editing = null },
+            currentView = { state.currentPage to state.zoom }, destNames = rememberDestNames(state),
             onDelete = { onDismiss(); applyLinks(state, deleted) { s, o, p -> LinkOps.delete(s, o, p, mapOf(e.page to setOf(e.index))) } }) { spec ->
             onDismiss()
             applyLinks(state, ok) { s, o, p -> LinkOps.update(s, o, p, e.page, e.index, movedLink(spec, e.spec)) }
@@ -163,4 +166,16 @@ fun ReaderLinkPrompt(state: ReaderState, isLinkTool: Boolean, page: Int, x: Floa
     if (!isLinkTool) return false
     if (rect != null) ReaderLinkCreateSheet(state, page, rect, onDismiss) else ReaderLinkAtSheet(state, page, x, y, onDismiss)
     return true
+}
+
+/** Names of the open document's named destinations (for the link editor's picker). */
+@Composable
+internal fun rememberDestNames(state: ReaderState): List<String> {
+    val f = state.file
+    val names by produceState(emptyList<String>(), f, state.renderVersion) {
+        value = if (f == null) emptyList() else kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching { com.smartdocs.editor.core.pdf.PdfOps.loadRaw(f, state.password).use { d -> com.smartdocs.editor.core.edit5.NamedDests.list(d).map { it.name } } }.getOrDefault(emptyList())
+        }
+    }
+    return names
 }

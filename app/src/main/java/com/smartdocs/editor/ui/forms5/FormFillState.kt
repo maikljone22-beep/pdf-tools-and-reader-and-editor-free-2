@@ -536,6 +536,11 @@ class FormFillState internal constructor(val reader: ReaderState) {
 
     private suspend fun writeTo(src: File, password: String?, out: File) {
         val (values, display) = pending()
+        // audit V-01: a full rewrite would invalidate the signatures of a signed form; it is appended instead
+        if (com.smartdocs.editor.core.pdf.SignedSave.isSigned(src, password)) {
+            FormValueWriter.writeSigned(reader.context, src, values, display, images.toMap(), hiddenOverride.toMap(), out, password)
+            return
+        }
         FormValueWriter.write(reader.context, src, values, display, images.toMap(), out, password, dropXfa = model.xfa == XfaSupport.Kind.STATIC)
         // field visibility changed by Hide actions + barcode fields re-encoded from the new values
         FieldVisibility.applyTo(out, password, hiddenOverride.toMap())
@@ -553,13 +558,14 @@ class FormFillState internal constructor(val reader: ReaderState) {
         val tmp = File(file.parentFile, ".${file.nameWithoutExtension}.forms5.pdf")
         withContext(Dispatchers.Main.immediate) { runDocAction("WS") }        // document action: will save
         try { writeTo(file, password, tmp) } catch (e: Throwable) { tmp.delete(); throw e }
+        // audit D37: the typed values are dropped only after the new file is in place (a failed swap keeps them)
+        try { swap(tmp) } catch (e: Throwable) { tmp.delete(); throw e }
         withContext(Dispatchers.Main.immediate) {
             Snapshot.withMutableSnapshot {
                 // the form steps of the unified history become the reader's save step (ReaderState.recordSaved)
                 edits.clear(); images.clear(); errors.clear(); activeId = null; menuFor = null; committed.clear(); hiddenOverride.clear()
             }
         }
-        swap(tmp)
         withContext(Dispatchers.Main.immediate) { runDocAction("DS") }        // did save
         return true
     }

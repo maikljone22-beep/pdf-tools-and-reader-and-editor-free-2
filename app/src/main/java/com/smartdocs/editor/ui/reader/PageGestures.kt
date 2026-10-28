@@ -144,7 +144,7 @@ fun simplify(points: List<Offset>): List<Offset> {
 
 /** Ids of pending INK annotations on [page] that pass within [radiusPt] points of PDF point (x, y). */
 fun inkHits(annots: List<Annot>, page: Int, x: Float, y: Float, radiusPt: Float): List<Long> =
-    annots.filter { it.page == page && it.kind == AnnotKind.INK }.filter { a ->
+    annots.filter { it.page == page && it.kind == AnnotKind.INK && !it.locked }.filter { a ->   // tabs audit CM-08: locked ink stays
         a.paths.any { stroke -> stroke.any { (px, py) -> hypot(px - x, py - y) <= radiusPt + a.strokeWidth } }
     }.map { it.id }
 
@@ -185,6 +185,20 @@ private fun distToSegment(x: Float, y: Float, a: Pair<Float, Float>, b: Pair<Flo
 }
 
 /** Default rect for a tapped text-like annotation: anchored at the tap, sized for the text. */
+/**
+ * Tab audit D9: the box of a typed text at the tap ([x], [y] user space) laid out upright for the reader of a turned
+ * page and clamped to its crop box ([box]); PDF rect convention (top = larger y).
+ */
+fun textRectAt(x: Float, y: Float, text: String, fontSize: Float, box: com.smartdocs.editor.core.fillsign2.FsGeom.PageBox, rtl: Boolean): RectF {
+    val lines = text.split('\n')
+    val w = ((lines.maxOfOrNull { it.length } ?: 1) * fontSize * 0.58f + 12f).coerceIn(40f, box.dispW * 0.9f)
+    val h = lines.size * fontSize * 1.3f + 8f
+    return com.smartdocs.editor.core.fillsign2.FsGeom.textBox(box, x, y, w, h, rtl).toPdfRect()
+}
+
+/** A user space box as a PDF-convention RectF (left, top = larger y, right, bottom). */
+fun com.smartdocs.editor.core.fillsign2.MultiPage.Box.toPdfRect(): RectF = RectF(left, top, right, bottom)
+
 fun textRectAt(x: Float, y: Float, text: String, fontSize: Float, pageW: Float, rtl: Boolean): RectF {
     val lines = text.split('\n')
     val w = ((lines.maxOfOrNull { it.length } ?: 1) * fontSize * 0.58f + 12f).coerceIn(40f, pageW * 0.9f)

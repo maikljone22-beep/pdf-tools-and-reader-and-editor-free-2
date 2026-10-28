@@ -103,6 +103,9 @@ fun AccessibilityScreen(nav: NavHostController, uri: String?) {
     val pick = rememberPdfPicker { file = it.firstOrNull(); results = emptyList(); figures = emptyList() }
     val checking = stringResource(R.string.t5_acc_checking)
     val fixing = stringResource(R.string.t5_acc_fixing)
+    val formulaAlt = stringResource(R.string.pa_formula_alt)
+    val fixedN = stringResource(R.string.pa_fixed_n)
+    val summaryLabel = stringResource(R.string.pa_table_summary)
     val ruleLabels = AccessRules.rules.associate { it.id to ruleTitle(it.id) }
     val statusLabels = AccStatus.entries.associateWith { statusLabel(it) }
     val groupLabels = AccGroup.entries.associateWith { groupTitle(it) }
@@ -119,6 +122,44 @@ fun AccessibilityScreen(nav: NavHostController, uri: String?) {
         results = res; figures = figs
     }
     LaunchedEffect(file) { file?.let { check(it) } }
+    /** The Fix of rule [id]: a direct structure fix on a copy, the fix dialog, the tool that fixes it, or what to check by hand. */
+    fun fixRule(id: String) {
+        val f = file ?: return
+        when {
+            id in AccessRules.fixable -> fixDialog = true
+            id == "image_only" -> nav.navigate(com.smartdocs.editor.ui.Routes.tool("ocr", android.net.Uri.fromFile(f).toString()))
+            id == "perm" -> nav.navigate(com.smartdocs.editor.ui.Routes.tool("unlock", android.net.Uri.fromFile(f).toString()))
+            id == "reading_order" -> tags = true
+            id in AccessFix2.STRUCTURE_FIXES -> job.launch(fixing) {
+                val out = app.documents.uniqueFile(app.documents.docsDir, f.nameWithoutExtension + "_accessible")
+                val n = io {
+                    PDDocument.load(f).use { d ->
+                        val k = when (id) {
+                            "nested_alt" -> AccessFix2.removeNestedAlt(d)
+                            "alt_content" -> AccessFix2.removeAltWithoutContent(d)
+                            "alt_hides_annot" -> AccessFix2.removeAltHidingAnnots(d)
+                            "other_alt" -> AccessFix2.fillOtherAlt(d, formulaAlt)
+                            "table_rows" -> AccessFix2.wrapOrphans(d, setOf("TR"), setOf("Table", "THead", "TBody", "TFoot"), "Table")
+                            "table_cells" -> AccessFix2.wrapOrphans(d, setOf("TH", "TD"), setOf("TR"), "TR")
+                            "list_items" -> AccessFix2.wrapOrphans(d, setOf("LI"), setOf("L"), "L")
+                            "list_body" -> AccessFix2.wrapOrphans(d, setOf("Lbl", "LBody"), setOf("LI"), "LI")
+                            "table_headers" -> AccessFix2.firstRowHeaders(d)
+                            "table_summary" -> AccessFix2.summaries(d) { rows, cols -> summaryLabel.format(rows, cols) }
+                            "heading_nesting" -> AccessFix2.fixHeadingSkips(d)
+                            "encoding" -> com.smartdocs.editor.core.pdf.ToUnicodeRepair.repair(d).fonts
+                            else -> {   // tagged_annots / tagged_fields / nav_links / multimedia
+                                if (AccessTags.root(d) == null) AccessAutoTag.tag(d, d.documentCatalog.language ?: "", false)
+                                AccessTags.tagAnnotations(d)
+                            }
+                        }
+                        d.save(out); k
+                    }
+                }
+                file = out; result = out; info = fixedN.format(n)
+            }
+            else -> explain = id        // contrast, scripts, flicker, timed, table_regular: a person checks; Explain says what to look for
+        }
+    }
     val tf = file
     if (tags && tf != null) { TagsEditor(nav, tf, onClose = { tags = false }, onSaved = { file = it }); return }
     val shown = AccessRules.apply(results, groups, verdicts, skipped)
@@ -144,7 +185,7 @@ fun AccessibilityScreen(nav: NavHostController, uri: String?) {
                 Button(onClick = { fixDialog = true }, enabled = !job.running) { Icon(Icons.Default.Build, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.t5_acc_fix)) }
                 OutlinedButton(onClick = {
                     val f = file ?: return@OutlinedButton
-                    val html = AccessRules.htmlReport(f.name, shown, settings.language == "ar", reportTitle, { ruleLabels[it] ?: it }, { statusLabels[it] ?: it.name }, { groupLabels[it] ?: it.name })
+                    val html = AccessRules.htmlReport(f.name, shown, com.smartdocs.editor.core.data.AppLang.isArabic(settings), reportTitle, { ruleLabels[it] ?: it }, { statusLabels[it] ?: it.name }, { groupLabels[it] ?: it.name })
                     job.launch(checking) {
                         val out = app.documents.uniqueFile(app.documents.docsDir, f.nameWithoutExtension + "_accessibility", "html")
                         io { out.writeText(html) }
@@ -158,7 +199,7 @@ fun AccessibilityScreen(nav: NavHostController, uri: String?) {
                 // Foxit 34.4: the report goes into the document as an attachment
                 OutlinedButton(onClick = {
                     val f = file ?: return@OutlinedButton
-                    val html = AccessRules.htmlReport(f.name, shown, settings.language == "ar", reportTitle, { ruleLabels[it] ?: it }, { statusLabels[it] ?: it.name }, { groupLabels[it] ?: it.name })
+                    val html = AccessRules.htmlReport(f.name, shown, com.smartdocs.editor.core.data.AppLang.isArabic(settings), reportTitle, { ruleLabels[it] ?: it }, { statusLabels[it] ?: it.name }, { groupLabels[it] ?: it.name })
                     job.launch(checking) {
                         val out = app.documents.uniqueFile(app.documents.docsDir, f.nameWithoutExtension + "_report")
                         io { PDDocument.load(f).use { d -> Embed.addFiles(d, listOf(Attachment(f.nameWithoutExtension + "_accessibility.html", "text/html", html.toByteArray()))); d.save(out) } }
@@ -176,7 +217,7 @@ fun AccessibilityScreen(nav: NavHostController, uri: String?) {
                             StatusPill(statusLabels[r.status].orEmpty() + if (r.manual) " ✎" else "", statusColor(r.status))
                             Spacer(Modifier.width(8.dp))
                             Text(ruleLabels[r.rule.id].orEmpty() + if (r.count > 0) " (${r.count})" else "", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-                            if (r.status == AccStatus.FAIL && r.rule.id in AccessRules.fixable) Icon(Icons.Default.AutoFixHigh, stringResource(R.string.t5_acc_fixable), tint = MaterialTheme.colorScheme.primary)
+                            if (r.status == AccStatus.FAIL && (r.rule.id in AccessRules.fixable || r.rule.id in AccessFix2.STRUCTURE_FIXES)) Icon(Icons.Default.AutoFixHigh, stringResource(R.string.t5_acc_fixable), tint = MaterialTheme.colorScheme.primary)
                             Box {
                                 IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, stringResource(R.string.pc_pf_actions, ruleLabels[r.rule.id].orEmpty())) }
                                 DropdownMenu(menu, { menu = false }) {
@@ -186,7 +227,8 @@ fun AccessibilityScreen(nav: NavHostController, uri: String?) {
                                     DropdownMenuItem(text = { Text(stringResource(R.string.pc_acc_fail_manual)) }, onClick = { menu = false; skipped = skipped - id; verdicts = verdicts + (id to AccStatus.FAIL) })
                                     DropdownMenuItem(text = { Text(stringResource(R.string.pc_acc_skip)) }, onClick = { menu = false; skipped = skipped + id })
                                     if (r.manual) DropdownMenuItem(text = { Text(stringResource(R.string.pc_acc_clear_verdict)) }, onClick = { menu = false; skipped = skipped - id; verdicts = verdicts - id })
-                                    if (r.status == AccStatus.FAIL && id in AccessRules.fixable) DropdownMenuItem(text = { Text(stringResource(R.string.t5_acc_fix)) }, onClick = { menu = false; fixDialog = true })
+                                    // FINAL_CHECK (Foxit 34.7): every failed or manual rule has a Fix
+                                    if (r.status == AccStatus.FAIL || r.status == AccStatus.MANUAL) DropdownMenuItem(text = { Text(stringResource(R.string.t5_acc_fix)) }, onClick = { menu = false; fixRule(id) })
                                 }
                             }
                         }
@@ -208,6 +250,7 @@ fun AccessibilityScreen(nav: NavHostController, uri: String?) {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(stringResource(R.string.pc_acc_report_pages, r.taggedPages, r.pages))
                 Text(stringResource(R.string.pc_acc_report_counts, r.headings, r.paragraphs, r.lists, r.listItems, r.figures, r.artifacts, r.annotations))
+                if (r.tables > 0) Text(stringResource(R.string.pa_report_tables, r.tables))
                 if (r.pagesWithoutText > 0) Text(stringResource(R.string.pc_acc_report_scanned, r.pagesWithoutText), color = T5Orange)
                 if (r.figures > 0) Text(stringResource(R.string.pc_acc_report_alt), color = T5Orange)
                 if (r.retagged) Text(stringResource(R.string.pc_acc_report_retagged))
@@ -303,7 +346,7 @@ private fun FiguresPanel(file: File, figures: List<Pair<Int, String>>, onSaved: 
                                     }
                                 } finally { s.closeAsync() }
                             }
-                            alts[i] = AltTextAi.suggest(ctx, settings, img, pageText, settings.language == "ar")
+                            alts[i] = AltTextAi.suggest(ctx, settings, img, pageText, com.smartdocs.editor.core.data.AppLang.isArabic(settings))
                         }
                     }, enabled = busy < 0) { Icon(Icons.Default.AutoAwesome, null); Spacer(Modifier.width(4.dp)); Text(stringResource(R.string.t5_acc_ai_alt)) }
                     Spacer(Modifier.weight(1f))

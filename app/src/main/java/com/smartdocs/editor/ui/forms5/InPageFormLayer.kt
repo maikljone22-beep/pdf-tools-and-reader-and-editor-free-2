@@ -10,7 +10,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.absoluteOffset      // tab audit D11: layout px from the left edge, also in RTL
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.BasicTextField
@@ -169,7 +169,7 @@ fun InPageFormLayer(reader: ReaderState, pageIndex: Int, g: PageGeometry) {
             val t = expand(r, minPx)
             Box(
                 Modifier
-                    .offset { IntOffset(t.left.roundToInt(), t.top.roundToInt()) }
+                    .absoluteOffset { IntOffset(t.left.roundToInt(), t.top.roundToInt()) }
                     .size(with(density) { t.width.toDp() }, with(density) { t.height.toDp() })
                     .pointerInput(w) { detectTapGestures(onTap = { fs.tap(w) }) },
             )
@@ -179,7 +179,7 @@ fun InPageFormLayer(reader: ReaderState, pageIndex: Int, g: PageGeometry) {
         if (enabled) repeats.forEach { rp ->
             val r = g.pdfRectToLayout(RectF(rp.box.left, rp.box.top, rp.box.right, rp.box.bottom))
             Box(
-                Modifier.offset { IntOffset(r.left.roundToInt(), (r.bottom - with(density) { 14.dp.toPx() }).roundToInt()) }
+                Modifier.absoluteOffset { IntOffset(r.left.roundToInt(), (r.bottom - with(density) { 14.dp.toPx() }).roundToInt()) }
                     .size(with(density) { r.width.toDp() }, 28.dp),
                 contentAlignment = Alignment.CenterEnd,
             ) {
@@ -311,7 +311,7 @@ private fun ActiveTextEditor(fs: FormFillState, w: FWidget, screen: Rect, scale:
             if (accepted != fs.value(w.name)) fs.setValue(w.name, accepted, typing = true)
         },
         modifier = Modifier
-            .offset { IntOffset(r.left.roundToInt(), (r.top - (h - r.height) / 2f * (if (angle == 0) 0f else 1f)).roundToInt()) }
+            .absoluteOffset { IntOffset(r.left.roundToInt(), (r.top - (h - r.height) / 2f * (if (angle == 0) 0f else 1f)).roundToInt()) }
             .size(with(density) { r.width.toDp() }, with(density) { h.toDp() })
             .graphicsLayer { rotationZ = angle.toFloat() }
             .background(Color.White)
@@ -335,7 +335,7 @@ private fun androidx.compose.ui.unit.Density.minEditorTextPx(): Float = 12f * fo
 private fun ChoiceMenu(fs: FormFillState, w: FWidget, r: Rect) {
     val density = LocalDensity.current
     val current = fs.value(w.name).split('\n').filter { it.isNotEmpty() }
-    Box(Modifier.offset { IntOffset(r.left.roundToInt(), r.top.roundToInt()) }.size(with(density) { r.width.toDp() }, with(density) { r.height.toDp() })) {
+    Box(Modifier.absoluteOffset { IntOffset(r.left.roundToInt(), r.top.roundToInt()) }.size(with(density) { r.width.toDp() }, with(density) { r.height.toDp() })) {
         DropdownMenu(expanded = true, onDismissRequest = { fs.menuFor = null }) {
             if (!w.multiSelect) DropdownMenuItem(text = { Text(stringResource(R.string.f5_none)) }, onClick = { fs.setValue(w.name, ""); fs.menuFor = null })
             w.options.forEachIndexed { i, label ->

@@ -22,20 +22,6 @@ data class ConnectedStatus(
     val noteworthy: Boolean get() = newer != null || status != "ok" || offline || message.isNotBlank()
 }
 
-/**
- * fc-sync (Foxit §33 "Disable ConnectedPDF"): the user's switch. Off = documents are not checked with the connected
- * server when they open (no network, no banner, no reader statistics). A protected copy can then open only with a key
- * still cached for offline use; registering, publishing and the owner screens are not affected.
- */
-object ConnPrefs {
-    private fun prefs(c: Context) = c.applicationContext.getSharedPreferences("connected_prefs", Context.MODE_PRIVATE)
-    fun enabled(c: Context): Boolean = prefs(c).getBoolean("on", true)
-    fun setEnabled(c: Context, on: Boolean) = prefs(c).edit().putBoolean("on", on).apply()
-
-    /** Pure: what an open does with the switch off: null = nothing to show; else use the offline key cache. */
-    fun offOutcome(protected: Boolean): String? = if (protected) "offline" else null
-}
-
 object ConnectedDocs {
     private const val DAY = 24L * 3600 * 1000
     private const val MAX_HASH = 100L * 1024 * 1024
@@ -49,15 +35,8 @@ object ConnectedDocs {
 
     /** Contacts the server (short timeouts); falls back to the offline key cache. Null when the file is not connected. */
     suspend fun checkOnOpen(context: Context, file: File): ConnectedStatus? = withContext(Dispatchers.IO) {
+        if (com.smartdocs.editor.core.data.FcsPrefs.connectedOff) return@withContext null   // fc-settings: ConnectedPDF turned off
         val mark = markOf(file) ?: return@withContext null
-        if (!ConnPrefs.enabled(context)) {
-            // fc-sync: switched off: no server contact; a protected copy may still open with a cached key
-            ConnPrefs.offOutcome(mark.protected) ?: return@withContext null
-            val c = context.applicationContext
-            val own = ConnStore.get(c, mark.docId) != null
-            return@withContext ConnectedStatus(mark.docId, "", "", if (own) "ok" else "offline", true, null, ConnKeyCache.get(c, mark.docId),
-                offline = !own, offlineUntil = ConnKeyCache.expiry(c, mark.docId), isOwner = own)
-        }
         statusById(context, mark.docId, mark.protected, file)
     }
 

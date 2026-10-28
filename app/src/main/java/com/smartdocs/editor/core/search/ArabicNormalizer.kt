@@ -9,7 +9,7 @@ data class NormOptions(
     val taMarbuta: Boolean = false,         // ة→ه
     val unifyDigits: Boolean = true,        // ٠١٢ / ۰۱۲ → 012
     val matchCase: Boolean = false,
-    /** fc-sync (Foxit §37 "ignore Asian character width"): full-width / half-width forms fold to their normal width. */
+    /** fc-settings (Foxit "ignore Asian character width"): full-width ASCII / signs and half-width katakana fold to their normal forms. */
     val ignoreWidth: Boolean = false,
 )
 
@@ -46,12 +46,17 @@ object ArabicNormalizer {
             mark(i)
             sb.append(if (o.matchCase) c else c.lowercaseChar())
         }
+        var skip = -1
         for (i in src.indices) {
+            if (i == skip) continue
             val c = src[i]
             if (isInvisible(c) || c.code == 0x0640) continue
-            if (o.ignoreWidth) {
-                val w = widthFold(c)
-                if (w != c) { put(mapLetter(w, o), i); continue }
+            if (o.ignoreWidth && isWidthVariant(c)) {
+                // a half-width kana followed by its half-width (semi-)voiced mark folds as one letter (ｶﾞ → ガ)
+                val pair = i + 1 < src.length && c.code in 0xFF66..0xFF9D && (src[i + 1].code == 0xFF9E || src[i + 1].code == 0xFF9F)
+                if (pair) skip = i + 1
+                for (ch in widthFold(if (pair) src.substring(i, i + 2) else c.toString())) put(mapLetter(ch, o), i)
+                continue
             }
             if (o.ignoreDiacritics && isArabicMark(c)) continue
             // presentation forms and ligatures (ﻻ, ﷲ, ﺃ…) → base letters
@@ -76,17 +81,6 @@ object ArabicNormalizer {
 
     fun foldQuery(q: String, o: NormOptions) = fold(q.trim(), o).text
 
-    /**
-     * fc-sync: the normal-width form of a full-width ASCII letter / digit / sign (U+FF01–FF5E), the ideographic space,
-     * full-width symbols (U+FFE0–FFE6) and half-width katakana / hangul (U+FF61–FFDC). Other chars are returned as is.
-     */
-    fun widthFold(c: Char): Char = when (c.code) {
-        in 0xFF01..0xFF5E -> (c.code - 0xFEE0).toChar()
-        0x3000 -> ' '
-        in 0xFF61..0xFFDC, in 0xFFE0..0xFFEE -> Normalizer.normalize(c.toString(), Normalizer.Form.NFKC).singleOrNull() ?: c
-        else -> c
-    }
-
     private fun mapLetter(c: Char, o: NormOptions): Char = when {
         o.unifyLetters && (c == 'أ' || c == 'إ' || c == 'آ' || c == 'ٱ' || c == 'ٲ' || c == 'ٳ') -> 'ا'
         o.unifyLetters && c == 'ؤ' -> 'و'
@@ -97,6 +91,12 @@ object ArabicNormalizer {
         o.unifyDigits && c.code in 0x06F0..0x06F9 -> '0' + (c.code - 0x06F0)
         else -> c
     }
+
+    /** Full-width ASCII and signs, the ideographic space, half-width CJK punctuation / katakana / Hangul. */
+    fun isWidthVariant(c: Char): Boolean = c.code == 0x3000 || c.code in 0xFF01..0xFFEE
+
+    /** NFKC of a width variant (U+3000 → space, Ａ → A, ｶ → カ). */
+    fun widthFold(s: String): String = if (s.length == 1 && s[0].code == 0x3000) " " else Normalizer.normalize(s, Normalizer.Form.NFKC)
 
     /** Tashkeel, superscript alef and Quranic annotation marks. */
     fun isArabicMark(c: Char): Boolean {

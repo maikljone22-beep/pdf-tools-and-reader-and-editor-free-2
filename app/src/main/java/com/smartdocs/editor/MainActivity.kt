@@ -19,6 +19,7 @@ import com.smartdocs.editor.core.theme.SmartDocsTheme
 import com.smartdocs.editor.ui.AppNavHost
 import com.smartdocs.editor.ui.Routes
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 val LocalApp = staticCompositionLocalOf<SmartDocsApp> { error("no app") }
@@ -33,11 +34,15 @@ open class MainActivity : ComponentActivity() {   // NVE-shell: open for NveWind
     override fun onKeyDown(keyCode: Int, event: android.view.KeyEvent): Boolean =
         com.smartdocs.editor.ui.reader.view.ReaderKeyBus.handle(keyCode) || super.onKeyDown(keyCode, event)
 
+    // fc-settings: the app language on Android 12 and older (13+ uses the per-app language, see AppLang)
+    override fun attachBaseContext(newBase: android.content.Context) = super.attachBaseContext(com.smartdocs.editor.core.data.AppLang.wrap(newBase))
+
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         handleIntent(intent)
+        syncLanguage()
         com.smartdocs.editor.core.billing.BillingManager.get(this).refreshAsync() // re-verify the Pro entitlement
         setContent {
             val app = application as SmartDocsApp
@@ -75,6 +80,25 @@ open class MainActivity : ComponentActivity() {   // NVE-shell: open for NveWind
         com.smartdocs.editor.ui.view5.V5Shortcuts.publish(this)
     }
 
+    /**
+     * fc-settings: keeps the stored language and the applied one equal. First start after the update: the stored
+     * choice is applied. Later (Android 13+): a language picked in the system "App languages" screen is saved.
+     */
+    private fun syncLanguage() {
+        val app = application as SmartDocsApp
+        lifecycleScope.launch {
+            runCatching {
+                val L = com.smartdocs.editor.core.data.AppLang
+                val chosen = app.settings.settings.first().language
+                val picked = L.fromSystemPicker(this@MainActivity)
+                when {
+                    !L.hasStored(this@MainActivity) -> if (chosen != L.SYSTEM) L.apply(this@MainActivity, chosen) else L.remember(this@MainActivity, chosen)
+                    picked != null && picked != L.stored(this@MainActivity) -> { L.remember(this@MainActivity, picked); app.settings.update { it.copy(language = picked) } }
+                }
+            }
+        }
+    }
+
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); handleIntent(intent) }
 
     override fun onProvideKeyboardShortcuts(data: MutableList<android.view.KeyboardShortcutGroup>?, menu: android.view.Menu?, deviceId: Int) {
@@ -109,6 +133,13 @@ open class MainActivity : ComponentActivity() {   // NVE-shell: open for NveWind
         }
         if (uri == null) return
         openedByIntent = true
+        // fc-settings: invite link → redeem the friend's code and show the invite screen
+        if (com.smartdocs.editor.core.gaps6.Referral.isInviteLink(uri.scheme, uri.host, uri.path)) {
+            val ok = com.smartdocs.editor.core.gaps6.ReferralStore.redeem(this, uri.toString())
+            Toast.makeText(this, getString(if (ok) R.string.fcs_invite_ok else R.string.fcs_invite_bad), Toast.LENGTH_LONG).show()
+            incomingRoute.value = com.smartdocs.editor.ui.gaps6.G6Routes.INVITE
+            return
+        }
         // smartdocs://oauth/… (cloud sign-in) and smartdocs://review/… (shared review) → acct module
         if (com.smartdocs.editor.ui.cloud.DeepLinks.isOurs(uri)) { com.smartdocs.editor.ui.cloud.DeepLinks.pending.value = uri; return }
         // Most senders grant only a temporary (non-persistable) read permission tied to this activity instance,

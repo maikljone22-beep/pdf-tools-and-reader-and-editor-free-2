@@ -171,6 +171,9 @@ fun NpfNotePopup(state: ReaderState, annot: Annot?) {
     val a = annot ?: return
     if (a.text.isBlank() || a.kind == AnnotKind.FREETEXT || a.kind == AnnotKind.STAMP_TEXT) return
     val family = when (NpfPrefs.noteFont) { "serif" -> FontFamily.Serif; "mono" -> FontFamily.Monospace; else -> FontFamily.SansSerif }
+    // §37 auto-open pop-ups: when off, the note waits behind a chip until asked for
+    var shown by remember(a.id) { mutableStateOf(NpfPrefs.autoOpenPopup) }
+    if (!shown) { TextButton(onClick = { shown = true }) { Text(stringResource(R.string.cf_show_note)) }; return }
     Surface(Modifier.fillMaxWidth().padding(4.dp).alpha(state.annot2.cx.noteOpacity.coerceIn(0.3f, 1f)), shape = RoundedCornerShape(10.dp),
         color = MaterialTheme.colorScheme.secondaryContainer) {
         Column(Modifier.heightIn(max = 160.dp).verticalScroll(rememberScrollState()).padding(10.dp)) {

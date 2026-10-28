@@ -17,7 +17,8 @@ import java.util.concurrent.TimeUnit
 object ConnectedConfig {
     val baseUrl: String get() = BuildCfg.string("CONNECTED_URL").trimEnd('/')
     val appToken: String get() = BuildCfg.string("CONNECTED_TOKEN")
-    val enabled: Boolean get() = baseUrl.isNotEmpty()
+    /** fc-settings: also off when the user turned ConnectedPDF off (Settings → More preferences → General). */
+    val enabled: Boolean get() = baseUrl.isNotEmpty() && !com.smartdocs.editor.core.data.FcsPrefs.connectedOff
 }
 
 data class ConnVersion(val n: Int, val sha: String, val size: Long, val note: String, val time: Long, val hasFile: Boolean)

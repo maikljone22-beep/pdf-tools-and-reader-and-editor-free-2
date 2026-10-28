@@ -90,6 +90,9 @@ fun CommentsPanel(state: ReaderState, onJump: (Int) -> Unit) {
     var sortMenu by remember { mutableStateOf(false) }
     var more by remember { mutableStateOf(false) }
     val expanded = remember { mutableStateMapOf<String, Boolean>() }
+    // fc-settings (§39): Ctrl+Enter on a selected comment expands its card (reply box)
+    val fcsReply = com.smartdocs.editor.ui.nve.NveState.of(state).replyTo
+    LaunchedEffect(fcsReply) { fcsReply?.let { (p, i) -> expanded["${p}_$i"] = true; com.smartdocs.editor.ui.nve.NveState.of(state).replyTo = null } }
     val colors = remember { mutableStateListOf<Int>() }
     val noAuthor = stringResource(R.string.an_unknown_author)
 
@@ -191,7 +194,9 @@ private fun PendingCard(state: ReaderState, a: Annot, onJump: (Int) -> Unit) {
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (a.text.isNotBlank()) Text(a.text, maxLines = 3, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
             }
-            IconButton(onClick = { state.removeAnnot(a.id) }) { Icon(Icons.Default.Delete, stringResource(R.string.annot_delete)) }
+            // tabs audit CM-09: a locked comment is not deleted (section 7.58)
+            val lockedMsg = stringResource(R.string.cx_locked_msg)
+            IconButton(onClick = { if (a.locked) state.annot2.message = lockedMsg else state.removeAnnot(a.id) }) { Icon(Icons.Default.Delete, stringResource(R.string.annot_delete)) }
         }
     }
 }
@@ -248,9 +253,15 @@ private fun StoredCard(state: ReaderState, c: CommentItem, expanded: Boolean, on
                     Icon(Icons.Default.Reply, null, Modifier.size(16.dp)); Spacer(Modifier.width(4.dp))
                     Text(if (c.replies.isEmpty()) stringResource(R.string.annot_reply) else stringResource(R.string.an_replies, c.replies.size))
                 }
-                IconButton(onClick = { h.launchBusy { h.fileOp { src, out, pw -> CommentStore.deleteMany(src, out, pw, mapOf(c.page to listOf(c.index))) } } }) {
+                // tabs audit CM-09: locked comments stay; a stored comment is deleted only after a confirmation
+                val lockedMsg = stringResource(R.string.cx_locked_msg)
+                var confirm by remember { mutableStateOf(false) }
+                IconButton(onClick = { if (c.locked) h.message = lockedMsg else confirm = true }) {
                     Icon(Icons.Default.Delete, stringResource(R.string.annot_delete))
                 }
+                if (confirm) AlertDialog(onDismissRequest = { confirm = false }, text = { Text(stringResource(R.string.tc_delete_comment_q)) },
+                    confirmButton = { TextButton(onClick = { confirm = false; h.launchBusy { h.fileOp { src, out, pw -> CommentStore.deleteMany(src, out, pw, mapOf(c.page to listOf(c.index))) } } }) { Text(stringResource(R.string.annot_delete)) } },
+                    dismissButton = { TextButton(onClick = { confirm = false }) { Text(stringResource(R.string.cancel)) } })
             }
             if (expanded && c.history.size > 1) {
                 // Review History (24.69): every status change with author and date

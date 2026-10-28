@@ -45,8 +45,6 @@
     <string name="fcy_will_send_pdf">%1$s: سيُرسل ملف PDF كاملًا.</string>
 
     <!-- ConnectedPDF -->
-    <string name="fcy_conn_switch">المستندات المتصلة</string>
-    <string name="fcy_conn_switch_sub">افحص المستندات المتصلة مع الخادم عند فتحها (التحديثات والصلاحيات ورسائل المالك)</string>
     <string name="fcy_conn_message">رسالة الفتح</string>
     <string name="fcy_conn_message_note">يرى القرّاء هذه الرسالة عند فتح المستند (فارغة = بلا رسالة).</string>
     <string name="fcy_conn_no_message">لا توجد رسالة فتح.</string>
@@ -58,19 +56,4 @@
     <!-- Files / convert -->
     <string name="fcy_batch_convert">تحويل</string>
     <string name="fcy_batch_hint">%1$d ملفات محددة: اختر تحويلًا.</string>
-
-    <!-- Search index -->
-    <string name="fcy_scope_metadata">الخصائص</string>
-    <string name="fcy_idx_title">فهرسة أيضًا</string>
-    <string name="fcy_idx_custom">خصائص المستند المخصصة</string>
-    <string name="fcy_idx_xmp">بيانات XMP الوصفية</string>
-    <string name="fcy_idx_tags">وسوم البنية (النص البديل)</string>
-    <string name="fcy_idx_width">تجاهل عرض الأحرف الآسيوية (يعيد بناء الفهرس)</string>
-    <string name="fcy_idx_show_title">إظهار عنوان المستند في النتائج</string>
-    <string name="fcy_idx_limit">حد حجم الفهرس</string>
-    <string name="fcy_idx_no_limit">بلا حد</string>
-    <string name="fcy_idx_mb">%1$d ميغابايت</string>
-    <string name="fcy_idx_log">الاحتفاظ بسجل الفهرسة</string>
-    <string name="fcy_idx_share_log">مشاركة السجل</string>
-    <string name="fcy_idx_note">تنطبق خيارات الخصائص على الملفات المفهرسة من الآن؛ أعد بناء الفهرس لتطبيقها على الكل.</string>
 </resources>

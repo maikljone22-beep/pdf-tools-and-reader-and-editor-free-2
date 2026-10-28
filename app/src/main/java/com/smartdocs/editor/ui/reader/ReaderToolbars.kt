@@ -1,5 +1,9 @@
 package com.smartdocs.editor.ui.reader
 
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -52,6 +56,8 @@ class ReaderActions(
     val ai: () -> Unit,
     /** One-step document tools (compress, OCR, watermark…): run on the open document in place. */
     val quick: (com.smartdocs.editor.ui.quick.QuickAction) -> Unit = {},
+    /** Tab audit D25: E-sign request from the Sign tab (the same route as the top-bar menu). */
+    val esign: () -> Unit = {},
 )
 
 enum class ReaderPanel { OUTLINE, BOOKMARKS, ANNOTATIONS, THUMBNAILS, ATTACHMENTS, INFO }
@@ -90,12 +96,13 @@ fun ToolChip(icon: ImageVector, label: String, selected: Boolean = false, enable
     val bg = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
     val fg = if (!enabled) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f) else if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
     Column(
-        Modifier.width(64.dp).clip(RoundedCornerShape(14.dp)).background(bg).clickable(enabled = enabled, onClick = onClick).padding(vertical = 6.dp, horizontal = 2.dp),
+        Modifier.width(72.dp).clip(RoundedCornerShape(14.dp)).background(bg).clickable(enabled = enabled, onClick = onClick).padding(vertical = 6.dp, horizontal = 2.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Icon(icon, label, Modifier.size(24.dp), tint = tint?.takeIf { enabled } ?: fg)
         Spacer(Modifier.height(3.dp))
-        Text(label, style = MaterialTheme.typography.labelSmall, color = fg, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+        // tabs audit CM-19: two lines (Arabic labels such as "مدير التعليقات" were cut at one line)
+        Text(label, style = MaterialTheme.typography.labelSmall, color = fg, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center, lineHeight = 12.sp)
     }
 }
 
@@ -109,10 +116,10 @@ fun BottomToolbar(state: ReaderState, actions: ReaderActions) {
     Surface(Modifier.coachTarget(CoachIds.READER_TOOLBAR), tonalElevation = 3.dp, shadowElevation = 8.dp) {
         Column(Modifier.fillMaxWidth().navigationBarsPadding()) {
             val nveUser = com.smartdocs.editor.ui.nve.NveState.of(state).userTab      // NVE: a user tab replaces the built-in toolbars
-            if (nveUser != null) com.smartdocs.editor.ui.nve.shell.NveUserTabToolbar(nveUser, actions.navigateTool) else
+            if (nveUser != null) com.smartdocs.editor.ui.nve.shell.NveUserTabToolbar(nveUser, actions.navigateTool, onMissing = { com.smartdocs.editor.ui.nve.NveState.of(state).userTab = null }) else
             when (state.tab) {
                 ReaderTab.VIEW -> ViewToolbar(state, actions)
-                ReaderTab.COMMENT -> { PropertyBar(state); CommentToolbar(state, actions) }
+                ReaderTab.COMMENT -> { if (state.tool != null) PropertyBar(state); CommentToolbar(state, actions) }
                 ReaderTab.EDIT -> { if (state.tool != null) PropertyBar(state); EditToolbar(state, actions) }
                 ReaderTab.FILL_SIGN -> { if (state.tool != null) PropertyBar(state); FillSignToolbar(state, actions) }
                 ReaderTab.SIGN -> SignToolbar(state, actions)
@@ -173,11 +180,19 @@ private val commentTools = listOf(
     ToolDef(ReaderTool.RECT, Icons.Default.CropSquare, R.string.annot_rect),
     ToolDef(ReaderTool.OVAL, Icons.Default.Circle, R.string.annot_oval),
     ToolDef(ReaderTool.STAMP, Icons.Default.Approval, R.string.annot_stamp),
-    ToolDef(ReaderTool.MEASURE, Icons.Default.Straighten, R.string.annot_measure),
+    // tabs audit CM-05: measuring is the workbench "Measure" chip (saved); the canvas measure is not offered twice
 )
 
+/** One entry of the grouped Comment row (tabs audit CM-19). */
+private class CItem(val icon: ImageVector, val label: Int, val selected: Boolean, val onClick: () -> Unit)
+
+/**
+ * Tabs audit CM-19: on phones the ~30 Comment chips are grouped (Markup, Text, Draw, Shapes, Media) into dropdown
+ * chips that show the active tool; tablets keep the flat row.
+ */
 @Composable
 private fun CommentToolbar(state: ReaderState, a: ReaderActions) {
+    if (androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp < 600) { GroupedCommentToolbar(state, a); return }
     ToolRow {
         commentTools.forEach { d ->
             ToolChip(d.icon, stringResource(d.label), selected = state.tool == d.tool) {
@@ -224,11 +239,26 @@ private fun FillSignToolbar(state: ReaderState, a: ReaderActions) {
         ToolChip(Icons.Default.CropDin, stringResource(R.string.nf2_rounded_rect), selected = state.tool == ReaderTool.FS_RRECT) { state.selectTool(ReaderTool.FS_RRECT) }
         ToolChip(Icons.Default.Pin, stringResource(R.string.nf2_comb), selected = state.tool == ReaderTool.FS_COMB) { state.selectTool(ReaderTool.FS_COMB) }
         PasteStampChip(state)      // nitro-fillsign2: a copied signature / stamp
+        // tab audit D26: the date in the chosen format, with the typing-digits option (Arabic-Indic digits)
+        val ctx = androidx.compose.ui.platform.LocalContext.current
+        var datePattern by remember { mutableStateOf(com.smartdocs.editor.core.fillsign2.FillSignPrefs.datePattern(ctx)) }
+        fun today(p: String) = com.smartdocs.editor.ui.nve.NveDigits.apply(ctx, com.smartdocs.editor.core.fillsign2.FsDate.format(p, System.currentTimeMillis()))
         ToolChip(Icons.Default.Today, stringResource(R.string.fill_sign_date), selected = state.tool == ReaderTool.FS_DATE) {
             state.selectTool(ReaderTool.FS_DATE)
-            if (state.tool == ReaderTool.FS_DATE) state.pendingText = java.text.SimpleDateFormat("yyyy/MM/dd", java.util.Locale.US).format(java.util.Date())
+            if (state.tool == ReaderTool.FS_DATE) state.pendingText = today(datePattern)
+        }
+        if (state.tool == ReaderTool.FS_DATE) Box {
+            var open by remember { mutableStateOf(false) }
+            ToolChip(Icons.Default.EditCalendar, stringResource(R.string.tfr_date_format), selected = open) { open = true }
+            DropdownMenu(open, { open = false }) {
+                com.smartdocs.editor.core.fillsign2.FsDate.PATTERNS.forEach { p ->
+                    DropdownMenuItem(text = { Text(today(p)) }, leadingIcon = { if (p == datePattern) Icon(Icons.Default.Check, null) },
+                        onClick = { open = false; datePattern = p; com.smartdocs.editor.core.fillsign2.FillSignPrefs.setDatePattern(ctx, p); state.pendingText = today(p) })
+                }
+            }
         }
         com.smartdocs.editor.ui.forms5.FillSignFormChips(state, openDocJs = { a.navigateTool("e5_doc_js") })     // form menu (data, JavaScript)
+        com.smartdocs.editor.ui.forms5.FillSignSmartFillChip(state)      // tab audit D18: AI smart fill from the toolbar
         VerticalDivider(Modifier.height(36.dp).padding(horizontal = 4.dp))
         if (fields.isEmpty()) {
             Text(stringResource(R.string.rd_profile_empty), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 8.dp))
@@ -236,9 +266,15 @@ private fun FillSignToolbar(state: ReaderState, a: ReaderActions) {
         fields.forEach { f ->
             val sel = state.tool == ReaderTool.FS_PROFILE && state.pendingText == f.value
             FilterChip(selected = sel, onClick = {
-                if (sel) state.selectTool(null) else { state.tool = ReaderTool.FS_PROFILE; state.pendingText = f.value; state.selection = null }
+                // tab audit D27: through selectTool (tool memory, edit / measure cleared); a second tap deselects
+                if (sel) state.selectTool(null) else {
+                    if (state.tool != ReaderTool.FS_PROFILE) state.selectTool(ReaderTool.FS_PROFILE)
+                    if (state.tool == ReaderTool.FS_PROFILE) state.pendingText = f.value
+                }
             }, label = { Text(f.label.ifBlank { f.value }, maxLines = 1) }, leadingIcon = { Icon(Icons.Default.Person, null, Modifier.size(16.dp)) }, modifier = Modifier.padding(horizontal = 2.dp))
         }
+        // tab audit D25: the fill-profile editor from the Fill & Sign tab (it was only reachable from Account)
+        ToolChip(Icons.Default.ManageAccounts, stringResource(R.string.tfr_edit_profile)) { a.navigateTool("fill_profile") }
     }
 }
 
@@ -256,30 +292,33 @@ private fun SignToolbar(state: ReaderState, a: ReaderActions) {
     val ordered = recent.mapNotNull { p -> sigs.firstOrNull { it.path == p } } + palette.filter { it.path !in recent }
     ToolRow {
         if (placing) {
-            FilledTonalButton(onClick = { state.confirmPlacement() }) { Icon(Icons.Default.Check, null); Spacer(Modifier.width(4.dp)); Text(stringResource(R.string.done)) }
+            // tab audit D24: Done lives in the placement bar only (one Done); Cancel stays here
             TextButton(onClick = { state.cancelPlacement() }) { Text(stringResource(R.string.cancel)) }
             VerticalDivider(Modifier.height(36.dp).padding(horizontal = 4.dp))
         }
         ToolChip(Icons.Default.Add, stringResource(R.string.sig_create)) { a.navigateTool("signatures") }
         ToolChip(Icons.Default.VerifiedUser, stringResource(R.string.sig_digital)) { a.navigateTool("digital_sign") }
         FillSign2SignChips(state, sigs)      // nitro-fillsign2: paste, Apply All Signatures, paging seal
+        // tab audit D25: entry points that were only in the View tab / the top-bar menu / Account
+        ToolChip(Icons.Default.Shield, stringResource(R.string.tfr_sig_panel)) { com.smartdocs.editor.ui.nve.NveState.of(state).pane = com.smartdocs.editor.ui.nve.NvePane.SIGNATURES }
+        ToolChip(Icons.Default.Verified, stringResource(R.string.tfr_validate_all)) {
+            state.file?.let { f -> com.smartdocs.editor.ui.signature.SigFieldRequest.pending = com.smartdocs.editor.ui.signature.SigFieldRequest.Request(f.path, null, verify = true) }
+            a.navigateTool("digital_sign")
+        }
+        ToolChip(Icons.Default.Badge, stringResource(R.string.tfr_digital_ids)) { a.navigateTool("digital_ids") }
+        ToolChip(Icons.Default.HistoryEdu, stringResource(R.string.cn_tool_esign), onClick = a.esign)
         VerticalDivider(Modifier.height(36.dp).padding(horizontal = 4.dp))
         if (sigs.isEmpty()) Text(stringResource(R.string.rd_no_signatures), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 8.dp))
         if (recent.isNotEmpty()) Text(stringResource(R.string.nq_recent), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(horizontal = 4.dp))
         ordered.forEachIndexed { i, s ->
             if (recent.isNotEmpty() && i == recent.size) VerticalDivider(Modifier.height(36.dp).padding(horizontal = 4.dp))
             val selected = state.tool == ReaderTool.SIGNATURE && state.pendingText == s.path
-            Box(
+            // tab audit D15 / D28: locked thumbnails blurred, every thumbnail labelled; D27: a second tap deselects
+            SignatureThumb(s, i, meta[s.path]?.locked == true,
                 Modifier.padding(2.dp).size(width = 84.dp, height = 48.dp).clip(RoundedCornerShape(10.dp))
                     .background(Color.White)
                     .border(2.dp, if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(10.dp))
-                    .clickable { gate.request(s.path) { a.pickSignature(s.path) } },
-                contentAlignment = Alignment.Center,
-            ) {
-                coil.compose.AsyncImage(model = java.io.File(s.path), contentDescription = null, modifier = Modifier.fillMaxSize().padding(4.dp))
-                if (s.isInitials) Text(stringResource(R.string.sig_initials), style = MaterialTheme.typography.labelSmall, modifier = Modifier.align(Alignment.BottomEnd).padding(2.dp), color = Color.Gray)
-                if (meta[s.path]?.locked == true) Icon(Icons.Default.Lock, null, Modifier.align(Alignment.TopStart).padding(2.dp).size(12.dp), tint = Color.Gray)
-            }
+                    .clickable { if (selected) state.selectTool(null) else gate.request(s.path) { a.pickSignature(s.path) } })
         }
     }
 }
@@ -350,9 +389,6 @@ fun PropertyBar(state: ReaderState) {
     val t = state.tool
     Column(Modifier.fillMaxWidth()) {
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            IconButton(onClick = { state.undo() }, enabled = state.canUndo, modifier = Modifier.size(32.dp)) { Icon(Icons.AutoMirrored.Filled.Undo, stringResource(R.string.undo)) }
-            IconButton(onClick = { state.redo() }, enabled = state.canRedo, modifier = Modifier.size(32.dp)) { Icon(Icons.AutoMirrored.Filled.Redo, stringResource(R.string.redo)) }
-            VerticalDivider(Modifier.height(24.dp))
             PALETTE.forEach { c -> ColorDot(c, state.color == c) { state.color = c } }
             Box(Modifier.size(28.dp).clip(CircleShape).border(1.dp, MaterialTheme.colorScheme.outline, CircleShape).clickable { showMore = !showMore }, contentAlignment = Alignment.Center) {
                 Icon(Icons.Default.Tune, stringResource(R.string.rd_custom_color), Modifier.size(16.dp))
@@ -364,12 +400,17 @@ fun PropertyBar(state: ReaderState) {
             VerticalDivider(Modifier.height(24.dp))
             FilterChip(selected = state.continueCreating, onClick = { state.continueCreating = !state.continueCreating; com.smartdocs.editor.core.data.NpfPrefs.setBool(com.smartdocs.editor.core.data.NpfPrefs.K.RETAIN_TOOLS, state.continueCreating) },
                 label = { Text(stringResource(R.string.rd_continue_creating)) }, leadingIcon = { Icon(Icons.Default.Repeat, null, Modifier.size(16.dp)) }, modifier = Modifier.height(30.dp))
+            val ctx = androidx.compose.ui.platform.LocalContext.current
+            var memOn by remember { mutableStateOf(com.smartdocs.editor.ui.reader.annot.ToolMemory.enabled(ctx)) }
+            FilterChip(selected = memOn, onClick = { memOn = !memOn; com.smartdocs.editor.ui.reader.annot.ToolMemory.setEnabled(ctx, memOn) },
+                label = { Text(stringResource(R.string.v5_tool_memory)) }, leadingIcon = { Icon(Icons.Default.Memory, null, Modifier.size(16.dp)) }, modifier = Modifier.height(30.dp))
         }
         if (showMore) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(hex, { v -> hex = v.take(7); v.removePrefix("#").toIntOrNull(16)?.let { if (v.removePrefix("#").length == 6) state.color = it } },
                     label = { Text(stringResource(R.string.rd_custom_color)) }, placeholder = { Text("#FF5722") }, singleLine = true, modifier = Modifier.width(140.dp))
-                val thick = t == ReaderTool.INK || t == ReaderTool.LINE || t == ReaderTool.ARROW || t == ReaderTool.RECT || t == ReaderTool.OVAL || t == ReaderTool.ERASER || t == null || t == ReaderTool.FS_RRECT
+                val poly = t == ReaderTool.POLYGON || t == ReaderTool.POLYLINE || t == ReaderTool.CLOUD
+                val thick = !poly && (t == ReaderTool.INK || t == ReaderTool.LINE || t == ReaderTool.ARROW || t == ReaderTool.RECT || t == ReaderTool.OVAL || t == ReaderTool.ERASER || t == null || t == ReaderTool.FS_RRECT)
                 val fontT = t == ReaderTool.FREETEXT || t == ReaderTool.TEXTBOX || t == ReaderTool.FS_TEXT || t == ReaderTool.FS_PROFILE || t == ReaderTool.FS_DATE || t == ReaderTool.NOTE
                         || t == ReaderTool.FS_CHECK || t == ReaderTool.FS_CROSS || t == ReaderTool.FS_DOT || t == ReaderTool.FS_LINE || t == ReaderTool.FS_COMB
                 Column(Modifier.weight(1f)) {
@@ -377,7 +418,7 @@ fun PropertyBar(state: ReaderState) {
                         Text("${stringResource(R.string.prop_thickness)}: ${"%.1f".format(state.thickness)}", style = MaterialTheme.typography.labelSmall)
                         Slider(state.thickness, { state.thickness = it }, valueRange = 0.5f..24f, modifier = Modifier.height(28.dp))
                     }
-                    if (fontT || !thick) {
+                    if (fontT || (!thick && !poly)) {
                         Text("${stringResource(R.string.prop_font_size)}: ${state.fontSize.toInt()}", style = MaterialTheme.typography.labelSmall)
                         Slider(state.fontSize, { state.fontSize = it }, valueRange = 6f..72f, modifier = Modifier.height(28.dp))
                     }
@@ -385,7 +426,11 @@ fun PropertyBar(state: ReaderState) {
             }
         }
         com.smartdocs.editor.ui.reader.annot.Annot2PropertyRow(state)      // MODULE_annot2: polygon progress, fill, cloud
-        com.smartdocs.editor.ui.reader.annot.CreationExtrasRow(state)      // section 7: fill, dash, no border, line ends, rich text, icons, tickmarks
+        // tabs audit CM-19: on a short screen (phone in landscape) the creation extras fold behind a toggle
+        val shortScreen = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp < 480
+        var extrasOpen by remember { mutableStateOf(false) }
+        if (shortScreen && !extrasOpen) TextButton(onClick = { extrasOpen = true }, modifier = Modifier.height(32.dp)) { Text(stringResource(R.string.tc2_more_options)) }
+        else com.smartdocs.editor.ui.reader.annot.CreationExtrasRow(state)      // section 7: fill, dash, no border, line ends, rich text, icons, tickmarks
     }
 }
 
@@ -394,7 +439,69 @@ fun ColorDot(rgb: Int, selected: Boolean, size: androidx.compose.ui.unit.Dp = 28
     Box(
         Modifier.size(size).clip(CircleShape).background(annotColor(rgb))
             .border(if (selected) 3.dp else 1.dp, if (selected) MaterialTheme.colorScheme.primary else Color(0x33000000), CircleShape)
-            .clickable(onClick = onClick),
+            .clickable(onClickLabel = colorName(rgb), role = androidx.compose.ui.semantics.Role.RadioButton, onClick = onClick)
+            .semantics { contentDescription = colorName0(rgb); this.selected = selected },
         contentAlignment = Alignment.Center,
     ) { if (selected) Icon(Icons.Default.Check, null, Modifier.size(14.dp), tint = if (rgb == 0xFFEB3B || rgb == 0x8BC34A) Color.Black else Color.White) }
+}
+
+/** Spoken name of an annotation colour (tabs audit CM-30): a palette name or the hex value. */
+@Composable
+private fun colorName(rgb: Int): String = colorName0(rgb)
+
+private fun colorName0(rgb: Int): String = COLOR_NAMES[rgb] ?: "#%06X".format(rgb and 0xFFFFFF)
+
+private val COLOR_NAMES = mapOf(
+    0xFFEB3B to "Yellow · أصفر", 0xF44336 to "Red · أحمر", 0xE53935 to "Red · أحمر", 0x4CAF50 to "Green · أخضر", 0x8BC34A to "Light green · أخضر فاتح",
+    0x2196F3 to "Blue · أزرق", 0x3F51B5 to "Indigo · نيلي", 0x9C27B0 to "Purple · بنفسجي", 0xE91E63 to "Pink · وردي", 0xFF9800 to "Orange · برتقالي",
+    0x795548 to "Brown · بني", 0x212121 to "Black · أسود", 0x000000 to "Black · أسود", 0xFFFFFF to "White · أبيض", 0x9E9E9E to "Grey · رمادي", 0x00BCD4 to "Cyan · سماوي",
+)
+
+@Composable
+private fun GroupedCommentToolbar(state: ReaderState, a: ReaderActions) {
+    val v = com.smartdocs.editor.ui.view5.V5State.of(state)
+    fun tool(t: ReaderTool): CItem? {
+        val d = commentTools.firstOrNull { it.tool == t }
+        val e = com.smartdocs.editor.ui.reader.annot.ToolCatalog.of(t)
+        val icon = d?.icon ?: e?.icon ?: return null
+        val label = d?.label ?: e?.label ?: return null
+        return CItem(icon, label, state.tool == t) { com.smartdocs.editor.ui.reader.annot.clickTool(state, a, t) }
+    }
+    fun wb(t: com.smartdocs.editor.ui.view5.WTool, icon: ImageVector, label: Int) =
+        CItem(icon, label, false) { v.workbenchTool = t; v.open(com.smartdocs.editor.ui.view5.V5Surface.WORKBENCH) }
+    val groups = listOf(
+        Triple(R.string.tc2_g_markup, Icons.Default.Highlight, CommentGroups.MARKUP.mapNotNull(::tool) + listOf(wb(com.smartdocs.editor.ui.view5.WTool.AREA_HIGHLIGHT, Icons.Default.HighlightAlt, R.string.v5_tool_area_highlight))),
+        Triple(R.string.tc2_g_text, Icons.Default.TextFields, CommentGroups.TEXT.mapNotNull(::tool) + listOf(
+            wb(com.smartdocs.editor.ui.view5.WTool.CALLOUT, Icons.Default.Comment, R.string.v5_tool_callout), wb(com.smartdocs.editor.ui.view5.WTool.TYPEWRITER, Icons.Default.Keyboard, R.string.v5_tool_typewriter))),
+        Triple(R.string.tc2_g_draw, Icons.Default.Draw, CommentGroups.DRAW.mapNotNull(::tool)),
+        Triple(R.string.tc2_g_shapes, Icons.Default.CropSquare, CommentGroups.SHAPES.mapNotNull(::tool)),
+        Triple(R.string.tc2_g_media, Icons.Default.Attachment, CommentGroups.MEDIA.mapNotNull(::tool)),
+    )
+    ToolRow {
+        groups.forEach { (label, icon, items) -> GroupChip(stringResource(label), icon, items) }
+        (CommentGroups.SINGLE.mapNotNull(::tool) + wb(com.smartdocs.editor.ui.view5.WTool.DISTANCE, Icons.Default.Straighten, R.string.v5_measure)).forEach { c ->
+            ToolChip(c.icon, stringResource(c.label), selected = c.selected, onClick = c.onClick)
+        }
+        ToolChip(Icons.Default.Forum, stringResource(R.string.v5_comment_manager)) { v.open(com.smartdocs.editor.ui.view5.V5Surface.COMMENTS) }
+        ToolChip(Icons.Default.TableChart, stringResource(R.string.v5_measurements)) { v.open(com.smartdocs.editor.ui.view5.V5Surface.MEASURE_LIST) }
+        com.smartdocs.editor.ui.reader.annot.CommentsMoreChip(state)
+        VerticalDivider(Modifier.height(36.dp).padding(horizontal = 4.dp))
+        ToolChip(Icons.Default.List, stringResource(R.string.panel_annotations)) { a.panels(ReaderPanel.ANNOTATIONS) }
+    }
+}
+
+@Composable
+private fun GroupChip(label: String, icon: ImageVector, items: List<CItem>) {
+    var open by remember { mutableStateOf(false) }
+    val sel = items.firstOrNull { it.selected }
+    Box {
+        ToolChip(sel?.icon ?: icon, if (sel != null) stringResource(sel.label) else label, selected = sel != null) { open = true }
+        DropdownMenu(open, { open = false }) {
+            items.forEach { c ->
+                DropdownMenuItem(text = { Text(stringResource(c.label)) }, leadingIcon = { Icon(c.icon, null) },
+                    trailingIcon = { if (c.selected) Icon(Icons.Default.Check, stringResource(R.string.tc2_selected)) },
+                    onClick = { open = false; c.onClick() })
+            }
+        }
+    }
 }
