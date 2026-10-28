@@ -533,17 +533,32 @@ class FormFillState internal constructor(val reader: ReaderState) {
         // format (F) scripts on the JS runtime give the appearance text; the pattern formatter is the fallback
         scripts?.let { sc -> values.keys.forEach { k -> if (sc.hasFormat(k)) runCatching { sc.format(k, all[k].orEmpty()) }.getOrNull()?.let { display[k] = it.first } } }
         computed.keys.forEach { k -> if (k !in display) display[k] = all[k].orEmpty() }
+        // XFA picture clauses: the saved appearance shows the formatted text, /V keeps the canonical value
+        m.widgets.forEach { w -> val pic = w.picture; if (pic != null && w.name in values && w.name !in display)
+            com.smartdocs.editor.core.forms.XfaPicture.format(pic, all[w.name].orEmpty())?.let { display[w.name] = it } }
         return values to display
+    }
+
+    /** 8.28: fill-time style of rich-text fields (bold / italic / underline), written to /RV and /DS on save. */
+    val richStyles = mutableStateMapOf<String, com.smartdocs.editor.core.annot.AnnotStyle.Rich>()
+    fun richStyle(w: FWidget): com.smartdocs.editor.core.annot.AnnotStyle.Rich? = richStyles[w.name] ?: w.rich
+
+    /** Toggle 'b'old, 'i'talic or 'u'nderline of a rich-text field; the field is then saved with its value. */
+    fun toggleRich(w: FWidget, what: Char) {
+        val base = richStyle(w) ?: com.smartdocs.editor.core.annot.AnnotStyle.Rich(if (w.fontSize > 0f) w.fontSize else 12f, w.textColor, false, false)
+        richStyles[w.name] = when (what) { 'b' -> base.copy(bold = !base.bold); 'i' -> base.copy(italic = !base.italic); else -> base.copy(underline = !base.underline) }
+        edits[w.name] = value(w.name)
+        markDirty()
     }
 
     private suspend fun writeTo(src: File, password: String?, out: File) {
         val (values, display) = pending()
         // audit V-01: a full rewrite would invalidate the signatures of a signed form; it is appended instead
         if (com.smartdocs.editor.core.pdf.SignedSave.isSigned(src, password)) {
-            FormValueWriter.writeSigned(reader.context, src, values, display, images.toMap(), hiddenOverride.toMap(), out, password)
+            FormValueWriter.writeSigned(reader.context, src, values, display, images.toMap(), hiddenOverride.toMap(), out, password, rich = richStyles.toMap())
             return
         }
-        FormValueWriter.write(reader.context, src, values, display, images.toMap(), out, password, dropXfa = model.xfa == XfaSupport.Kind.STATIC)
+        FormValueWriter.write(reader.context, src, values, display, images.toMap(), out, password, dropXfa = model.xfa == XfaSupport.Kind.STATIC, rich = richStyles.toMap())
         // field visibility changed by Hide actions + barcode fields re-encoded from the new values
         FieldVisibility.applyTo(out, password, hiddenOverride.toMap())
     }

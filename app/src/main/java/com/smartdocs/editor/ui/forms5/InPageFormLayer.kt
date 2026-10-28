@@ -6,7 +6,10 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxSize
@@ -244,6 +247,8 @@ private fun DrawScope.drawPending(fs: FormFillState, w: FWidget, r: Rect, bg: Co
             val px = if (w.fontSize > 0f) w.fontSize * scale else if (w.multiline) 11f * scale else (r.height * 0.6f).coerceAtMost(14f * scale)
             var style = TextStyle(fontSize = px.toSp(), color = color, textDirection = TextDirection.Content,
                 textAlign = when (w.quadding) { 1 -> TextAlign.Center; 2 -> TextAlign.Right; else -> if (rtlText(text)) TextAlign.Right else TextAlign.Left })
+            // 8.28: the fill-time style of a rich-text field
+            if (w.richText) fs.richStyle(w)?.let { rs -> style = style.merge(richTextStyle(rs)) }
             val pad = 2f * scale.coerceAtLeast(0.5f)
             val maxW = (r.width - 2 * pad).roundToInt().coerceAtLeast(1)
             if (w.comb && w.maxLen > 0 && !w.multiline) {
@@ -285,6 +290,11 @@ private fun DrawScope.drawPending(fs: FormFillState, w: FWidget, r: Rect, bg: Co
 }
 
 private fun rtlText(s: String) = s.any { it.code in 0x0590..0x08FF }
+
+private fun richTextStyle(rs: com.smartdocs.editor.core.annot.AnnotStyle.Rich) = TextStyle(
+    fontWeight = if (rs.bold) androidx.compose.ui.text.font.FontWeight.Bold else null,
+    fontStyle = if (rs.italic) androidx.compose.ui.text.font.FontStyle.Italic else null,
+    textDecoration = if (rs.underline) androidx.compose.ui.text.style.TextDecoration.Underline else null)
 
 @Composable
 private fun ActiveTextEditor(fs: FormFillState, w: FWidget, screen: Rect, scale: Float, accent: Color, angle: Int) {
@@ -328,7 +338,8 @@ private fun ActiveTextEditor(fs: FormFillState, w: FWidget, screen: Rect, scale:
             .border(2.dp, accent)
             .padding(horizontal = 2.dp)
             .focusRequester(focus),
-        textStyle = TextStyle(fontSize = fontSp, color = Color.Black, textAlign = align, textDirection = TextDirection.Content),
+        textStyle = TextStyle(fontSize = fontSp, color = Color.Black, textAlign = align, textDirection = TextDirection.Content)
+            .let { st -> if (w.richText) fs.richStyle(w)?.let { st.merge(richTextStyle(it)) } ?: st else st },
         singleLine = !w.multiline,
         visualTransformation = if (w.password) PasswordVisualTransformation() else if (ks == KeystrokeKind.NONE) com.smartdocs.editor.ui.nve.spellTransformation(com.smartdocs.editor.ui.nve.rememberSpellIssues(tfv.text)) else VisualTransformation.None,   // NVE: live spell check
         keyboardOptions = KeyboardOptions(keyboardType = keyboard, imeAction = if (w.multiline) ImeAction.Default else ImeAction.Next),
@@ -336,6 +347,24 @@ private fun ActiveTextEditor(fs: FormFillState, w: FWidget, screen: Rect, scale:
         cursorBrush = SolidColor(accent),
         decorationBox = { inner -> Box(Modifier.fillMaxSize(), contentAlignment = if (w.multiline) Alignment.TopStart else Alignment.CenterStart) { inner() } },
     )
+    // 8.28: bold / italic / underline of a rich-text field, just above the editor
+    if (w.richText) {
+        val rs = fs.richStyle(w)
+        val barH = with(density) { 34.dp.toPx() }
+        Row(Modifier.absoluteOffset { IntOffset(r.left.roundToInt(), (r.top - barH).coerceAtLeast(0f).roundToInt()) }
+            .background(Color.White).border(1.dp, accent), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+            listOf('b' to "B", 'i' to "I", 'u' to "U").forEach { (k, label) ->
+                val on = when (k) { 'b' -> rs?.bold == true; 'i' -> rs?.italic == true; else -> rs?.underline == true }
+                Box(Modifier.size(32.dp).background(if (on) accent.copy(alpha = 0.25f) else Color.Transparent)
+                    .clickable(onClickLabel = label) { fs.toggleRich(w, k) }, contentAlignment = Alignment.Center) {
+                    androidx.compose.material3.Text(label, color = Color.Black,
+                        style = when (k) { 'b' -> TextStyle(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                            'i' -> TextStyle(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic)
+                            else -> TextStyle(textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline) })
+                }
+            }
+        }
+    }
 }
 
 /** 12 sp in px at the current density: the editor text never gets smaller than this, even on tiny fields. */
