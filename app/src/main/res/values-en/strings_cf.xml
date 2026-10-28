@@ -12,4 +12,7 @@
     <string name="cf_mail_subject">Subject</string>
     <string name="cf_mail_body">Message</string>
     <string name="cf_mail_hint">Used when you e-mail a document from the share sheet. {file} becomes the document name.</string>
+    <string name="cf_show_note">Show note</string>
+    <string name="cf_auto_popup">Open comment pop-ups automatically</string>
+    <string name="cf_auto_popup_sub">The selected comment\'s note shows at once; when off, a Show note button opens it.</string>
 </resources>

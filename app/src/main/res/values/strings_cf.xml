@@ -12,4 +12,7 @@
     <string name="cf_mail_subject">الموضوع</string>
     <string name="cf_mail_body">نص الرسالة</string>
     <string name="cf_mail_hint">يُستعمل عند إرسال مستند بالبريد من قائمة المشاركة. ‏{file} يصبح اسم المستند.</string>
+    <string name="cf_show_note">عرض الملاحظة</string>
+    <string name="cf_auto_popup">فتح ملاحظة التعليق تلقائيًا</string>
+    <string name="cf_auto_popup_sub">تظهر ملاحظة التعليق المحدد مباشرة؛ عند الإيقاف تُفتح بزر «عرض الملاحظة».</string>
 </resources>

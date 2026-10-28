@@ -12,3 +12,4 @@
 | Pencil stroke-merge timeout | FIXED | core/annot/InkMerge, CommentExtras.addNew (inkMergeMs, prefs ink_merge_ms), comment menu item off / 1 / 2 / 3 s | Merged strokes are one undo step each (replaceAnnot). Test InkMergeTest |
 | Form-field recognition after Create PDF (pref) | DEFERRED | — | Create PDF runs through core/convert6, which stays untouched until fix/convert-audit is merged |
 | §37 default e-mail subject / body | FIXED | core/share5/MailDefaults, ShareOptionsSheet e-mail actions, Settings › Files (MailDefaultRows) | {file} token. Test MailDefaultsTest |
+| §37 auto-open pop-ups | FIXED | NpfPrefs.autoOpenPopup (Settings › Comments), NpfNotePopup shows a "Show note" chip when off | UI only; pref read through NpfPrefs (no unit test beyond the default) |
