@@ -216,6 +216,18 @@ object AccessTags {
         return path.dropLast(1) + j
     }
 
+    /** Moves the tag to position [index] of its parent's /K (Order panel drag). Returns the new path. */
+    fun moveTo(doc: PDDocument, path: List<Int>, index: Int): List<Int> {
+        val parent = parentOf(doc, path) ?: return path
+        val k = kids(parent); val i = path.last()
+        if (index !in 0 until k.size() || index == i) return path
+        val item = k.get(i); k.remove(i); k.add(index, item)
+        return path.dropLast(1) + index
+    }
+
+    /** Order panel (Foxit 34.44): the tags holding content on [page], in reading (tree) order. Pure over [tree]. */
+    fun readingOrder(nodes: List<TagNode>, page: Int): List<TagNode> = nodes.filter { it.page == page && it.contentItems > 0 }
+
     /** Indent: becomes the last child of the previous sibling element. */
     fun indent(doc: PDDocument, path: List<Int>): List<Int> {
         if (path.last() == 0) return path
