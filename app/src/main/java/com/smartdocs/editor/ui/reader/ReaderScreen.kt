@@ -125,8 +125,31 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
     LaunchedEffect(tts.page, tts.state) { if (tts.state != ReadAloudController.State.IDLE && tts.page != state.currentPage && state.pageCount > 0) state.jumpTo(tts.page) }
 
     fun leave() { nav.popBackStack() }
-    val switchTab = com.smartdocs.editor.ui.reader.view.rememberTabSwitcher(nav, state)
+    // tab-view-core V-02: what leaving (back / tab switch) does once the user chose to discard; set while blocked
+    var pendingLeave by remember { mutableStateOf<(() -> Unit)?>(null) }
+    var leaveFailure by remember { mutableStateOf<String?>(null) }
+    fun leaveBlocked(then: () -> Unit) {
+        pendingLeave = then
+        // the signed dialog would only offer a copy and Cancel: the leave dialog offers copy / discard / cancel instead
+        val reason = state.signedBlock; state.signedBlock = null
+        leaveFailure = when (reason) {
+            com.smartdocs.editor.core.pdf.SignedDocumentException.Reason.CERTIFIED_NO_CHANGES -> ctx.getString(R.string.signed_doc_certified_no_changes)
+            com.smartdocs.editor.core.pdf.SignedDocumentException.Reason.INCREMENTAL_FAILED -> ctx.getString(R.string.signed_doc_save_as_copy)
+            null -> state.error ?: ctx.getString(R.string.tvc_save_failed_generic)
+        }
+        state.error = null
+        showDiscard = true
+    }
+    val switchTab = com.smartdocs.editor.ui.reader.view.rememberTabSwitcher(nav, state) { target ->
+        leaveBlocked { switchTabAfterDiscard(nav, state, target) }
+    }
     fun saveThen(block: () -> Unit) { scope.launch { if (state.save()) block() } }
+    fun saveThenLeave(block: () -> Unit) { scope.launch { if (state.save()) block() else leaveBlocked(block) } }
+    fun requestLeave() {
+        if (!state.dirty || state.discarded) leave()
+        else if (settings.autoSave) saveThenLeave { leave() }
+        else { pendingLeave = { leave() }; leaveFailure = null; showDiscard = true }
+    }
     BackHandler {
         when {
             com.smartdocs.editor.ui.view5.V5State.of(state).onBack() -> {}
@@ -139,16 +162,27 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
             state.placement != null -> state.cancelPlacement()
             state.tool != null -> state.selectTool(null)
             panel != null -> panel = null
-            state.dirty -> if (settings.autoSave) saveThen { leave() } else showDiscard = true
-            else -> leave()
+            else -> requestLeave()      // tab-view-core V-02
         }
     }
 
+    // tab-view-core V-06: "Save a copy" from the signed dialog exports the refused change ([ReaderState.signedCopy])
+    var exportSignedCopy by remember { mutableStateOf(false) }
+    // tab-view-core V-02: a successful "Save a copy" while leaving was blocked offers to leave
+    var leaveAfterCopy by remember { mutableStateOf(false) }
+    var offerLeave by remember { mutableStateOf(false) }
     val saveAs = rememberLauncherForActivityResult(com.smartdocs.editor.ui.nve.shell.NveCreateDocument(ctx)) { target ->   // NVE-shell: starts in the default save folder
-        if (target != null) scope.launch {
+        val copy = state.signedCopy.takeIf { exportSignedCopy }
+        exportSignedCopy = false
+        val wasLeaving = leaveAfterCopy; leaveAfterCopy = false
+        if (target == null) { if (copy != null) state.dropSignedCopy() }
+        else scope.launch {
             val tmp = app.documents.newTemp("saveas")
-            runCatching { state.exportWithAnnots(tmp); app.documents.exportTo(tmp, target); tmp.delete() }
-                .onSuccess { snack.showSnackbar(ctx.getString(R.string.success)) }.onFailure { state.error = it.message }
+            runCatching {
+                if (copy != null) { app.documents.exportTo(copy, target); state.dropSignedCopy() }
+                else { state.exportWithAnnots(tmp); app.documents.exportTo(tmp, target) }
+            }.also { tmp.delete() }
+                .onSuccess { snack.showSnackbar(ctx.getString(R.string.success)); if (wasLeaving) offerLeave = true }.onFailure { state.error = it.message }
         }
     }
     val pickImage = rememberImagePicker(multiple = false) { files ->
@@ -236,7 +270,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                 if (chrome) Column {
                     TopAppBar(
                         title = { Text(NpfReader.title(state) ?: state.file?.name ?: stringResource(R.string.loading), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium) },
-                        navigationIcon = { IconButton(onClick = { if (state.dirty) { if (settings.autoSave) saveThen { leave() } else showDiscard = true } else leave() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.back)) } },
+                        navigationIcon = { IconButton(onClick = { requestLeave() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.back)) } },
                         actions = {
                             HistoryButtons(state) { showHistory = true }      // MODULE_history: always-visible undo / redo (long press: history)
                             if (state.dirty) IconButton(onClick = actions.save) { Icon(Icons.Default.Save, stringResource(R.string.save), tint = MaterialTheme.colorScheme.primary) }
@@ -373,13 +407,26 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
 
     // ---- dialogs & sheets ----
     if (state.needPassword) PasswordDialog(state.wrongPassword, onOk = { state.open(it) }, onCancel = { leave() })
-    if (showDiscard) DiscardDialog(onSave = { showDiscard = false; saveThen { leave() } }, onDiscard = { showDiscard = false; state.discardChanges(); leave() }, onCancel = { showDiscard = false })
+    // tab-view-core V-02: after a failed save, Save becomes "Save a copy" (then offers to leave), Discard always leaves
+    if (showDiscard) DiscardDialog(
+        onSave = {
+            showDiscard = false
+            if (leaveFailure != null) { leaveAfterCopy = true; saveAs.launch((state.file?.nameWithoutExtension ?: "document") + "_copy.pdf") }
+            else { val then = pendingLeave ?: { leave() }; saveThenLeave(then) }
+        },
+        onDiscard = { showDiscard = false; state.discardChanges(); val then = pendingLeave ?: { leave() }; pendingLeave = null; leaveFailure = null; then() },
+        onCancel = { showDiscard = false; pendingLeave = null; leaveFailure = null },
+        failed = leaveFailure)
+    if (offerLeave) AlertDialog(onDismissRequest = { offerLeave = false; pendingLeave = null; leaveFailure = null },
+        text = { Text(stringResource(R.string.tvc_copy_saved_leave)) },
+        confirmButton = { TextButton(onClick = { offerLeave = false; state.discardChanges(); val then = pendingLeave ?: { leave() }; pendingLeave = null; leaveFailure = null; then() }) { Text(stringResource(R.string.tvc_leave)) } },
+        dismissButton = { TextButton(onClick = { offerLeave = false; pendingLeave = null; leaveFailure = null }) { Text(stringResource(R.string.cancel)) } })
     state.signedBlock?.let { reason ->
-        AlertDialog(onDismissRequest = { state.signedBlock = null },
+        AlertDialog(onDismissRequest = { state.signedBlock = null; state.dropSignedCopy(); leaveAfterCopy = false },
             icon = { Icon(Icons.Default.Verified, null) },
             text = { Text(stringResource(if (reason == com.smartdocs.editor.core.pdf.SignedDocumentException.Reason.CERTIFIED_NO_CHANGES) R.string.signed_doc_certified_no_changes else R.string.signed_doc_save_as_copy)) },
-            confirmButton = { TextButton(onClick = { state.signedBlock = null; saveAs.launch((state.file?.nameWithoutExtension ?: "document") + "_copy.pdf") }) { Text(stringResource(R.string.signed_doc_save_copy_action)) } },
-            dismissButton = { TextButton(onClick = { state.signedBlock = null }) { Text(stringResource(R.string.cancel)) } })
+            confirmButton = { TextButton(onClick = { state.signedBlock = null; exportSignedCopy = state.signedCopy != null; saveAs.launch((state.file?.nameWithoutExtension ?: "document") + "_copy.pdf") }) { Text(stringResource(R.string.signed_doc_save_copy_action)) } },
+            dismissButton = { TextButton(onClick = { state.signedBlock = null; state.dropSignedCopy(); leaveAfterCopy = false }) { Text(stringResource(R.string.cancel)) } })
     }
     if (showGoTo) GoToPageDialog(state.currentPage, state.pageCount, onGo = { state.jumpTo(it); showGoTo = false }, onDismiss = { showGoTo = false }, labels = pageLabels)
     if (showViewMode) ViewModeSheet(state, tablet = tablet) { showViewMode = false; scope.launch { app.settings.update { it.copy(continuousScroll = state.viewMode == ViewMode.CONTINUOUS, nightMode = state.nightMode) } } }
@@ -458,4 +505,11 @@ private fun ToolHint(tool: ReaderTool, modifier: Modifier = Modifier) {
     Surface(modifier, shape = androidx.compose.foundation.shape.RoundedCornerShape(50), color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.92f)) {
         Text(text, Modifier.padding(horizontal = 14.dp, vertical = 6.dp), style = MaterialTheme.typography.labelMedium)
     }
+}
+
+/** tab-view-core V-02: switch documents after the user discarded edits that could not be saved. */
+private fun switchTabAfterDiscard(nav: NavHostController, state: ReaderState, target: com.smartdocs.editor.ui.reader.view.DocTab?) {
+    if (target == null) { nav.popBackStack(); return }
+    if (target.uri == state.fileUri) return
+    nav.navigate(Routes.reader(target.uri, target.page)) { popUpTo(Routes.READER) { inclusive = true }; launchSingleTop = false }
 }
