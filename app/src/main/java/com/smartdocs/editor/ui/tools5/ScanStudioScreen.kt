@@ -89,6 +89,7 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
     var title by remember { mutableStateOf("") }
     var author by remember { mutableStateOf(prefs.getString("author", "") ?: "") }
     var portfolio by remember { mutableStateOf(false) }
+    var pdfa by remember { mutableStateOf(prefs.getBoolean("pdfa", false)) }   // Nitro 20 / Foxit 8: PDF/A output at scan time
     var backsReversed by remember { mutableStateOf(true) }
     var presets by remember { mutableStateOf(ScanPreset.decodeAll(prefs.getString("presets", "") ?: "")) }
     var presetName by remember { mutableStateOf("") }
@@ -144,8 +145,8 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
         savePrefs()
         val needText = autoOcr || kind == ScanKind.BUSINESS_CARD || kind == ScanKind.RECEIPT || smartName
         val k = kind; val p = paper; val rf = rightFirst; val typed = name.trim()
-        val rb = removeBlank; val tt = title; val au = author; val pf = portfolio; val kp = keepProject
-        prefs.edit().putBoolean("keep_project", kp).apply()
+        val rb = removeBlank; val tt = title; val au = author; val pf = portfolio; val kp = keepProject; val pa = pdfa
+        prefs.edit().putBoolean("keep_project", kp).putBoolean("pdfa", pa).apply()
         val keep = all.map { g -> g.map { it.file to it.edit } }
         // "save multiple files": every group is cut into files of N pages
         val docs = all.flatMap { ScanExtras.chunks(it, perFile) }
@@ -170,6 +171,11 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                         clean.delete()
                     }
                     withContext(Dispatchers.IO) { runCatching { ScanExtras.setInfo(tmpOut, if (docs.size > 1 && tt.isNotBlank()) "$tt (${gi + 1})" else tt, au) } }
+                    if (pa) runCatching {
+                        val a = app.documents.newTemp("t5scan_pdfa", "pdf")
+                        PdfA.convert(ctx, tmpOut, null, a, PdfAOptions(level = PdfALevel.A2B), title = tt.ifBlank { null })
+                        withContext(Dispatchers.IO) { a.copyTo(tmpOut, true); a.delete() }
+                    }
                     val out = app.documents.uniqueFile(app.documents.scansDir, base)
                     withContext(Dispatchers.IO) { if (!tmpOut.renameTo(out)) { tmpOut.copyTo(out, true); tmpOut.delete() } }
                     runCatching { app.documents.touchRecent(out, r.pages) }
@@ -263,6 +269,7 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                     Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.pc_scan_per_file)) }, placeholder = { Text(stringResource(R.string.pc_scan_per_file_all)) })
                 OutlinedTextField(title, { title = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.pc_doc_title)) })
                 OutlinedTextField(author, { author = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.pc_doc_author)) })
+                SwitchRow(stringResource(R.string.pc_save_pdfa), pdfa, stringResource(R.string.pc_save_pdfa_sub)) { pdfa = it }
                 SwitchRow(stringResource(R.string.pc_keep_project), keepProject, stringResource(R.string.pc_keep_project_sub)) { keepProject = it }
                 if (groups.size > 1 || perFile > 0 || kind == ScanKind.BATCH) SwitchRow(stringResource(R.string.pc_scan_portfolio), portfolio) { portfolio = it }
                 SwitchRow(stringResource(R.string.t5_auto_ocr), autoOcr, stringResource(R.string.t5_auto_ocr_hint)) { autoOcr = it }

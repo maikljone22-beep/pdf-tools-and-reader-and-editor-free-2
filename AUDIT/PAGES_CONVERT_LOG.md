@@ -154,3 +154,26 @@ Strings: `strings_pc.xml` (prefix `pc_`). Tests: `PageOrganizeTest`.
 | Table editor on the page; content panel; recognition of tables | OPEN | |
 | Embed fonts (WCAG) | NOT-FEASIBLE | the original font programs are not available |
 | Accessibility setup assistant; per-document reading option | OPEN | |
+
+## Stage G — PDF/A + compliance
+
+| Row | Status | Where |
+|---|---|---|
+| Convert to PDF/A-1a / 1b / 2a / 2b / 2u / 3a / 3b / 3u | DONE | `PdfAOptions.level` → `PdfA.convert` (1: no transparency / layers, v1.4; u/a: Unicode, rasterise others; a: auto-tag; 3: attachments with /AFRelationship + /AF) |
+| PDF/UA flag together with PDF/A | DONE | `PdfAOptions.uaPart` → `XmpWriter.packet(uaPart)` |
+| Self-check per level | DONE | `Standards.levelReport` |
+| Preflight profiles (PDF/A-1b, 2b, 2u, 3b, PDF/X-4, PDF/E-1, print, version, Factur-X) with favourites | DONE | `Standards.preflight`, profile chips (hearts in prefs `pc_preflight`) |
+| Preflight page range | DONE | `Standards.preflight(pages)` |
+| Print-production checks: hairlines, overprint, spot colours, image ppi, invisible text, Courier | DONE | `Standards.printFacts` |
+| Create report: HTML / TXT / XML | DONE | `Standards.reportText` (share) |
+| Standards panel: what the file claims (PDF/A, UA, X, E, VT, Factur-X) | DONE | `Standards.claims`, PDF/A screen card; reader banners PDF/A / PDF/UA → Verify (`NveDocBanners`) |
+| Remove PDF/A / PDF/UA / PDF/X / PDF/E information | DONE | `Standards.removeClaims` |
+| PDF version compatibility check and save as 1.4–1.7 | DONE | `Standards.minVersion` (VERSION profile), version chips |
+| PDF/X verify (claim, GTS_PDFX intent, fonts, TrimBox, Trapped) | DONE | `PreflightProfile.PDFX_4` (approximate) |
+| PDF/E verify | DONE | `PreflightProfile.PDFE_1` (approximate) |
+| ZUGFeRD / Factur-X verify | DONE | `Standards.zugferd` |
+| PDF/A output at creation (scan, combine) | DONE | Scan studio "save as PDF/A" (2b), combine "save as PDF/A" (3b) |
+| Convert to PDF/X (CMYK, output conditions) | NOT-FEASIBLE | no colour management / CMYK conversion on device |
+| PDF/A-4 / 4e / 4f, PDF/VT | OPEN | PDF 2.0 output not supported by PdfBox 2.0; VT claim is only shown |
+| Formal validation (veraPDF / Matterhorn level) | NOT-FEASIBLE | checks are approximate, as stated in the screen |
+| Fixup: fonts to outlines | NOT-FEASIBLE | problem pages are rasterised instead |
