@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- fc-settings: printer marks / hairline fix (print sheet) -->
+    <string name="fcs_m_reg_marks">Registration marks</string>
+    <string name="fcs_m_bleed_marks">Bleed marks</string>
+    <string name="fcs_m_bleed_pt">Bleed (pt)</string>
+    <string name="fcs_m_hairline">Hairline fix (minimum line width)</string>
+    <string name="fcs_m_off">Off</string>
+    <string name="fcs_m_pt">%1$s pt</string>
+    <!-- fc-settings: index / search preferences -->
+    <string name="fcs_m_ignore_width">Ignore Asian character width</string>
+    <string name="fcs_m_ignore_width_sub">Full-width and half-width characters match each other</string>
+    <string name="fcs_m_scope_metadata">Metadata and tags</string>
+    <string name="fcs_m_index_title">Index</string>
+    <string name="fcs_m_index_xmp">Index XMP metadata</string>
+    <string name="fcs_m_index_custom">Index custom document properties</string>
+    <string name="fcs_m_index_tags">Index structure tag texts</string>
+    <string name="fcs_m_index_tags_sub">Alternate text, actual text and element titles</string>
+    <string name="fcs_m_index_rebuild">Rebuild the index now</string>
+    <string name="fcs_m_index_rebuild_sub">Applies the new options to files indexed before</string>
+    <string name="fcs_m_show_title">Show the document title in results</string>
+    <string name="fcs_m_cache_limit">Maximum index size</string>
+    <string name="fcs_m_no_limit">No limit</string>
+    <string name="fcs_m_mb">%1$d MB</string>
+    <string name="fcs_m_index_log">Indexing log</string>
+    <string name="fcs_m_index_log_sub">Write indexed files and errors to a log file</string>
+    <string name="fcs_m_index_log_view">View the indexing log</string>
+    <string name="fcs_m_index_log_empty">The log is empty</string>
+    <string name="fcs_m_clear">Clear</string>
+</resources>

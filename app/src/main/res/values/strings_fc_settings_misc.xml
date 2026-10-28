@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- fc-settings: printer marks / hairline fix (print sheet) -->
+    <string name="fcs_m_reg_marks">علامات التسجيل</string>
+    <string name="fcs_m_bleed_marks">علامات النزف</string>
+    <string name="fcs_m_bleed_pt">مسافة النزف (نقطة)</string>
+    <string name="fcs_m_hairline">إصلاح الخطوط الشعرية (أدنى سُمك للخط)</string>
+    <string name="fcs_m_off">إيقاف</string>
+    <string name="fcs_m_pt">%1$s نقطة</string>
+    <!-- fc-settings: index / search preferences -->
+    <string name="fcs_m_ignore_width">تجاهل عرض الأحرف الآسيوية</string>
+    <string name="fcs_m_ignore_width_sub">الأحرف كاملة العرض ونصف العرض تُعامل كحرف واحد</string>
+    <string name="fcs_m_scope_metadata">البيانات الوصفية والعلامات</string>
+    <string name="fcs_m_index_title">الفهرس</string>
+    <string name="fcs_m_index_xmp">فهرسة بيانات XMP الوصفية</string>
+    <string name="fcs_m_index_custom">فهرسة خصائص المستند المخصصة</string>
+    <string name="fcs_m_index_tags">فهرسة نصوص العلامات الهيكلية</string>
+    <string name="fcs_m_index_tags_sub">النص البديل والنص الفعلي وعناوين العناصر</string>
+    <string name="fcs_m_index_rebuild">إعادة بناء الفهرس الآن</string>
+    <string name="fcs_m_index_rebuild_sub">تُطبّق الخيارات الجديدة على الملفات المفهرسة سابقاً</string>
+    <string name="fcs_m_show_title">إظهار عنوان المستند في النتائج</string>
+    <string name="fcs_m_cache_limit">الحد الأقصى لحجم الفهرس</string>
+    <string name="fcs_m_no_limit">بلا حد</string>
+    <string name="fcs_m_mb">%1$d م.ب</string>
+    <string name="fcs_m_index_log">سجل الفهرسة</string>
+    <string name="fcs_m_index_log_sub">تسجيل الملفات المفهرسة والأخطاء في ملف</string>
+    <string name="fcs_m_index_log_view">عرض سجل الفهرسة</string>
+    <string name="fcs_m_index_log_empty">السجل فارغ</string>
+    <string name="fcs_m_clear">مسح</string>
+</resources>
