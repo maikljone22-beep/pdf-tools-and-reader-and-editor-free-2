@@ -252,7 +252,7 @@ object SelBindings {
         SelAction.F_DESIGNER -> Icons.Default.DesignServices
         SelAction.F_DUPLICATE -> Icons.Default.LibraryAdd
         SelAction.F_DELETE -> Icons.Default.Delete
-        SelAction.F_TAB_ORDER -> Icons.AutoMirrored.Filled.FormatListNumbered
+        SelAction.F_TAB_ORDER -> Icons.Default.FormatListNumbered
         // page-content picture
         SelAction.I_COPY -> Icons.Default.ContentCopy
         SelAction.I_CUT -> Icons.Default.ContentCut
