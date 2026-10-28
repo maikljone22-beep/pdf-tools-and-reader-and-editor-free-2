@@ -49,7 +49,8 @@ fun NveDocBanners(state: ReaderState, onOpenTool: (String) -> Unit, modifier: Mo
                 val action: Pair<String, () -> Unit>? = when (h.kind) {
                     DocNotice.FORMS -> stringResource(R.string.np_bn_forms_act) to { onOpenTool("forms") }
                     DocNotice.PENDING_REDACTIONS -> stringResource(R.string.np_bn_redact_act) to { onOpenTool("redact") }
-                    DocNotice.PORTFOLIO -> stringResource(R.string.np_bn_portfolio_act) to { n.pane = NvePane.ATTACHMENTS }
+                    // Foxit 7: a portfolio opens in the portfolio editor (views, folders, fields, search)
+                    DocNotice.PORTFOLIO -> stringResource(R.string.np_bn_portfolio_act) to { onOpenTool("portfolio") }
                     else -> null
                 }
                 Banner(icon, text, action) { n.dismissedBanners += h.kind.name }
