@@ -34,9 +34,16 @@ private val LINK_COLORS = listOf(0x1565C0, 0x2E7D32, 0xC62828, 0x6A1B9A, 0xEF6C0
  * Edit what a link does and how it looks. Used by the links tool and by the reader's link tool.
  * [pageCount] bounds the "go to page" target; [onDelete] shows a delete button when editing an existing link.
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
-fun LinkEditorSheet(initial: LinkSpec, pageCount: Int, isNew: Boolean, onDismiss: () -> Unit, onDelete: (() -> Unit)? = null, onSave: (LinkSpec) -> Unit) {
+fun LinkEditorSheet(
+    initial: LinkSpec, pageCount: Int, isNew: Boolean, onDismiss: () -> Unit, onDelete: (() -> Unit)? = null,
+    /** FINAL_CHECK: the reader's current view (0-based page, zoom 1 = 100%), for "Use current view". */
+    currentView: (() -> Pair<Int, Float>)? = null,
+    /** FINAL_CHECK: the document's named destinations, picked from a list instead of typed. */
+    destNames: List<String> = emptyList(),
+    onSave: (LinkSpec) -> Unit,
+) {
     val ctx = androidx.compose.ui.platform.LocalContext.current
     // nav-bookmarks: a new link starts with the saved default appearance
     var s by remember(initial) { mutableStateOf(if (isNew) LinkDefaults.apply(ctx, initial) else initial) }
@@ -75,6 +82,13 @@ fun LinkEditorSheet(initial: LinkSpec, pageCount: Int, isNew: Boolean, onDismiss
                             label = { Text(if (s.kind == LinkKind.PAGE) stringResource(R.string.e5_link_page_of, pageCount) else stringResource(R.string.e5_link_page)) },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
                         DestViewFields(s.view) { v -> s = s.withView(v); zoomText = if (v.zoom > 0f) (v.zoom * 100).toInt().toString() else "" }
+                        // Foxit "set this position": the page and zoom the reader shows now
+                        if (s.kind == LinkKind.PAGE && currentView != null) TextButton(onClick = {
+                            val (pg, z) = currentView()
+                            pageText = (pg + 1).toString()
+                            s = s.copy(page = pg, fit = DestFit.XYZ, zoom = z)
+                            zoomText = (z * 100).toInt().toString()
+                        }) { Text(stringResource(R.string.fsg_link_current_view)) }
                         if (s.kind == LinkKind.REMOTE) {
                             // nav-bookmarks: a named destination of the other file (instead of a page)
                             OutlinedTextField(s.named, { s = s.copy(named = it) }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.nbm_named_dest_opt)) })
@@ -85,8 +99,14 @@ fun LinkEditorSheet(initial: LinkSpec, pageCount: Int, isNew: Boolean, onDismiss
                         FileTarget(s.file) { filePicker.launch(arrayOf("*/*")) }
                         Text(stringResource(R.string.e5_link_launch_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    LinkKind.NAMED -> OutlinedTextField(s.named, { s = s.copy(named = it) }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.e5_link_named)) })
-                    LinkKind.OTHER -> ActionListEditor(s.actions, pageCount) { s = s.copy(actions = it) }
+                    LinkKind.NAMED -> {
+                        OutlinedTextField(s.named, { s = s.copy(named = it) }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.e5_link_named)) })
+                        // Foxit: pick one of the document's named destinations
+                        if (destNames.isNotEmpty()) androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            destNames.take(40).forEach { n -> FilterChip(s.named == n, { s = s.copy(named = n) }, label = { Text(n, maxLines = 1) }) }
+                        }
+                    }
+                    LinkKind.OTHER -> CompositionLocalProvider(LocalDestNames provides destNames) { ActionListEditor(s.actions, pageCount) { s = s.copy(actions = it) } }
                 }
             }
             HorizontalDivider()
