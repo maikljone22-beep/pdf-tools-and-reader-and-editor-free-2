@@ -44,7 +44,7 @@ object Cv6Defaults {
         put("size", o.setup.size.name); put("orient", o.setup.orient.name); put("fit", o.setup.fit.name); put("margin", o.setup.marginPt.toDouble()); put("customW", o.setup.customW.toDouble()); put("customH", o.setup.customH.toDouble())
         put("merge", o.merge); put("nUp", o.nUp); put("resizePercent", o.resizePercent); put("maxSide", o.maxSide)
         put("csvAllSheets", o.csvAllSheets); put("ocrLangs", o.ocrLangs ?: "auto"); put("pdfaStrict", o.pdfaStrict)
-        put("attachSource", o.attachSource); put("bw", o.bw); put("perTable", o.perTable); put("bookmarks", o.bookmarks); put("recognizeFields", o.recognizeFields); put("recoverAllPages", o.recoverAllPages); put("exactLayout", o.exactLayout); put("speakerNotes", o.speakerNotes); put("cellComments", o.cellComments); put("hiddenSlides", o.hiddenSlides)
+        put("attachSource", o.attachSource); put("bw", o.bw); put("perTable", o.perTable); put("bookmarks", o.bookmarks); put("recognizeFields", o.recognizeFields); put("recoverAllPages", o.recoverAllPages); put("exactLayout", o.exactLayout); put("speakerNotes", o.speakerNotes); put("cellComments", o.cellComments); put("hiddenSlides", o.hiddenSlides); put("headerMode", o.headerMode); put("txtKeepLines", o.txtKeepLines); put("txtWrap", o.txtWrap)
     }
 
     /** [j] over [base]: missing or unreadable keys keep the base value. */
@@ -66,7 +66,7 @@ object Cv6Defaults {
             dpi = i("dpi", base.dpi), quality = i("quality", base.quality).coerceIn(1, 100), zip = b("zip", base.zip), gray = b("gray", base.gray), setup = setup,
             merge = b("merge", base.merge), nUp = i("nUp", base.nUp), resizePercent = i("resizePercent", base.resizePercent), maxSide = i("maxSide", base.maxSide),
             csvAllSheets = b("csvAllSheets", base.csvAllSheets), ocrLangs = langs, pdfaStrict = b("pdfaStrict", base.pdfaStrict),
-            attachSource = b("attachSource", base.attachSource), bw = b("bw", base.bw), perTable = b("perTable", base.perTable), bookmarks = b("bookmarks", base.bookmarks), recognizeFields = b("recognizeFields", base.recognizeFields), recoverAllPages = b("recoverAllPages", base.recoverAllPages), exactLayout = b("exactLayout", base.exactLayout), speakerNotes = b("speakerNotes", base.speakerNotes), cellComments = b("cellComments", base.cellComments), hiddenSlides = b("hiddenSlides", base.hiddenSlides),
+            attachSource = b("attachSource", base.attachSource), bw = b("bw", base.bw), perTable = b("perTable", base.perTable), bookmarks = b("bookmarks", base.bookmarks), recognizeFields = b("recognizeFields", base.recognizeFields), recoverAllPages = b("recoverAllPages", base.recoverAllPages), exactLayout = b("exactLayout", base.exactLayout), speakerNotes = b("speakerNotes", base.speakerNotes), cellComments = b("cellComments", base.cellComments), hiddenSlides = b("hiddenSlides", base.hiddenSlides), headerMode = i("headerMode", base.headerMode).coerceIn(0, 2), txtKeepLines = b("txtKeepLines", base.txtKeepLines), txtWrap = i("txtWrap", base.txtWrap).coerceIn(0, 400),
         )
     }
 }

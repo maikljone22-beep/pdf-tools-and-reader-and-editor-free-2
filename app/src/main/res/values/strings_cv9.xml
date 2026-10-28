@@ -36,4 +36,12 @@
     <string name="cv9_slide_range">الشرائح</string>
     <string name="cv9_all_slides">كل الشرائح</string>
     <string name="cv9_hidden_slides">تضمين الشرائح المخفية</string>
+    <string name="cv9_headers">الترويسات والتذييلات المتكررة</string>
+    <string name="cv9_headers_keep">إبقاؤها نصًا</string>
+    <string name="cv9_headers_delete">حذفها</string>
+    <string name="cv9_txt_layout">تخطيط النص</string>
+    <string name="cv9_txt_paragraphs">فقرات</string>
+    <string name="cv9_txt_lines">أسطر الملف</string>
+    <string name="cv9_txt_width">طول السطر (حروف)</string>
+    <string name="cv9_txt_nowrap">بلا التفاف</string>
 </resources>

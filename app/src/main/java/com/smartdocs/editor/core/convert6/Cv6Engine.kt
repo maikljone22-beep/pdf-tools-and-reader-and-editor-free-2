@@ -77,6 +77,11 @@ data class Cv6Opts(
     /** PowerPoint → PDF (row 103): slides to print (blank = all) and whether hidden slides are printed. */
     val slideRange: String = "",
     val hiddenSlides: Boolean = false,
+    /** PDF → Word / Text / HTML running headers and footers: 0 automatic (Word header, dropped from text), 1 kept as text, 2 deleted. */
+    val headerMode: Int = 0,
+    /** PDF → Text: keep the PDF's line breaks; wrap at this many characters (0 = no). */
+    val txtKeepLines: Boolean = false,
+    val txtWrap: Int = 0,
 )
 
 enum class Stage { WORK, OCR }
@@ -269,7 +274,7 @@ class Cv6Engine(private val ctx: Context, private val docs: DocumentRepository) 
             val flowing = o.keepLayout?.not() ?: (inp.ocrPages > 0 && inp.rtl)
             val out = out(base, "docx")
             val opts = ConvertOptions(format = TargetFormat.DOCX, pages = pages, detectTables = o.tables, includeImages = o.includeImages, docxFlowing = flowing && !o.exactLayout,
-                docxExact = o.exactLayout)
+                docxExact = o.exactLayout, detectHeaders = o.headerMode != 1, dropFurniture = o.headerMode == 2)
             val stats = ConvertEngine.convert(ctx, inp.file, pw, opts, out, p, cancelled)
             val info = ArrayList<String>()
             info += if (stats.textPages == 0) ctx.getString(R.string.cv_scanned_warning) else ctx.getString(R.string.cv6_info_pages, stats.pages, stats.tables, stats.images)
@@ -284,7 +289,8 @@ class Cv6Engine(private val ctx: Context, private val docs: DocumentRepository) 
         val pages = pagesOf(f, pw, o.range)
         val out = out(base, target.ext)
         val opts = ConvertOptions(format = target, pages = pages, xlsxSingleSheet = o.singleSheet, pptxEditable = o.pptEditable, detectTables = o.tables, includeImages = o.includeImages,
-            sheetName = { n -> ctx.getString(R.string.cv_sheet_name).format(n) }, singleSheetName = ctx.getString(R.string.cv_all_pages_sheet))
+            sheetName = { n -> ctx.getString(R.string.cv_sheet_name).format(n) }, singleSheetName = ctx.getString(R.string.cv_all_pages_sheet),
+            detectHeaders = o.headerMode != 1, dropFurniture = o.headerMode == 2, txtKeepLines = o.txtKeepLines, txtWrap = o.txtWrap)
         val stats = ConvertEngine.convert(ctx, f, pw, opts, out, p, cancelCheck())
         val scanned = stats.textPages == 0 && !(target == TargetFormat.PPTX && !o.pptEditable)
         return Cv6Result(listOf(out), if (scanned) ctx.getString(R.string.cv_scanned_warning) else ctx.getString(R.string.cv6_info_pages, stats.pages, stats.tables, stats.images))

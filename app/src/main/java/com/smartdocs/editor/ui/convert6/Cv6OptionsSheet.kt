@@ -160,6 +160,18 @@ private fun OptionsBody(conv: Conv, inputCount: Int, o: Cv6Opts, onChange: (Cv6O
     if (Opt.GRAY in opts && !o.bw) SwitchRow(stringResource(R.string.cv6_gray), o.gray) { onChange(o.copy(gray = it)) }
     if (Opt.BW in opts) SwitchRow(stringResource(R.string.pc_bw), o.bw, stringResource(R.string.pc_bw_sub)) { onChange(o.copy(bw = it)) }
     if (Opt.FORM_FIELDS in opts) SwitchRow(stringResource(R.string.cv9_form_fields), o.recognizeFields, stringResource(R.string.cv9_form_fields_sub)) { onChange(o.copy(recognizeFields = it)) }
+    if (Opt.HEADERS in opts) {
+        // s6: running headers / footers: automatic / keep as text / delete
+        FieldLabel(stringResource(R.string.cv9_headers))
+        ChoiceChips(listOf(0, 1, 2), o.headerMode, { when (it) { 0 -> stringResource(R.string.cv6_lang_auto); 1 -> stringResource(R.string.cv9_headers_keep); else -> stringResource(R.string.cv9_headers_delete) } }) { onChange(o.copy(headerMode = it)) }
+    }
+    if (Opt.TEXT_LAYOUT in opts) {
+        // s6 Text: paragraphs or the PDF's lines; line width
+        FieldLabel(stringResource(R.string.cv9_txt_layout))
+        ChoiceChips(listOf(false, true), o.txtKeepLines, { if (it) stringResource(R.string.cv9_txt_lines) else stringResource(R.string.cv9_txt_paragraphs) }) { onChange(o.copy(txtKeepLines = it)) }
+        FieldLabel(stringResource(R.string.cv9_txt_width))
+        ChoiceChips(listOf(0, 72, 80, 100), o.txtWrap, { if (it == 0) stringResource(R.string.cv9_txt_nowrap) else it.toString() }) { onChange(o.copy(txtWrap = it)) }
+    }
     if (Opt.CELL_COMMENTS in opts) SwitchRow(stringResource(R.string.cv9_cell_comments), o.cellComments) { onChange(o.copy(cellComments = it)) }
     if (Opt.SLIDES in opts) {
         // row 103: slide range and hidden slides

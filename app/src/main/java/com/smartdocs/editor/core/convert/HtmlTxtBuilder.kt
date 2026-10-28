@@ -73,11 +73,17 @@ object HtmlTxtBuilder {
         return if (st.isEmpty()) t else "<span style=\"$st\">$t</span>"
     }
 
-    /** Plain text of a page: paragraphs separated by blank lines, table rows as tab-separated cells. */
-    fun text(page: PageLayout): String {
+    /**
+     * Plain text of a page: paragraphs separated by blank lines, table rows as tab-separated cells. [keepLines] keeps
+     * the PDF's line breaks inside paragraphs; [wrapAt] > 0 word-wraps lines at that many characters.
+     */
+    fun text(page: PageLayout, keepLines: Boolean = false, wrapAt: Int = 0): String {
         val sb = StringBuilder()
         for (b in page.blocks) when (b) {
-            is ParagraphBlock -> { sb.append(TextRuns.plain(b.lines)).append("\n\n") }
+            is ParagraphBlock -> {
+                val raw = if (keepLines) b.lines.joinToString("\n") { l -> TextRuns.of(l).joinToString("") { it.text }.trim() } else TextRuns.plain(b.lines)
+                sb.append(if (wrapAt > 0) wrap(raw, wrapAt) else raw).append("\n\n")
+            }
             is TableBlock -> {
                 val rtl = b.rtl
                 for (r in 0 until b.rows) {
@@ -89,5 +95,16 @@ object HtmlTxtBuilder {
             else -> Unit
         }
         return sb.toString().trimEnd() + "\n"
+    }
+
+    /** Word wrap of each line of [text] at [width] characters (a longer word stays whole on its own line). Pure. */
+    fun wrap(text: String, width: Int): String = text.split('\n').joinToString("\n") { line ->
+        val out = StringBuilder(); var len = 0
+        line.split(' ').filter { it.isNotEmpty() }.forEach { w ->
+            if (len > 0 && len + 1 + w.length > width) { out.append('\n'); len = 0 }
+            if (len > 0) { out.append(' '); len++ }
+            out.append(w); len += w.length
+        }
+        out.toString()
     }
 }

@@ -24,6 +24,8 @@ class DocxBuilder(
      * (tblpPr), placed on the page where the PDF has it; page breaks between pages. Wins over [flowing0].
      */
     private val exact: Boolean = false,
+    /** Detected running headers / footers are deleted instead of becoming the Word header / footer. */
+    private val dropFurniture: Boolean = false,
 ) : Closeable {
     private val flowing = flowing0 && !exact
 
@@ -53,7 +55,7 @@ class DocxBuilder(
         // a page break before every page but the first (the old else-branch of the footer test put one before the first
         // page and skipped the one before the page that first had a footer)
         if (pages > 0 && !flowing) body.append("<w:p><w:r><w:br w:type=\"page\"/></w:r></w:p>")
-        if (!flowing) {
+        if (!flowing && !dropFurniture) {
             if (headerXml == null && page.header.isNotEmpty()) headerXml = furniturePart("hdr", page.header, page)
             if (footerXml == null && page.footer.isNotEmpty()) footerXml = furniturePart("ftr", page.footer, page)
         }

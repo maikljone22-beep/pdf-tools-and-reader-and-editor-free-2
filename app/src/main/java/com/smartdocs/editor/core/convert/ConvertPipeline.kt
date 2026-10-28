@@ -29,6 +29,11 @@ data class ConvertOptions(
     val docxFlowing: Boolean = false,
     /** DOCX "precisely laid out": paragraphs, pictures and tables placed where they are on the PDF page (frames). */
     val docxExact: Boolean = false,
+    /** Detected running headers / footers are deleted (DOCX writes no Word header / footer for them). */
+    val dropFurniture: Boolean = false,
+    /** TXT: keep the PDF's line breaks (else one line per paragraph) and wrap lines at this many characters (0 = no). */
+    val txtKeepLines: Boolean = false,
+    val txtWrap: Int = 0,
 )
 
 /** Where page content comes from (PdfBox on Android, desktop PdfBox in the test harness). */
@@ -74,7 +79,7 @@ object ConvertPipeline {
         fun step(k: Int) { if (cancelled()) throw ConvertCancelled(); progress(k, total) }
         progress(0, total)
         when (opts.format) {
-            TargetFormat.DOCX -> DocxBuilder(out, title, furniture, opts.docxFlowing, exact = opts.docxExact).use { b ->
+            TargetFormat.DOCX -> DocxBuilder(out, title, furniture, opts.docxFlowing, exact = opts.docxExact, dropFurniture = opts.dropFurniture).use { b ->
                 pages.forEachIndexed { k, i -> b.addPage(layout(i, opts.includeImages)); step(k + 1) }
                 b.finish()
             }
@@ -116,7 +121,7 @@ object ConvertPipeline {
                 val w = OutputStreamWriter(out, Charsets.UTF_8)
                 pages.forEachIndexed { k, i ->
                     if (k > 0) w.write("\n\u000C\n")
-                    w.write(HtmlTxtBuilder.text(layout(i, false)))
+                    w.write(HtmlTxtBuilder.text(layout(i, false), opts.txtKeepLines, opts.txtWrap))
                     step(k + 1)
                 }
                 w.flush(); out.close()
