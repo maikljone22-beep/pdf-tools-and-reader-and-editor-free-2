@@ -34,6 +34,7 @@ import androidx.compose.ui.text.style.BaselineShift
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.smartdocs.editor.R
 import com.smartdocs.editor.core.edit.EditFonts
 import com.smartdocs.editor.core.edit.EditTextStyle
@@ -325,6 +326,13 @@ internal class TextTools5(val c: EditController) {
         val p = c.page; val pw = c.state.password
         sheet = null
         c.runNve(R.string.ed_saved) { s, o -> TextEdit5.reflowPage(ctx, s, o, pw, p, text, st) }
+    }
+
+    /** §14d: write the edited flow of a page range back (signed files: the reader's save-a-copy path). */
+    fun reflowRange(flow: com.smartdocs.editor.core.edit.Flow, text: String, runs: List<RunStyle>) {
+        val pw = c.state.password
+        sheet = null
+        c.runNve(R.string.ed_saved) { s, o -> TextEdit5.reflowRange(ctx, s, o, pw, flow, text, runs) }
     }
 
     /** Pages auto-OCR already ran on in this edit session (never twice: a page OCR finds no text on stays as it is). */
@@ -710,28 +718,73 @@ private fun PrefsSheet(c: EditController, t: TextTools5) {
     }
 }
 
-/** Reflow editing: the page's text in reading order as one editable text, written back as flowing text. */
+/**
+ * Reflow editing (§14d): the text of a page range as one flow in column reading order, paragraphs joined across
+ * page breaks, with the source's bold / italic / size / colour shown and kept; written back frame by frame.
+ */
 @Composable
 private fun ReflowSheet(c: EditController, t: TextTools5) {
-    val m = c.model ?: run { t.sheet = null; return }
-    val blocks = m.blocks.filter { it.angle == 0f && !it.unreadable }
-    var text by remember { mutableStateOf(blocks.joinToString("\n") { it.text }) }
-    val first = blocks.firstOrNull()
+    val pages = c.state.pageCount.coerceAtLeast(1)
+    var from by remember { mutableIntStateOf(c.page) }
+    var to by remember { mutableIntStateOf(c.page) }
+    var flow by remember { mutableStateOf<com.smartdocs.editor.core.edit.Flow?>(null) }
+    var text by remember { mutableStateOf(androidx.compose.ui.text.input.TextFieldValue("")) }
+    var runs by remember { mutableStateOf<List<RunStyle>>(emptyList()) }
+    var error by remember { mutableStateOf<String?>(null) }
+    val file = c.state.file
+    LaunchedEffect(from, to, file, c.state.renderVersion) {
+        flow = null; error = null
+        val f = file ?: return@LaunchedEffect
+        try {
+            val fl = TextEdit5.loadFlow(f, c.state.password, from..to)
+            flow = fl; runs = fl.runs; text = androidx.compose.ui.text.input.TextFieldValue(fl.text)
+        } catch (e: kotlinx.coroutines.CancellationException) { throw e
+        } catch (e: Throwable) { error = e.message ?: e.javaClass.simpleName }
+    }
     AlertDialog(
         onDismissRequest = { t.sheet = null },
         title = { Text(stringResource(R.string.nt_reflow)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(stringResource(R.string.nt_reflow_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                OutlinedTextField(text, { text = it }, Modifier.fillMaxWidth().heightIn(min = 200.dp, max = 420.dp))
-                com.smartdocs.editor.ui.nve.SpellCheckButton(text, onFixed = { text = it })
+                Text(stringResource(R.string.rfp_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                // page range: from / to steppers, at most FLOW_MAX_PAGES pages
+                val max = TextEdit5.FLOW_MAX_PAGES
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(stringResource(R.string.rfp_from), style = MaterialTheme.typography.labelLarge)
+                    IconButton(onClick = { from = (from - 1).coerceAtLeast(0) }, enabled = from > 0) { Icon(Icons.Default.Remove, stringResource(R.string.rfp_earlier)) }
+                    Text("${from + 1}")
+                    IconButton(onClick = { from = (from + 1).coerceAtMost(to) }, enabled = from < to) { Icon(Icons.Default.Add, stringResource(R.string.rfp_later)) }
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.rfp_to), style = MaterialTheme.typography.labelLarge)
+                    IconButton(onClick = { to = (to - 1).coerceAtLeast(from) }, enabled = to > from) { Icon(Icons.Default.Remove, stringResource(R.string.rfp_earlier)) }
+                    Text("${to + 1}")
+                    IconButton(onClick = { to = (to + 1).coerceAtMost(minOf(pages - 1, from + max - 1)) }, enabled = to < minOf(pages - 1, from + max - 1)) { Icon(Icons.Default.Add, stringResource(R.string.rfp_later)) }
+                }
+                val fl = flow
+                when {
+                    error != null -> Text(stringResource(R.string.rfp_failed, error ?: ""), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    fl == null -> Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.rfp_loading))
+                    }
+                    else -> {
+                        Text(stringResource(R.string.rfp_areas, fl.frames.size, fl.pages.last - fl.pages.first + 1), style = MaterialTheme.typography.labelSmall)
+                        val tr = remember(runs, fl) { richTransformation(fl.base.copy(runs = runs), emptyList()) { pt -> (15f * pt / fl.base.size.coerceAtLeast(1f)).sp } }
+                        OutlinedTextField(text, { v ->
+                            // the source's formatting follows the edits (common prefix / suffix)
+                            runs = RichText.normalize(RichText.shiftRuns(runs, text.text, v.text), v.text.length); text = v
+                        }, Modifier.fillMaxWidth().heightIn(min = 200.dp, max = 420.dp), visualTransformation = tr)
+                        com.smartdocs.editor.ui.nve.SpellCheckButton(text.text, onFixed = { fixed ->
+                            runs = RichText.normalize(RichText.shiftRuns(runs, text.text, fixed), fixed.length); text = androidx.compose.ui.text.input.TextFieldValue(fixed)
+                        })
+                    }
+                }
             }
         },
         confirmButton = {
             Button(onClick = {
-                val st = first?.let { EditTextStyle(size = it.size, color = it.color, bold = it.bold, italic = it.italic, align = it.align, family = it.family) } ?: EditTextStyle()
-                t.reflow(NveDigits.apply(c.state.context, text), st)
-            }, enabled = first != null && !c.busy) { Text(stringResource(R.string.done)) }
+                val fl = flow ?: return@Button
+                t.reflowRange(fl, NveDigits.apply(c.state.context, text.text), runs)
+            }, enabled = flow != null && text.text.isNotBlank() && !c.busy) { Text(stringResource(R.string.done)) }
         },
         dismissButton = { TextButton(onClick = { t.sheet = null }) { Text(stringResource(R.string.cancel)) } },
     )
