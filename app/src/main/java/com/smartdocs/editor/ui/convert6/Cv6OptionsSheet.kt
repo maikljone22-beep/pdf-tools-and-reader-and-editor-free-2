@@ -23,6 +23,7 @@ import com.smartdocs.editor.core.convert6.Conv
 import com.smartdocs.editor.core.convert6.Cv6Catalog
 import com.smartdocs.editor.core.convert6.Cv6Opts
 import com.smartdocs.editor.core.convert6.Fit6
+import com.smartdocs.editor.core.convert6.Images6
 import com.smartdocs.editor.core.convert6.ImgFmt
 import com.smartdocs.editor.core.convert6.Opt
 import com.smartdocs.editor.core.convert6.Orient6
@@ -36,6 +37,7 @@ import com.smartdocs.editor.ui.tools.PrimaryButton
 import com.smartdocs.editor.ui.tools5.FileListEditor
 import com.smartdocs.editor.ui.tools5.SwitchRow
 import java.io.File
+import kotlin.math.roundToInt
 
 /** Good defaults per conversion (shared with the recipes, see [Cv6Catalog.defaultsFor]). */
 fun defaultsFor(c: Conv): Cv6Opts = Cv6Catalog.defaultsFor(c)
@@ -179,7 +181,22 @@ private fun OptionsBody(conv: Conv, inputCount: Int, o: Cv6Opts, onChange: (Cv6O
 private fun PageSetupOptions(o: Cv6Opts, onChange: (Cv6Opts) -> Unit) {
     val s = o.setup
     FieldLabel(stringResource(R.string.cv6_page_size))
-    ChoiceChips(PageSize6.entries, s.size, { if (it == PageSize6.IMAGE) stringResource(R.string.cv6_size_image) else it.name.lowercase().replaceFirstChar { c -> c.uppercase() } }) { onChange(o.copy(setup = s.copy(size = it))) }
+    ChoiceChips(PageSize6.entries, s.size, { when (it) { PageSize6.IMAGE -> stringResource(R.string.cv6_size_image); PageSize6.CUSTOM -> stringResource(R.string.cv9_size_custom)
+        else -> it.name.lowercase().replaceFirstChar { c -> c.uppercase() } } }) { onChange(o.copy(setup = s.copy(size = it))) }
+    // row 27: custom page size in millimetres
+    if (s.size == PageSize6.CUSTOM) androidx.compose.foundation.layout.Row(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
+        listOf(true, false).forEach { isW ->
+            val pt = if (isW) s.customW else s.customH
+            var text by androidx.compose.runtime.remember(isW) { androidx.compose.runtime.mutableStateOf(Images6.ptToMm(pt).roundToInt().toString()) }
+            androidx.compose.material3.OutlinedTextField(text, { v ->
+                text = v.filter { it.isDigit() }.take(4)
+                text.toFloatOrNull()?.let { mm -> val p = Images6.mmToPt(mm).coerceIn(Images6.MIN_PAGE_PT, Images6.MAX_PAGE_PT)
+                    onChange(o.copy(setup = if (isW) s.copy(customW = p) else s.copy(customH = p))) }
+            }, androidx.compose.ui.Modifier.width(120.dp), singleLine = true,
+                label = { Text(stringResource(if (isW) R.string.cv9_width_mm else R.string.cv9_height_mm)) },
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number))
+        }
+    }
     if (s.size != PageSize6.IMAGE) {
         FieldLabel(stringResource(R.string.cv6_orientation))
         ChoiceChips(Orient6.entries, s.orient, { when (it) { Orient6.AUTO -> stringResource(R.string.cv6_or_auto); Orient6.PORTRAIT -> stringResource(R.string.cv6_or_portrait); Orient6.LANDSCAPE -> stringResource(R.string.cv6_or_landscape) } }) { onChange(o.copy(setup = s.copy(orient = it))) }

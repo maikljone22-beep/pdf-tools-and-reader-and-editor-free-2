@@ -3,7 +3,9 @@ package com.smartdocs.editor.core.convert6
 /** Image output formats of the hub. */
 enum class ImgFmt(val ext: String, val mime: String) { JPG("jpg", "image/jpeg"), PNG("png", "image/png"), WEBP("webp", "image/webp") }
 
-enum class PageSize6(val w: Float, val h: Float) { A4(595.28f, 841.89f), LETTER(612f, 792f), LEGAL(612f, 1008f), A3(841.89f, 1190.55f), A5(419.53f, 595.28f), IMAGE(0f, 0f) }
+enum class PageSize6(val w: Float, val h: Float) { A4(595.28f, 841.89f), LETTER(612f, 792f), LEGAL(612f, 1008f), A3(841.89f, 1190.55f), A5(419.53f, 595.28f), IMAGE(0f, 0f),
+    /** Row 27: a page size the user types (PageSetup.customW / customH). */
+    CUSTOM(0f, 0f) }
 enum class Orient6 { AUTO, PORTRAIT, LANDSCAPE }
 enum class Fit6 { CONTAIN, COVER, STRETCH, ORIGINAL }
 
@@ -12,6 +14,14 @@ data class Place(val pageW: Float, val pageH: Float, val x: Float, val y: Float,
 
 /** Pure image decisions: formats, sizes, page placement, N-up grids. */
 object Images6 {
+    /** Custom page size limits in points (1 in … 200 in, the PDF user-unit limit at scale 1). */
+    const val MIN_PAGE_PT = 72f
+    const val MAX_PAGE_PT = 14400f
+
+    /** Millimetres → points. */
+    fun mmToPt(mm: Float): Float = mm * 72f / 25.4f
+    fun ptToMm(pt: Float): Float = pt * 25.4f / 72f
+
 
     fun mimeOf(ext: String): String = when (ext.lowercase()) {
         "png" -> "image/png"; "gif" -> "image/gif"; "webp" -> "image/webp"; "svg" -> "image/svg+xml"; "bmp" -> "image/bmp"
@@ -78,12 +88,15 @@ object Images6 {
      * Page and picture rectangle for an image of [imgW]×[imgH] px (at [dpi] for [PageSize6.IMAGE] / [Fit6.ORIGINAL]).
      * [margin] in points.
      */
-    fun place(imgW: Int, imgH: Int, size: PageSize6, orient: Orient6, fit: Fit6, margin: Float, dpi: Float = 96f): Place {
+    fun place(imgW: Int, imgH: Int, size: PageSize6, orient: Orient6, fit: Fit6, margin: Float, dpi: Float = 96f, customW: Float = 0f, customH: Float = 0f): Place {
         val natW = imgW * 72f / dpi; val natH = imgH * 72f / dpi
         if (size == PageSize6.IMAGE) return Place(natW + 2 * margin, natH + 2 * margin, margin, margin, natW, natH)
-        val landscape = when (orient) { Orient6.LANDSCAPE -> true; Orient6.PORTRAIT -> false; Orient6.AUTO -> imgW > imgH }
-        val pw = if (landscape) maxOf(size.w, size.h) else minOf(size.w, size.h)
-        val ph = if (landscape) minOf(size.w, size.h) else maxOf(size.w, size.h)
+        val sw = if (size == PageSize6.CUSTOM) customW.coerceIn(MIN_PAGE_PT, MAX_PAGE_PT) else size.w
+        val sh = if (size == PageSize6.CUSTOM) customH.coerceIn(MIN_PAGE_PT, MAX_PAGE_PT) else size.h
+        // a custom size keeps the width and height as typed unless an orientation is chosen
+        val landscape = when (orient) { Orient6.LANDSCAPE -> true; Orient6.PORTRAIT -> false; Orient6.AUTO -> if (size == PageSize6.CUSTOM) sw > sh else imgW > imgH }
+        val pw = if (landscape) maxOf(sw, sh) else minOf(sw, sh)
+        val ph = if (landscape) minOf(sw, sh) else maxOf(sw, sh)
         val bw = (pw - 2 * margin).coerceAtLeast(1f); val bh = (ph - 2 * margin).coerceAtLeast(1f)
         val (w, h) = when (fit) {
             Fit6.STRETCH -> bw to bh

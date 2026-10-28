@@ -3,4 +3,7 @@
     <string name="cv9_bookmarks">إضافة إشارات مرجعية</string>
     <string name="cv9_bookmarks_sub">عناوين Word وأسماء أوراق Excel وشرائح PowerPoint</string>
     <string name="cv9_slide_n">شريحة %1$d</string>
+    <string name="cv9_size_custom">مخصص</string>
+    <string name="cv9_width_mm">العرض (مم)</string>
+    <string name="cv9_height_mm">الارتفاع (مم)</string>
 </resources>

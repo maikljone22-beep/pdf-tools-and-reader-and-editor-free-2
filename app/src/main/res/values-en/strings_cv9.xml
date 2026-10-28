@@ -3,4 +3,7 @@
     <string name="cv9_bookmarks">Add bookmarks</string>
     <string name="cv9_bookmarks_sub">Word headings, Excel sheet names, PowerPoint slides</string>
     <string name="cv9_slide_n">Slide %1$d</string>
+    <string name="cv9_size_custom">Custom</string>
+    <string name="cv9_width_mm">Width (mm)</string>
+    <string name="cv9_height_mm">Height (mm)</string>
 </resources>

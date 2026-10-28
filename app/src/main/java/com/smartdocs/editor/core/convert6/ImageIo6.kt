@@ -35,7 +35,9 @@ class UnsupportedImage(val reason: String) : Exception(reason)
 class ImageWriteFailed(msg: String) : java.io.IOException(msg)
 
 /** Page setup of image → PDF. */
-data class PageSetup(val size: PageSize6 = PageSize6.A4, val orient: Orient6 = Orient6.AUTO, val fit: Fit6 = Fit6.CONTAIN, val marginPt: Float = 0f)
+data class PageSetup(val size: PageSize6 = PageSize6.A4, val orient: Orient6 = Orient6.AUTO, val fit: Fit6 = Fit6.CONTAIN, val marginPt: Float = 0f,
+                     /** [PageSize6.CUSTOM] page, points (default 210 × 297 mm). */
+                     val customW: Float = 595.28f, val customH: Float = 841.89f)
 
 object ImageIo6 {
 
@@ -251,7 +253,7 @@ object ImageIo6 {
         if (b.hasAlpha()) LosslessFactory.createFromImage(doc, b) else JPEGFactory.createFromImage(doc, b, quality.coerceIn(10, 100) / 100f)
 
     private fun addPage(doc: PDDocument, img: PDImageXObject, setup: PageSetup, dpi: Float) {
-        val p = Images6.place(img.width, img.height, setup.size, setup.orient, setup.fit, setup.marginPt, dpi)
+        val p = Images6.place(img.width, img.height, setup.size, setup.orient, setup.fit, setup.marginPt, dpi, setup.customW, setup.customH)
         val page = PDPage(PDRectangle(p.pageW, p.pageH))
         doc.addPage(page)
         PDPageContentStream(doc, page).use { cs ->
