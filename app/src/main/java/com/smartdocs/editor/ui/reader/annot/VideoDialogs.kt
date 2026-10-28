@@ -59,7 +59,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
+import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.runtime.mutableIntStateOf
 import kotlin.math.roundToInt
 import com.smartdocs.editor.R
@@ -133,7 +133,10 @@ fun VideoDialogs(state: ReaderState) {
         )
     }
     if (host.importing) com.smartdocs.editor.ui.common.ProgressDialog(stringResource(R.string.vid_preparing))
-    if (host.optionsOpen) VideoOptionsDialog(host.selectedProps(), onOk = { host.applyOptions(it) }, onDismiss = { host.optionsOpen = false })
+    val importClip: suspend (Uri) -> VideoPdf.Alternate? = { uri ->
+        MediaIntents.importUri(ctx, uri, h.mediaDir())?.let { (f, n) -> VideoPdf.Alternate(f.absolutePath, n, VideoPdf.videoMime(n).ifBlank { "video/mp4" }) }
+    }
+    if (host.optionsOpen) VideoOptionsDialog(host.selectedProps(), importClip, onOk = { host.applyOptions(it) }, onDismiss = { host.optionsOpen = false })
     if (host.fullscreen && host.active != null) FullscreenPlayer(host)
 }
 
@@ -147,7 +150,7 @@ private fun sizeOf(ctx: Context, uri: Uri): Long = runCatching {
  * (start on page open / visible, stop when the page is hidden or closed).
  */
 @Composable
-private fun VideoOptionsDialog(initial: VideoProps, onOk: (VideoProps) -> Unit, onDismiss: () -> Unit) {
+private fun VideoOptionsDialog(initial: VideoProps, importClip: suspend (Uri) -> VideoPdf.Alternate?, onOk: (VideoProps) -> Unit, onDismiss: () -> Unit) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var o by remember { mutableStateOf(initial.options) }
@@ -155,6 +158,9 @@ private fun VideoOptionsDialog(initial: VideoProps, onOk: (VideoProps) -> Unit, 
     var locked by remember { mutableStateOf(initial.locked) }
     var poster by remember { mutableStateOf(initial.posterPath) }
     var tab by remember { mutableIntStateOf(0) }
+    val pickClip = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) scope.launch { importClip(uri)?.let { a -> o = o.copy(alternates = o.alternates + a) } }
+    }
     val pickPoster = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) scope.launch {
             val f = withContext(Dispatchers.IO) { posterFromImage(ctx, uri) }
@@ -178,8 +184,8 @@ private fun VideoOptionsDialog(initial: VideoProps, onOk: (VideoProps) -> Unit, 
         title = { Text(stringResource(R.string.vid_options)) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
-                TabRow(tab) {
-                    listOf(R.string.vid_tab_props, R.string.vid_tab_play, R.string.vid_tab_actions).forEachIndexed { i, l ->
+                ScrollableTabRow(tab, edgePadding = 0.dp) {
+                    listOf(R.string.vid_tab_props, R.string.vid_tab_play, R.string.vid_tab_actions, R.string.vid_tab_renditions).forEachIndexed { i, l ->
                         Tab(tab == i, { tab = i }, text = { Text(stringResource(l), maxLines = 1) })
                     }
                 }
@@ -211,6 +217,21 @@ private fun VideoOptionsDialog(initial: VideoProps, onOk: (VideoProps) -> Unit, 
                         row(R.string.vid_keep_open, o.keepOpen) { o = o.copy(keepOpen = it) }
                         row(R.string.vid_fullscreen, o.fullscreen) { o = o.copy(fullscreen = it) }
                     }
+                    3 -> {
+                        // renditions editor: the main clip, then alternates tried in order; each with selection criteria
+                        Text(stringResource(R.string.vid_rend_hint), style = MaterialTheme.typography.bodySmall)
+                        CriteriaEditor(stringResource(R.string.vid_rend_main), o.criteria) { o = o.copy(criteria = it) }
+                        o.alternates.forEachIndexed { k, a ->
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("${k + 2}. ${a.name}", Modifier.weight(1f), maxLines = 1)
+                                TextButton(onClick = { o = o.copy(alternates = o.alternates.toMutableList().apply { add(k - 1, removeAt(k)) }) }, enabled = k > 0) { Text("↑") }
+                                TextButton(onClick = { o = o.copy(alternates = o.alternates.toMutableList().apply { add(k + 1, removeAt(k)) }) }, enabled = k < o.alternates.lastIndex) { Text("↓") }
+                                TextButton(onClick = { o = o.copy(alternates = o.alternates.filterIndexed { j, _ -> j != k }) }) { Text("✕") }
+                            }
+                            CriteriaEditor(null, a.criteria) { c -> o = o.copy(alternates = o.alternates.mapIndexed { j, x -> if (j == k) x.copy(criteria = c) else x }) }
+                        }
+                        TextButton(onClick = { runCatching { pickClip.launch(arrayOf("video/*")) } }) { Text(stringResource(R.string.vid_rend_add)) }
+                    }
                     else -> {
                         row(R.string.vid_opt_autoplay, o.autoplay) { o = o.copy(autoplay = it) }
                         if (o.autoplay) chips(listOf(VideoPdf.START_VISIBLE to R.string.vid_start_visible, VideoPdf.START_OPEN to R.string.vid_start_open), o.startOn) { o = o.copy(startOn = it) }
@@ -223,6 +244,30 @@ private fun VideoOptionsDialog(initial: VideoProps, onOk: (VideoProps) -> Unit, 
         confirmButton = { Button(onClick = { onOk(VideoProps(o, title, locked, poster)) }) { Text(stringResource(R.string.ok)) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
     )
+}
+
+/** Selection criteria of one clip: minimum bandwidth (kbit/s), languages (comma separated), minimum screen size. */
+@Composable
+private fun CriteriaEditor(title: String?, c: VideoPdf.Criteria, onChange: (VideoPdf.Criteria) -> Unit) {
+    fun num(s: String) = s.filter { it.isDigit() }.take(7).toIntOrNull() ?: 0
+    Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+        if (title != null) Text(title, style = MaterialTheme.typography.labelLarge)
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            OutlinedTextField(if (c.bitrate > 0) (c.bitrate / 1000).toString() else "", { onChange(c.copy(bitrate = num(it) * 1000)) }, Modifier.weight(1f),
+                singleLine = true, label = { Text(stringResource(R.string.vid_rend_kbps)) },
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number))
+            OutlinedTextField(c.languages.joinToString(", "), { s -> onChange(c.copy(languages = s.split(',', ' ').map { it.trim() }.filter { it.isNotEmpty() })) }, Modifier.weight(1f),
+                singleLine = true, label = { Text(stringResource(R.string.vid_rend_lang)) })
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            OutlinedTextField(if (c.minWidth > 0) c.minWidth.toString() else "", { onChange(c.copy(minWidth = num(it))) }, Modifier.weight(1f), singleLine = true,
+                label = { Text(stringResource(R.string.vid_rend_min_w)) },
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number))
+            OutlinedTextField(if (c.minHeight > 0) c.minHeight.toString() else "", { onChange(c.copy(minHeight = num(it))) }, Modifier.weight(1f), singleLine = true,
+                label = { Text(stringResource(R.string.vid_rend_min_h)) },
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number))
+        }
+    }
 }
 
 /** A picked image as a baseline JPEG poster (at most 1280 px) in the cache, or null. */

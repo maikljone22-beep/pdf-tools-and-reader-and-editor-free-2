@@ -48,4 +48,12 @@
     <string name="vid_start_open">When the page opens</string>
     <string name="vid_stop_hidden">Stop when the page is hidden or closed</string>
     <string name="vid_actions_note">In this app a video always stops when it leaves the screen; these actions are saved in the file for other viewers.</string>
+    <string name="vid_tab_renditions">Renditions</string>
+    <string name="vid_rend_hint">The first clip whose criteria the device meets plays: the main clip, then the alternates in order. Empty fields mean no condition.</string>
+    <string name="vid_rend_main">1. Main clip</string>
+    <string name="vid_rend_add">Add alternate clip…</string>
+    <string name="vid_rend_kbps">Min. bandwidth (kbit/s)</string>
+    <string name="vid_rend_lang">Languages (ar, en)</string>
+    <string name="vid_rend_min_w">Min. screen width (px)</string>
+    <string name="vid_rend_min_h">Min. screen height (px)</string>
 </resources>

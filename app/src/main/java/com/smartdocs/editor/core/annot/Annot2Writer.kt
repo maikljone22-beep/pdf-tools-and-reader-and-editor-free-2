@@ -394,17 +394,24 @@ object Annot2Writer {
         val safe = v.name.replace(Regex("""[\\/:*?"<>|]"""), "_").ifBlank { "video.mp4" }
         var path: String? = null
         var poster: String? = null
+        var options = v.options
         if (media) {
             val out = File(extractDir(), "${System.nanoTime()}_$safe")
             val n = runCatching { out.outputStream().use { VideoPdf.copyVideo(cos, it) } }.getOrElse { out.delete(); return null }
             if (n < 0) { out.delete(); return null }
             path = out.absolutePath
             VideoPdf.posterJpeg(cos)?.let { j -> poster = File(extractDir(), "${System.nanoTime()}_poster.jpg").also { it.writeBytes(j) }.absolutePath }
+            // renditions: each alternate clip streamed out too, so a save writes them back (one that can't be read is dropped)
+            options = options.copy(alternates = options.alternates.mapIndexedNotNull { k, a ->
+                val f = File(extractDir(), "${System.nanoTime()}_${a.name.replace(Regex("""[\\/:*?"<>|]"""), "_").ifBlank { "alt.mp4" }}")
+                val m = runCatching { f.outputStream().use { VideoPdf.copyVideo(cos, it, k + 1) } }.getOrDefault(-1L)
+                if (m > 0) a.copy(path = f.absolutePath) else { f.delete(); null }
+            })
         }
         val title = cos.getString(COSName.T) ?: ""
         return base.copy(kind = AnnotKind.VIDEO, rects = listOf(rect), filePath = path, mime = v.mime,
             text = an.contents?.takeIf { it.isNotBlank() && it != v.options.alt } ?: v.name, author = title.ifBlank { base.author },
-            video = v.options, posterPath = poster, color = if (v.ours) base.color else 0x000000)
+            video = options, posterPath = poster, color = if (v.ours) base.color else 0x000000)
     }
 
     /** Whether a stored annotation is one of ours with a playable / openable embedded file. */
