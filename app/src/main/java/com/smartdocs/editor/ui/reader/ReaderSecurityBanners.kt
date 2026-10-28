@@ -37,8 +37,8 @@ fun ReaderSecurityBanners(state: ReaderState) {
     val g = state.guard
     // tab-view-core V-32: the Protected View banner collapses to a one-line chip (tap to expand again)
     var pvCollapsed by androidx.compose.runtime.saveable.rememberSaveable(state.uriString) { androidx.compose.runtime.mutableStateOf(false) }
-    if (g.protectedView && pvCollapsed) Surface(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp), color = MaterialTheme.colorScheme.tertiaryContainer,
-        contentColor = MaterialTheme.colorScheme.onTertiaryContainer, shape = MaterialTheme.shapes.small, onClick = { pvCollapsed = false }) {
+    if (g.protectedView && pvCollapsed) Surface(onClick = { pvCollapsed = false }, modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp), color = MaterialTheme.colorScheme.tertiaryContainer,
+        contentColor = MaterialTheme.colorScheme.onTertiaryContainer, shape = MaterialTheme.shapes.small) {
         Row(Modifier.padding(horizontal = 10.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Default.Shield, null, Modifier.size(16.dp))
             Spacer(Modifier.width(6.dp))
