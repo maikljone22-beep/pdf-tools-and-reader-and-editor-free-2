@@ -268,7 +268,7 @@ fun EsignCreateScreen(nav: NavHostController, uri: String?, mode: EsignCreateMod
                                     Box(Modifier.size(14.dp).background(signerColor(i), CircleShape))
                                     Spacer(Modifier.width(8.dp))
                                     Text(if (order == SignOrder.SEQUENTIAL) stringResource(R.string.cn_signer_n, i + 1) else stringResource(R.string.cn_signer), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
-                                    if (order == SignOrder.SEQUENTIAL && i > 0) IconButton(onClick = { signers.add(i - 1, signers.removeAt(i)); remap(fields, i, i - 1) }) { Icon(Icons.Default.ArrowUpward, null) }
+                                    if (order == SignOrder.SEQUENTIAL && i > 0) IconButton(onClick = { signers.add(i - 1, signers.removeAt(i)); remap(fields, i, i - 1) }) { Icon(Icons.Default.ArrowUpward, stringResource(R.string.pc_move_up)) }
                                     if (signers.size > 1) IconButton(onClick = { signers.removeAt(i); fields.removeAll { it.signer == i }; shiftDown(fields, i) }) { Icon(Icons.Default.Close, stringResource(R.string.cn_delete)) }
                                 }
                                 OutlinedTextField(s.name, { v -> signers[i] = signers[i].copy(name = v) }, label = { Text(stringResource(R.string.cn_name)) }, singleLine = true, modifier = Modifier.fillMaxWidth())

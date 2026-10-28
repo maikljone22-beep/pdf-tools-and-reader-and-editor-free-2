@@ -14,6 +14,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.smartdocs.editor.R
 import com.smartdocs.editor.core.ocr.OcrEngine
+import com.smartdocs.editor.core.ocr.OcrEngineMode
 import com.smartdocs.editor.core.ocr.OcrModels
 import com.smartdocs.editor.core.ocr.OcrThreshold
 import com.smartdocs.editor.core.ocr.OcrTuning
@@ -39,6 +40,18 @@ fun OcrTuningSection(t: OcrTuning, onChange: (OcrTuning) -> Unit) {
                 FilterChip(!t.fast, { onChange(t.copy(fast = false)) }, label = { Text(stringResource(R.string.nt_ocr_quality_best)) })
                 FilterChip(t.fast, { onChange(t.copy(fast = true)) }, label = { Text(stringResource(R.string.nt_ocr_quality_fast)) })
             }
+            Text(stringResource(R.string.nt_ocr_engine), style = MaterialTheme.typography.labelLarge)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                OcrEngineMode.entries.forEach { m ->
+                    FilterChip(t.engine == m, { onChange(t.copy(engine = m)) }, label = { Text(stringResource(when (m) {
+                        OcrEngineMode.AUTO -> R.string.nt_ocr_engine_auto; OcrEngineMode.AI -> R.string.nt_ocr_engine_ai
+                        OcrEngineMode.TESSERACT -> R.string.nt_ocr_engine_tess; OcrEngineMode.CLOUD -> R.string.nt_ocr_engine_cloud })) })
+                }
+            }
+            val ctx = androidx.compose.ui.platform.LocalContext.current
+            if (t.engine != OcrEngineMode.TESSERACT && !remember(t.engine) { com.smartdocs.editor.core.ocr.ProOcr.isInstalled(ctx) })
+                Text(stringResource(R.string.nt_ocr_engine_ai_missing), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.nt_ocr_engine_note), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(stringResource(R.string.nt_ocr_pre), style = MaterialTheme.typography.labelLarge)
             Check(stringResource(R.string.nt_ocr_deskew), t.deskew) { onChange(t.copy(deskew = it)) }
             Check(stringResource(R.string.nt_ocr_orientation), t.orientation) { onChange(t.copy(orientation = it)) }

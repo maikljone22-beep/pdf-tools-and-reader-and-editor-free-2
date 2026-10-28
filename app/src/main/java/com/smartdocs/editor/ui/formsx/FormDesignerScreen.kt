@@ -200,9 +200,9 @@ fun FormDesignerScreen(nav: NavHostController, uri: String?) {
                 Modifier.padding(horizontal = 16.dp, vertical = 2.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             // ---- page navigation
             Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = { st.page = (st.page - 1).coerceAtLeast(0); st.tabPicks.clear() }, enabled = st.page > 0) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null) }
+                IconButton(onClick = { st.page = (st.page - 1).coerceAtLeast(0); st.tabPicks.clear() }, enabled = st.page > 0) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, stringResource(R.string.pc_cd_next_page)) }
                 Text(stringResource(R.string.page_of, st.page + 1, st.pageCount), Modifier.weight(1f), textAlign = TextAlign.Center, style = MaterialTheme.typography.labelLarge)
-                IconButton(onClick = { st.page = (st.page + 1).coerceAtMost(st.pageCount - 1); st.tabPicks.clear() }, enabled = st.page < st.pageCount - 1) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, null) }
+                IconButton(onClick = { st.page = (st.page + 1).coerceAtMost(st.pageCount - 1); st.tabPicks.clear() }, enabled = st.page < st.pageCount - 1) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, stringResource(R.string.pc_cd_prev_page)) }
                 if (st.busy) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
             }
             LaunchedEffect(st.page, st.mode) { if (st.mode == DesignMode.CREATE && st.suggestions[st.page] == null) st.recognize(listOf(st.page)) }

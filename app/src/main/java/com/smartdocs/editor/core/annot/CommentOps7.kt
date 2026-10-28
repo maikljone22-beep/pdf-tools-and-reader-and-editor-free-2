@@ -195,6 +195,7 @@ object CommentOps7 {
     }
 
     suspend fun flatten(src: File, out: File, pw: String?, page: Int, indices: List<Int>) = edit(src, out, pw, listOf(page)) { d ->
+        com.smartdocs.editor.core.pdf.SignedSave.requireContentChangeAllowed(d)     // audit CM-14: content changes break signatures
         AnnotStyle.flatten(d, d.getPage(page), indices)
     }
 
@@ -242,11 +243,11 @@ object CommentOps7 {
         }
     }
 
+    /** A copy of [src] with only the annotations of [refs]; it keeps the source's encryption (tabs audit CM-13). */
     suspend fun keepOnly(src: File, pw: String?, out: File, refs: Map<Int, Set<Int>>) = withContext(Dispatchers.IO) {
-        val doc = if (pw.isNullOrEmpty()) PDDocument.load(src) else PDDocument.load(src, pw)
-        doc.use { d ->
-            d.isAllSecurityToBeRemoved = true
+        com.smartdocs.editor.core.pdf.PdfOps.loadRaw(src, pw).use { d ->
             keepOnly(d, refs)
+            com.smartdocs.editor.core.pdf.PdfOps.reprotect(d, pw)
             d.save(out)
         }
     }

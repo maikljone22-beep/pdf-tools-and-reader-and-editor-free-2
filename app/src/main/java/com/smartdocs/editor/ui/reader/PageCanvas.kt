@@ -162,9 +162,10 @@ fun PageCanvas(
                         if (state.placement == null && state.edit.selectAt(page, x, y, 8f / g.scale.coerceAtLeast(0.1f))) return@detectTapGestures
                         // nitro-fillsign2: a stamp on the clipboard can be pasted where the finger is
                         if (state.placement == null && StampClipboard.annot != null) StampClipboard.offer = StampClipboard.Offer(state, page, x, y)
+                        if (state.placement == null && com.smartdocs.editor.ui.selmenu.SelHooks.longPressLink(state, page, x, y, linksNow)) return@detectTapGestures   // selmenu: link menu
                         state.scope.launch {
                             val boxes = state.charBoxes(page); val text = state.pageText(page)
-                            val i = TextSelectionLogic.charAt(boxes, x, y) ?: return@launch
+                            val i = TextSelectionLogic.charAt(boxes, x, y) ?: run { if (state.placement == null) com.smartdocs.editor.ui.selmenu.SelHooks.longPressEmpty(state, page, x, y); return@launch }   // selmenu: empty-area menu
                             val r = TextSelectionLogic.wordAt(text, i)
                             state.selection = TextSelection(page, r.first, r.last, TextSelectionLogic.rects(boxes, r.first, r.last), TextSelectionLogic.text(text, r.first, r.last, boxes))
                         }
@@ -233,7 +234,7 @@ fun PageCanvas(
                         if (draft.tool == null && draft.handle != PlacementHandle.NONE) { moveSelectionHandle(state, page, g, s, draft.handle == PlacementHandle.TL); return@pageDragLabel }
                         draft.move(s, if (pressure) change.pressure else 1f)
                         when (draft.tool) {
-                            ReaderTool.ERASER -> { val (x, y) = g.screenToPdf(s.x, s.y); inkHits(annots, page, x, y, 10f / scale.coerceAtLeast(0.1f)).forEach { state.removeAnnot(it) } }
+                            ReaderTool.ERASER -> { val (x, y) = g.screenToPdf(s.x, s.y); state.eraseHits(inkHits(annots, page, x, y, 10f / scale.coerceAtLeast(0.1f))) }
                             ReaderTool.MEASURE -> { val (x, y) = g.screenToPdf(s.x, s.y); state.measure = state.measure?.copy(b = x to y) }
                             else -> {}
                         }
@@ -314,6 +315,7 @@ fun PageCanvas(
     }
     com.smartdocs.editor.ui.reader.annot.MultiActionBar(state, page, g)
     PasteHereBar(state, page, g)      // nitro-fillsign2: long-press "Paste here"
+    com.smartdocs.editor.ui.selmenu.SelAnchor(state, page, g)      // selmenu: where the selection / long-pressed spot is on screen
     }
 }
 
@@ -433,7 +435,7 @@ private fun handleTap(
             state.measure = if (m == null || m.b != null || m.page != page) Measure(page, x to y, null) else m.copy(b = x to y)
         }
         ReaderTool.ERASER -> {
-            inkHits(state.annots, page, x, y, 10f / g.scale.coerceAtLeast(0.1f)).forEach { state.removeAnnot(it) }
+            state.eraseHits(inkHits(state.annots, page, x, y, 10f / g.scale.coerceAtLeast(0.1f))); state.endErase(page)
             state.eraseStoredInk(page, listOf(x to y), 10f / g.scale.coerceAtLeast(0.1f))   // audit AN-13: saved ink too
         }
         ReaderTool.INK, ReaderTool.LINE, ReaderTool.ARROW, ReaderTool.RECT, ReaderTool.OVAL, ReaderTool.FS_RRECT -> {
@@ -474,7 +476,10 @@ private fun finishDraft(state: ReaderState, draft: GestureDraft, page: Int, g: P
         }
         ReaderTool.LINK -> { val r = draft.rect; if (r.width > 4f && r.height > 4f) onPrompt(TextPrompt(tool, page, 0f, 0f, g.screenRectToPdf(r))) }
         // audit AN-13: the pending ink went while dragging; saved ink is erased in one write at the end
-        ReaderTool.ERASER -> state.eraseStoredInk(page, draft.points.map { g.screenToPdf(it.x, it.y) }, 10f / g.scale.coerceAtLeast(0.1f))
+        ReaderTool.ERASER -> {
+            state.endErase(page)                // tabs audit CM-08: the whole stroke is one undo step
+            state.eraseStoredInk(page, draft.points.map { g.screenToPdf(it.x, it.y) }, 10f / g.scale.coerceAtLeast(0.1f))
+        }
         ReaderTool.MEASURE -> {}
         else -> draftToAnnot(state, draft, page, g, pressure)?.let { state.annot2.cx.addNew(it) }
     }

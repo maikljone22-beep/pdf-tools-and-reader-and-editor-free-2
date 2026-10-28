@@ -61,8 +61,8 @@ class WritersTest {
     }
 
     @Test fun accessRulesCountAndEvaluate() {
-        assertEquals(30, AccessRules.rules.size)
-        assertEquals(30, AccessRules.rules.map { it.id }.toSet().size)
+        assertEquals(32, AccessRules.rules.size)
+        assertEquals(32, AccessRules.rules.map { it.id }.toSet().size)
         val res = AccessRules.evaluate(AccessFacts(pageCount = 3, tagged = true, marked = true, lang = "ar", title = "x", displayDocTitle = true, figures = 2, figuresWithoutAlt = 1))
         assertEquals(AccStatus.FAIL, res.first { it.rule.id == "figure_alt" }.status)
         assertEquals(1, res.first { it.rule.id == "figure_alt" }.count)

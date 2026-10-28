@@ -51,6 +51,7 @@ fun CombineTab(initial: List<File>, job: T5Job, attachSrc: Boolean, srcDesc: Str
     var keepBm by remember { mutableStateOf(true) }
     var headings by remember { mutableStateOf(false) }
     var toc by remember { mutableStateOf(false) }
+    var pdfa by remember { mutableStateOf(false) }
     var name by remember { mutableStateOf("") }
     var url by remember { mutableStateOf("") }
     var sort by remember { mutableStateOf<FileSort?>(null) }
@@ -183,12 +184,13 @@ fun CombineTab(initial: List<File>, job: T5Job, attachSrc: Boolean, srcDesc: Str
     SwitchRow(stringResource(R.string.pc_keep_file_bookmarks), keepBm) { keepBm = it }
     SwitchRow(stringResource(R.string.pc_headings_bookmarks), headings, stringResource(R.string.pc_headings_bookmarks_sub)) { headings = it }
     SwitchRow(stringResource(R.string.pc_toc_page), toc) { toc = it }
+    SwitchRow(stringResource(R.string.pc_save_pdfa), pdfa, stringResource(R.string.pc_save_pdfa_sub)) { pdfa = it }
     OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.t5_file_name_optional)) })
     PrimaryButton(stringResource(R.string.t5_combine), enabled = entries.isNotEmpty() && unsupported.isEmpty() && !badRange && !job.running && !busy, icon = Icons.Default.CallMerge) {
         val list = entries.toList()
         val o = CombineOpts(perFile, keepBm, headings, toc, tocTitle)
         val base = name.ifBlank { if (list.size == 1) list[0].file.nameWithoutExtension else defaultName }
-        val attach = attachSrc
+        val attach = attachSrc; val pa = pdfa
         job.launch(combining) {
             val out = app.documents.uniqueFile(app.documents.docsDir, base)
             val signedNames = ArrayList<String>()
@@ -198,6 +200,10 @@ fun CombineTab(initial: List<File>, job: T5Job, attachSrc: Boolean, srcDesc: Str
                 // ask that file's password, then combine again (convert audit A-M12: protected PDFs just failed)
                 out.delete(); askPw = list.indexOfFirst { it.file == e.file }.takeIf { it >= 0 }; error = com.smartdocs.editor.ui.convert6.Cv6ErrorText.of(ctx, e); return@launch
             } catch (e: Throwable) { out.delete(); throw e }
+            // PDF/A-3b keeps the binder's attachments
+            if (pa) { val a = File(app.documents.tempDir, "cmb_pdfa_${System.nanoTime()}.pdf")
+                com.smartdocs.editor.core.tools5.PdfA.convert(ctx, out, null, a, com.smartdocs.editor.core.tools5.PdfAOptions(level = com.smartdocs.editor.core.tools5.PdfALevel.A3B), title = base)
+                withContext(Dispatchers.IO) { a.copyTo(out, true); a.delete() } }
             if (attach) com.smartdocs.editor.core.pdf.AttachmentOps.attachSources(out, list.map { it.file }, srcDesc)
             runCatching { app.documents.touchRecent(out) }
             // signed inputs lose their signatures in the combined copy: say so (convert audit A-L14)

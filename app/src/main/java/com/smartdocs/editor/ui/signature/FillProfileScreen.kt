@@ -83,7 +83,7 @@ fun FillProfileScreen(nav: NavHostController) {
                             }
                             IconButton(onClick = { if (i > 0) swap(f, fields[i - 1]) }, enabled = i > 0) { Icon(Icons.Default.ArrowUpward, stringResource(R.string.sa_move_up)) }
                             IconButton(onClick = { if (i < fields.size - 1) swap(f, fields[i + 1]) }, enabled = i < fields.size - 1) { Icon(Icons.Default.ArrowDownward, stringResource(R.string.sa_move_down)) }
-                            IconButton(onClick = { editing = f }) { Icon(Icons.Default.Edit, null) }
+                            IconButton(onClick = { editing = f }) { Icon(Icons.Default.Edit, stringResource(R.string.pc_cd_edit)) }
                             IconButton(onClick = { scope.launch { app.db.fillProfile().delete(f) } }) { Icon(Icons.Default.Delete, stringResource(R.string.delete), tint = MaterialTheme.colorScheme.error) }
                         }
                     }

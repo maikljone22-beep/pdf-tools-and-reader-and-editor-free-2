@@ -1,7 +1,9 @@
 package com.smartdocs.editor.ui.tools5
 
 import android.graphics.Bitmap
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -39,7 +41,26 @@ private fun ruleTitle(id: String): String = stringResource(
         "nested_alt" -> R.string.t5_acc_nested_alt; "alt_content" -> R.string.t5_acc_alt_content; "alt_hides_annot" -> R.string.t5_acc_alt_hides
         "other_alt" -> R.string.t5_acc_other_alt; "table_rows" -> R.string.t5_acc_table_rows; "table_cells" -> R.string.t5_acc_table_cells
         "table_headers" -> R.string.t5_acc_table_headers; "table_regular" -> R.string.t5_acc_table_regular; "table_summary" -> R.string.t5_acc_table_summary
-        "list_items" -> R.string.t5_acc_list_items; "list_body" -> R.string.t5_acc_list_body; else -> R.string.t5_acc_heading_nesting
+        "list_items" -> R.string.t5_acc_list_items; "list_body" -> R.string.t5_acc_list_body
+        "flicker" -> R.string.pc_acc_flicker; "timed" -> R.string.pc_acc_timed; else -> R.string.t5_acc_heading_nesting
+    },
+)
+
+/** Foxit "Explain": what a rule checks and how to fix it. */
+@Composable
+private fun ruleExplain(id: String): String = stringResource(
+    when (id) {
+        "perm" -> R.string.pc_accx_perm; "image_only" -> R.string.pc_accx_image_only; "tagged" -> R.string.pc_accx_tagged
+        "reading_order" -> R.string.pc_accx_reading_order; "lang" -> R.string.pc_accx_lang; "title" -> R.string.pc_accx_title
+        "bookmarks" -> R.string.pc_accx_bookmarks; "contrast" -> R.string.pc_accx_contrast; "tagged_content" -> R.string.pc_accx_tagged_content
+        "tagged_annots" -> R.string.pc_accx_tagged_annots; "tab_order" -> R.string.pc_accx_tab_order; "encoding" -> R.string.pc_accx_encoding
+        "multimedia" -> R.string.pc_accx_multimedia; "scripts" -> R.string.pc_accx_scripts; "nav_links" -> R.string.pc_accx_nav_links
+        "flicker" -> R.string.pc_accx_flicker; "timed" -> R.string.pc_accx_timed
+        "tagged_fields" -> R.string.pc_accx_tagged_fields; "field_desc" -> R.string.pc_accx_field_desc; "figure_alt" -> R.string.pc_accx_figure_alt
+        "nested_alt" -> R.string.pc_accx_nested_alt; "alt_content" -> R.string.pc_accx_alt_content; "alt_hides_annot" -> R.string.pc_accx_alt_hides
+        "other_alt" -> R.string.pc_accx_other_alt; "table_rows" -> R.string.pc_accx_table_rows; "table_cells" -> R.string.pc_accx_table_cells
+        "table_headers" -> R.string.pc_accx_table_headers; "table_regular" -> R.string.pc_accx_table_regular; "table_summary" -> R.string.pc_accx_table_summary
+        "list_items" -> R.string.pc_accx_list_items; "list_body" -> R.string.pc_accx_list_body; else -> R.string.pc_accx_heading_nesting
     },
 )
 
@@ -54,10 +75,10 @@ private fun groupTitle(g: AccGroup): String = stringResource(
 
 @Composable
 private fun statusLabel(s: AccStatus): String = stringResource(
-    when (s) { AccStatus.PASS -> R.string.t5_acc_pass; AccStatus.FAIL -> R.string.t5_acc_fail; AccStatus.MANUAL -> R.string.t5_acc_manual; AccStatus.NA -> R.string.t5_acc_na },
+    when (s) { AccStatus.PASS -> R.string.t5_acc_pass; AccStatus.FAIL -> R.string.t5_acc_fail; AccStatus.MANUAL -> R.string.t5_acc_manual; AccStatus.NA -> R.string.t5_acc_na; AccStatus.SKIPPED -> R.string.pc_acc_skipped },
 )
 
-private fun statusColor(s: AccStatus) = when (s) { AccStatus.PASS -> T5Green; AccStatus.FAIL -> T5Red; AccStatus.MANUAL -> T5Orange; AccStatus.NA -> T5Grey }
+private fun statusColor(s: AccStatus) = when (s) { AccStatus.PASS -> T5Green; AccStatus.FAIL -> T5Red; AccStatus.MANUAL -> T5Orange; AccStatus.NA, AccStatus.SKIPPED -> T5Grey }
 
 /** Accessibility checker (30 rules), HTML report, quick fixes, basic auto-tagging and figure alt text (AI hook). */
 @Composable
@@ -70,10 +91,21 @@ fun AccessibilityScreen(nav: NavHostController, uri: String?) {
     var results by remember { mutableStateOf<List<AccResult>>(emptyList()) }
     var figures by remember { mutableStateOf<List<Pair<Int, String>>>(emptyList()) }   // page, alt
     var fixDialog by remember { mutableStateOf(false) }
+    // Foxit 34.2 / 34.6 / 34.8: rule categories, manual verdicts, skipped rules; the tags panel; the recognition report
+    var groups by remember { mutableStateOf<Set<AccGroup>?>(null) }
+    var verdicts by remember { mutableStateOf<Map<String, AccStatus>>(emptyMap()) }
+    var skipped by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var explain by remember { mutableStateOf<String?>(null) }
+    var tags by remember { mutableStateOf(false) }
+    var report by remember { mutableStateOf<AccessAutoTag.Report?>(null) }
+    var isUa by remember { mutableStateOf(false) }
     val job = rememberT5Job()
     val pick = rememberPdfPicker { file = it.firstOrNull(); results = emptyList(); figures = emptyList() }
     val checking = stringResource(R.string.t5_acc_checking)
     val fixing = stringResource(R.string.t5_acc_fixing)
+    val formulaAlt = stringResource(R.string.pa_formula_alt)
+    val fixedN = stringResource(R.string.pa_fixed_n)
+    val summaryLabel = stringResource(R.string.pa_table_summary)
     val ruleLabels = AccessRules.rules.associate { it.id to ruleTitle(it.id) }
     val statusLabels = AccStatus.entries.associateWith { statusLabel(it) }
     val groupLabels = AccGroup.entries.associateWith { groupTitle(it) }
@@ -83,17 +115,69 @@ fun AccessibilityScreen(nav: NavHostController, uri: String?) {
         val (res, figs) = io {
             PDDocument.load(f).use { d ->
                 val facts = AccessInspect.facts(d, PdfInspect.inspect(d))
+                isUa = AccessUa.isUa(d)
                 AccessRules.evaluate(facts) to AccessInspect.figures(d).map { it.page to (it.alt ?: "") }
             }
         }
         results = res; figures = figs
     }
     LaunchedEffect(file) { file?.let { check(it) } }
+    /** The Fix of rule [id]: a direct structure fix on a copy, the fix dialog, the tool that fixes it, or what to check by hand. */
+    fun fixRule(id: String) {
+        val f = file ?: return
+        when {
+            id in AccessRules.fixable -> fixDialog = true
+            id == "image_only" -> nav.navigate(com.smartdocs.editor.ui.Routes.tool("ocr", android.net.Uri.fromFile(f).toString()))
+            id == "perm" -> nav.navigate(com.smartdocs.editor.ui.Routes.tool("unlock", android.net.Uri.fromFile(f).toString()))
+            id == "reading_order" -> tags = true
+            id in AccessFix2.STRUCTURE_FIXES -> job.launch(fixing) {
+                val out = app.documents.uniqueFile(app.documents.docsDir, f.nameWithoutExtension + "_accessible")
+                val n = io {
+                    PDDocument.load(f).use { d ->
+                        val k = when (id) {
+                            "nested_alt" -> AccessFix2.removeNestedAlt(d)
+                            "alt_content" -> AccessFix2.removeAltWithoutContent(d)
+                            "alt_hides_annot" -> AccessFix2.removeAltHidingAnnots(d)
+                            "other_alt" -> AccessFix2.fillOtherAlt(d, formulaAlt)
+                            "table_rows" -> AccessFix2.wrapOrphans(d, setOf("TR"), setOf("Table", "THead", "TBody", "TFoot"), "Table")
+                            "table_cells" -> AccessFix2.wrapOrphans(d, setOf("TH", "TD"), setOf("TR"), "TR")
+                            "list_items" -> AccessFix2.wrapOrphans(d, setOf("LI"), setOf("L"), "L")
+                            "list_body" -> AccessFix2.wrapOrphans(d, setOf("Lbl", "LBody"), setOf("LI"), "LI")
+                            "table_headers" -> AccessFix2.firstRowHeaders(d)
+                            "table_summary" -> AccessFix2.summaries(d) { rows, cols -> summaryLabel.format(rows, cols) }
+                            "heading_nesting" -> AccessFix2.fixHeadingSkips(d)
+                            "encoding" -> com.smartdocs.editor.core.pdf.ToUnicodeRepair.repair(d).fonts
+                            else -> {   // tagged_annots / tagged_fields / nav_links / multimedia
+                                if (AccessTags.root(d) == null) AccessAutoTag.tag(d, d.documentCatalog.language ?: "", false)
+                                AccessTags.tagAnnotations(d)
+                            }
+                        }
+                        d.save(out); k
+                    }
+                }
+                file = out; result = out; info = fixedN.format(n)
+            }
+            else -> explain = id        // contrast, scripts, flicker, timed, table_regular: a person checks; Explain says what to look for
+        }
+    }
+    val tf = file
+    if (tags && tf != null) { TagsEditor(nav, tf, onClose = { tags = false }, onSaved = { file = it }); return }
+    val shown = AccessRules.apply(results, groups, verdicts, skipped)
+    val attachedMsg = stringResource(R.string.pc_acc_attached)
 
     ToolScaffold(stringResource(R.string.t5_acc_title), nav, snackbar = snackbar) {
         FilePickRow(file, stringResource(R.string.t5_input_pdf), pick)
         if (results.isNotEmpty()) {
-            val counts = AccessRules.counts(results)
+            // checker options: which rule categories count
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                FilterChip(groups == null, { groups = null }, label = { Text(stringResource(R.string.pc_pf_all)) })
+                AccGroup.entries.forEach { g -> FilterChip(groups?.contains(g) == true, {
+                    val cur = groups ?: emptySet(); val next = if (g in cur) cur - g else cur + g
+                    groups = next.ifEmpty { null }
+                }, label = { Text(groupLabels[g].orEmpty()) }) }
+            }
+            if (isUa) Text(stringResource(R.string.pc_acc_is_ua), style = MaterialTheme.typography.bodySmall, color = T5Green)
+            val counts = AccessRules.counts(shown)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 AccStatus.entries.forEach { s -> StatusPill("${statusLabels[s]}: ${counts[s] ?: 0}", statusColor(s)) }
             }
@@ -101,7 +185,7 @@ fun AccessibilityScreen(nav: NavHostController, uri: String?) {
                 Button(onClick = { fixDialog = true }, enabled = !job.running) { Icon(Icons.Default.Build, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.t5_acc_fix)) }
                 OutlinedButton(onClick = {
                     val f = file ?: return@OutlinedButton
-                    val html = AccessRules.htmlReport(f.name, results, settings.language == "ar", reportTitle, { ruleLabels[it] ?: it }, { statusLabels[it] ?: it.name }, { groupLabels[it] ?: it.name })
+                    val html = AccessRules.htmlReport(f.name, shown, settings.language == "ar", reportTitle, { ruleLabels[it] ?: it }, { statusLabels[it] ?: it.name }, { groupLabels[it] ?: it.name })
                     job.launch(checking) {
                         val out = app.documents.uniqueFile(app.documents.docsDir, f.nameWithoutExtension + "_accessibility", "html")
                         io { out.writeText(html) }
@@ -109,16 +193,44 @@ fun AccessibilityScreen(nav: NavHostController, uri: String?) {
                     }
                 }) { Icon(Icons.Default.Description, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.t5_acc_report)) }
             }
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = { file?.let { check(it) } }, enabled = !job.running) { Icon(Icons.Default.Refresh, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.pc_acc_check_again)) }
+                OutlinedButton(onClick = { tags = true }, enabled = !job.running) { Icon(Icons.Default.AccountTree, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.pc_tags_title)) }
+                // Foxit 34.4: the report goes into the document as an attachment
+                OutlinedButton(onClick = {
+                    val f = file ?: return@OutlinedButton
+                    val html = AccessRules.htmlReport(f.name, shown, settings.language == "ar", reportTitle, { ruleLabels[it] ?: it }, { statusLabels[it] ?: it.name }, { groupLabels[it] ?: it.name })
+                    job.launch(checking) {
+                        val out = app.documents.uniqueFile(app.documents.docsDir, f.nameWithoutExtension + "_report")
+                        io { PDDocument.load(f).use { d -> Embed.addFiles(d, listOf(Attachment(f.nameWithoutExtension + "_accessibility.html", "text/html", html.toByteArray()))); d.save(out) } }
+                        file = out; result = out; info = attachedMsg
+                    }
+                }, enabled = !job.running) { Icon(Icons.Default.AttachFile, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.pc_acc_attach_report)) }
+            }
             AccGroup.entries.forEach { g ->
-                val rows = results.filter { it.rule.group == g }
+                val rows = shown.filter { it.rule.group == g }
                 if (rows.isEmpty()) return@forEach
                 T5Card(groupLabels[g]) {
                     rows.forEach { r ->
+                        var menu by remember(r.rule.id) { mutableStateOf(false) }
                         Row(Modifier.fillMaxWidth().semantics(mergeDescendants = true) {}.padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-                            StatusPill(statusLabels[r.status].orEmpty(), statusColor(r.status))
+                            StatusPill(statusLabels[r.status].orEmpty() + if (r.manual) " ✎" else "", statusColor(r.status))
                             Spacer(Modifier.width(8.dp))
                             Text(ruleLabels[r.rule.id].orEmpty() + if (r.count > 0) " (${r.count})" else "", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-                            if (r.status == AccStatus.FAIL && r.rule.id in AccessRules.fixable) Icon(Icons.Default.AutoFixHigh, stringResource(R.string.t5_acc_fixable), tint = MaterialTheme.colorScheme.primary)
+                            if (r.status == AccStatus.FAIL && (r.rule.id in AccessRules.fixable || r.rule.id in AccessFix2.STRUCTURE_FIXES)) Icon(Icons.Default.AutoFixHigh, stringResource(R.string.t5_acc_fixable), tint = MaterialTheme.colorScheme.primary)
+                            Box {
+                                IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, stringResource(R.string.pc_pf_actions, ruleLabels[r.rule.id].orEmpty())) }
+                                DropdownMenu(menu, { menu = false }) {
+                                    val id = r.rule.id
+                                    DropdownMenuItem(text = { Text(stringResource(R.string.pc_acc_explain)) }, onClick = { menu = false; explain = id })
+                                    DropdownMenuItem(text = { Text(stringResource(R.string.pc_acc_pass_manual)) }, onClick = { menu = false; skipped = skipped - id; verdicts = verdicts + (id to AccStatus.PASS) })
+                                    DropdownMenuItem(text = { Text(stringResource(R.string.pc_acc_fail_manual)) }, onClick = { menu = false; skipped = skipped - id; verdicts = verdicts + (id to AccStatus.FAIL) })
+                                    DropdownMenuItem(text = { Text(stringResource(R.string.pc_acc_skip)) }, onClick = { menu = false; skipped = skipped + id })
+                                    if (r.manual) DropdownMenuItem(text = { Text(stringResource(R.string.pc_acc_clear_verdict)) }, onClick = { menu = false; skipped = skipped - id; verdicts = verdicts - id })
+                                    // FINAL_CHECK (Foxit 34.7): every failed or manual rule has a Fix
+                                    if (r.status == AccStatus.FAIL || r.status == AccStatus.MANUAL) DropdownMenuItem(text = { Text(stringResource(R.string.t5_acc_fix)) }, onClick = { menu = false; fixRule(id) })
+                                }
+                            }
                         }
                     }
                 }
@@ -128,20 +240,39 @@ fun AccessibilityScreen(nav: NavHostController, uri: String?) {
         Text(stringResource(R.string.t5_acc_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
     T5JobUi(job, nav, snackbar)
+    explain?.let { id ->
+        AlertDialog(onDismissRequest = { explain = null }, title = { Text(ruleLabels[id].orEmpty()) }, text = { Text(ruleExplain(id)) },
+            confirmButton = { TextButton(onClick = { explain = null }) { Text(stringResource(R.string.ok)) } })
+    }
+    // Foxit 34.36: recognition report after auto-tagging
+    report?.let { r ->
+        AlertDialog(onDismissRequest = { report = null }, title = { Text(stringResource(R.string.pc_acc_report_title)) }, text = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(stringResource(R.string.pc_acc_report_pages, r.taggedPages, r.pages))
+                Text(stringResource(R.string.pc_acc_report_counts, r.headings, r.paragraphs, r.lists, r.listItems, r.figures, r.artifacts, r.annotations))
+                if (r.tables > 0) Text(stringResource(R.string.pa_report_tables, r.tables))
+                if (r.pagesWithoutText > 0) Text(stringResource(R.string.pc_acc_report_scanned, r.pagesWithoutText), color = T5Orange)
+                if (r.figures > 0) Text(stringResource(R.string.pc_acc_report_alt), color = T5Orange)
+                if (r.retagged) Text(stringResource(R.string.pc_acc_report_retagged))
+            }
+        }, confirmButton = { TextButton(onClick = { report = null }) { Text(stringResource(R.string.ok)) } })
+    }
     if (fixDialog) {
         val f = file
-        if (f == null) fixDialog = false else FixDialog(f, onDismiss = { fixDialog = false }) { lang, title, tabs, fields, bookmarks, tag ->
+        if (f == null) fixDialog = false else FixDialog(f, onDismiss = { fixDialog = false }) { lang, title, tabs, fields, bookmarks, tag, retag, ua ->
             fixDialog = false
             job.launch(fixing) {
                 val out = app.documents.uniqueFile(app.documents.docsDir, f.nameWithoutExtension + "_accessible")
                 io {
                     PDDocument.load(f).use { d ->
-                        if (tag) AccessFix.autoTag(d, lang)
+                        // headings / lists / artifacts recognition (re-tags a tagged file when asked), with a report
+                        if (tag) report = AccessAutoTag.tag(d, lang, retag)
                         if (lang.isNotBlank()) AccessFix.setLanguage(d, lang)
                         if (title.isNotBlank()) AccessFix.setTitle(d, title)
                         if (tabs) AccessFix.tabOrder(d)
                         if (fields) AccessFix.fieldDescriptions(d)
                         if (bookmarks) AccessFix.bookmarksFromHeadings(d)
+                        if (ua) AccessUa.markUa(d)
                         d.save(out)
                     }
                 }
@@ -153,7 +284,7 @@ fun AccessibilityScreen(nav: NavHostController, uri: String?) {
 }
 
 @Composable
-private fun FixDialog(f: File, onDismiss: () -> Unit, onApply: (String, String, Boolean, Boolean, Boolean, Boolean) -> Unit) {
+private fun FixDialog(f: File, onDismiss: () -> Unit, onApply: (String, String, Boolean, Boolean, Boolean, Boolean, Boolean, Boolean) -> Unit) {
     var lang by remember { mutableStateOf("ar") }
     var title by remember { mutableStateOf("") }
     LaunchedEffect(f) { title = runCatching { io { PDDocument.load(f).use { AccessFix.suggestTitle(it, f.nameWithoutExtension) } } }.getOrDefault(f.nameWithoutExtension) }
@@ -161,6 +292,8 @@ private fun FixDialog(f: File, onDismiss: () -> Unit, onApply: (String, String, 
     var fields by remember { mutableStateOf(true) }
     var bookmarks by remember { mutableStateOf(true) }
     var tag by remember { mutableStateOf(true) }
+    var retag by remember { mutableStateOf(false) }
+    var ua by remember { mutableStateOf(false) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.t5_acc_fix)) },
@@ -168,13 +301,15 @@ private fun FixDialog(f: File, onDismiss: () -> Unit, onApply: (String, String, 
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 OutlinedTextField(title, { title = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.t5_acc_doc_title)) })
                 OutlinedTextField(lang, { lang = it.trim() }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.t5_acc_doc_lang)) })
-                SwitchRow(stringResource(R.string.t5_acc_fix_tags), tag, stringResource(R.string.t5_acc_fix_tags_hint)) { tag = it }
+                SwitchRow(stringResource(R.string.t5_acc_fix_tags), tag, stringResource(R.string.pc_acc_tag_hint)) { tag = it }
+                if (tag) SwitchRow(stringResource(R.string.pc_acc_retag), retag, stringResource(R.string.pc_acc_retag_hint)) { retag = it }
+                SwitchRow(stringResource(R.string.pc_acc_mark_ua), ua, stringResource(R.string.pc_acc_mark_ua_hint)) { ua = it }
                 SwitchRow(stringResource(R.string.t5_acc_fix_tabs), tabs) { tabs = it }
                 SwitchRow(stringResource(R.string.t5_acc_fix_fields), fields) { fields = it }
                 SwitchRow(stringResource(R.string.t5_acc_fix_bookmarks), bookmarks) { bookmarks = it }
             }
         },
-        confirmButton = { TextButton(onClick = { onApply(lang, title, tabs, fields, bookmarks, tag) }) { Text(stringResource(R.string.t5_apply)) } },
+        confirmButton = { TextButton(onClick = { onApply(lang, title, tabs, fields, bookmarks, tag, retag, ua) }) { Text(stringResource(R.string.t5_apply)) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
     )
 }

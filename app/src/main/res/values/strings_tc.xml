@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="tc_signed_content_change">هذا الملف موقّع، وتسطيح التعليقات يغيّر محتوى الصفحة فيُبطل التوقيع. احفظ نسخة بدلًا من ذلك.</string>
+    <string name="tc_delete_comment_q">حذف هذا التعليق من الملف؟</string>
+    <string name="tc_comments_shown">ظهرت التعليقات مجددًا لأنك اخترت أداة تعليق.</string>
+    <string name="tc_move_up_tool">تحريك %1$s لأعلى</string>
+    <string name="tc_move_down_tool">تحريك %1$s لأسفل</string>
+    <string name="tc_tool_add">إضافة %1$s إلى أدواتي</string>
+    <string name="tc_tool_remove">إزالة %1$s من أدواتي</string>
+    <string name="tc_paste_comment">لصق التعليق</string>
+    <string name="tc_paste_comment_in_place">لصق التعليق في مكانه</string>
+</resources>

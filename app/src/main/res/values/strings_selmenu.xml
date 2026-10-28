@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- feature/selection-menus (ui/selmenu, core/selmenu): selection / long-press / right-click menus. Prefix sm_. -->
+<resources>
+    <string name="sm_call">اتصال</string>
+    <string name="sm_whatsapp">واتساب</string>
+    <string name="sm_sms">رسالة نصية</string>
+    <string name="sm_add_contact">إضافة إلى جهات الاتصال</string>
+    <string name="sm_email">إرسال بريد</string>
+    <string name="sm_open_link">فتح الرابط</string>
+    <string name="sm_copy_link">نسخ الرابط</string>
+    <string name="sm_share_link">مشاركة الرابط</string>
+    <string name="sm_map">فتح في الخريطة</string>
+    <string name="sm_calendar">إضافة إلى التقويم</string>
+    <string name="sm_copy_number">نسخ الرقم</string>
+    <string name="sm_copy_plain">نسخ كنص متصل</string>
+    <string name="sm_copy_no_diacritics">نسخ بدون تشكيل</string>
+    <string name="sm_copy_normalized">نسخ بعد التطبيع</string>
+    <string name="sm_copy_latin_digits">نسخ بأرقام لاتينية (123)</string>
+    <string name="sm_copy_arabic_digits">نسخ بأرقام عربية (١٢٣)</string>
+    <string name="sm_select_sentence">تحديد الجملة</string>
+    <string name="sm_search_doc">بحث في المستند</string>
+    <string name="sm_other_apps">تطبيقات أخرى (ترجمة…)</string>
+    <string name="sm_ai_define">تعريف (ذكاء اصطناعي)</string>
+    <string name="sm_ai_summarize">تلخيص (ذكاء اصطناعي)</string>
+    <string name="sm_note_here">ملاحظة هنا</string>
+    <string name="sm_text_here">نص هنا</string>
+    <string name="sm_fill_text_here">كتابة هنا</string>
+    <string name="sm_image_here">إدراج صورة</string>
+    <string name="sm_sign_here">توقيع</string>
+    <string name="sm_sign_hint">اختر توقيعاً من شريط التوقيع ثم المس مكانه</string>
+    <string name="sm_read_page">قراءة الصفحة بصوت</string>
+    <string name="sm_search">بحث</string>
+    <string name="sm_copied">تم النسخ</string>
+    <string name="sm_no_app">لا يوجد تطبيق لهذا الإجراء</string>
+    <string name="sm_unavailable">غير متاح هنا</string>
+    <string name="sm_why_signed">المستند موقَّع: التعديل يُبطل التوقيع</string>
+    <string name="sm_g_smart">إجراءات ذكية</string>
+    <string name="sm_g_clipboard">نسخ</string>
+    <string name="sm_g_arabic">نسخ عربي</string>
+    <string name="sm_g_select">تحديد</string>
+    <string name="sm_g_markup">تعليم النص</string>
+    <string name="sm_g_comment">تعليقات وإشارات</string>
+    <string name="sm_g_lookup">بحث وقراءة</string>
+    <string name="sm_g_ai">الذكاء الاصطناعي</string>
+    <string name="sm_g_edit">تحرير</string>
+    <string name="sm_g_share">مشاركة وتصدير</string>
+    <string name="sm_g_link">الرابط</string>
+    <string name="sm_g_insert">إدراج هنا</string>
+    <string name="sm_g_page">الصفحة والعرض</string>
+</resources>

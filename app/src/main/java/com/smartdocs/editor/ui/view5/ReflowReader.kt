@@ -154,8 +154,8 @@ fun ReflowReader(s: ReaderState) {
         if (searching) Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             OutlinedTextField(query, { query = it }, Modifier.weight(1f), singleLine = true, placeholder = { Text(stringResource(R.string.search)) })
             Text(if (hits.isEmpty()) "0" else "${hitIdx + 1}/${hits.size}", color = fg, modifier = Modifier.padding(horizontal = 6.dp))
-            IconButton(onClick = { if (hits.isNotEmpty()) hitIdx = (hitIdx - 1 + hits.size) % hits.size }) { Icon(Icons.Default.KeyboardArrowUp, null, tint = fg) }
-            IconButton(onClick = { if (hits.isNotEmpty()) hitIdx = (hitIdx + 1) % hits.size }) { Icon(Icons.Default.KeyboardArrowDown, null, tint = fg) }
+            IconButton(onClick = { if (hits.isNotEmpty()) hitIdx = (hitIdx - 1 + hits.size) % hits.size }) { Icon(Icons.Default.KeyboardArrowUp, stringResource(R.string.pc_cd_prev_match), tint = fg) }
+            IconButton(onClick = { if (hits.isNotEmpty()) hitIdx = (hitIdx + 1) % hits.size }) { Icon(Icons.Default.KeyboardArrowDown, stringResource(R.string.pc_cd_next_match), tint = fg) }
         }
         val family = if (serif) FontFamily.Serif else FontFamily.Default
         // nitro-protect2: no text selection (copy) when the document forbids copying

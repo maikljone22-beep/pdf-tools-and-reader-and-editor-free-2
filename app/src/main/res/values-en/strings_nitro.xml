@@ -284,6 +284,13 @@
     <string name="nt_ocr_quality">Recognition quality</string>
     <string name="nt_ocr_quality_best">High (slower)</string>
     <string name="nt_ocr_quality_fast">Fast (less accurate)</string>
+    <string name="nt_ocr_engine">Recognition engine</string>
+    <string name="nt_ocr_engine_auto">Auto (Tesseract + AI)</string>
+    <string name="nt_ocr_engine_ai">AI only</string>
+    <string name="nt_ocr_engine_tess">Tesseract only</string>
+    <string name="nt_ocr_engine_cloud">Cloud Pro OCR</string>
+    <string name="nt_ocr_engine_note">Auto reads every word with both engines and keeps the better reading (PP-OCRv5 Arabic model, optional 12.8 MB download with the Arabic pack). Cloud sends the page image to the SmartDocs server and needs internet; when it is unavailable the offline recognition is used.</string>
+    <string name="nt_ocr_engine_ai_missing">The AI model is not downloaded yet: it is fetched with the Arabic pack at the next recognition.</string>
     <string name="nt_ocr_review">Review OCR suspects</string>
     <string name="nt_ocr_review_accept">Accept</string>
     <string name="nt_ocr_review_accept_all">Accept all as they are</string>

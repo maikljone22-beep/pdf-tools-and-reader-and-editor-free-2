@@ -291,7 +291,7 @@ private fun PreviousRow(f: File, onOpen: () -> Unit, onShare: () -> Unit, onDele
         supportingContent = { Text("${DocumentRepository.formatSize(f.length())} · ${DocumentRepository.formatDate(f.lastModified())}", maxLines = 1) },
         trailingContent = {
             Box {
-                IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, null) }
+                IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, stringResource(R.string.pc_cd_more)) }
                 DropdownMenu(menu, { menu = false }) {
                     DropdownMenuItem(text = { Text(stringResource(R.string.open)) }, onClick = { menu = false; onOpen() })
                     DropdownMenuItem(text = { Text(stringResource(R.string.tool_ocr)) }, onClick = { menu = false; onOcr() })

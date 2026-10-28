@@ -1,12 +1,5 @@
 package com.smartdocs.editor.core.formsx
 
-import com.google.zxing.BarcodeFormat
-import com.google.zxing.EncodeHintType
-import com.google.zxing.datamatrix.DataMatrixWriter
-import com.google.zxing.datamatrix.encoder.SymbolShapeHint
-import com.google.zxing.pdf417.encoder.PDF417
-import com.google.zxing.qrcode.QRCodeWriter
-import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import com.tom_roush.pdfbox.cos.COSArray
 import com.tom_roush.pdfbox.cos.COSBoolean
 import com.tom_roush.pdfbox.cos.COSDictionary
@@ -102,27 +95,16 @@ object FxBarcodes {
 
     data class Symbol(val modules: Array<BooleanArray>, val rowHeight: Float)
 
-    fun encode(text: String, b: FxBarcode): Symbol? = runCatching {
-        val data = text.ifEmpty { " " }
-        when (b.kind) {
-            FxBarcodeKind.QR -> {
-                val ecl = when (b.ecc.coerceIn(0, 3)) { 0 -> ErrorCorrectionLevel.L; 1 -> ErrorCorrectionLevel.M; 2 -> ErrorCorrectionLevel.Q; else -> ErrorCorrectionLevel.H }
-                val m = QRCodeWriter().encode(data, BarcodeFormat.QR_CODE, 0, 0, mapOf(EncodeHintType.ERROR_CORRECTION to ecl, EncodeHintType.MARGIN to 0, EncodeHintType.CHARACTER_SET to "UTF-8"))
-                Symbol(Array(m.height) { y -> BooleanArray(m.width) { x -> m.get(x, y) } }, 1f)
-            }
-            FxBarcodeKind.DATAMATRIX -> {
-                val m = DataMatrixWriter().encode(data, BarcodeFormat.DATA_MATRIX, 0, 0, mapOf(EncodeHintType.DATA_MATRIX_SHAPE to SymbolShapeHint.FORCE_SQUARE))
-                Symbol(Array(m.height) { y -> BooleanArray(m.width) { x -> m.get(x, y) } }, 1f)
-            }
-            FxBarcodeKind.PDF417 -> {
-                val enc = PDF417()
-                enc.setEncoding(Charsets.UTF_8)
-                enc.generateBarcodeLogic(data, b.ecc.coerceIn(0, 8), true)
-                val rows = enc.barcodeMatrix.matrix
-                Symbol(Array(rows.size) { y -> BooleanArray(rows[y].size) { x -> rows[y][x].toInt() == 1 } }, b.yxRatio.coerceIn(1f, 10f))
-            }
+    /** The symbol of [text] with the field's settings, through the app's shared zxing encoder. */
+    fun encode(text: String, b: FxBarcode): Symbol? {
+        val kind = when (b.kind) {
+            FxBarcodeKind.QR -> com.smartdocs.editor.core.util.BarcodeEncoder.Kind.QR
+            FxBarcodeKind.DATAMATRIX -> com.smartdocs.editor.core.util.BarcodeEncoder.Kind.DATAMATRIX
+            FxBarcodeKind.PDF417 -> com.smartdocs.editor.core.util.BarcodeEncoder.Kind.PDF417
         }
-    }.getOrNull()
+        val m = com.smartdocs.editor.core.util.BarcodeEncoder.matrix(kind, text, b.ecc, b.yxRatio) ?: return null
+        return Symbol(m.modules, m.rowHeight)
+    }
 
     // ---------------- document ----------------
 

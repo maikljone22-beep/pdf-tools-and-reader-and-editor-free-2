@@ -298,7 +298,7 @@ private fun TagsPane(state: ReaderState, onJump: (Int) -> Unit, onOpenTool: (Str
                     Row(Modifier.fillMaxWidth().clickable { nd.page?.let(onJump) }.padding(start = (8 + depth * 14).dp, end = 8.dp, top = 2.dp, bottom = 2.dp),
                         verticalAlignment = Alignment.CenterVertically) {
                         if (nd.children.isNotEmpty()) IconButton(onClick = { if (id in expanded) expanded.remove(id) else expanded.add(id) }, Modifier.size(32.dp)) {
-                            Icon(if (id in expanded) Icons.Default.ExpandMore else Icons.Default.ChevronRight, null)
+                            Icon(if (id in expanded) Icons.Default.ExpandMore else Icons.Default.ChevronRight, stringResource(if (id in expanded) R.string.pc_cd_collapse else R.string.pc_cd_expand))
                         } else Spacer(Modifier.width(32.dp))
                         Column(Modifier.weight(1f)) {
                             Text("<${nd.type}>" + (nd.title.takeIf { it.isNotBlank() }?.let { " $it" } ?: ""), style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -384,7 +384,7 @@ private fun DestinationsPane(state: ReaderState, onJump: (Int) -> Unit) {
                         leadingContent = { Icon(Icons.Default.Place, null) },
                         trailingContent = {
                             Box {
-                                IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, null) }
+                                IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, stringResource(R.string.pc_cd_more)) }
                                 DropdownMenu(menu, { menu = false }) {
                                     DropdownMenuItem(text = { Text(stringResource(R.string.np_go)) }, enabled = d.page != null, onClick = { menu = false; d.page?.let(onJump) })
                                     DropdownMenuItem(text = { Text(stringResource(R.string.np_rename)) }, onClick = { menu = false; dialog = d to d.name })

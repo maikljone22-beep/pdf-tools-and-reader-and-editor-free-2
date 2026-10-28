@@ -105,7 +105,8 @@ fun CommentManagerSheet(v: V5State, onMessage: (String) -> Unit) {
                 Text("${shown.size}/${all.size}", style = MaterialTheme.typography.labelLarge)
                 var exportOpen by remember { mutableStateOf(false) }
                 Box {
-                    IconButton(onClick = { exportOpen = true }) { Icon(Icons.Default.IosShare, stringResource(R.string.v5_export)) }
+                    // tabs audit CM-12: CSV / Word / summaries / highlights carry the document's text: copy permission needed
+                    IconButton(onClick = { if (s.guard.check(com.smartdocs.editor.core.security.DocAction.COPY)) exportOpen = true }) { Icon(Icons.Default.IosShare, stringResource(R.string.v5_export)) }
                     DropdownMenu(exportOpen, { exportOpen = false }) {
                         DropdownMenuItem(text = { Text(stringResource(R.string.v5_export_csv)) }, leadingIcon = { Icon(Icons.Default.TableChart, null) }, onClick = {
                             exportOpen = false
@@ -153,7 +154,7 @@ fun CommentManagerSheet(v: V5State, onMessage: (String) -> Unit) {
             }
             OutlinedTextField(filter.query, { filter = filter.copy(query = it) }, Modifier.fillMaxWidth(), singleLine = true,
                 leadingIcon = { Icon(Icons.Default.Search, null) }, placeholder = { Text(stringResource(R.string.v5_search_comments)) },
-                trailingIcon = { if (filter.query.isNotEmpty()) IconButton(onClick = { filter = filter.copy(query = "") }) { Icon(Icons.Default.Clear, null) } })
+                trailingIcon = { if (filter.query.isNotEmpty()) IconButton(onClick = { filter = filter.copy(query = "") }) { Icon(Icons.Default.Clear, stringResource(R.string.pc_cd_clear)) } })
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 MultiFilter(stringResource(R.string.v5_col_author), CommentFilter.authors(all), filter.authors, { it }) { filter = filter.copy(authors = it) }
                 MultiFilter(stringResource(R.string.v5_col_type), CommentFilter.types(all), filter.types, { CommentRows.typeLabel(ctx, it) }) { filter = filter.copy(types = it) }
@@ -195,9 +196,10 @@ fun CommentManagerSheet(v: V5State, onMessage: (String) -> Unit) {
                 runCatching {
                     s.applyInPlace(label = { s.context.getString(R.string.hi_comment_style) }, action = com.smartdocs.editor.core.security.DocAction.ANNOTATE) { src, out, pw ->
                         withContext(Dispatchers.IO) {
-                            com.smartdocs.editor.core.pdf.PdfOps.load(src, pw).use { doc ->
+                            // signed-safe (incremental on signed files, refused on certified ones) — audit CM-02
+                            com.smartdocs.editor.core.pdf.SignedSave.editFile(src, out, pw) { doc ->
                                 if (!com.smartdocs.editor.core.view5.CommentWriter5.restyle(doc, r.page, r.index, w, d, st, en, c)) error(ctx.getString(R.string.error_generic))
-                                doc.save(out)
+                                listOf(r.page)
                             }
                         }
                     }

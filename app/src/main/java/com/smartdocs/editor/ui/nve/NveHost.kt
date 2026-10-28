@@ -232,8 +232,8 @@ fun NveQuadSplit(s: ReaderState) {
                     Text(stringResource(R.string.nv_quad_split), Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
                     IconButton(onClick = { active = (active + 3) % 4 }) { Icon(Icons.Default.NavigateBefore, stringResource(R.string.nv_prev_pane)) }
                     IconButton(onClick = { active = (active + 1) % 4 }) { Icon(Icons.Default.NavigateNext, stringResource(R.string.nv_next_pane)) }
-                    IconButton(onClick = { zooms[active] = (zooms[active] / 1.25f).coerceAtLeast(0.5f) }) { Icon(Icons.Default.ZoomOut, null) }
-                    IconButton(onClick = { zooms[active] = (zooms[active] * 1.25f).coerceAtMost(4f) }) { Icon(Icons.Default.ZoomIn, null) }
+                    IconButton(onClick = { zooms[active] = (zooms[active] / 1.25f).coerceAtLeast(0.5f) }) { Icon(Icons.Default.ZoomOut, stringResource(R.string.pc_cd_zoom_out)) }
+                    IconButton(onClick = { zooms[active] = (zooms[active] * 1.25f).coerceAtMost(4f) }) { Icon(Icons.Default.ZoomIn, stringResource(R.string.pc_cd_zoom_in)) }
                     FilterChip(syncRows, { syncRows = !syncRows }, label = { Text(stringResource(R.string.nv_sync_rows)) })
                     Spacer(Modifier.width(4.dp))
                     FilterChip(syncCols, { syncCols = !syncCols }, label = { Text(stringResource(R.string.nv_sync_cols)) })

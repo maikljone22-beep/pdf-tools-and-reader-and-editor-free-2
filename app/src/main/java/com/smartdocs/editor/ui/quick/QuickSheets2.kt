@@ -41,7 +41,7 @@ fun ProtectSheet(c: QuickController, onDismiss: () -> Unit) {
     QuickSheet(stringResource(R.string.qk_pr_title), stringResource(R.string.qk_pr_btn), primaryEnabled = pw.isNotEmpty() && pw == confirm,
         onPrimary = { c.protect(pw, owner, print, copy, modify, annotate, forms) }, onDismiss = onDismiss) {
         OutlinedTextField(pw, { pw = it }, label = { Text(stringResource(R.string.qk_pr_password)) }, singleLine = true, visualTransformation = vt,
-            trailingIcon = { IconButton(onClick = { show = !show }) { Icon(if (show) Icons.Default.VisibilityOff else Icons.Default.Visibility, null) } },
+            trailingIcon = { IconButton(onClick = { show = !show }) { Icon(if (show) Icons.Default.VisibilityOff else Icons.Default.Visibility, stringResource(if (show) R.string.pc_cd_hide else R.string.pc_cd_show)) } },
             modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(8.dp))
         OutlinedTextField(confirm, { confirm = it }, label = { Text(stringResource(R.string.qk_pr_confirm)) }, singleLine = true, visualTransformation = vt,

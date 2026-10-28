@@ -169,8 +169,8 @@ fun SplitCompareDialog(v: V5State, compare: Boolean) {
 @Composable
 private fun ZoomButtons(z: Float, onZoom: (Float) -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        IconButton(onClick = { onZoom((z / 1.25f).coerceAtLeast(0.5f)) }, Modifier.size(32.dp)) { Icon(Icons.Default.ZoomOut, null) }
+        IconButton(onClick = { onZoom((z / 1.25f).coerceAtLeast(0.5f)) }, Modifier.size(32.dp)) { Icon(Icons.Default.ZoomOut, stringResource(R.string.pc_cd_zoom_out)) }
         Text("${(z * 100).toInt()}%", style = MaterialTheme.typography.labelSmall)
-        IconButton(onClick = { onZoom((z * 1.25f).coerceAtMost(4f)) }, Modifier.size(32.dp)) { Icon(Icons.Default.ZoomIn, null) }
+        IconButton(onClick = { onZoom((z * 1.25f).coerceAtMost(4f)) }, Modifier.size(32.dp)) { Icon(Icons.Default.ZoomIn, stringResource(R.string.pc_cd_zoom_in)) }
     }
 }
