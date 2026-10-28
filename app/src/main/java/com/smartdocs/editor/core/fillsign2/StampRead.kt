@@ -46,4 +46,11 @@ object StampRead {
         val deg = Math.toDegrees(atan2(b.toDouble(), a.toDouble())).roundToInt()
         return ((-deg % 360) + 360) % 360
     }
+
+    /**
+     * Tab audit D9: clockwise rotation of the stamp image as the reader shows it on a page turned by [pageRotate]
+     * (/Rotate), from its rotation in user space [appearanceRot] ([rotationOf]). A stamp written upright for the
+     * turned page (appearance /Matrix of SigFields.matrixFor) reads back as 0.
+     */
+    fun displayRotation(appearanceRot: Int, pageRotate: Int): Int = ((appearanceRot + FsGeom.norm(pageRotate)) % 360 + 360) % 360
 }

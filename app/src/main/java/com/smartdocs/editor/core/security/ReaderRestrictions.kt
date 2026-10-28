@@ -61,8 +61,11 @@ object PermissionBits {
 /** Things a reader user can do that a document's restrictions (or Protected View) may forbid. */
 enum class DocAction { PRINT, COPY, ANNOTATE, MODIFY, FILL_FORMS, ASSEMBLE, SAVE_UNPROTECTED, CHANGE_SECURITY }
 
-/** Why an action is refused: the author's permissions, or the file is shown in Protected View. */
-enum class Block { AUTHOR, PROTECTED_VIEW }
+/**
+ * Why an action is refused: the author's permissions, the file is shown in Protected View, or (tab audit D8) a
+ * certification / FieldMDP lock of a signature forbids it ([CertifiedLock]).
+ */
+enum class Block { AUTHOR, PROTECTED_VIEW, CERTIFIED }
 
 /**
  * Decision table of the reader's restrictions (rows 2 and 6). A document opened with its user password (or an
