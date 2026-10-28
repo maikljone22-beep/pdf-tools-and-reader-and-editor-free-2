@@ -74,6 +74,17 @@ sealed class NavAction {
     data class Launch(val file: String, val newWindow: Boolean = true) : NavAction()
     data class Named(val name: String) : NavAction()
     data class Js(val script: String) : NavAction()
+    /**
+     * fix/links-bookmarks (Foxit §15 GoToE): a page view or named destination inside an embedded file of this
+     * document; [attachment] is its key in the /EmbeddedFiles name tree.
+     */
+    data class GoToE(val attachment: String, val page: Int = 0, val named: String = "", val view: DestView = DestView(DestFit.FIT), val newWindow: Boolean = true) : NavAction()
+    /**
+     * fix/links-bookmarks (Foxit §15 play media / sound): [sound] = a /Sound action (WAV samples), else a /Rendition
+     * action with the clip embedded. [file] = a local file embedded when written; blank = the clip of the original
+     * action at [index] is kept unchanged. [name] / [mime] describe the clip.
+     */
+    data class Media(val name: String, val file: String = "", val sound: Boolean = false, val index: Int = -1, val mime: String = "") : NavAction()
     data class Kept(val type: String, val index: Int) : NavAction()
 }
 
@@ -142,8 +153,28 @@ object NavActions {
             "Launch" -> NavAction.Launch(fileName(a.getDictionaryObject(COSName.F)), a.getBoolean(COSName.getPDFName("NewWindow"), true))
             "Named" -> NavAction.Named(a.getNameAsString(COSName.N) ?: "")
             "JavaScript" -> jsText(a.getDictionaryObject(COSName.JS))?.let { NavAction.Js(it) } ?: NavAction.Kept(s, index)
+            "GoToE" -> decodeGoToE(a) ?: NavAction.Kept(s, index)
+            "Sound" -> if (deref(a.getDictionaryObject(NavMedia.SOUND)) is COSStream) NavAction.Media("sound.wav", sound = true, index = index, mime = "audio/wav") else NavAction.Kept(s, index)
+            "Rendition" -> NavMedia.clipInfo(a)?.let { (n, m) -> NavAction.Media(n, index = index, mime = m) } ?: NavAction.Kept(s, index)
             else -> NavAction.Kept(s.ifBlank { "?" }, index)
         }
+    }
+
+    private val T = COSName.getPDFName("T")
+    private val R = COSName.getPDFName("R")
+
+    /** A GoToE into an embedded file of this document (/T << /R /C /N name >>, no nested target, no /F); else null. */
+    private fun decodeGoToE(a: COSDictionary): NavAction.GoToE? {
+        if (a.getDictionaryObject(COSName.F) != null) return null
+        val t = deref(a.getDictionaryObject(T)) as? COSDictionary ?: return null
+        if (t.getNameAsString(R) != "C" || t.getDictionaryObject(T) != null) return null
+        val name = t.getString(COSName.N) ?: return null
+        val d = deref(a.getDictionaryObject(COSName.D))
+        return NavAction.GoToE(name,
+            page = (d as? COSArray)?.let { (deref(it.getObject(0)) as? COSNumber)?.intValue() }?.coerceAtLeast(0) ?: 0,
+            named = (d as? COSString)?.string ?: (d as? COSName)?.name ?: "",
+            view = (d as? COSArray)?.let { Dests.view(it) } ?: DestView(DestFit.FIT),
+            newWindow = a.getBoolean(COSName.getPDFName("NewWindow"), true))
     }
 
     /** The whole list starting at [head] (an /A value). */
@@ -176,6 +207,13 @@ object NavActions {
             is NavAction.Launch -> act("Launch").apply { setItem(COSName.F, fileSpec(relative(a.file, docFile))); setBoolean(COSName.getPDFName("NewWindow"), a.newWindow) }
             is NavAction.Named -> act("Named").apply { setName(COSName.N, a.name) }
             is NavAction.Js -> act("JavaScript").apply { setString(COSName.JS, a.script) }
+            is NavAction.GoToE -> act("GoToE").apply {
+                setItem(T, COSDictionary().apply { setName(R, "C"); setString(COSName.N, a.attachment) })
+                setItem(COSName.D, if (a.named.isNotBlank()) COSString(a.named) else Dests.array(COSInteger.get(a.page.coerceAtLeast(0).toLong()), a.view))
+                setBoolean(COSName.getPDFName("NewWindow"), a.newWindow)
+            }
+            is NavAction.Media -> if (a.file.isBlank()) original.getOrNull(a.index)?.let { o -> COSDictionary(o).apply { removeItem(COSName.NEXT) } }
+                else runCatching { NavMedia.build(doc, File(a.file), a.sound, a.mime) }.getOrNull()
             is NavAction.Kept -> original.getOrNull(a.index)?.let { o -> COSDictionary(o).apply { removeItem(COSName.NEXT) } }
         }
     }

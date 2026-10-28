@@ -32,7 +32,34 @@ import java.util.Locale
  */
 object VideoPdf {
 
-    data class Options(val autoplay: Boolean = false, val loop: Boolean = false, val muted: Boolean = false, val controls: Boolean = true)
+    /**
+     * Player options. FINAL_CHECK_2 #15 (§19 video properties / playback settings / media actions): [volume] 0–100,
+     * [repeat] plays when not [loop]ing, [keepOpen] the player stays after playback (else the poster comes back),
+     * [fullscreen] plays full screen (MediaScreenParams `/W 1`), [startOn] the page trigger of [autoplay]
+     * ([START_VISIBLE] `/PV`, [START_OPEN] `/PO`), [stopWhenHidden] stop actions on `/PI` and `/PC`, [poster] mode
+     * ([POSTER_AUTO], [POSTER_NONE], [POSTER_FILE]) and [alt] text (`/Contents`, the media clip's `/Alt`).
+     */
+    data class Options(
+        val autoplay: Boolean = false, val loop: Boolean = false, val muted: Boolean = false, val controls: Boolean = true,
+        val volume: Int = 100,
+        val repeat: Int = 1,
+        val keepOpen: Boolean = true,
+        val fullscreen: Boolean = false,
+        val startOn: Int = START_VISIBLE,
+        val stopWhenHidden: Boolean = true,
+        val poster: Int = POSTER_AUTO,
+        val alt: String = "",
+    ) {
+        /** Player volume 0..1 (muted → 0). */
+        val gain: Float get() = if (muted) 0f else volume.coerceIn(0, 100) / 100f
+    }
+
+    const val START_VISIBLE = 0
+    const val START_OPEN = 1
+    const val POSTER_AUTO = 0
+    const val POSTER_NONE = 1
+    const val POSTER_FILE = 2
+    const val MAX_REPEAT = 99
 
     /** A baseline JPEG and its pixel size. */
     class Poster(val jpeg: ByteArray, val width: Int, val height: Int)
@@ -78,6 +105,10 @@ object VideoPdf {
     private val V = COSName.getPDFName("V")
     private val PV = COSName.getPDFName("PV")
     private val PO = COSName.getPDFName("PO")
+    private val PI = COSName.getPDFName("PI")
+    private val PC = COSName.getPDFName("PC")
+    private val SP = COSName.getPDFName("SP")
+    private val W = COSName.getPDFName("W")
     private val AP = COSName.getPDFName("AP")
     private val MK = COSName.getPDFName("MK")
     private val CA = COSName.getPDFName("CA")
@@ -138,7 +169,7 @@ object VideoPdf {
         annot.setInt(COSName.F, 4)                         // print
         annot.setItem(P, page.cosObject)
         annot.setString(COSName.T, title.ifBlank { label })
-        annot.setString(COSName.CONTENTS, contents.ifBlank { label })
+        annot.setString(COSName.CONTENTS, options.alt.ifBlank { contents.ifBlank { label } })
         annot.setItem(COSName.C, COSArray().apply { rgb(color).forEach { add(com.tom_roush.pdfbox.cos.COSFloat(it)) } })
         annot.setName(SD_MEDIA, "Video")
         annot.setItem(SD_VIDEO, optionsDict(options))
@@ -151,16 +182,21 @@ object VideoPdf {
                 setString(CT, ct)
                 setItem(D, spec)
                 setItem(P, COSDictionary().apply { setName(COSName.TYPE, "MediaPermissions"); setString(COSName.getPDFName("TF"), "TEMPACCESS") })
-                setItem(COSName.getPDFName("Alt"), COSArray().apply { add(COSString("")); add(COSString(label)) })
+                setItem(COSName.getPDFName("Alt"), COSArray().apply { add(COSString("")); add(COSString(options.alt.ifBlank { label })) })
             })
             setItem(P, playParams(options))
-            setItem(COSName.getPDFName("SP"), COSDictionary().apply {
+            setItem(SP, COSDictionary().apply {
                 setName(COSName.TYPE, "MediaScreenParams")
-                setItem(BE, COSDictionary().apply { setInt(COSName.getPDFName("W"), 3) })   // play in the annotation's rect
+                // play in the annotation's rect (3), or full screen (1)
+                setItem(BE, COSDictionary().apply { setInt(W, if (options.fullscreen) 1 else 3) })
             })
         }
         annot.setItem(A, renditionAction(rendition, annot))
-        if (options.autoplay) annot.setItem(AA, COSDictionary().apply { setItem(PV, renditionAction(rendition, annot)) })
+        // media actions: start on page open / visible, stop when the page is hidden / closed
+        val aa = COSDictionary()
+        if (options.autoplay) aa.setItem(if (options.startOn == START_OPEN) PO else PV, renditionAction(rendition, annot))
+        if (options.stopWhenHidden) { aa.setItem(PI, stopAction(annot)); aa.setItem(PC, stopAction(annot)) }
+        if (aa.size() > 0) annot.setItem(AA, aa)
         annot.setItem(AP, COSDictionary().apply { setItem(N, appearance(doc, w, h, poster)) })
 
         // PDAnnotationUnknown directly: createAnnotation only logs "unsupported subtype" for /Screen
@@ -176,19 +212,34 @@ object VideoPdf {
         setItem(AN, annot)
     }
 
+    /** Rendition action that stops the media playing in [annot] (`/OP 1`). */
+    private fun stopAction(annot: COSDictionary) = COSDictionary().apply {
+        setName(COSName.TYPE, "Action"); setName(S, "Rendition")
+        setInt(OP, 1)
+        setItem(AN, annot)
+    }
+
     private fun optionsDict(o: Options) = COSDictionary().apply {
         setBoolean(COSName.getPDFName("Autoplay"), o.autoplay)
         setBoolean(COSName.getPDFName("Loop"), o.loop)
         setBoolean(COSName.getPDFName("Muted"), o.muted)
         setBoolean(COSName.getPDFName("Controls"), o.controls)
+        setInt(COSName.getPDFName("Volume"), o.volume.coerceIn(0, 100))
+        setInt(COSName.getPDFName("Repeat"), o.repeat.coerceIn(1, MAX_REPEAT))
+        setBoolean(COSName.getPDFName("KeepOpen"), o.keepOpen)
+        setBoolean(COSName.getPDFName("Fullscreen"), o.fullscreen)
+        setInt(COSName.getPDFName("StartOn"), o.startOn)
+        setBoolean(COSName.getPDFName("StopHidden"), o.stopWhenHidden)
+        setInt(COSName.getPDFName("Poster"), o.poster)
+        if (o.alt.isNotBlank()) setString(COSName.getPDFName("Alt"), o.alt)
     }
 
     private fun playParams(o: Options) = COSDictionary().apply {
         setName(COSName.TYPE, "MediaPlayParams")
         val be = COSDictionary().apply {
             setBoolean(C, o.controls)
-            setInt(V, if (o.muted) 0 else 100)
-            setInt(RC, if (o.loop) 0 else 1)               // repeat count: 0 = forever
+            setInt(V, if (o.muted) 0 else o.volume.coerceIn(0, 100))
+            setInt(RC, if (o.loop) 0 else o.repeat.coerceIn(1, MAX_REPEAT))   // repeat count: 0 = forever
             setBoolean(A, true)                            // start as soon as the rendition is activated
         }
         setItem(BE, be)
@@ -308,18 +359,41 @@ object VideoPdf {
         return (v as? COSBoolean)?.value ?: def
     }
 
+    private fun int(d: COSDictionary?, key: String, def: Int): Int = (d?.getDictionaryObject(COSName.getPDFName(key)) as? COSNumber)?.intValue() ?: def
+
     private fun ourOptions(cos: COSDictionary): Options? = dict(cos.getDictionaryObject(SD_VIDEO))?.let {
-        Options(bool(it, "Autoplay", false), bool(it, "Loop", false), bool(it, "Muted", false), bool(it, "Controls", true))
+        Options(bool(it, "Autoplay", false), bool(it, "Loop", false), bool(it, "Muted", false), bool(it, "Controls", true),
+            volume = int(it, "Volume", 100).coerceIn(0, 100), repeat = int(it, "Repeat", 1).coerceIn(1, MAX_REPEAT),
+            keepOpen = bool(it, "KeepOpen", true), fullscreen = bool(it, "Fullscreen", false),
+            startOn = int(it, "StartOn", START_VISIBLE).coerceIn(START_VISIBLE, START_OPEN), stopWhenHidden = bool(it, "StopHidden", true),
+            poster = int(it, "Poster", POSTER_AUTO).coerceIn(POSTER_AUTO, POSTER_FILE), alt = it.getString(COSName.getPDFName("Alt")) ?: "")
     }
 
-    /** Options from a rendition (MediaPlayParams /MH or /BE) and the triggers that start it. */
-    private fun renditionOptions(mr: COSDictionary, triggers: Collection<String>): Options {
+    /** True when /AA [key] of [cos] holds a rendition action that stops the media (`/OP 1`). */
+    private fun stopsOn(cos: COSDictionary, key: COSName): Boolean {
+        val a = dict(dict(cos.getDictionaryObject(AA))?.getDictionaryObject(key)) ?: return false
+        return a.getNameAsString(S) == "Rendition" && (a.getDictionaryObject(OP) as? COSNumber)?.intValue() == 1
+    }
+
+    /** Options from a rendition (MediaPlayParams /MH or /BE, MediaScreenParams), the triggers that start it and the stop actions. */
+    private fun renditionOptions(cos: COSDictionary, mr: COSDictionary, clip: COSDictionary, triggers: Collection<String>): Options {
         val pp = dict(mr.getDictionaryObject(P))
         val p = dict(pp?.getDictionaryObject(MH)) ?: dict(pp?.getDictionaryObject(BE))
         val rc = (p?.getDictionaryObject(RC) as? COSNumber)?.floatValue()
         val vol = (p?.getDictionaryObject(V) as? COSNumber)?.intValue()
         val controls = (p?.getDictionaryObject(C) as? COSBoolean)?.value ?: true
-        return Options(autoplay = triggers.any { it == "PV" || it == "PO" }, loop = rc != null && rc <= 0f, muted = vol == 0, controls = controls)
+        val sp = dict(mr.getDictionaryObject(SP))
+        val w = (dict(sp?.getDictionaryObject(MH)) ?: dict(sp?.getDictionaryObject(BE)))?.let { int(it, "W", 3) } ?: 3
+        // /Alt is a multi-language text array: (lang, text) pairs
+        val alt = (clip.getDictionaryObject(COSName.getPDFName("Alt")) as? COSArray)?.let { arr ->
+            (1 until arr.size() step 2).firstNotNullOfOrNull { (arr.getObject(it) as? COSString)?.string?.takeIf { s -> s.isNotBlank() } }
+        } ?: ""
+        val loop = rc != null && rc <= 0f
+        return Options(autoplay = triggers.any { it == "PV" || it == "PO" }, loop = loop, muted = vol == 0, controls = controls,
+            volume = (vol ?: 100).coerceIn(0, 100).let { if (it == 0) 100 else it },
+            repeat = if (loop || rc == null) 1 else rc.toInt().coerceIn(1, MAX_REPEAT),
+            fullscreen = w == 1, startOn = if ("PV" !in triggers && "PO" in triggers) START_OPEN else START_VISIBLE,
+            stopWhenHidden = stopsOn(cos, PI) || stopsOn(cos, PC), alt = alt)
     }
 
     /** Video information of an annotation, or null when it is not a video. Never throws. */
@@ -343,7 +417,7 @@ object VideoPdf {
                 if (!mime.startsWith("video/") && !ours && !(mime.isBlank() && videoMime(name).isNotEmpty())) return null
                 val ef = embedded(d as? COSDictionary)
                 val triggers = mrs.filter { it.second === mr }.map { it.first }
-                info(Form.SCREEN, mime.ifBlank { "video/mp4" }, name, ourOptions(cos) ?: renditionOptions(mr, triggers), ef != null, ef?.let(::streamSize) ?: 0L)
+                info(Form.SCREEN, mime.ifBlank { "video/mp4" }, name, ourOptions(cos) ?: renditionOptions(cos, mr, clip, triggers), ef != null, ef?.let(::streamSize) ?: 0L)
             }
             "RichMedia" -> {
                 val content = dict(cos.getDictionaryObject(RM_CONTENT)) ?: return null

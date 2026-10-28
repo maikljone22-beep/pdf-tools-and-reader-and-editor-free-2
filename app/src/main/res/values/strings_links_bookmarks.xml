@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- fix/links-bookmarks: GoToE, media / sound actions, recent URLs, web links, bookmark defaults, tags, auto-bookmark titles -->
+<resources>
+    <string name="lbm_act_embedded">الانتقال إلى عرض في مرفق</string>
+    <string name="lbm_act_media">تشغيل وسائط</string>
+    <string name="lbm_act_sound">تشغيل صوت</string>
+    <string name="lbm_sum_embedded">المرفق %1$s</string>
+    <string name="lbm_attachment">المرفق</string>
+    <string name="lbm_no_attachments">لا توجد ملفات مرفقة بهذا المستند. أضف ملفًا من المرفقات أولًا.</string>
+    <string name="lbm_media_pick">اختر ملف صوت أو فيديو</string>
+    <string name="lbm_media_note">يُضمَّن الملف في PDF ويُشغَّل في نافذة عائمة في Acrobat وFoxit وNitro. وفي SmartDocs يُفتح في مشغّل الوسائط.</string>
+    <string name="lbm_sound_note">اختر ملف WAV ‏(PCM). يُحفظ صوتًا في PDF ويعمل في معظم قارئات PDF.</string>
+    <string name="lbm_sound_not_wav">هذا ليس ملف WAV ‏PCM. اختر ملفًا آخر أو استخدم «تشغيل وسائط».</string>
+    <string name="lbm_media_missing">المقطع غير مضمَّن في هذا الملف</string>
+    <string name="lbm_recent_urls">عناوين URL المستخدمة مؤخرًا</string>
+    <string name="lbm_recent_clear">مسح القائمة</string>
+    <string name="lbm_bm_set_view">تعيين الوجهة إلى العرض الحالي</string>
+    <string name="lbm_bm_view_set">صارت الإشارة المرجعية تنتقل إلى الصفحة %1$d بالتكبير والموضع الحاليين</string>
+    <string name="lbm_bm_use_default">استخدام هذا المظهر افتراضيًا</string>
+    <string name="lbm_bm_defaults">افتراضيات الإشارات الجديدة</string>
+    <string name="lbm_bm_defaults_help">تبدأ الإشارات المرجعية التي تضيفها يدويًا (هنا ومن النص المحدد في القارئ) بهذا العرض وهذا المظهر.</string>
+    <string name="lbm_bm_from_tags">إشارات من العلامات</string>
+    <string name="lbm_tags_help">تُنشأ إشارة مرجعية لكل عنصر بنية من الأنواع المختارة (العناوين H1 إلى H6 تصبح المستويات 1 إلى 6). العنوان هو نص العنصر.</string>
+    <string name="lbm_tags_none">لم يُعثر على عناصر موسومة من هذه الأنواع (قد لا يكون المستند موسومًا)</string>
+    <string name="lbm_title_text">نص الإشارة المرجعية</string>
+    <string name="lbm_case_keep">كما هو</string>
+    <string name="lbm_case_upper">أحرف كبيرة</string>
+    <string name="lbm_case_lower">أحرف صغيرة</string>
+    <string name="lbm_case_title">أول حرف من كل كلمة كبير</string>
+    <string name="lbm_case_sentence">أول حرف من الجملة كبير</string>
+    <string name="lbm_text_before">نص قبل</string>
+    <string name="lbm_text_after">نص بعد</string>
+    <string name="lbm_alnum_only">إزالة الرموز غير الأبجدية الرقمية</string>
+    <string name="lbm_stop_words">كلمات مستبعدة</string>
+    <string name="lbm_stop_words_help">كلمات تُحذف من العناوين، مفصولة بفواصل</string>
+    <string name="lbm_title_sample">1. مقدمة التقرير</string>
+    <string name="lbm_title_preview">مثال: %1$s</string>
+    <string name="lbm_web_links">روابط الويب</string>
+    <string name="lbm_web_none">لا توجد روابط ويب في هذه الصفحات</string>
+    <string name="lbm_web_n">تم تحديد %1$d من %2$d</string>
+    <string name="lbm_web_pages">الصفحات: %1$s</string>
+    <string name="lbm_web_append_opts">عند الإلحاق</string>
+    <string name="lbm_web_bookmarks">إضافة إشارة مرجعية لكل صفحة ويب</string>
+    <string name="lbm_web_by_domain">تجميع الإشارات حسب النطاق</string>
+    <string name="lbm_web_relink">توجيه الروابط إلى الصفحات المُلحقة</string>
+    <string name="lbm_web_download">تنزيل</string>
+    <string name="lbm_web_convert">حفظ بصيغة PDF</string>
+    <string name="lbm_web_append">إلحاق بالمستند</string>
+    <string name="lbm_web_working">جارٍ العمل على %1$d من %2$d…</string>
+    <string name="lbm_web_done">تم: %1$d، فشل أو حُظر: %2$d</string>
+    <string name="lbm_web_appended">أُلحقت %1$d صفحة</string>
+</resources>
