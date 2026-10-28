@@ -110,3 +110,20 @@ Strings: `strings_pc.xml` (prefix `pc_`). Tests: `PageOrganizeTest`.
 | Binder: include a file as an attachment instead of converting | DONE | `CombineEntry.attach` |
 | Edit a part and save it back into the portfolio | OPEN | parts open as extracted copies |
 | Binder: Word TOC template with field codes; metadata columns from Office properties | OPEN | |
+
+## Stage E — layers
+
+| Row | Status | Where |
+|---|---|---|
+| Layers pane: show / hide (with preview), show all / hide all | DONE | `LayersScreen` (tool `e5_layers`), `Layers.setOn` / `showAll`; reader INFO › Layers links to it |
+| Reset to initial visibility | DONE | `Layers.reset` (states captured on open) |
+| Expand / collapse (groups of the layer order) | DONE | `Layers.list` depth / group from /Order |
+| Layers listed with the pages they appear on | DONE | `Layers.pagesOf` |
+| Layer properties: name, intent (View / Design), default state, locked | DONE | `Layers.rename` / `setIntent` / `setOn` / `setLocked` |
+| Visibility / Print / Export usage (when visible / never / always) | DONE | `Layers.setUse` (/Usage + /D /AS) |
+| Apply print / export overrides | DONE | `Layers.applyOverrides` |
+| Set OCG state action | DONE | `Layers.setStateAction`, "bookmark that shows only this layer" |
+| Import as layer (picture / PDF page; page range) | DONE | `Layers.importImage` / `importPage` |
+| Merge layers / flatten layers / delete layer / reorder | DONE | `Layers.merge` / `flatten` / `delete` (content via the sanitizer's hidden-layer pass) / `move` |
+| New layer | DONE | `Layers.create` |
+| Image-editor layers palette (opacity, blending) | OPEN | belongs to the image editor (nve) |

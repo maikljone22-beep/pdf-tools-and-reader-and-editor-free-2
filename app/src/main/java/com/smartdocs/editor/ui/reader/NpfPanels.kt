@@ -124,11 +124,15 @@ private fun NpfPanelBody(state: ReaderState, panel: NpfPanel, onJump: (Int) -> U
     Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
         message?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
         when (panel) {
-            NpfPanel.LAYERS -> NpfRows(data as? List<*>, R.string.npf_p_none_layers) { l ->
-                l as NpfDocPanels.Layer
-                Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(l.name, Modifier.weight(1f)); Switch(l.on, { v -> change { NpfDocPanels.setLayer(it, l.index, v) } })
+            NpfPanel.LAYERS -> {
+                NpfRows(data as? List<*>, R.string.npf_p_none_layers) { l ->
+                    l as NpfDocPanels.Layer
+                    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(l.name, Modifier.weight(1f)); Switch(l.on, { v -> change { NpfDocPanels.setLayer(it, l.index, v) } })
+                    }
                 }
+                // Nitro 18 / Foxit 22: properties, order, merge, delete, import … in the Layers tool
+                androidx.compose.material3.TextButton(onClick = { nav?.navigate(Routes.tool("e5_layers", state.fileUri)) }) { Text(stringResource(R.string.pc_ly_more)) }
             }
             NpfPanel.SECURITY -> (data as? NpfDocPanels.Security)?.let { s ->
                 Column {
