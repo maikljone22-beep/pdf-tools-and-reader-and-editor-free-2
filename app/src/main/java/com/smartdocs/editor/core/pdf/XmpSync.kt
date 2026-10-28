@@ -24,7 +24,7 @@ object XmpSync {
 
     /** First rdf:li inside <[tag]> … </[tag]>. */
     private fun li(s: String, tag: String, value: String): String {
-        val re = Regex("(<" + Regex.escape(tag) + """[^>]*>.*?<rdf:li[^>]*>)(.*?)(</rdf:li>)""", RegexOption.DOT_MATCHES_ALL)
+        val re = Regex("(<" + Regex.escape(tag) + """\b[^>]*>.*?<rdf:li\b[^>]*>)(.*?)(</rdf:li>)""", RegexOption.DOT_MATCHES_ALL)
         return first(re, s, value)
     }
 
