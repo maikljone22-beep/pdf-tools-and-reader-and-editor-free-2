@@ -11,7 +11,86 @@ documentation, **[COMM]** forum / third-party page, **[KNOW]** product knowledge
 
 ## 1. Research — desktop PDF editors (installed, read-only)
 
-_Nitro PDF Pro 14, Foxit PDF Editor 14 and Acrobat Reader desktop resource extraction: being added (see the next commit of this file)._
+Extraction scripts / dumps (scratchpad): `acro_tools\menus.py` (RT_MENU parser), `acro_tools\fx_exe_menus2.txt`,
+`fx_fpi_menus2.txt`, `acro\*.strings.txt`, `nitro\raw\*.mui.txt`. Tags: **[R]** real MENU resource (exact order / labels),
+**[S]** string table (labels exact, order built in code), **[M]** manual.
+
+### 1.1 Nitro PDF Pro 14 (menus built in code, `CAVToolSelect::InitializeContextMenus`)
+- **Selected text**: [R] ActiveX viewer MENU 2000: Copy Text (Ctrl+C), Copy With Formatting (Ctrl+Alt+C), Rotate View, Search Google for…
+  · [S] NitroPDF.exe.mui: Copy Text 237, Copy With Formatting 57897, Highlight Text 426, Underline Text 427, Cross Out Text 428,
+  Add Note To Text 429, Create Link 430, Add Bookmark 115, Select All 251, Deselect All 425, Search Google for… 286, Copy As Table 242,
+  Edit Text (np_annotations 1287), Replace Text (np_annotations 1121/1176; smart tip np_smart_tips 1017). ≈12.
+- **Annotation**: Reply, Delete, Properties…, Open/Close Pop-up Note, Reset Pop-up Location, Make Current Properties Default,
+  Show/Hide Comments List, Flatten Selection / All, Reply to Note, Copy / Paste annotation, Align ▸ / Center ▸ / Distribute ▸ / Size ▸,
+  attachments: Open File, Save Embedded File (np_annotations 1030–1459). ≈15.
+- **Object (Edit)**: Edit Text, Copy, Paste, Delete, Send to Back, Bring to Front, Properties, Replace Image, Extract Image, Copy Image,
+  Crop, Flip ▸, Rotate ▸, Convert colourspace, Resample, Brightness/Contrast, Align/Center/Distribute/Size, Flatten, Edit as Watermark /
+  Header & Footer (np_objects 1008–1253). ≈18.
+- **Form field**: signature field: Properties, Clear, Validate, View Signed Version, Sign, Go To; form-edit: Properties, Set Tab Order,
+  Rotate ▸, Use Current Appearance as Default, Make Copies…, Align…, Show/Hide fields (np_forms). ≈15. Fill mode: none found.
+- **Link** (edit mode): Edit, Properties…, Use Current Appearance as Default, Align/Center/Distribute, Delete. Viewer "Open/Copy link": not found.
+- **Empty page**: Select All, Deselect All, Next / Previous Page, Add Note, Print, Find, Document Properties…, Paste, Rotate View ▸,
+  Zoom (Actual / Fit Page / Fit Width), Hand / Select / Snapshot · [R] preview handler MENU 119: Rotate CCW / CW, First / Previous / Next / Last Page. ≈14.
+- **Thumbnail**: Copy / Paste Pages, Insert (file / clipboard / scanner / blank), Extract, Delete, Crop, Rotate, Replace, Duplicate, Print,
+  Embed / Remove thumbnails, Enlarge / Reduce, Split, Redact Pages, OCR Pages (np_page_edit). ≈20.
+- **Bookmark**: [R] MENU 1016: New, Delete, Rename, —, Properties; [S] Auto Build, Delete All, Expand/Collapse All, Print / Extract pages, Edit Actions.
+- **Floating mini toolbar**: none (context ribbon instead).
+
+### 1.2 Foxit PDF Editor 14 (≈60 MENU resources)
+- **Selected text**: [R] MENU 8174 "TextCopy": Copy, Copy With Formatting, Export Selection As…, —, Select All; [M] added in code:
+  Edit Text, Create Link, Add Bookmark, Highlight / Underline / Strikeout / Squiggly, Look Up (dictionary.com), Word Count,
+  Search in Internet, Copy Text on markups. ≈12.
+- **Floating bar after selecting text** (pref "Show floating bar when selecting text"): Copy, text markup, Bookmark, and AI:
+  AI Assistant, Explain, Summarize, Translate, Enhance Writing, Fix Spelling (AI_FloatBar_* keys). ≈8–10 (labels encrypted).
+- **Annotation**: [R] MENU 2342: Properties…, —, Cut, Copy, Paste, —, Delete, —, Align ▸, Center ▸, Distribute ▸, Size ▸, Place on Multiple Pages…;
+  [R] MENU 11821: Set Status ▸ (None / Accepted / Rejected / Cancelled / Completed / Deferred / Future), Mark / Remove Checkmark,
+  Add / Delete / Edit Label, Open / Close Popup, Reset Popup Location, Open / Close All Popups, Reply, Group, Ungroup,
+  Set Current Properties as Default; [R] Reply menu 11866, comments panel 12275 (Copy Text, Edit, Reply, Delete, Set Status, Checkmark,
+  Properties); drawing 4949 (Complete / Cancel), Line Flip 4950, Ink Merge 4951, measurement 12664, signature 1126 (Set Current Size as
+  Default, Apply), redaction 17286 (Apply, Apply All).
+- **Image**: [R] MENU 1705: Copy, Save Image As…, —, Bookmark, —, Edit Image; [M] Edit Object: Edit Using ▸, Cut, Copy, Paste, Delete,
+  Properties, Rotate ▸, Shear, Flip ▸, clip path, Arrange, Align…, Text Direction, Link / Unlink / Join / Split text blocks. ≈20.
+- **Form field**: fill: Paste, Select All, spelling MENU 20167 (suggestions, Ignore All, Add); signature field: Sign, Certify, Clear, Validate,
+  Show Properties, View Signed Version, Compare, Add Verification Info, Go to Field; form-edit [R] MENU 13038: Cut, Copy, Paste, —, Delete, —,
+  Align / Center / Distribute / Size, —, Duplicate…, Open / Close Properties; MENU 6783 extras: Create Multiple Copies…, Set Tab Order,
+  Use Current Properties as Default; field tree MENU 7187 (Rename, Add New Field ▸ 10 types …).
+- **Link**: [R] MENU 11218: Open Weblink in current Tab, in a new Tab, Open Weblink in Browser, Open Weblink as New Document, —, Copy Link Location.
+- **Empty page**: [R] MENU 646: Paste, Paste in Place, —, Add Bookmark, —, Read Mode, Full Screen, —, Zoom In, Zoom Out, —, Actual Size,
+  Fit Page, Fit Width, —, Rotate Right, —, Reverse View, —, Print, —, Rulers, Guides, —, Show Navigation Panels, Look Up (18);
+  snapshot MENU 19866: Copy Selected Graphic, Select All, Print…; OCR 14033: Recognize Selected Region.
+- **Thumbnail**: [R] MENU 15487: Copy, Paste, Enlarge / Reduce, Embed / Remove thumbnails, Insert Pages ▸ (8 sources), Delete, Extract,
+  Reverse, Replace, Rearrange, Swap, Duplicate, Move, Split ▸, Crop, Resize, Rotate, Page Transitions, Format Page Numbers, Print Pages, Properties (23).
+- **Bookmark** [M]: Go to, Add (child), Rename, Set Destination, Cut, Paste after / under, Delete, Properties, Use Current Appearance as Default,
+  Expand/Collapse All, Wrap Long, Extract / Delete / Print Pages, Delete / Print Sections. ≈18.
+
+### 1.3 Adobe Acrobat Reader desktop (no MENU resources: "MegaverbRCM_*" verbs in AcroRd32.dll, labels in AcroRd32Res.dll)
+- **Selected text** [S], verb order: Copy, Copy With Formatting, Edit Text, Redact Text, Export Selected Text, Create Link, Highlight Text,
+  Strikethrough Text, Add Note to Replace Text, Add Note to Text, Look Up, Touch-up formatting options, AI Assistant, Generative Summary,
+  Share; plus Underline Text, Insert Text At Cursor, Add Sticky Note, Select All. ≈15.
+- **Quick-action bar on selection** [S/M]: Edit text and images, Redact text, Export selected text, Highlight, Underline, Strikethrough,
+  Copy with formatting, Share text to WhatsApp, Cut text; AI: Summarize this selection, Ask AI Assistant, Rewrite with AI, Rephrase,
+  Reformat, bullets / numbered / paragraph. User-customisable.
+- **Annotation** [S, Annots.api]: Reply, Copy Text, Group / Ungroup, Set Status ▸, Format Text, Apply Redactions, Repeat mark across pages,
+  Mark / Remove Checkmark, Mark Read / Unread, Open / Minimize Pop-Up, Delete, Edit, Copy comment text, Delete Thread / Reply,
+  Reset Pop-Up Location, Properties…, Make current properties default, Open File / Save Embedded File / Play File, Flip Line,
+  Complete / Cancel, Measure Preferences, Add / Edit / Delete Label. ≈35 (by type).
+- **Object (Edit PDF)**: Edit Text, Cut, Copy, Paste, Delete, Crop, Rotate ▸, Flip ▸, Arrange ▸, Edit image using ▸, Replace Image ▸,
+  Redact / Export / Copy / Save image, Remove background, Create Link, Recognize Text. ≈25.
+- **Form field** (weak): Properties, Use Current Appearance as Default; fill: Cut / Copy / Paste / Delete / Select All + spelling.
+- **Link**: not found (falls back to the page menu).
+- **Empty page** (verb order): Add a comment, Add bookmark, Edit a PDF, Export ▸, Add text box, Add image, Delete page, Combine files,
+  Request e-signatures, Sign yourself, Find text, Rotate view, Document properties, zoom / fit, Select All, Reduce size, Extract pages,
+  Thumbnails, Insert pages ▸, Rotate page, Print, Select / Hand / Zoom tool, AI Assistant, Generative summary, Take a snapshot, Share. ≈30.
+- **Thumbnail / bookmark** (weak): Enlarge / Reduce thumbnails; bookmark options Hide After Use, Wrap Long, Text Size ▸, Highlight Current,
+  Expand Current / Top-Level.
+
+### 1.4 What the desktop editors add to the design
+Taken into the registry: Copy with formatting, Export selection, Copy as table, Search Google / web, Look up (→ AI Define / Other apps),
+Insert text at cursor (→ Insert text, caret), Add note to replace text (→ Replace text), Add sticky note, Create link, Add bookmark,
+Edit text, Redact text, Word count, Share, AI explain / summarise / translate / rewrite; empty page: Paste, Add bookmark, Note / text box /
+image here, Sign, Snapshot, Find, Rotate view, Zoom, Go to page, Print, Document properties; link: Open, Copy link location (+ Share).
+Not taken (toolbar / other screens): Read Mode, Full Screen, Fit page / width, Reverse view, Rulers / Guides, navigation panels,
+Paste in Place, upsell items (Export to Word, Combine, Request e-signatures), thumbnail and bookmark-panel menus (organiser / panels).
 
 
 ## 2. Research — Office, mobile PDF apps and the platforms
@@ -95,7 +174,9 @@ _Nitro PDF Pro 14, Foxit PDF Editor 14 and Acrobat Reader desktop resource extra
 | Android toolbar | slots | 8 standard + assist + secondary + PROCESS_TEXT |
 | iOS edit menu | standard | ~12 |
 | Google Docs | text | ~15–17 |
-<!-- COUNTS_DESKTOP -->
+| Nitro PDF Pro 14 | text / annotation / object / field / link / page / thumbnail / bookmark | ~12 (4 [R]) / ~15 / ~18 / ~15 / ~6 / ~14 / ~20 / 4 [R] (~11) |
+| Foxit PDF Editor 14 | text / floating bar / annotation / object / field / link / page / thumbnail / bookmark | ~12 (5 [R]) / ~8-10 / 15+22+15 [R] / ~26 / ~31 [R] / 5 [R] / 18 [R] / 23 [R] / ~18 |
+| Acrobat Reader desktop | text / quick bar / annotation / object / page | ~15 / ~10 + 6 AI / ~35 / ~25 / ~30 |
 
 
 ---
