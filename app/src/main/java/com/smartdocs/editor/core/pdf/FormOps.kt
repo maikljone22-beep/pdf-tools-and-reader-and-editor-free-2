@@ -191,9 +191,10 @@ object FormOps {
     /** [fillFields] on an open document, without saving (the signed-file path saves it incrementally). */
     fun fillIn(
         doc: PDDocument, values: Map<String, String>, context: android.content.Context? = null,
-        display: Map<String, String> = emptyMap(), dropXfa: Boolean = false,
+        display: Map<String, String> = emptyMap(), dropXfa: Boolean = false, fixup: Boolean = true,
     ): Int {
-        val acro = doc.documentCatalog.acroForm ?: throw IllegalStateException("no form")
+        // signed files skip PdfBox's AcroForm fix-up (it would add /DR and /DA to the form in the update)
+        val acro = (if (fixup) doc.documentCatalog.acroForm else doc.documentCatalog.getAcroForm(null)) ?: throw IllegalStateException("no form")
         var applied = 0
         var needViewer = false
         acro.needAppearances = false

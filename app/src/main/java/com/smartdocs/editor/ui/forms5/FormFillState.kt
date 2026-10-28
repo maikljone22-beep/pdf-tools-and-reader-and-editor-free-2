@@ -558,13 +558,14 @@ class FormFillState internal constructor(val reader: ReaderState) {
         val tmp = File(file.parentFile, ".${file.nameWithoutExtension}.forms5.pdf")
         withContext(Dispatchers.Main.immediate) { runDocAction("WS") }        // document action: will save
         try { writeTo(file, password, tmp) } catch (e: Throwable) { tmp.delete(); throw e }
+        // audit D37: the typed values are dropped only after the new file is in place (a failed swap keeps them)
+        try { swap(tmp) } catch (e: Throwable) { tmp.delete(); throw e }
         withContext(Dispatchers.Main.immediate) {
             Snapshot.withMutableSnapshot {
                 // the form steps of the unified history become the reader's save step (ReaderState.recordSaved)
                 edits.clear(); images.clear(); errors.clear(); activeId = null; menuFor = null; committed.clear(); hiddenOverride.clear()
             }
         }
-        swap(tmp)
         withContext(Dispatchers.Main.immediate) { runDocAction("DS") }        // did save
         return true
     }

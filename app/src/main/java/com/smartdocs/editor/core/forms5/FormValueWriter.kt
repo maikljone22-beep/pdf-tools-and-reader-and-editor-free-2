@@ -68,18 +68,31 @@ object FormValueWriter {
     ) = withContext(Dispatchers.IO) {
         PdfOps.loadRaw(src, password).use { doc ->
             com.smartdocs.editor.core.pdf.SignedSave.requireFormFillAllowed(doc)
-            val names = values.keys + display.keys
-            if (names.isNotEmpty()) runCatching { AppearanceRotation.fixIn(doc, names) }
-            if (values.isNotEmpty() || display.isNotEmpty()) FormOps.fillIn(doc, values, context, display, dropXfa = false)
-            images.forEach { (name, file) -> runCatching { setImage(doc, name, file) } }
+            // fields locked by a signature (FieldMDP /Lock) keep their signed value even when the producer did not
+            // also mark them read-only
+            val locked = lockedFields(doc)
+            val v = values.filterKeys { it !in locked }; val dsp = display.filterKeys { it !in locked }; val img = images.filterKeys { it !in locked }
+            val names = v.keys + dsp.keys
+            if (names.isNotEmpty()) runCatching { AppearanceRotation.fixIn(doc, names, fixup = false) }
+            if (v.isNotEmpty() || dsp.isNotEmpty()) FormOps.fillIn(doc, v, context, dsp, dropXfa = false, fixup = false)
+            img.forEach { (name, file) -> runCatching { setImage(doc, name, file) } }
             FieldVisibility.apply(doc, hidden)
             val barcodes = runCatching { com.smartdocs.editor.core.formsx.FxBarcodes.refreshAll(doc) }.getOrDefault(0)
             val acro = doc.documentCatalog.getAcroForm(null) ?: throw IllegalStateException("no form")
-            val touched = (names + images.keys + hidden.keys).toMutableSet()
+            val touched = (names + img.keys + hidden.keys).toMutableSet()
             if (barcodes > 0) acro.fieldTree.forEach { f -> if (f.cosObject.containsKey(COSName.getPDFName("SDBarcode"))) touched += f.fullyQualifiedName }
             val pages = SignedFormMarks.mark(doc, acro, touched)
             com.smartdocs.editor.core.pdf.SignedSave.saveIncremental(doc, pages, out)
         }
+    }
+
+    /** Full names of the fields that a signature of [doc] locks (FieldMDP /Lock of a signed field). */
+    fun lockedFields(doc: PDDocument): Set<String> {
+        val acro = doc.documentCatalog.getAcroForm(null) ?: return emptySet()
+        val locks = doc.signatureDictionaries.mapNotNull { com.smartdocs.editor.core.sign.SigFields.lockOf(doc, it) }
+        if (locks.isEmpty()) return emptySet()
+        return acro.fieldTree.filter { f -> f !is com.tom_roush.pdfbox.pdmodel.interactive.form.PDSignatureField && f.fieldType != null }
+            .map { it.fullyQualifiedName }.filter { n -> locks.any { it.locks(n) } }.toSet()
     }
 
     private fun decode(file: File, maxSide: Int = 1600): Bitmap? {
@@ -90,7 +103,7 @@ object FormValueWriter {
     }
 
     private fun setImage(doc: PDDocument, name: String, file: File) {
-        val f = doc.documentCatalog.acroForm?.getField(name) as? PDPushButton ?: return
+        val f = doc.documentCatalog.getAcroForm(null)?.getField(name) as? PDPushButton ?: return
         val bmp = decode(file) ?: return
         val img = if (bmp.hasAlpha()) LosslessFactory.createFromImage(doc, bmp) else JPEGFactory.createFromImage(doc, bmp, 0.88f)
         for (w in f.widgets) {
@@ -167,8 +180,8 @@ object AppearanceRotation {
     }
 
     /** [prepare] on an open document, without saving. */
-    fun fixIn(doc: PDDocument, names: Set<String>): Boolean {
-        val acro = doc.documentCatalog.acroForm ?: return false
+    fun fixIn(doc: PDDocument, names: Set<String>, fixup: Boolean = true): Boolean {
+        val acro = (if (fixup) doc.documentCatalog.acroForm else doc.documentCatalog.getAcroForm(null)) ?: return false
         var changed = false
         for (name in names) {
             val f = acro.getField(name) as? PDTerminalField ?: continue
