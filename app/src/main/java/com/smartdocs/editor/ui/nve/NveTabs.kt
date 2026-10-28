@@ -96,6 +96,7 @@ private fun TabMenuItems(t: DocTab, state: ReaderState, switchTo: (DocTab?) -> U
     DropdownMenuItem(text = { Text(stringResource(R.string.nv_tab_copy_path)) }, leadingIcon = { Icon(Icons.Default.ContentCopy, null) }, onClick = {
         close(); com.smartdocs.editor.ui.reader.ReaderIntents.copy(ctx, android.net.Uri.parse(t.uri).path ?: t.uri, "path"); NveSelectionOps.toast(ctx, ctx.getString(R.string.nv_copied))
     })
+    com.smartdocs.editor.ui.rpf.RpfTabMenuItems(t, close)      // reader-prefs: tab groups
 }
 
 /** Items for the phone tab dropdown (hook in ReaderTabsAction): the menu of the current tab. */

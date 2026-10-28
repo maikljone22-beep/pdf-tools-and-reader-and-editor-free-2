@@ -83,7 +83,8 @@ object ReaderAi6 {
     private suspend fun orderedPage(state: ReaderState, page: Int): ReadingOrder.Ordered {
         val text = state.pageText(page)
         // nav-prefs: Preferences → reading order "raw" reads the content-stream order
-        if (com.smartdocs.editor.core.data.NpfPrefs.readingOrder == "raw") return ReadingOrder.identity(text)
+        // reader-prefs #23: this document's own reading order wins over the global one
+        if (com.smartdocs.editor.ui.rpf.RpfReader.readingOrder(state) == "raw") return ReadingOrder.identity(text)
         cache(state).let { c -> synchronized(c) { c[page] }?.let { (src, o) -> if (src == text) return o } }
         val boxes = runCatching { state.charBoxes(page) }.getOrDefault(emptyList())
         val o = runCatching {

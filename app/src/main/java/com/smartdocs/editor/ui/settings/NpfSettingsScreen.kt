@@ -164,6 +164,7 @@ private fun sections(nav: NavHostController): List<Section> = listOf(
         Column(Modifier.padding(horizontal = 16.dp)) { NpfColorRow(NpfPrefs.presentBackground, listOf(0x000000, 0x212121, 0x263238, 0x0D1B2A, 0xFFFFFF)) { NpfPrefs.setInt(K.PRESENT_BG, it) } }
         Sw(R.string.npf_hf_rotation, NpfPrefs.hfIgnoreRotation, R.string.npf_hf_rotation_sub) { NpfPrefs.setBool(K.HF_IGNORE_ROT, it) }
         Hint(stringResource(R.string.npf_thin_lines_na))
+        com.smartdocs.editor.ui.rpf.RpfDisplayPrefs()   // reader-prefs §37: facing count, gap, page size, destination zoom, full screen, PDF/A view
     },
     // ---------------- units, grid, guides, measuring ----------------
     Section(R.string.npf_s_units, "units grid snap guides measure وحدات شبكة التقاط أدلة قياس") {

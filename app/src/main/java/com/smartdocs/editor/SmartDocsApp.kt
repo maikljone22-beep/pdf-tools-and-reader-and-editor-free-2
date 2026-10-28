@@ -22,6 +22,7 @@ class SmartDocsApp : Application() {
         db = AppDatabase.build(this)
         settings = SettingsStore(this)
         com.smartdocs.editor.core.data.NpfPrefs.init(this)   // nav-prefs: "More preferences"
+        com.smartdocs.editor.core.rpf.RpfPrefs.init(this)    // reader-prefs: page display / full-screen preferences
         com.smartdocs.editor.core.data.FcsPrefs.init(this)   // fc-settings: ConnectedPDF off, debug log
         com.smartdocs.editor.core.util.DebugLog.install(this)
         documents = DocumentRepository(this, db)

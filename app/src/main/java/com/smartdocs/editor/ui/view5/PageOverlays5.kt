@@ -107,14 +107,38 @@ private fun GridAndRulers(v: V5State, pxPerPt: Float, w: Float, h: Float) {
 private fun ReadingRuler(v: V5State, hPx: Float) {
     val density = LocalDensity.current
     val bandPx = with(density) { v.rulerHeightDp.dp.toPx() }
-    val top = (v.rulerY * hPx - bandPx / 2).coerceIn(0f, (hPx - bandPx).coerceAtLeast(0f))
     val tint = Color(0xFF000000.toInt() or v.rulerColor)
+    val shade = Color.Black.copy(alpha = v.rulerOpacity.coerceIn(0.05f, 0.9f))
+    val bandFill = tint.copy(alpha = (v.rulerOpacity * 0.4f).coerceIn(0.05f, 0.5f))
+    // reader-prefs §9: a vertical band follows a column; the horizontal one a line
+    if (v.rulerVertical) {
+        var wPx by remember { mutableFloatStateOf(0f) }
+        val left = (v.rulerX * wPx - bandPx / 2).coerceIn(0f, (wPx - bandPx).coerceAtLeast(0f))
+        Canvas(Modifier.fillMaxSize().onGloballyPositioned { wPx = it.size.width.toFloat() }) {
+            if (v.rulerDim) {
+                drawRect(shade, Offset.Zero, Size(left, size.height))
+                drawRect(shade, Offset(left + bandPx, 0f), Size(size.width - left - bandPx, size.height))
+            }
+            drawRect(bandFill, Offset(left, 0f), Size(bandPx, size.height))
+            drawLine(tint, Offset(left, 0f), Offset(left, size.height), 3f)
+            drawLine(tint, Offset(left + bandPx, 0f), Offset(left + bandPx, size.height), 3f)
+        }
+        Box(Modifier.fillMaxSize()) {
+            Surface(Modifier.align(Alignment.BottomStart).offset { androidx.compose.ui.unit.IntOffset(left.roundToInt(), 0) }.size(with(density) { bandPx.toDp() }, 36.dp)
+                .pointerInput(wPx) { androidx.compose.foundation.gestures.detectHorizontalDragGestures { ch, dx -> ch.consume(); if (wPx > 0f) v.rulerX = ((v.rulerX * wPx + dx) / wPx).coerceIn(0f, 1f) } },
+                color = tint.copy(alpha = 0.85f), shape = RoundedCornerShape(topStart = 10.dp, topEnd = 10.dp)) {
+                Icon(Icons.Default.DragHandle, stringResource(R.string.v5_reading_ruler), Modifier.padding(6.dp))
+            }
+        }
+        return
+    }
+    val top = (v.rulerY * hPx - bandPx / 2).coerceIn(0f, (hPx - bandPx).coerceAtLeast(0f))
     Canvas(Modifier.fillMaxSize()) {
         if (v.rulerDim) {
-            drawRect(Color(0x88000000), Offset.Zero, Size(size.width, top))
-            drawRect(Color(0x88000000), Offset(0f, top + bandPx), Size(size.width, size.height - top - bandPx))
+            drawRect(shade, Offset.Zero, Size(size.width, top))
+            drawRect(shade, Offset(0f, top + bandPx), Size(size.width, size.height - top - bandPx))
         }
-        drawRect(tint.copy(alpha = 0.22f), Offset(0f, top), Size(size.width, bandPx))
+        drawRect(bandFill, Offset(0f, top), Size(size.width, bandPx))
         drawLine(tint, Offset(0f, top), Offset(size.width, top), 3f)
         drawLine(tint, Offset(0f, top + bandPx), Offset(size.width, top + bandPx), 3f)
     }
