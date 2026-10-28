@@ -90,11 +90,18 @@ data class Cv6Opts(
     val docxAnchorImages: Boolean = false,
     /** Table detection: also tables found from text alignment (false = lined tables only). */
     val streamTables: Boolean = true,
+    /** s6 Batch "page range per file": a range for one input (its path → range); others use [range]. */
+    val fileRanges: Map<String, String> = emptyMap(),
+    /** s6 Batch / s5 "output folder": a folder (SAF tree URI) the outputs are also copied to; "" = Documents only. */
+    val outputTree: String = "",
 )
 
 enum class Stage { WORK, OCR }
 
 /** Outputs of a run, notes for the result sheet, and the inputs that failed (a batch goes on after a failure). */
+/** The page range of input [f]: its own (batch, per file) or the common one. */
+fun Cv6Opts.rangeFor(f: File): String = fileRanges[f.path]?.takeIf { it.isNotBlank() } ?: range
+
 class Cv6Result(val files: List<File>, val info: String? = null, val failures: List<Cv6Failure> = emptyList())
 
 /**
@@ -276,7 +283,7 @@ class Cv6Engine(private val ctx: Context, private val docs: DocumentRepository) 
      * ([PdfFlow6.wordInput]); flowing text or the page layout per [Cv6Opts.keepLayout].
      */
     private suspend fun word(f: File, base: String, pw: String?, o: Cv6Opts, ocr: Boolean, p: (Int, Int) -> Unit, ocrProgress: (Int, Int) -> Unit): Cv6Result {
-        val pages = pagesOf(f, pw, o.range)
+        val pages = pagesOf(f, pw, o.rangeFor(f))
         val cancelled = cancelCheck()
         return PdfFlow6.wordInput(ctx, f, pw, pages, o.ocrLangs, tempDir, ocr, ocrProgress, allPages = ocr && o.recoverAllPages).use { inp ->
             val flowing = o.keepLayout?.not() ?: (inp.ocrPages > 0 && inp.rtl)
@@ -295,7 +302,7 @@ class Cv6Engine(private val ctx: Context, private val docs: DocumentRepository) 
     }
 
     private suspend fun office(target: TargetFormat, f: File, base: String, pw: String?, o: Cv6Opts, p: (Int, Int) -> Unit): Cv6Result {
-        val pages = pagesOf(f, pw, o.range)
+        val pages = pagesOf(f, pw, o.rangeFor(f))
         val out = out(base, target.ext)
         val opts = ConvertOptions(format = target, pages = pages, xlsxSingleSheet = o.singleSheet, pptxEditable = o.pptEditable, detectTables = o.tables, includeImages = o.includeImages,
             sheetName = { n -> ctx.getString(R.string.cv_sheet_name).format(n) }, singleSheetName = ctx.getString(R.string.cv_all_pages_sheet),
@@ -328,46 +335,46 @@ class Cv6Engine(private val ctx: Context, private val docs: DocumentRepository) 
         "pdf_images" -> {
             val fmt = when (o.imgFormat) { ImgFmt.PNG -> ImageFormat.PNG; ImgFmt.WEBP -> ImageFormat.WEBP; else -> ImageFormat.JPG }
             val dir = workDir(base + "_images")
-            val files = ExportPlus.images(ctx, f, pw, ImageExportOptions(fmt, o.dpi, o.gray, o.quality, pagesOf(f, pw, o.range), zip = false), dir, p)
+            val files = ExportPlus.images(ctx, f, pw, ImageExportOptions(fmt, o.dpi, o.gray, o.quality, pagesOf(f, pw, o.rangeFor(f)), zip = false), dir, p)
                 .map { x -> File(dir, x.name.replace(f.nameWithoutExtension, base)).let { n -> if (n != x && x.renameTo(n)) n else x } }
             Cv6Result(pack(files, o.zip, base + "_images"))
         }
         "pdf_long_image" -> {
             val fmt = o.imgFormat ?: ImgFmt.JPG
-            val parts = ImageIo6.longImage(ctx, f, pw, pagesOf(f, pw, o.range), fmt, o.dpi, o.quality, { i, n -> out(base + "_long" + (if (n > 1) "_" + (i + 1) else ""), fmt.ext) }, p)
+            val parts = ImageIo6.longImage(ctx, f, pw, pagesOf(f, pw, o.rangeFor(f)), fmt, o.dpi, o.quality, { i, n -> out(base + "_long" + (if (n > 1) "_" + (i + 1) else ""), fmt.ext) }, p)
             Cv6Result(parts, if (parts.size > 1) ctx.getString(R.string.cvf_info_long_parts, parts.size) else null)
         }
-        "pdf_rtf" -> Cv6Result(listOf(ExportPlus.rtf(f, pw, out(base, "rtf"), pagesOf(f, pw, o.range), p)))
+        "pdf_rtf" -> Cv6Result(listOf(ExportPlus.rtf(f, pw, out(base, "rtf"), pagesOf(f, pw, o.rangeFor(f)), p)))
         "pdf_md" -> {
-            val doc = PdfFlow6.flow(f, pw, pagesOf(f, pw, o.range), o.includeImages, pageBreaks = false, onProgress = p, detectTables = o.tables, title = base, spillDir = workDir("md"))
+            val doc = PdfFlow6.flow(f, pw, pagesOf(f, pw, o.rangeFor(f)), o.includeImages, pageBreaks = false, onProgress = p, detectTables = o.tables, title = base, spillDir = workDir("md"))
             withContext(Dispatchers.IO) { Cv6Result(listOf(writeMarkdown(doc, base, this@Cv6Engine::out))) }
         }
         "pdf_epub" -> {
-            val doc = PdfFlow6.flow(f, pw, pagesOf(f, pw, o.range), o.includeImages, pageBreaks = false, onProgress = p, title = base, spillDir = workDir("epub"))
+            val doc = PdfFlow6.flow(f, pw, pagesOf(f, pw, o.rangeFor(f)), o.includeImages, pageBreaks = false, onProgress = p, title = base, spillDir = workDir("epub"))
             val out = out(base, "epub")
             val dropped = withContext(Dispatchers.IO) { out.outputStream().buffered().use { EpubWriter.write(doc, it) } }
             Cv6Result(listOf(out), listOfNotNull(ctx.getString(R.string.cv6_info_chapters, doc.chapters().size), if (dropped > 0) ctx.getString(R.string.cvf_info_images_dropped, dropped) else null).joinToString("\n"))
         }
         "pdf_csv" -> {
-            val pages = PdfFlow6.pages(f, pw, pagesOf(f, pw, o.range), false, true, p, title = base)
+            val pages = PdfFlow6.pages(f, pw, pagesOf(f, pw, o.rangeFor(f)), false, true, p, title = base)
             val tables = LayoutFlow.tables(pages.layouts)
             val out = out(base, "csv")
             withContext(Dispatchers.IO) { out.outputStream().use { s -> s.write(Csv6.BOM); s.write(Csv6.writeTables(tables).toByteArray(Charsets.UTF_8)) } }
             Cv6Result(listOf(out), ctx.getString(R.string.cv6_info_tables, pages.layouts.sumOf { l -> l.blocks.count { it is com.smartdocs.editor.core.convert.TableBlock } }))
         }
         "pdf_odt" -> {
-            val doc = PdfFlow6.flow(f, pw, pagesOf(f, pw, o.range), o.includeImages, pageBreaks = true, onProgress = p, title = base, spillDir = workDir("odt"))
+            val doc = PdfFlow6.flow(f, pw, pagesOf(f, pw, o.rangeFor(f)), o.includeImages, pageBreaks = true, onProgress = p, title = base, spillDir = workDir("odt"))
             val out = out(base, "odt"); withContext(Dispatchers.IO) { out.outputStream().buffered().use { OdfWriter.odt(doc, it) } }; Cv6Result(listOf(out))
         }
         "pdf_ods" -> {
-            val pages = PdfFlow6.pages(f, pw, pagesOf(f, pw, o.range), false, true, p, title = base)
+            val pages = PdfFlow6.pages(f, pw, pagesOf(f, pw, o.rangeFor(f)), false, true, p, title = base)
             val sheets = LayoutFlow.sheetsPerPage(pages.layouts) { ctx.getString(R.string.cv_sheet_name).format(it) }
             val out = out(base, "ods"); withContext(Dispatchers.IO) { out.outputStream().buffered().use { OdfWriter.ods(sheets, it, pages.layouts.firstOrNull()?.rtl == true) } }; Cv6Result(listOf(out))
         }
-        "pdf_odp" -> Cv6Result(listOf(Export7Run.odp(ctx, f, pw, pagesOf(f, pw, o.range), o.dpi, out(base, "odp"), p)))
+        "pdf_odp" -> Cv6Result(listOf(Export7Run.odp(ctx, f, pw, pagesOf(f, pw, o.rangeFor(f)), o.dpi, out(base, "odp"), p)))
         "pdf_svg" -> {
             val dir = workDir(base + "_svg")
-            val files = ImageIo6.svgPages(ctx, f, pw, pagesOf(f, pw, o.range), o.dpi, dir, p).map { x -> File(dir, x.name.replace(f.nameWithoutExtension, base)).let { n -> if (n != x && x.renameTo(n)) n else x } }
+            val files = ImageIo6.svgPages(ctx, f, pw, pagesOf(f, pw, o.rangeFor(f)), o.dpi, dir, p).map { x -> File(dir, x.name.replace(f.nameWithoutExtension, base)).let { n -> if (n != x && x.renameTo(n)) n else x } }
             Cv6Result(pack(files, o.zip, base + "_svg"))
         }
         "pdf_pdfa" -> {
@@ -400,24 +407,24 @@ class Cv6Engine(private val ctx: Context, private val docs: DocumentRepository) 
             if (encrypted) keepProtection(src, srcPw, out)
             Cv6Result(listOf(out))
         }
-        "pdf_tiff" -> Cv6Result(listOf(Export7Run.tiff(ctx, f, pw, pagesOf(f, pw, o.range), o.dpi, if (o.bw) TiffColor.BW else if (o.gray) TiffColor.GRAY else TiffColor.RGB, out(base, "tif"), p)))
+        "pdf_tiff" -> Cv6Result(listOf(Export7Run.tiff(ctx, f, pw, pagesOf(f, pw, o.rangeFor(f)), o.dpi, if (o.bw) TiffColor.BW else if (o.gray) TiffColor.GRAY else TiffColor.RGB, out(base, "tif"), p)))
         "pdf_bmp" -> {
             val dir = workDir(base + "_bmp")
-            Cv6Result(pack(Export7Run.bmp(ctx, f, pw, pagesOf(f, pw, o.range), o.dpi, dir, base, p), o.zip, base + "_bmp"))
+            Cv6Result(pack(Export7Run.bmp(ctx, f, pw, pagesOf(f, pw, o.rangeFor(f)), o.dpi, dir, base, p), o.zip, base + "_bmp"))
         }
-        "pdf_ps" -> Cv6Result(Export7Run.ps(ctx, f, pw, pagesOf(f, pw, o.range), o.dpi, false, false, this::out, base, p))
+        "pdf_ps" -> Cv6Result(Export7Run.ps(ctx, f, pw, pagesOf(f, pw, o.rangeFor(f)), o.dpi, false, false, this::out, base, p))
         "pdf_eps" -> {
             val dir = workDir(base + "_eps")
-            val files = Export7Run.ps(ctx, f, pw, pagesOf(f, pw, o.range), o.dpi, false, true, { b, e -> ImageIo6.unique(dir, b, e) }, base, p)
+            val files = Export7Run.ps(ctx, f, pw, pagesOf(f, pw, o.rangeFor(f)), o.dpi, false, true, { b, e -> ImageIo6.unique(dir, b, e) }, base, p)
             Cv6Result(pack(files, o.zip, base + "_eps"))
         }
-        "pdf_xps" -> Cv6Result(listOf(Export7Run.xps(ctx, f, pw, pagesOf(f, pw, o.range), o.dpi, out(base, "xps"), p)))
-        "pdf_xml" -> Cv6Result(listOf(Export7Run.xml(f, pw, pagesOf(f, pw, o.range), out(base, "xml"), p)))
-        "pdf_access_txt" -> Cv6Result(listOf(Export7Run.accessibleText(f, pw, pagesOf(f, pw, o.range), out(base + "_accessible", "txt"),
+        "pdf_xps" -> Cv6Result(listOf(Export7Run.xps(ctx, f, pw, pagesOf(f, pw, o.rangeFor(f)), o.dpi, out(base, "xps"), p)))
+        "pdf_xml" -> Cv6Result(listOf(Export7Run.xml(f, pw, pagesOf(f, pw, o.rangeFor(f)), out(base, "xml"), p)))
+        "pdf_access_txt" -> Cv6Result(listOf(Export7Run.accessibleText(f, pw, pagesOf(f, pw, o.rangeFor(f)), out(base + "_accessible", "txt"),
             ctx.getString(R.string.pc_figure), ctx.getString(R.string.pc_page_heading))))
-        "pdf_html_set" -> Cv6Result(listOf(Export7Run.htmlSet(f, pw, pagesOf(f, pw, o.range), o.includeImages, out(base + "_html", "zip"), p, base, workDir("html"))))
+        "pdf_html_set" -> Cv6Result(listOf(Export7Run.htmlSet(f, pw, pagesOf(f, pw, o.rangeFor(f)), o.includeImages, out(base + "_html", "zip"), p, base, workDir("html"))))
         "pdf_xml2003" -> {
-            val (x, n) = Export7Run.xml2003(f, pw, pagesOf(f, pw, o.range), o.perTable, { ctx.getString(R.string.cv_sheet_name).format(it) }, out(base, "xml"), p)
+            val (x, n) = Export7Run.xml2003(f, pw, pagesOf(f, pw, o.rangeFor(f)), o.perTable, { ctx.getString(R.string.cv_sheet_name).format(it) }, out(base, "xml"), p)
             Cv6Result(listOf(x), ctx.getString(R.string.pc_sheets_n, n))
         }
         else -> throw IllegalArgumentException(conv.id)

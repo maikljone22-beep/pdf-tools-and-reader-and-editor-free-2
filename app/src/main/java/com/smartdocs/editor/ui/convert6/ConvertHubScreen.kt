@@ -149,6 +149,12 @@ fun ConvertHubScreen(nav: NavHostController, uri: String?) {
             else -> { s.multiInfo = text; s.multiResults = files }
         }
         scope.launch { files.forEach { f -> runCatching { app.documents.touchRecent(f) } } }
+        // s5 / s6 output folder: a copy of the outputs in the chosen folder
+        val tree = s.opts.outputTree
+        if (tree.isNotBlank() && files.isNotEmpty()) scope.launch {
+            val n = runCatching { Cv6Save.toTree(ctx, android.net.Uri.parse(tree), files.map { it to it.name }) }.getOrDefault(-1)
+            android.widget.Toast.makeText(ctx, if (n >= 0) ctx.getString(R.string.cv9_out_copied, n) else ctx.getString(R.string.cv9_out_failed), android.widget.Toast.LENGTH_LONG).show()
+        }
         s.done = emptyList(); s.doneInfo = emptyList(); s.failures = emptyList()
     }
 

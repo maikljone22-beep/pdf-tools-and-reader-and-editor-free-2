@@ -14,6 +14,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -71,6 +72,30 @@ fun Cv6OptionsSheet(
             if (conv.inputs.isNotEmpty()) {
                 FieldLabel(stringResource(R.string.cv6_inputs, inputs.size))
                 FileListEditor(inputs, onInputs)
+                // s6 Batch: a page range per file (blank = the common range below)
+                if (Opt.RANGE in conv.opts && inputs.size > 1) {
+                    FieldLabel(stringResource(R.string.cv9_ranges_per_file))
+                    inputs.forEach { f ->
+                        val r = o.fileRanges[f.path].orEmpty()
+                        OutlinedTextField(r, { v -> onChange(o.copy(fileRanges = o.fileRanges + (f.path to v))) }, Modifier.fillMaxWidth(), singleLine = true,
+                            label = { Text(f.name, maxLines = 1) }, placeholder = { Text(stringResource(R.string.cv9_range_common)) },
+                            isError = !com.smartdocs.editor.core.pdf.PdfOps.rangeSyntaxOk(r))
+                    }
+                }
+                // s5 / s6: output folder (a copy of every output goes there too)
+                val tree = rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocumentTree()) { u ->
+                    if (u != null) {
+                        runCatching { ctx.contentResolver.takePersistableUriPermission(u, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION) }
+                        onChange(o.copy(outputTree = u.toString()))
+                    }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    val name = o.outputTree.takeIf { it.isNotBlank() }?.let { runCatching { androidx.documentfile.provider.DocumentFile.fromTreeUri(ctx, android.net.Uri.parse(it))?.name }.getOrNull() }
+                    Text(name?.let { stringResource(R.string.cv9_out_folder, it) } ?: stringResource(R.string.cv9_out_documents), Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+                    if (o.outputTree.isNotBlank()) IconButton(onClick = { onChange(o.copy(outputTree = "")) }) { Icon(Icons.Default.Close, stringResource(R.string.cancel)) }
+                    TextButton(onClick = { tree.launch(null) }) { Text(stringResource(R.string.cv9_out_choose)) }
+                }
+            }
                 if (conv.multi) OutlinedButton(onClick = onAddMore, shape = RoundedCornerShape(50)) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.cv6_add_files)) }
             }
             if (needPassword) {
@@ -81,7 +106,7 @@ fun Cv6OptionsSheet(
             }
             OptionsBody(conv, inputs.size, o, onChange)
             PrimaryButton(stringResource(R.string.cv6_convert), enabled = (conv.inputs.isEmpty() || inputs.isNotEmpty()) && (Opt.URL !in conv.opts || o.url.isNotBlank()) && (Opt.TEXT !in conv.opts || o.text.isNotBlank()) &&
-                (Opt.RANGE !in conv.opts || com.smartdocs.editor.core.pdf.PdfOps.rangeSyntaxOk(o.range)) && (!needPassword || password.isNotEmpty()),
+                (Opt.RANGE !in conv.opts || (com.smartdocs.editor.core.pdf.PdfOps.rangeSyntaxOk(o.range) && o.fileRanges.values.all { com.smartdocs.editor.core.pdf.PdfOps.rangeSyntaxOk(it) })) && (!needPassword || password.isNotEmpty()),
                 icon = Icons.Default.SwapHoriz, onClick = onConvert)
         }
     }

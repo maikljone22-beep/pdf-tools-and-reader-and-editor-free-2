@@ -53,4 +53,11 @@
     <string name="cv9_anchor_images_sub">تطفو الصور في موضعها من الصفحة بدل أن تكون ضمن السطر</string>
     <string name="cv9_tables_all">كل الجداول</string>
     <string name="cv9_tables_lined">الجداول المحددة بخطوط فقط</string>
+    <string name="cv9_ranges_per_file">نطاق صفحات لكل ملف</string>
+    <string name="cv9_range_common">النطاق العام</string>
+    <string name="cv9_out_folder">نسخة في المجلد: %1$s</string>
+    <string name="cv9_out_documents">الحفظ في المستندات فقط</string>
+    <string name="cv9_out_choose">اختيار مجلد</string>
+    <string name="cv9_out_copied">نُسخ %1$d ملف إلى المجلد</string>
+    <string name="cv9_out_failed">تعذّر النسخ إلى المجلد</string>
 </resources>
