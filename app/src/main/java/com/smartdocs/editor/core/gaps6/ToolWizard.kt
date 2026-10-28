@@ -53,6 +53,7 @@ object ToolWizard {
         "search_all" to listOf("بحث في كل الملفات", "بحث", "البحث في الملفات", "search", "find"),
         "search_highlight" to listOf("بحث وتظليل", "تظليل", "تمييز", "highlight"),
         "find_replace" to listOf("بحث واستبدال", "استبدال", "replace", "find and replace"),
+        "search_remove" to listOf("بحث وإزالة", "إزالة كلمات", "حذف كلمات من المستند", "search and remove", "remove words"),
         "compare" to listOf("مقارنة", "قارن", "الفرق بين ملفين", "compare", "diff"),
         "scan_studio" to listOf("استوديو المسح", "مسح بطاقة", "بطاقة هوية", "إيصال", "سبورة", "scan studio", "id card", "receipt"),
         "to_pdf_plus" to listOf("تحويل إلى pdf", "أي ملف إلى pdf", "إلى pdf", "to pdf", "any to pdf"),

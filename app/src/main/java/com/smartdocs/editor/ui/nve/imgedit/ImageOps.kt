@@ -215,8 +215,26 @@ object ImageOps {
         b.setPixels(px, 0, w, x0, y0, w, h)
     }
 
-    /** Spot healing (simple): fill a round spot with the average colour of the ring around it, feathered at the edge. */
+    /**
+     * Spot healing: §14c texture synthesis ([HealSynth]: the best-matching patch of the surroundings, tone-corrected
+     * and feathered); near the image edges, where no patch fits, the ring average.
+     */
     fun healDab(b: Bitmap, cx: Float, cy: Float, radius: Float, mask: ByteArray?) {
+        val r = radius.roundToInt().coerceAtLeast(2)
+        val reach = HealSynth.reach(r)
+        val x0 = (cx - reach).toInt().coerceAtLeast(0); val y0 = (cy - reach).toInt().coerceAtLeast(0)
+        val x1 = (cx + reach).toInt().coerceAtMost(b.width - 1); val y1 = (cy + reach).toInt().coerceAtMost(b.height - 1)
+        if (x1 >= x0 && y1 >= y0) {
+            val w = x1 - x0 + 1; val h = y1 - y0 + 1
+            val px = IntArray(w * h); b.getPixels(px, 0, w, x0, y0, w, h)
+            val ok = HealSynth.heal(px, w, h, cx - x0, cy - y0, r) { x, y -> mask == null || mask[(y + y0) * b.width + x + x0].toInt() != 0 }
+            if (ok) { b.setPixels(px, 0, w, x0, y0, w, h); return }
+        }
+        healAverage(b, cx, cy, radius, mask)
+    }
+
+    /** Spot healing (simple): fill a round spot with the average colour of the ring around it, feathered at the edge. */
+    private fun healAverage(b: Bitmap, cx: Float, cy: Float, radius: Float, mask: ByteArray?) {
         val r = radius.roundToInt().coerceAtLeast(2); val ring = (r * 1.5f).roundToInt()
         var sa = 0L; var sr = 0L; var sg = 0L; var sb = 0L; var n = 0
         for (y in (cy - ring).toInt()..(cy + ring).toInt()) for (x in (cx - ring).toInt()..(cx + ring).toInt()) {

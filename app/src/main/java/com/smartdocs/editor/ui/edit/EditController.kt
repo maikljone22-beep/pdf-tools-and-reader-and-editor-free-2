@@ -34,6 +34,9 @@ suspend fun applyEdit(state: ReaderState, label: (() -> String)? = null, block: 
 
 enum class EditMode { TEXT, IMAGE }
 
+/** §37: a region of text written in this edit session ([rect]: display space, top > bottom). */
+class ChangedText(val page: Int, val rect: RectF)
+
 /** State of the content-edit overlay: page model, selection, pending text / image changes, undo. */
 class EditController(val state: ReaderState, private val scope: CoroutineScope, private val ctx: Context) {
     var page by mutableIntStateOf(state.currentPage.coerceAtLeast(0))
@@ -68,6 +71,21 @@ class EditController(val state: ReaderState, private val scope: CoroutineScope, 
     var affine by mutableStateOf(identity()); private set
     /** Tap position waiting for a picked image to insert. */
     var insertAt by mutableStateOf<Pair<Float, Float>?>(null)
+
+    // ---- §37 changed text in colour ----
+    /** Show the text changed in this edit session in colour (edit preference, toggled from the top bar). */
+    var showChanged by mutableStateOf(EditPrefs.showChanged(ctx))
+    /** Text changed in this session, one entry per committed step (null = a step that changed no text), oldest first. */
+    val changeSteps = mutableStateListOf<ChangedText?>()
+    /** Steps undone (redo puts them back). */
+    private val undoneSteps = ArrayList<ChangedText?>()
+    /** The text region the next commit writes (set by [commitText], taken by [run]). */
+    private var changeMark: ChangedText? = null
+
+    /** Changed text regions of [p] (display space). */
+    fun changedOn(p: Int): List<RectF> = changeSteps.mapNotNull { it?.takeIf { c -> c.page == p }?.rect }
+
+    fun toggleShowChanged() { showChanged = !showChanged; EditPrefs.set(ctx, "show_changed", showChanged) }
 
     /** Undo / redo are the reader's unified history (core/history): content edits are file steps in it. */
     val canUndo: Boolean get() = state.canUndo
@@ -224,6 +242,7 @@ class EditController(val state: ReaderState, private val scope: CoroutineScope, 
         if (busy) return
         busy = true
         val p = page
+        val mark = changeMark; changeMark = null
         scope.launch {
             try {
                 val r = applyEdit(state, label = { ctx.getString(R.string.hi_content_edit, p + 1) }) { src, out -> op(src, out) }
@@ -233,6 +252,7 @@ class EditController(val state: ReaderState, private val scope: CoroutineScope, 
                     message = notWrittenReason()
                     return@launch
                 }
+                changeSteps += mark; undoneSteps.clear()      // §37
                 clearSelection()
                 message = ctx.getString(done)
             } catch (e: StalePageException) {
@@ -295,6 +315,10 @@ class EditController(val state: ReaderState, private val scope: CoroutineScope, 
             // NVE-text: typed digits in the chosen shapes; runs clipped to the text; rotated / form / moved / linked boxes
             val tw = if (t == shownText.trimEnd()) t else com.smartdocs.editor.ui.nve.NveDigits.apply(ctx, t)
             val st = st0.copy(runs = com.smartdocs.editor.core.edit.RichText.normalize(st0.runs, tw.length))
+            // §37: where the rewritten text lands (the block moved / widened by a pending move)
+            changeMark = if (tw.isBlank()) null else ChangedText(p, RectF(b.rect).apply {
+                if (tt.movePending) { offset(tt.dx, tt.dy); tt.dw?.let { right += it } }
+            })
             if (tt.commitBlock(b, tw, st, if (tw.isBlank()) R.string.ed_deleted else R.string.ed_saved)) return
             run(if (tw.isBlank()) R.string.ed_deleted else R.string.ed_saved) { src, out -> ContentEdit.replaceText(ctx, src, out, state.password, p, b.ops, tw, st) }
             return
@@ -306,6 +330,7 @@ class EditController(val state: ReaderState, private val scope: CoroutineScope, 
         // NVE-text: digit shapes, runs clipped to the text
         val tn = com.smartdocs.editor.ui.nve.NveDigits.apply(ctx, t)
         val stn = st.copy(runs = com.smartdocs.editor.core.edit.RichText.normalize(st.runs, tn.length))
+        changeMark = ChangedText(p, RectF(box))      // §37
         run(R.string.ed_added) { src, out -> ContentEdit.addText(ctx, src, out, state.password, p, tn, stn, box) }
     }
 
@@ -404,6 +429,11 @@ class EditController(val state: ReaderState, private val scope: CoroutineScope, 
             try {
                 // tab-view-core E-05: through ReaderState's guarded history (no file restore while annotations are taken out)
                 val ev = state.historyStepAwait(undo)
+                // §37: the coloured regions follow undo / redo of this session's steps
+                if (ev != null && ev.error.isNullOrBlank()) {
+                    if (undo) { if (changeSteps.isNotEmpty()) undoneSteps += changeSteps.removeAt(changeSteps.size - 1) }
+                    else if (undoneSteps.isNotEmpty()) changeSteps += undoneSteps.removeAt(undoneSteps.size - 1)
+                }
                 clearSelection()
                 if (ev != null) message = ev.error?.takeIf { it.isNotBlank() } ?: ctx.getString(if (undo) R.string.hi_undone else R.string.hi_redone, ev.label)
             } catch (e: CancellationException) { throw e
