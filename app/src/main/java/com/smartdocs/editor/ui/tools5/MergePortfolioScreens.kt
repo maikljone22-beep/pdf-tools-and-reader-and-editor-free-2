@@ -179,7 +179,7 @@ fun PortfolioScreen(nav: NavHostController, uri: String?) {
         T5Card(stringResource(R.string.t5_portfolio_create), Icons.Default.CreateNewFolder) {
             OutlinedTextField(title, { title = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.t5_portfolio_name)) })
             OutlinedButton(onClick = pickFiles, Modifier.fillMaxWidth()) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.t5_add_files)) }
-            if (files.size > 1) ChoiceChips(FileSort.entries, null as FileSort?, { stringResource(when (it) { FileSort.NAME -> R.string.pc_sort_name; FileSort.TIME -> R.string.pc_sort_time; else -> R.string.pc_sort_size }) }) { s ->
+            if (files.size > 1) ChoiceChips(com.smartdocs.editor.core.tools5.FileSort.entries, null as com.smartdocs.editor.core.tools5.FileSort?, { stringResource(when (it) { com.smartdocs.editor.core.tools5.FileSort.NAME -> R.string.pc_sort_name; com.smartdocs.editor.core.tools5.FileSort.TIME -> R.string.pc_sort_time; else -> R.string.pc_sort_size }) }) { s ->
                 if (s != null) files = CombinePlus.sortFiles(files, s, false)
             }
             if (files.isNotEmpty()) FileListEditor(files, { files = it })
