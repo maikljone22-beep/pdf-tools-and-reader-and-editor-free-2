@@ -29,7 +29,7 @@ class SignedFormSaveTest {
 
     /** A form with two text fields ("buyer", "amount"), signed by party A (optionally with a lock / certification). */
     private fun signedForm(lock: SigFields.Lock? = null, certify: Int = 0): File {
-        val plain = tmp.newFile("form.pdf")
+        val plain = File(tmp.root, "form_${System.nanoTime()}.pdf")
         PDDocument().use { d ->
             d.addPage(PDPage())
             val form = PDAcroForm(d); d.documentCatalog.acroForm = form
