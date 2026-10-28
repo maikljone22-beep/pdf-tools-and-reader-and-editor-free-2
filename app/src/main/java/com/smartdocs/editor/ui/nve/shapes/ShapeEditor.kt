@@ -152,7 +152,7 @@ fun ShapeEditorDialog(c: EditController, onClose: () -> Unit) {
                     Text(stringResource(R.string.nh_shapes_title), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                     IconButton(onClick = { c.undo() }, enabled = c.canUndo && !c.busy) { Icon(Icons.AutoMirrored.Filled.Undo, stringResource(R.string.undo)) }
                     IconButton(onClick = { c.redo() }, enabled = c.canRedo && !c.busy) { Icon(Icons.AutoMirrored.Filled.Redo, stringResource(R.string.redo)) }
-                    IconButton(onClick = { zoom = when (zoom) { 1f -> 1.5f; 1.5f -> 2f; 2f -> 3f; else -> 1f } }) { Icon(Icons.Default.ZoomIn, stringResource(R.string.ed_zoom)) }
+                    IconButton(onClick = { zoom = when (zoom) { 1f -> 1.5f; 1.5f -> 2f; 2f -> 3f; else -> 1f } }) { Icon(Icons.Default.ZoomIn, stringResource(R.string.pc_cd_zoom_in)) }
                     IconButton(onClick = { showStyle = !showStyle }) { Icon(Icons.Default.Palette, stringResource(R.string.nh_style)) }
                 }
                 // ---- tools ----

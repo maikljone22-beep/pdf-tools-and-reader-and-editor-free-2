@@ -63,13 +63,13 @@ internal fun PdfPageCropDialog(file: File, onDismiss: () -> Unit, onCropped: (Bi
                 Text(stringResource(R.string.nq_pdf_title), style = MaterialTheme.typography.titleMedium)
                 Text(stringResource(R.string.nq_pdf_crop_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (pageCount > 0) Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { if (page > 0) { page--; pageText = "${page + 1}" } }, enabled = page > 0) { Icon(Icons.AutoMirrored.Filled.NavigateBefore, null) }
+                    IconButton(onClick = { if (page > 0) { page--; pageText = "${page + 1}" } }, enabled = page > 0) { Icon(Icons.AutoMirrored.Filled.NavigateBefore, stringResource(R.string.pc_cd_prev_page)) }
                     OutlinedTextField(pageText, { t ->
                         pageText = t.filter { it.isDigit() }.take(5)
                         pageText.toIntOrNull()?.takeIf { it in 1..pageCount }?.let { page = it - 1 }
                     }, Modifier.width(96.dp), singleLine = true, label = { Text(stringResource(R.string.nq_pdf_page)) })
                     Text(stringResource(R.string.nq_pdf_of, pageCount), Modifier.padding(horizontal = 8.dp))
-                    IconButton(onClick = { if (page < pageCount - 1) { page++; pageText = "${page + 1}" } }, enabled = page < pageCount - 1) { Icon(Icons.AutoMirrored.Filled.NavigateNext, null) }
+                    IconButton(onClick = { if (page < pageCount - 1) { page++; pageText = "${page + 1}" } }, enabled = page < pageCount - 1) { Icon(Icons.AutoMirrored.Filled.NavigateNext, stringResource(R.string.pc_cd_next_page)) }
                 }
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {

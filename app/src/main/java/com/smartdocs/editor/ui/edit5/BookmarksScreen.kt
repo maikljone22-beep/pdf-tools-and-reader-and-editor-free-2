@@ -147,10 +147,10 @@ fun BookmarksScreen(nav: NavHostController, uri: String?) {
                         Text(sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                     if (!selecting) {
-                        IconButton(onClick = { update(OutlineStore.tree2(list) { OutlineModel.moveUp(it, i) }.first) }) { Icon(Icons.Default.ArrowUpward, stringResource(R.string.ed_outline_up)) }
-                        IconButton(onClick = { update(OutlineStore.tree2(list) { OutlineModel.moveDown(it, i) }.first) }) { Icon(Icons.Default.ArrowDownward, stringResource(R.string.ed_outline_down)) }
-                        IconButton(onClick = { update(OutlineStore.tree(list) { OutlineModel.outdent(it, i) }) }) { Icon(Icons.AutoMirrored.Filled.FormatIndentDecrease, stringResource(R.string.ed_outline_outdent)) }
-                        IconButton(onClick = { update(OutlineStore.tree(list) { OutlineModel.indent(it, i) }) }) { Icon(Icons.AutoMirrored.Filled.FormatIndentIncrease, stringResource(R.string.ed_outline_indent)) }
+                        IconButton(onClick = { update(OutlineStore.tree2(list) { OutlineModel.moveUp(it, i) }.first) }) { Icon(Icons.Default.ArrowUpward, stringResource(R.string.pc_move_up)) }
+                        IconButton(onClick = { update(OutlineStore.tree2(list) { OutlineModel.moveDown(it, i) }.first) }) { Icon(Icons.Default.ArrowDownward, stringResource(R.string.pc_move_down)) }
+                        IconButton(onClick = { update(OutlineStore.tree(list) { OutlineModel.outdent(it, i) }) }) { Icon(Icons.AutoMirrored.Filled.FormatIndentDecrease, stringResource(R.string.pc_tags_outdent)) }
+                        IconButton(onClick = { update(OutlineStore.tree(list) { OutlineModel.indent(it, i) }) }) { Icon(Icons.AutoMirrored.Filled.FormatIndentIncrease, stringResource(R.string.pc_tags_indent)) }
                         IconButton(onClick = { update(OutlineStore.tree(list) { OutlineModel.delete(it, i) }) }) { Icon(Icons.Default.Delete, stringResource(R.string.delete)) }
                         var menu by remember { mutableStateOf(false) }
                         Box {

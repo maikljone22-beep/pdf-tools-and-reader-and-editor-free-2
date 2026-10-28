@@ -132,10 +132,11 @@ object ImageAnnotProps5 {
         com.smartdocs.editor.core.pdf.PdfOps.load(src, pw).use { if (image(it, page, index) == null) null else read(it, page, index) }
     }
 
+    /** Signed-safe write (audit CM-04). */
     suspend fun applyFile(src: File, out: File, pw: String?, page: Int, index: Int, p: Props) = withContext(Dispatchers.IO) {
-        com.smartdocs.editor.core.pdf.PdfOps.load(src, pw).use { d ->
+        com.smartdocs.editor.core.pdf.SignedSave.editFile(src, out, pw) { d ->
             if (!apply(d, page, index, p)) error("no image in this annotation")
-            d.save(out)
+            listOf(page)
         }
     }
 }

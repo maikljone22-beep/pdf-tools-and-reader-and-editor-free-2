@@ -52,7 +52,7 @@ object ToolCatalog {
         ToolEntry(ReaderTool.SOUND, Icons.Default.Mic, R.string.annot_audio, R.string.an_group_comment),
         ToolEntry(ReaderTool.VIDEO, Icons.Default.Movie, R.string.an_video, R.string.an_group_comment),
         ToolEntry(ReaderTool.SNAPSHOT, Icons.Default.Screenshot, R.string.an_snapshot, R.string.an_group_comment),
-        ToolEntry(ReaderTool.SELECT, Icons.Default.HighlightAlt, R.string.an_select, R.string.an_group_comment),
+        ToolEntry(ReaderTool.SELECT, Icons.Default.SelectAll, R.string.an_select, R.string.an_group_comment),   // CM-05: not the area-highlight icon
         ToolEntry(ReaderTool.TICKMARK, Icons.Default.LooksOne, R.string.cx_tickmark, R.string.an_group_comment),
         ToolEntry(ReaderTool.INK, Icons.Default.Draw, R.string.annot_ink, R.string.an_group_drawing),
         ToolEntry(ReaderTool.ERASER, Icons.Default.CleaningServices, R.string.annot_eraser, R.string.an_group_drawing),
@@ -103,6 +103,8 @@ fun clickTool(state: ReaderState, actions: ReaderActions, t: ReaderTool) {
         ReaderTool.STAMP -> { state.selectTool(ReaderTool.STAMP); if (state.tool == ReaderTool.STAMP) actions.pickStamp() }
         ReaderTool.IMAGE -> { state.selectTool(ReaderTool.IMAGE); if (state.tool == ReaderTool.IMAGE) actions.pickImage() }
         in Annot2Host.OWN_TOOLS -> state.annot2.pick(t)
+        // tabs audit CM-05: "Measure" is the workbench measure (saved into the file), wherever it is picked
+        ReaderTool.MEASURE -> { state.selectTool(null); com.smartdocs.editor.ui.view5.V5State.of(state).let { v -> v.workbenchTool = com.smartdocs.editor.ui.view5.WTool.DISTANCE; v.open(com.smartdocs.editor.ui.view5.V5Surface.WORKBENCH) } }
         else -> state.selectTool(t)
     }
 }
@@ -171,6 +173,9 @@ fun ToolsetEditSheet(tools: List<ReaderTool>, onChange: (List<ReaderTool>) -> Un
                     Icon(Icons.Default.DragIndicator, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.width(8.dp)); Icon(e.icon, null); Spacer(Modifier.width(12.dp))
                     Text(stringResource(e.label), Modifier.weight(1f))
+                    // tabs audit CM-30: move up / down without the long-press drag (TalkBack, switch access)
+                    IconButton(onClick = { val k = list.indexOf(t); if (k > 0) { list.add(k - 1, list.removeAt(k)); commit() } }, enabled = i > 0) { Icon(Icons.Default.KeyboardArrowUp, stringResource(R.string.tc_move_up_tool, stringResource(e.label))) }
+                    IconButton(onClick = { val k = list.indexOf(t); if (k in 0 until list.lastIndex) { list.add(k + 1, list.removeAt(k)); commit() } }, enabled = i < list.lastIndex) { Icon(Icons.Default.KeyboardArrowDown, stringResource(R.string.tc_move_down_tool, stringResource(e.label))) }
                     IconButton(onClick = { list.remove(t); commit() }) { Icon(Icons.Default.RemoveCircleOutline, stringResource(R.string.delete), tint = MaterialTheme.colorScheme.error) }
                 }
             }
@@ -185,7 +190,8 @@ fun ToolsetEditSheet(tools: List<ReaderTool>, onChange: (List<ReaderTool>) -> Un
                             leadingContent = { Icon(e.icon, null) },
                             trailingContent = {
                                 IconButton(onClick = { if (added) list.remove(e.tool) else list.add(e.tool); commit() }) {
-                                    Icon(if (added) Icons.Default.CheckCircle else Icons.Default.AddCircleOutline, stringResource(if (added) R.string.ai6h_remove else R.string.ai6h_add),
+                                    Icon(if (added) Icons.Default.CheckCircle else Icons.Default.AddCircleOutline,
+                                        stringResource(if (added) R.string.tc_tool_remove else R.string.tc_tool_add, stringResource(e.label)),   // CM-30
                                         tint = if (added) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                             },

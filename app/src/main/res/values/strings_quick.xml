@@ -113,6 +113,8 @@
     <string name="qk_ocr_searchable_desc">(موصى به) يمكن البحث في النص وتحديده ونسخه، ولن يتغيّر مظهر الصفحة أبداً (طبقة نص غير مرئية).</string>
     <string name="qk_ocr_editable">نص قابل للتعديل</string>
     <string name="qk_ocr_editable_desc">للصفحات الممسوحة فقط: تُستبدل الكلمات الواضحة بنص حقيقي قابل للتحرير، والكلمات غير المؤكدة تبقى كما هي. الصفحات التي فيها نص حقيقي لا تتغيّر.</string>
+    <string name="qk_ocr_redo">إعادة التعرف واستبدال طبقة النص</string>
+    <string name="qk_ocr_redo_desc">للصفحات التي فيها نص: يُحذف نص التعرف القديم غير المرئي (من التطبيق أو من الماسح) ثم تُقرأ الصفحات من جديد بالمحرك الحالي. المحتوى الظاهر لا يتغير.</string>
     <string name="qk_ocr_run">تنفيذ</string>
     <string name="qk_ocr_downloading">تنزيل بيانات %1$s… %2$d%%</string>
     <string name="qk_ocr_page">التعرّف على الصفحة %1$d من %2$d</string>

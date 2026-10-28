@@ -192,7 +192,8 @@ object NveKeys {
         val nav = v.env?.nav
         val ctx = s.context
         val cx = s.annot2.cx
-        fun tool(t: ReaderTool) { s.tab = ReaderTab.COMMENT; s.selectTool(t) }
+        // tabs audit CM-24: the same path as the chips (caret / replace act on the selection), and the Comment toolbar shows
+        fun tool(t: ReaderTool) { s.tab = ReaderTab.COMMENT; n.userTab = null; if (a != null) com.smartdocs.editor.ui.reader.annot.clickTool(s, a, t) else s.selectTool(t) }
         fun tabStep(d: Int) {
             val tabs = ReaderTabs.tabs.toList(); if (tabs.size < 2) return
             val i = tabs.indexOfFirst { it.uri == s.fileUri }

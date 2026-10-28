@@ -113,6 +113,8 @@
     <string name="qk_ocr_searchable_desc">(Recommended) Text can be searched, selected and copied; the page never changes (an invisible text layer).</string>
     <string name="qk_ocr_editable">Editable text</string>
     <string name="qk_ocr_editable_desc">Scanned pages only: clear words become real editable text, uncertain words stay as they are. Pages that already have real text are not changed.</string>
+    <string name="qk_ocr_redo">Redo OCR and replace the text layer</string>
+    <string name="qk_ocr_redo_desc">For pages that already have text: the old invisible OCR text (from this app or a scanner) is removed and the pages are recognised again with the current engine. Visible content does not change.</string>
     <string name="qk_ocr_run">Run</string>
     <string name="qk_ocr_downloading">Downloading %1$s data… %2$d%%</string>
     <string name="qk_ocr_page">Recognizing page %1$d of %2$d</string>

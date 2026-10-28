@@ -120,9 +120,9 @@ fun EsignFieldPlacer(session: PdfSession, signers: List<Signer>, fields: Snapsho
         }
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = { if (page > 0) { page--; selected = null } }, enabled = page > 0) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, stringResource(R.string.ed_prev_page)) }
+            IconButton(onClick = { if (page > 0) { page--; selected = null } }, enabled = page > 0) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, stringResource(R.string.pc_cd_next_page)) }
             Text(stringResource(R.string.cn_page_of, page + 1, session.pageCount), style = MaterialTheme.typography.labelLarge)
-            IconButton(onClick = { if (page < session.pageCount - 1) { page++; selected = null } }, enabled = page < session.pageCount - 1) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, stringResource(R.string.ed_next_page)) }
+            IconButton(onClick = { if (page < session.pageCount - 1) { page++; selected = null } }, enabled = page < session.pageCount - 1) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, stringResource(R.string.pc_cd_prev_page)) }
             Spacer(Modifier.weight(1f))
             val sel = fields.firstOrNull { it.id == selected }
             if (sel != null) {
