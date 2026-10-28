@@ -2,7 +2,6 @@ package com.smartdocs.editor.ui.selmenu
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.ExperimentalLayoutApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
@@ -158,13 +157,12 @@ fun SelMenuLayer(
                         if (gi > 0) HorizontalDivider()
                         sec.items.forEach { item ->
                             val reason = item.why
-                            val trailing: (@Composable () -> Unit)? = if (reason == null) null else @Composable {
-                                Text(stringResource(SelBindings.why(reason)), style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 120.dp))
-                            }
                             DropdownMenuItem(
                                 text = { Text(stringResource(SelBindings.label(item.action)), Modifier.alpha(if (item.enabled) 1f else 0.45f)) },
                                 leadingIcon = { Icon(SelBindings.icon(item.action), null, Modifier.alpha(if (item.enabled) 1f else 0.45f)) },
-                                trailingIcon = trailing,
+                                trailingIcon = if (reason == null) null else ({
+                                    Text(stringResource(SelBindings.why(reason)), style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 120.dp))
+                                }),
                                 onClick = { runItem(item) },
                             )
                         }
