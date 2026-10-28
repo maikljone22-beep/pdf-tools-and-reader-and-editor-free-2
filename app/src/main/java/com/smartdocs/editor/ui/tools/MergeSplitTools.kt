@@ -243,6 +243,11 @@ fun SplitScreen(nav: NavHostController, uri: String?) {
     var maxMb by remember { mutableStateOf("5") }
     var bookmarks by remember { mutableStateOf<List<Pair<String, Int>>?>(null) }
     val pick = rememberPdfPicker { file = it.firstOrNull() }
+    // FINAL_CHECK_2 #8: more files split with the same settings; #2: an output folder for the parts
+    var more by remember { mutableStateOf<List<File>>(emptyList()) }
+    val pickMore = rememberPdfPicker(multiple = true) { fs -> more = (more + fs).distinctBy { it.absolutePath }.filter { it.absolutePath != file?.absolutePath } }
+    var outTree by remember { mutableStateOf("") }
+    val ctx = androidx.compose.ui.platform.LocalContext.current
     val processing = stringResource(R.string.processing)
     val noBookmarks = stringResource(R.string.ps_split_no_bookmarks)
     val badSize = stringResource(R.string.ps_split_size_invalid)
@@ -286,6 +291,17 @@ fun SplitScreen(nav: NavHostController, uri: String?) {
             }
             else -> Unit
         }
+        if (file != null) {
+            more.forEach { f ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.PictureAsPdf, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
+                    Text(f.name, Modifier.weight(1f).padding(horizontal = 6.dp), maxLines = 1, style = MaterialTheme.typography.bodyMedium)
+                    IconButton(onClick = { more = more - f }) { Icon(Icons.Default.Close, stringResource(R.string.t5_remove)) }
+                }
+            }
+            TextButton(onClick = pickMore) { Icon(Icons.Default.Add, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.cv9_split_more)) }
+            com.smartdocs.editor.ui.common.OutputFolderRow(outTree) { outTree = it }
+        }
         PrimaryButton(stringResource(R.string.tl_split), enabled = file != null && lock.ready, icon = Icons.Default.CallSplit) {
             val src = file ?: return@PrimaryButton
             val m = mode; val chunk = (n.toIntOrNull() ?: 1).coerceAtLeast(1); val spec = ranges; val total = pages
@@ -293,24 +309,32 @@ fun SplitScreen(nav: NavHostController, uri: String?) {
             if (m == SplitMode.SIZE && limit < 50_000) { runner.error = badSize; return@PrimaryButton }
             if (m == SplitMode.BOOKMARKS && bookmarks?.isEmpty() == true) { runner.error = noBookmarks; return@PrimaryButton }
             val password = pw
+            val others = more.toList(); val tree = outTree
             // audit 5 C-25: the parts never overwrite earlier ones (PdfOps.split / uniqueIn / uniqueFile pick free names)
             runner.runMany(processing) { withPasswordMessage(wrongPw) {
-                val dir = File(app.documents.docsDir, src.nameWithoutExtension + "_split").apply { mkdirs() }
-                val base = src.nameWithoutExtension
-                when (m) {
-                    SplitMode.BOOKMARKS -> try { SplitOps.byBookmarks(src, dir, password) } catch (e: IllegalStateException) { throw IllegalStateException(noBookmarks) }
-                    SplitMode.SIZE -> SplitOps.bySize(src, dir, base, limit, password)
-                    SplitMode.EVERY_PAGE -> PdfOps.split(src, dir, base, 1, password)
-                    SplitMode.EVERY_N -> PdfOps.split(src, dir, base, chunk, password)
-                    SplitMode.RANGES -> {
-                        val count = if (total > 0) total else PdfOps.pageCount(src, password)
-                        val parts = spec.replace('؛', ';').split(';', '\n').map { it.trim() }.filter { it.isNotEmpty() }
-                        parts.mapIndexedNotNull { i, part ->
-                            val idx = PdfOps.parseRange(part, count)
-                            if (idx.isEmpty()) null else app.documents.uniqueFile(dir, "${base}_${i + 1}").also { PdfOps.keepPages(src, idx, it, password) }
+                suspend fun splitOne(f: File, pass: String?, known: Int): List<File> {
+                    val dir = File(app.documents.docsDir, f.nameWithoutExtension + "_split").apply { mkdirs() }
+                    val base = f.nameWithoutExtension
+                    return when (m) {
+                        SplitMode.BOOKMARKS -> try { SplitOps.byBookmarks(f, dir, pass) } catch (e: IllegalStateException) { if (f == src) throw IllegalStateException(noBookmarks) else emptyList() }
+                        SplitMode.SIZE -> SplitOps.bySize(f, dir, base, limit, pass)
+                        SplitMode.EVERY_PAGE -> PdfOps.split(f, dir, base, 1, pass)
+                        SplitMode.EVERY_N -> PdfOps.split(f, dir, base, chunk, pass)
+                        SplitMode.RANGES -> {
+                            val count = if (known > 0) known else PdfOps.pageCount(f, pass)
+                            val parts = spec.replace('؛', ';').split(';', '\n').map { it.trim() }.filter { it.isNotEmpty() }
+                            parts.mapIndexedNotNull { i, part ->
+                                val idx = PdfOps.parseRange(part, count)
+                                if (idx.isEmpty()) null else app.documents.uniqueFile(dir, "${base}_${i + 1}").also { PdfOps.keepPages(f, idx, it, pass) }
+                            }
                         }
                     }
                 }
+                val out = splitOne(src, password, total).toMutableList()
+                // the other files: unprotected ones, or ones the same password opens
+                others.forEach { f -> out += runCatching { splitOne(f, null, 0) }.recoverCatching { splitOne(f, password, 0) }.getOrDefault(emptyList()) }
+                if (tree.isNotBlank()) com.smartdocs.editor.ui.common.copyToOutputFolder(ctx, tree, out)
+                out
             } }
         }
         ResultsList(runner.results, nav, "application/pdf")

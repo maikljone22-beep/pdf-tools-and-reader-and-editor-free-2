@@ -69,7 +69,7 @@ fun PageOpsScreen(nav: NavHostController, uri: String?, initial: PageOp = PageOp
         val ok = runCatching { unlocker.unlock(f) }.getOrElse { runner.error = it.message ?: it.toString(); true }
         if (!ok) other = null
     }
-    val pickOther = rememberPdfPicker { other = it.firstOrNull() }
+    val pickOther = com.smartdocs.editor.ui.common.rememberAnyDocPicker { other = it.firstOrNull() }   // FINAL_CHECK_2 #7: any document, converted to PDF
     val processing = stringResource(R.string.processing)
     val n = doc.pageCount
     ToolScaffold(stringResource(R.string.e5_pageops_title), nav, runner) {

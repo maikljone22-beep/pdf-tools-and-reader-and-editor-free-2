@@ -175,7 +175,8 @@ object ToPdf6 {
      * pictures left out, pages that could not be read …).
      */
     suspend fun convert(ctx: Context, f: File, out: File, setup: PageSetup = PageSetup(), quality: Int = 88, bookmarks: Boolean = false,
-                        speakerNotes: Boolean = false, info: (String) -> Unit = {}): File {
+                        speakerNotes: Boolean = false, cellComments: Boolean = false, slideRange: String = "", hiddenSlides: Boolean = true,
+                        info: (String) -> Unit = {}): File {
         coroutineContext.ensureActive()
         val kind = FileKind6.of(f)
         val title = f.nameWithoutExtension
@@ -198,9 +199,10 @@ object ToPdf6 {
                 if (bookmarks) runCatching { OfficeOutline.applyByText(out, OfficeOutline.docxTitles(model)) }
                 out
             }
-            kind == Kind6.XLSX -> xlsx(ctx, f, out, tmp, info, bookmarks)
+            kind == Kind6.XLSX -> xlsx(ctx, f, out, tmp, info, bookmarks, cellComments)
             kind == Kind6.PPTX || pptM != null -> {
-                val model = pptM ?: withContext(Dispatchers.IO) { OoxmlReader.readPptx(f) }
+                // row 103: slide range and hidden slides
+                val model = SlideSelect.select(pptM ?: withContext(Dispatchers.IO) { OoxmlReader.readPptx(f) }, slideRange, hiddenSlides)
                 if (pptM != null) info(ctx.getString(R.string.cv9_info_ppt_layout))
                 val s = model.slides.firstOrNull()
                 // the paper is the slide (convert audit A-M3: 16:9 slides sat in the top third of A4 portrait pages)
@@ -289,7 +291,7 @@ object ToPdf6 {
     }
 
     /** Excel → PDF: clean printable sheets (no grid chrome), landscape for wide sheets, printed in parts (A-H9 / A-M1). */
-    private suspend fun xlsx(ctx: Context, f: File, out: File, tmp: File, info: (String) -> Unit, bookmarks: Boolean = false): File {
+    private suspend fun xlsx(ctx: Context, f: File, out: File, tmp: File, info: (String) -> Unit, bookmarks: Boolean = false, cellComments: Boolean = false): File {
         val book = withContext(Dispatchers.IO) { OoxmlReader.readXlsx(f, MAX_PRINT_ROWS, 500) }
         val landscape = OfficeHtml.xlsxLandscape(book)
         val pageW = if (landscape) 1020 else 700
@@ -309,6 +311,15 @@ object ToPdf6 {
         // a bookmark per sheet: each printed sheet starts with its name when the workbook has several
         if (bookmarks && book.sheets.size > 1) runCatching {
             OfficeOutline.applyByText(out, book.sheets.filter { !OfficeHtml.xlsxUsedRows(it).isEmpty() }.map { OfficeOutline.Title(1, it.name) })
+        }
+        // row 103: cell comments → note comments next to their cells
+        if (cellComments) runCatching {
+            val comments = withContext(Dispatchers.IO) { XlsxComments.read(f) }
+            if (comments.isNotEmpty()) {
+                val byName = book.sheets.associateBy { it.name }
+                val n = XlsxComments.apply(out, comments, { s, r, c -> byName[s]?.cell(r, c)?.display }, book.sheets.size > 1, ctx.getString(R.string.cv9_cell_comment))
+                if (n > 0) info(ctx.getString(R.string.cv9_info_comments, n))
+            }
         }
         return res
     }

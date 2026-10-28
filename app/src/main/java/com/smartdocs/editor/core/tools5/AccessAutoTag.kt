@@ -169,6 +169,24 @@ object AccessAutoTag {
         }
     }
 
+    /**
+     * Tag [f] in place (FINAL_CHECK_2 #3 / row 93 "create PDF tags" when creating a PDF): a file that is already
+     * tagged is left as it is; the language comes from its text (Arabic → "ar", else the device language).
+     */
+    suspend fun tagFile(f: java.io.File): Report? = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        val tmp = java.io.File(f.parentFile, ".${f.name}.tag.pdf")
+        try {
+            val rep = com.smartdocs.editor.core.pdf.PdfOps.loadRaw(f, null).use { d ->
+                if (d.documentCatalog.cosObject.containsKey(COSName.getPDFName("StructTreeRoot"))) return@use null
+                val sample = runCatching { com.tom_roush.pdfbox.text.PDFTextStripper().apply { endPage = 2 }.getText(d) }.getOrDefault("")
+                val lang = if (com.smartdocs.editor.core.convert6.Text6.rtlDominant(sample)) "ar" else java.util.Locale.getDefault().language.ifBlank { "en" }
+                tag(d, lang, retag = false).also { d.save(tmp) }
+            }
+            if (rep != null && !tmp.renameTo(f)) tmp.copyTo(f, overwrite = true)
+            rep
+        } finally { tmp.delete() }
+    }
+
     fun tag(doc: PDDocument, lang: String, retag: Boolean): Report {
         val cat = doc.documentCatalog.cosObject
         val wasTagged = cat.containsKey(COSName.getPDFName("StructTreeRoot"))
