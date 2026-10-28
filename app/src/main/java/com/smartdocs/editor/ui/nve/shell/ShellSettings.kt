@@ -86,10 +86,14 @@ fun NveShellSettingsRows() {
 
     GroupDivider()
     val v = NveShellPrefs.version.intValue
-    val recent = remember(v) { NveFolders.recentSize(ctx) }
+    // fc-settings: the one recent-list size (NpfPrefs.recentLimit, also in More preferences → Files); 0 = all
+    val recent = com.smartdocs.editor.core.data.NpfPrefs.recentLimit
     GroupRow(stringResource(R.string.nl_recent_size), null, icon = Icons.Default.History)
     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        listOf(5, 10, 20, 30, 50).forEach { n -> FilterChip(recent == n, { NveFolders.setRecentSize(ctx, n) }, label = { Text(n.toString()) }) }
+        com.smartdocs.editor.core.data.NpfPrefs.RECENT_CHOICES.forEach { n ->
+            FilterChip(recent == n, { com.smartdocs.editor.core.data.NpfPrefs.setInt(com.smartdocs.editor.core.data.NpfPrefs.K.RECENT_LIMIT, n) },
+                label = { Text(if (n == 0) stringResource(R.string.npf_all) else n.toString()) })
+        }
     }
     val saveFolder = remember(v) { NveFolders.defaultSaveFolder(ctx) }
     val pickSave = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocumentTree()) { it?.let { t -> NveFolders.setDefaultSaveFolder(ctx, t) } }
