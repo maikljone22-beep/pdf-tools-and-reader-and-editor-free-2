@@ -124,12 +124,38 @@ object PdfOps {
         } finally { if (tmp.exists()) tmp.delete() }
     }
 
-    /** Parse "1-3, 5, 8" into zero-based page indexes within [count]. */
+    /**
+     * A page-range text with ASCII digits and separators: Arabic-Indic (٠-٩) and Persian (۰-۹) digits, the Arabic comma
+     * and semicolon («،» «؛»), «;» and the dashes «–» «—» «−» are what Arabic keyboards type (audit B17).
+     */
+    fun normalizeRange(spec: String): String = buildString(spec.length) {
+        spec.forEach { c ->
+            append(when (c) {
+                in '٠'..'٩' -> '0' + (c - '٠')
+                in '۰'..'۹' -> '0' + (c - '۰')
+                '،', '؛', ';' -> ','
+                '–', '—', '−', '‐', '‑' -> '-'
+                '‏', '‎', '؜' -> ' '   // bidi marks a RTL text field may insert
+                else -> c
+            })
+        }
+    }
+
+    /** True when [spec] is blank or only numbers, ranges and separators (the range fields show an error otherwise). */
+    fun rangeSyntaxOk(spec: String): Boolean {
+        val s = normalizeRange(spec)
+        if (s.isBlank()) return true
+        return s.split(',').map { it.trim() }.filter { it.isNotEmpty() }.let { parts ->
+            parts.isNotEmpty() && parts.all { Regex("""^\d+(\s*-\s*\d+)?$""").matches(it) }
+        }
+    }
+
+    /** Parse "1-3, 5, 8" (also «١-٣، ٥») into zero-based page indexes within [count]. */
     fun parseRange(spec: String, count: Int): List<Int> {
         if (spec.isBlank()) return (0 until count).toList()
         val out = LinkedHashSet<Int>()
-        spec.replace('،', ',').split(',').map { it.trim() }.filter { it.isNotEmpty() }.forEach { part ->
-            val m = Regex("""^(\d+)\s*[-–]\s*(\d+)$""").find(part)
+        normalizeRange(spec).split(',').map { it.trim() }.filter { it.isNotEmpty() }.forEach { part ->
+            val m = Regex("""^(\d+)\s*-\s*(\d+)$""").find(part)
             if (m != null) {
                 // toIntOrNull + clamp: "99999999999" overflowed toInt(), "1-2000000000" looped 2e9 times
                 val a = m.groupValues[1].toIntOrNull() ?: Int.MAX_VALUE; val b = m.groupValues[2].toIntOrNull() ?: Int.MAX_VALUE
@@ -151,7 +177,7 @@ object PdfOps {
         val tmp = File(out.parentFile ?: out.absoluteFile.parentFile, ".${out.name}.${System.nanoTime()}.tmp")
         try {
             m.destinationFileName = tmp.absolutePath
-            m.mergeDocuments(null)
+            m.mergeDocuments(com.tom_roush.pdfbox.io.MemoryUsageSetting.setupMixed(48L shl 20))   // big inputs spill to a temp file (convert audit A-H6)
             if (!tmp.renameTo(out)) { tmp.copyTo(out, overwrite = true); tmp.delete() }
         } finally { if (tmp.exists()) tmp.delete() }
     }
@@ -342,11 +368,16 @@ object PdfOps {
     suspend fun insertPagesFrom(src: File, other: File, atIndex: Int, out: File, password: String? = null, keepBookmarks: Boolean = true, keepAttachments: Boolean = true) =
         com.smartdocs.editor.core.edit5.PageOrganize.insertFile(src, out, password, other, null, atIndex, keepBookmarks, keepAttachments)
 
-    /** Build a PDF from images; each image becomes a page sized to the image (A4-fitted when [fitA4]). */
-    suspend fun imagesToPdf(images: List<File>, out: File, fitA4: Boolean = true, jpegQuality: Int = 85) = withContext(Dispatchers.IO) {
-        PDDocument().use { doc ->
+    /**
+     * Build a PDF from images; each image becomes a page sized to the image (A4-fitted when [fitA4]). Picture streams
+     * spill to a temp file; pictures that cannot be decoded are reported to [skipped], and when none could be read the
+     * call fails instead of saving a 0-page "PDF" (convert audit A-M15).
+     */
+    suspend fun imagesToPdf(images: List<File>, out: File, fitA4: Boolean = true, jpegQuality: Int = 85, skipped: (File) -> Unit = {}) = withContext(Dispatchers.IO) {
+        PDDocument(com.tom_roush.pdfbox.io.MemoryUsageSetting.setupTempFileOnly()).use { doc ->
             images.forEach { f ->
-                val bmp = decodeScaled(f, 2200) ?: return@forEach
+                kotlinx.coroutines.currentCoroutineContext().let { c -> if (c[kotlinx.coroutines.Job]?.isActive == false) throw kotlinx.coroutines.CancellationException("cancelled") }
+                val bmp = decodeScaled(f, 2200) ?: run { skipped(f); return@forEach }
                 val img = JPEGFactory.createFromImage(doc, bmp, jpegQuality / 100f)
                 val page = if (fitA4) {
                     val portrait = bmp.height >= bmp.width
@@ -359,6 +390,7 @@ object PdfOps {
                 PDPageContentStream(doc, page).use { it.drawImage(img, (box.width - w) / 2, (box.height - h) / 2, w, h) }
                 bmp.recycle()
             }
+            if (doc.numberOfPages == 0) throw com.smartdocs.editor.core.convert6.UnsupportedImage("empty")
             saveTo(doc, out)
         }
     }
@@ -369,9 +401,12 @@ object PdfOps {
         var sample = 1
         while (o.outWidth / sample > maxDim || o.outHeight / sample > maxDim) sample *= 2
         val bmp = BitmapFactory.decodeFile(f.absolutePath, BitmapFactory.Options().apply { inSampleSize = sample }) ?: return null
-        val exif = runCatching { androidx.exifinterface.media.ExifInterface(f.absolutePath).rotationDegrees }.getOrDefault(0)
-        if (exif == 0) return bmp
-        val m = Matrix().apply { postRotate(exif.toFloat()) }
+        // rotation AND mirroring (front-camera / selfie orientations 2, 4, 5, 7 — convert audit A-L7)
+        val exif = runCatching { androidx.exifinterface.media.ExifInterface(f.absolutePath) }.getOrNull()
+        val rot = runCatching { exif?.rotationDegrees ?: 0 }.getOrDefault(0)
+        val flip = runCatching { exif?.isFlipped == true }.getOrDefault(false)
+        if (rot == 0 && !flip) return bmp
+        val m = Matrix().apply { postRotate(rot.toFloat()); if (flip) postScale(-1f, 1f) }   // EXIF: rotate, then mirror
         return Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, m, true).also { if (it !== bmp) bmp.recycle() }
     }
 
@@ -519,13 +554,18 @@ object PdfOps {
         } finally { tmp.delete() }
     }
 
-    /** Flatten: render each page to an image so annotations/forms become part of the page. */
-    suspend fun flatten(context: Context, src: File, out: File, dpi: Int = 150, password: String? = null) = withContext(Dispatchers.IO) {
-        // One page at a time: holding every rendered page bitmap in memory OOMs on long documents.
+    /**
+     * Flatten: render each page to an image so annotations/forms become part of the page. One page at a time into a
+     * PDF whose picture streams live in a temp file (convert audit C9: every page JPEG stayed on the heap until the
+     * save); Cancel stops between pages and [onProgress] gets (page, total).
+     */
+    suspend fun flatten(context: Context, src: File, out: File, dpi: Int = 150, password: String? = null, onProgress: (Int, Int) -> Unit = { _, _ -> }) = withContext(Dispatchers.IO) {
         val session = PdfSession.open(context, src, password)
         try {
-            PDDocument().use { doc ->
+            PDDocument(com.tom_roush.pdfbox.io.MemoryUsageSetting.setupTempFileOnly()).use { doc ->
                 for (i in 0 until session.pageCount) {
+                    kotlinx.coroutines.currentCoroutineContext().let { c -> if (c[kotlinx.coroutines.Job]?.isActive == false) throw kotlinx.coroutines.CancellationException("cancelled") }
+                    onProgress(i, session.pageCount)
                     val (w, h) = session.pageSize(i)
                     val bmp = session.render(i, (w * dpi / 72).toInt().coerceAtLeast(1), (h * dpi / 72).toInt().coerceAtLeast(1), annotations = true)
                     val page = PDPage(PDRectangle(bmp.width * 72f / dpi, bmp.height * 72f / dpi)); doc.addPage(page)
@@ -533,6 +573,7 @@ object PdfOps {
                     PDPageContentStream(doc, page).use { it.drawImage(img, 0f, 0f, page.mediaBox.width, page.mediaBox.height) }
                     session.invalidateCache()
                 }
+                onProgress(session.pageCount, session.pageCount)
                 saveTo(doc, out)
             }
         } finally { session.closeAsync() }

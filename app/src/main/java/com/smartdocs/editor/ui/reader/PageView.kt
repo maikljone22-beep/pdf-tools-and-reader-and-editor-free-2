@@ -368,8 +368,10 @@ fun PageView(
                         items(contItemCount(), key = { it }) { item ->
                             // NVE: one page per row, or two facing pages (continuous facing); reverse view maps rows to pages
                             val rowPages = contPages(item)
+                            // tab-view-core V-15: facing rows in the document's direction (as contPageLeft computes them)
+                            val uiRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
                             Row(horizontalArrangement = Arrangement.spacedBy(pairGapDp), verticalAlignment = Alignment.CenterVertically) {
-                                rowPages.forEach { page ->
+                                (if (rtl == uiRtl) rowPages else rowPages.reversed()).forEach { page ->
                                     if (cropOn) LaunchedEffect(page, vx.crop.manual, state.renderVersion) { vx.crop.ensure(page); vx.crop.ensure(page + 1) }
                                     val w = baseWidth(page) * state.zoom
                                     DisplayedPage(
@@ -387,6 +389,10 @@ fun PageView(
                     )
                 }
                 ViewMode.SINGLE, ViewMode.FACING, ViewMode.COVER -> {
+                    // tab-view-core V-15: swipe direction and spread order follow the document's direction (docRtl), like
+                    // the tap zones; the pages themselves keep the app's direction
+                    val uiDir = LocalLayoutDirection.current
+                    androidx.compose.runtime.CompositionLocalProvider(LocalLayoutDirection provides if (rtl) LayoutDirection.Rtl else LayoutDirection.Ltr) {
                     HorizontalPager(
                         state = pagerState, modifier = Modifier.fillMaxSize(), beyondViewportPageCount = 1,
                         userScrollEnabled = !overflowX() && !toolBusy(),
@@ -401,14 +407,17 @@ fun PageView(
                             ) {
                                 pages.forEachIndexed { k, page ->
                                     val w = baseWidth(page) * state.zoom
+                                    androidx.compose.runtime.CompositionLocalProvider(LocalLayoutDirection provides uiDir) {
                                     DisplayedPage(
                                         state, page, w, pageHeight(page, w), cropOf(page),
                                         visibleBox = { visibleOf(pageRect(item, k)) },
                                         onTap = onTap, onDoubleTap = ::doubleTap, onOpenLink = onOpenLink, onPrompt = onPrompt,
                                     )
+                                    }
                                 }
                             }
                         }
+                    }
                     }
                 }
             }
@@ -420,6 +429,9 @@ fun PageView(
             onClose = { vx.magnifier = false },
             modifier = Modifier.align(AbsoluteAlignment.TopLeft),
         )
+        // 7.10: floating pop-up note window
+        if (viewport != Size.Zero) com.smartdocs.editor.ui.reader.annot.FloatingNoteWindow(state, IntSize(viewport.width.roundToInt(), viewport.height.roundToInt()),
+            Modifier.align(AbsoluteAlignment.TopLeft))
         AutoFlipBar(state, Modifier.align(Alignment.BottomCenter).padding(bottom = 56.dp))
     }
 }

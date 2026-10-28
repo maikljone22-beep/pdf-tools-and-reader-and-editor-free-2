@@ -1,5 +1,6 @@
 package com.smartdocs.editor.ui.view5
 
+import com.smartdocs.editor.ui.reader.view.pageTint
 import android.graphics.Bitmap
 import android.view.KeyEvent
 import androidx.compose.animation.*
@@ -88,6 +89,15 @@ fun PresentationDialog(v: V5State) {
     DisposableEffect(Unit) { onDispose { s.jumpTo(page) } }
 
     Dialog(onDismissRequest = { save(); v.close() }, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+        // tab-view-core V-33: immersive — the status and navigation bars are hidden (a swipe shows them for a moment)
+        val dlgView = androidx.compose.ui.platform.LocalView.current
+        DisposableEffect(dlgView) {
+            val w = (dlgView.parent as? androidx.compose.ui.window.DialogWindowProvider)?.window
+            val c = w?.let { androidx.core.view.WindowCompat.getInsetsController(it, dlgView) }
+            c?.systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            c?.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+            onDispose { c?.show(androidx.core.view.WindowInsetsCompat.Type.systemBars()) }
+        }
         BoxWithConstraints(Modifier.fillMaxSize().background(Color(0xFF000000.toInt() or com.smartdocs.editor.core.data.NpfPrefs.presentBackground))   // nav-prefs: full-screen background
            .focusRequester(focus).focusable()
             .onKeyEvent { e ->
@@ -132,15 +142,16 @@ fun PresentationDialog(v: V5State) {
             val density = LocalDensity.current
             val vw = with(density) { maxWidth.toPx() }; val vh = with(density) { maxHeight.toPx() }
             AnimatedContent(page, transitionSpec = { com.smartdocs.editor.ui.nve.NvePresentation.spec(nveTrans[targetState], forward, rtl) ?: spec(transition, forward, rtl) }, label = "present", modifier = Modifier.fillMaxSize()) { p ->
-                val bmp by produceState<Bitmap?>(null, p, vw, vh) {
+                val bmp by produceState<Bitmap?>(null, p, vw, vh, s.nightMode) {
                     val sess = s.session ?: return@produceState
                     val (pw, ph) = s.pageSize(p)
                     if (pw <= 0f || ph <= 0f || p !in 0 until s.pageCount) return@produceState
                     val k = minOf(vw / pw, vh / ph)
-                    value = runCatching { sess.render(p, (pw * k).toInt().coerceIn(1, 4096), (ph * k).toInt().coerceIn(1, 4096), false, true) }.getOrNull()
+                    value = runCatching { sess.render(p, (pw * k).toInt().coerceIn(1, 4096), (ph * k).toInt().coerceIn(1, 4096), s.nightMode, true) }.getOrNull()   // tab-view-core V-33: night mode
                 }
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    bmp?.let { Image(it.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Fit) }
+                    // tab-view-core V-38: the page colour too (the image is exactly the page, so the tint covers only it)
+                    bmp?.let { Image(it.asImageBitmap(), null, Modifier.size(with(density) { it.width.toDp() }, with(density) { it.height.toDp() }).pageTint(s.pageColor, s.nightMode), contentScale = ContentScale.Fit) }
                 }
             }
             laser?.let { l -> Canvas(Modifier.fillMaxSize()) { drawCircle(Color(0x66FF1744), 34f, l); drawCircle(Color(0xFFFF1744), 12f, l) } }

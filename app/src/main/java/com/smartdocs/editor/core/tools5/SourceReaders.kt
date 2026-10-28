@@ -27,11 +27,43 @@ object HtmlBits {
             extraCss + "</style></head><body>" + body + "</body></html>"
 
     fun rtlDominant(s: String): Boolean { var r = 0; var l = 0; s.forEach { if (TextNorm.isArabicChar(it)) r++ else if (it.isLetter()) l++ }; return r > l }
+
+    /**
+     * Untrusted HTML made safe to print (convert audit A-M6): scripts, frames, objects, forms' actions, `<base>` and
+     * meta refresh are removed, every on*= event handler is dropped and javascript: / vbscript: / data:text URLs are
+     * neutralised. The WebView also prints local HTML with scripts off and without navigation. Pure.
+     */
+    fun sanitize(html: String): String {
+        var s = html
+        s = s.replace(Regex("""(?is)<script\b.*?</script\s*>"""), "").replace(Regex("""(?is)<script\b[^>]*/?>"""), "")
+        s = s.replace(Regex("""(?is)<(iframe|frame|frameset|object|embed|applet|noscript)\b.*?</\1\s*>"""), "")
+        s = s.replace(Regex("""(?is)<(iframe|frame|object|embed|applet|base|link\b[^>]*\brel\s*=\s*["']?(?:import|prefetch|preload)["']?)\b[^>]*>"""), "")
+        s = s.replace(Regex("""(?is)<meta\b[^>]*http-equiv\s*=\s*["']?refresh["']?[^>]*>"""), "")
+        // event handlers: on...="…", on...='…', on...=value
+        s = s.replace(Regex("""(?is)(<[a-z][^>]*?)\s+on[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)"""), "$1")
+        var prev: String
+        do { prev = s; s = s.replace(Regex("""(?is)(<[a-z][^>]*?)\s+on[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)"""), "$1") } while (s != prev)
+        s = s.replace(Regex("""(?i)(href|src|action|formaction|xlink:href|background|poster)\s*=\s*(["']?)\s*(?:javascript\s*:|vbscript\s*:|data:text/html)[^"'>]*\2"""), "$1=$2#$2")
+        s = s.replace(Regex("""(?i)url\(\s*["']?\s*javascript:[^)]*\)"""), "none")
+        return s
+    }
 }
 
 object TextHtml {
+    /**
+     * One block per line, each with its own direction (convert audit A-M10: one `<pre dir=auto>` gave the whole file the
+     * direction of its first letter, so Arabic paragraphs after an English first line were left-aligned).
+     */
+    fun body(text: String): String = buildString(text.length + text.length / 8 + 64) {
+        text.replace("\r\n", "\n").replace('\r', '\n').split('\n').forEach { line ->
+            if (line.isEmpty()) append("<div class=\"tl\">&#160;</div>") else append("<div class=\"tl\" dir=\"auto\">").append(HtmlBits.esc(line)).append("</div>")
+        }
+    }
+
+    const val CSS = ".tl{white-space:pre-wrap;overflow-wrap:anywhere;font-family:inherit;min-height:1.2em}"
+
     fun fromText(text: String, title: String): HtmlDoc =
-        HtmlDoc(title, HtmlBits.page(title, "<pre dir=\"auto\">" + HtmlBits.esc(text) + "</pre>", HtmlBits.rtlDominant(text)))
+        HtmlDoc(title, HtmlBits.page(title, body(text), HtmlBits.rtlDominant(text.take(20000)), CSS))
 }
 
 /** Small Markdown subset: headings, bold/italic/code, links, lists, quotes, fences, rules, paragraphs. */
@@ -207,7 +239,7 @@ object EmlReader {
             root.headers[k]?.let { v -> "<tr><td><b>" + HtmlBits.esc(labels[k] ?: k.replaceFirstChar { it.uppercase() }) + "</b></td><td dir=\"auto\">" + HtmlBits.esc(decodeWords(v)) + "</td></tr>" }
         }.joinToString("")
         var body = c.html?.let { h ->
-            var x = h.replace(Regex("""(?is)<script.*?</script>"""), "")
+            var x = HtmlBits.sanitize(h)
             x = Regex("""(?i)cid:([^"'\s>]+)""").replace(x) { m -> c.inline[m.groupValues[1]] ?: m.value }
             Regex("""(?is)<body[^>]*>(.*)</body>""").find(x)?.groupValues?.get(1) ?: x
         } ?: ("<pre dir=\"auto\">" + HtmlBits.esc(c.text.orEmpty()) + "</pre>")
@@ -219,6 +251,9 @@ object EmlReader {
         return HtmlDoc(subject, html, c.attachments)
     }
 }
+
+/** An EPUB read for printing: its own CSS, the chapters' bodies in spine order, pictures inlined within a budget. */
+class EpubBook(val title: String, val css: String, val chapters: List<String>, val rtl: Boolean, val droppedImages: Int)
 
 /** EPUB 2/3 → one HTML document in spine order, images inlined as data URIs, scripts dropped. */
 object EpubReader {
@@ -240,12 +275,33 @@ object EpubReader {
 
     private fun attr(tag: String, name: String): String? = Regex("""(?i)\b$name\s*=\s*["']([^"']*)["']""").find(tag)?.groupValues?.get(1)
 
-    fun read(file: File, maxImageBytes: Int = 4 shl 20): HtmlDoc = ZipFile(file).use { z ->
+    fun read(file: File, maxImageBytes: Int = 4 shl 20): HtmlDoc {
+        val b = readBook(file, maxImageBytes)
+        val body = b.chapters.mapIndexed { i, c -> (if (i == 0) "<div>" else "<div class=\"chapter\">") + c + "</div>\n" }.joinToString("")
+        return HtmlDoc(b.title, HtmlBits.page(b.title, body, b.rtl, b.css))
+    }
+
+    /** CSS of the book without remote imports or script URLs; @font-face rules are dropped (their files are not inlined). */
+    fun cleanCss(css: String): String = css
+        .replace(Regex("""(?is)@import[^;]*;"""), "")
+        .replace(Regex("""(?is)@font-face\s*\{[^}]*\}"""), "")
+        .replace(Regex("""(?i)url\(\s*["']?\s*(?:https?:|javascript:)[^)]*\)"""), "none")
+        .replace(Regex("""(?is)</\s*style"""), "")
+
+    /**
+     * EPUB 2/3 in spine order for printing (convert audit A-M7): the CSS each chapter links or embeds is kept, the
+     * dc:title is decoded once, scripts and event handlers are removed, pictures are inlined up to [maxImageBytes]
+     * each and [totalImageBytes] for the whole book (further ones are counted in [EpubBook.droppedImages]); [convert]
+     * turns a picture the WebView cannot show (TIFF) into a PNG or JPEG.
+     */
+    fun readBook(file: File, maxImageBytes: Int = 4 shl 20, totalImageBytes: Long = 64L shl 20,
+                 convert: (ByteArray, String) -> Pair<ByteArray, String>? = { b, ext -> com.smartdocs.editor.core.convert6.PortableImage.normalize(b, ext, setOf("jpg", "png", "gif", "svg", "webp", "bmp"))?.let { (d, e) -> d to e } }): EpubBook = ZipFile(file).use { z ->
         fun text(path: String): String? = z.getEntry(path)?.let { e -> z.getInputStream(e).use { String(it.readBytes(), Charsets.UTF_8) } }
         val container = text("META-INF/container.xml") ?: throw IllegalArgumentException("not an EPUB")
         val opfPath = Regex("""full-path\s*=\s*["']([^"']+)["']""").find(container)?.groupValues?.get(1) ?: throw IllegalArgumentException("no OPF")
         val opf = text(opfPath) ?: throw IllegalArgumentException("no OPF")
-        val title = Regex("""(?is)<dc:title[^>]*>(.*?)</dc:title>""").find(opf)?.groupValues?.get(1)?.trim() ?: file.nameWithoutExtension
+        val title = Regex("""(?is)<dc:title[^>]*>(.*?)</dc:title>""").find(opf)?.groupValues?.get(1)?.trim()
+            ?.replace(Regex("""(?is)<!\[CDATA\[(.*?)]]>"""), "$1")?.let { com.smartdocs.editor.core.convert6.HtmlFlow.decode(it) }?.trim()?.ifBlank { null } ?: file.nameWithoutExtension
         val manifest = HashMap<String, Pair<String, String>>()
         Regex("""(?is)<item\b[^>]*>""").findAll(opf).forEach { m ->
             val id = attr(m.value, "id") ?: return@forEach
@@ -253,32 +309,43 @@ object EpubReader {
             manifest[id] = resolve(opfPath, href) to (attr(m.value, "media-type") ?: "")
         }
         val spine = Regex("""(?is)<itemref\b[^>]*>""").findAll(opf).mapNotNull { attr(it.value, "idref") }.toList()
-        val body = StringBuilder()
-        var first = true
+        val chapters = ArrayList<String>()
+        val css = LinkedHashSet<String>()
         var sample = ""
+        var budget = totalImageBytes
+        var dropped = 0
         spine.forEach { id ->
             val (path, type) = manifest[id] ?: return@forEach
             if (!type.contains("html") && !path.endsWith("html", true) && !path.endsWith(".htm", true)) return@forEach
             val x = text(path) ?: return@forEach
+            // the book's styles: linked stylesheets and <style> blocks of the chapter head
+            val head = Regex("""(?is)<head[^>]*>(.*?)</head>""").find(x)?.groupValues?.get(1).orEmpty()
+            Regex("""(?is)<link\b[^>]*>""").findAll(head).forEach { l ->
+                val rel = attr(l.value, "rel").orEmpty(); val href = attr(l.value, "href") ?: return@forEach
+                if (rel.contains("stylesheet", true) && !href.startsWith("http")) text(resolve(path, href))?.let { css += cleanCss(it) }
+            }
+            Regex("""(?is)<style[^>]*>(.*?)</style>""").findAll(head).forEach { css += cleanCss(it.groupValues[1]) }
             var inner = Regex("""(?is)<body[^>]*>(.*)</body>""").find(x)?.groupValues?.get(1) ?: x
-            inner = inner.replace(Regex("""(?is)<script.*?</script>"""), "")
+            inner = HtmlBits.sanitize(inner)
             inner = Regex("""(?is)<(img|image)\b[^>]*>""").replace(inner) { m ->
                 val tag = m.value
                 val src = attr(tag, "src") ?: attr(tag, "xlink:href") ?: attr(tag, "href") ?: return@replace tag
                 if (src.startsWith("data:") || src.startsWith("http")) return@replace tag
                 val p = resolve(path, src)
                 val e = z.getEntry(p) ?: return@replace tag
-                if (e.size > maxImageBytes) return@replace ""
-                val mime = when (p.substringAfterLast('.').lowercase()) { "png" -> "image/png"; "gif" -> "image/gif"; "svg" -> "image/svg+xml"; "webp" -> "image/webp"; else -> "image/jpeg" }
-                val data = z.getInputStream(e).use { it.readBytes() }
+                if (e.size > maxImageBytes || e.size > budget) { dropped++; return@replace "" }
+                val raw = z.getInputStream(e).use { it.readBytes() }
+                val ext0 = p.substringAfterLast('.').lowercase()
+                val (data, ext) = (if (ext0 in setOf("tif", "tiff")) convert(raw, ext0) else raw to ext0) ?: run { dropped++; return@replace "" }
+                budget -= data.size
+                val mime = when (ext) { "png" -> "image/png"; "gif" -> "image/gif"; "svg" -> "image/svg+xml"; "webp" -> "image/webp"; "bmp" -> "image/bmp"; else -> "image/jpeg" }
                 "<img src=\"data:$mime;base64," + Base64.getEncoder().encodeToString(data) + "\" alt=\"" + HtmlBits.esc(attr(tag, "alt") ?: "") + "\">"
             }
             // internal links between chapters cannot work in one printed document: keep the text
             inner = inner.replace(Regex("""(?i)<a\b[^>]*href\s*=\s*["'](?!https?:)[^"']*["'][^>]*>"""), "<a>")
             if (sample.length < 2000) sample += inner.replace(Regex("<[^>]+>"), " ").take(2000)
-            body.append(if (first) "<div>" else "<div class=\"chapter\">").append(inner).append("</div>\n")
-            first = false
+            chapters += inner
         }
-        HtmlDoc(title, HtmlBits.page(title, body.toString(), HtmlBits.rtlDominant(sample)))
+        EpubBook(title, css.joinToString("\n"), chapters, HtmlBits.rtlDominant(sample), dropped)
     }
 }

@@ -20,6 +20,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.withLock
 import java.io.File
 
 /**
@@ -39,7 +40,7 @@ object NveRecovery {
         val target = fileFor(ctx, doc)
         val tmp = File(dir(ctx), target.name + ".tmp")
         runCatching {
-            state.exportWithAnnots(tmp)
+            state.saveMutex.withLock { state.exportWithAnnots(tmp) }     // tab-view-core V-12: never while a save rewrites the file
             withContext(Dispatchers.IO) { if (!tmp.renameTo(target)) { tmp.copyTo(target, overwrite = true); tmp.delete() } }
         }.onFailure { tmp.delete() }
         prune(ctx)
@@ -49,6 +50,19 @@ object NveRecovery {
     fun pending(ctx: Context, doc: File): File? = fileFor(ctx, doc).takeIf { it.exists() && it.length() > 0 && it.lastModified() > doc.lastModified() }
 
     fun discard(ctx: Context, doc: File) { fileFor(ctx, doc).delete() }
+
+    /**
+     * tab-view-core V-12: a copy left by the old second recovery system (filesDir/npf_recovery) becomes this system's
+     * copy of [doc], so it is offered once by the banner; the old file is removed.
+     */
+    fun adoptLegacy(ctx: Context, doc: File, legacy: File) {
+        val target = fileFor(ctx, doc)
+        if (!target.exists() || legacy.lastModified() > target.lastModified()) {
+            val t = legacy.lastModified()
+            runCatching { legacy.copyTo(target, overwrite = true); target.setLastModified(t) }
+        }
+        legacy.delete()
+    }
 
     private fun prune(ctx: Context) {
         val files = dir(ctx).listFiles()?.filter { it.isFile && it.name.endsWith(".pdf") } ?: return
@@ -89,6 +103,14 @@ fun NveRecoveryEffect(state: ReaderState) {
             delay(minutes * 60_000L)
             if (state.dirty && !state.saving) NveRecovery.snapshot(state)
         }
+    }
+    // tab-view-core V-31: leaving the app (process may be killed) writes the copy now, whatever the autosave setting
+    @Suppress("DEPRECATION") val owner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+    DisposableEffect(owner, state, minutes) {
+        val obs = androidx.lifecycle.LifecycleEventObserver { _, e ->
+            if (e == androidx.lifecycle.Lifecycle.Event.ON_STOP && minutes > 0 && state.dirty && !state.saving) state.scope.launch { NveRecovery.snapshot(state) }
+        }
+        owner.lifecycle.addObserver(obs); onDispose { owner.lifecycle.removeObserver(obs) }
     }
     // saved (no longer dirty): the copy is obsolete
     // (only on a dirty -> clean transition: on open the crash copy must survive until the banner was answered)

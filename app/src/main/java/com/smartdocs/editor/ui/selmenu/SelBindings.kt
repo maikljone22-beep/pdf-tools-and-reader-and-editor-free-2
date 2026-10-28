@@ -40,7 +40,7 @@ object SelBindings {
         SelAction.REPLACE_TEXT -> R.string.an_replace_title
         SelAction.INSERT_TEXT -> R.string.an_insert_text_title
         SelAction.ADD_NOTE -> R.string.annot_note
-        SelAction.READING_BOOKMARK -> R.string.add_bookmark
+        SelAction.READING_BOOKMARK -> R.string.tvc_reading_bookmark      // tab-view-core V-11: named apart from "Bookmark in PDF"
         SelAction.PDF_BOOKMARK -> R.string.nbm_bm_from_selection
         SelAction.SEARCH_DOC -> R.string.sm_search_doc
         SelAction.WEB_SEARCH -> R.string.rd_web_search
@@ -106,7 +106,7 @@ object SelBindings {
         SelAction.REPLACE_TEXT -> Icons.Default.FindReplace
         SelAction.INSERT_TEXT -> Icons.Default.PostAdd
         SelAction.ADD_NOTE, SelAction.NOTE_HERE -> Icons.Default.AddComment
-        SelAction.READING_BOOKMARK -> Icons.Default.Bookmark
+        SelAction.READING_BOOKMARK -> Icons.Default.BookmarkBorder      // tab-view-core V-11
         SelAction.PDF_BOOKMARK -> Icons.Default.BookmarkAdd
         SelAction.SEARCH_DOC -> Icons.Default.FindInPage
         SelAction.WEB_SEARCH -> Icons.Default.TravelExplore

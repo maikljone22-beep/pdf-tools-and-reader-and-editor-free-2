@@ -33,12 +33,8 @@ class DocumentRepository(private val context: Context, private val db: AppDataba
 
     fun newTemp(prefix: String = "doc", ext: String = "pdf") = File(tempDir, "${prefix}_${System.currentTimeMillis()}.$ext")
 
-    fun uniqueFile(dir: File, baseName: String, ext: String = "pdf"): File {
-        val clean = baseName.replace(Regex("""[\\/:*?"<>|]"""), "_").ifBlank { "document" }
-        var f = File(dir, "$clean.$ext"); var n = 2
-        while (f.exists()) { f = File(dir, "$clean ($n).$ext"); n++ }
-        return f
-    }
+    /** A new name in [dir] (never an existing file); the base is cleaned and cut to fit the 255-byte name limit ([FileNames]). */
+    fun uniqueFile(dir: File, baseName: String, ext: String = "pdf"): File = FileNames.unique(dir, baseName, ext)
 
     // ---- link between a working copy and the document it came from ----
     private val origins = context.getSharedPreferences("origins", Context.MODE_PRIVATE)

@@ -269,7 +269,7 @@ class RecipeRunner(private val ctx: Context, private val tempDir: File) {
             StepType.CONVERT_OFFICE -> {
                 val conv = BatchSteps.conversionId(s.p("format"))?.let { Cv6Catalog.byId(it) } ?: error(str(R.string.nbt_err_format, s.p("format")))
                 val app = ctx.applicationContext as SmartDocsApp
-                val res = Cv6Engine(ctx, app.documents).run(conv, listOf(src), Cv6Opts(), password) { _, _, _ -> }
+                val res = Cv6Engine(ctx, app.documents).run(conv, listOf(src), com.smartdocs.editor.core.convert6.Cv6Catalog.defaultsFor(conv), password) { _, _, _ -> }   // same defaults as the hub (audit C47)
                 val f = res.files.firstOrNull() ?: error(str(R.string.nbt_err_format, s.p("format")))
                 val moved = tmp("conv", f.extension.ifBlank { "bin" })
                 if (!f.renameTo(moved)) { f.copyTo(moved, overwrite = true); f.delete() }

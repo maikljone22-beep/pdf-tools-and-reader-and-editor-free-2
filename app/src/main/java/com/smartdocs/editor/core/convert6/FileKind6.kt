@@ -47,7 +47,8 @@ object FileKind6 {
         "tif", "tiff" -> Kind6.TIFF
         "txt", "log", "json", "xml", "kt", "java", "py", "js", "c", "cpp", "h", "ini", "yaml", "yml", "sql", "sh" -> Kind6.TEXT
         "md", "markdown", "mdown" -> Kind6.MARKDOWN
-        "html", "htm", "xhtml", "mht" -> Kind6.HTML
+        // .mht / .mhtml are MIME web archives: HTML kind, but the readers take the HTML part out of the MIME (audit A-L4 / C42)
+        "html", "htm", "xhtml", "mht", "mhtml" -> Kind6.HTML
         "epub" -> Kind6.EPUB
         "eml" -> Kind6.EML
         "zip" -> Kind6.ZIP
@@ -110,6 +111,40 @@ object FileKind6 {
         return if (ext in setOf(Kind6.DOCX, Kind6.XLSX, Kind6.PPTX, Kind6.ODT, Kind6.ODS, Kind6.ODP, Kind6.EPUB)) ext else Kind6.ZIP
     }
 
+    /** What a ".doc" / ".xls" / ".ppt" really holds (bank, school and ERP "Excel" exports are often HTML / XML / TSV). */
+    enum class Legacy { CFB, HTML, XML_SPREADSHEET, XML_WORD, RTF, TEXT, UNKNOWN }
+
+    /**
+     * Content of a legacy Office file from its first bytes (convert audit A-H11 / C20: such files were detected by
+     * extension and failed with "not a compound file"). Pure.
+     */
+    fun legacyVariant(head: ByteArray): Legacy {
+        if (startsWith(head, 0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1)) return Legacy.CFB
+        if (ascii(head, 0, "{\\rtf")) return Legacy.RTF
+        val text = decodeHead(head)
+        val s = text.trimStart(0xFEFF.toChar(), ' ', '\n', '\r', '\t').lowercase()
+        if (s.startsWith("<?xml") || s.startsWith("<workbook") || s.startsWith("<ss:workbook") || s.startsWith("<w:worddocument")) {
+            if ("urn:schemas-microsoft-com:office:spreadsheet" in s || "<workbook" in s || "<ss:workbook" in s) return Legacy.XML_SPREADSHEET
+            if ("schemas.microsoft.com/office/word/2003/wordml" in s || "<w:worddocument" in s) return Legacy.XML_WORD
+            if ("<html" in s) return Legacy.HTML
+        }
+        if (s.startsWith("<!doctype html") || s.startsWith("<html") || s.startsWith("<table") || s.startsWith("<meta") || s.startsWith("<head") ||
+            s.startsWith("<body") || s.startsWith("<style") || (s.startsWith("<") && ("<html" in s || "<table" in s))) return Legacy.HTML
+        if (s.startsWith("mime-version:") && "text/html" in s) return Legacy.HTML
+        val bin = head.take(1024).count { val v = it.toInt() and 0xFF; v < 0x09 || (v in 0x0E..0x1F) }
+        return if (head.isNotEmpty() && bin == 0) Legacy.TEXT else Legacy.UNKNOWN
+    }
+
+    private fun decodeHead(head: ByteArray): String = when {
+        startsWith(head, 0xFF, 0xFE) -> String(head, 2, maxOf(0, head.size - 2), Charsets.UTF_16LE)
+        startsWith(head, 0xFE, 0xFF) -> String(head, 2, maxOf(0, head.size - 2), Charsets.UTF_16BE)
+        else -> String(head, Charsets.UTF_8)
+    }
+
+    /** A CFB container holding an encrypted OOXML package (a password-protected .docx / .xlsx / .pptx, audit A-M11 / C33). */
+    fun isEncryptedPackage(streams: Collection<String>): Boolean =
+        streams.any { it.equals("EncryptedPackage", true) } && streams.any { it.equals("EncryptionInfo", true) }
+
     private fun textKind(ext: Kind6, head: ByteArray): Kind6 {
         val s = String(head, Charsets.UTF_8).trimStart('\uFEFF', ' ', '\n', '\r', '\t').lowercase()
         if (ext == Kind6.UNKNOWN) {
@@ -127,8 +162,28 @@ object FileKind6 {
         else -> Kind6.UNKNOWN
     }
 
+    /** Results of [of] per (path, size, modification time): the picker, the hub and the engine ask several times (audit A-L5). */
+    private val cache = object : LinkedHashMap<String, Pair<Kind6, Boolean>>(64, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Pair<Kind6, Boolean>>?) = size > 128
+    }
+
+    private fun key(f: File) = f.absolutePath + "|" + f.length() + "|" + f.lastModified()
+
     /** Detect a real file (reads the head, the ZIP directory or the CFB directory when needed). */
-    fun of(f: File): Kind6 {
+    fun of(f: File): Kind6 = info(f).first
+
+    /** True for a password-protected Office file (OOXML inside an encrypted CFB container). */
+    fun isEncryptedOffice(f: File): Boolean = info(f).second
+
+    private fun info(f: File): Pair<Kind6, Boolean> {
+        val k = key(f)
+        synchronized(cache) { cache[k] }?.let { return it }
+        val r = detectFile(f)
+        if (f.exists()) synchronized(cache) { cache[k] = r }
+        return r
+    }
+
+    private fun detectFile(f: File): Pair<Kind6, Boolean> {
         val head = runCatching { f.inputStream().use { s -> ByteArray(1024).let { b -> val n = s.read(b); if (n <= 0) ByteArray(0) else b.copyOf(n) } } }.getOrDefault(ByteArray(0))
         val isZip = startsWith(head, 0x50, 0x4B, 0x03, 0x04)
         if (isZip) {
@@ -139,13 +194,14 @@ object FileKind6 {
                     names to m
                 }
             }.getOrDefault(null to null)
-            return detect(f.name, head, entries, mt)
+            return detect(f.name, head, entries, mt) to false
         }
         val k = detect(f.name, head)
         if (k == Kind6.UNKNOWN && startsWith(head, 0xD0, 0xCF, 0x11, 0xE0)) {
-            return runCatching { oleKind(CfbReader(f.readBytes()).streamNames()) }.getOrDefault(Kind6.UNKNOWN)
+            val names = CfbReader.streamNamesOf(f) ?: return Kind6.UNKNOWN to false
+            return oleKind(names) to isEncryptedPackage(names)
         }
-        return k
+        return k to false
     }
 
     /** Mime types offered by the picker for a set of kinds. */

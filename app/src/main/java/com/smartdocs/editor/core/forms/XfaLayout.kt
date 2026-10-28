@@ -29,6 +29,7 @@ sealed class XItem {
         val group: String? = null, val multiline: Boolean = false, val maxChars: Int = 0, val comb: Int = 0, val fontSize: Float = 10f,
         val hAlign: String = "left", val readOnly: Boolean = false, val required: Boolean = false, val password: Boolean = false,
         val type: XfaSupport.XType = XfaSupport.XType.TEXT, val editable: Boolean = false, val round: Boolean = false,
+        val picture: String = "",
     ) : XItem()
     data class AddRow(val x: Float, val y: Float, val w: Float, val h: Float, val repeat: XRepeatInfo) : XItem()
 }
@@ -284,7 +285,8 @@ class XfaLayout(private val t: XTemplate, private val metrics: XfaMetrics = Appr
             XUi.BARCODE -> if (i.value.isNotBlank()) out += (NpfBarcode.boxes(n.barcodeType, i.value, cx, cy, cw, ch)
                 ?: listOf(XItem.Text(cx, cy, cw, ch, listOf(i.value), f, "center", "middle", false)))
             else -> out += XItem.Widget(cx, cy, cw, ch, XWKind.TEXT, i.dataPath, label, i.value, multiline = n.multiline, maxChars = n.maxChars,
-                comb = n.combCells, fontSize = f.size, hAlign = hAlign, readOnly = n.readOnly, required = n.required, password = n.ui == XUi.PASSWORD, type = type)
+                comb = n.combCells, fontSize = f.size, hAlign = hAlign, readOnly = n.readOnly, required = n.required, password = n.ui == XUi.PASSWORD, type = type,
+                picture = n.picture)
         }
     }
 

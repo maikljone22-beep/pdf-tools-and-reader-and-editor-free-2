@@ -6,6 +6,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -33,10 +35,22 @@ fun CopyableIf(allowed: Boolean, content: @Composable () -> Unit) {
 @Composable
 fun ReaderSecurityBanners(state: ReaderState) {
     val g = state.guard
-    if (g.protectedView) BannerCard(Icons.Default.Shield, MaterialTheme.colorScheme.tertiaryContainer, MaterialTheme.colorScheme.onTertiaryContainer) {
+    // tab-view-core V-32: the Protected View banner collapses to a one-line chip (tap to expand again)
+    var pvCollapsed by androidx.compose.runtime.saveable.rememberSaveable(state.uriString) { androidx.compose.runtime.mutableStateOf(false) }
+    if (g.protectedView && pvCollapsed) Surface(onClick = { pvCollapsed = false }, modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp), color = MaterialTheme.colorScheme.tertiaryContainer,
+        contentColor = MaterialTheme.colorScheme.onTertiaryContainer, shape = MaterialTheme.shapes.small) {
+        Row(Modifier.padding(horizontal = 10.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.Shield, null, Modifier.size(16.dp))
+            Spacer(Modifier.width(6.dp))
+            Text(stringResource(R.string.np2_pv_title), Modifier.weight(1f), style = MaterialTheme.typography.labelMedium, maxLines = 1)
+            TextButton(onClick = { g.enableEditing() }) { Text(stringResource(R.string.np2_pv_enable)) }
+        }
+    }
+    else if (g.protectedView) BannerCard(Icons.Default.Shield, MaterialTheme.colorScheme.tertiaryContainer, MaterialTheme.colorScheme.onTertiaryContainer) {
         Text(stringResource(R.string.np2_pv_title), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall)
         Text(stringResource(R.string.np2_pv_body), style = MaterialTheme.typography.bodySmall)
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+            TextButton(onClick = { pvCollapsed = true }) { Text(stringResource(R.string.tvc_collapse)) }
             Button(onClick = { g.enableEditing() }) { Text(stringResource(R.string.np2_pv_enable)) }
         }
     }

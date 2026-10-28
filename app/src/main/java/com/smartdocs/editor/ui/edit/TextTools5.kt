@@ -102,10 +102,45 @@ internal object TextLinks {
         RectF(r[0], r[1], r[2], r[3]) to LinkTarget(t[0].toInt(), t[1], t[2], t[3], t[4])
     }
 
-    /** Same box: top-start corner within a few points (the box re-wraps, its corner stays). */
-    private fun near(a: RectF, b: RectF) = abs(a.left - b.left) < 6f && abs(a.top - b.top) < 6f
+    /** Same box (tab-view-core E-07: start corner = left edge for LTR boxes, right edge for RTL ones; see [LinkBoxMatch]). */
+    private fun near(a: RectF, b: RectF) = LinkBoxMatch.same(a.left, a.top, a.right, b.left, b.top, b.right)
 
     fun target(ctx: Context, file: String, page: Int, r: RectF): LinkTarget? = all(ctx, file, page).firstOrNull { near(it.first, r) }?.second
+
+    /**
+     * tab-view-core E-07: links of [page] whose source box no longer exists (after an undo / redo or another edit)
+     * are dropped, so a stale link never flows text into a box it was not made for.
+     */
+    fun prune(ctx: Context, file: String, page: Int, boxes: List<RectF>) {
+        val stale = all(ctx, file, page).filter { (src, _) -> boxes.none { near(src, it) } }
+        if (stale.isEmpty()) return
+        val e = p(ctx).edit(); stale.forEach { (src, _) -> e.remove(key(file, page, src)) }; e.apply()
+    }
+
+    private val ids = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+    /**
+     * tab-view-core E-07: links belong to the document (its permanent /ID), not to whatever file is later saved at the
+     * same path. [prime] reads the ID off the main thread; [docKey] falls back to the path until then.
+     */
+    fun docKey(f: java.io.File): String = ids[f.absolutePath] ?: f.absolutePath
+
+    fun prime(f: java.io.File, password: String?) {
+        if (ids.containsKey(f.absolutePath)) return
+        val id = runCatching {
+            com.smartdocs.editor.core.pdf.PdfOps.loadRaw(f, password).use { d ->
+                (d.document.documentID?.getObject(0) as? com.tom_roush.pdfbox.cos.COSString)?.toHexString()
+            }
+        }.getOrNull()
+        if (!id.isNullOrBlank()) ids[f.absolutePath] = "id:$id"
+    }
+}
+
+/** tab-view-core E-07: pure "same linked box" test (unit-tested). */
+object LinkBoxMatch {
+    /** Same top edge and the same left (LTR start) or right (RTL start) edge within [tol] points. */
+    fun same(l1: Float, t1: Float, r1: Float, l2: Float, t2: Float, r2: Float, tol: Float = 6f): Boolean =
+        abs(t1 - t2) < tol && (abs(l1 - l2) < tol || abs(r1 - r2) < tol)
 }
 
 internal enum class TSheet { MORE, FONTS, COLOR, STROKE_COLOR, PREFS, REFLOW }
@@ -230,7 +265,7 @@ internal class TextTools5(val c: EditController) {
     fun commitBlock(b: TextBlock, text: String, st: EditTextStyle, done: Int): Boolean {
         val f = c.state.file ?: return false
         val p = c.page; val pw = c.state.password
-        val link = TextLinks.target(ctx, f.absolutePath, p, b.rect)
+        val link = TextLinks.target(ctx, TextLinks.docKey(f), p, b.rect)
         val mx = dx; val my = dy; val mw = dw
         when {
             link != null && text.isNotBlank() && st.list == ListKind.NONE -> c.runNve(done) { src, out ->
@@ -271,7 +306,7 @@ internal class TextTools5(val c: EditController) {
                 val f = c.state.file ?: return true
                 val (sp, a) = src
                 val r = hit?.rect ?: RectF(x, y, x + a.rect.width(), y - (a.rect.top - a.rect.bottom))
-                TextLinks.set(ctx, f.absolutePath, sp, a.rect, LinkTarget(c.page, r.left, r.top, r.right, r.bottom))
+                TextLinks.set(ctx, TextLinks.docKey(f), sp, a.rect, LinkTarget(c.page, r.left, r.top, r.right, r.bottom))
                 c.message = ctx.getString(R.string.nt_linked, c.page + 1)
             }
             Pick.NONE -> {}
@@ -288,8 +323,8 @@ internal class TextTools5(val c: EditController) {
         c.message = ctx.getString(if (mode == Pick.LINK) R.string.nt_pick_link else R.string.nt_pick_join)
     }
 
-    fun unlink() { val b = c.block ?: return; val f = c.state.file ?: return; TextLinks.set(ctx, f.absolutePath, c.page, b.rect, null); c.message = ctx.getString(R.string.nt_unlinked) }
-    fun linked(): LinkTarget? { val b = c.block ?: return null; val f = c.state.file ?: return null; return TextLinks.target(ctx, f.absolutePath, c.page, b.rect) }
+    fun unlink() { val b = c.block ?: return; val f = c.state.file ?: return; TextLinks.set(ctx, TextLinks.docKey(f), c.page, b.rect, null); c.message = ctx.getString(R.string.nt_unlinked) }
+    fun linked(): LinkTarget? { val b = c.block ?: return null; val f = c.state.file ?: return null; return TextLinks.target(ctx, TextLinks.docKey(f), c.page, b.rect) }
 
     fun split() {
         val b = c.block ?: return

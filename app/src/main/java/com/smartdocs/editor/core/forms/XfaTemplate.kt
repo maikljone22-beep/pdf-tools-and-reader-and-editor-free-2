@@ -41,7 +41,8 @@ data class XOccur(val min: Int = 1, val max: Int = 1, val initial: Int = 1) { va
 data class XBreak(val page: Boolean = false, val contentArea: Boolean = false, val target: String? = null)
 /** Data binding: [match] once / none / global / dataRef. */
 data class XBind(val match: String = "once", val ref: String? = null)
-data class XScripts(val initialize: String? = null, val calculate: String? = null)
+/** [ready]: the `ready` / `docReady` event scripts (form:ready, layout:ready, docReady), run once after initialize. */
+data class XScripts(val initialize: String? = null, val calculate: String? = null, val ready: List<String> = emptyList())
 
 /** Static content of a draw element. */
 sealed class XContent {
@@ -88,6 +89,8 @@ class XFieldT(
     val tooltip: String,
     /** nav-prefs: `<barcode type="…">` of a barcode field ("" otherwise). */
     val barcodeType: String = "",
+    /** `<format><picture>`: how the value is displayed (XfaPicture); "" = as stored. */
+    val picture: String = "",
 ) : XNode()
 
 class XDraw(
@@ -236,9 +239,13 @@ object XfaTemplateParser {
     private fun scripts(e: Element): XScripts {
         fun js(s: Element?): String? = s?.takeIf { it.attr("contentType")?.contains("javascript", true) == true }?.textContent?.takeIf { it.isNotBlank() }
         var init: String? = null
-        for (ev in e.kids().filter { it.local() == "event" }) if (ev.attr("activity") == "initialize") init = js(ev.kid("script")) ?: init
+        val ready = ArrayList<String>()
+        for (ev in e.kids().filter { it.local() == "event" }) when (ev.attr("activity")) {
+            "initialize" -> init = js(ev.kid("script")) ?: init
+            "ready", "docReady" -> js(ev.kid("script"))?.let { ready += it }
+        }
         val calc = js(e.kid("calculate")?.kid("script"))
-        return XScripts(init, calc)
+        return XScripts(init, calc, ready)
     }
 
     private fun breakOf(e: Element, before: Boolean): XBreak? {
@@ -312,7 +319,8 @@ object XfaTemplateParser {
             checkSize = XfaUnits.pt(uiEl?.attr("size"), 10f), roundCheck = uiEl?.attr("shape") == "round",
             listOpen = uiEl?.attr("open") ?: "userControl", textEntry = uiEl?.attr("textEntry") == "1",
             tooltip = e.kid("assist")?.kid("toolTip")?.textContent?.trim().orEmpty(),
-            barcodeType = if (uiEl?.local() == "barcode") uiEl.attr("type").orEmpty() else "")
+            barcodeType = if (uiEl?.local() == "barcode") uiEl.attr("type").orEmpty() else "",
+            picture = e.kid("format")?.kid("picture")?.textContent?.trim().orEmpty())
     }
 
     private fun draw(e: Element): XDraw {

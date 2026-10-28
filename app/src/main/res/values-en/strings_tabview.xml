@@ -5,4 +5,21 @@
     <string name="tvc_save_failed_generic">An error occurred while saving.</string>
     <string name="tvc_copy_saved_leave">The copy was saved. Close this document? Its unsaved changes to the original file will be discarded.</string>
     <string name="tvc_leave">Close document</string>
+    <string name="tvc_reading_bookmark">Reading bookmark</string>
+    <string name="tvc_info_panel">Info panel</string>
+    <string name="tvc_notices_more">%1$d more notices</string>
+    <string name="tvc_notices_less">Show fewer notices</string>
+    <string name="tvc_collapse">Collapse</string>
+    <string name="tvc_apply_changes">Apply the changes? Typed text or a move that was not applied is lost if you discard it.</string>
+    <string name="tvc_edit_not_saved">The change was not saved; the text is still in the editor.</string>
+    <string name="tvc_tap_to_place_image">Tap the page to place the image</string>
+    <string name="tvc_add_text_comment">Text box (comment)</string>
+    <string name="tvc_add_image_stamp">Image (comment stamp)</string>
+    <string name="tvc_owner_title">Permissions password</string>
+    <string name="tvc_owner_text">This file is protected and was opened without its owner (permissions) password. Saving gives the saved file a new permissions password, so the original one no longer lifts its restrictions. Enter the owner password to keep it, or continue.</string>
+    <string name="tvc_owner_field">Owner password</string>
+    <string name="tvc_owner_keep">Use owner password</string>
+    <string name="tvc_owner_continue">Continue anyway</string>
+    <string name="tvc_owner_wrong">That is not the owner password.</string>
+    <string name="tvc_quick_busy">Another operation is running; wait until it finishes.</string>
 </resources>

@@ -104,10 +104,11 @@ fun ReflowReader(s: ReaderState) {
     LaunchedEffect(s.session, s.renderVersion) {
         val f = s.file ?: return@LaunchedEffect
         blocks.clear(); built = 0
-        val order = (startPage until s.pageCount) + (0 until startPage)       // the page being read first
+        // tab-view-core V-13: the page being read first, in runs of consecutive pages (no chunk wraps around the end,
+        // so no chunk scans the whole document)
         val all = HashMap<Int, List<RBlock>>()
-        order.chunked(12).forEach { chunk ->
-            val extras = runCatching { PageGraphics.reflowExtras(f, s.password, chunk.min()..chunk.max()) }.getOrDefault(emptyMap())
+        com.smartdocs.editor.core.view5.ReflowChunks.order(startPage, s.pageCount).forEach { chunk ->
+            val extras = runCatching { PageGraphics.reflowExtras(f, s.password, chunk) }.getOrDefault(emptyMap())
             chunk.forEach { p -> runCatching {          // one odd page must not crash the reader
                 val (pw, ph) = s.pageSize(p)
                 val lines = withContext(Dispatchers.Default) { pageLines(s.pageText(p), s.charBoxes(p)) }

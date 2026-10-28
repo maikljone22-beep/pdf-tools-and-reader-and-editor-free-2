@@ -11,7 +11,7 @@ import org.mozilla.javascript.Scriptable
 import org.mozilla.javascript.ScriptableObject
 
 /**
- * Runs the JavaScript `initialize` and `calculate` scripts of an XFA form on the sandboxed Rhino runtime,
+ * Runs the JavaScript `initialize`, `ready` / `docReady` and `calculate` scripts of an XFA form on the sandboxed Rhino runtime,
  * over a small XFA object model: every instance is an object with `rawValue`, `presence`, `name`, `index`,
  * `parent`, `className`, `isNull`, `access`, `resolveNode(som)`, `instanceManager.count` and its named children
  * as properties; `xfa.resolveNode`, `xfa.host.messageBox`, `xfa.layout.pageCount()`, `app.alert`. Names are
@@ -25,7 +25,7 @@ object XfaJs {
     fun run(m: XMerged, eventMillis: Long = 200, totalMillis: Long = 3000): Outcome {
         if (!com.smartdocs.editor.core.security.JsPolicy.enabled) return Outcome(0, 0, 0)   // "Run JavaScript" off: stored values stay
         val all = XfaMerge.walk(m.root).toList()
-        if (all.none { it.node.scripts.initialize != null || it.node.scripts.calculate != null }) return Outcome(0, 0, 0)
+        if (all.none { it.node.scripts.initialize != null || it.node.scripts.calculate != null || it.node.scripts.ready.isNotEmpty() }) return Outcome(0, 0, 0)
         val ids = HashMap<XInst, Int>(); all.forEachIndexed { i, n -> ids[n] = i }
         val tree = JsonArray(all.map { n ->
             JsonObject(mapOf(
@@ -50,6 +50,8 @@ object XfaJs {
                 catch (e: Throwable) { if (!JsSandbox.scriptError(e)) throw e; errors++ }
             }
             all.forEachIndexed { i, n -> n.node.scripts.initialize?.let { exec(i, it, false) } }
+            // form / layout ready and docReady: once, after initialize (the form is open and laid out)
+            all.forEachIndexed { i, n -> n.node.scripts.ready.forEach { exec(i, it, false) } }
             repeat(2) { all.forEachIndexed { i, n -> n.node.scripts.calculate?.let { exec(i, it, true) } } }
             JsSandbox.deadline(cx, eventMillis)
             Context.toString(ScriptableObject.callMethod(cx, x, "dump", emptyArray()))

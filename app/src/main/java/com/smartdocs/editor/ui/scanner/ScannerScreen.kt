@@ -104,7 +104,8 @@ fun ScannerScreen(nav: NavHostController) {
             val options = GmsDocumentScannerOptions.Builder()
                 .setGalleryImportAllowed(true)
                 .setPageLimit(50)
-                .setResultFormats(GmsDocumentScannerOptions.RESULT_FORMAT_JPEG, GmsDocumentScannerOptions.RESULT_FORMAT_PDF)
+                // the app builds the PDF itself (paper size, colour mode, quality): ML Kit's own PDF is not asked for (audit A-L10)
+                .setResultFormats(GmsDocumentScannerOptions.RESULT_FORMAT_JPEG)
                 .setScannerMode(GmsDocumentScannerOptions.SCANNER_MODE_FULL)
                 .build()
             GmsDocumentScanning.getClient(options).getStartScanIntent(act)
@@ -120,8 +121,12 @@ fun ScannerScreen(nav: NavHostController) {
         if (list.isEmpty()) return
         runner.run(savingMsg) {
             val out = app.documents.uniqueFile(app.documents.scansDir, name.ifBlank { "Scan_" + SimpleDateFormat("yyyyMMdd_HHmm", Locale.US).format(Date()) })
-            ScanPdfBuilder.build(list, out, paper, mode, quality.toInt())
+            try { ScanPdfBuilder.build(list, out, paper, mode, quality.toInt()) } catch (e: Throwable) { out.delete(); throw e }
             runCatching { app.documents.touchRecent(out, list.size) }
+            // the scanner's page copies in the temp folder are not needed any more (convert audit A-M14 / A-L10)
+            val tmp = app.documents.tempDir.canonicalPath
+            list.filter { it.name.startsWith("scan_") && runCatching { it.canonicalPath.startsWith(tmp) }.getOrDefault(false) }.forEach { it.delete() }
+            withContext(Dispatchers.Main) { pages = emptyList() }
             out
         }
     }

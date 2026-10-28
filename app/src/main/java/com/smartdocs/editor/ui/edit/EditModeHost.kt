@@ -28,13 +28,16 @@ import kotlinx.coroutines.delay
 fun EditModeHost(state: com.smartdocs.editor.ui.reader.ReaderState, onExit: () -> Unit) {
     val c = rememberEditController(state)
     var showOutline by remember { mutableStateOf(false) }
-    val exit = { state.jumpTo(c.page); onExit() }
+    val exitNow = { state.jumpTo(c.page); onExit() }
+    // tab-view-core E-06: X / Back with typed text or a pending move first ask "Apply changes?"
+    val exit = { c.guardLeave { c.clearSelection(); exitNow() } }
 
     LaunchedEffect(c.page, state.renderVersion, state.file) { c.reload() }
     LaunchedEffect(c.message) { if (c.message != null) { delay(3500); c.message = null } }
     BackHandler {
         when {
-            c.editingText || c.image != null || c.insertAt != null -> c.clearSelection()
+            c.confirmLeave != null -> c.confirmLeave = null
+            c.editingText || c.image != null || c.insertAt != null -> c.guardLeave { c.clearSelection() }
             else -> exit()
         }
     }
@@ -76,6 +79,16 @@ fun EditModeHost(state: com.smartdocs.editor.ui.reader.ReaderState, onExit: () -
         }
     }
     if (showOutline) OutlineEditorSheet(state) { showOutline = false }
+    c.confirmLeave?.let { then ->
+        val rtlUi = androidx.compose.ui.platform.LocalLayoutDirection.current == androidx.compose.ui.unit.LayoutDirection.Rtl
+        AlertDialog(onDismissRequest = { c.confirmLeave = null },
+            text = { Text(stringResource(R.string.tvc_apply_changes)) },
+            confirmButton = { Button(onClick = { c.commitPending(rtlUi) }) { Text(stringResource(R.string.apply)) } },
+            dismissButton = { Row {
+                TextButton(onClick = { c.confirmLeave = null; then() }) { Text(stringResource(R.string.rd_discard)) }
+                TextButton(onClick = { c.confirmLeave = null }) { Text(stringResource(R.string.cancel)) }
+            } })
+    }
     TextTools5Host(c)      // NVE-text: text tool sheets, "edit text" request from the reader
     ImageTools5Host(c)      // NVE-img: image sheets / dialogs + layers prompt
 }
