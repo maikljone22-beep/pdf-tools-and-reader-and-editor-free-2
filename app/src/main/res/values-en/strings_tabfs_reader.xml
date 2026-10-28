@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- tab audit 4 (Fill & Sign / Sign, reader side) -->
+    <string name="tfr_certified_blocked">This document is certified and does not allow comments or marks. Save a copy to edit it.</string>
+    <string name="tfr_certified_banner_p1">Certified document: no changes are allowed (no comments, no form filling). Save a copy to edit.</string>
+    <string name="tfr_certified_banner_p2">Certified document: only form filling and signing are allowed, not comments or Fill &amp; Sign marks.</string>
+    <string name="tfr_comb_grow">The text is longer than the cells; the box will grow to %1$d cells.</string>
+    <string name="tfr_comb_too_long">At most %1$d cells; extra characters will be dropped.</string>
+    <string name="tfr_thumb_signature">Signature %1$d</string>
+    <string name="tfr_thumb_initials">Initials %1$d</string>
+    <string name="tfr_thumb_locked">locked</string>
+    <string name="tfr_date_format">Date format</string>
+    <string name="tfr_edit_profile">My details</string>
+    <string name="tfr_sig_panel">Signatures panel</string>
+    <string name="tfr_validate_all">Validate all</string>
+    <string name="tfr_digital_ids">Digital IDs</string>
+    <string name="tfr_close_kept_copy">Couldn\'t save into the signed file; your edits were kept as a recovery copy offered when you open it again.</string>
+    <string name="tfr_close_lost">Couldn\'t save your edits into the signed file.</string>
+</resources>

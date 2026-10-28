@@ -56,6 +56,8 @@ class ReaderActions(
     val ai: () -> Unit,
     /** One-step document tools (compress, OCR, watermark…): run on the open document in place. */
     val quick: (com.smartdocs.editor.ui.quick.QuickAction) -> Unit = {},
+    /** Tab audit D25: E-sign request from the Sign tab (the same route as the top-bar menu). */
+    val esign: () -> Unit = {},
 )
 
 enum class ReaderPanel { OUTLINE, BOOKMARKS, ANNOTATIONS, THUMBNAILS, ATTACHMENTS, INFO }
@@ -237,11 +239,26 @@ private fun FillSignToolbar(state: ReaderState, a: ReaderActions) {
         ToolChip(Icons.Default.CropDin, stringResource(R.string.nf2_rounded_rect), selected = state.tool == ReaderTool.FS_RRECT) { state.selectTool(ReaderTool.FS_RRECT) }
         ToolChip(Icons.Default.Pin, stringResource(R.string.nf2_comb), selected = state.tool == ReaderTool.FS_COMB) { state.selectTool(ReaderTool.FS_COMB) }
         PasteStampChip(state)      // nitro-fillsign2: a copied signature / stamp
+        // tab audit D26: the date in the chosen format, with the typing-digits option (Arabic-Indic digits)
+        val ctx = androidx.compose.ui.platform.LocalContext.current
+        var datePattern by remember { mutableStateOf(com.smartdocs.editor.core.fillsign2.FillSignPrefs.datePattern(ctx)) }
+        fun today(p: String) = com.smartdocs.editor.ui.nve.NveDigits.apply(ctx, com.smartdocs.editor.core.fillsign2.FsDate.format(p, System.currentTimeMillis()))
         ToolChip(Icons.Default.Today, stringResource(R.string.fill_sign_date), selected = state.tool == ReaderTool.FS_DATE) {
             state.selectTool(ReaderTool.FS_DATE)
-            if (state.tool == ReaderTool.FS_DATE) state.pendingText = java.text.SimpleDateFormat("yyyy/MM/dd", java.util.Locale.US).format(java.util.Date())
+            if (state.tool == ReaderTool.FS_DATE) state.pendingText = today(datePattern)
+        }
+        if (state.tool == ReaderTool.FS_DATE) Box {
+            var open by remember { mutableStateOf(false) }
+            ToolChip(Icons.Default.EditCalendar, stringResource(R.string.tfr_date_format), selected = open) { open = true }
+            DropdownMenu(open, { open = false }) {
+                com.smartdocs.editor.core.fillsign2.FsDate.PATTERNS.forEach { p ->
+                    DropdownMenuItem(text = { Text(today(p)) }, leadingIcon = { if (p == datePattern) Icon(Icons.Default.Check, null) },
+                        onClick = { open = false; datePattern = p; com.smartdocs.editor.core.fillsign2.FillSignPrefs.setDatePattern(ctx, p); state.pendingText = today(p) })
+                }
+            }
         }
         com.smartdocs.editor.ui.forms5.FillSignFormChips(state, openDocJs = { a.navigateTool("e5_doc_js") })     // form menu (data, JavaScript)
+        com.smartdocs.editor.ui.forms5.FillSignSmartFillChip(state)      // tab audit D18: AI smart fill from the toolbar
         VerticalDivider(Modifier.height(36.dp).padding(horizontal = 4.dp))
         if (fields.isEmpty()) {
             Text(stringResource(R.string.rd_profile_empty), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 8.dp))
@@ -249,9 +266,15 @@ private fun FillSignToolbar(state: ReaderState, a: ReaderActions) {
         fields.forEach { f ->
             val sel = state.tool == ReaderTool.FS_PROFILE && state.pendingText == f.value
             FilterChip(selected = sel, onClick = {
-                if (sel) state.selectTool(null) else { state.tool = ReaderTool.FS_PROFILE; state.pendingText = f.value; state.selection = null }
+                // tab audit D27: through selectTool (tool memory, edit / measure cleared); a second tap deselects
+                if (sel) state.selectTool(null) else {
+                    if (state.tool != ReaderTool.FS_PROFILE) state.selectTool(ReaderTool.FS_PROFILE)
+                    if (state.tool == ReaderTool.FS_PROFILE) state.pendingText = f.value
+                }
             }, label = { Text(f.label.ifBlank { f.value }, maxLines = 1) }, leadingIcon = { Icon(Icons.Default.Person, null, Modifier.size(16.dp)) }, modifier = Modifier.padding(horizontal = 2.dp))
         }
+        // tab audit D25: the fill-profile editor from the Fill & Sign tab (it was only reachable from Account)
+        ToolChip(Icons.Default.ManageAccounts, stringResource(R.string.tfr_edit_profile)) { a.navigateTool("fill_profile") }
     }
 }
 
@@ -269,30 +292,33 @@ private fun SignToolbar(state: ReaderState, a: ReaderActions) {
     val ordered = recent.mapNotNull { p -> sigs.firstOrNull { it.path == p } } + palette.filter { it.path !in recent }
     ToolRow {
         if (placing) {
-            FilledTonalButton(onClick = { state.confirmPlacement() }) { Icon(Icons.Default.Check, null); Spacer(Modifier.width(4.dp)); Text(stringResource(R.string.done)) }
+            // tab audit D24: Done lives in the placement bar only (one Done); Cancel stays here
             TextButton(onClick = { state.cancelPlacement() }) { Text(stringResource(R.string.cancel)) }
             VerticalDivider(Modifier.height(36.dp).padding(horizontal = 4.dp))
         }
         ToolChip(Icons.Default.Add, stringResource(R.string.sig_create)) { a.navigateTool("signatures") }
         ToolChip(Icons.Default.VerifiedUser, stringResource(R.string.sig_digital)) { a.navigateTool("digital_sign") }
         FillSign2SignChips(state, sigs)      // nitro-fillsign2: paste, Apply All Signatures, paging seal
+        // tab audit D25: entry points that were only in the View tab / the top-bar menu / Account
+        ToolChip(Icons.Default.Shield, stringResource(R.string.tfr_sig_panel)) { com.smartdocs.editor.ui.nve.NveState.of(state).pane = com.smartdocs.editor.ui.nve.NvePane.SIGNATURES }
+        ToolChip(Icons.Default.Verified, stringResource(R.string.tfr_validate_all)) {
+            state.file?.let { f -> com.smartdocs.editor.ui.signature.SigFieldRequest.pending = com.smartdocs.editor.ui.signature.SigFieldRequest.Request(f.path, null, verify = true) }
+            a.navigateTool("digital_sign")
+        }
+        ToolChip(Icons.Default.Badge, stringResource(R.string.tfr_digital_ids)) { a.navigateTool("digital_ids") }
+        ToolChip(Icons.Default.HistoryEdu, stringResource(R.string.cn_tool_esign), onClick = a.esign)
         VerticalDivider(Modifier.height(36.dp).padding(horizontal = 4.dp))
         if (sigs.isEmpty()) Text(stringResource(R.string.rd_no_signatures), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 8.dp))
         if (recent.isNotEmpty()) Text(stringResource(R.string.nq_recent), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(horizontal = 4.dp))
         ordered.forEachIndexed { i, s ->
             if (recent.isNotEmpty() && i == recent.size) VerticalDivider(Modifier.height(36.dp).padding(horizontal = 4.dp))
             val selected = state.tool == ReaderTool.SIGNATURE && state.pendingText == s.path
-            Box(
+            // tab audit D15 / D28: locked thumbnails blurred, every thumbnail labelled; D27: a second tap deselects
+            SignatureThumb(s, i, meta[s.path]?.locked == true,
                 Modifier.padding(2.dp).size(width = 84.dp, height = 48.dp).clip(RoundedCornerShape(10.dp))
                     .background(Color.White)
                     .border(2.dp, if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(10.dp))
-                    .clickable { gate.request(s.path) { a.pickSignature(s.path) } },
-                contentAlignment = Alignment.Center,
-            ) {
-                coil.compose.AsyncImage(model = java.io.File(s.path), contentDescription = null, modifier = Modifier.fillMaxSize().padding(4.dp))
-                if (s.isInitials) Text(stringResource(R.string.sig_initials), style = MaterialTheme.typography.labelSmall, modifier = Modifier.align(Alignment.BottomEnd).padding(2.dp), color = Color.Gray)
-                if (meta[s.path]?.locked == true) Icon(Icons.Default.Lock, null, Modifier.align(Alignment.TopStart).padding(2.dp).size(12.dp), tint = Color.Gray)
-            }
+                    .clickable { if (selected) state.selectTool(null) else gate.request(s.path) { a.pickSignature(s.path) } })
         }
     }
 }
