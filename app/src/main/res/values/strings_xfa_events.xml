@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="xev_invalid">القيمة المُدخلة غير صالحة لهذا الحقل</string>
+    <string name="xev_cancel_save">ألغى النموذج الحفظ؛ بقيت القيم غير محفوظة</string>
+    <string name="xev_cancel_print">ألغى النموذج الطباعة</string>
+    <string name="xev_cancel_submit">ألغى النموذج الإرسال</string>
+</resources>

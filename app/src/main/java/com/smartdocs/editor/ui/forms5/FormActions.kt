@@ -321,6 +321,8 @@ object FormActions {
     }
 
     private suspend fun submit(fs: FormFillState, a: ButtonAction.Submit, includeAnnotations: Boolean = false, canonical: Boolean = false) {
+        // XFA preSubmit: every field's validate test, then the preSubmit scripts (either can stop the submission)
+        if (!fs.xfaFormEvent("preSubmit")) return
         // Acrobat refuses to submit while required fields are empty
         val missing = fs.model.byName.values.map { it.first() }.filter { w -> w.required && !fs.isHidden(w) && fs.validate(w, requiredToo = true) != null }
         if (missing.isNotEmpty()) {
@@ -435,6 +437,7 @@ object FormActions {
     suspend fun print(fs: FormFillState) {
         val file = fs.reader.file ?: return
         fs.runDocAction("WP")
+        if (!fs.xfaFormEvent("prePrint")) return
         val src = runCatching { fs.exportSource(file, fs.reader.password) }.getOrNull() ?: file
         val ok = runCatching { com.smartdocs.editor.core.util.PdfPrint.print(fs.reader.context, src, file.nameWithoutExtension, fs.reader.pageCount) }.isSuccess
         if (!ok) fs.message = FormMessage.PrintHint

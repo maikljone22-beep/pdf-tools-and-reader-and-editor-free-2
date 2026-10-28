@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="xev_invalid">The value entered is not valid for this field</string>
+    <string name="xev_cancel_save">The form cancelled saving; the values were not saved</string>
+    <string name="xev_cancel_print">The form cancelled printing</string>
+    <string name="xev_cancel_submit">The form cancelled the submission</string>
+</resources>

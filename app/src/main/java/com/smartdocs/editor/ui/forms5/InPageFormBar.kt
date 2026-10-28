@@ -242,4 +242,7 @@ private fun messageText(m: FormMessage): String = when (m) {
     is FormMessage.Unsupported -> stringResource(R.string.f8_unsupported, m.what)
     is FormMessage.Imported -> stringResource(R.string.f8_imported, m.count)
     FormMessage.Calculated -> stringResource(R.string.f8_calculated)
+    is FormMessage.XfaInvalid -> m.text.ifBlank { stringResource(R.string.xev_invalid) }
+    is FormMessage.XfaCancelled -> stringResource(when (m.activity) { "preSave" -> R.string.xev_cancel_save; "prePrint" -> R.string.xev_cancel_print; else -> R.string.xev_cancel_submit })
+    is FormMessage.Script -> m.text
 }

@@ -43,8 +43,14 @@ data class XBreak(val page: Boolean = false, val contentArea: Boolean = false, v
 data class XBind(val match: String = "once", val ref: String? = null)
 /** [ready]: the `ready` / `docReady` event scripts (form:ready, layout:ready, docReady), run once after initialize. */
 data class XScripts(val initialize: String? = null, val calculate: String? = null, val ready: List<String> = emptyList(),
-                    /** Interactive event scripts by activity (exit, enter, change, click), run while filling (XfaJs.runEvent). */
-                    val events: Map<String, List<String>> = emptyMap())
+                    /**
+                     * Interactive event scripts by activity (exit, enter, change, click, validate), run while filling
+                     * (XfaJs.runEvent), and the form events preSave / prePrint / preSubmit (XfaJs.runFormEvent).
+                     */
+                    val events: Map<String, List<String>> = emptyMap(),
+                    /** `<validate><script>` (scriptTest): the value is invalid when it returns false; [validateMessage] its `<message>`. */
+                    val validate: String? = null,
+                    val validateMessage: String = "")
 
 /** Static content of a draw element. */
 sealed class XContent {
@@ -251,11 +257,16 @@ object XfaTemplateParser {
         for (ev in e.kids().filter { it.local() == "event" }) when (val a = ev.attr("activity")) {
             "initialize" -> init = js(ev.kid("script")) ?: init
             "ready", "docReady" -> js(ev.kid("script"))?.let { ready += it }
-            "exit", "enter", "change", "click", "mouseUp" -> js(ev.kid("script"))?.let { events.getOrPut(if (a == "mouseUp") "click" else a) { ArrayList() } += it }
+            "exit", "enter", "change", "click", "mouseUp", "validate", "preSave", "prePrint", "preSubmit" ->
+                js(ev.kid("script"))?.let { events.getOrPut(if (a == "mouseUp") "click" else a) { ArrayList() } += it }
             else -> {}
         }
         val calc = js(e.kid("calculate")?.kid("script"))
-        return XScripts(init, calc, ready, events)
+        // FINAL_CHECK_2 XFA validate: the scriptTest of <validate> and its message (scriptTest text first, else any)
+        val v = e.kid("validate")
+        val texts = v?.kid("message")?.kids()?.filter { it.local() == "text" }.orEmpty()
+        val msg = (texts.firstOrNull { it.attr("name") == "scriptTest" } ?: texts.firstOrNull { it.attr("name") == null })?.textContent?.trim().orEmpty()
+        return XScripts(init, calc, ready, events, js(v?.kid("script")), msg)
     }
 
     private fun breakOf(e: Element, before: Boolean): XBreak? {
