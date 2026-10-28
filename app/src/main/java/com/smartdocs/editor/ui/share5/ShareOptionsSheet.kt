@@ -104,7 +104,7 @@ internal fun ShareOptionsContent(file: File, password: String?, currentPage: Int
             working = true; busy = null
             runCatching { ShareBuilder.build(ctx, file, password, count, pages, format, { busy = it }, com.smartdocs.editor.core.share5.ShareStrip.items(strip)) }
                 .onSuccess { r ->
-                    if (email) S5Share.email(ctx, r.files, r.mime, emptyList(), file.nameWithoutExtension, "")
+                    if (email) S5Share.email(ctx, r.files, r.mime, emptyList(), com.smartdocs.editor.core.share5.MailDefaults.subject(ctx, file.nameWithoutExtension), com.smartdocs.editor.core.share5.MailDefaults.body(ctx, file.nameWithoutExtension))
                     else S5Share.shareFiles(ctx, r.files, r.mime)
                     onDone()
                 }
@@ -211,5 +211,6 @@ private suspend fun emailOpenTabs(ctx: android.content.Context, current: File, s
             }
         }
     }
-    S5Share.email(ctx, out, "application/pdf", emptyList(), out.joinToString(", ") { it.nameWithoutExtension }.take(120), "")
+    val names = out.joinToString(", ") { it.nameWithoutExtension }.take(120)
+    S5Share.email(ctx, out, "application/pdf", emptyList(), com.smartdocs.editor.core.share5.MailDefaults.subject(ctx, names), com.smartdocs.editor.core.share5.MailDefaults.body(ctx, names))
 }

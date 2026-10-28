@@ -143,6 +143,7 @@ private fun sections(nav: NavHostController): List<Section> = listOf(
         Label(stringResource(R.string.npf_recovery))
         Chips(listOf(0 to stringResource(R.string.npf_off), 1 to "1", 5 to "5", 10 to "10").map { (v, l) -> v to if (v == 0) l else stringResource(R.string.npf_minutes, l) }, NpfPrefs.recoveryMinutes) { NpfPrefs.setInt(K.RECOVERY_MIN, it) }
         Hint(stringResource(R.string.npf_recovery_hint))
+        MailDefaultRows()
     },
     // ---------------- page display ----------------
     Section(R.string.npf_s_display, "layout zoom facing panel title rotation header footer تخطيط تكبير متقابلة لوحة عنوان تدوير ترويسة") {
@@ -276,6 +277,19 @@ private fun sections(nav: NavHostController): List<Section> = listOf(
         GroupRow(stringResource(R.string.npf_labs), stringResource(R.string.npf_labs_sub), icon = Icons.Default.Science, onClick = { open(labs) })
     },
 )
+
+/** Default e-mail subject / body of the share sheet ({file} = document name). */
+@Composable
+private fun MailDefaultRows() {
+    val ctx = LocalContext.current
+    var subject by remember { mutableStateOf(com.smartdocs.editor.core.share5.MailDefaults.subjectTemplate(ctx)) }
+    var body by remember { mutableStateOf(com.smartdocs.editor.core.share5.MailDefaults.bodyTemplate(ctx)) }
+    val field = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 3.dp)
+    Label(stringResource(R.string.cf_mail_defaults))
+    OutlinedTextField(subject, { subject = it; com.smartdocs.editor.core.share5.MailDefaults.set(ctx, subject, body) }, field, label = { Text(stringResource(R.string.cf_mail_subject)) }, singleLine = true)
+    OutlinedTextField(body, { body = it; com.smartdocs.editor.core.share5.MailDefaults.set(ctx, subject, body) }, field, label = { Text(stringResource(R.string.cf_mail_body)) }, minLines = 2)
+    Hint(stringResource(R.string.cf_mail_hint))
+}
 
 @Composable
 private fun IdentityRows() {

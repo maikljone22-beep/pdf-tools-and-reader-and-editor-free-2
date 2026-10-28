@@ -8,4 +8,8 @@
     <string name="cf_sum_connectors">خطوط ربط بين التعليقات والصفحة</string>
     <string name="cf_ink_merge_off">دمج ضربات القلم: متوقف</string>
     <string name="cf_ink_merge_s">دمج ضربات القلم خلال %1$d ث</string>
+    <string name="cf_mail_defaults">البريد الإلكتروني الافتراضي</string>
+    <string name="cf_mail_subject">الموضوع</string>
+    <string name="cf_mail_body">نص الرسالة</string>
+    <string name="cf_mail_hint">يُستعمل عند إرسال مستند بالبريد من قائمة المشاركة. ‏{file} يصبح اسم المستند.</string>
 </resources>

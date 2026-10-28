@@ -8,4 +8,8 @@
     <string name="cf_sum_connectors">Connector lines to the page</string>
     <string name="cf_ink_merge_off">Merge pencil strokes: off</string>
     <string name="cf_ink_merge_s">Merge pencil strokes within %1$d s</string>
+    <string name="cf_mail_defaults">Default e-mail</string>
+    <string name="cf_mail_subject">Subject</string>
+    <string name="cf_mail_body">Message</string>
+    <string name="cf_mail_hint">Used when you e-mail a document from the share sheet. {file} becomes the document name.</string>
 </resources>
