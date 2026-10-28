@@ -2855,6 +2855,7 @@ Low
 | 37: search cannot ignore Asian character width | DONE via fix/fc-settings | `ArabicNormalizer` / `IndexText`, `SearchPrefs`. The fc-sync duplicate was removed. | fix/fc-sync |
 | 37: no document title in search results | DONE via fix/fc-settings | Search DB v2 with a title column. The fc-sync duplicate (`FileResult.title`) was removed. | fix/fc-sync |
 | 37: no Fast Find cache size limit | DONE via fix/fc-settings | `FullTextIndex.evictToLimit`. The fc-sync duplicate (`enforceLimit`) was removed. | fix/fc-sync |
+| §19 Read aloud: next / previous / repeat block | DONE | `core/tts/ReadBlocks.kt` (paragraph / heading starts, tested), `ReadAloudController.nextBlock / prevBlock / repeatBlock / nextBlockOf / prevBlockOf`; TTS bar buttons + "Jump to" menu (paragraph / heading) | fix/tts-blocks |
 
 Notes:
 - fix/fc-settings: Every STILL MISSING row of area nav/settings (parts A–D), plus the merge of the duplicate recent-list size. Each row was re-checked on main 7c30b70 before it was built. Paths are under `app/src/main/java/com/smartdocs/editor/`. There was no device test (see "needs device test" in the branch report).

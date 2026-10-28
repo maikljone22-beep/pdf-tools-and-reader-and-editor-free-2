@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="rab_jump">الانتقال إلى…</string>
+    <string name="rab_next_block">المقطع التالي</string>
+    <string name="rab_next_heading">العنوان التالي</string>
+    <string name="rab_next_paragraph">الفقرة التالية</string>
+    <string name="rab_prev_block">المقطع السابق</string>
+    <string name="rab_prev_heading">العنوان السابق</string>
+    <string name="rab_prev_paragraph">الفقرة السابقة</string>
+    <string name="rab_repeat_block">إعادة المقطع</string>
+</resources>

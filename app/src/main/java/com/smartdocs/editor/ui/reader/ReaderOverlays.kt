@@ -130,6 +130,20 @@ fun TtsBar(status: ReadAloudController.Status, onRateChange: (Float) -> Unit) {
                 }
                 IconButton(onClick = { ReadAloudController.nextPage() }) { Icon(Icons.Default.SkipNext, stringResource(R.string.next)) }
                 IconButton(onClick = { ReadAloudController.stop() }) { Icon(Icons.Default.Stop, stringResource(R.string.tts_stop)) }
+                // FINAL_CHECK §19: previous / repeat / next block, and paragraph / heading jumps
+                IconButton(onClick = { ReadAloudController.prevBlock() }) { Icon(Icons.Default.FastRewind, stringResource(R.string.rab_prev_block)) }
+                IconButton(onClick = { ReadAloudController.repeatBlock() }) { Icon(Icons.Default.Replay, stringResource(R.string.rab_repeat_block)) }
+                IconButton(onClick = { ReadAloudController.nextBlock() }) { Icon(Icons.Default.FastForward, stringResource(R.string.rab_next_block)) }
+                var jumps by remember { mutableStateOf(false) }
+                Box {
+                    IconButton(onClick = { jumps = true }) { Icon(Icons.Default.MoreVert, stringResource(R.string.rab_jump)) }
+                    DropdownMenu(jumps, { jumps = false }) {
+                        DropdownMenuItem(text = { Text(stringResource(R.string.rab_prev_paragraph)) }, onClick = { jumps = false; ReadAloudController.prevBlockOf(com.smartdocs.editor.core.tts.ReadBlocks.Kind.PARAGRAPH) })
+                        DropdownMenuItem(text = { Text(stringResource(R.string.rab_next_paragraph)) }, onClick = { jumps = false; ReadAloudController.nextBlockOf(com.smartdocs.editor.core.tts.ReadBlocks.Kind.PARAGRAPH) })
+                        DropdownMenuItem(text = { Text(stringResource(R.string.rab_prev_heading)) }, onClick = { jumps = false; ReadAloudController.prevBlockOf(com.smartdocs.editor.core.tts.ReadBlocks.Kind.HEADING) })
+                        DropdownMenuItem(text = { Text(stringResource(R.string.rab_next_heading)) }, onClick = { jumps = false; ReadAloudController.nextBlockOf(com.smartdocs.editor.core.tts.ReadBlocks.Kind.HEADING) })
+                    }
+                }
                 Column(Modifier.weight(1f).padding(start = 6.dp)) {
                     Text(stringResource(R.string.tts_notification), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, maxLines = 1)
                     Text(stringResource(R.string.page_of, status.page + 1, status.pageCount) + if (status.chunkCount > 0) "  ·  ${status.chunkIndex + 1}/${status.chunkCount}" else "",
