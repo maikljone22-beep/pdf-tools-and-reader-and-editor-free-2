@@ -54,6 +54,10 @@ data class Cv6Opts(
     val pdfaStrict: Boolean = false,
     /** To-PDF: embed the original file(s) in the result (applied by the convert hub after [Cv6Engine.run]; nav-attach). */
     val attachSource: Boolean = false,
+    /** TIFF: black & white (1 bit). */
+    val bw: Boolean = false,
+    /** Excel 2003 XML: one worksheet per table (else per page). */
+    val perTable: Boolean = true,
 )
 
 enum class Stage { WORK, OCR }
@@ -235,6 +239,26 @@ class Cv6Engine(private val ctx: Context, private val docs: DocumentRepository) 
             if (made == null) { withContext(Dispatchers.IO) { f.copyTo(out, overwrite = true) }; Cv6Result(listOf(out), ctx.getString(R.string.cv6_info_has_text)) } else Cv6Result(listOf(out))
         }
         "pdf_flatten" -> { val out = out(base + "_flat", "pdf"); PdfOps.flatten(ctx, f, out, o.dpi, pw); Cv6Result(listOf(out)) }
+        "pdf_tiff" -> Cv6Result(listOf(Export7Run.tiff(ctx, f, pw, pagesOf(f, pw, o.range), o.dpi, if (o.bw) TiffColor.BW else if (o.gray) TiffColor.GRAY else TiffColor.RGB, out(base, "tif"), p)))
+        "pdf_bmp" -> {
+            val dir = File(outDir, base + "_bmp").also { it.mkdirs() }
+            val files = Export7Run.bmp(ctx, f, pw, pagesOf(f, pw, o.range), o.dpi, dir, base, p)
+            if (o.zip && files.size > 1) Cv6Result(listOf(zipFiles(files, out(base + "_bmp", "zip"), dir))) else Cv6Result(files)
+        }
+        "pdf_ps", "pdf_eps" -> {
+            val eps = conv.id == "pdf_eps"
+            val files = Export7Run.ps(ctx, f, pw, pagesOf(f, pw, o.range), o.dpi, false, eps, this::out, base, p)
+            if (eps && o.zip && files.size > 1) Cv6Result(listOf(zipFiles(files, out(base + "_eps", "zip")))) else Cv6Result(files)
+        }
+        "pdf_xps" -> Cv6Result(listOf(Export7Run.xps(ctx, f, pw, pagesOf(f, pw, o.range), o.dpi, out(base, "xps"), p)))
+        "pdf_xml" -> Cv6Result(listOf(Export7Run.xml(f, pw, pagesOf(f, pw, o.range), out(base, "xml"))))
+        "pdf_access_txt" -> Cv6Result(listOf(Export7Run.accessibleText(f, pw, pagesOf(f, pw, o.range), out(base + "_accessible", "txt"),
+            ctx.getString(R.string.pc_figure), ctx.getString(R.string.pc_page_heading))))
+        "pdf_html_set" -> Cv6Result(listOf(Export7Run.htmlSet(f, pw, pagesOf(f, pw, o.range), o.includeImages, out(base + "_html", "zip"), p)))
+        "pdf_xml2003" -> {
+            val (x, n) = Export7Run.xml2003(f, pw, pagesOf(f, pw, o.range), o.perTable, { ctx.getString(R.string.cv_sheet_name).format(it) }, out(base, "xml"), p)
+            Cv6Result(listOf(x), ctx.getString(R.string.pc_sheets_n, n))
+        }
         else -> throw IllegalArgumentException(conv.id)
     }
 

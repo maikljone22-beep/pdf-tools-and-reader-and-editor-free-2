@@ -83,11 +83,26 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
     var smartName by remember { mutableStateOf(prefs.getBoolean("smart", true)) }
     var rightFirst by remember { mutableStateOf(prefs.getBoolean("rtl_book", true)) }
     var name by remember { mutableStateOf("") }
+    // Foxit 5: blank-page removal, N pages per file, document information, portfolio of the results, presets
+    var removeBlank by remember { mutableStateOf(prefs.getBoolean("blank", false)) }
+    var perFile by remember { mutableStateOf(prefs.getInt("per_file", 0)) }
+    var title by remember { mutableStateOf("") }
+    var author by remember { mutableStateOf(prefs.getString("author", "") ?: "") }
+    var portfolio by remember { mutableStateOf(false) }
+    var backsReversed by remember { mutableStateOf(true) }
+    var presets by remember { mutableStateOf(ScanPreset.decodeAll(prefs.getString("presets", "") ?: "")) }
+    var presetName by remember { mutableStateOf("") }
+    // old plan K3: scans kept for later editing
+    var keepProject by remember { mutableStateOf(prefs.getBoolean("keep_project", true)) }
+    var projects by remember { mutableStateOf(emptyList<ScanProjects.Project>()) }
+    LaunchedEffect(Unit) { projects = withContext(Dispatchers.IO) { runCatching { ScanProjects.list(ctx) }.getOrDefault(emptyList()) } }
+    fun savePresets(list: List<ScanPreset>) { presets = list; prefs.edit().putString("presets", ScanPreset.encodeAll(list)).apply() }
     var editing by remember { mutableStateOf<Pair<Int, Int>?>(null) }
     var contact by remember { mutableStateOf<Contact?>(null) }
     var receipt by remember { mutableStateOf<Pair<Receipt, File>?>(null) }
     val job = rememberT5Job()
-    fun savePrefs() = prefs.edit().putString("kind", kind.name).putBoolean("ocr", autoOcr).putString("langs", langs).putBoolean("smart", smartName).putBoolean("rtl_book", rightFirst).apply()
+    fun savePrefs() = prefs.edit().putString("kind", kind.name).putBoolean("ocr", autoOcr).putString("langs", langs).putBoolean("smart", smartName).putBoolean("rtl_book", rightFirst)
+        .putBoolean("blank", removeBlank).putInt("per_file", perFile).putString("author", author).apply()
 
     fun addPictures(files: List<File>, newGroup: Boolean) {
         val pages = files.map { ScanPage(it, PageEdit(filter = kind.defaultFilter())) }
@@ -129,21 +144,32 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
         savePrefs()
         val needText = autoOcr || kind == ScanKind.BUSINESS_CARD || kind == ScanKind.RECEIPT || smartName
         val k = kind; val p = paper; val rf = rightFirst; val typed = name.trim()
+        val rb = removeBlank; val tt = title; val au = author; val pf = portfolio; val kp = keepProject
+        prefs.edit().putBoolean("keep_project", kp).apply()
+        val keep = all.map { g -> g.map { it.file to it.edit } }
+        // "save multiple files": every group is cut into files of N pages
+        val docs = all.flatMap { ScanExtras.chunks(it, perFile) }
         job.launch(savingMsg) {
             val engine = if (needText) OcrEngine(ctx.applicationContext) else null
             try {
                 val made = ArrayList<File>(); var lastText = ""
-                all.forEachIndexed { gi, g ->
+                docs.forEachIndexed { gi, g ->
                     val today = t5Today()
                     val tmpOut = app.documents.newTemp("t5scan_out", "pdf")
                     val ocrLangs = if (!needText) null else if (langs == "auto") detectLangs(engine!!, g.first()) else langs
                     val pictures = ScanBuilder.pagePictures(g.map { it.file to it.edit }, k, rf)
-                    val r = ScanBuilder.build(ctx, pictures, tmpOut, ScanBuildOptions(paper = p, ocrLangs = ocrLangs), engine) { n -> step(gi * 100 + n, all.size * 100) }
+                    val r = ScanBuilder.build(ctx, pictures, tmpOut, ScanBuildOptions(paper = p, ocrLangs = ocrLangs), engine) { n -> step(gi * 100 + n, docs.size * 100) }
                     val base = when {
-                        typed.isNotEmpty() -> if (all.size > 1) "${typed}_${gi + 1}" else typed
+                        typed.isNotEmpty() -> if (docs.size > 1) "${typed}_${gi + 1}" else typed
                         smartName && r.text.isNotBlank() -> SmartNaming.suggest(r.text, k, today, prefixes)
-                        else -> (prefixes[k]?.let { "${it}_" } ?: "Scan_") + SimpleDateFormat("yyyyMMdd_HHmm", Locale.US).format(Date()) + if (all.size > 1) "_${gi + 1}" else ""
+                        else -> (prefixes[k]?.let { "${it}_" } ?: "Scan_") + SimpleDateFormat("yyyyMMdd_HHmm", Locale.US).format(Date()) + if (docs.size > 1) "_${gi + 1}" else ""
                     }
+                    if (rb) runCatching {
+                        val clean = app.documents.newTemp("t5scan_clean", "pdf")
+                        if (com.smartdocs.editor.core.edit5.PageOrganize.deleteBlank(ctx, tmpOut, clean, null).isNotEmpty()) { clean.copyTo(tmpOut, true) }
+                        clean.delete()
+                    }
+                    withContext(Dispatchers.IO) { runCatching { ScanExtras.setInfo(tmpOut, if (docs.size > 1 && tt.isNotBlank()) "$tt (${gi + 1})" else tt, au) } }
                     val out = app.documents.uniqueFile(app.documents.scansDir, base)
                     withContext(Dispatchers.IO) { if (!tmpOut.renameTo(out)) { tmpOut.copyTo(out, true); tmpOut.delete() } }
                     runCatching { app.documents.touchRecent(out, r.pages) }
@@ -157,6 +183,16 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                     else -> results = made
                 }
                 if (k == ScanKind.BUSINESS_CARD || k == ScanKind.RECEIPT) results = made
+                // Foxit "create a portfolio for all results"
+                if (pf && made.size > 1) {
+                    val po = app.documents.uniqueFile(app.documents.scansDir, (typed.ifEmpty { "Scans" }) + "_portfolio")
+                    com.smartdocs.editor.core.tools5.Portfolio.create(ctx, typed.ifEmpty { "Scans" }, made, po)
+                    results = made + po
+                }
+                if (kp) withContext(Dispatchers.IO) {
+                    runCatching { ScanProjects.save(ctx, made.firstOrNull()?.nameWithoutExtension ?: "Scan", keep) }
+                    projects = runCatching { ScanProjects.list(ctx) }.getOrDefault(projects)
+                }
                 groups = emptyList(); name = ""
             } finally { engine?.close() }
         }
@@ -179,10 +215,56 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                 }
             }
         }
+        // manual duplex: the first document holds the fronts, the second the backs
+        if (groups.size == 2) T5Card(stringResource(R.string.pc_duplex), Icons.Default.FlipToBack) {
+            Text(stringResource(R.string.pc_duplex_help), style = MaterialTheme.typography.bodySmall)
+            SwitchRow(stringResource(R.string.pc_duplex_reversed), backsReversed) { backsReversed = it }
+            OutlinedButton(onClick = { groups = listOf(ScanExtras.duplex(groups[0], groups[1], backsReversed)) }, Modifier.fillMaxWidth()) { Text(stringResource(R.string.pc_duplex_merge)) }
+        }
+        if (groups.isEmpty() && projects.isNotEmpty()) T5Card(stringResource(R.string.pc_saved_scans), Icons.Default.History) {
+            projects.take(6).forEach { pr ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(stringResource(R.string.pc_saved_scan_row, pr.name, pr.pages), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, maxLines = 1)
+                    TextButton(onClick = { scope.launch {
+                        val g = withContext(Dispatchers.IO) { runCatching { ScanProjects.load(pr) }.getOrDefault(emptyList()) }
+                        groups = g.map { pages -> pages.map { (f, e) -> ScanPage(f, e) } }; name = pr.name
+                    } }) { Text(stringResource(R.string.pc_saved_scan_open)) }
+                    IconButton(onClick = { ScanProjects.delete(pr); projects = projects - pr }) { Icon(Icons.Default.Delete, stringResource(R.string.pc_preset_delete, pr.name)) }
+                }
+            }
+        }
+        T5Card(stringResource(R.string.pc_presets), Icons.Default.Bookmarks) {
+            if (presets.isNotEmpty()) Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                presets.forEach { ps ->
+                    InputChip(false, onClick = {
+                        kind = ps.kind; paper = ps.paper; autoOcr = ps.ocr; langs = ps.langs; removeBlank = ps.removeBlank; perFile = ps.perFile; author = ps.author; savePrefs()
+                    }, label = { Text(ps.name) }, trailingIcon = {
+                        Icon(Icons.Default.Close, stringResource(R.string.pc_preset_delete, ps.name), Modifier.size(18.dp).clickable { savePresets(presets - ps) })
+                    })
+                }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(presetName, { presetName = it }, Modifier.weight(1f), singleLine = true, label = { Text(stringResource(R.string.pc_preset_name)) })
+                TextButton(enabled = presetName.isNotBlank(), onClick = {
+                    val ps = ScanPreset(presetName.trim(), kind, paper, autoOcr, langs, removeBlank, perFile, author)
+                    savePresets(presets.filter { it.name != ps.name } + ps); presetName = ""
+                }) { Text(stringResource(R.string.pc_preset_save)) }
+            }
+        }
         if (groups.isNotEmpty()) {
             T5Card(stringResource(R.string.t5_scan_output), Icons.Default.Tune) {
                 FieldLabel(stringResource(R.string.t5_paper))
-                ChoiceChips(ScanPaper.entries, paper, { stringResource(when (it) { ScanPaper.FIT -> R.string.t5_paper_fit; ScanPaper.A4 -> R.string.t5_paper_a4; ScanPaper.LETTER -> R.string.t5_paper_letter }) }) { paper = it }
+                ChoiceChips(ScanPaper.entries, paper, { when (it) {
+                    ScanPaper.FIT -> stringResource(R.string.t5_paper_fit); ScanPaper.A4 -> stringResource(R.string.t5_paper_a4); ScanPaper.LETTER -> stringResource(R.string.t5_paper_letter)
+                    ScanPaper.CARD -> stringResource(R.string.pc_paper_card); else -> it.name.lowercase().replaceFirstChar { c -> c.uppercase() }.let { n -> if (n.length == 2) n.uppercase() else n }
+                } }) { paper = it }
+                SwitchRow(stringResource(R.string.pc_scan_remove_blank), removeBlank) { removeBlank = it }
+                OutlinedTextField(if (perFile > 0) perFile.toString() else "", { t -> perFile = com.smartdocs.editor.core.edit5.Digits.toWestern(t).filter { it.isDigit() }.take(3).toIntOrNull() ?: 0 },
+                    Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.pc_scan_per_file)) }, placeholder = { Text(stringResource(R.string.pc_scan_per_file_all)) })
+                OutlinedTextField(title, { title = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.pc_doc_title)) })
+                OutlinedTextField(author, { author = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.pc_doc_author)) })
+                SwitchRow(stringResource(R.string.pc_keep_project), keepProject, stringResource(R.string.pc_keep_project_sub)) { keepProject = it }
+                if (groups.size > 1 || perFile > 0 || kind == ScanKind.BATCH) SwitchRow(stringResource(R.string.pc_scan_portfolio), portfolio) { portfolio = it }
                 SwitchRow(stringResource(R.string.t5_auto_ocr), autoOcr, stringResource(R.string.t5_auto_ocr_hint)) { autoOcr = it }
                 if (autoOcr || kind == ScanKind.BUSINESS_CARD || kind == ScanKind.RECEIPT) {
                     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {

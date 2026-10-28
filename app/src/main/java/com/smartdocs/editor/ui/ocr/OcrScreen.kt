@@ -58,7 +58,7 @@ fun OcrScreen(nav: NavHostController, uri: String?) {
 
     var file by remember { mutableStateOf(uri?.let { runCatching { File(Uri.parse(it).path!!) }.getOrNull() }) }
     var langs by remember { mutableStateOf(settings.ocrLanguages.ifBlank { "ara+eng" }) }
-    var mode by remember { mutableStateOf(OcrMode.SEARCHABLE) }
+    var mode by remember { mutableStateOf(if (com.smartdocs.editor.core.data.NpfPrefs.ocrOutput == "text") OcrMode.TEXT else OcrMode.SEARCHABLE) }   // nav-prefs: OCR default
     var range by remember { mutableStateOf("") }
     var password by remember { mutableStateOf<String?>(null) }
     var askPassword by remember { mutableStateOf(false) }

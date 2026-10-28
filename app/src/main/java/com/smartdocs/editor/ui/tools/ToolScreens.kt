@@ -27,6 +27,8 @@ fun ToolScreens(nav: NavHostController, id: String, uri: String?) {
 
 @Composable
 private fun ToolScreensInner(nav: NavHostController, id: String, uri: String?) {
+    // nav-prefs (PREF-8): AI routes are unreachable while AI is off (Settings switch or offline mode)
+    if (!com.smartdocs.editor.core.gaps6.AiGate.allowsTool(com.smartdocs.editor.LocalSettings.current, id)) { com.smartdocs.editor.ui.settings.NpfAiOffScreen(nav); return }
     when (id) {
         // --- screens owned by the tools module ---
         "blank" -> BlankPdfScreen(nav)
@@ -41,7 +43,8 @@ private fun ToolScreensInner(nav: NavHostController, id: String, uri: String?) {
         "split" -> SplitScreen(nav, uri)
         "compress" -> CompressScreen(nav, uri)
         "page_numbers" -> PageNumbersScreen(nav, uri)
-        "watermark" -> WatermarkScreen(nav, uri)
+        "watermark" -> com.smartdocs.editor.ui.edit5.Edit5Screens(nav, "e5_watermark", uri)   // NVE: the edit5 watermark (old screen: "watermark_classic")
+        "watermark_classic" -> WatermarkScreen(nav, uri)
         "doc_info" -> DocInfoScreen(nav, uri)
         "protect" -> ProtectScreen(nav, uri)
         "unlock" -> UnlockScreen(nav, uri)
@@ -70,6 +73,7 @@ private fun ToolScreensInner(nav: NavHostController, id: String, uri: String?) {
         "compare_plus" -> com.smartdocs.editor.ui.tools5.Compare2Screen(nav, uri)
         "accessibility" -> com.smartdocs.editor.ui.tools5.AccessibilityScreen(nav, uri)
         "print" -> PrintScreen(nav, uri)
+        "batch_print" -> com.smartdocs.editor.ui.tools5.BatchPrintScreen(nav, uri)     // nav-batch
         "read_aloud" -> ReadAloudScreen(nav, uri)
         "wifi" -> com.smartdocs.editor.ui.cloud.WifiScreen(nav)
         "help" -> com.smartdocs.editor.ui.help.HelpScreen(nav)
@@ -79,7 +83,7 @@ private fun ToolScreensInner(nav: NavHostController, id: String, uri: String?) {
         "scan" -> ScannerScreen(nav)
         "ocr" -> OcrScreen(nav, uri)
         "redact" -> RedactScreen(nav, uri)
-        "search_all" -> com.smartdocs.editor.ui.search.GlobalSearchScreen(nav)
+        "search_all" -> com.smartdocs.editor.ui.search.GlobalSearchScreen(nav, uri?.takeIf { it.startsWith("q:") }?.drop(2).orEmpty())
         "search_highlight" -> com.smartdocs.editor.ui.search.SearchMarkScreen(nav, uri)
         "find_replace" -> com.smartdocs.editor.ui.search.FindReplaceScreen(nav, uri)
         "sanitize" -> com.smartdocs.editor.ui.security.SanitizeScreen(nav, uri)
@@ -89,12 +93,14 @@ private fun ToolScreensInner(nav: NavHostController, id: String, uri: String?) {
         "templates" -> com.smartdocs.editor.ui.templates.TemplatesScreen(nav)
         "cert_protect" -> com.smartdocs.editor.ui.tools.CertificateProtectScreen(nav, uri)
         "podcast" -> com.smartdocs.editor.ui.voice.PodcastScreen(nav, uri)
-        "outline" -> com.smartdocs.editor.ui.edit.OutlineEditorScreen(nav, uri)
+        "outline" -> com.smartdocs.editor.ui.edit5.Edit5Screens(nav, "e5_bookmarks", uri)   // NVE: the edit5 bookmarks editor (old screen: "outline_classic")
+        "outline_classic" -> com.smartdocs.editor.ui.edit.OutlineEditorScreen(nav, uri)
         "form_builder" -> com.smartdocs.editor.ui.forms.FormBuilderScreen(nav, uri)
         "signatures", "sign" -> SignaturesScreen(nav)
         "digital_sign" -> DigitalSignScreen(nav, uri)
         "fill_profile" -> FillProfileScreen(nav)
         "stamps" -> StampsScreen(nav)
+        "npf_settings" -> com.smartdocs.editor.ui.settings.NpfSettingsScreen(nav)   // nav-prefs: more preferences
         "ai" -> AiScreen(nav, uri)
         "ai_settings" -> AiSettingsScreen(nav)
         "ai_spaces" -> com.smartdocs.editor.ui.ai5.SpacesScreen(nav)

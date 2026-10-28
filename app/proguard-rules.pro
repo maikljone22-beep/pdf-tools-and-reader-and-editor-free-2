@@ -31,3 +31,11 @@
 -dontwarn javax.swing.**
 -dontwarn java.beans.**
 -dontwarn jdk.dynalink.**
+
+# open-all: commons-compress optional codecs / OSGi / ASM are not shipped
+-dontwarn org.brotli.dec.**
+-dontwarn com.github.luben.zstd.**
+-dontwarn org.objectweb.asm.**
+-dontwarn org.osgi.**
+-dontwarn org.apache.commons.compress.harmony.**
+-keep class com.caverock.androidsvg.** { *; }

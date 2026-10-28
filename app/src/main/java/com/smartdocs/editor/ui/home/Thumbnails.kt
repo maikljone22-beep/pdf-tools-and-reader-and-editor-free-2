@@ -98,7 +98,8 @@ fun rememberDocThumb(d: RecentDoc): String? {
         if (!src.exists()) return@LaunchedEffect
         val fresh = Thumbnails.fileFor(ctx, src)
         if (stored == fresh.absolutePath) return@LaunchedEffect
-        val t = Thumbnails.render(ctx, src) ?: return@LaunchedEffect
+        // open-all: pictures, SVG and videos get a real thumbnail too
+        val t = Thumbnails.render(ctx, src) ?: com.smartdocs.editor.ui.openall.OpenAllThumbs.render(ctx, src) ?: return@LaunchedEffect
         path = t.absolutePath
         runCatching { app.documents.setThumb(src, t) }
     }
@@ -110,10 +111,12 @@ fun rememberDocThumb(d: RecentDoc): String? {
 fun rememberFileThumb(f: File): String? {
     val ctx = LocalContext.current
     var path by remember(f.absolutePath, f.lastModified()) {
-        mutableStateOf(if (kindOf(f) == "image") f.absolutePath else Thumbnails.cached(ctx, f)?.absolutePath)
+        mutableStateOf(if (f.extension.lowercase() in setOf("jpg", "jpeg", "png", "webp")) f.absolutePath else Thumbnails.cached(ctx, f)?.absolutePath)
     }
     LaunchedEffect(f.absolutePath, f.lastModified()) {
         if (path == null && f.isFile && f.extension.equals("pdf", true)) path = Thumbnails.render(ctx, f)?.absolutePath
+        // open-all: GIF / HEIC / TIFF / SVG / RAW pictures and video frames
+        if (path == null && f.isFile) path = com.smartdocs.editor.ui.openall.OpenAllThumbs.render(ctx, f)?.absolutePath
     }
     return path
 }
@@ -124,7 +127,7 @@ fun ThumbBox(path: String?, w: Dp, h: Dp, kind: String = "pdf", modifier: Modifi
     val ctx = LocalContext.current
     val shape = RoundedCornerShape(10.dp)
     val tiles = Brand.tiles
-    val tile = when (kind) { "folder" -> tiles.amber; "image" -> tiles.purple; "pdf" -> tiles.rose; else -> tiles.blue }
+    val tile = when (kind) { "folder" -> tiles.amber; "image", "video" -> tiles.purple; "pdf" -> tiles.rose; "sheet", "audio" -> tiles.green; "slides", "archive" -> tiles.amber; else -> tiles.blue }
     Box(
         modifier.then(if (w > 0.dp) Modifier.size(w, h) else Modifier).clip(shape)
             .background(if (path != null) MaterialTheme.colorScheme.surfaceContainerLowest else tile.container)
@@ -137,15 +140,13 @@ fun ThumbBox(path: String?, w: Dp, h: Dp, kind: String = "pdf", modifier: Modifi
                 contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop,
             )
         } else {
-            val icon = when (kind) { "folder" -> Icons.Default.Folder; "image" -> Icons.Default.Image; "pdf" -> Icons.Default.PictureAsPdf; else -> Icons.Default.Description }
+            val icon = when (kind) { "folder" -> Icons.Default.Folder; "image" -> Icons.Default.Image; "pdf" -> Icons.Default.PictureAsPdf; else -> com.smartdocs.editor.ui.openall.OpenAllThumbs.icon(kind) }
             Icon(icon, null, Modifier.size(if (w > 0.dp) (minOf(w.value, h.value) * 0.45f).dp else 36.dp), tint = tile.content)
         }
     }
 }
 
-fun kindOf(f: File): String = when {
-    f.isDirectory -> "folder"
-    f.extension.lowercase() in setOf("jpg", "jpeg", "png", "webp") -> "image"
-    f.extension.equals("pdf", true) -> "pdf"
-    else -> "doc"
-}
+fun kindOf(f: File): String = if (f.isDirectory) "folder" else kindOfName(f.name)
+
+/** open-all: tile kind of a file name ("pdf", "image", "video", "audio", "sheet", "slides", "archive", "book", …). */
+fun kindOfName(name: String): String = com.smartdocs.editor.ui.openall.OpenAllThumbs.kind(com.smartdocs.editor.core.openall.FileSniffer.byExtension(name))

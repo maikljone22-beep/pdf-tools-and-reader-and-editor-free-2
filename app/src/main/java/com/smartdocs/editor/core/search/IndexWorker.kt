@@ -29,7 +29,12 @@ class Indexer(private val context: Context) {
     suspend fun sources(): List<File> {
         val app = context.applicationContext as? SmartDocsApp
         val out = LinkedHashMap<String, File>()
-        fun add(f: File) { if (f.isFile && f.canRead() && f.extension.equals("pdf", true) && f.length() > 0) out.putIfAbsent(f.absolutePath, f) }
+        val nveOpts = com.smartdocs.editor.ui.nve.search.NveIndexPrefs.load(context)   // NVE-search: excluded folders
+        // open-all: text of Word / e-book / e-mail / text / sheet files is searchable too
+        fun add(f: File) {
+            if (f.isFile && f.canRead() && f.length() > 0 && (f.extension.equals("pdf", true) || com.smartdocs.editor.core.openall.OpenAllText.isIndexable(f)) &&
+                !com.smartdocs.editor.core.nve.NveSearchCore.excluded(f.absolutePath, nveOpts)) out.putIfAbsent(f.absolutePath, f)
+        }
         app?.documents?.docsDir?.walkTopDown()?.maxDepth(6)?.forEach { if (it.isFile) add(it) }
         runCatching {
             withTimeoutOrNull(5_000) { app?.db?.docs()?.recents()?.first() }?.forEach { r ->
@@ -62,6 +67,11 @@ class Indexer(private val context: Context) {
     }
 
     private suspend fun indexFile(index: FullTextIndex, f: File) {
+        if (!f.extension.equals("pdf", true)) {
+            val text = com.smartdocs.editor.core.openall.OpenAllText.extract(f)
+            index.put(f, 1, if (text != null) listOf(DocPart(PartKind.TEXT, 0, text)) else emptyList(), locked = false)
+            return
+        }
         val session = try { PdfSession.open(context, f, null) }
         catch (e: PdfSession.Companion.PasswordRequiredException) { index.put(f, 0, emptyList(), locked = true); return }
         val parts = ArrayList<DocPart>()

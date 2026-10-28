@@ -54,10 +54,13 @@ private const val PREFS_HOME = "home_ui"
 @Composable
 fun HomeScreen(nav: NavHostController) {
     com.smartdocs.editor.ui.view5.WhatsNewOnce(nav)
+    com.smartdocs.editor.ui.nve.shell.NveNpsOnce()   // NVE-shell: in-app NPS survey, once after a week of use
     val app = LocalApp.current
     val ctx = LocalContext.current
     val settings = LocalSettings.current
-    val recents by app.db.docs().recents().collectAsStateWithLifecycle(initialValue = emptyList())
+    val recentsAll by app.db.docs().recents().collectAsStateWithLifecycle(initialValue = emptyList())
+    val recentLimit = com.smartdocs.editor.core.data.NpfPrefs.recentLimit   // nav-prefs (PREF-9): recent list size
+    val recents = if (recentLimit > 0) recentsAll.take(recentLimit) else recentsAll
     val favorites by app.db.docs().favorites().collectAsStateWithLifecycle(initialValue = emptyList())
     val tags by app.db.tags().tags().collectAsStateWithLifecycle(initialValue = emptyList())
     var selectedTag by rememberSaveable { mutableStateOf<Long?>(null) }
@@ -67,13 +70,14 @@ fun HomeScreen(nav: NavHostController) {
     var query by rememberSaveable { mutableStateOf("") }
     val prefs = remember { ctx.applicationContext.getSharedPreferences(PREFS_HOME, 0) }
     var grid by remember { mutableStateOf(prefs.getBoolean("recent_grid", false)) }
-    val pick = rememberPdfPicker(mimes = arrayOf("application/pdf", *com.smartdocs.editor.ui.office.OfficeRoutes.MIMES)) { files -> files.firstOrNull()?.let { nav.navigate(Routes.reader(Uri.fromFile(it).toString())) } }   // office5: PDF + Office
+    val pick = rememberPdfPicker(mimes = arrayOf("*/*")) { files -> files.firstOrNull()?.let { nav.navigate(Routes.reader(Uri.fromFile(it).toString())) } }   // open-all: any file type (opened in-app by content)
     fun goTab(route: String) = nav.navigate(route) {
         popUpTo(nav.graph.findStartDestination().id) { saveState = true }
         launchSingleTop = true; restoreState = true
     }
     fun openDoc(d: RecentDoc) = nav.navigate(Routes.reader(d.uri, d.lastPage))
-    fun runTool(id: String) { if (id == "open") pick() else { ToolUsage.record(ctx, id); nav.navigate(Routes.tool(id)) } }
+    val nveHome = com.smartdocs.editor.ui.nve.shell.rememberNveHomeActions(nav)   // NVE-shell: paste, page snapshot, feature guides
+    fun runTool(id: String) { if (id == "open") pick() else if (com.smartdocs.editor.ui.nve.shell.NveHomeIds.owns(id)) nveHome(id) else { ToolUsage.record(ctx, id); nav.navigate(Routes.tool(id)) } }
     // gaps6: list-detail on large / unfolded screens; tool wizard
     val fold = com.smartdocs.editor.ui.gaps6.rememberFoldState()
     var detail by remember { mutableStateOf<RecentDoc?>(null) }
@@ -87,6 +91,10 @@ fun HomeScreen(nav: NavHostController) {
         Quick(Icons.Default.NoteAdd, R.string.create_blank, "blank") { Brand.tiles.blue },
         Quick(Icons.Default.Dashboard, R.string.g6_from_template, "templates") { Brand.tiles.amber },
         Quick(Icons.Default.SwapHoriz, R.string.cv6_title, "convert_hub") { Brand.tiles.green },   // convert6: Convert hub
+        // NVE-shell: HOME-1 paste from clipboard, HOME-2 page snapshot, feature guides
+        Quick(Icons.Default.ContentPaste, R.string.nl_paste, com.smartdocs.editor.ui.nve.shell.NveHomeIds.PASTE) { Brand.tiles.teal },
+        Quick(Icons.Default.PhotoCamera, R.string.nl_snapshot, com.smartdocs.editor.ui.nve.shell.NveHomeIds.SNAPSHOT) { Brand.tiles.purple },
+        Quick(Icons.Default.School, R.string.nl_guides, com.smartdocs.editor.ui.nve.shell.NveHomeIds.GUIDES) { Brand.tiles.amber },
     )
     val listState = rememberLazyListState()
     val fabExpanded by remember { derivedStateOf { listState.firstVisibleItemIndex == 0 } }
@@ -115,7 +123,7 @@ fun HomeScreen(nav: NavHostController) {
                     if (hits.isEmpty()) item(key = "search_empty") { EmptyIllustration(R.drawable.ds_empty_search, stringResource(R.string.ds_no_results)) }
                     items(hits, key = { "s" + it.uri }) { d -> DocRow(d, onOpen = { showDoc(d) }, onMenu = { menuDoc = d }, modifier = Modifier.animateItem()) }
                     item(key = "search_files") {
-                        GoRow(stringResource(R.string.ds_search_all_files), Icons.Default.ManageSearch) { goTab(Routes.FILES) }
+                        GoRow(stringResource(R.string.ds_search_all_files), Icons.Default.ManageSearch) { nav.navigate(Routes.tool("search_all", "q:$q")) }   // nav-prefs: full-text search of every file
                     }
                     return@LazyColumn
                 }
@@ -132,6 +140,9 @@ fun HomeScreen(nav: NavHostController) {
                     }
                 }
 
+                item(key = "nve_favs") { com.smartdocs.editor.ui.nve.shell.NveHomeFavorites(nav) }   // NVE-shell: favourite tools
+                item(key = "nve_cloud") { com.smartdocs.editor.ui.nve.shell.NveHomeCloudPanel(nav) }   // NVE-shell: start-page cloud panel
+                item(key = "nve_folders") { com.smartdocs.editor.ui.nve.shell.NveHomePinnedFolders(nav) }   // NVE-shell: pinned folders
                 // ---- tool wizard (gaps6); in two-pane mode it lives in the detail pane ----
                 if (!fold.twoPane) item(key = "wizard") { com.smartdocs.editor.ui.gaps6.ToolWizardCard(onOpen = { wizard = true }) }
 
@@ -169,7 +180,7 @@ fun HomeScreen(nav: NavHostController) {
                 }
 
                 // ---- recent / tagged documents ----
-                val docs = if (selectedTag != null) tagged else recents
+                val docs = (if (selectedTag != null) tagged else recents).take(com.smartdocs.editor.ui.nve.shell.NveFolders.recentSize(ctx))   // NVE-shell: recent list size
                 item(key = "recent_title") {
                     SectionTitle(tags.firstOrNull { it.id == selectedTag }?.name ?: stringResource(R.string.recent_files)) {
                         if (docs.isNotEmpty()) IconButton(onClick = { grid = !grid; prefs.edit().putBoolean("recent_grid", grid).apply() }) {
@@ -266,7 +277,7 @@ private fun ContinueCard(d: RecentDoc, onResume: () -> Unit) {
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).animateContentSize(),
     ) {
         Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-            ThumbBox(thumb, 60.dp, 80.dp)
+            ThumbBox(thumb, 60.dp, 80.dp, kind = kindOfName(d.name))
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
                 Text(stringResource(R.string.ds_continue_reading), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)

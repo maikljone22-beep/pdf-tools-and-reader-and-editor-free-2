@@ -37,7 +37,7 @@ object TsaClient {
     )
 
     internal val http: OkHttpClient by lazy {
-        OkHttpClient.Builder()
+        OkHttpClient.Builder().addInterceptor(com.smartdocs.editor.core.data.NpfNet.interceptor)
             .connectTimeout(20, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .callTimeout(60, TimeUnit.SECONDS)

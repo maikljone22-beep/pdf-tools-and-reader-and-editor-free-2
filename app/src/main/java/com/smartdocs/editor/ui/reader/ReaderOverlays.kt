@@ -60,6 +60,7 @@ fun SearchBar(state: ReaderState, quick: com.smartdocs.editor.ui.quick.QuickCont
                 }
             }
             if (replaceOn && quick != null) com.smartdocs.editor.ui.search.ReaderReplaceRow(state, quick)
+            com.smartdocs.editor.ui.search.NpfScopeHits(state)   // nav-prefs: hits in comments, bookmarks, fields, attachments
             if (showList && state.searchHits.isNotEmpty()) {
                 LazyColumn(Modifier.fillMaxWidth().heightIn(max = 220.dp)) {
                     itemsIndexed(state.searchHits) { i, h ->
@@ -105,6 +106,7 @@ fun SelectionMenu(
             ToolChip(Icons.Default.BookmarkAdd, stringResource(R.string.nbm_bm_from_selection)) { nbmBookmark = true }
             if (nbmBookmark) com.smartdocs.editor.ui.edit5.ReaderBookmarkFromSelection(state) { nbmBookmark = false }
             if (onRedact != null) ToolChip(Icons.Default.Block, stringResource(R.string.s5_rd_chip)) { onRedact(sel) }   // MODULE_search5b
+            com.smartdocs.editor.ui.nve.NveSelectionChips(sel, state)   // NVE: squiggly, note, bookmark, word count, copy formatted / table, export, rewrite, edit
             var wordCount by remember { mutableStateOf(false) }
             ToolChip(Icons.Default.Numbers, stringResource(R.string.nt_wc_title)) { wordCount = true }   // Foxit "Word Count" of the selection
             if (wordCount) AlertDialog(onDismissRequest = { wordCount = false }, title = { Text(stringResource(R.string.nt_wc_selection)) },
@@ -146,8 +148,11 @@ fun TtsBar(status: ReadAloudController.Status, onRateChange: (Float) -> Unit) {
 
 /** "Page X of Y" pill with a tap to open the go-to dialog. */
 @Composable
-fun PageIndicator(current: Int, count: Int, onClick: () -> Unit, modifier: Modifier = Modifier) {
+fun PageIndicator(current: Int, count: Int, onClick: () -> Unit, modifier: Modifier = Modifier, labels: List<String>? = null) {
     Surface(modifier.clickable(onClick = onClick), shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.85f), contentColor = MaterialTheme.colorScheme.inverseOnSurface) {
-        Text(stringResource(R.string.page_of, current + 1, count), Modifier.padding(horizontal = 14.dp, vertical = 6.dp), style = MaterialTheme.typography.labelMedium)
+        // old plan A5: page labels ("iv", "A-3") next to the number
+        val l = labels?.getOrNull(current)
+        val text = if (l != null && l != (current + 1).toString()) com.smartdocs.editor.ui.edit5.pageIndicator(labels, current, count) else stringResource(R.string.page_of, current + 1, count)
+        Text(text, Modifier.padding(horizontal = 14.dp, vertical = 6.dp), style = MaterialTheme.typography.labelMedium)
     }
 }

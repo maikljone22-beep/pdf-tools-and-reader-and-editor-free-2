@@ -120,6 +120,9 @@ fun PageCanvas(
     val measure = state.measure?.takeIf { it.page == page }
     val hits = state.searchHits
     val hitIndex = state.searchIndex
+    // nav-prefs: search hit colours and the accessibility colour override (Settings → more preferences)
+    val hitColor = Color(com.smartdocs.editor.core.data.NpfPrefs.hitColor); val hitCurColor = Color(com.smartdocs.editor.core.data.NpfPrefs.hitCurrentColor)
+    val a11yFilter = NpfReader.pageFilter(night)
     val pageColor = state.pageColor
     val pressure = settings.pressureSensitivity
     val highlightLinks = settings.highlightLinks
@@ -257,15 +260,15 @@ fun PageCanvas(
             val bw = g.bitmapW; val bh = g.bitmapH
             val b = base
             if (b == null) drawRect(if (night) Color(0xFF202020) else Color.White, Offset.Zero, Size(bw, bh))
-            else drawImage(b.asImageBitmap(), dstSize = IntSize(bw.roundToInt(), bh.roundToInt()))
+            else drawImage(b.asImageBitmap(), dstSize = IntSize(bw.roundToInt(), bh.roundToInt()), colorFilter = a11yFilter)
             tile?.let { (clip, t) ->
                 drawImage(t.asImageBitmap(), dstOffset = IntOffset((clip.left * bw).roundToInt(), (clip.top * bh).roundToInt()),
-                    dstSize = IntSize((clip.width * bw).roundToInt().coerceAtLeast(1), (clip.height * bh).roundToInt().coerceAtLeast(1)))
+                    dstSize = IntSize((clip.width * bw).roundToInt().coerceAtLeast(1), (clip.height * bh).roundToInt().coerceAtLeast(1)), colorFilter = a11yFilter)
             }
             // page colour preset: white -> background, black -> matching text colour (view module)
-            if (!night) with(com.smartdocs.editor.ui.reader.view.PageTintDraw) { drawPageTint(pageColor, bw, bh) }
+            if (!night && a11yFilter == null) with(com.smartdocs.editor.ui.reader.view.PageTintDraw) { drawPageTint(pageColor, bw, bh) }
             if (highlightLinks) links.forEach { l -> val r = g.pdfRectToScreen(l.bounds); drawRect(Color(0x332196F3), r.topLeft, r.size) }
-            hits.forEachIndexed { i, h -> if (h.page == page) drawPdfRects(h.rects, g, if (i == hitIndex) Color(0x99FF9800) else Color(0x66FFEB3B), multiply = true) }
+            hits.forEachIndexed { i, h -> if (h.page == page) drawPdfRects(h.rects, g, if (i == hitIndex) hitCurColor else hitColor, multiply = true) }
             ReaderAi6.ttsHighlight.value?.let { (p, rs) -> if (p == page) drawPdfRects(rs, g, Color(0x5542A5F5), multiply = true) }   // ai6 (C1): sentence read aloud
             val frameDrag = draft.active && draft.annotFrame != null
             if (showAnnots) annots.forEach { a -> if (a.page == page && !(frameDrag && a.id == pendingEditId)) drawAnnot(a, g) }
@@ -404,6 +407,7 @@ private fun handleTap(
     when (val t = state.tool) {
         null -> {
             links.firstOrNull { l -> val r = PageGeometry.normPdf(l.bounds); x >= r.left && x <= r.right && y <= r.top && y >= r.bottom }?.let { onOpenLink(it); return }
+            if (com.smartdocs.editor.ui.nve.NveLinks.tapUrl(state, page, x, y)) return     // NVE: plain-text URLs are tappable
             onTap(p, layout)
         }
         ReaderTool.NOTE, ReaderTool.FREETEXT, ReaderTool.TEXTBOX, ReaderTool.FS_TEXT, ReaderTool.FS_COMB -> onPrompt(TextPrompt(t, page, x, y))

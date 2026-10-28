@@ -26,6 +26,8 @@ class CloudUploadWorker(context: Context, params: WorkerParameters) : CoroutineW
         val file = File(inputData.getString(KEY_PATH) ?: return Result.success())
         val link = CloudLinks.get(ctx, file) ?: return Result.success()
         if (!file.isFile) return Result.success()
+        // nav-prefs: offline mode — the copy stays dirty (protected) and is queued again by the next save / open
+        if (!com.smartdocs.editor.core.data.NpfNet.allowed()) return Result.success()
         val gen = link.gen
         val hash = runCatching { CloudCopy.sha256(file) }.getOrElse { return Result.retry() }
         when (decide(link.dirty, link.uploadedHash, hash)) {
@@ -33,6 +35,8 @@ class CloudUploadWorker(context: Context, params: WorkerParameters) : CoroutineW
             Step.MARK_CLEAN -> { CloudLinks.markUploaded(ctx, file, link.item, hash, gen); return Result.success() }
             Step.UPLOAD -> Unit
         }
+        // nav-prefs (old plan): Android 12+ shows the transfer as a dataSync foreground service (refused in the background: plain work)
+        if (com.smartdocs.editor.core.data.NpfPrefs.notifySync) runCatching { setForeground(getForegroundInfo()) }
         val res = CloudLinks.writeBack(ctx, file) ?: return Result.success()
         return res.fold(
             onSuccess = { item ->
@@ -48,6 +52,9 @@ class CloudUploadWorker(context: Context, params: WorkerParameters) : CoroutineW
             },
         )
     }
+
+    override suspend fun getForegroundInfo(): androidx.work.ForegroundInfo =
+        com.smartdocs.editor.core.sync.SyncWorker.foregroundInfo(applicationContext, 0x5907)
 
     enum class Step { NOTHING, MARK_CLEAN, UPLOAD }
 

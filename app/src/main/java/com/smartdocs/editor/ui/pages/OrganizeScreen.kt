@@ -4,6 +4,11 @@ import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.draganddrop.dragAndDropTarget
+import androidx.compose.ui.draganddrop.DragAndDropEvent
+import androidx.compose.ui.draganddrop.DragAndDropTarget
+import androidx.compose.ui.draganddrop.mimeTypes
+import androidx.compose.ui.draganddrop.toAndroidDragEvent
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -28,7 +33,7 @@ import kotlinx.coroutines.launch
 import java.io.File
 
 /** Page organizer: thumbnails grid with reorder / insert / delete / rotate / extract / share / copy-paste / undo / save. */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun OrganizeScreen(nav: NavHostController, uri: String?) {
     val writeBackOrganize = com.smartdocs.editor.ui.common.rememberWriteBack()
@@ -45,6 +50,8 @@ fun OrganizeScreen(nav: NavHostController, uri: String?) {
     var result by remember { mutableStateOf<File?>(null) }
     var saving by remember { mutableStateOf(false) }
     var snack by remember { mutableStateOf<String?>(null) }
+    // thumbnail zoom (Foxit 17 / Nitro 4)
+    var cellScale by remember { mutableFloatStateOf(1f) }
 
     var lastFile by remember { mutableStateOf<File?>(null) }
     fun openFile(f: File) {
@@ -59,6 +66,26 @@ fun OrganizeScreen(nav: NavHostController, uri: String?) {
     // gaps6: capture pages with the document scanner, then choose where to insert them
     val scanPages = com.smartdocs.editor.ui.gaps6.rememberCameraPages { files -> if (files.isNotEmpty()) insertDialog = InsertKind.Images(files, fromCamera = true) }
 
+    // Foxit 23a: drop PDFs or images dragged from another app (split screen / desktop mode) to insert them
+    val activity = ctx as? android.app.Activity
+    val dropTarget = remember(activity) {
+        object : DragAndDropTarget {
+            override fun onDrop(event: DragAndDropEvent): Boolean {
+                val de = event.toAndroidDragEvent()
+                activity?.let { runCatching { androidx.core.app.ActivityCompat.requestDragAndDropPermissions(it, de) } }
+                val clip = de.clipData ?: return false
+                val uris = (0 until clip.itemCount).mapNotNull { clip.getItemAt(it).uri }
+                if (uris.isEmpty()) return false
+                scope.launch {
+                    val files = uris.mapNotNull { u -> runCatching { app.documents.localFile(u) }.getOrNull() }
+                    val pdf = files.firstOrNull { it.extension.equals("pdf", true) }
+                    val images = files.filter { it.extension.lowercase() in setOf("jpg", "jpeg", "png", "webp", "bmp", "gif") }
+                    insertDialog = when { pdf != null -> InsertKind.File(pdf); images.isNotEmpty() -> InsertKind.Images(images); else -> null }
+                }
+                return true
+            }
+        }
+    }
     val noSel = stringResource(R.string.pg_no_selection)
     val cannotDeleteAll = stringResource(R.string.pg_cannot_delete_all)
 
@@ -120,6 +147,16 @@ fun OrganizeScreen(nav: NavHostController, uri: String?) {
                         }
                     }
                 },
+                onPrint = {
+                    // nav-batch: Foxit "Print Pages" from the thumbnails selection
+                    requireSelection {
+                        saving = true
+                        scope.launch {
+                            try { state.selectedToTemp()?.let { com.smartdocs.editor.core.util.PdfPrint.print(ctx, it, state.original?.nameWithoutExtension ?: "pages", state.selected.size) } }
+                            catch (e: Exception) { snack = e.message } finally { saving = false }
+                        }
+                    }
+                },
                 onMessage = { snack = it },
             )
         },
@@ -144,15 +181,29 @@ fun OrganizeScreen(nav: NavHostController, uri: String?) {
                         )
                     }
                     Spacer(Modifier.weight(1f))
+                    IconButton(onClick = { cellScale = (cellScale / 1.25f).coerceAtLeast(0.6f) }, enabled = cellScale > 0.6f) { Icon(Icons.Default.ZoomOut, stringResource(R.string.pc_thumbs_smaller)) }
+                    IconButton(onClick = { cellScale = (cellScale * 1.25f).coerceAtMost(2.5f) }, enabled = cellScale < 2.5f) { Icon(Icons.Default.ZoomIn, stringResource(R.string.pc_thumbs_larger)) }
                     Text(stringResource(R.string.page_count) + ": ${state.pageCount}", style = MaterialTheme.typography.labelMedium)
                     if (state.changes > 0) Text(" · " + stringResource(R.string.pg_changes_count, state.changes), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                 }
                 val pages = state.visiblePages()
                 if (pages.isEmpty() && state.pageCount > 0) EmptyState(Icons.Default.FilterAltOff, stringResource(R.string.pg_no_pages_filter))
-                else BoxWithConstraints(Modifier.fillMaxSize()) {
+                else BoxWithConstraints(Modifier.fillMaxSize().dragAndDropTarget(
+                    shouldStartDragAndDrop = { e -> e.mimeTypes().any { it == "application/pdf" || it.startsWith("image/") } }, target = dropTarget)) {
                     val tablet = maxWidth > 700.dp
                     PageGrid(
-                        state = state, pages = pages, minCell = if (tablet) 150.dp else 105.dp,
+                        state = state, pages = pages, minCell = (if (tablet) 150.dp else 105.dp) * cellScale,
+                        pageActions = listOf(
+                            pageAct(R.string.pc_page_rotate) { p -> state.selected = setOf(p); state.rotateSelected(90) },
+                            pageAct(R.string.pc_page_delete) { p -> if (state.pageCount <= 1) snack = cannotDeleteAll else { state.selected = setOf(p); state.deleteSelected() } },
+                            pageAct(R.string.pc_page_print) { p ->
+                                state.selected = setOf(p)
+                                scope.launch { runCatching { state.selectedToTemp()?.let { com.smartdocs.editor.core.util.PrintHelper.printPdf(ctx, it) } }.onFailure { snack = it.message }; state.selected = emptySet() }
+                            },
+                            // redaction and OCR work on the current version of the document
+                            pageAct(R.string.pc_page_redact) { _ -> state.work?.let { nav.navigate(com.smartdocs.editor.ui.Routes.tool("redact", Uri.fromFile(it).toString())) } },
+                            pageAct(R.string.pc_page_ocr) { p -> state.work?.let { nav.navigate(com.smartdocs.editor.ui.Routes.reader(Uri.fromFile(it).toString(), p)) } },
+                        ),
                         dragEnabled = state.filter == PageFilter.ALL && !state.busy,
                         onTap = { p -> if (state.selectMode) state.toggle(p) else { state.selectMode = true; state.selected = setOf(p) } },
                         onLongPress = { p -> state.selectMode = true; state.selected = state.selected + p },
@@ -258,7 +309,7 @@ private fun InsertDialog(state: OrganizeState, kind: InsertKind, onDismiss: () -
 private fun OrganizeToolbar(
     state: OrganizeState,
     onInsertBlank: () -> Unit, onInsertFile: () -> Unit, onInsertImage: () -> Unit, onInsertCamera: () -> Unit,
-    onDelete: () -> Unit, onExtract: () -> Unit, onShare: () -> Unit, onMessage: (String) -> Unit,
+    onDelete: () -> Unit, onExtract: () -> Unit, onShare: () -> Unit, onMessage: (String) -> Unit, onPrint: () -> Unit = {},
 ) {
     val noSel = stringResource(R.string.pg_no_selection)
     val single = state.selected.size == 1
@@ -268,6 +319,7 @@ private fun OrganizeToolbar(
             ToolbarButton(Icons.Default.FileOpen, stringResource(R.string.page_insert_file), onClick = onInsertFile)
             ToolbarButton(Icons.Default.Image, stringResource(R.string.page_insert_image), onClick = onInsertImage)
             ToolbarButton(Icons.Default.PhotoCamera, stringResource(R.string.g6_insert_camera), onClick = onInsertCamera)
+            com.smartdocs.editor.ui.nve.shell.NveOrganizeInsertMore(state, onMessage)   // NVE-shell: insert from web / clipboard / files / folder, insert into file
             VerticalDivider(Modifier.height(36.dp).padding(horizontal = 2.dp))
             ToolbarButton(Icons.Default.RotateLeft, stringResource(R.string.page_rotate_left)) { if (state.selected.isEmpty()) onMessage(noSel) else state.rotateSelected(-90) }
             ToolbarButton(Icons.Default.RotateRight, stringResource(R.string.page_rotate_right)) { if (state.selected.isEmpty()) onMessage(noSel) else state.rotateSelected(90) }
@@ -280,6 +332,7 @@ private fun OrganizeToolbar(
             VerticalDivider(Modifier.height(36.dp).padding(horizontal = 2.dp))
             ToolbarButton(Icons.Default.ContentCut, stringResource(R.string.page_extract), onClick = onExtract)
             ToolbarButton(Icons.Default.Share, stringResource(R.string.page_share), onClick = onShare)
+            ToolbarButton(Icons.Default.Print, stringResource(R.string.print), onClick = onPrint)
         }
     }
 }
@@ -294,3 +347,6 @@ private fun ToolbarButton(icon: androidx.compose.ui.graphics.vector.ImageVector,
         Text(label, style = MaterialTheme.typography.labelSmall, maxLines = 1, color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline)
     }
 }
+
+/** One entry of the per-thumbnail menu (typed so every action is a plain (Int) -> Unit). */
+private fun pageAct(label: Int, act: (Int) -> Unit): Pair<Int, (Int) -> Unit> = label to act

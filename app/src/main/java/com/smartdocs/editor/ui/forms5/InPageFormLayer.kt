@@ -320,7 +320,7 @@ private fun ActiveTextEditor(fs: FormFillState, w: FWidget, screen: Rect, scale:
             .focusRequester(focus),
         textStyle = TextStyle(fontSize = fontSp, color = Color.Black, textAlign = align, textDirection = TextDirection.Content),
         singleLine = !w.multiline,
-        visualTransformation = if (w.password) PasswordVisualTransformation() else VisualTransformation.None,
+        visualTransformation = if (w.password) PasswordVisualTransformation() else if (ks == KeystrokeKind.NONE) com.smartdocs.editor.ui.nve.spellTransformation(com.smartdocs.editor.ui.nve.rememberSpellIssues(tfv.text)) else VisualTransformation.None,   // NVE: live spell check
         keyboardOptions = KeyboardOptions(keyboardType = keyboard, imeAction = if (w.multiline) ImeAction.Default else ImeAction.Next),
         keyboardActions = KeyboardActions(onNext = { fs.step(1) }, onDone = { fs.done() }),
         cursorBrush = SolidColor(accent),

@@ -46,23 +46,33 @@ class T5Job(private val scope: CoroutineScope) {
     var results by mutableStateOf<List<File>>(emptyList())
     var info by mutableStateOf<String?>(null)
     private var job: Job? = null
+    private var generation = 0
 
     fun step(done: Int, total: Int) { progress = if (total > 0) done.toFloat() / total else null }
 
     fun launch(msg: String, block: suspend T5Job.() -> Unit) {
         if (running) return
         running = true; message = msg; progress = null; error = null; info = null
+        val gen = ++generation
         job = scope.launch {
             try { block() }
             catch (e: kotlinx.coroutines.CancellationException) { }
-            catch (e: OutOfMemoryError) { error = "OutOfMemory" }
-            catch (e: Exception) { error = e.message ?: e.javaClass.simpleName }
-            catch (e: Throwable) { error = e.message ?: e.javaClass.simpleName }   // NoClassDefFoundError, StackOverflowError… must not kill the app
-            finally { running = false }
+            catch (e: OutOfMemoryError) { if (gen == generation) error = "OutOfMemory" }
+            catch (e: Exception) { if (gen == generation) error = e.message ?: e.javaClass.simpleName }
+            catch (e: Throwable) { if (gen == generation) error = e.message ?: e.javaClass.simpleName }   // NoClassDefFoundError, StackOverflowError… must not kill the app
+            finally { if (gen == generation) running = false }
         }
     }
 
-    fun cancel() { job?.cancel() }
+    /** Cancels the work and closes the progress dialog at once, even if the work only notices later
+     *  (non-cancellable library calls); anything the cancelled run still produces is discarded. */
+    fun cancel() {
+        val j = job ?: return
+        val g = ++generation
+        j.cancel()
+        running = false; progress = null
+        j.invokeOnCompletion { scope.launch { if (generation == g) { result = null; results = emptyList(); info = null } } }   // a newer run's results stay
+    }
 }
 
 @Composable

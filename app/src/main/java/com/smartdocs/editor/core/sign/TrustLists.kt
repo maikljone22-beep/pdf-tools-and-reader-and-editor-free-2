@@ -175,6 +175,7 @@ object TrustLists {
     /** HTTPS GET with a size limit; refuses anything that is not (or does not stay) HTTPS. */
     internal fun fetch(url: String): ByteArray {
         require(url.startsWith("https://", true)) { "not https: $url" }
+        com.smartdocs.editor.core.data.NpfNet.check()   // nav-prefs: offline mode
         val conn = URL(url).openConnection() as? HttpsURLConnection ?: throw IllegalStateException("not https: $url")
         conn.connectTimeout = 20_000; conn.readTimeout = 60_000; conn.instanceFollowRedirects = true
         conn.setRequestProperty("User-Agent", "SmartDocs trust-list update")
