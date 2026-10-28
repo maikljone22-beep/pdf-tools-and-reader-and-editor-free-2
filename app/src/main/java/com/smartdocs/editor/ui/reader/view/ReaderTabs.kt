@@ -151,12 +151,14 @@ object ReaderTabs {
  * the reference's save/discard prompt); the current reader is replaced so only one PdfSession stays open.
  */
 @Composable
-fun rememberTabSwitcher(nav: NavHostController, state: ReaderState): (DocTab?) -> Unit {
+fun rememberTabSwitcher(nav: NavHostController, state: ReaderState, onSaveFailed: (DocTab?) -> Unit = {}): (DocTab?) -> Unit {
     val scope = rememberCoroutineScope()
+    val failed by rememberUpdatedState(onSaveFailed)
     return remember(nav, state) {
         { target ->
             scope.launch {
-                if (state.dirty && !state.save()) return@launch
+                // tab-view-core V-02: a failed save no longer traps the user: the screen offers save a copy / discard
+                if (state.dirty && !state.discarded && !state.save()) { failed(target); return@launch }
                 if (target == null) { nav.popBackStack(); return@launch }
                 if (target.uri == state.fileUri) return@launch
                 nav.navigate(Routes.reader(target.uri, target.page)) {

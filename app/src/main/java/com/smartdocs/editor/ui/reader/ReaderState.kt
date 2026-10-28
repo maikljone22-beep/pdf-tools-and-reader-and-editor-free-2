@@ -194,6 +194,42 @@ class ReaderState(
     /** A save into a signed / certified document was refused (audit AN-28 hook): the screen offers "Save a copy". */
     var signedBlock by mutableStateOf<com.smartdocs.editor.core.pdf.SignedDocumentException.Reason?>(null)
 
+    /**
+     * tab-view-core V-06 / E-01: the result of a change that [applyInPlace] refused to write into the signed /
+     * certified original; the "signed" dialog's "Save a copy" exports it (the change is kept, the original is not
+     * touched). Deleted by [dropSignedCopy].
+     */
+    var signedCopy by mutableStateOf<File?>(null); private set
+
+    fun dropSignedCopy() { signedCopy?.delete(); signedCopy = null }
+
+    private fun keepSignedCopy(out: File) {
+        dropSignedCopy()
+        val keep = File(app.documents.tempDir, "signed_copy_${System.nanoTime()}.pdf")
+        runCatching { if (!out.renameTo(keep)) { out.copyTo(keep, overwrite = true); out.delete() } }.onSuccess { signedCopy = keep }.onFailure { out.delete() }
+    }
+
+    private var signedInfoCache: Pair<Pair<Long, Long>, com.smartdocs.editor.core.pdf.SignedGuard.Info>? = null
+
+    /** tab-view-core V-06: signature / certification state of the open file (cached until the file changes). */
+    suspend fun signedInfo(): com.smartdocs.editor.core.pdf.SignedGuard.Info {
+        val f = file ?: return com.smartdocs.editor.core.pdf.SignedGuard.Info.NONE
+        val stamp = f.lastModified() to f.length()
+        signedInfoCache?.takeIf { it.first == stamp }?.let { return it.second }
+        val pw = password
+        val info = withContext(Dispatchers.IO) { com.smartdocs.editor.core.pdf.SignedGuard.inspect(f, pw) }
+        signedInfoCache = stamp to info
+        return info
+    }
+
+    /**
+     * tab-view-core V-06 / E-01 / D2: THE signed-file gate of the reader. What a [change] may do to the open file:
+     * PROCEED, SAVE_INCREMENTAL (append with SignedSave.saveIncremental), OFFER_COPY or REFUSE (certified).
+     * [incremental]: whether the writer can append (null = not known). [applyInPlace] applies it to every change.
+     */
+    suspend fun guardSigned(change: com.smartdocs.editor.core.pdf.SignedGuard.Change, incremental: Boolean? = null): com.smartdocs.editor.core.pdf.SignedGuard.Decision =
+        com.smartdocs.editor.core.pdf.SignedGuard.decide(signedInfo(), change, incremental)
+
     /** Why the document could not be opened; stays until [retryOpen] (the snackbar clears [error], not this). */
     var openError by mutableStateOf<OpenError?>(null)
 
@@ -688,6 +724,7 @@ class ReaderState(
      */
     suspend fun applyInPlace(newPassword: String? = password, label: (() -> String)? = null,
                              action: com.smartdocs.editor.core.security.DocAction? = com.smartdocs.editor.core.security.DocAction.MODIFY,
+                             change: com.smartdocs.editor.core.pdf.SignedGuard.Change? = null,
                              op: suspend (src: File, out: File, pw: String?) -> Unit): File? {
         // nitro-protect2: the author's restrictions / Protected View ([action] = what the change needs; null = none)
         action?.let { guard.require(it) }
@@ -701,6 +738,15 @@ class ReaderState(
                 withContext(Dispatchers.IO) { out.delete() }
                 op(f, out, password)
                 if (!out.exists() || out.length() == 0L) throw IllegalStateException("empty result")
+                // tab-view-core V-06 / E-01 / D2: one signed-file gate for every in-place change. A result that is not
+                // an incremental update of a signed original (or that a certification forbids) never replaces it:
+                // it is kept as [signedCopy] and the screen offers "Save a copy".
+                val info = signedInfo()
+                if (info.protectedBySignature) {
+                    val incr = withContext(Dispatchers.IO) { com.smartdocs.editor.core.pdf.SignedGuard.isIncrementalOf(f, out) }
+                    val d = com.smartdocs.editor.core.pdf.SignedGuard.decide(info, signedChangeOf(change, action, incr, newPassword != prevPw), incr)
+                    com.smartdocs.editor.core.pdf.SignedGuard.reasonOf(d)?.let { r -> keepSignedCopy(out); signedBlock = r; return@withLock null }
+                }
                 withContext(NonCancellable) {
                     val lbl = runCatching { label?.invoke() }.getOrNull()?.takeIf { it.isNotBlank() } ?: str(R.string.hi_doc_change)
                     password = newPassword
@@ -712,6 +758,23 @@ class ReaderState(
                 out.delete(); throw e
             }
         }
+    }
+
+    /**
+     * The kind of change for the signed gate: explicit [change], else from the permission [action]. A writer that
+     * appended an incremental update knows about signatures (NavIo, CommentOps, AttachmentOps): it is judged as an
+     * annotation-level change. A password change always rewrites the file.
+     */
+    private fun signedChangeOf(change: com.smartdocs.editor.core.pdf.SignedGuard.Change?, action: com.smartdocs.editor.core.security.DocAction?,
+                               incremental: Boolean, passwordChanged: Boolean): com.smartdocs.editor.core.pdf.SignedGuard.Change {
+        val C = com.smartdocs.editor.core.pdf.SignedGuard.Change.MODIFY
+        if (passwordChanged) return C
+        val c = change ?: when (action) {
+            com.smartdocs.editor.core.security.DocAction.ANNOTATE -> com.smartdocs.editor.core.pdf.SignedGuard.Change.ANNOTATE
+            com.smartdocs.editor.core.security.DocAction.FILL_FORMS -> com.smartdocs.editor.core.pdf.SignedGuard.Change.FORM_FILL
+            else -> C
+        }
+        return if (incremental && c == C) com.smartdocs.editor.core.pdf.SignedGuard.Change.ANNOTATE else c
     }
 
     /** Put a previous version (from [applyInPlace]) back in place: used by "undo" and "save as copy". */

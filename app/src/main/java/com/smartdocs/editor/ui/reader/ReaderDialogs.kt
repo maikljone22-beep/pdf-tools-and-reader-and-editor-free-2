@@ -50,13 +50,14 @@ fun PasswordDialog(wrong: Boolean, onOk: (String) -> Unit, onCancel: () -> Unit)
 }
 
 @Composable
-fun DiscardDialog(onSave: () -> Unit, onDiscard: () -> Unit, onCancel: () -> Unit) {
+fun DiscardDialog(onSave: () -> Unit, onDiscard: () -> Unit, onCancel: () -> Unit, failed: String? = null) {
+    // tab-view-core V-02: [failed] = why saving failed while leaving; Save becomes "Save a copy" so the user is never trapped
     AlertDialog(
         onDismissRequest = onCancel,
         icon = { Icon(Icons.Default.Save, null) },
         title = { Text(stringResource(R.string.rd_unsaved_title)) },
-        text = { Text(stringResource(R.string.rd_unsaved_text)) },
-        confirmButton = { Button(onClick = onSave) { Text(stringResource(R.string.save)) } },
+        text = { Text(if (failed != null) stringResource(R.string.tvc_save_failed_text, failed) else stringResource(R.string.rd_unsaved_text)) },
+        confirmButton = { Button(onClick = onSave) { Text(stringResource(if (failed != null) R.string.signed_doc_save_copy_action else R.string.save)) } },
         dismissButton = {
             Row { TextButton(onClick = onDiscard) { Text(stringResource(R.string.rd_discard)) }; TextButton(onClick = onCancel) { Text(stringResource(R.string.cancel)) } }
         },

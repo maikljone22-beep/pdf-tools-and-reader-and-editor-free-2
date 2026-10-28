@@ -244,6 +244,8 @@ class OrganizeState(
     suspend fun saveOverwrite(): File? {
         val o = original ?: return null; val w = work ?: return null
         if (w != o) {
+            // tab-view-core G-01: page changes are never written over a signed / certified original (save as new instead)
+            withContext(Dispatchers.IO) { com.smartdocs.editor.core.pdf.SignedGuard.checkWrite(o, w, password) }
             // close our session first, then replace atomically (sibling temp + rename) so a crash mid-copy
             // never leaves a truncated original behind
             sessionLock.withLock { session?.closeAsync(); session = null }

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- tab-view-core: reader VIEW tab + core audit (gaps/tabs-audit/1_view_core.md) and EDIT tab audit (3_edit.md) -->
+<resources>
+    <string name="tvc_save_failed_text">تعذّر حفظ التعديلات: %1$s\nاحفظ نسخة، أو تجاهل التعديلات، أو ابقَ في المستند.</string>
+    <string name="tvc_save_failed_generic">حدث خطأ أثناء الحفظ.</string>
+    <string name="tvc_copy_saved_leave">حُفظت النسخة. هل تغلق هذا المستند؟ ستُتجاهَل تعديلاته غير المحفوظة في الملف الأصلي.</string>
+    <string name="tvc_leave">إغلاق المستند</string>
+</resources>
