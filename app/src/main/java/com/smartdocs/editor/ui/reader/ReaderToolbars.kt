@@ -181,8 +181,16 @@ private val commentTools = listOf(
     // tabs audit CM-05: measuring is the workbench "Measure" chip (saved); the canvas measure is not offered twice
 )
 
+/** One entry of the grouped Comment row (tabs audit CM-19). */
+private class CItem(val icon: ImageVector, val label: Int, val selected: Boolean, val onClick: () -> Unit)
+
+/**
+ * Tabs audit CM-19: on phones the ~30 Comment chips are grouped (Markup, Text, Draw, Shapes, Media) into dropdown
+ * chips that show the active tool; tablets keep the flat row.
+ */
 @Composable
 private fun CommentToolbar(state: ReaderState, a: ReaderActions) {
+    if (androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp < 600) { GroupedCommentToolbar(state, a); return }
     ToolRow {
         commentTools.forEach { d ->
             ToolChip(d.icon, stringResource(d.label), selected = state.tool == d.tool) {
@@ -392,7 +400,11 @@ fun PropertyBar(state: ReaderState) {
             }
         }
         com.smartdocs.editor.ui.reader.annot.Annot2PropertyRow(state)      // MODULE_annot2: polygon progress, fill, cloud
-        com.smartdocs.editor.ui.reader.annot.CreationExtrasRow(state)      // section 7: fill, dash, no border, line ends, rich text, icons, tickmarks
+        // tabs audit CM-19: on a short screen (phone in landscape) the creation extras fold behind a toggle
+        val shortScreen = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp < 480
+        var extrasOpen by remember { mutableStateOf(false) }
+        if (shortScreen && !extrasOpen) TextButton(onClick = { extrasOpen = true }, modifier = Modifier.height(32.dp)) { Text(stringResource(R.string.tc2_more_options)) }
+        else com.smartdocs.editor.ui.reader.annot.CreationExtrasRow(state)      // section 7: fill, dash, no border, line ends, rich text, icons, tickmarks
     }
 }
 
@@ -418,3 +430,52 @@ private val COLOR_NAMES = mapOf(
     0x2196F3 to "Blue · أزرق", 0x3F51B5 to "Indigo · نيلي", 0x9C27B0 to "Purple · بنفسجي", 0xE91E63 to "Pink · وردي", 0xFF9800 to "Orange · برتقالي",
     0x795548 to "Brown · بني", 0x212121 to "Black · أسود", 0x000000 to "Black · أسود", 0xFFFFFF to "White · أبيض", 0x9E9E9E to "Grey · رمادي", 0x00BCD4 to "Cyan · سماوي",
 )
+
+@Composable
+private fun GroupedCommentToolbar(state: ReaderState, a: ReaderActions) {
+    val v = com.smartdocs.editor.ui.view5.V5State.of(state)
+    fun tool(t: ReaderTool): CItem? {
+        val d = commentTools.firstOrNull { it.tool == t }
+        val e = com.smartdocs.editor.ui.reader.annot.ToolCatalog.of(t)
+        val icon = d?.icon ?: e?.icon ?: return null
+        val label = d?.label ?: e?.label ?: return null
+        return CItem(icon, label, state.tool == t) { com.smartdocs.editor.ui.reader.annot.clickTool(state, a, t) }
+    }
+    fun wb(t: com.smartdocs.editor.ui.view5.WTool, icon: ImageVector, label: Int) =
+        CItem(icon, label, false) { v.workbenchTool = t; v.open(com.smartdocs.editor.ui.view5.V5Surface.WORKBENCH) }
+    val groups = listOf(
+        Triple(R.string.tc2_g_markup, Icons.Default.Highlight, CommentGroups.MARKUP.mapNotNull(::tool) + listOf(wb(com.smartdocs.editor.ui.view5.WTool.AREA_HIGHLIGHT, Icons.Default.HighlightAlt, R.string.v5_tool_area_highlight))),
+        Triple(R.string.tc2_g_text, Icons.Default.TextFields, CommentGroups.TEXT.mapNotNull(::tool) + listOf(
+            wb(com.smartdocs.editor.ui.view5.WTool.CALLOUT, Icons.Default.Comment, R.string.v5_tool_callout), wb(com.smartdocs.editor.ui.view5.WTool.TYPEWRITER, Icons.Default.Keyboard, R.string.v5_tool_typewriter))),
+        Triple(R.string.tc2_g_draw, Icons.Default.Draw, CommentGroups.DRAW.mapNotNull(::tool)),
+        Triple(R.string.tc2_g_shapes, Icons.Default.CropSquare, CommentGroups.SHAPES.mapNotNull(::tool)),
+        Triple(R.string.tc2_g_media, Icons.Default.Attachment, CommentGroups.MEDIA.mapNotNull(::tool)),
+    )
+    ToolRow {
+        groups.forEach { (label, icon, items) -> GroupChip(stringResource(label), icon, items) }
+        (CommentGroups.SINGLE.mapNotNull(::tool) + wb(com.smartdocs.editor.ui.view5.WTool.DISTANCE, Icons.Default.Straighten, R.string.v5_measure)).forEach { c ->
+            ToolChip(c.icon, stringResource(c.label), selected = c.selected, onClick = c.onClick)
+        }
+        ToolChip(Icons.Default.Forum, stringResource(R.string.v5_comment_manager)) { v.open(com.smartdocs.editor.ui.view5.V5Surface.COMMENTS) }
+        ToolChip(Icons.Default.TableChart, stringResource(R.string.v5_measurements)) { v.open(com.smartdocs.editor.ui.view5.V5Surface.MEASURE_LIST) }
+        com.smartdocs.editor.ui.reader.annot.CommentsMoreChip(state)
+        VerticalDivider(Modifier.height(36.dp).padding(horizontal = 4.dp))
+        ToolChip(Icons.Default.List, stringResource(R.string.panel_annotations)) { a.panels(ReaderPanel.ANNOTATIONS) }
+    }
+}
+
+@Composable
+private fun GroupChip(label: String, icon: ImageVector, items: List<CItem>) {
+    var open by remember { mutableStateOf(false) }
+    val sel = items.firstOrNull { it.selected }
+    Box {
+        ToolChip(sel?.icon ?: icon, if (sel != null) stringResource(sel.label) else label, selected = sel != null) { open = true }
+        DropdownMenu(open, { open = false }) {
+            items.forEach { c ->
+                DropdownMenuItem(text = { Text(stringResource(c.label)) }, leadingIcon = { Icon(c.icon, null) },
+                    trailingIcon = { if (c.selected) Icon(Icons.Default.Check, stringResource(R.string.tc2_selected)) },
+                    onClick = { open = false; c.onClick() })
+            }
+        }
+    }
+}
