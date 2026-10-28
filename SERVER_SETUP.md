@@ -217,6 +217,14 @@ The app declares an auto-verified link for `https://smartdocs.app/invite` (added
 4. Check it: `https://digitalassetlinks.googleapis.com/v1/statements:list?source.web.site=https://smartdocs.app&relation=delegate_permission/common.handle_all_urls` must list your package; on a device, `adb shell pm verify-app-links --re-verify com.smartdocs.editor` then `adb shell pm get-app-links com.smartdocs.editor` should show `smartdocs.app: verified`.
 5. If you use another domain, change the `android:host` of the invite `<intent-filter>` in `AndroidManifest.xml` to it and publish the file there.
 
+### Added by later branches (owner actions)
+- **Review "leave" on the server (fix/fc-sync):** redeploy `ai-proxy/collab` (`cd ai-proxy/collab && wrangler deploy`) — it adds `POST /reviews/:id/leave`; an older worker answers 404 and leaving stays on the device only.
+- **Connected-document open message (fix/fc-sync):** redeploy `ai-proxy/connected` (`wrangler deploy` in that folder) — `settings.openMessage` is stored and returned by `/open`.
+- **SharePoint document libraries (fix/fc-sync):** in the Azure app registration of section 7 (OneDrive), add the delegated Microsoft Graph permissions **Sites.Read.All** and **Files.ReadWrite.All**, then grant consent (admin consent for work/school tenants).
+- **Instant change notices for Google Drive / OneDrive (optional):** the app polls their change feeds (30 s → 5 min back-off) while it is open. True push needs an HTTPS endpoint that receives Drive `changes.watch` / Graph subscription callbacks and forwards them to the app (e.g. through Firebase Cloud Messaging) — not built; Dropbox and Box already use long-poll.
+- **Egnyte native API (optional):** Egnyte works now as a WebDAV place (preset in Add Place). A native Egnyte provider would need an Egnyte developer app (API key / OAuth client).
+- **Verified invite links:** see section 9b.
+
 ## 10. Summary: the app-side files
 All are in the project root, git-ignored. **Keys only, never commit them.**
 
