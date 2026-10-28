@@ -205,11 +205,21 @@ object FormOps {
             if (f.isReadOnly && name !in display) return@forEach
             val value = values[name] ?: valueOf(f)
             val shown = display[name]
+            // 8.28: a rich-text field's bold / italic face goes into /DA before the appearance is generated
+            val richStyle = if (f is PDTextField && com.smartdocs.editor.core.forms5.RichFields.isRich(f))
+                rich[name] ?: runCatching { com.smartdocs.editor.core.forms5.RichFields.styleOf(f.cosObject) }.getOrNull() else null
+            if (richStyle != null && f is PDTextField && !ArabicShaper.isArabic(shown ?: value)) runCatching {
+                val da = com.smartdocs.editor.core.forms5.RichFields.daFor(f.defaultAppearance ?: acro.defaultAppearance ?: "/Helv 0 Tf 0 g", richStyle)
+                com.smartdocs.editor.core.forms5.RichFields.ensureFont(acro, da)
+                f.defaultAppearance = da
+            }
             val ok = runCatching {
                 if (f is PDTextField && ((shown != null && shown != value) || ArabicShaper.isArabic(shown ?: value)))
                     applyTextAppearance(context, doc, acro, f, value, shown ?: value)
                 else applyValue(acro, f, value)
             }.isSuccess
+            if (ok && richStyle != null && f is PDTextField && !ArabicShaper.isArabic(shown ?: value))
+                runCatching { com.smartdocs.editor.core.forms5.RichFields.underlineAppearance(acro, f, richStyle, shown ?: value) }
             if (!ok) { needViewer = true; runCatching { acro.needAppearances = true; applyValue(acro, f, value); acro.needAppearances = false } }
             if (name in values) applied++
         }

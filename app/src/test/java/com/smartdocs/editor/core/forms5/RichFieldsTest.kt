@@ -50,4 +50,18 @@ class RichFieldsTest {
             assertFalse(acro2.getField("note").cosObject.containsKey(COSName.getPDFName("RV")))
         }
     }
+
+    @Test fun appearanceFaceAndUnderline() {
+        val bold = AnnotStyle.Rich(12f, 0, bold = true, italic = false)
+        assertEquals("/HeBo 10 Tf 0 g", RichFields.daFor("/Helv 10 Tf 0 g", bold))
+        assertEquals("/HeBO 0 Tf 0 g", RichFields.daFor("/Helv 0 Tf 0 g", bold.copy(italic = true)))
+        assertEquals("/HeOb 9 Tf 1 0 0 rg", RichFields.daFor("/Helv 9 Tf 1 0 0 rg", bold.copy(bold = false, italic = true)))
+        assertEquals("/Helv 10 Tf 0 g", RichFields.daFor("/HeBo 10 Tf 0 g", bold.copy(bold = false)))   // our face switched off
+        assertEquals("/TiRo 10 Tf 0 g", RichFields.daFor("/TiRo 10 Tf 0 g", bold.copy(bold = false)))   // the field's own font stays
+        val content = listOf("/Tx BMC", "q", "BT", "/HeBo 12 Tf", "0 g", "2 5.5 Td", "(Hello) Tj", "ET", "Q", "EMC").joinToString("\n")
+        val u = RichFields.underlined(content, 30f)!!
+        assertTrue(u.startsWith(content))
+        assertTrue(u.contains("2.00 4.06 m 32.00 4.06 l S"))
+        assertEquals(null, RichFields.underlined("/Tx BMC EMC", 10f))
+    }
 }
