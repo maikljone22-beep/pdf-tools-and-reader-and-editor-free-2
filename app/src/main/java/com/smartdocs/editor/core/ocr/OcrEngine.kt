@@ -192,8 +192,7 @@ class OcrEngine(private val context: Context, val fast: Boolean = false) : AutoC
         synchronized(this@OcrEngine) {
             if (!cloud.isNullOrEmpty()) {
                 val c = OcrCleanup.clean(cloud)
-                return@withContext OcrPage(OcrRefine.lines(c).joinToString("
-") { l -> l.joinToString(" ") { c[it].text } },
+                return@withContext OcrPage(OcrRefine.lines(c).joinToString("\n") { l -> l.joinToString(" ") { c[it].text } },
                     c.map { k -> OcrWord(k.text, Rect(k.left, k.top, k.right, k.bottom), k.conf, k.line) }, bitmap.width, bitmap.height)
             }
             // read the handle under the lock: close() may have recycled it meanwhile

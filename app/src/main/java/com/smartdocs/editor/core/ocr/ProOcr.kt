@@ -51,7 +51,7 @@ class ProOcr(private val context: Context) : AutoCloseable {
             val todo = MODELS.filter { file(ctx, it).length() != it.size }
             val total = todo.sumOf { it.size }.coerceAtLeast(1)
             var done = 0L
-            val client = OkHttpClient.Builder().connectTimeout(30, TimeUnit.SECONDS).readTimeout(120, TimeUnit.SECONDS).followRedirects(true).build()
+            val client = OkHttpClient.Builder().addInterceptor(com.smartdocs.editor.core.data.NpfNet.interceptor).connectTimeout(30, TimeUnit.SECONDS).readTimeout(120, TimeUnit.SECONDS).followRedirects(true).build()
             val cc = coroutineContext
             for (m in todo) {
                 val target = file(ctx, m); val tmp = File(target.parentFile, target.name + ".part")
