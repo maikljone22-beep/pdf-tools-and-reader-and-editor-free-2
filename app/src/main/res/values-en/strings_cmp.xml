@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cmp_output_intent">Output intent</string>
+    <string name="cmp_find_element">Find element</string>
+    <string name="cmp_find_hint">Text in the title, alt text or ID</string>
+    <string name="cmp_find_count">%1$d matching elements</string>
+    <string name="cmp_bm_struct">Bookmarks from structure</string>
+    <string name="cmp_bm_parent">From the document structure</string>
+    <string name="cmp_bm_untitled">Untitled %1$s</string>
+    <string name="cmp_bm_types">Element types that become bookmarks:</string>
+</resources>
