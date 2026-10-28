@@ -295,10 +295,10 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                         navigationIcon = { IconButton(onClick = { requestLeave() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.back)) } },
                         actions = {
                             // tab-view-core V-03: only what fits stays in the bar (by width); the ⋮ button is always shown
+                            val v5Top = com.smartdocs.editor.ui.view5.v5TopEntries(state)
                             val topItems = buildList {
                                 add(TOP_UNDO to 80); if (state.dirty) add(TOP_SAVE to 48); add(TOP_SEARCH to 48)
-                                val v5 = com.smartdocs.editor.ui.view5.v5TopEntries(state)
-                                addAll(v5.take(1)); if (!tablet) add(TOP_TABS to 48); addAll(v5.drop(1))
+                                addAll(v5Top.take(1)); if (!tablet) add(TOP_TABS to 48); addAll(v5Top.drop(1))
                             }
                             val split = TopBarOverflow.partition(TopBarOverflow.budget(LocalConfiguration.current.screenWidthDp), topItems)
                             val shown = split.shown.toSet(); val hidden = split.overflow.toSet()
