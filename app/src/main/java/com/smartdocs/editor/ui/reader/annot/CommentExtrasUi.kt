@@ -148,8 +148,8 @@ fun SelectionMoreButton(state: ReaderState, multi: Boolean) {
         IconButton(onClick = { open = true }) { Icon(Icons.Default.MoreVert, stringResource(R.string.cx_more)) }
         DropdownMenu(open, { open = false }) {
             CxItem(R.string.cx_props, Icons.Default.Info) { open = false; cx.openProps() }
-            CxItem(R.string.cx_lock, Icons.Default.Lock) { open = false; cx.setLocked(true) }
-            CxItem(R.string.cx_unlock, Icons.Default.LockOpen) { open = false; cx.setLocked(false) }
+            if (cx.selectionLocked()) CxItem(R.string.cx_unlock, Icons.Default.LockOpen) { open = false; cx.setLocked(false) }
+            else CxItem(R.string.cx_lock, Icons.Default.Lock) { open = false; cx.setLocked(true) }
             CxItem(R.string.cx_cut, Icons.Default.ContentCut) { open = false; cx.copy(cut = true) }
             CxItem(R.string.cx_copy, Icons.Default.ContentCopy) { open = false; cx.copy() }
             if (cx.canPaste) CxItem(R.string.cx_paste_in_place, Icons.Default.ContentPaste) { open = false; cx.paste(true) }
@@ -186,8 +186,8 @@ fun CommentExtrasMenuItems(h: Annot2Host, close: () -> Unit) {
     DropdownMenuItem(text = { Text(stringResource(if (cx.hidden) R.string.cx_show_comments else R.string.cx_hide_comments)) },
         leadingIcon = { Icon(if (cx.hidden) Icons.Default.Visibility else Icons.Default.VisibilityOff, null) }, onClick = { close(); cx.toggleHidden() })
     if (cx.canPaste) {
-        DropdownMenuItem(text = { Text(stringResource(R.string.cx_paste)) }, leadingIcon = { Icon(Icons.Default.ContentPaste, null) }, onClick = { close(); cx.paste(false) })
-        DropdownMenuItem(text = { Text(stringResource(R.string.cx_paste_in_place)) }, leadingIcon = { Icon(Icons.Default.ContentPasteGo, null) }, onClick = { close(); cx.paste(true) })
+        DropdownMenuItem(text = { Text(stringResource(R.string.tc_paste_comment)) }, leadingIcon = { Icon(Icons.Default.ContentPaste, null) }, onClick = { close(); cx.paste(false) })
+        DropdownMenuItem(text = { Text(stringResource(R.string.tc_paste_comment_in_place)) }, leadingIcon = { Icon(Icons.Default.ContentPasteGo, null) }, onClick = { close(); cx.paste(true) })
     }
     DropdownMenuItem(text = { Text(stringResource(R.string.cx_note_indicators)) }, leadingIcon = { Icon(if (cx.noteIndicators) Icons.Default.CheckBox else Icons.Default.CheckBoxOutlineBlank, null) },
         onClick = { close(); cx.toggleNoteIndicators() })
@@ -210,15 +210,14 @@ fun CommentExtrasDialogs(state: ReaderState) {
     val cx = h.cx
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
-    var pendingOut by remember { mutableStateOf<File?>(null) }
     val saver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
-        val f = pendingOut; pendingOut = null
+        val f = h.pendingExport; h.pendingExport = null
         if (uri != null && f != null) scope.launch { runCatching { MediaIntents.writeTo(ctx, f, uri) }.onFailure { state.error = it.message } }
     }
     SideEffect {
         h.launchExportSelected = { xfdf, share, all ->
             if (all) { h.multi.clear(); state.edit.clear() }
-            cx.exportSelected(xfdf, share) { out -> pendingOut = out; saver.launch(out.name) }
+            cx.exportSelected(xfdf, share) { out -> h.pendingExport = out; saver.launch(out.name) }
         }
     }
     cx.props?.let { p -> PropsDialog(p, onDismiss = { cx.props = null }) { a, s, n, c, l, i -> cx.applyProps(p, a, s, n, c, l, i) } }
@@ -241,7 +240,7 @@ fun CommentExtrasDialogs(state: ReaderState) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun PropsDialog(p: PropsReq, onDismiss: () -> Unit, onOk: (String, String, String, String, Boolean, String) -> Unit) {
+private fun PropsDialog(p: PropsReq, onDismiss: () -> Unit, onOk: (String, String, String, String, Boolean?, String) -> Unit) {
     var author by remember { mutableStateOf(p.author) }
     var subject by remember { mutableStateOf(p.subject) }
     var name by remember { mutableStateOf(p.name) }
@@ -267,7 +266,7 @@ private fun PropsDialog(p: PropsReq, onDismiss: () -> Unit, onOk: (String, Strin
                 }
             }
         },
-        confirmButton = { TextButton(onClick = { onOk(author.trim(), subject.trim(), name.trim(), contents, locked, icon) }) { Text(stringResource(R.string.ok)) } },
+        confirmButton = { TextButton(onClick = { onOk(author.trim(), subject.trim(), name.trim(), contents, locked.takeIf { it != p.locked }, icon) }) { Text(stringResource(R.string.ok)) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } })
 }
 

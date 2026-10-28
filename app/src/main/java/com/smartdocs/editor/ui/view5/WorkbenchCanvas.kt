@@ -37,16 +37,27 @@ import com.smartdocs.editor.core.view5.MarkKind
 import com.smartdocs.editor.core.view5.P
 import kotlin.math.roundToInt
 
-/** Screen mapping of the workbench page: page points ↔ canvas pixels (fit width × zoom, panned). */
-class WbView(val pageW: Float, val pageH: Float) {
+/**
+ * Screen mapping of the workbench page: PDF user space ↔ canvas pixels (fit width × zoom, panned). [pageW] × [pageH] is
+ * the displayed size (the page's /Rotate applied); [frame] gives /Rotate and the crop-box origin so items land in user
+ * space where they were placed on rotated or cropped pages (tabs audit CM-03).
+ */
+class WbView(val pageW: Float, val pageH: Float, val frame: com.smartdocs.editor.ui.reader.PageUserFrame? = null) {
     var vw by mutableFloatStateOf(1f)
     var vh by mutableFloatStateOf(1f)
     var zoom by mutableFloatStateOf(1f)
     var panX by mutableFloatStateOf(0f)
     var panY by mutableFloatStateOf(0f)
     val scale: Float get() = vw / pageW * zoom              // px per point
-    fun toScreen(p: P) = Offset((p.x * scale).toFloat() + panX, ((pageH - p.y) * scale).toFloat() + panY)
-    fun toPdf(o: Offset) = P(((o.x - panX) / scale).toDouble(), (pageH - (o.y - panY) / scale).toDouble())
+    private fun geom() = com.smartdocs.editor.ui.reader.PageGeometry(pageW, pageH, scale, 0, frame?.rotate ?: 0, frame?.cropX ?: 0f, frame?.cropY ?: 0f)
+    fun toScreen(p: P): Offset = geom().pdfToScreen(p.x.toFloat(), p.y.toFloat()).let { Offset(it.x + panX, it.y + panY) }
+    fun toPdf(o: Offset): P = geom().screenToPdf(o.x - panX, o.y - panY).let { (x, y) -> P(x.toDouble(), y.toDouble()) }
+    /** Screen corners of a user-space box (normalised: rotated pages swap the corners). */
+    fun boxTopLeft(x0: Float, y0: Float, x1: Float, y1: Float): Offset { val a = toScreen(P(x0.toDouble(), y0.toDouble())); val b = toScreen(P(x1.toDouble(), y1.toDouble())); return Offset(minOf(a.x, b.x), minOf(a.y, b.y)) }
+    fun boxBottomRight(x0: Float, y0: Float, x1: Float, y1: Float): Offset { val a = toScreen(P(x0.toDouble(), y0.toDouble())); val b = toScreen(P(x1.toDouble(), y1.toDouble())); return Offset(maxOf(a.x, b.x), maxOf(a.y, b.y)) }
+    /** User-space point → displayed page point (points, origin top-left, y down) and back: for the grid. */
+    fun toDisplay(p: P): Offset = toScreen(p).let { Offset((it.x - panX) / scale, (it.y - panY) / scale) }
+    fun fromDisplay(x: Double, y: Double): P = toPdf(Offset((x * scale).toFloat() + panX, (y * scale).toFloat() + panY))
     fun clamp() {
         val w = pageW * scale; val h = pageH * scale
         panX = if (w <= vw) (vw - w) / 2 else panX.coerceIn(vw - w, 0f)
@@ -78,8 +89,9 @@ fun WorkbenchCanvas(m: WorkbenchModel, bitmap: Bitmap?, view: WbView, snapTo: (P
         if (m.v.snapGrid) {
             // grid from the top-left corner like the overlay grid; gridMm in millimetres
             val step = (m.v.gridMm * 72.0 / 25.4).coerceAtLeast(1.0)
-            val top = view.pageH - p.y
-            p = P(Math.round(p.x / step) * step, view.pageH - Math.round(top / step) * step)
+            // the grid follows the page as displayed (rotated / cropped pages too)
+            val d = view.toDisplay(p)
+            p = view.fromDisplay(Math.round(d.x / step) * step, Math.round(d.y / step) * step)
         }
         if (m.v.ortho && m.pts.isNotEmpty() && (m.tool == WTool.DISTANCE || m.tool == WTool.PERIMETER || m.tool == WTool.AREA || m.tool == WTool.LINE || m.calibrating)) p = Geom.constrain45(m.pts.last(), p)
         return p
@@ -202,7 +214,7 @@ private fun DrawScope.drawItem(it: WItem, v: WbView, label: Paint, text: Paint) 
         }
         is WItem.Text -> {
             val b = it.spec.box
-            val tl = v.toScreen(P(b.x0.toDouble(), b.y1.toDouble())); val br = v.toScreen(P(b.x1.toDouble(), b.y0.toDouble()))
+            val tl = v.boxTopLeft(b.x0, b.y0, b.x1, b.y1); val br = v.boxBottomRight(b.x0, b.y0, b.x1, b.y1)
             it.spec.fill?.takeIf { _ -> !it.spec.typewriter }?.let { f -> drawRect(col(f), tl, Size(br.x - tl.x, br.y - tl.y)) }
             if (it.spec.borderColor != null && !it.spec.typewriter) drawRect(col(it.spec.borderColor), tl, Size(br.x - tl.x, br.y - tl.y), style = Stroke((it.spec.borderWidth * v.scale).coerceAtLeast(2f), pathEffect = dashEffect(it.spec.dash, 3f)))
             it.spec.tip?.let { t ->
@@ -229,7 +241,7 @@ private fun DrawScope.drawItem(it: WItem, v: WbView, label: Paint, text: Paint) 
             }
         }
         is WItem.Area -> {
-            val tl = v.toScreen(P(it.box.x0.toDouble(), it.box.y1.toDouble())); val br = v.toScreen(P(it.box.x1.toDouble(), it.box.y0.toDouble()))
+            val tl = v.boxTopLeft(it.box.x0, it.box.y0, it.box.x1, it.box.y1); val br = v.boxBottomRight(it.box.x0, it.box.y0, it.box.x1, it.box.y1)
             drawRect(col(it.color, it.opacity), tl, Size(br.x - tl.x, br.y - tl.y))
         }
         is WItem.Line -> {
