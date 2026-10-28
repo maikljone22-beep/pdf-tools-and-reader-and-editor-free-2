@@ -48,7 +48,7 @@ class SignedGuardTest {
     }
 
     @Test fun incrementalPrefixCheck() {
-        val dir = createTempDir("sg")
+        val dir = java.nio.file.Files.createTempDirectory("sg").toFile()
         try {
             val src = File(dir, "a.pdf").apply { writeBytes(ByteArray(200_000) { (it % 251).toByte() }) }
             val appended = File(dir, "b.pdf").apply { writeBytes(src.readBytes() + "%update".toByteArray()) }
