@@ -199,7 +199,9 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
             saveAs = { saveAs.launch(state.file?.name ?: "document.pdf") },
             pickImage = { pickImage() }, pickStamp = { showStamps = true },
             pickSignature = { path -> scope.launch { ReaderIntents.decode(File(path))?.let { state.pendingImage = it; state.tool = ReaderTool.SIGNATURE; state.pendingText = path; state.selection = null } } },
-            navigateTool = { id ->
+            navigateTool = navigate@{ id ->
+                // tabs audit CM-21: a tool that does not use this document opens as is (no guard, no save, no undo step)
+                if (id in com.smartdocs.editor.core.security.ReaderRestrictions.DOCUMENT_FREE) { state.selectTool(null); nav.navigate(Routes.tool(id)); return@navigate }
                 // nitro-protect2: what the tool needs from the document (restrictions / Protected View)
                 val need = com.smartdocs.editor.core.security.ReaderRestrictions.actionForTool(id)
                 if (need != null && !state.guard.check(need)) { } else
@@ -282,8 +284,13 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
                     if (tablet) com.smartdocs.editor.ui.reader.view.ReaderTabStrip(state, switchTab, alwaysShow = true)
                     if (state.searchOpen) SearchBar(state, quick) { state.closeSearch() }
                     else ReaderTabRow(state) { t ->
+                        // tabs audit CM-10 / CM-25 / CM-38: a tab switch ends the View drag modes, the multi-selection
+                        // and the active tool (also before Organize, so the eraser is not still on when coming back)
+                        com.smartdocs.editor.ui.nve.NveState.of(state).let { n -> n.dragMode = null; n.pasteText = null }
+                        state.annot2.onTabChanged()
+                        if (state.tool != null) state.selectTool(null)
                         if (t == ReaderTab.PAGES) actions.navigateTool("organize")
-                        else { state.tab = t; state.selectTool(null); state.selection = null }
+                        else { state.tab = t; state.selection = null }
                     }
                     state.connected?.let { com.smartdocs.editor.ui.connected.ConnectedBanner(it, nav, connUri) }   // share6: above the pages
                     if (state.session != null) ReaderSecurityBanners(state)   // nitro-protect2: Protected View, action inspector, restrictions
@@ -377,7 +384,11 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
     state.signedBlock?.let { reason ->
         AlertDialog(onDismissRequest = { state.signedBlock = null },
             icon = { Icon(Icons.Default.Verified, null) },
-            text = { Text(stringResource(if (reason == com.smartdocs.editor.core.pdf.SignedDocumentException.Reason.CERTIFIED_NO_CHANGES) R.string.signed_doc_certified_no_changes else R.string.signed_doc_save_as_copy)) },
+            text = { Text(stringResource(when (reason) {
+                com.smartdocs.editor.core.pdf.SignedDocumentException.Reason.CERTIFIED_NO_CHANGES -> R.string.signed_doc_certified_no_changes
+                com.smartdocs.editor.core.pdf.SignedDocumentException.Reason.CONTENT_CHANGE -> R.string.tc_signed_content_change
+                else -> R.string.signed_doc_save_as_copy
+            })) },
             confirmButton = { TextButton(onClick = { state.signedBlock = null; saveAs.launch((state.file?.nameWithoutExtension ?: "document") + "_copy.pdf") }) { Text(stringResource(R.string.signed_doc_save_copy_action)) } },
             dismissButton = { TextButton(onClick = { state.signedBlock = null }) { Text(stringResource(R.string.cancel)) } })
     }

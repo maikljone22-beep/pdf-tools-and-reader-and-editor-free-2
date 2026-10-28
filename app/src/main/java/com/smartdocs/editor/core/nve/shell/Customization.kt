@@ -18,12 +18,15 @@ data class Customization(
     val favorites: List<String> = emptyList(),
     val favoritesTitle: String? = null,
     val customTabName: String? = null,
+    /** Tabs audit CM-20: the reader's "My tools" list (ReaderTool names); null = not in the file (older exports). */
+    val readerToolset: List<String>? = null,
 ) {
     fun toJson(): String = JSONObject()
         .put("format", "smartdocs-customization").put("version", 1)
         .put("tabOrder", JSONArray(tabOrder)).put("hiddenTabs", JSONArray(hiddenTabs.toList())).put("hiddenChips", JSONArray(hiddenChips.toList()))
         .put("userTabs", JSONArray(userTabs.map { t -> JSONObject().put("id", t.id).put("name", t.name).put("icon", t.icon).put("tools", JSONArray(t.tools)) }))
         .put("favorites", JSONArray(favorites)).put("favoritesTitle", favoritesTitle ?: "").put("customTabName", customTabName ?: "")
+        .apply { readerToolset?.let { put("readerToolset", JSONArray(it)) } }
         .toString(2)
 
     companion object {
@@ -51,6 +54,7 @@ data class Customization(
                 favorites = o.strings("favorites").distinct().take(Favorites.MAX),
                 favoritesTitle = o.optString("favoritesTitle").ifBlank { null },
                 customTabName = o.optString("customTabName").ifBlank { null },
+                readerToolset = if (o.has("readerToolset")) o.strings("readerToolset").distinct().take(64) else null,
             )
         }
 

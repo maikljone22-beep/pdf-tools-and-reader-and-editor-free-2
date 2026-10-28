@@ -19,6 +19,8 @@ class SignedDocumentException(val reason: Reason, message: String, cause: Throwa
         CERTIFIED_NO_CHANGES,
         /** The incremental update could not be written. */
         INCREMENTAL_FAILED,
+        /** A change of page content (flatten …) on a signed file: an incremental update would still invalidate it. */
+        CONTENT_CHANGE,
     }
 }
 
@@ -62,6 +64,24 @@ object SignedSave {
         val p = listOfNotNull(certifyLevel(doc), locked).minOrNull() ?: return
         if (p < 3) throw SignedDocumentException(SignedDocumentException.Reason.CERTIFIED_NO_CHANGES,
             "this file is certified (DocMDP P=$p) and does not allow annotation changes; save as a copy")
+    }
+
+    /** Throws [SignedDocumentException] (CONTENT_CHANGE) for a signed [doc]: page content must not change after signing. */
+    fun requireContentChangeAllowed(doc: PDDocument) {
+        if (isSigned(doc)) throw SignedDocumentException(SignedDocumentException.Reason.CONTENT_CHANGE,
+            "this file is signed: flattening changes the page content and would invalidate the signature; save a copy")
+    }
+
+    /**
+     * Tabs audit CM-01 / CM-02 / CM-04: the one write path of the comment tools. Loads [src] without removing its
+     * security, applies [change] (it returns the zero-based pages it touched; empty = every page) and saves with
+     * [saveEdited] — incremental and refused on certified files when signed, re-protected otherwise.
+     */
+    fun editFile(src: java.io.File, out: java.io.File, password: String?, change: (PDDocument) -> Collection<Int>) {
+        PdfOps.loadRaw(src, password).use { doc ->
+            val pages = change(doc)
+            saveEdited(doc, out, password, pages.ifEmpty { (0 until doc.numberOfPages).toList() })
+        }
     }
 
     /** Flag [pages] (their /Annots array and their /Parent chain) and the catalog for the incremental update. */
