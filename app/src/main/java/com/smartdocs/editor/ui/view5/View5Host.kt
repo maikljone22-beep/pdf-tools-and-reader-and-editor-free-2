@@ -39,7 +39,7 @@ fun View5ReaderHost(s: ReaderState, nav: NavHostController, snack: SnackbarHostS
 
     // every jump (links, outline, bookmarks, search, go-to) goes through pendingJump: record where we were
     LaunchedEffect(s) { snapshotFlow { s.pendingJump }.collect { p -> if (p != null) v.recordJump(s.currentPage, p) } }
-    ToolMemoryEffect(s)
+    // tabs audit CM-06: one tool memory (annot ToolMemory, saved in ReaderState.tool); the view5 copy is gone
     val ctx = LocalContext.current
     LaunchedEffect(Unit) { ReadAloudOptions.apply(ctx) }
 
@@ -91,9 +91,8 @@ fun View5CommentChips(s: ReaderState) {
     ToolChip(Icons.Default.Straighten, stringResource(R.string.v5_measure)) { v.workbenchTool = WTool.DISTANCE; v.open(V5Surface.WORKBENCH) }
     ToolChip(Icons.Default.Comment, stringResource(R.string.v5_tool_callout)) { v.workbenchTool = WTool.CALLOUT; v.open(V5Surface.WORKBENCH) }
     ToolChip(Icons.Default.Keyboard, stringResource(R.string.v5_tool_typewriter)) { v.workbenchTool = WTool.TYPEWRITER; v.open(V5Surface.WORKBENCH) }
-    ToolChip(Icons.Default.Check, stringResource(R.string.v5_tool_tick)) { v.workbenchTool = WTool.TICK; v.open(V5Surface.WORKBENCH) }
     ToolChip(Icons.Default.HighlightAlt, stringResource(R.string.v5_tool_area_highlight)) { v.workbenchTool = WTool.AREA_HIGHLIGHT; v.open(V5Surface.WORKBENCH) }
-    ToolChip(Icons.Default.LineStyle, stringResource(R.string.v5_tool_line)) { v.workbenchTool = WTool.LINE; v.open(V5Surface.WORKBENCH) }
+    // tabs audit CM-05: tick marks = the "Tickmarks" tool, lines = Line / Arrow (both still in the workbench's own tool list)
     ToolChip(Icons.Default.Forum, stringResource(R.string.v5_comment_manager)) { v.open(V5Surface.COMMENTS) }
     ToolChip(Icons.Default.TableChart, stringResource(R.string.v5_measurements)) { v.open(V5Surface.MEASURE_LIST) }
 }

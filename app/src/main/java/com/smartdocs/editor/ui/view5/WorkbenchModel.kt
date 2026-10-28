@@ -153,9 +153,9 @@ class WorkbenchModel(val v: V5State) {
         pts.clear()
     }
 
-    /** Write every pending item into [out] (a copy of [src]). */
+    /** Write every pending item into [out] (a copy of [src]); signed files get an incremental update (audit CM-01). */
     suspend fun writeAll(context: android.content.Context, src: File, out: File, pw: String?) = withContext(Dispatchers.IO) {
-        PdfOps.load(src, pw).use { doc ->
+        com.smartdocs.editor.core.pdf.SignedSave.editFile(src, out, pw) { doc ->
             var font: PDFont? = null
             val arabic: () -> PDFont = { font ?: PdfOps.arabicFont(context, doc).also { font = it } }
             items.toList().forEach { it2 ->
@@ -171,7 +171,7 @@ class WorkbenchModel(val v: V5State) {
                     }
                 }
             }
-            doc.save(out)
+            items.map { it.page }.distinct()
         }
     }
 }

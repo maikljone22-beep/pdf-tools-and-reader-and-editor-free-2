@@ -95,8 +95,13 @@ object ReaderRestrictions {
     /** True when any action is refused by the author's permissions (the reader shows a "restricted" note). */
     fun restricted(info: SecurityInfo?): Boolean = DocAction.values().any { check(info, false, it) == Block.AUTHOR }
 
+    /** Tabs audit CM-21: tool screens that do not work on the open document (scan, new PDF, batch …). */
+    val DOCUMENT_FREE = setOf("scan", "scan_studio", "images_to_pdf", "blank", "templates", "to_pdf_plus", "mail_merge", "recipes", "batch",
+        "batch_print", "ai_spaces", "esign", "office", "search_all")
+
     /** The permission a reader tool screen (Routes.tool id) needs on the open document; null = none (read only). */
     fun actionForTool(id: String): DocAction? = when (id) {
+        in DOCUMENT_FREE -> null
         "organize", "merge", "split" -> DocAction.ASSEMBLE
         "forms", "digital_sign" -> DocAction.FILL_FORMS
         "search_highlight" -> DocAction.ANNOTATE
