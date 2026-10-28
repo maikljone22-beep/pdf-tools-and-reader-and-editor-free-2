@@ -190,8 +190,7 @@ private fun distToSegment(x: Float, y: Float, a: Pair<Float, Float>, b: Pair<Flo
  * page and clamped to its crop box ([box]); PDF rect convention (top = larger y).
  */
 fun textRectAt(x: Float, y: Float, text: String, fontSize: Float, box: com.smartdocs.editor.core.fillsign2.FsGeom.PageBox, rtl: Boolean): RectF {
-    val lines = text.split('
-')
+    val lines = text.split('\n')
     val w = ((lines.maxOfOrNull { it.length } ?: 1) * fontSize * 0.58f + 12f).coerceIn(40f, box.dispW * 0.9f)
     val h = lines.size * fontSize * 1.3f + 8f
     return com.smartdocs.editor.core.fillsign2.FsGeom.textBox(box, x, y, w, h, rtl).toPdfRect()
