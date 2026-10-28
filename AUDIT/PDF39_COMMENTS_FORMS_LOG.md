@@ -1,0 +1,15 @@
+# fix/pdf39-comments-forms — row log (pdf-39)
+
+| Row | Status | Where | Note |
+|---|---|---|---|
+| OLD I1 Fill & Sign on flat forms | FIXED | ReaderState.loadFsTargets/fsTargetAt, PageCanvas (dashed targets, tap → fillTarget), FieldRecognition.at | Uses core/formsx FieldRecognition.scanPage only when the document has no AcroForm fields; box → check mark, line → text prompt sized to the line. Test FormDataTest.fillSignTargetHit |
+| 8.73 XDP export / import | FIXED | core/formsx/FormData (DataFormat.XDP, xdp, parseXdp, stripIndices), FormsScreen data menu, mail-data dialog | <xdp:xdp> package with <xfa:datasets><xfa:data> and <pdf href>; import reads xfa:data leaf paths (or an embedded XFDF) and matches index-free paths to "form1[0].Name[0]" fields. Tests exportAndParseEveryFormat, xdpPackageAndIndexedNames |
+| 7.27 cloudy oval | FIXED | CloudPath.ellipse, AnnotStyle.shapeStream (oval cloud), Annotations.kt write/read Circle /BE, AnnotationOverlay, Cloud chips for the Oval tool | Test CloudShapesTest |
+| 24.33 cloud scallops inward / outward | FIXED | CloudPath.build(inward), AnnotStyle.setCloudy/cloudInwardOf (/SDCloudIn), Annot.cloudInward, Annot2Writer polygon cloud, "Scallops inward" chip, ToolMemory field 14 | Other viewers draw /BE clouds outward; ours keeps the inward look. Test CloudShapesTest |
+| 24.102 superscript / subscript | FIXED | Annot.script, AnnotStyle.Rich.script / scriptSize / scriptRise (vertical-align in /DS and /RC), Annotations.textAppearance, AnnotationOverlay, Text format dialog | Applies to the whole text box like the other text-box formats. Test TextScriptTest |
+| 7.73 one shared identity | FIXED | StampTokens.shared, StampIdentity.load (name = comment author), Settings identity Save and stamp identity dialog also set the comment author | Test View5LogicTest.sharedIdentityUsesCommentAuthor |
+| 24.87 summary connector lines / sequence numbers | FIXED | CommentSummary (SummaryOptions.connectors, connector), summary options switch | Sequence numbers were already drawn (numbered markers + numbered list); connector lines join each entry to its marker on the same sheet. Test SummaryConnectorTest |
+| Pencil stroke-merge timeout | FIXED | core/annot/InkMerge, CommentExtras.addNew (inkMergeMs, prefs ink_merge_ms), comment menu item off / 1 / 2 / 3 s | Merged strokes are one undo step each (replaceAnnot). Test InkMergeTest |
+| Form-field recognition after Create PDF (pref) | DEFERRED | — | Create PDF runs through core/convert6, which stays untouched until fix/convert-audit is merged |
+| §37 default e-mail subject / body | FIXED | core/share5/MailDefaults, ShareOptionsSheet e-mail actions, Settings › Files (MailDefaultRows) | {file} token. Test MailDefaultsTest |
+| §37 auto-open pop-ups | FIXED | NpfPrefs.autoOpenPopup (Settings › Comments), NpfNotePopup shows a "Show note" chip when off | UI only; pref read through NpfPrefs (no unit test beyond the default) |

@@ -143,6 +143,7 @@ private fun sections(nav: NavHostController): List<Section> = listOf(
         Label(stringResource(R.string.npf_recovery))
         Chips(listOf(0 to stringResource(R.string.npf_off), 1 to "1", 5 to "5", 10 to "10").map { (v, l) -> v to if (v == 0) l else stringResource(R.string.npf_minutes, l) }, NpfPrefs.recoveryMinutes) { NpfPrefs.setInt(K.RECOVERY_MIN, it) }
         Hint(stringResource(R.string.npf_recovery_hint))
+        MailDefaultRows()
     },
     // ---------------- page display ----------------
     Section(R.string.npf_s_display, "layout zoom facing panel title rotation header footer تخطيط تكبير متقابلة لوحة عنوان تدوير ترويسة") {
@@ -178,6 +179,7 @@ private fun sections(nav: NavHostController): List<Section> = listOf(
     Section(R.string.npf_s_comments, "comment note popup font opacity markup retain summary تعليق ملاحظة خط شفافية ملخص") {
         Sw(R.string.npf_retain_tools, NpfPrefs.retainTools, R.string.npf_retain_tools_sub) { NpfPrefs.setBool(K.RETAIN_TOOLS, it) }
         Sw(R.string.npf_copy_selection, NpfPrefs.copySelection) { NpfPrefs.setBool(K.COPY_SEL, it) }
+        Sw(R.string.cf_auto_popup, NpfPrefs.autoOpenPopup, R.string.cf_auto_popup_sub) { NpfPrefs.setBool(K.AUTO_POPUP, it) }
         Label(stringResource(R.string.npf_note_font))
         Chips(listOf("sans" to "Sans", "serif" to "Serif", "mono" to "Mono"), NpfPrefs.noteFont) { NpfPrefs.setString(K.NOTE_FONT, it) }
         // size / opacity are the comment tools' own preferences (CommentExtras, prefs "comment_prefs"): set here for every document
@@ -277,6 +279,19 @@ private fun sections(nav: NavHostController): List<Section> = listOf(
     },
 )
 
+/** Default e-mail subject / body of the share sheet ({file} = document name). */
+@Composable
+private fun MailDefaultRows() {
+    val ctx = LocalContext.current
+    var subject by remember { mutableStateOf(com.smartdocs.editor.core.share5.MailDefaults.subjectTemplate(ctx)) }
+    var body by remember { mutableStateOf(com.smartdocs.editor.core.share5.MailDefaults.bodyTemplate(ctx)) }
+    val field = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 3.dp)
+    Label(stringResource(R.string.cf_mail_defaults))
+    OutlinedTextField(subject, { subject = it; com.smartdocs.editor.core.share5.MailDefaults.set(ctx, subject, body) }, field, label = { Text(stringResource(R.string.cf_mail_subject)) }, singleLine = true)
+    OutlinedTextField(body, { body = it; com.smartdocs.editor.core.share5.MailDefaults.set(ctx, subject, body) }, field, label = { Text(stringResource(R.string.cf_mail_body)) }, minLines = 2)
+    Hint(stringResource(R.string.cf_mail_hint))
+}
+
 @Composable
 private fun IdentityRows() {
     val ctx = LocalContext.current
@@ -292,10 +307,13 @@ private fun IdentityRows() {
     OutlinedTextField(id.unit, { id = id.copy(unit = it); saved = false }, field, label = { Text(stringResource(R.string.npf_id_unit)) }, singleLine = true)
     OutlinedTextField(id.email, { id = id.copy(email = it); saved = false }, field, label = { Text(stringResource(R.string.npf_id_email)) }, singleLine = true)
     Row(Modifier.padding(horizontal = 16.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Button(enabled = !saved, onClick = { com.smartdocs.editor.ui.view5.StampIdentity.save(ctx, id); saved = true }) { Text(stringResource(R.string.save)) }
-        OutlinedButton(enabled = id.name.isNotBlank() && id.name != author, onClick = { scope.launch { app.settings.update { it.copy(authorName = id.name.trim()) } } }) { Text(stringResource(R.string.npf_id_as_author)) }
+        // 7.73: one shared identity — saving also makes the name the comment author
+        Button(enabled = !saved, onClick = {
+            val v = id.copy(name = id.name.trim()); com.smartdocs.editor.ui.view5.StampIdentity.save(ctx, v); saved = true
+            if (v.name.isNotBlank() && v.name != author) scope.launch { app.settings.update { it.copy(authorName = v.name) } }
+        }) { Text(stringResource(R.string.save)) }
     }
-    Hint(stringResource(R.string.npf_id_hint))
+    Hint(stringResource(R.string.npf_id_hint) + " " + stringResource(R.string.cf_id_shared))
 }
 
 @Composable

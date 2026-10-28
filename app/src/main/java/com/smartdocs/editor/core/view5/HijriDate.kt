@@ -76,6 +76,9 @@ object StampTokens {
     /** [unit] and [email] complete the Nitro "My Identity" (7.73). */
     data class Identity(val name: String = "", val title: String = "", val org: String = "", val unit: String = "", val email: String = "")
 
+    /** 7.73 one shared identity: the comment author (Settings) is the identity's name; the stored name only fills in when it is empty. */
+    fun shared(stored: Identity, author: String): Identity = if (author.isNotBlank()) stored.copy(name = author.trim()) else stored
+
     fun fill(template: String, who: Identity, ms: Long, arabicDigits: Boolean = false, tz: TimeZone = TimeZone.getDefault(), hijriAdjust: Int = 0): String {
         val c = Calendar.getInstance(tz).apply { timeInMillis = ms }
         fun two(v: Int) = String.format(Locale.US, "%02d", v)

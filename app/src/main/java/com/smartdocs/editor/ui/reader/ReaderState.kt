@@ -339,6 +339,35 @@ class ReaderState(
         scope.launch { runCatching { app.db.docs().updatePage(Uri.fromFile(f).toString(), page) } }
     }
 
+    // ---- OLD I1: Fill & Sign on flat forms — detected fields are tap targets ----
+    /** Likely fields of pages without form fields (lines, boxes, label gaps), per page; filled when the page is shown. */
+    val fsTargets = androidx.compose.runtime.mutableStateMapOf<Int, List<com.smartdocs.editor.core.formsx.FieldRecognition.Suggestion>>()
+    private var fsTargetsKey: Any? = null
+
+    fun loadFsTargets(page: Int) {
+        val f = file ?: return
+        val key = f.absolutePath to renderVersion
+        if (fsTargetsKey != key) { fsTargets.clear(); fsTargetsKey = key }
+        if (fsTargets.containsKey(page)) return
+        fsTargets[page] = emptyList()
+        val pw = password
+        scope.launch {
+            val found = withContext(Dispatchers.IO) {
+                runCatching {
+                    com.smartdocs.editor.core.pdf.PdfOps.loadRaw(f, pw).use { d ->
+                        // a real form is filled through its fields; only flat pages get detected targets
+                        if (d.documentCatalog.acroForm?.fields?.isNotEmpty() == true || page !in 0 until d.numberOfPages) emptyList()
+                        else com.smartdocs.editor.core.formsx.FieldRecognition.scanPage(d, page)
+                    }
+                }.getOrDefault(emptyList())
+            }
+            if (fsTargetsKey == key) fsTargets[page] = found
+        }
+    }
+
+    /** The detected target under PDF point ([x], [y]) of [page], if any. */
+    fun fsTargetAt(page: Int, x: Float, y: Float) = com.smartdocs.editor.core.formsx.FieldRecognition.at(fsTargets[page], x, y)
+
     fun jumpTo(page: Int) { pendingJump = page.coerceIn(0, (pageCount - 1).coerceAtLeast(0)) }
 
     /**
