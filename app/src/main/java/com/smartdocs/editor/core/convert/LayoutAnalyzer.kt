@@ -13,7 +13,8 @@ object LayoutAnalyzer {
     /** Column ("chunk") break inside a line when the gap exceeds this fraction of the font size. */
     const val CHUNK_GAP = 1.2f
 
-    fun analyze(page: PageContent, detectTables: Boolean = true, furniture: PageFurniture = PageFurniture.NONE): PageLayout {
+    /** [streamTables] false: only ruled (lined) tables, no tables found from text alignment alone (s6 complex-table threshold). */
+    fun analyze(page: PageContent, detectTables: Boolean = true, furniture: PageFurniture = PageFurniture.NONE, streamTables: Boolean = true): PageLayout {
         val all = buildLines(page.glyphs)
         val body = bodyFontSize(all)
         val header = if (furniture.isEmpty) emptyList() else all.filter { furniture.isHeader(it, page.height, body) }
@@ -26,9 +27,11 @@ object LayoutAnalyzer {
             val ruled = TableDetector.ruled(page.segments, rest)
             blocks += ruled.tables
             rest = removeWords(rest, ruled.usedWords)
-            val stream = TableDetector.stream(rest)
-            blocks += stream.tables
-            rest = rest.filter { it !in stream.usedLines }
+            if (streamTables) {
+                val stream = TableDetector.stream(rest)
+                blocks += stream.tables
+                rest = rest.filter { it !in stream.usedLines }
+            }
         }
         blocks += paragraphs(rest, body, page.width)
         val fills = page.fills.filter { !Decorations.isBackground(it.color) }

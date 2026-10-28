@@ -40,6 +40,8 @@ data class ConvertOptions(
     /** DOCX: character spacing added to every run (points) and pictures anchored at their place. */
     val docxCharSpacing: Float = 0f,
     val docxAnchorImages: Boolean = false,
+    /** Tables from text alignment too (else lined tables only). */
+    val streamTables: Boolean = true,
 )
 
 /** Where page content comes from (PdfBox on Android, desktop PdfBox in the test harness). */
@@ -74,7 +76,7 @@ object ConvertPipeline {
         val rebuilt = ArrayList<Int>()
         val furniture = if (opts.detectHeaders && opts.format != TargetFormat.PPTX && pages.size >= 2) detectFurniture(src, pages) else PageFurniture.NONE
         fun layout(i: Int, withImages: Boolean): PageLayout {
-            val l = LayoutAnalyzer.analyze(src.content(i, withImages), opts.detectTables, furniture)
+            val l = LayoutAnalyzer.analyze(src.content(i, withImages), opts.detectTables, furniture, opts.streamTables)
             if (l.hasText) textPages++
             if (l.ocrChars > 0) ocrPages++
             if (l.rebuiltByOcr) rebuilt += i

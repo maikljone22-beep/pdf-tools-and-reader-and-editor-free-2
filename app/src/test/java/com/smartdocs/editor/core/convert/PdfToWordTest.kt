@@ -235,4 +235,13 @@ class PdfToWordTest {
         assertTrue(xml.contains("<w:spacing w:val=\"10\"/>"))       // 0.5 pt = 10 twentieths
         assertFalse(docx(false, l).contains("<w:spacing w:val="))
     }
+
+    @Test fun linedTablesOnlySkipsAlignmentTables() {
+        // a 3 x 3 grid of aligned words without any ruling lines
+        val gs = listOf(100f, 120f, 140f).flatMap { y -> listOf(50f, 220f, 390f).flatMapIndexed { i, x -> ltrWord("c$i${y.toInt()}", x, y) } }
+        val withStream = LayoutAnalyzer.analyze(page(gs), detectTables = true)
+        val linedOnly = LayoutAnalyzer.analyze(page(gs), detectTables = true, streamTables = false)
+        assertEquals(0, linedOnly.blocks.count { it is TableBlock })
+        assertTrue(withStream.blocks.count { it is TableBlock } >= linedOnly.blocks.count { it is TableBlock })
+    }
 }

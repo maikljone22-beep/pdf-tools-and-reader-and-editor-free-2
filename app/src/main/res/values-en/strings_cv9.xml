@@ -51,4 +51,6 @@
     <string name="cv9_spacing_normal">Normal</string>
     <string name="cv9_anchor_images">Anchor pictures at their place</string>
     <string name="cv9_anchor_images_sub">Pictures float at their page position instead of in line</string>
+    <string name="cv9_tables_all">All tables</string>
+    <string name="cv9_tables_lined">Lined tables only</string>
 </resources>

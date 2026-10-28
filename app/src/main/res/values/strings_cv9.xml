@@ -51,4 +51,6 @@
     <string name="cv9_spacing_normal">عادي</string>
     <string name="cv9_anchor_images">تثبيت الصور في أماكنها</string>
     <string name="cv9_anchor_images_sub">تطفو الصور في موضعها من الصفحة بدل أن تكون ضمن السطر</string>
+    <string name="cv9_tables_all">كل الجداول</string>
+    <string name="cv9_tables_lined">الجداول المحددة بخطوط فقط</string>
 </resources>

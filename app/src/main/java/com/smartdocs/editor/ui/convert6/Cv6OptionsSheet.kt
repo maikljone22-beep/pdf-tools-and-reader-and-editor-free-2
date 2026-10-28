@@ -135,6 +135,9 @@ private fun OptionsBody(conv: Conv, inputCount: Int, o: Cv6Opts, onChange: (Cv6O
         ChoiceChips(listOf(false, true), o.singleSheet, { if (it) stringResource(R.string.cv_single_sheet) else stringResource(R.string.cv_sheet_per_page) }) { onChange(o.copy(singleSheet = it)) }
     }
     if (Opt.TABLES in opts && (Opt.PPT_MODE !in opts || o.pptEditable)) SwitchRow(stringResource(R.string.cv_detect_tables), o.tables, stringResource(R.string.cv_detect_tables_sub)) { onChange(o.copy(tables = it)) }
+    // s6 complex-table threshold: all tables, or lined tables only (fewer false tables in complex layouts)
+    if (Opt.TABLES in opts && o.tables && (Opt.PPT_MODE !in opts || o.pptEditable))
+        ChoiceChips(listOf(true, false), o.streamTables, { if (it) stringResource(R.string.cv9_tables_all) else stringResource(R.string.cv9_tables_lined) }) { onChange(o.copy(streamTables = it)) }
     if (Opt.INCLUDE_IMAGES in opts && (Opt.PPT_MODE !in opts || o.pptEditable)) SwitchRow(stringResource(R.string.cv_include_images), o.includeImages, stringResource(R.string.cv_include_images_sub)) { onChange(o.copy(includeImages = it)) }
     if (Opt.IMG_FORMAT in opts) {
         FieldLabel(stringResource(R.string.cv_img_format))
