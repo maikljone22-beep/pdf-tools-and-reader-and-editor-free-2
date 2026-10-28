@@ -56,7 +56,8 @@ object FieldNavigation {
     fun order(items: List<NavItem>, rtl: (Int) -> Boolean = { false }, tabs: (Int) -> String? = { null }): List<String> {
         val out = ArrayList<String>()
         items.filter { it.tabStop }.groupBy { it.page }.toSortedMap().forEach { (page, list) ->
-            val ordered = if (tabs(page) == "C") columns(list, rtl(page)) else rows(list, rtl(page))
+            // "A" (§37 preference "document order" on pages without /Tabs): the /Annots order
+            val ordered = when (tabs(page)) { "C" -> columns(list, rtl(page)); "A" -> list.sortedBy { it.annotIndex }; else -> rows(list, rtl(page)) }
             ordered.forEach { out += it.id }
         }
         return out

@@ -49,6 +49,8 @@ data class SummaryOptions(
     val types: Set<String>? = null,
     val pageCount: Int = 0,
     val connectors: Boolean = false,      // Foxit 24.87: lines from each numbered marker to its entry
+    val connectorColor: Int = 0xE53935,   // 24.87: connector line colour (RGB) and opacity
+    val connectorOpacity: Float = 1f,
 ) {
     enum class Sort { PAGE, AUTHOR, TYPE, CREATED_NEW, CREATED_OLD, MODIFIED }
 }
@@ -229,9 +231,14 @@ object CommentSummary {
                             // connector from the entry's first line to its marker, while both are on the same sheet
                             if (li == 0 && opts.connectors && s === thumbPage) markers[number]?.let { (mx, my) ->
                                 val pts = connector((if (ArabicShaper.isArabic(t)) rightEdge else minOf(rightEdge, listLeft + wr.width(t, size))) + 3f, y - size * 0.65f, thumbLeft - 5f, mx, my)
-                                s.setStrokingColor(0.9f, 0.22f, 0.21f); s.setLineWidth(0.5f)
+                                val cc = opts.connectorColor
+                                s.saveGraphicsState()
+                                if (opts.connectorOpacity < 0.999f) s.setGraphicsStateParameters(com.tom_roush.pdfbox.pdmodel.graphics.state.PDExtendedGraphicsState().apply {
+                                    strokingAlphaConstant = opts.connectorOpacity.coerceIn(0.1f, 1f) })
+                                s.setStrokingColor(((cc shr 16) and 0xFF) / 255f, ((cc shr 8) and 0xFF) / 255f, (cc and 0xFF) / 255f); s.setLineWidth(0.5f)
                                 pts.forEachIndexed { i, (px, py) -> if (i == 0) s.moveTo(px, py) else s.lineTo(px, py) }
                                 s.stroke()
+                                s.restoreGraphicsState()
                             }
                             wr.text(s, t, listLeft + indent, y - size, size, rightEdge - indent, if (li == 0) 0x0D47A1 else 0x212121)
                             y -= size * 1.45f

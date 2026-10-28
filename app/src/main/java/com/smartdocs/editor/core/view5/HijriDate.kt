@@ -69,7 +69,7 @@ object HijriDate {
 }
 
 /**
- * Tokens of dynamic stamps: {name} {title} {org} {date} {time} {hijri} {hijri_num} {datetime}. Unknown
+ * Tokens of dynamic stamps: {name} {title} {org} {date} {time} {hijri} {hijri_num} {datetime} {seq} {seq:N}. Unknown
  * tokens stay as typed. Pure, so templates can be tested.
  */
 object StampTokens {
@@ -79,7 +79,11 @@ object StampTokens {
     /** 7.73 one shared identity: the comment author (Settings) is the identity's name; the stored name only fills in when it is empty. */
     fun shared(stored: Identity, author: String): Identity = if (author.isNotBlank()) stored.copy(name = author.trim()) else stored
 
-    fun fill(template: String, who: Identity, ms: Long, arabicDigits: Boolean = false, tz: TimeZone = TimeZone.getDefault(), hijriAdjust: Int = 0): String {
+    /** §41 sequential stamp: `{seq}` is the counter, `{seq:N}` the counter padded to N digits. */
+    private val SEQ = Regex("""\{seq(?::([1-9]))?\}""")
+    fun hasSeq(template: String): Boolean = SEQ.containsMatchIn(template)
+
+    fun fill(template: String, who: Identity, ms: Long, arabicDigits: Boolean = false, tz: TimeZone = TimeZone.getDefault(), hijriAdjust: Int = 0, seq: Int = 1): String {
         val c = Calendar.getInstance(tz).apply { timeInMillis = ms }
         fun two(v: Int) = String.format(Locale.US, "%02d", v)
         val date = "${c.get(Calendar.YEAR)}/${two(c.get(Calendar.MONTH) + 1)}/${two(c.get(Calendar.DAY_OF_MONTH))}"
@@ -91,6 +95,10 @@ object StampTokens {
             "date" to dg(date), "time" to dg(time), "datetime" to dg("$date $time"),
             "hijri" to h.format(arabic = true, arabicDigits = arabicDigits), "hijri_num" to h.numeric(arabicDigits),
         )
-        return Regex("""\{([a-z_]+)\}""").replace(template) { m -> map[m.groupValues[1]] ?: m.value }
+        val counted = SEQ.replace(template) { m ->
+            val pad = m.groupValues[1].toIntOrNull() ?: 0
+            dg(if (pad > 0) seq.toString().padStart(pad, '0') else seq.toString())
+        }
+        return Regex("""\{([a-z_]+)\}""").replace(counted) { m -> map[m.groupValues[1]] ?: m.value }
     }
 }

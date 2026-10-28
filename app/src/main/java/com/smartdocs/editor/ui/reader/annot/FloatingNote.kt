@@ -9,6 +9,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DragIndicator
+import androidx.compose.material.icons.filled.OpenInFull
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -19,11 +20,13 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.smartdocs.editor.R
@@ -38,6 +41,10 @@ object FloatingNoteGeom {
     /** Window position ([x], [y], top-left) kept inside the viewport [bw] x [bh] for a window of [w] x [h]. */
     fun clamp(x: Float, y: Float, w: Float, h: Float, bw: Float, bh: Float): Pair<Float, Float> =
         x.coerceIn(0f, (bw - w).coerceAtLeast(0f)) to y.coerceIn(0f, (bh - h).coerceAtLeast(0f))
+
+    /** 24.18: the size after a resize-grip drag of ([dx], [dy]), kept between the minimum and the viewport [bw] x [bh]. */
+    fun resize(w: Float, h: Float, dx: Float, dy: Float, minW: Float, minH: Float, bw: Float, bh: Float): Pair<Float, Float> =
+        (w + dx).coerceIn(minW, bw.coerceAtLeast(minW)) to (h + dy).coerceIn(minH, bh.coerceAtLeast(minH))
 }
 
 /**
@@ -50,15 +57,19 @@ fun FloatingNoteWindow(state: ReaderState, bounds: IntSize, modifier: Modifier =
     val note = cx.floating ?: return
     val density = LocalDensity.current
     var pos by remember { mutableStateOf<Offset?>(null) }
-    var size by remember { mutableStateOf(IntSize.Zero) }
+    var win by remember { mutableStateOf(IntSize.Zero) }
     var text by remember(note.target) { mutableStateOf(note.text) }
+    // 24.18: window width and note-area height in px, changed by the bottom-end resize grip (null = default size)
+    var boxW by remember { mutableStateOf<Float?>(null) }
+    var boxH by remember { mutableStateOf<Float?>(null) }
+    val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     val edTarget = state.edit.target
     LaunchedEffect(edTarget) { cx.rebindFloating(edTarget) }
     val start = pos ?: Offset(bounds.width - with(density) { 276.dp.toPx() }, with(density) { 72.dp.toPx() })
-    fun clamp(o: Offset) = FloatingNoteGeom.clamp(o.x, o.y, size.width.toFloat(), size.height.toFloat(), bounds.width.toFloat(), bounds.height.toFloat()).let { Offset(it.first, it.second) }
+    fun clamp(o: Offset) = FloatingNoteGeom.clamp(o.x, o.y, win.width.toFloat(), win.height.toFloat(), bounds.width.toFloat(), bounds.height.toFloat()).let { Offset(it.first, it.second) }
     Surface(
         modifier.absoluteOffset { val c = clamp(start); IntOffset(c.x.roundToInt(), c.y.roundToInt()) }
-            .width(260.dp).onSizeChanged { size = it }.alpha(cx.noteOpacity.coerceIn(0.3f, 1f)),
+            .width(boxW?.let { with(density) { it.toDp() } } ?: 260.dp).onSizeChanged { win = it }.alpha(cx.noteOpacity.coerceIn(0.3f, 1f)),
         shape = RoundedCornerShape(12.dp), tonalElevation = 4.dp, shadowElevation = 10.dp, color = MaterialTheme.colorScheme.secondaryContainer,
     ) {
         Column {
@@ -70,13 +81,28 @@ fun FloatingNoteWindow(state: ReaderState, bounds: IntSize, modifier: Modifier =
                 IconButton(onClick = { cx.floating = null }, modifier = Modifier.size(32.dp)) { Icon(Icons.Default.Close, stringResource(R.string.close), Modifier.size(18.dp)) }
             }
             BasicTextField(text, { text = it },
-                Modifier.fillMaxWidth().heightIn(min = 60.dp, max = 200.dp).verticalScroll(rememberScrollState()).padding(horizontal = 10.dp, vertical = 4.dp),
+                Modifier.fillMaxWidth().then(boxH?.let { Modifier.height(with(density) { it.toDp() }) } ?: Modifier.heightIn(min = 60.dp, max = 200.dp)).verticalScroll(rememberScrollState()).padding(horizontal = 10.dp, vertical = 4.dp),
                 textStyle = TextStyle(fontSize = cx.noteFontSize.sp, color = MaterialTheme.colorScheme.onSecondaryContainer, textDirection = TextDirection.Content),
                 cursorBrush = SolidColor(MaterialTheme.colorScheme.primary))
-            Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), horizontalArrangement = Arrangement.End) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
                 TextButton(enabled = text != note.text && !state.edit.busy, onClick = {
                     if (cx.saveFloating(text)) cx.floating = note.copy(text = text)
                 }) { Text(stringResource(R.string.save)) }
+                // 24.18: resize grip; drag changes the width and the note-area height
+                Icon(Icons.Default.OpenInFull, stringResource(R.string.cmr_note_resize), Modifier.size(28.dp).padding(4.dp)
+                    .pointerInput(bounds, rtl) {
+                        val minW = 180.dp.toPx(); val minH = 48.dp.toPx(); val chrome = 80.dp.toPx()
+                        detectDragGestures { ch, d ->
+                            ch.consume()
+                            // in RTL the grip sits bottom-left: dragging left widens the window and moves its left edge
+                            val dx = if (rtl) -d.x else d.x
+                            val w0 = boxW ?: win.width.toFloat()
+                            val (w, h) = FloatingNoteGeom.resize(w0, boxH ?: (win.height - chrome).coerceAtLeast(minH),
+                                dx, d.y, minW, minH, bounds.width.toFloat(), (bounds.height - chrome).coerceAtLeast(minH))
+                            if (rtl) pos = (pos ?: start).let { Offset(it.x - (w - w0), it.y) }
+                            boxW = w; boxH = h
+                        }
+                    })
             }
         }
     }

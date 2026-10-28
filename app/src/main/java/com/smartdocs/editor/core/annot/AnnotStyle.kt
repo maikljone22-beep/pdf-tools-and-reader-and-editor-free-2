@@ -308,7 +308,9 @@ object AnnotStyle {
 
     data class Rich(val fontSize: Float, val color: Int, val bold: Boolean, val italic: Boolean, val underline: Boolean = false,
                     val strike: Boolean = false, val family: Int = 0, val align: Int = -1, val lineHeight: Float = 1.3f,
-                    val letterSpacing: Float = 0f, val wordSpacing: Float = 0f, val bullets: Boolean = false, val script: Int = 0)
+                    val letterSpacing: Float = 0f, val wordSpacing: Float = 0f, val bullets: Boolean = false, val script: Int = 0,
+                    /** 24.105 numbered list and indent, 24.107 paragraph spacing (points). */
+                    val numbering: Boolean = false, val indent: Float = 0f, val paraSpacing: Float = 0f)
 
     /** Foxit 24.102: glyph size of super- / subscript text ([script] 1 / 2) set in [size]. */
     fun scriptSize(size: Float, script: Int): Float = if (script == 1 || script == 2) size * 0.65f else size
@@ -355,14 +357,19 @@ object AnnotStyle {
             if (r.letterSpacing != 0f) append(String.format(Locale.US, ";letter-spacing:%.1fpt", r.letterSpacing))
             if (r.wordSpacing != 0f) append(String.format(Locale.US, ";word-spacing:%.1fpt", r.wordSpacing))
             scriptCss(r.script)?.let { append(";vertical-align:").append(it) }
+            if (r.indent > 0f) append(String.format(Locale.US, ";margin-%s:%.1fpt", if (rtl) "right" else "left", r.indent))
         }
+        // 24.107: paragraph spacing on every paragraph / list item
+        val para = if (r.paraSpacing > 0f) String.format(Locale.US, " style=\"margin-bottom:%.1fpt\"", r.paraSpacing) else ""
         return buildString {
             append("<?xml version=\"1.0\"?><body xmlns=\"http://www.w3.org/1999/xhtml\" xmlns:xfa=\"http://www.xfa.org/schema/xfa-data/1.0/\" xfa:APIVersion=\"Acrobat:11.0.0\" xfa:spec=\"2.0.2\"")
             if (rtl) append(" dir=\"rtl\"")
             append(" style=\"").append(style).append("\">")
-            if (r.bullets) {
-                append("<ul>"); text.split('\n').forEach { line -> append("<li>").append(esc(line)).append("</li>") }; append("</ul>")
-            } else text.split('\n').forEach { line -> append("<p>").append(esc(line)).append("</p>") }
+            if (r.numbering) {
+                append("<ol>"); text.split('\n').forEach { line -> append("<li").append(para).append(">").append(esc(line)).append("</li>") }; append("</ol>")
+            } else if (r.bullets) {
+                append("<ul>"); text.split('\n').forEach { line -> append("<li").append(para).append(">").append(esc(line)).append("</li>") }; append("</ul>")
+            } else text.split('\n').forEach { line -> append("<p").append(para).append(">").append(esc(line)).append("</p>") }
             append("</body>")
         }
     }
@@ -388,9 +395,13 @@ object AnnotStyle {
         val lh = Regex("""line-height:\s*([0-9.]+)""").find(s)?.groupValues?.get(1)?.toFloatOrNull() ?: 1.3f
         val ls = Regex("""letter-spacing:\s*(-?[0-9.]+)pt""").find(s)?.groupValues?.get(1)?.toFloatOrNull() ?: 0f
         val ws = Regex("""word-spacing:\s*(-?[0-9.]+)pt""").find(s)?.groupValues?.get(1)?.toFloatOrNull() ?: 0f
-        val bullets = (cos.getString(RC) ?: "").contains("<li>")
+        val rc = cos.getString(RC) ?: ""
+        val numbering = rc.contains("<ol")
+        val bullets = !numbering && (rc.contains("<li>") || rc.contains("<li "))
         val script = when (Regex("vertical-align:\\s*(super|sub)\\b").find(s)?.groupValues?.get(1)) { "super" -> 1; "sub" -> 2; else -> 0 }
-        return Rich(size, color, bold, italic, underline, strike, family, align, lh, ls, ws, bullets, script)
+        val indent = Regex("""margin-(?:left|right):\s*([0-9.]+)pt""").find(rc)?.groupValues?.get(1)?.toFloatOrNull() ?: 0f
+        val paraSpacing = Regex("""margin-bottom:\s*([0-9.]+)pt""").find(rc)?.groupValues?.get(1)?.toFloatOrNull() ?: 0f
+        return Rich(size, color, bold, italic, underline, strike, family, align, lh, ls, ws, bullets, script, numbering, indent, paraSpacing)
     }
 
     /** Plain text of an /RC body (paragraphs become lines). */

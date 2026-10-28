@@ -9,6 +9,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -98,6 +99,27 @@ fun CommentManagerSheet(v: V5State, onMessage: (String) -> Unit) {
     fun header() = listOf(R.string.v5_col_page, R.string.v5_col_type, R.string.v5_col_author, R.string.v5_col_date, R.string.v5_col_status, R.string.v5_col_checked,
         R.string.v5_col_contents, R.string.v5_col_marked, R.string.v5_col_replies).map { ctx.getString(it) }
 
+    // §41: CSV column picker (the choice is remembered)
+    var csvPick by remember { mutableStateOf(false) }
+    if (csvPick) {
+        var cols by remember { mutableStateOf(CommentFilter.columnsOf(v.prefs.getString("cmr_csv_cols", null))) }
+        AlertDialog(onDismissRequest = { csvPick = false }, title = { Text(stringResource(R.string.cmr_csv_columns)) },
+            text = { Column(Modifier.verticalScroll(rememberScrollState())) {
+                header().forEachIndexed { i, h ->
+                    Row(Modifier.fillMaxWidth().clickable { cols = if (i in cols) cols - i else cols + i }, verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(i in cols, { on -> cols = if (on) cols + i else cols - i }); Text(h)
+                    }
+                }
+            } },
+            confirmButton = { TextButton(enabled = cols.isNotEmpty(), onClick = {
+                csvPick = false
+                v.prefs.edit().putString("cmr_csv_cols", CommentFilter.columnsPref(cols)).apply()
+                val picked = cols
+                scope.launch { runCatching { withContext(Dispatchers.IO) { app.documents.newTemp(base + "_comments", "csv").also { it.writeText(CommentFilter.csv(shown, header(), picked)) } } }.onSuccess { share(it, "text/csv") }.onFailure { onMessage(it.message ?: ctx.getString(R.string.error_generic)) } }
+            }) { Text(stringResource(R.string.v5_export_csv)) } },
+            dismissButton = { TextButton(onClick = { csvPick = false }) { Text(stringResource(R.string.cancel)) } })
+    }
+
     fun exportHighlights() {
         scope.launch {
             val txt = CommentFilter.highlightedText(shown, ::pageLabel)
@@ -124,7 +146,7 @@ fun CommentManagerSheet(v: V5State, onMessage: (String) -> Unit) {
                     DropdownMenu(exportOpen, { exportOpen = false }) {
                         DropdownMenuItem(text = { Text(stringResource(R.string.v5_export_csv)) }, leadingIcon = { Icon(Icons.Default.TableChart, null) }, onClick = {
                             exportOpen = false
-                            scope.launch { runCatching { withContext(Dispatchers.IO) { app.documents.newTemp(base + "_comments", "csv").also { it.writeText(CommentFilter.csv(shown, header())) } } }.onSuccess { share(it, "text/csv") }.onFailure { onMessage(it.message ?: ctx.getString(R.string.error_generic)) } }
+                            csvPick = true   // §41: pick the columns first
                         })
                         DropdownMenuItem(text = { Text(stringResource(R.string.v5_export_word)) }, leadingIcon = { Icon(Icons.Default.Description, null) }, onClick = {
                             exportOpen = false
