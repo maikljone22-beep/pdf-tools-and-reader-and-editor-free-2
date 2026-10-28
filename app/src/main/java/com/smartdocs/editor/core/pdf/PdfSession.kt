@@ -121,6 +121,19 @@ class PdfSession private constructor(
             }
         }
 
+    /**
+     * Render a page into a new bitmap the caller owns (not put in the shared cache, so the caller may recycle it):
+     * large one-off renders like the workbench page (tabs audit CM-16).
+     */
+    suspend fun renderOwned(index: Int, width: Int, height: Int, nightMode: Boolean = false, annotations: Boolean = true): Bitmap =
+        withContext(Dispatchers.IO) {
+            mutex.withLock {
+                val bmp = Bitmap.createBitmap(width.coerceAtLeast(1), height.coerceAtLeast(1), Bitmap.Config.ARGB_8888)
+                page(index).renderPageBitmap(bmp, 0, 0, width, height, annotations, false, Color.WHITE, Color.WHITE)
+                if (nightMode) invert(bmp) else bmp
+            }
+        }
+
     /** Render a region of a page (used for high-zoom tiles). [clip] is in fractions 0..1 of the page. */
     suspend fun renderRegion(index: Int, fullWidth: Int, fullHeight: Int, clip: RectF, nightMode: Boolean, annotations: Boolean = true): Bitmap =
         withContext(Dispatchers.IO) {

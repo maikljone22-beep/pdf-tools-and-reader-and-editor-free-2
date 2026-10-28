@@ -65,10 +65,11 @@ fun WorkbenchSheet(v: V5State, measureFirst: Boolean, onMessage: (String) -> Uni
     val frame = s.pageFrames[m.page]
     val view = remember(m.page, size, frame) { WbView(size.first.coerceAtLeast(1f), size.second.coerceAtLeast(1f), frame) }   // 0 → NaN → roundToInt crash
     // page bitmap (about two screens wide for sharp zoom)
-    val bitmap by produceState<Bitmap?>(null, m.page, s.session, s.renderVersion) {
-        val sess = s.session ?: return@produceState
+    // tabs audit CM-16: owned by the workbench (not the reader's page cache) and recycled when replaced / closed
+    val bitmap = com.smartdocs.editor.ui.common.rememberOwnedBitmap(m.page, s.session, s.renderVersion) {
+        val sess = s.session ?: return@rememberOwnedBitmap null
         val w = 2000; val h = if (size.first > 0f && size.second > 0f) (w * size.second / size.first).toInt().coerceIn(1, 6000) else 2828   // 0-size page boxes → no Infinity
-        value = runCatching { sess.render(m.page, w, h, false, true) }.getOrNull()
+        sess.renderOwned(m.page, w, h, false, true)
     }
     // snapping targets: vector path segments + text glyph corners
     val segments by produceState<List<Pair<P, P>>>(emptyList(), m.page, s.renderVersion) {

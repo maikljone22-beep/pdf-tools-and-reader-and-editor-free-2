@@ -273,6 +273,8 @@ private fun AudioPlayerDialog(file: File, onDismiss: () -> Unit) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SnapshotSheet(state: ReaderState, snap: Snapshot2, onDismiss: () -> Unit) {
+    // tabs audit CM-23: the snapshot picture is released once the sheet is gone for good (not on a rotation, where it is shown again)
+    DisposableEffect(snap) { onDispose { if (state.annot2.snapshot !== snap && !snap.bitmap.isRecycled) snap.bitmap.recycle() } }
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val save = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("image/png")) { uri ->
