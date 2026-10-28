@@ -71,7 +71,7 @@ class ConvertAuditFixTest {
         assertTrue(c.toByteArray().size <= FileNames.MAX_BASE_BYTES)
         assertTrue(long.startsWith(c))
         assertEquals("a_b_c", FileNames.clean("a/b:c"))
-        val dir = createTempDir()
+        val dir = kotlin.io.path.createTempDirectory("cvf").toFile()
         try {
             File(dir, "x.pdf").writeText("1")
             assertEquals("x (2).pdf", FileNames.unique(dir, "x", "pdf").name)
@@ -192,8 +192,8 @@ class ConvertAuditFixTest {
 
     @Test fun tiffPagesOneAtATimeIncludingJpeg() {
         val grey = ByteArray(40 * 20) { (it % 256).toByte() }
-        val img = java.awt.image.BufferedImage(16, 8, java.awt.image.BufferedImage.TYPE_INT_RGB).also { b -> for (x in 0 until 16) for (y in 0 until 8) b.setRGB(x, y, 0x3366CC) }
-        val jpeg = ByteArrayOutputStream().also { javax.imageio.ImageIO.write(img, "jpg", it) }.toByteArray()
+        // a complete JPEG stream (SOI … EOI) as the strip of a compression-7 page
+        val jpeg = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xDB.toByte(), 0, 3, 1, 0xFF.toByte(), 0xDA.toByte(), 5, 0xFF.toByte(), 0xD9.toByte())
         val p1 = tiffPage(40, 20, 1, grey)
         val p2 = tiffPage(16, 8, 7, jpeg, photo = 6, spp = 3)
         val bytes = tiff(listOf(p1.second to p1.third, p2.second to p2.third))
@@ -206,9 +206,7 @@ class ConvertAuditFixTest {
                 assertEquals(0xFF000000.toInt() or 0x000000, a.argb!![0])
                 val b = TiffDecoder.decodePage(t, 1)
                 assertNull(b.argb)
-                val piece = b.jpeg!!.single().bytes
-                val back = javax.imageio.ImageIO.read(piece.inputStream())
-                assertEquals(16, back.width); assertEquals(8, back.height)
+                assertEquals(jpeg.toList(), b.jpeg!!.single().bytes.toList())
             }
         } finally { f.delete() }
         // strips that share JPEGTables become complete JPEG streams
@@ -330,7 +328,7 @@ class ConvertAuditFixTest {
 
     // ---- outputs journal (C2 / C11) and security sniffing (item 8 / C45)
     @Test fun journalAndSniffs() {
-        val dir = createTempDir()
+        val dir = kotlin.io.path.createTempDirectory("cvf").toFile()
         try {
             val j = OutputJournal(File(dir, "j.txt"))
             val a = File(dir, "a.pdf").apply { writeText("a") }; val b = File(dir, "b.pdf").apply { writeText("b") }
