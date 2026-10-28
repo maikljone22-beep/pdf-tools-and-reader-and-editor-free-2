@@ -12,7 +12,8 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore("s
 
 data class AppSettings(
     val theme: ThemeMode = ThemeMode.SYSTEM,
-    val language: String = "ar",
+    /** fc-settings: "system" (follow the device), "ar" or "en" — see [AppLang]. */
+    val language: String = AppLang.SYSTEM,
     val authorName: String = "",
     val autoSave: Boolean = true,
     val restoreSession: Boolean = true,
@@ -59,6 +60,7 @@ class SettingsStore(private val context: Context) {
     private object K {
         val THEME = stringPreferencesKey("theme")
         val LANG = stringPreferencesKey("lang")
+        val APP_LANG = stringPreferencesKey("fcs_app_lang")   // fc-settings: replaces LANG (see AppLang.migrate)
         val AUTHOR = stringPreferencesKey("author")
         val AUTOSAVE = booleanPreferencesKey("autosave")
         val RESTORE = booleanPreferencesKey("restore")
@@ -94,7 +96,7 @@ class SettingsStore(private val context: Context) {
     val settings: Flow<AppSettings> = context.dataStore.data.map { p ->
         AppSettings(
             theme = p[K.THEME]?.let { runCatching { ThemeMode.valueOf(it) }.getOrNull() } ?: ThemeMode.SYSTEM,
-            language = p[K.LANG] ?: "ar",
+            language = p[K.APP_LANG]?.let(AppLang::normalize) ?: AppLang.migrate(p[K.LANG]),
             authorName = p[K.AUTHOR] ?: "",
             autoSave = p[K.AUTOSAVE] ?: true,
             restoreSession = p[K.RESTORE] ?: true,
@@ -128,7 +130,7 @@ class SettingsStore(private val context: Context) {
         context.dataStore.edit { p ->
             val cur = AppSettings(
                 theme = p[K.THEME]?.let { runCatching { ThemeMode.valueOf(it) }.getOrNull() } ?: ThemeMode.SYSTEM,
-                language = p[K.LANG] ?: "ar", authorName = p[K.AUTHOR] ?: "",
+                language = p[K.APP_LANG]?.let(AppLang::normalize) ?: AppLang.migrate(p[K.LANG]), authorName = p[K.AUTHOR] ?: "",
                 autoSave = p[K.AUTOSAVE] ?: true, restoreSession = p[K.RESTORE] ?: true,
                 volumeKeysFlip = p[K.VOLUME] ?: true, tapEdgesFlip = p[K.EDGES] ?: true,
                 keepZoom = p[K.KEEP_ZOOM] ?: true, keepScreenOn = p[K.SCREEN_ON] ?: false,
@@ -146,7 +148,7 @@ class SettingsStore(private val context: Context) {
                 runJavaScript = p[K.NP_RUN_JS] ?: true,
             )
             val n = block(cur)
-            p[K.THEME] = n.theme.name; p[K.LANG] = n.language; p[K.AUTHOR] = n.authorName
+            p[K.THEME] = n.theme.name; p[K.APP_LANG] = AppLang.normalize(n.language); p[K.AUTHOR] = n.authorName
             p[K.AUTOSAVE] = n.autoSave; p[K.RESTORE] = n.restoreSession; p[K.VOLUME] = n.volumeKeysFlip
             p[K.EDGES] = n.tapEdgesFlip; p[K.KEEP_ZOOM] = n.keepZoom; p[K.SCREEN_ON] = n.keepScreenOn
             p[K.HL_FIELDS] = n.highlightFields; p[K.HL_LINKS] = n.highlightLinks; p[K.PRESSURE] = n.pressureSensitivity

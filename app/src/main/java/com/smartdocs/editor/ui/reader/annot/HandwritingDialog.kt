@@ -30,7 +30,7 @@ fun HandwritingDialog(state: ReaderState, req: Handwriting2) {
     val h = state.annot2
     val settings = LocalSettings.current
     val scope = rememberCoroutineScope()
-    val uiAr = settings.language == "ar" || Locale.getDefault().language == "ar"
+    val uiAr = com.smartdocs.editor.core.data.AppLang.isArabic(settings)
     var lang by remember { mutableStateOf(if (uiAr) "ar" else "en") }
     var phase by remember { mutableStateOf(HwPhase.CHECKING) }
     var strokes by remember { mutableStateOf<List<List<Pair<Float, Float>>>>(emptyList()) }

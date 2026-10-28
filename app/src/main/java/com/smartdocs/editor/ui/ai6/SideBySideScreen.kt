@@ -57,7 +57,7 @@ fun SideBySideScreen(nav: NavHostController, uri: String?) {
     var dst by remember { mutableStateOf<PdfSession?>(null) }
     var openError by remember { mutableStateOf<String?>(null) }
     var page by remember { mutableStateOf(0) }
-    var lang by remember { mutableStateOf(if (settings.language == "ar") "en" else "ar") }
+    var lang by remember { mutableStateOf(if (com.smartdocs.editor.core.data.AppLang.isArabic(settings)) "en" else "ar") }
     var guidance by remember { mutableStateOf("") }
     var show by remember { mutableStateOf(SbsShow.BOTH) }
     val cache = remember { mutableStateMapOf<String, String>() }
