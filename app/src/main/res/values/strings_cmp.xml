@@ -1,4 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="cmp_output_intent">مقصد الإخراج (OutputIntent)</string>
+    <string name="cmp_find_element">البحث عن عنصر</string>
+    <string name="cmp_find_hint">نص في العنوان أو البديل أو المعرّف</string>
+    <string name="cmp_find_count">%1$d عنصرًا مطابقًا</string>
+    <string name="cmp_bm_struct">إشارات مرجعية من البنية</string>
+    <string name="cmp_bm_parent">من بنية المستند</string>
+    <string name="cmp_bm_untitled">%1$s بلا عنوان</string>
+    <string name="cmp_bm_types">أنواع العناصر التي تصبح إشارات مرجعية:</string>
 </resources>
