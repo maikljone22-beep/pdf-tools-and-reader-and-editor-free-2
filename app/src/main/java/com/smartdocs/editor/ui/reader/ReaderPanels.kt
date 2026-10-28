@@ -1,5 +1,6 @@
 package com.smartdocs.editor.ui.reader
 
+import com.smartdocs.editor.ui.reader.view.pageTint
 import android.graphics.Bitmap
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -263,7 +264,7 @@ private fun ThumbnailsPanel(state: ReaderState, onJump: (Int) -> Unit) {
                         .border(if (current) 2.dp else 1.dp, if (current) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(6.dp)),
                     contentAlignment = Alignment.Center,
                 ) {
-                    bmp?.let { Image(it.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Fit) } ?: CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                    bmp?.let { Image(it.asImageBitmap(), null, Modifier.fillMaxSize().pageTint(state.pageColor, state.nightMode), contentScale = ContentScale.Fit) } ?: CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)   // tab-view-core V-38
                 }
                 Text((page + 1).toString(), style = MaterialTheme.typography.labelMedium, color = if (current) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
             }

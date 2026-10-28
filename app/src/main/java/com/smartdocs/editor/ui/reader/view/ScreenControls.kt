@@ -13,6 +13,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.FastForward
+import androidx.compose.material.icons.filled.SlowMotionVideo
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -159,14 +161,14 @@ fun AutoFlipBar(state: ReaderState, modifier: Modifier = Modifier) {
     Surface(modifier, shape = RoundedCornerShape(28.dp), tonalElevation = 4.dp, shadowElevation = 8.dp) {
         Row(Modifier.padding(horizontal = 6.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = { set(sec - ViewExtras.FLIP_STEP) }, enabled = sec > ViewExtras.FLIP_MIN) {
-                Icon(Icons.Default.Add, stringResource(R.string.vw_flip_faster))
+                Icon(Icons.Default.FastForward, stringResource(R.string.vw_flip_faster))   // tab-view-core V-30: not "+" (it shortens the seconds)
             }
             Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(progress = { vx.autoFlipProgress }, modifier = Modifier.fillMaxSize(), strokeWidth = 3.dp)
                 Text(stringResource(R.string.vw_seconds_short, sec), style = MaterialTheme.typography.labelSmall)
             }
             IconButton(onClick = { set(sec + ViewExtras.FLIP_STEP) }, enabled = sec < ViewExtras.FLIP_MAX) {
-                Icon(Icons.Default.Remove, stringResource(R.string.vw_flip_slower))
+                Icon(Icons.Default.SlowMotionVideo, stringResource(R.string.vw_flip_slower))   // tab-view-core V-30
             }
             IconButton(onClick = { state.autoFlipSeconds = 0; vx.autoFlipProgress = 0f }) {
                 Icon(Icons.Default.Close, stringResource(R.string.vw_stop))

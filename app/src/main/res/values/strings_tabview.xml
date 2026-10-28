@@ -9,4 +9,5 @@
     <string name="tvc_info_panel">لوحة المعلومات</string>
     <string name="tvc_notices_more">إشعارات أخرى (%1$d)</string>
     <string name="tvc_notices_less">إخفاء الإشعارات الأخرى</string>
+    <string name="tvc_collapse">تصغير</string>
 </resources>

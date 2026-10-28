@@ -248,7 +248,7 @@ fun NveQuadSplit(s: ReaderState) {
                             val i = r * 2 + c
                             val border = if (active == i) Modifier.border(2.dp, MaterialTheme.colorScheme.primary) else Modifier
                             Box(Modifier.weight(1f).fillMaxHeight().then(border).clickable { active = i }) {
-                                PagePane(s.session, s.pageCount, s.pageSizes, lists[i], s.nightMode, zooms[i], Modifier.fillMaxSize(), "${i + 1}")
+                                PagePane(s.session, s.pageCount, s.pageSizes, lists[i], s.nightMode, zooms[i], Modifier.fillMaxSize(), "${i + 1}", s.pageColor)
                             }
                         }
                     }

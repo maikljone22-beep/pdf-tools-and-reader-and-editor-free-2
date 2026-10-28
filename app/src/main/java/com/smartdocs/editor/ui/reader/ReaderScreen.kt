@@ -271,6 +271,12 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
 
     val focus = remember { FocusRequester() }
     LaunchedEffect(state.session) { if (state.session != null) runCatching { focus.requestFocus() } }
+    // tab-view-core V-25: keys work again once a dialog, sheet, search bar, panel or menu closes (focus back to the pages)
+    val overlayOpen = showGoTo || showViewMode || showPageColor || showAutoFlip || showDiscard || showHistory || showAi || showStamps || menu ||
+        state.searchOpen || panel != null || textTools != null || prompt != null || contentEdit || showShare5 || nveRevert ||
+        com.smartdocs.editor.ui.view5.V5State.of(state).surface != com.smartdocs.editor.ui.view5.V5Surface.NONE ||
+        com.smartdocs.editor.ui.nve.NveState.of(state).surface != com.smartdocs.editor.ui.nve.NveSurface.NONE
+    LaunchedEffect(overlayOpen) { if (!overlayOpen && state.session != null) runCatching { focus.requestFocus() } }
 
     Box(Modifier.fillMaxSize().readerTouchWatcher(state)) {
         Scaffold(

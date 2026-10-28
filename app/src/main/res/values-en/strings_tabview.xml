@@ -9,4 +9,5 @@
     <string name="tvc_info_panel">Info panel</string>
     <string name="tvc_notices_more">%1$d more notices</string>
     <string name="tvc_notices_less">Show fewer notices</string>
+    <string name="tvc_collapse">Collapse</string>
 </resources>

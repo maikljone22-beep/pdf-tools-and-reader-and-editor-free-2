@@ -111,6 +111,8 @@ fun CommentsPanel(state: ReaderState, onJump: (Int) -> Unit) {
 
     Column(Modifier.fillMaxWidth()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+          // tab-view-core V-27: chips and step buttons scroll; the ⋮ (export / import) stays visible at the end
+          Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
             FilterChip(showFilter || types.isNotEmpty() || authors.isNotEmpty(), { showFilter = !showFilter },
                 label = { Text(stringResource(R.string.an_filter) + if (types.size + authors.size > 0) " (${types.size + authors.size})" else "") },
                 leadingIcon = { Icon(Icons.Default.FilterList, null, Modifier.size(16.dp)) })
@@ -125,12 +127,13 @@ fun CommentsPanel(state: ReaderState, onJump: (Int) -> Unit) {
                     }
                 }
             }
-            Spacer(Modifier.weight(1f))
+            Spacer(Modifier.width(6.dp))
             // section 7.63 / 24.73-24.74: expand or collapse every thread, step to the previous / next comment
             IconButton(onClick = { h.comments.forEach { expanded["${it.page}_${it.index}"] = true } }) { Icon(Icons.Default.UnfoldMore, stringResource(R.string.cx_expand_all)) }
             IconButton(onClick = { expanded.clear() }) { Icon(Icons.Default.UnfoldLess, stringResource(R.string.cx_collapse_all)) }
             IconButton(onClick = { h.cx.stepComment(false) }) { Icon(Icons.Default.KeyboardArrowUp, stringResource(R.string.cx_prev_comment)) }
             IconButton(onClick = { h.cx.stepComment(true) }) { Icon(Icons.Default.KeyboardArrowDown, stringResource(R.string.cx_next_comment)) }
+          }
             Box {
                 IconButton(onClick = { more = true }) { Icon(Icons.Default.MoreVert, stringResource(R.string.an_more)) }
                 DropdownMenu(more, { more = false }) { CommentsMenuItems(h) { more = false } }

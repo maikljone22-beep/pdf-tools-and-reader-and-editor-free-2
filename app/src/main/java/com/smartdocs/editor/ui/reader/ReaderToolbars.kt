@@ -71,6 +71,10 @@ fun ReaderTabRow(state: ReaderState, onTab: (ReaderTab) -> Unit) {
     val nveUserTabs = com.smartdocs.editor.ui.nve.shell.NveUserTabs.tabs(nveCtx)
     val nveState = com.smartdocs.editor.ui.nve.NveState.of(state)
     val nveUserIdx = nveUserTabs.indexOfFirst { it.id == nveState.userTab }
+    // tab-view-core V-36: the current tab was hidden in Customise toolbar: switch to the first visible one (its tools too)
+    androidx.compose.runtime.LaunchedEffect(tabsShown, state.tab, nveUserIdx) {
+        if (nveUserIdx < 0 && tabsShown.none { it.first == state.tab }) tabsShown.firstOrNull { it.first != ReaderTab.PAGES }?.let { state.tab = it.first; state.selectTool(null) }
+    }
     val idx = if (nveUserIdx >= 0) tabsShown.size + nveUserIdx else tabsShown.indexOfFirst { it.first == state.tab }.coerceAtLeast(0)
     ScrollableTabRow(selectedTabIndex = idx, modifier = Modifier.coachTarget(CoachIds.READER_TABS), edgePadding = 8.dp, divider = {}, containerColor = MaterialTheme.colorScheme.surface) {
         tabsShown.forEach { (t, label) ->
@@ -149,7 +153,9 @@ private fun ViewToolbar(state: ReaderState, a: ReaderActions) {
         if ("bookmarks" !in nveHidden) ToolChip(Icons.Default.Bookmark, stringResource(R.string.panel_bookmarks)) { a.panels(ReaderPanel.BOOKMARKS) }
         if ("thumbnails" !in nveHidden) ToolChip(Icons.Default.GridView, stringResource(R.string.panel_thumbnails)) { a.panels(ReaderPanel.THUMBNAILS) }
         if ("attachments" !in nveHidden) ToolChip(Icons.Default.AttachFile, stringResource(R.string.panel_attachments)) { a.panels(ReaderPanel.ATTACHMENTS) }   // nav-attach
-        if ("read_aloud" !in nveHidden) ToolChip(Icons.Default.RecordVoiceOver, stringResource(R.string.tool_read_aloud), onClick = a.readAloud)
+        // tab-view-core V-08: the chip shows when this document is being read aloud
+        val ttsSt by com.smartdocs.editor.core.tts.ReadAloudController.status.collectAsState()
+        if ("read_aloud" !in nveHidden) ToolChip(Icons.Default.RecordVoiceOver, stringResource(R.string.tool_read_aloud), selected = ttsSt.state != com.smartdocs.editor.core.tts.ReadAloudController.State.IDLE && ReaderAi6.ownsTts(state), onClick = a.readAloud)
         if ("ai" !in nveHidden && com.smartdocs.editor.LocalSettings.current.aiEnabled) ToolChip(Icons.Default.AutoAwesome, stringResource(R.string.tool_ai), onClick = a.ai)
         if ("share" !in nveHidden) ToolChip(Icons.Default.Share, stringResource(R.string.share), onClick = a.share)
         if ("print" !in nveHidden) ToolChip(Icons.Default.Print, stringResource(R.string.print), onClick = a.print)
