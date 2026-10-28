@@ -218,7 +218,7 @@ class GoogleDrive private constructor(private val context: Context) : CloudProvi
     }
 
     override suspend fun changeCursor(): String? = authed { t ->
-        JSONObject(CloudHttp.string(get("$API/changes/startPageToken", t))).optString("startPageToken").ifEmpty { null }
+        ChangeFeeds.driveStartToken(CloudHttp.string(get("$API/changes/startPageToken", t)))
     }
 
     override suspend fun changesSince(cursor: String): Pair<Boolean, String> = authed { t ->
@@ -226,18 +226,15 @@ class GoogleDrive private constructor(private val context: Context) : CloudProvi
         var changed = false
         try {
             for (round in 0 until 10) {
-                val o = JSONObject(CloudHttp.string(get("$API/changes?pageToken=$token&pageSize=200&fields=newStartPageToken,nextPageToken,changes(fileId)", t)))
-                if ((o.optJSONArray("changes")?.length() ?: 0) > 0) changed = true
-                val fresh = o.optString("newStartPageToken")
-                if (fresh.isNotEmpty()) { token = fresh; break }
-                val next = o.optString("nextPageToken")
-                if (next.isEmpty()) break
-                token = next
+                val page = ChangeFeeds.drive(CloudHttp.string(get("$API/changes?pageToken=$token&pageSize=200&fields=newStartPageToken,nextPageToken,changes(fileId)", t)))
+                if (page.changed) changed = true
+                if (page.steady != null) { token = page.steady; break }
+                token = page.next ?: break
             }
             changed to token
         } catch (e: HttpException) {
             if (e.code == 404 || e.code == 410 || e.code == 400)
-                true to JSONObject(CloudHttp.string(get("$API/changes/startPageToken", t))).optString("startPageToken").ifEmpty { cursor }
+                true to (ChangeFeeds.driveStartToken(CloudHttp.string(get("$API/changes/startPageToken", t))) ?: cursor)
             else throw e
         }
     }

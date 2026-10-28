@@ -54,6 +54,9 @@ object CloudLinks {
 
     fun remove(context: Context, local: File) = prefs(context).edit().remove(local.absolutePath).apply()
 
+    /** fc-sync: local paths of every linked working copy (for the app-folder watcher). */
+    fun paths(context: Context): List<String> = prefs(context).all.keys.toList()
+
     /** A save of [local]: marks its link dirty (new generation). Returns false when the file has no cloud link. */
     fun markDirty(context: Context, local: File): Boolean = synchronized(this) {
         val l = get(context, local) ?: return false
@@ -101,6 +104,7 @@ object CloudLinks {
             markDirty(context, dest) // the link keeps the item we last synced: the upload compares against it
             runCatching { CloudUploadWorker.enqueue(context, dest, replace = false) }
         }
+        runCatching { com.smartdocs.editor.core.sync.AppFolderWatch.refresh(context) }   // fc-sync: watch its folder
         return opened
     }
 

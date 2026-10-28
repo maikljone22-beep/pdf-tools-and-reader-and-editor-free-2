@@ -186,12 +186,36 @@ class Box private constructor(private val context: Context) : CloudProvider {
     }
 
     override suspend fun changeCursor(): String? = authed { t ->
-        JSONObject(CloudHttp.string(req("$API/events?stream_position=now&stream_type=changes", t).build())).opt("next_stream_position")?.toString()
+        ChangeFeeds.boxNow(CloudHttp.string(req("$API/events?stream_position=now&stream_type=changes", t).build()))
     }
 
     override suspend fun changesSince(cursor: String): Pair<Boolean, String> = authed { t ->
-        val o = JSONObject(CloudHttp.string(req("$API/events?stream_position=$cursor&stream_type=changes&limit=100", t).build()))
-        (o.optInt("chunk_size") > 0) to (o.opt("next_stream_position")?.toString() ?: cursor)
+        var pos = cursor
+        var changed = false
+        for (round in 0 until 10) {
+            val page = ChangeFeeds.box(CloudHttp.string(req("$API/events?stream_position=$pos&stream_type=changes&limit=100", t).build()), pos)
+            if (page.changed) changed = true
+            pos = page.steady ?: page.next ?: pos
+            if (page.next == null) break
+        }
+        changed to pos
+    }
+
+    override val notifies: Boolean get() = true
+
+    /**
+     * fc-sync: Box long-polling. `OPTIONS /events` names a realtime server; a GET there is held open until an event
+     * arrives (`new_change`) or the server asks to reconnect (`reconnect` / timeout = no change).
+     */
+    override suspend fun waitForChange(cursor: String, maxSeconds: Int): Boolean? {
+        val rt = authed { t -> ChangeFeeds.boxRealtime(CloudHttp.string(req("$API/events", t).method("OPTIONS", null).build())) } ?: return null
+        val hold = minOf(rt.retryTimeoutSec, maxSeconds.coerceAtLeast(30))
+        val client = CloudHttp.client.newBuilder().readTimeout((hold + 30).toLong(), java.util.concurrent.TimeUnit.SECONDS).build()
+        // the realtime URL carries its own channel token: no Authorization header
+        return try {
+            ChangeFeeds.boxMessage(CloudHttp.stringCancellable(client, Request.Builder().url(ChangeFeeds.boxSubscribeUrl(rt.url, cursor)).build())) ==
+                ChangeFeeds.BoxMessage.NEW_CHANGE
+        } catch (e: java.net.SocketTimeoutException) { false }
     }
 
     override suspend fun disconnect() { tokens.clear() }

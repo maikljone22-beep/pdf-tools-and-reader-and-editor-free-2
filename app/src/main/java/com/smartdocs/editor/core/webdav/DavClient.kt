@@ -63,6 +63,15 @@ class DavClient(private val user: String, private val password: String) {
         }
     }
 
+    /** fc-sync: version markers (ctag / ETag) of [url] (Depth 0) or of it and its children (Depth 1). */
+    fun versions(url: String, depth: String = "0"): Map<String, String> {
+        val rq = req(url).header("Depth", depth).method("PROPFIND", DavXml.VERSION_BODY.toRequestBody(XML)).build()
+        return http.newCall(rq).execute().use { r ->
+            check(r)
+            DavXml.parseVersions(r.body?.string().orEmpty(), r.request.url.toString())
+        }
+    }
+
     /** Folder listing (the folder itself removed). */
     fun list(folderUrl: String): List<DavEntry> = DavXml.children(propfind(folderUrl, "1"), folderUrl)
 

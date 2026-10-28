@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- fc-sync: change detection -->
+    <string name="fcy_watch_notify">instant (change notifications)</string>
+    <string name="fcy_watch_poll">change feed checked every 30 s to 5 min</string>
+    <string name="fcy_watch_net">waiting for a usable network</string>
+    <string name="fcy_watch_backoff">server not reachable, retrying later</string>
+    <string name="fcy_watch_signin">sign in again to watch changes</string>
+
+    <!-- WebDAV -->
+    <string name="fcy_dav_changed">changed on the server</string>
+    <string name="fcy_dav_egnyte_domain">Egnyte domain (e.g. acme)</string>
+    <string name="fcy_dav_egnyte_note">Uses Egnyte WebDAV access, which your Egnyte admin must allow.</string>
+    <string name="fcy_dav_server">Server address (e.g. cloud.example.com)</string>
+    <string name="fcy_dav_user_note">Fill in the user name below as well.</string>
+
+    <!-- Dropbox team space / SharePoint -->
+    <string name="fcy_space_member">My folder</string>
+    <string name="fcy_space_team">Team space</string>
+    <string name="fcy_space_team_named">Team space: %1$s</string>
+    <string name="fcy_team_blocked">Remove the Dropbox sync folders first: their paths depend on the root.</string>
+    <string name="fcy_sp_libraries">SharePoint libraries</string>
+    <string name="fcy_sp_consent">Document libraries of the SharePoint sites you follow need extra permission (read sites, all files). Sign in again to grant it.</string>
+    <string name="fcy_sign_in_again">Sign in again</string>
+    <string name="fcy_not_configured">This service is not configured in this build.</string>
+
+    <!-- Shared review -->
+    <string name="fcy_remind_switch">Remind me a day before the deadline</string>
+    <string name="fcy_remind_title">Review ends soon: %1$s</string>
+    <string name="fcy_remind_text">Deadline: %1$s</string>
+    <string name="fcy_take_over">Take over</string>
+    <string name="fcy_take_over_q">Take over the comments of %1$s? They become yours: you can edit them and they are published under your name.</string>
+    <string name="fcy_took_over">%1$d comments are now yours.</string>
+    <string name="fcy_take_close_doc">Close the document in the reader first.</string>
+
+    <!-- E-mail review -->
+    <string name="fcy_cc">Cc</string>
+    <string name="fcy_back_title">Send my comments back</string>
+    <string name="fcy_back_sub">Return a reviewed copy by e-mail; large files go as comments only</string>
+    <string name="fcy_back_explain">Send the copy you reviewed back to the person who asked for the review. Above the size limit only your comments are sent (FDF); they merge them into their copy.</string>
+    <string name="fcy_back_subject">Comments: %1$s</string>
+    <string name="fcy_back_no_comments">This file has no comments to send.</string>
+    <string name="fcy_fdf_rule">Send comments only (FDF) above %1$d MB</string>
+    <string name="fcy_will_send_fdf">%1$s: only the comments will be sent (FDF).</string>
+    <string name="fcy_will_send_pdf">%1$s: the whole PDF will be sent.</string>
+
+    <!-- ConnectedPDF -->
+    <string name="fcy_conn_switch">Connected documents</string>
+    <string name="fcy_conn_switch_sub">Check connected documents with the server when they open (updates, access, owner messages)</string>
+    <string name="fcy_conn_message">Open message</string>
+    <string name="fcy_conn_message_note">Readers see this message when they open the document (empty = none).</string>
+    <string name="fcy_conn_no_message">No open message.</string>
+    <string name="fcy_conn_message_is">Open message: %1$s</string>
+    <string name="fcy_conn_clone">Clone</string>
+    <string name="fcy_conn_clone_title">%1$s (copy)</string>
+    <string name="fcy_conn_clone_note">A new connected document with its own ID, readers and history. The original stays as it is.</string>
+
+    <!-- Files / convert -->
+    <string name="fcy_batch_convert">Convert</string>
+    <string name="fcy_batch_hint">%1$d selected files: choose a conversion.</string>
+
+    <!-- Search index -->
+    <string name="fcy_scope_metadata">Properties</string>
+    <string name="fcy_idx_title">Also index</string>
+    <string name="fcy_idx_custom">Custom document properties</string>
+    <string name="fcy_idx_xmp">XMP metadata</string>
+    <string name="fcy_idx_tags">Structure tags (alternate text)</string>
+    <string name="fcy_idx_width">Ignore Asian character width (rebuilds the index)</string>
+    <string name="fcy_idx_show_title">Show the document title in results</string>
+    <string name="fcy_idx_limit">Index size limit</string>
+    <string name="fcy_idx_no_limit">No limit</string>
+    <string name="fcy_idx_mb">%1$d MB</string>
+    <string name="fcy_idx_log">Keep an indexing log</string>
+    <string name="fcy_idx_share_log">Share the log</string>
+    <string name="fcy_idx_note">Property options apply to files indexed from now on; rebuild the index to apply them to all.</string>
+</resources>

@@ -151,6 +151,8 @@ fun CloudBrowserScreen(nav: NavHostController, providerKey: String) {
                     AssistChip(onClick = { while (stack.size > i + 1) stack.removeAt(stack.lastIndex) }, label = { Text(name, maxLines = 1) })
                 }
             }
+            // fc-sync: Dropbox team space / OneDrive SharePoint libraries
+            CloudScopeRow(provider, atRoot = stack.size == 1 && !searching, onRootChanged = { reload++ }) { fid, name -> stack += fid to name }
             if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
             when {
                 authNeeded -> EmptyState(Icons.Default.Lock, stringResource(R.string.ac_reconnect_needed)) {

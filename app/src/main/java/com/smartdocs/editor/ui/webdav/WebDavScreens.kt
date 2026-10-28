@@ -125,6 +125,8 @@ private fun PlaceDialog(place: DavPlace?, onDismiss: () -> Unit, onSaved: () -> 
         title = { Text(stringResource(if (place == null) R.string.nat_dav_add else R.string.nat_dav_edit)) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                // fc-sync: ready-made addresses (Egnyte, Nextcloud, ...)
+                if (place == null) DavPresetPicker(user) { l, u -> if (label.isBlank() || com.smartdocs.editor.core.webdav.DavPresets.ALL.any { it.label == label }) label = l; url = u }
                 OutlinedTextField(label, { label = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.nat_dav_label)) })
                 OutlinedTextField(url, { url = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.nat_dav_url)) },
                     placeholder = { Text("https://cloud.example.com/remote.php/dav/files/me/") }, isError = url.isNotBlank() && clean == null,
@@ -181,6 +183,7 @@ fun WebDavBrowserScreen(nav: NavHostController, placeId: String) {
     var progress by remember { mutableStateOf<Pair<String, Float?>?>(null) }
     var reload by remember { mutableIntStateOf(0) }
     var linksVersion by remember { mutableIntStateOf(0) }
+    val serverChanged by com.smartdocs.editor.core.webdav.DavWatch.changed.collectAsState()   // fc-sync
     var newFolder by remember { mutableStateOf(false) }
     var menuFor by remember { mutableStateOf<DavEntry?>(null) }
     var confirmDelete by remember { mutableStateOf<DavEntry?>(null) }
@@ -304,6 +307,10 @@ fun WebDavBrowserScreen(nav: NavHostController, placeId: String) {
                                         else -> null
                                     },
                                     if (link?.dirty == true) stringResource(R.string.nat_dav_pending) else null,
+                                    // fc-sync: the server version moved on since this copy was downloaded / uploaded
+                                    if (link != null && !link.dirty && (DavXml.normalize(e.url) in serverChanged ||
+                                            (e.etag != null && link.etag != null && com.smartdocs.editor.core.webdav.DavWatch.bare(e.etag) != com.smartdocs.editor.core.webdav.DavWatch.bare(link.etag))))
+                                        stringResource(R.string.fcy_dav_changed) else null,
                                 )
                                 if (parts.isNotEmpty()) Text(parts.joinToString(" · "), style = MaterialTheme.typography.bodySmall)
                             },
@@ -382,3 +389,26 @@ fun WebDavBrowserScreen(nav: NavHostController, placeId: String) {
 private fun MenuRow(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, onClick: () -> Unit) =
     ListItem(headlineContent = { Text(label) }, leadingContent = { Icon(icon, null) }, modifier = Modifier.clickable(onClick = onClick),
         colors = ListItemDefaults.colors(containerColor = AlertDialogDefaults.containerColor))
+
+/** fc-sync: preset chips; a preset that needs a domain (Egnyte, Nextcloud, ownCloud) asks for it and fills the address. */
+@Composable
+private fun DavPresetPicker(user: String, onPick: (label: String, url: String) -> Unit) {
+    var chosen by remember { mutableStateOf<com.smartdocs.editor.core.webdav.DavPresets.Preset?>(null) }
+    var domain by remember { mutableStateOf("") }
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        items(com.smartdocs.editor.core.webdav.DavPresets.ALL, key = { it.key }) { p ->
+            FilterChip(selected = chosen == p, onClick = {
+                chosen = p
+                if (!p.needsDomain && !p.needsUser) com.smartdocs.editor.core.webdav.DavPresets.url(p, "", "")?.let { onPick(p.label, it) }
+            }, label = { Text(p.label) })
+        }
+    }
+    val p = chosen ?: return
+    if (p.needsDomain) {
+        LaunchedEffect(domain, user, p) { com.smartdocs.editor.core.webdav.DavPresets.url(p, domain, user)?.let { onPick(p.label, it) } }
+        OutlinedTextField(domain, { domain = it }, Modifier.fillMaxWidth(), singleLine = true,
+            label = { Text(stringResource(if (p.key == "egnyte") R.string.fcy_dav_egnyte_domain else R.string.fcy_dav_server)) },
+            supportingText = { Text(stringResource(if (p.key == "egnyte") R.string.fcy_dav_egnyte_note else R.string.fcy_dav_user_note)) },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))
+    }
+}

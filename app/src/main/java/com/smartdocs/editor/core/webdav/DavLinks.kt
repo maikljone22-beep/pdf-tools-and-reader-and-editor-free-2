@@ -72,7 +72,12 @@ object DavLinks {
     fun forUrl(c: Context, url: String): Pair<File, DavLink>? =
         all(c).entries.firstOrNull { DavXml.normalize(it.value.url) == DavXml.normalize(url) }?.let { File(it.key) to it.value }
 
-    fun set(c: Context, local: File, link: DavLink) = synchronized(this) { put(c, local, link) }
+    fun set(c: Context, local: File, link: DavLink) {
+        val isNew = get(c, local) == null
+        synchronized(this) { put(c, local, link) }
+        if (isNew) runCatching { com.smartdocs.editor.core.sync.SyncLive.refresh(c) }   // fc-sync: folder + server watchers
+        DavWatch.clear(c, link.url)   // fc-sync: a fresh download is the server version
+    }
 
     fun update(c: Context, local: File, change: (DavLink) -> DavLink) = synchronized(this) { get(c, local)?.let { put(c, local, change(it)) } }
 
@@ -140,6 +145,7 @@ object DavLinks {
             }
             val fresh = etag ?: runCatching { client.stat(get(c, local)!!.url)?.etag }.getOrNull()
             update(c, local) { cur -> cur.copy(etag = fresh, dirty = cur.gen != gen, error = null, lock = if (keepHeld) held else null) }
+            DavWatch.clear(c, link.url)
             return get(c, local)
         } finally {
             if (ownLock) token?.let { t -> runCatching { client.unlock(link.url, t) } }
