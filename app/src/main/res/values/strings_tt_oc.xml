@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- audit 5 OCR suite (fix/tab-tools-pages, key "oc") -->
+    <string name="ttoc_err_failed">تعذّر إكمال التعرّف على النص</string>
+    <string name="ttoc_err_download">تعذّر تنزيل بيانات لغة %1$s. تحقّق من الاتصال بالإنترنت.</string>
+    <string name="ttoc_err_verify">فشل التحقّق من بيانات لغة %1$s بعد التنزيل. أعد المحاولة.</string>
+    <string name="ttoc_err_no_pack">لا تتوفّر بيانات موثّقة للغة %1$s بهذه الجودة</string>
+    <string name="ttoc_err_image">تعذّر فتح الصورة</string>
+    <string name="ttoc_err_password">الملف محميّ بكلمة مرور أو كلمة المرور غير صحيحة</string>
+    <string name="ttoc_err_memory">الذاكرة غير كافية لهذه الصفحة</string>
+    <string name="ttoc_err_io">تعذّرت قراءة الملف أو كتابته</string>
+    <string name="ttoc_locked_left">أدخل كلمة مرور الملفات المحمية أو أزلها من القائمة</string>
+    <string name="ttoc_discard_title">تجاهل نتيجة التعرّف؟</string>
+    <string name="ttoc_discard_msg">ستضيع نتيجة التعرّف على النص كلها ولن يُحفظ أي ملف.</string>
+    <string name="ttoc_discard">تجاهل</string>
+    <string name="ttoc_save_as_is">حفظ دون مراجعة</string>
+    <string name="ttoc_keep_reviewing">متابعة المراجعة</string>
+    <string name="ttoc_zone_whole">الصفحة كاملة</string>
+    <string name="ttoc_zone_top">النصف العلوي</string>
+    <string name="ttoc_zone_bottom">النصف السفلي</string>
+    <string name="ttoc_zone_selected">تم تحديد منطقة</string>
+    <string name="ttoc_review_cut">تُعرض أول %1$d كلمة من %2$d في القائمة</string>
+    <string name="ttoc_lang_installed">مثبّتة</string>
+    <string name="ttoc_lang_download">ستُنزَّل</string>
+</resources>

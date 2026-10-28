@@ -55,6 +55,12 @@ fun OcrSheet(
     var editable by remember { mutableStateOf(OcrPrefs.editable(ctx)) }
     var tuning by remember { mutableStateOf(com.smartdocs.editor.core.ocr.OcrTuning.load(ctx)) }
     var moreLangs by remember { mutableStateOf(false) }
+    // audit 5 OCR-8: "installed" is judged in the folder of the chosen quality (tessdata_fast / tessdata_best); the
+    // caller's [isInstalled] knows only its own engine's quality and is used when that matches
+    val checker = remember(tuning.fast) { com.smartdocs.editor.core.ocr.OcrEngine(ctx.applicationContext, tuning.fast) }
+    val installed: (String) -> Boolean = { code -> if (!tuning.fast) isInstalled(code) else checker.isLanguageInstalled(code) }
+    val installedDesc = stringResource(R.string.ttoc_lang_installed)
+    val downloadDesc = stringResource(R.string.ttoc_lang_download)
 
     fun clamp(v: String) = v.filter { it.isDigit() }.take(6).toIntOrNull()?.coerceIn(1, pageCount.coerceAtLeast(1))
     val fromN = clamp(from) ?: 1
@@ -97,7 +103,10 @@ fun OcrSheet(
                 OCR_LANGUAGES.forEach { (code, label) ->
                     val sel = code in langs
                     FilterChip(sel, { if (sel) langs.remove(code) else langs.add(code) }, label = { Text(stringResource(label)) },
-                        leadingIcon = { Icon(if (sel) Icons.Default.Check else if (isInstalled(code)) Icons.Default.Check else Icons.Default.CloudDownload, null, Modifier.size(16.dp)) })
+                        leadingIcon = {
+                            val ok = installed(code)
+                            Icon(if (sel || ok) Icons.Default.Check else Icons.Default.CloudDownload, if (ok) installedDesc else downloadDesc, Modifier.size(16.dp))
+                        })
                 }
                 // Nitro: every downloadable language (the extra ones picked show here)
                 langs.filter { c -> OCR_LANGUAGES.none { it.first == c } }.forEach { code ->
@@ -107,7 +116,7 @@ fun OcrSheet(
                 AssistChip(onClick = { moreLangs = true }, label = { Text(stringResource(R.string.nt_ocr_more_langs)) }, leadingIcon = { Icon(Icons.Default.Language, null, Modifier.size(16.dp)) })
             }
             if (langs.isEmpty()) Text(stringResource(R.string.qk_ocr_need_lang), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-            else if (langs.any { !isInstalled(it) }) Text(stringResource(R.string.qk_ocr_will_download), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+            else if (langs.any { !installed(it) }) Text(stringResource(R.string.qk_ocr_will_download), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
 
             // ---- mode ----
             SheetSection(stringResource(R.string.qk_ocr_mode))

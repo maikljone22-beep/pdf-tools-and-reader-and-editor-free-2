@@ -256,7 +256,8 @@ class PdfSession private constructor(
     suspend fun closeAsync() {
         if (closed) return
         closed = true
-        withContext(Dispatchers.IO) { mutex.withLock { closeLocked() } }
+        // a cancelled caller must still free the native document (audit 5 OCR-5 follow-up)
+        withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) { mutex.withLock { closeLocked() } }
     }
 
     /**
