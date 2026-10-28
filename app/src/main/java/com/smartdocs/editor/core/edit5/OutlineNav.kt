@@ -134,8 +134,7 @@ object BookmarkXml {
                     is NavAction.Launch -> append(pad).append("<action type=\"launch\" value=\"").append(esc(a.file)).append("\"/>\n")
                     is NavAction.Named -> append(pad).append("<action type=\"named\" value=\"").append(esc(a.name)).append("\"/>\n")
                     is NavAction.Js -> append(pad).append("<action type=\"js\" value=\"").append(esc(a.script)).append("\"/>\n")
-                    is NavAction.GoToE -> append(pad).append("<action type=\"gotoe\" value=\"").append(esc(a.attachment)).append("\" page=\"").append(a.page + 1).append("\" named=\"").append(esc(a.named)).append("\"/>
-")
+                    is NavAction.GoToE -> append(pad).append("<action type=\"gotoe\" value=\"").append(esc(a.attachment)).append("\" page=\"").append(a.page + 1).append("\" named=\"").append(esc(a.named)).append("\"/>\n")
                     is NavAction.Media, is NavAction.Kept -> Unit
                 }
             }
