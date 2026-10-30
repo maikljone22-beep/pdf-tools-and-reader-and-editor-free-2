@@ -387,4 +387,17 @@
     <string name="cmb_pages_n">%1$d صفحة · %2$d محددة</string>
     <string name="cmb_to_start">إلى البداية</string>
     <string name="cmb_to_end">إلى النهاية</string>
+    <string name="pc_web_levels">عمق الالتقاط</string>
+    <string name="pc_web_level_0">هذه الصفحة فقط</string>
+    <string name="pc_web_level_n">%1$d مستوى من الروابط</string>
+    <string name="pc_web_same_site">الموقع نفسه فقط</string>
+    <string name="pc_web_same_site_sub">تُتبع الروابط داخل النطاق نفسه فقط (التقاط الموقع كاملاً)</string>
+    <string name="pc_web_max_pages">الحد الأقصى للصفحات: %1$d</string>
+    <string name="pc_web_screen_look">مظهر الشاشة بدل مظهر الطباعة</string>
+    <string name="pc_web_screen_look_sub">تُعطَّل أنماط الطباعة الخاصة بالموقع فتبدو الصفحة كما على الشاشة</string>
+    <string name="pc_web_zoom">التكبير: %1$d%%</string>
+    <string name="pc_web_header">رأس الصفحة ({title} {url} {date} {page})</string>
+    <string name="pc_web_footer">تذييل الصفحة</string>
+    <string name="pc_web_info_page">في صفحة أولى مستقلة</string>
+    <string name="pc_web_info_page_sub">تُوضع معلومات الرأس والتذييل في صفحة أولى بدل تكرارها على كل صفحة</string>
 </resources>

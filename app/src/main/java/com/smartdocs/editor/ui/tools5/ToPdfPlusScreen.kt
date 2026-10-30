@@ -143,10 +143,10 @@ fun ToPdfPlusScreen(nav: NavHostController, uri: String?) {
                 PrimaryButton(stringResource(R.string.t5_web_to_pdf), enabled = url.isNotBlank() && !job.running, icon = Icons.Default.Language) {
                     val u = url.trim()
                     val host = runCatching { android.net.Uri.parse(if (u.contains("://")) u else "https://$u").host }.getOrNull()?.ifBlank { null } ?: "webpage"
-                    val setup = web.setup(); val nl = web.noLinks
+                    val setup = web.setup(); val nl = web.noLinks; val cap = web.capture()
                     job.launch(converting) {
                         val out = app.documents.uniqueFile(app.documents.docsDir, host)
-                        ToPdf.url(ctx, u, out, setup, nl)
+                        com.smartdocs.editor.core.tools5.WebCapture.capture(ctx, u, cap, out, app.documents.tempDir, setup, nl, { d, t -> step(d, t) }) { pu, pf, ps -> ToPdf.url(ctx, pu, pf, ps, false) }
                         tagIfAsked(web, out)
                         result = appendIfAsked(web, out) { app.documents.uniqueFile(app.documents.docsDir, it) }
                     }
