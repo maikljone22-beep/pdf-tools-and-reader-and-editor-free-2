@@ -26,7 +26,7 @@ import java.io.File
  * files) to [onPages] — Organize inserts them at the chosen position. Returns the launch function.
  */
 @Composable
-fun rememberCameraPages(pageLimit: Int = 30, onPages: (List<File>) -> Unit): () -> Unit {
+fun rememberCameraPages(pageLimit: Int = 0, onPages: (List<File>) -> Unit): () -> Unit {
     val ctx = LocalContext.current
     val app = LocalApp.current
     val scope = rememberCoroutineScope()
@@ -53,7 +53,7 @@ fun rememberCameraPages(pageLimit: Int = 30, onPages: (List<File>) -> Unit): () 
         try {
             val options = GmsDocumentScannerOptions.Builder()
                 .setGalleryImportAllowed(false)
-                .setPageLimit(pageLimit)
+                .apply { if (pageLimit > 0) setPageLimit(pageLimit) }   // 0 = no page limit
                 .setResultFormats(GmsDocumentScannerOptions.RESULT_FORMAT_JPEG)
                 .setScannerMode(GmsDocumentScannerOptions.SCANNER_MODE_FULL)
                 .build()
