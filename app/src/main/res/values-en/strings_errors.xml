@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ec_title">Error center</string>
+    <string name="ec_settings_sub">All errors and crashes: view, export, send to the developer</string>
+    <string name="ec_export">Export</string>
+    <string name="ec_clear">Clear all</string>
+    <string name="ec_clear_confirm">Delete all recorded errors from this device?</string>
+    <string name="ec_auto">Send errors automatically</string>
+    <string name="ec_auto_sub">Each new error is sent to the developer when online so it can be fixed</string>
+    <string name="ec_send_all">Send %1$d error(s) to the developer now</string>
+    <string name="ec_sent">%1$d error(s) sent</string>
+    <string name="ec_send_failed">Could not send: %1$s</string>
+    <string name="ec_no_server">Error server not configured: you can export and share errors manually</string>
+    <string name="ec_privacy">Your file names and content are never recorded; only the error type, where it happened, the app version and device model</string>
+    <string name="ec_empty">No errors recorded</string>
+    <string name="ec_sent_badge">Sent</string>
+    <string name="ec_copy">Copy</string>
+    <string name="ec_send">Send</string>
+    <string name="ec_delete">Delete</string>
+</resources>

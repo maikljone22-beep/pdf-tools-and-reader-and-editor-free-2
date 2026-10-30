@@ -25,7 +25,7 @@ android {
         val cloudProps = Properties().apply { rootProject.file("cloud.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) } }
         for ((k, prop) in listOf("CLOUD_ONEDRIVE_CLIENT_ID" to "onedriveClientId", "CLOUD_DROPBOX_APP_KEY" to "dropboxAppKey",
                 "CLOUD_ONEDRIVE_REDIRECT" to "onedriveRedirect", "CLOUD_DROPBOX_REDIRECT" to "dropboxRedirect",
-                "COLLAB_URL" to "collabUrl", "COLLAB_TOKEN" to "collabToken", "SUPPORT_EMAIL" to "supportEmail",
+                "COLLAB_URL" to "collabUrl", "COLLAB_TOKEN" to "collabToken", "ERRORS_URL" to "errorsUrl", "ERRORS_TOKEN" to "errorsToken", "SUPPORT_EMAIL" to "supportEmail",
                 // share6: Box, share, esign, connected workers
                 "CLOUD_BOX_CLIENT_ID" to "boxClientId", "CLOUD_BOX_REDIRECT" to "boxRedirect", "CLOUD_BOX_CLIENT_SECRET" to "boxClientSecret", "CLOUD_BOX_TOKEN_URL" to "boxTokenUrl",
                 "SHARE_URL" to "shareUrl", "SHARE_TOKEN" to "shareToken",

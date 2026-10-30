@@ -29,6 +29,7 @@ object CrashLog {
         val app = context.applicationContext
         val previous = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, error ->
+            com.smartdocs.editor.core.errors.ErrorCenter.record(error, "crash", crash = true)
             runCatching {
                 val sw = StringWriter()
                 PrintWriter(sw).use { pw ->

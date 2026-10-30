@@ -17,6 +17,8 @@ class SmartDocsApp : Application() {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        com.smartdocs.editor.core.errors.ErrorCenter.install(this)   // error centre: crashes + reported failures, auto-send
+        com.smartdocs.editor.core.errors.ErrorCenter.onNew = { com.smartdocs.editor.core.errors.ErrorReporter.schedule(this) }
         com.smartdocs.editor.core.util.CrashLog.install(this)
         PDFBoxResourceLoader.init(applicationContext)
         db = AppDatabase.build(this)
@@ -27,6 +29,7 @@ class SmartDocsApp : Application() {
         com.smartdocs.editor.core.util.DebugLog.install(this)
         documents = DocumentRepository(this, db)
         com.smartdocs.editor.core.search.IndexWorker.schedule(this)
+        com.smartdocs.editor.core.errors.ErrorReporter.schedule(this)   // send errors left from the last run
         runCatching { com.smartdocs.editor.core.files.NpfSaveFolder.start(this) }   // nav-prefs: default save folder + index of new outputs
         // share6
         runCatching { com.smartdocs.editor.core.sync.SyncLive.install(this) }                 // near-real-time sync, 15-min jobs, review notifications

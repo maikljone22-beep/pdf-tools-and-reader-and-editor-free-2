@@ -121,7 +121,7 @@ fun ReaderScreen(nav: NavHostController, uri: String, startPage: Int) {
         // needs a permission prompt or a re-pick: the shared helper shows the right UI and retries
         if (r !is com.smartdocs.editor.core.files.DocumentRepository.WriteBack.Done && r !is com.smartdocs.editor.core.files.DocumentRepository.WriteBack.NotNeeded) state.file?.let { writeBack(it) }
     }
-    LaunchedEffect(state.error) { state.error?.let { snack.showSnackbar(it); state.error = null } }
+    LaunchedEffect(state.error) { state.error?.let { com.smartdocs.editor.core.errors.ErrorCenter.recordMessage(it, "reader"); snack.showSnackbar(it); state.error = null } }
     com.smartdocs.editor.ui.cloud.CollabLiveHost(state.file, snack) { op -> state.applyInPlace(state.password, label = { ctx.getString(R.string.hi_collab) }, action = com.smartdocs.editor.core.security.DocAction.ANNOTATE, op = op) }   // share6: live review comments
     HistorySnackbar(state, snack)                                                                                   // MODULE_history
     state.file?.let { com.smartdocs.editor.ui.share5.ReturnedCommentsHost(it, nav) }                               // share6: returned e-mail-review comments

@@ -35,6 +35,7 @@ object AcctRoutes {
 /** Adds every screen of this module to the NavHost: `acctRoutes(nav)` inside `NavHost { … }`. */
 fun NavGraphBuilder.acctRoutes(nav: NavHostController) {
     composable(AcctRoutes.HELP) { HelpScreen(nav) }
+    composable(com.smartdocs.editor.ui.errors.ERROR_CENTER_ROUTE) { com.smartdocs.editor.ui.errors.ErrorCenterScreen(nav) }
     composable(AcctRoutes.PRIVACY) { PrivacyPolicyScreen(nav) }
     composable(AcctRoutes.LICENSES) { LicensesScreen(nav) }
     composable(AcctRoutes.PAYWALL) { PaywallScreen(nav) }

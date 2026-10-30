@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ec_title">مركز الأخطاء</string>
+    <string name="ec_settings_sub">كل الأخطاء والأعطال: عرض، تصدير، إرسال للمطوّر</string>
+    <string name="ec_export">تصدير</string>
+    <string name="ec_clear">مسح الكل</string>
+    <string name="ec_clear_confirm">حذف كل الأخطاء المسجّلة من هذا الجهاز؟</string>
+    <string name="ec_auto">إرسال الأخطاء تلقائياً</string>
+    <string name="ec_auto_sub">يُرسَل كل خطأ جديد للمطوّر عند توفر الإنترنت لإصلاحه</string>
+    <string name="ec_send_all">إرسال %1$d خطأ للمطوّر الآن</string>
+    <string name="ec_sent">أُرسل %1$d خطأ</string>
+    <string name="ec_send_failed">تعذّر الإرسال: %1$s</string>
+    <string name="ec_no_server">خادم الأخطاء غير مُعدّ: يمكنك تصدير الأخطاء ومشاركتها يدوياً</string>
+    <string name="ec_privacy">لا تُسجَّل أسماء ملفاتك ولا محتواها؛ فقط نوع الخطأ ومكانه وإصدار التطبيق وطراز الجهاز</string>
+    <string name="ec_empty">لا توجد أخطاء مسجّلة</string>
+    <string name="ec_sent_badge">أُرسل</string>
+    <string name="ec_copy">نسخ</string>
+    <string name="ec_send">إرسال</string>
+    <string name="ec_delete">حذف</string>
+</resources>
