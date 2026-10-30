@@ -359,6 +359,9 @@ class VideoHost(private val s: ReaderState) {
         }
     }
 
+    /** The selected clip is a sound (per-type defaults). */
+    fun selectedIsAudio(): Boolean = (s.edit.current()?.mime ?: selectedItem()?.mime).orEmpty().startsWith("audio")
+
     /** The selected video's properties for the dialog. */
     fun selectedProps(): VideoProps {
         val a = s.edit.current()
@@ -410,7 +413,7 @@ class VideoHost(private val s: ReaderState) {
             RectF(l, t, l + w, t - h)
         }
         val a: Annot = s.newAnnot(AnnotKind.VIDEO, page, rects = listOf(box), text = pv.name, color = if (icon) 0x1E6FD9 else 0x000000)
-            .copy(filePath = pv.file.absolutePath, mime = pv.mime, video = VideoPdf.Options(icon = icon), posterPath = pv.posterPath, opacity = 1f)
+            .copy(filePath = pv.file.absolutePath, mime = pv.mime, video = com.smartdocs.editor.core.annot.VideoDefaults.get(s.context, pv.mime.startsWith("audio")).copy(icon = icon), posterPath = pv.posterPath, opacity = 1f)
         picked = null
         s.addAnnot(a)
     }

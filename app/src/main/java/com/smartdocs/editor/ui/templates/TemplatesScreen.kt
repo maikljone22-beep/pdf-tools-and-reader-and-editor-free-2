@@ -7,6 +7,9 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -71,6 +74,13 @@ private val docKinds = listOf(TemplateKind.EXAM, TemplateKind.TIMETABLE, Templat
 
 @Composable
 private fun TemplateGallery(nav: NavHostController, onPick: (TemplateKind) -> Unit) {
+    // FINAL_CHECK_2 Low: search by name / description and a category filter (0 all, 1 documents, 2 papers)
+    var query by rememberSaveable { mutableStateOf("") }
+    var cat by rememberSaveable { mutableStateOf(0) }
+    val names = (docKinds + paperKinds).associateWith { templateName(it) + " " + templateDescription(it) }
+    fun match(k: TemplateKind) = query.isBlank() || query.trim().split(Regex("\\s+")).all { w -> names[k].orEmpty().contains(w, ignoreCase = true) || k.id.contains(w, true) }
+    val docs = if (cat == 2) emptyList() else docKinds.filter(::match)
+    val papers = if (cat == 1) emptyList() else paperKinds.filter(::match)
     Scaffold(topBar = { AppTopBar(stringResource(R.string.ps_templates_title), onBack = { nav.popBackStack() }) }) { pad ->
         LazyVerticalGrid(
             GridCells.Adaptive(150.dp), Modifier.padding(pad).fillMaxSize(),
@@ -79,10 +89,21 @@ private fun TemplateGallery(nav: NavHostController, onPick: (TemplateKind) -> Un
             item(span = { GridItemSpan(maxLineSpan) }) {
                 Text(stringResource(R.string.ps_templates_hint), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            item(span = { GridItemSpan(maxLineSpan) }) { SectionTitle(stringResource(R.string.ps_templates_documents)) }
-            items(docKinds, key = { it.id }) { k -> TemplateCard(k) { onPick(k) } }
-            item(span = { GridItemSpan(maxLineSpan) }) { SectionTitle(stringResource(R.string.ps_templates_papers)) }
-            items(paperKinds, key = { it.id }) { k -> TemplateCard(k) { onPick(k) } }
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.ps_templates_search)) },
+                        leadingIcon = { Icon(Icons.Default.Search, null) },
+                        trailingIcon = { if (query.isNotEmpty()) IconButton(onClick = { query = "" }) { Icon(Icons.Default.Close, stringResource(R.string.cancel)) } })
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf(R.string.ps_templates_all, R.string.ps_templates_documents, R.string.ps_templates_papers).forEachIndexed { i, l -> FilterChip(cat == i, { cat = i }, label = { Text(stringResource(l)) }) }
+                    }
+                }
+            }
+            if (docs.isNotEmpty()) item(span = { GridItemSpan(maxLineSpan) }) { SectionTitle(stringResource(R.string.ps_templates_documents)) }
+            items(docs, key = { it.id }) { k -> TemplateCard(k) { onPick(k) } }
+            if (papers.isNotEmpty()) item(span = { GridItemSpan(maxLineSpan) }) { SectionTitle(stringResource(R.string.ps_templates_papers)) }
+            items(papers, key = { it.id }) { k -> TemplateCard(k) { onPick(k) } }
+            if (docs.isEmpty() && papers.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) { Text(stringResource(R.string.ps_templates_none), style = MaterialTheme.typography.bodyMedium) }
         }
     }
 }

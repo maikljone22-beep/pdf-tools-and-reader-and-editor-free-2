@@ -196,4 +196,7 @@
     <string name="ps_xfa_type_number">Number</string>
     <string name="ps_xfa_type_date">Date</string>
     <string name="ps_xfa_type_image">Image</string>
+    <string name="ps_templates_search">Search templates</string>
+    <string name="ps_templates_all">All</string>
+    <string name="ps_templates_none">No matching templates</string>
 </resources>

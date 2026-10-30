@@ -142,7 +142,7 @@ fun VideoDialogs(state: ReaderState) {
         MediaIntents.importUri(ctx, uri, h.mediaDir())?.let { (f, n) -> VideoPdf.Alternate(f.absolutePath, n, VideoPdf.videoMime(n).ifBlank { "video/mp4" }) }
     }
     host.placement?.let { VideoPlacementDialog(onPick = { host.placeChosen(it) }, onDismiss = { host.placement = null; host.picked = it.video; host.message(R.string.vid_tool_hint) }) }
-    if (host.optionsOpen) VideoOptionsDialog(host.selectedProps(), importClip, onOk = { host.applyOptions(it) }, onDismiss = { host.optionsOpen = false })
+    if (host.optionsOpen) VideoOptionsDialog(host.selectedProps(), host.selectedIsAudio(), importClip, onOk = { host.applyOptions(it) }, onDismiss = { host.optionsOpen = false })
     if (host.fullscreen && host.active != null) FullscreenPlayer(host)
 }
 
@@ -156,7 +156,7 @@ private fun sizeOf(ctx: Context, uri: Uri): Long = runCatching {
  * (start on page open / visible, stop when the page is hidden or closed).
  */
 @Composable
-private fun VideoOptionsDialog(initial: VideoProps, importClip: suspend (Uri) -> VideoPdf.Alternate?, onOk: (VideoProps) -> Unit, onDismiss: () -> Unit) {
+private fun VideoOptionsDialog(initial: VideoProps, audio: Boolean, importClip: suspend (Uri) -> VideoPdf.Alternate?, onOk: (VideoProps) -> Unit, onDismiss: () -> Unit) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var o by remember { mutableStateOf(initial.options) }
@@ -224,6 +224,11 @@ private fun VideoOptionsDialog(initial: VideoProps, importClip: suspend (Uri) ->
                         }
                         row(R.string.vid_keep_open, o.keepOpen) { o = o.copy(keepOpen = it) }
                         row(R.string.vid_fullscreen, o.fullscreen) { o = o.copy(fullscreen = it) }
+                        // FINAL_CHECK_2 Low: these playback settings as the default for new clips of this type
+                        var saved by remember { mutableStateOf(false) }
+                        TextButton(onClick = { com.smartdocs.editor.core.annot.VideoDefaults.set(ctx, audio, o); saved = true }) {
+                            Text(stringResource(if (saved) R.string.vid_default_saved else if (audio) R.string.vid_default_audio else R.string.vid_default_video))
+                        }
                     }
                     3 -> {
                         // renditions editor: the main clip, then alternates tried in order; each with selection criteria

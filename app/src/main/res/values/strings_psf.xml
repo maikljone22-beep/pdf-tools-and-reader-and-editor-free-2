@@ -197,4 +197,7 @@
     <string name="ps_xfa_type_number">رقم</string>
     <string name="ps_xfa_type_date">تاريخ</string>
     <string name="ps_xfa_type_image">صورة</string>
+    <string name="ps_templates_search">بحث في القوالب</string>
+    <string name="ps_templates_all">الكل</string>
+    <string name="ps_templates_none">لا توجد قوالب مطابقة</string>
 </resources>
