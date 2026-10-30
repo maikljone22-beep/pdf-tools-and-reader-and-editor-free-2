@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- SmartDocs camera for the scanner (ui/tools5/ScanCameraScreen) -->
+    <string name="sc_cam_flash">Flash</string>
+    <string name="sc_cam_auto">Auto capture</string>
+    <string name="sc_cam_grid">Grid</string>
+    <string name="sc_cam_exposure">Exposure</string>
+    <string name="sc_cam_taking">Taking the photo…</string>
+    <string name="sc_cam_hint_find">Point the camera at the page to find its edges</string>
+    <string name="sc_cam_hint_hold">Hold still… capturing automatically</string>
+    <string name="sc_cam_hint_ready">Page found — tap the shutter</string>
+    <string name="sc_cam_done">Done</string>
+    <string name="sc_cam_retake">Retake</string>
+    <string name="sc_cam_full">Whole photo</string>
+    <string name="sc_cam_use">Use</string>
+    <string name="sc_own_camera">SmartDocs camera</string>
+    <string name="sc_own_camera_sub">Full camera resolution with live page edges and auto capture. Off: the Google scanner is used.</string>
+</resources>

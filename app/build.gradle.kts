@@ -147,6 +147,11 @@ dependencies {
 
     // Scanner + OCR
     implementation("com.google.android.gms:play-services-mlkit-document-scanner:16.0.0")
+    // SmartDocs camera (ui/tools5/ScanCameraScreen): full-resolution capture, live page edges, auto-capture
+    implementation("androidx.camera:camera-core:1.4.2")
+    implementation("androidx.camera:camera-camera2:1.4.2")
+    implementation("androidx.camera:camera-lifecycle:1.4.2")
+    implementation("androidx.camera:camera-view:1.4.2")
     implementation("com.github.adaptech-cz.Tesseract4Android:tesseract4android-openmp:4.8.0")
     // PP-OCRv5 "Pro offline" OCR (PRO_OCR_r5): ONNX Runtime, MIT; the models are an optional pinned download
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.20.0")
