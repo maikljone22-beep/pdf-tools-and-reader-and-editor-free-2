@@ -394,4 +394,11 @@
     <string name="t5_word">الكلمة</string>
     <string name="t5_word_picture">صورة الكلمة</string>
     <string name="t5_zip">ضغط في ملف ZIP</string>
+    <string name="t5_st_alt">نص بديل للصور</string>
+    <string name="t5_hint_alt">الأشكال الموسومة التي بلا نص بديل تحصل على واحد: اقتراح ذكي من نص الصفحة (أو من الصورة عند توفر الرؤية)، أو نص ثابت، أو تُعلَّم زخرفية.</string>
+    <string name="t5_p_alt_mode">طريقة النص البديل</string>
+    <string name="t5_p_alt_fallback">نص احتياطي (عند تعذّر الاقتراح)</string>
+    <string name="t5_alt_mode_ai">اقتراح ذكي</string>
+    <string name="t5_alt_mode_text">نص ثابت</string>
+    <string name="t5_alt_mode_decorative">زخرفية</string>
 </resources>
