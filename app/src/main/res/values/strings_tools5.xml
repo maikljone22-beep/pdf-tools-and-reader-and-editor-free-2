@@ -419,4 +419,5 @@
     <string name="t5_mm_email_column">عمود البريد الإلكتروني (لإرسال كل ملف إلى صاحبه)</string>
     <string name="t5_mm_email_hint">يُنشأ ملف لكل سجل ويُفتح بريد لكل عنوان مع الملف مرفقاً؛ يتولى تطبيق البريد الإرسال.</string>
     <string name="t5_mm_emailed">تم تجهيز %1$d رسالة بريد بالملفات المرفقة.</string>
+    <string name="t5_pf_fix_gray">تحويل الألوان إلى رمادي (نسخة جديدة)</string>
 </resources>

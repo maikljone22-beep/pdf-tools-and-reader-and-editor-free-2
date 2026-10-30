@@ -423,4 +423,6 @@
     <string name="pc_pf_read_mode">وضع القراءة</string>
     <string name="pc_pf_edit_mode">وضع التحرير</string>
     <string name="pc_open_after">فتح الملف الناتج عند الانتهاء</string>
+    <string name="pc_toc_format">سطر الفهرس لكل ملف</string>
+    <string name="pc_toc_format_hint">الحقول: {title} العنوان، {file} اسم الملف، {pages} عدد الصفحات، {n} الرقم، {date} التاريخ</string>
 </resources>

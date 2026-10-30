@@ -38,9 +38,16 @@ data class CombineOpts(
     val toc: Boolean = false,
     val tocTitle: String = "",
     val tocLevels: Int = 2,
+    /** FINAL_CHECK_2 Low: the TOC line of each file from fields — {title} {file} {pages} {n} {date} ("" = the title). */
+    val tocFormat: String = "",
 )
 
 object CombinePlus {
+
+    /** A file's TOC line from [format] (pure): {title} {file} {pages} {n} {date}; blank format → the title. */
+    fun tocEntry(format: String, title: String, file: String, pages: Int, n: Int, date: String): String =
+        if (format.isBlank()) title
+        else format.replace("{title}", title).replace("{file}", file).replace("{pages}", pages.toString()).replace("{n}", n.toString()).replace("{date}", date).trim().ifBlank { title }
 
     /** [list] in [by] order ([desc] = largest / newest / Z first). Pure over the key functions. */
     fun <T> sorted(list: List<T>, by: FileSort, desc: Boolean, name: (T) -> String, time: (T) -> Long, size: (T) -> Long): List<T> {
@@ -114,7 +121,8 @@ object CombinePlus {
                             val holder: PDOutlineNode = if (o.bookmarkPerFile) PDOutlineItem().apply {
                                 title = e.title; destination = PDPageFitDestination().apply { setPage(nd.getPage(start)) }
                                 outline.addLast(this)
-                                marks += E5Bookmark(OutlineModel.newKey(), e.title, start, 0)
+                                val date = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date(e.file.lastModified()))
+                                marks += E5Bookmark(OutlineModel.newKey(), tocEntry(o.tocFormat, e.title, e.file.name, pages.size, marks.count { it.level == 0 } + 1, date), start, 0)
                             } else outline
                             val sub = if (o.bookmarkPerFile) 1 else 0
                             if (o.keepBookmarks && sd.documentCatalog.documentOutline != null) {
@@ -189,7 +197,7 @@ data class BinderProject(val name: String, val opts: CombineOpts, val entries: L
     fun encode(): String = buildString {
         fun esc(v: String) = v.replace("%", "%25").replace("|", "%7C").replace("\n", " ")
         append("name=").append(esc(name)).append('\n')
-        append("opts=").append(listOf(opts.bookmarkPerFile, opts.keepBookmarks, opts.headings, opts.toc).joinToString(",")).append('|').append(esc(opts.tocTitle)).append('|').append(opts.tocLevels).append('\n')
+        append("opts=").append(listOf(opts.bookmarkPerFile, opts.keepBookmarks, opts.headings, opts.toc).joinToString(",")).append('|').append(esc(opts.tocTitle)).append('|').append(opts.tocLevels).append('|').append(esc(opts.tocFormat)).append('\n')
         entries.forEach { e -> append(esc(e.file.name)).append('|').append(esc(e.title)).append('|').append(esc(e.pages)).append('|').append(e.attach).append('\n') }
     }
 
@@ -203,7 +211,7 @@ data class BinderProject(val name: String, val opts: CombineOpts, val entries: L
             val o = lines.firstOrNull { it.startsWith("opts=") }?.removePrefix("opts=")?.split('|')
             val flags = o?.getOrNull(0)?.split(',')?.map { it == "true" }.orEmpty()
             val opts = CombineOpts(flags.getOrElse(0) { true }, flags.getOrElse(1) { true }, flags.getOrElse(2) { false }, flags.getOrElse(3) { false },
-                o?.getOrNull(1)?.let(::unesc).orEmpty(), o?.getOrNull(2)?.toIntOrNull() ?: 2)
+                o?.getOrNull(1)?.let(::unesc).orEmpty(), o?.getOrNull(2)?.toIntOrNull() ?: 2, o?.getOrNull(3)?.let(::unesc).orEmpty())
             val entries = lines.filterNot { it.startsWith("name=") || it.startsWith("opts=") }.mapNotNull { l ->
                 val p = l.split('|'); if (p.size < 4) return@mapNotNull null
                 CombineEntry(File(dir, unesc(p[0])), unesc(p[1]), unesc(p[2]), p[3] == "true")
