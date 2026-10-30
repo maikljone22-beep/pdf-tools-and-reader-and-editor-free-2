@@ -4,6 +4,8 @@ Second completeness check, read-only on code, against main **b719484** (the firs
 Re-checked: every row still STILL MISSING / PARTIAL in FINAL_CHECK.md, every row of its "Status updates after this check" table, and every PARTIAL / OPEN item in `gaps/DONE_*.md`, `gaps/tabs-audit/FIXED_*.md`, `AUDIT/*_LOG.md`, `gaps/OPEN_ALL_FILES.md` and `gaps/SELECTION_MENUS.md`.
 Nothing was run on a device; every DONE row still needs a device test (see `TEST_CHECKLIST.md`).
 
+> **Status 2026-10-30 (cloud session):** every Medium row below is DONE in `main` — #2/3/4/6/7/8/9/10/11/13/15/17/18/23/24 by earlier merges, #1/5/12/14/16/19/20/21/22 by the `feature/*` merges of 2026-10-30 (see `git log --merges`). Only the Low rows remain.
+
 ## STILL MISSING: short list (deduplicated; there are no High items)
 
 Med, by owner area:
