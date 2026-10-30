@@ -139,4 +139,16 @@
     <string name="nbt_st_redact">تنقيح بالبحث</string>
     <string name="nbt_st_sanitize">إزالة المعلومات المخفية</string>
     <string name="nbt_stop">إيقاف</string>
+    <string name="nbt_st_preflight">فحص مطابقة (Preflight)</string>
+    <string name="nbt_st_divider">فاصل / عنوان قسم</string>
+    <string name="nbt_hint_preflight">فحص فقط دون تعديل: عند وجود أخطاء إما يتوقف الملف بخطأ، أو يُستبعد من الدفعة، أو يُكمل مع ملاحظة.</string>
+    <string name="nbt_hint_divider">عنوان يقسم خطوات الوصفة إلى لوحات؛ لا يفعل شيئاً عند التشغيل.</string>
+    <string name="nbt_p_on_fail">عند الفشل</string>
+    <string name="nbt_p_report">إرفاق التقرير بالملف (HTML)</string>
+    <string name="nbt_fail_stop">إيقاف الملف بخطأ</string>
+    <string name="nbt_fail_skip">استبعاد الملف</string>
+    <string name="nbt_fail_continue">متابعة مع ملاحظة</string>
+    <string name="nbt_divider_text">نص الفاصل</string>
+    <string name="nbt_note_preflight">فحص %1$s: %2$d خطأ، %3$d تحذير</string>
+    <string name="nbt_export_log">تصدير السجل (CSV)</string>
 </resources>

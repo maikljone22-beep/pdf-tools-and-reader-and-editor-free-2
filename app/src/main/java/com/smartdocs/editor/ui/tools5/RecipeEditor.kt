@@ -43,12 +43,12 @@ private fun paramLabel(key: String): String = stringResource(
         "suffix" -> R.string.nbt_p_suffix; "digits" -> R.string.nbt_p_digits; "position" -> R.string.nbt_p_position; "terms" -> R.string.nbt_p_terms
         "patterns" -> R.string.nbt_p_patterns; "regex" -> R.string.nbt_p_regex; "sanitize" -> R.string.nbt_p_sanitize; "items" -> R.string.nbt_p_items
         "format" -> R.string.nbt_p_format; "merged" -> R.string.nbt_print_merged; "recipe" -> R.string.nbt_p_recipe
-        "mode" -> R.string.t5_p_alt_mode; "fallback" -> R.string.t5_p_alt_fallback
+        "mode" -> R.string.t5_p_alt_mode; "fallback" -> R.string.t5_p_alt_fallback; "onFail" -> R.string.nbt_p_on_fail; "report" -> R.string.nbt_p_report
         else -> R.string.t5_p_value
     },
 )
 
-private val boolKeys = setOf("clean", "strip", "rasterizeMissingFonts", "arabicDigits", "forms", "pdfua", "sanitize", "merged")
+private val boolKeys = setOf("clean", "strip", "rasterizeMissingFonts", "arabicDigits", "forms", "pdfua", "sanitize", "merged", "report")
 private val multiLineKeys = setOf("custom", "terms", "regex", "code")
 
 @Composable
@@ -74,6 +74,8 @@ fun StepType.hint(): String? = when (this) {
     StepType.CONVERT_OFFICE -> stringResource(R.string.nbt_hint_convert)
     StepType.REDACT -> stringResource(R.string.nbt_hint_redact)
     StepType.ALT_TEXT -> stringResource(R.string.t5_hint_alt)
+    StepType.PREFLIGHT -> stringResource(R.string.nbt_hint_preflight)
+    StepType.DIVIDER -> stringResource(R.string.nbt_hint_divider)
     else -> null
 }
 
@@ -102,6 +104,20 @@ fun StepParam(s: Step, key: String, recipes: List<Recipe>, selfId: String, onCha
                 BatchSteps.officeConversions.keys.forEach { f -> FilterChip(s.p(key).equals(f, true), { set(f) }, label = { Text(f.uppercase()) }) }
             }
         }
+        key == "profile" && s.type == StepType.PREFLIGHT -> {
+            Text(stringResource(R.string.nbt_p_profile), style = MaterialTheme.typography.labelMedium)
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                PreflightProfile.entries.forEach { p -> FilterChip(s.p(key).equals(p.code, true), { set(p.code) }, label = { Text(p.code.uppercase()) }) }
+            }
+        }
+        key == "onFail" -> {
+            Text(paramLabel(key), style = MaterialTheme.typography.labelMedium)
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf("stop" to R.string.nbt_fail_stop, "skip" to R.string.nbt_fail_skip, "continue" to R.string.nbt_fail_continue).forEach { (v, l) -> FilterChip(s.p(key).equals(v, true), { set(v) }, label = { Text(stringResource(l)) }) }
+            }
+        }
+        key == "text" && s.type == StepType.DIVIDER ->
+            OutlinedTextField(s.p(key), { set(it) }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.nbt_divider_text)) })
         key == "mode" && s.type == StepType.ALT_TEXT -> {
             Text(paramLabel(key), style = MaterialTheme.typography.labelMedium)
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {

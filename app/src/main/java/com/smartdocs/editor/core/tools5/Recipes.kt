@@ -40,7 +40,12 @@ enum class StepType(val defaults: Map<String, String>) {
     BATES(mapOf("prefix" to "", "suffix" to "", "digits" to "6", "start" to "1", "position" to "BOTTOM_RIGHT")),
     REDACT(mapOf("terms" to "", "patterns" to "", "regex" to "", "sanitize" to "true")),
     SANITIZE(mapOf("items" to "")),
-    ACCESS_CHECK(emptyMap()),
+    /** [report]: FINAL_CHECK_2 Low — the accessibility / PDF-UA report attached to the output as HTML. */
+    ACCESS_CHECK(mapOf("report" to "false")),
+    /** FINAL_CHECK_2 Low (B #43): a check-only preflight; [onFail]: "continue" (note), "stop" (the file fails), "skip" (the file is left out). */
+    PREFLIGHT(mapOf("profile" to "a2b", "onFail" to "stop")),
+    /** FINAL_CHECK_2 Low (§21): a divider / panel title in the recipe editor; does nothing when run. */
+    DIVIDER(mapOf("text" to "")),
     CONVERT_OFFICE(mapOf("format" to "docx")),
     PRINT(mapOf("merged" to "false")),
     NOTE(mapOf("text" to "")),
@@ -48,7 +53,7 @@ enum class StepType(val defaults: Map<String, String>) {
     ;
 
     /** Steps that never change the file (an instruction, the print request, the accessibility report). */
-    val passive: Boolean get() = this == NOTE || this == PRINT || this == ACCESS_CHECK
+    val passive: Boolean get() = this == NOTE || this == PRINT || this == ACCESS_CHECK || this == PREFLIGHT || this == DIVIDER
 
     companion object { fun of(name: String?): StepType? = entries.firstOrNull { it.name == name } }
 }

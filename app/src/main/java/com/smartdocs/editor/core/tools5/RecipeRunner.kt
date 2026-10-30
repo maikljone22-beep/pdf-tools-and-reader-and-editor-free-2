@@ -73,6 +73,9 @@ object RecipeStore {
     fun delete(ctx: Context, id: String) { p(ctx).edit().putString("list", RecipeJson.listToJson(user(ctx).filter { it.id != id })).apply() }
 }
 
+/** A step decided the file is left out of the batch (a preflight "skip"); the log marks it skipped, not failed. */
+class StepSkip(message: String) : RuntimeException(message)
+
 /** One line of the per-file batch log. */
 data class LogEntry(val input: String, val ok: Boolean, val output: String?, val message: String, val millis: Long, val skipped: Boolean = false)
 
@@ -293,11 +296,33 @@ class RecipeRunner(private val ctx: Context, private val tempDir: File) {
             }
             StepType.SANITIZE -> Sanitizer.cleanFile(src, out, password, BatchSteps.sanitizeItems(s.p("items")))
             StepType.ACCESS_CHECK -> {
-                withContext(Dispatchers.IO) {
+                val attach = s.bool("report")
+                val wrote = withContext(Dispatchers.IO) {
                     PdfOps.load(src, password).use { d ->
-                        val c = AccessRules.counts(AccessRules.evaluate(AccessInspect.facts(d, PdfInspect.inspect(d))))
+                        val results = AccessRules.evaluate(AccessInspect.facts(d, PdfInspect.inspect(d)))
+                        val c = AccessRules.counts(results)
                         notes += str(R.string.nbt_note_access, c[AccStatus.PASS] ?: 0, c[AccStatus.FAIL] ?: 0, c[AccStatus.MANUAL] ?: 0)
+                        // FINAL_CHECK_2 Low: the report travels with the file (an HTML attachment), as the checker's "attach report"
+                        if (!attach) return@use false
+                        val arabic = com.smartdocs.editor.core.data.AppLang.isArabic((ctx.applicationContext as SmartDocsApp).settings.settings.first())
+                        val html = AccessRules.htmlReport(inputName, results, arabic, str(R.string.t5_acc_report_title), { it }, { it.name }, { it.name })
+                        Embed.addFiles(d, listOf(Attachment(File(inputName).nameWithoutExtension + "_accessibility.html", "text/html", html.toByteArray())))
+                        d.save(out); true
                     }
+                }
+                if (!wrote) return src
+            }
+            StepType.PREFLIGHT -> {
+                // check only: the findings decide whether the file goes on, stops with an error, or is skipped
+                val profile = PreflightProfile.entries.firstOrNull { it.code == s.p("profile").trim() } ?: PreflightProfile.PDFA_2B
+                val report = withContext(Dispatchers.IO) { PdfOps.load(src, password).use { d -> Standards.preflight(d, profile, (0 until d.numberOfPages).toList()) } }
+                val errors = report.errors
+                val msg = str(R.string.nbt_note_preflight, profile.code.uppercase(), errors, report.findings.count { it.severity == Severity.WARNING })
+                when {
+                    errors == 0 -> notes += msg
+                    s.p("onFail").trim().equals("skip", true) -> throw StepSkip(msg)
+                    s.p("onFail").trim().equals("continue", true) -> notes += msg
+                    else -> error(msg)
                 }
                 return src
             }
@@ -313,7 +338,7 @@ class RecipeRunner(private val ctx: Context, private val tempDir: File) {
                 return moved
             }
             // instructions, the print request (handled by the batch screen) and nested recipes (expanded before) do nothing here
-            StepType.PRINT, StepType.NOTE, StepType.RUN_RECIPE -> return src
+            StepType.PRINT, StepType.NOTE, StepType.RUN_RECIPE, StepType.DIVIDER -> return src
         }
         return out
     }
@@ -373,6 +398,8 @@ class RecipeRunner(private val ctx: Context, private val tempDir: File) {
             LogEntry(displayName, true, target.absolutePath, notes.joinToString(" · "), System.currentTimeMillis() - t0)
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
+        } catch (e: StepSkip) {
+            LogEntry(displayName, false, null, e.message ?: "", System.currentTimeMillis() - t0, skipped = true)
         } catch (e: Throwable) {
             LogEntry(displayName, false, null, e.message ?: e.javaClass.simpleName, System.currentTimeMillis() - t0)
         } finally {
