@@ -111,4 +111,5 @@
     <string name="pg_landscape">عرضي</string>
     <string name="pg_width">العرض</string>
     <string name="pg_height">الارتفاع</string>
+    <string name="pg_insert_preview">%1$s — %2$d صفحة</string>
 </resources>

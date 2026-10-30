@@ -103,4 +103,5 @@
     <string name="pg_landscape">Landscape</string>
     <string name="pg_width">Width</string>
     <string name="pg_height">Height</string>
+    <string name="pg_insert_preview">%1$s — %2$d pages</string>
 </resources>

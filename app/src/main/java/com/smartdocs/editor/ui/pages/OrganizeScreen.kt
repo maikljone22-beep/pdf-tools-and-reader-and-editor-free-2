@@ -4,6 +4,8 @@ import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.foundation.draganddrop.dragAndDropTarget
 import androidx.compose.ui.draganddrop.DragAndDropEvent
 import androidx.compose.ui.draganddrop.DragAndDropTarget
@@ -465,6 +467,30 @@ private fun InsertDialog(state: OrganizeState, kind: InsertKind, onDismiss: () -
                             FilterChip(style == s, { style = s }, label = { Text(stringResource(when (s) { PdfOps.PageStyle.BLANK -> R.string.style_blank; PdfOps.PageStyle.LINED -> R.string.style_lined; PdfOps.PageStyle.GRID -> R.string.style_grid; PdfOps.PageStyle.DOTS -> R.string.style_dots })) })
                         }
                     }
+                }
+                // FINAL_CHECK_2 Low: a preview of the file being inserted (its first pages)
+                if (kind is InsertKind.File && !needsPw) {
+                    val ctxP = androidx.compose.ui.platform.LocalContext.current
+                    val prev by produceState<Pair<Int, List<android.graphics.Bitmap>>?>(null, kind.file) {
+                        value = runCatching {
+                            val s = com.smartdocs.editor.core.pdf.PdfSession.open(ctxP, kind.file)
+                            try {
+                                s.pageCount to (0 until minOf(s.pageCount, 8)).map { i -> val (w, h) = s.pageSize(i); s.render(i, 160, (160 * h / w).toInt().coerceIn(1, 480)) }
+                            } finally { s.closeAsync() }
+                        }.getOrNull()
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    prev?.let { (n, bmps) ->
+                        Text(stringResource(R.string.pg_insert_preview, kind.file.name, n), style = MaterialTheme.typography.labelLarge)
+                        Row(Modifier.horizontalScroll(rememberScrollState()).padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            bmps.forEachIndexed { i, b ->
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    androidx.compose.foundation.Image(b.asImageBitmap(), null, Modifier.height(110.dp).border(1.dp, MaterialTheme.colorScheme.outlineVariant))
+                                    Text("${i + 1}", style = MaterialTheme.typography.labelSmall)
+                                }
+                            }
+                        }
+                    } ?: LinearProgressIndicator(Modifier.fillMaxWidth())
                 }
                 if (kind is InsertKind.Images) Text(stringResource(R.string.pg_scan_pages, kind.files.size), Modifier.padding(top = 8.dp), style = MaterialTheme.typography.bodySmall)
             }
