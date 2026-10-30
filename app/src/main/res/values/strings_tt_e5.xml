@@ -16,4 +16,5 @@
     <string name="tte5_pdfa_failed">تعذّرت معالجة المستند. قد يكون الملف تالفًا.</string>
     <string name="tte5_pdfa_owner">لا يمكن أن يكون ملف PDF/A مشفّرًا، وإزالة الحماية تحتاج إلى كلمة مرور المالك. افتح الملف بكلمة مرور المالك.</string>
     <string name="tte5_pdfa_raster_pages">ستتحوّل %1$d صفحة إلى صور ولن يكون نصّها قابلًا للبحث أو النسخ: %2$s</string>
+    <string name="tte5_resize_reset">إرجاع الصفحات إلى حجمها الأصلي</string>
 </resources>

@@ -80,6 +80,8 @@ fun PortfolioEditor(nav: NavHostController, source: File, onClose: () -> Unit) {
     var folder by remember { mutableStateOf<String?>(null) }          // null = all folders
     var tiles by remember { mutableStateOf(false) }
     var preview by remember { mutableStateOf(true) }
+    // FINAL_CHECK_2 Low: read mode hides the editing controls
+    var readMode by remember { mutableStateOf(false) }
     var selected by remember { mutableStateOf<PfItem?>(null) }
     var query by remember { mutableStateOf("") }
     var hits by remember { mutableStateOf<List<PfHit>?>(null) }
@@ -179,6 +181,7 @@ fun PortfolioEditor(nav: NavHostController, source: File, onClose: () -> Unit) {
     }
 
     ToolScaffold(stringResource(R.string.t5_portfolio_title), nav, snackbar = snackbar, actions = {
+        IconButton(onClick = { readMode = !readMode; if (readMode) preview = true }) { Icon(if (readMode) Icons.Default.Edit else Icons.Default.MenuBook, stringResource(if (readMode) R.string.pc_pf_edit_mode else R.string.pc_pf_read_mode)) }
         IconButton(onClick = onClose) { Icon(Icons.Default.Close, stringResource(R.string.pc_pf_close)) }
     }) {
         Text(source.name, style = MaterialTheme.typography.titleMedium)
@@ -187,7 +190,7 @@ fun PortfolioEditor(nav: NavHostController, source: File, onClose: () -> Unit) {
         if (inf == null) { LinearProgressIndicator(Modifier.fillMaxWidth()); return@ToolScaffold }
 
         // ---- view, sort, columns
-        T5Card(stringResource(R.string.pc_pf_view), Icons.Default.ViewModule) {
+        if (!readMode) T5Card(stringResource(R.string.pc_pf_view), Icons.Default.ViewModule) {
             Text(stringResource(R.string.pc_pf_default_view), style = MaterialTheme.typography.labelLarge)
             ChoiceChips(PfView.entries, inf.view, { stringResource(when (it) { PfView.DETAILS -> R.string.pc_pf_details; PfView.TILES -> R.string.pc_pf_tiles; PfView.COVER -> R.string.pc_pf_cover }) }) { v -> cos { PortfolioEdit.setView(it, v) } }
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -255,6 +258,10 @@ fun PortfolioEditor(nav: NavHostController, source: File, onClose: () -> Unit) {
             DropdownMenuItem(text = { Text(stringResource(R.string.pc_pf_rename)) }, onClick = { onDismiss(); ask = PfAsk.Rename(item) })
             DropdownMenuItem(text = { Text(stringResource(R.string.pc_pf_edit_description)) }, onClick = { onDismiss(); ask = PfAsk.Describe(item) })
             DropdownMenuItem(text = { Text(stringResource(R.string.pc_pf_move)) }, onClick = { onDismiss(); ask = PfAsk.Move(item) })
+            // FINAL_CHECK_2 Low: manual reordering (saved as a hidden order column the portfolio is sorted by)
+            val pos = shown.indexOfFirst { it.key == item.key }
+            if (pos > 0) DropdownMenuItem(text = { Text(stringResource(R.string.t5_move_up)) }, onClick = { onDismiss(); val ks = PortfolioEdit.reorder(shown.map { it.key }, pos, pos - 1); cos { PortfolioEdit.setManualOrder(it, ks) } })
+            if (pos in 0 until shown.lastIndex) DropdownMenuItem(text = { Text(stringResource(R.string.t5_move_down)) }, onClick = { onDismiss(); val ks = PortfolioEdit.reorder(shown.map { it.key }, pos, pos + 1); cos { PortfolioEdit.setManualOrder(it, ks) } })
             DropdownMenuItem(text = { Text(stringResource(R.string.pc_pf_initial)) }, onClick = { onDismiss(); cos { PortfolioEdit.setInitial(it, item.key) } })
             inf.fields.filter { it.type in setOf("S", "N", "D") }.forEach { f ->
                 DropdownMenuItem(text = { Text(stringResource(R.string.pc_pf_set_value, f.name)) }, onClick = { onDismiss(); ask = PfAsk.Value(item, f) })
@@ -304,15 +311,15 @@ fun PortfolioEditor(nav: NavHostController, source: File, onClose: () -> Unit) {
         }
 
         // ---- add / cover / save
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (!readMode) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = addFiles, Modifier.weight(1f)) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(4.dp)); Text(stringResource(R.string.t5_add_files)) }
             OutlinedButton(onClick = { addFolder.launch(null) }, Modifier.weight(1f)) { Icon(Icons.Default.CreateNewFolder, null); Spacer(Modifier.width(4.dp)); Text(stringResource(R.string.pc_add_folder)) }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (!readMode) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = scanParts, Modifier.weight(1f)) { Icon(Icons.Default.DocumentScanner, null); Spacer(Modifier.width(4.dp)); Text(stringResource(R.string.pc_pf_add_scan)) }
             OutlinedButton(onClick = { addClipboard() }, Modifier.weight(1f)) { Icon(Icons.Default.ContentPaste, null); Spacer(Modifier.width(4.dp)); Text(stringResource(R.string.pc_pf_add_clipboard)) }
         }
-        OutlinedButton(onClick = { change { w -> PortfolioOps.regenerateCover(ctx, w, null, w, source.nameWithoutExtension, folderLabel) } }, Modifier.fillMaxWidth()) {
+        if (!readMode) OutlinedButton(onClick = { change { w -> PortfolioOps.regenerateCover(ctx, w, null, w, source.nameWithoutExtension, folderLabel) } }, Modifier.fillMaxWidth()) {
             Icon(Icons.Default.ListAlt, null); Spacer(Modifier.width(4.dp)); Text(stringResource(R.string.pc_pf_regen_cover))
         }
         // FINAL_CHECK_2 Low (B #26 / #33): convert every part to PDF; print all parts (or the selected one) in order

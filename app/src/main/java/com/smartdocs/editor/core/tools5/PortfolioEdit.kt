@@ -213,6 +213,23 @@ object PortfolioEdit {
         else ci.setString(COSName.getPDFName(field), value)
     }
 
+    /** The hidden number column that holds the manual order. */
+    const val ORDER_FIELD = "SDOrder"
+
+    /** [keys] with the one at [from] moved to [to] (clamped). Pure. */
+    fun reorder(keys: List<String>, from: Int, to: Int): List<String> {
+        if (from !in keys.indices) return keys
+        val m = keys.toMutableList(); val k = m.removeAt(from); m.add(to.coerceIn(0, m.size), k); return m
+    }
+
+    /** FINAL_CHECK_2 Low: a manual order — every part gets its position in a hidden number column, sorted by it. */
+    fun setManualOrder(doc: PDDocument, keys: List<String>) {
+        val fields = read(doc).fields
+        if (fields.none { it.key == ORDER_FIELD }) setFields(doc, fields + PfField(ORDER_FIELD, "#", "N", fields.size, visible = false))
+        keys.forEachIndexed { i, k -> setValue(doc, k, ORDER_FIELD, (i + 1).toString()) }
+        setSort(doc, ORDER_FIELD, true)
+    }
+
     /** Moves part [key] into [folder]; returns the new key. */
     fun move(doc: PDDocument, key: String, folder: String): String {
         val id = ensureFolder(doc, folder)

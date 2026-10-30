@@ -174,9 +174,51 @@ object PageBoxOps {
                         a.quadPointsOf()?.let { q -> for (k in q.indices) q[k] = if (k % 2 == 0) q[k] * sx + tx else q[k] * sy + ty; a.cosObject.setItem(COSName.getPDFName("QuadPoints"), com.tom_roush.pdfbox.cos.COSArray().apply { setFloatArray(q) }) }
                     }
                 }
+                // FINAL_CHECK_2 Low: remember the original size (first resize) and the total transform, for "reset to original size"
+                val prev = page.cosObject.getDictionaryObject(ORIG) as? com.tom_roush.pdfbox.cos.COSDictionary
+                val rec = prev ?: com.tom_roush.pdfbox.cos.COSDictionary().apply {
+                    setItem(COSName.MEDIA_BOX, page.mediaBox.cosArray)
+                    (page.cosObject.getDictionaryObject(COSName.CROP_BOX) as? com.tom_roush.pdfbox.cos.COSArray)?.let { setItem(COSName.CROP_BOX, it) }
+                }
+                val pm = (rec.getDictionaryObject(COSName.getPDFName("M")) as? com.tom_roush.pdfbox.cos.COSArray)?.toFloatArray() ?: floatArrayOf(1f, 1f, 0f, 0f)
+                rec.setItem(COSName.getPDFName("M"), com.tom_roush.pdfbox.cos.COSArray().apply { setFloatArray(floatArrayOf(pm[0] * sx, pm[1] * sy, pm[2] * sx + tx, pm[3] * sy + ty)) })
+                page.cosObject.setItem(ORIG, rec)
                 val nb = PDRectangle(0f, 0f, tw, th)
                 page.mediaBox = nb
                 page.cosObject.removeItem(COSName.CROP_BOX); page.cosObject.removeItem(COSName.TRIM_BOX); page.cosObject.removeItem(COSName.BLEED_BOX); page.cosObject.removeItem(COSName.ART_BOX)
+            }
+        }
+    }
+
+    private val ORIG = COSName.getPDFName("SDOrigSize")
+
+    /** Pages that were resized by [resize] and can be reset. */
+    suspend fun resizedPages(src: File, password: String?): List<Int> = withContext(Dispatchers.IO) {
+        E5Io.load(src, password).use { doc -> (0 until doc.numberOfPages).filter { doc.getPage(it).cosObject.containsKey(ORIG) } }
+    }
+
+    /** FINAL_CHECK_2 Low: undo [resize] — the inverse transform, the original boxes and annotation positions. */
+    suspend fun resetSize(src: File, out: File, password: String?, pages: List<Int>) = withContext(Dispatchers.IO) {
+        E5Io.edit(src, out, password) { doc ->
+            for (i in pages) {
+                if (i !in 0 until doc.numberOfPages) continue
+                val page = doc.getPage(i)
+                val rec = page.cosObject.getDictionaryObject(ORIG) as? com.tom_roush.pdfbox.cos.COSDictionary ?: continue
+                val m = (rec.getDictionaryObject(COSName.getPDFName("M")) as? com.tom_roush.pdfbox.cos.COSArray)?.toFloatArray() ?: continue
+                if (m.size < 4 || m[0] == 0f || m[1] == 0f) continue
+                val sx = 1f / m[0]; val sy = 1f / m[1]; val tx = -m[2] / m[0]; val ty = -m[3] / m[1]
+                PDPageContentStream(doc, page, PDPageContentStream.AppendMode.PREPEND, true).use { cs -> cs.saveGraphicsState(); cs.transform(Matrix(sx, 0f, 0f, sy, tx, ty)) }
+                PDPageContentStream(doc, page, PDPageContentStream.AppendMode.APPEND, true).use { cs -> cs.restoreGraphicsState() }
+                runCatching {
+                    page.annotations.forEach { a ->
+                        val r = a.rectangle ?: return@forEach
+                        a.rectangle = PDRectangle(r.lowerLeftX * sx + tx, r.lowerLeftY * sy + ty, r.width * sx, r.height * sy)
+                        a.quadPointsOf()?.let { q -> for (k in q.indices) q[k] = if (k % 2 == 0) q[k] * sx + tx else q[k] * sy + ty; a.cosObject.setItem(COSName.getPDFName("QuadPoints"), com.tom_roush.pdfbox.cos.COSArray().apply { setFloatArray(q) }) }
+                    }
+                }
+                (rec.getDictionaryObject(COSName.MEDIA_BOX) as? com.tom_roush.pdfbox.cos.COSArray)?.let { page.mediaBox = PDRectangle(it) }
+                (rec.getDictionaryObject(COSName.CROP_BOX) as? com.tom_roush.pdfbox.cos.COSArray)?.let { page.cropBox = PDRectangle(it) }
+                page.cosObject.removeItem(ORIG)
             }
         }
     }

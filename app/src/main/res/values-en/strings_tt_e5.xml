@@ -16,4 +16,5 @@
     <string name="tte5_pdfa_failed">The document could not be processed. The file may be damaged.</string>
     <string name="tte5_pdfa_owner">A PDF/A file cannot be encrypted, and removing the protection needs the owner password. Open the file with its owner password.</string>
     <string name="tte5_pdfa_raster_pages">%1$d pages will become pictures; their text can no longer be searched or copied: %2$s</string>
+    <string name="tte5_resize_reset">Reset pages to the original size</string>
 </resources>
