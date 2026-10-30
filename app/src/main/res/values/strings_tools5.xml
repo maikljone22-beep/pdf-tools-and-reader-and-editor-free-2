@@ -394,4 +394,11 @@
     <string name="t5_word">الكلمة</string>
     <string name="t5_word_picture">صورة الكلمة</string>
     <string name="t5_zip">ضغط في ملف ZIP</string>
+    <string name="t5_watch_title">المجلدات المراقبة</string>
+    <string name="t5_watch_sub">اختر مجلداً ووصفة: كل ملف جديد يُضاف إلى المجلد يمرّ بالوصفة تلقائياً (فحص كل 15 دقيقة)، وتُحفظ النتائج في مجلد فرعي «SmartDocs Output».</string>
+    <string name="t5_watch_add">إضافة مجلد</string>
+    <string name="t5_watch_scan_now">فحص الآن</string>
+    <string name="t5_watch_pick_recipe">اختر الوصفة لهذا المجلد</string>
+    <string name="t5_watch_recursive">يشمل المجلدات الفرعية</string>
+    <string name="t5_watch_handled">%1$d ملف عولج</string>
 </resources>

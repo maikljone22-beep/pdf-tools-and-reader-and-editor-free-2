@@ -11,6 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -204,6 +205,7 @@ fun RecipesScreen(nav: NavHostController, uri: String?) {
         }
         Text(stringResource(R.string.t5_rc_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         PrinterRecipeCard(recipes, version) { version++ }
+        WatchedFoldersCard(recipes)
     }
     editing?.let { r ->
         RecipeEditor(r, onSave = { RecipeStore.save(ctx, it); version++; selected = it; editing = null }, onDelete = if (RecipeStore.user(ctx).any { it.id == r.id }) ({ RecipeStore.delete(ctx, r.id); version++; editing = null }) else null, onDismiss = { editing = null })
@@ -224,6 +226,60 @@ fun RecipesScreen(nav: NavHostController, uri: String?) {
             dismissButton = { TextButton(onClick = { conflicts = null }) { Text(stringResource(R.string.cancel)) } },
         )
     }
+}
+
+/** FINAL_CHECK_2 #22: watched folders — a folder + a recipe; new files in the folder run through the recipe (outputs in "SmartDocs Output"). */
+@Composable
+private fun WatchedFoldersCard(recipes: List<Recipe>) {
+    val ctx = LocalContext.current
+    var list by remember { mutableStateOf(WatchedFolders.all(ctx)) }
+    var pickedTree by remember { mutableStateOf<android.net.Uri?>(null) }
+    var recipeOpen by remember { mutableStateOf(false) }
+    var recursive by remember { mutableStateOf(false) }
+    val pickFolder = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocumentTree()) { u -> if (u != null) { pickedTree = u; recipeOpen = true } }
+    T5Card(stringResource(R.string.t5_watch_title), Icons.Default.FolderOpen) {
+        Text(stringResource(R.string.t5_watch_sub), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        list.forEach { w ->
+            val r = recipes.firstOrNull { it.id == w.recipeId }
+            ListItem(
+                headlineContent = { Text(remember(w.tree) { SafFolders.name(ctx, android.net.Uri.parse(w.tree)) }, maxLines = 1) },
+                supportingContent = {
+                    Text((r?.title() ?: w.recipeId) + " · " + stringResource(R.string.t5_watch_handled, w.handled) +
+                        (if (w.lastScan > 0) " · " + android.text.format.DateUtils.getRelativeTimeSpanString(w.lastScan) else ""), style = MaterialTheme.typography.bodySmall)
+                },
+                trailingContent = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Switch(w.enabled, { v -> WatchedFolders.update(ctx, w.copy(enabled = v)); list = WatchedFolders.all(ctx) })
+                        IconButton(onClick = { WatchedFolders.remove(ctx, w.id); list = WatchedFolders.all(ctx) }) { Icon(Icons.Default.Delete, stringResource(R.string.delete)) }
+                    }
+                },
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = { runCatching { pickFolder.launch(null) } }) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(4.dp)); Text(stringResource(R.string.t5_watch_add)) }
+            if (list.any { it.enabled }) OutlinedButton(onClick = { WatchedFolders.scanNow(ctx) }) { Icon(Icons.Default.Refresh, null); Spacer(Modifier.width(4.dp)); Text(stringResource(R.string.t5_watch_scan_now)) }
+        }
+    }
+    val tree = pickedTree
+    if (recipeOpen && tree != null) AlertDialog(
+        onDismissRequest = { recipeOpen = false },
+        title = { Text(stringResource(R.string.t5_watch_pick_recipe)) },
+        text = {
+            Column {
+                Text(SafFolders.name(ctx, tree), style = MaterialTheme.typography.labelLarge)
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { recursive = !recursive }) { Checkbox(recursive, { recursive = it }); Text(stringResource(R.string.t5_watch_recursive)) }
+                Column(Modifier.heightIn(max = 320.dp).verticalScroll(rememberScrollState())) {
+                    recipes.forEach { r ->
+                        ListItem(headlineContent = { Text(r.title()) }, modifier = Modifier.clickable {
+                            WatchedFolders.add(ctx, tree, r.id, recursive); WatchedFolders.scanNow(ctx); list = WatchedFolders.all(ctx); recipeOpen = false
+                        })
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = { recipeOpen = false }) { Text(stringResource(R.string.cancel)) } },
+    )
 }
 
 /** Foxit PDF Printer settings: the recipe the "SmartDocs PDF" print service applies to every printed file. */

@@ -394,4 +394,11 @@
     <string name="t5_word">Word</string>
     <string name="t5_word_picture">Picture of the word</string>
     <string name="t5_zip">Pack into a ZIP file</string>
+    <string name="t5_watch_title">Watched folders</string>
+    <string name="t5_watch_sub">Pick a folder and a recipe: every new file in the folder runs through the recipe automatically (checked every 15 minutes); results go to a "SmartDocs Output" sub-folder.</string>
+    <string name="t5_watch_add">Add folder</string>
+    <string name="t5_watch_scan_now">Scan now</string>
+    <string name="t5_watch_pick_recipe">Recipe for this folder</string>
+    <string name="t5_watch_recursive">Include sub-folders</string>
+    <string name="t5_watch_handled">%1$d files handled</string>
 </resources>
