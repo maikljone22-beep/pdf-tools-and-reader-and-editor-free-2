@@ -1,7 +1,7 @@
 package com.smartdocs.editor.core.tools5
 
 /** Kinds of the scan studio. Pure enum, shared by core and UI. */
-enum class ScanKind { DOCUMENT, ID_CARD, BUSINESS_CARD, RECEIPT, WHITEBOARD, BOOK, BATCH }
+enum class ScanKind { DOCUMENT, ID_CARD, BUSINESS_CARD, RECEIPT, WHITEBOARD, BOOK, BATCH, FORM }
 
 /**
  * Smart file name after OCR: "<prefix>_<first prominent line>_<date>" — the date found in the text when there
