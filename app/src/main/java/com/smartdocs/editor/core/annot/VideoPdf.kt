@@ -49,9 +49,38 @@ object VideoPdf {
         val stopWhenHidden: Boolean = true,
         val poster: Int = POSTER_AUTO,
         val alt: String = "",
+        /** Renditions: the selection criteria of the main clip and the alternate clips (tried in order after it). */
+        val criteria: Criteria = Criteria(),
+        val alternates: List<Alternate> = emptyList(),
     ) {
         /** Player volume 0..1 (muted → 0). */
         val gain: Float get() = if (muted) 0f else volume.coerceIn(0, 100) / 100f
+    }
+
+    /**
+     * Media criteria of a rendition (ISO 32000 §13.2.3.2, written in the must-honour `/MH /C`): minimum [bitrate] in
+     * bits per second (`/R`), [languages] (`/L`, RFC 3066 tags), minimum screen size in pixels (`/Z`). Empty = always.
+     */
+    data class Criteria(val bitrate: Int = 0, val languages: List<String> = emptyList(), val minWidth: Int = 0, val minHeight: Int = 0) {
+        val isEmpty: Boolean get() = bitrate <= 0 && languages.isEmpty() && minWidth <= 0 && minHeight <= 0
+
+        /** Whether a viewer with [bandwidth] bits/s, [language] and a [screenW] × [screenH] px screen may play the clip. */
+        fun accepts(bandwidth: Long, language: String, screenW: Int, screenH: Int): Boolean =
+            (bitrate <= 0 || bandwidth >= bitrate) &&
+                (languages.isEmpty() || languages.any { l -> l.equals(language, true) || l.substringBefore('-').equals(language.substringBefore('-'), true) }) &&
+                (minWidth <= 0 || maxOf(screenW, screenH) >= minWidth) && (minHeight <= 0 || minOf(screenW, screenH) >= minHeight)
+    }
+
+    /** An alternate clip of a video: [path] its file while pending ("" when not extracted), [name], [mime], [criteria]. */
+    data class Alternate(val path: String, val name: String, val mime: String, val criteria: Criteria = Criteria())
+
+    /**
+     * The clip to play among [criteria] (main clip first, then the alternates): the first one the viewer accepts, as a
+     * selector rendition does; the last one when none does (usually the most modest), so something still plays.
+     */
+    fun select(criteria: List<Criteria>, bandwidth: Long, language: String, screenW: Int, screenH: Int): Int {
+        if (criteria.isEmpty()) return 0
+        return criteria.indexOfFirst { it.accepts(bandwidth, language, screenW, screenH) }.takeIf { it >= 0 } ?: criteria.lastIndex
     }
 
     const val START_VISIBLE = 0
@@ -106,6 +135,8 @@ object VideoPdf {
     private val PV = COSName.getPDFName("PV")
     private val PO = COSName.getPDFName("PO")
     private val PI = COSName.getPDFName("PI")
+    private val L = COSName.getPDFName("L")
+    private val Z = COSName.getPDFName("Z")
     private val PC = COSName.getPDFName("PC")
     private val SP = COSName.getPDFName("SP")
     private val W = COSName.getPDFName("W")
@@ -149,19 +180,6 @@ object VideoPdf {
         val ct = mime.ifBlank { videoMime(name).ifBlank { "video/mp4" } }
         val label = name.ifBlank { video.name }
 
-        // embedded file stream + file specification
-        val ef = doc.document.createCOSStream()
-        ef.setName(COSName.TYPE, "EmbeddedFile")
-        ef.setName(COSName.SUBTYPE, ct)
-        ef.createRawOutputStream().use { o -> video.inputStream().use { it.copyTo(o, 1 shl 16) } }
-        ef.setItem(COSName.getPDFName("Params"), COSDictionary().apply { setLong(COSName.getPDFName("Size"), video.length()) })
-        val spec = COSDictionary().apply {
-            setName(COSName.TYPE, "Filespec")
-            setString(F, label); setString(UF, label)
-            setString(COSName.getPDFName("Desc"), label)
-            setItem(EF, COSDictionary().apply { setItem(F, ef); setItem(UF, ef) })
-        }
-
         val annot = COSDictionary()
         annot.setName(COSName.TYPE, "Annot")
         annot.setName(COSName.SUBTYPE, "Screen")
@@ -175,21 +193,15 @@ object VideoPdf {
         annot.setItem(SD_VIDEO, optionsDict(options))
         annot.setItem(MK, COSDictionary().apply { setString(CA, label) })
 
-        val rendition = COSDictionary().apply {
-            setName(COSName.TYPE, "Rendition"); setName(S, "MR"); setString(N, label)
-            setItem(C, COSDictionary().apply {
-                setName(COSName.TYPE, "MediaClip"); setName(S, "MCD"); setString(N, label)
-                setString(CT, ct)
-                setItem(D, spec)
-                setItem(P, COSDictionary().apply { setName(COSName.TYPE, "MediaPermissions"); setString(COSName.getPDFName("TF"), "TEMPACCESS") })
-                setItem(COSName.getPDFName("Alt"), COSArray().apply { add(COSString("")); add(COSString(options.alt.ifBlank { label })) })
-            })
-            setItem(P, playParams(options))
-            setItem(SP, COSDictionary().apply {
-                setName(COSName.TYPE, "MediaScreenParams")
-                // play in the annotation's rect (3), or full screen (1)
-                setItem(BE, COSDictionary().apply { setInt(W, if (options.fullscreen) 1 else 3) })
-            })
+        // the main clip, then the alternate clips (renditions editor): a selector rendition plays the first acceptable one
+        val main = mediaRendition(doc, video, label, ct, options, options.criteria)
+        val alts = options.alternates.mapNotNull { a ->
+            val f = File(a.path).takeIf { a.path.isNotBlank() && it.isFile } ?: return@mapNotNull null
+            mediaRendition(doc, f, a.name.ifBlank { f.name }, a.mime.ifBlank { videoMime(a.name).ifBlank { "video/mp4" } }, options, a.criteria)
+        }
+        val rendition = if (alts.isEmpty()) main else COSDictionary().apply {
+            setName(COSName.TYPE, "Rendition"); setName(S, "SR"); setString(N, label)
+            setItem(R, COSArray().apply { add(main); alts.forEach { add(it) } })
         }
         annot.setItem(A, renditionAction(rendition, annot))
         // media actions: start on page open / visible, stop when the page is hidden / closed
@@ -210,6 +222,56 @@ object VideoPdf {
         setInt(OP, 0)                                      // play R, associate it with AN
         setItem(R, rendition)
         setItem(AN, annot)
+    }
+
+    /** A media rendition of [file] (embedded, no filter: already compressed) with the play / screen params of [options] and [criteria]. */
+    private fun mediaRendition(doc: PDDocument, file: File, label: String, ct: String, options: Options, criteria: Criteria): COSDictionary {
+        val ef = doc.document.createCOSStream()
+        ef.setName(COSName.TYPE, "EmbeddedFile")
+        ef.setName(COSName.SUBTYPE, ct)
+        ef.createRawOutputStream().use { o -> file.inputStream().use { it.copyTo(o, 1 shl 16) } }
+        ef.setItem(COSName.getPDFName("Params"), COSDictionary().apply { setLong(COSName.getPDFName("Size"), file.length()) })
+        val spec = COSDictionary().apply {
+            setName(COSName.TYPE, "Filespec")
+            setString(F, label); setString(UF, label)
+            setString(COSName.getPDFName("Desc"), label)
+            setItem(EF, COSDictionary().apply { setItem(F, ef); setItem(UF, ef) })
+        }
+        return COSDictionary().apply {
+            setName(COSName.TYPE, "Rendition"); setName(S, "MR"); setString(N, label)
+            setItem(C, COSDictionary().apply {
+                setName(COSName.TYPE, "MediaClip"); setName(S, "MCD"); setString(N, label)
+                setString(CT, ct)
+                setItem(D, spec)
+                setItem(P, COSDictionary().apply { setName(COSName.TYPE, "MediaPermissions"); setString(COSName.getPDFName("TF"), "TEMPACCESS") })
+                setItem(COSName.getPDFName("Alt"), COSArray().apply { add(COSString("")); add(COSString(options.alt.ifBlank { label })) })
+            })
+            setItem(P, playParams(options))
+            setItem(SP, COSDictionary().apply {
+                setName(COSName.TYPE, "MediaScreenParams")
+                // play in the annotation's rect (3), or full screen (1)
+                setItem(BE, COSDictionary().apply { setInt(W, if (options.fullscreen) 1 else 3) })
+            })
+            if (!criteria.isEmpty) setItem(MH, COSDictionary().apply { setItem(C, criteriaDict(criteria)) })
+        }
+    }
+
+    private fun criteriaDict(c: Criteria) = COSDictionary().apply {
+        setName(COSName.TYPE, "MediaCriteria")
+        if (c.bitrate > 0) setInt(R, c.bitrate)
+        if (c.languages.isNotEmpty()) setItem(L, COSArray().apply { c.languages.forEach { add(COSString(it)) } })
+        if (c.minWidth > 0 || c.minHeight > 0) setItem(Z, COSDictionary().apply {
+            setName(COSName.TYPE, "MinScreenSize")
+            setItem(V, COSArray().apply { add(com.tom_roush.pdfbox.cos.COSInteger.get(c.minWidth.toLong())); add(com.tom_roush.pdfbox.cos.COSInteger.get(c.minHeight.toLong())) })
+        })
+    }
+
+    private fun criteriaOf(mr: COSDictionary): Criteria {
+        val c = dict(dict(mr.getDictionaryObject(MH))?.getDictionaryObject(C)) ?: dict(dict(mr.getDictionaryObject(BE))?.getDictionaryObject(C)) ?: return Criteria()
+        val langs = (c.getDictionaryObject(L) as? COSArray)?.let { a -> (0 until a.size()).mapNotNull { (a.getObject(it) as? COSString)?.string?.takeIf { s -> s.isNotBlank() } } }.orEmpty()
+        val z = (dict(c.getDictionaryObject(Z))?.getDictionaryObject(V) as? COSArray)
+        fun zi(k: Int) = (z?.getObject(k) as? COSNumber)?.intValue() ?: 0
+        return Criteria(int(c, "R", 0).coerceAtLeast(0), langs, zi(0).coerceAtLeast(0), zi(1).coerceAtLeast(0))
     }
 
     /** Rendition action that stops the media playing in [annot] (`/OP 1`). */
@@ -309,6 +371,22 @@ object VideoPdf {
             "SR" -> (r.getDictionaryObject(R) as? COSArray)?.let { arr -> (0 until arr.size()).firstNotNullOfOrNull { mediaRendition(dict(arr.getObject(it)), depth + 1) } }
             else -> null
         }
+    }
+
+    /** Every media rendition of a rendition, in selector order (renditions editor). */
+    private fun mediaRenditions(r: COSDictionary?, depth: Int = 0): List<COSDictionary> {
+        if (r == null || depth > 4) return emptyList()
+        return when (r.getNameAsString(S)) {
+            "MR" -> listOf(r)
+            "SR" -> (r.getDictionaryObject(R) as? COSArray)?.let { arr -> (0 until arr.size()).flatMap { mediaRenditions(dict(arr.getObject(it)), depth + 1) } }.orEmpty()
+            else -> emptyList()
+        }
+    }
+
+    /** The playable clips of a Screen annotation: (media rendition, clip data with an embedded file), main clip first. */
+    private fun clips(cos: COSDictionary): List<Pair<COSDictionary, COSDictionary>> {
+        val first = renditionActions(cos).firstOrNull { mediaRendition(dict(it.second.getDictionaryObject(R))) != null } ?: return emptyList()
+        return mediaRenditions(dict(first.second.getDictionaryObject(R))).mapNotNull { mr -> clipData(mr)?.let { mr to it } }
     }
 
     /** The rendition action of a Screen annotation: /A, then the additional actions (page open / visible first). */
@@ -417,7 +495,14 @@ object VideoPdf {
                 if (!mime.startsWith("video/") && !ours && !(mime.isBlank() && videoMime(name).isNotEmpty())) return null
                 val ef = embedded(d as? COSDictionary)
                 val triggers = mrs.filter { it.second === mr }.map { it.first }
-                info(Form.SCREEN, mime.ifBlank { "video/mp4" }, name, ourOptions(cos) ?: renditionOptions(cos, mr, clip, triggers), ef != null, ef?.let(::streamSize) ?: 0L)
+                // renditions: the main clip's criteria and the alternate clips of a selector rendition
+                val all = clips(cos)
+                val alts = all.drop(1).map { (amr, ac) ->
+                    val an = specName(ac.getDictionaryObject(D)).ifBlank { ac.getString(N) ?: amr.getString(N) ?: "video" }
+                    Alternate("", an, ac.getString(CT)?.ifBlank { null } ?: videoMime(an), criteriaOf(amr))
+                }
+                val opts = (ourOptions(cos) ?: renditionOptions(cos, mr, clip, triggers)).copy(criteria = criteriaOf(mr), alternates = alts)
+                info(Form.SCREEN, mime.ifBlank { "video/mp4" }, name, opts, ef != null, ef?.let(::streamSize) ?: 0L)
             }
             "RichMedia" -> {
                 val content = dict(cos.getDictionaryObject(RM_CONTENT)) ?: return null
@@ -463,10 +548,11 @@ object VideoPdf {
         return out
     }
 
-    /** The embedded video stream of a video annotation (any supported form), or null. */
-    fun videoStream(cos: COSDictionary): COSStream? = when (cos.getNameAsString(COSName.SUBTYPE)) {
-        "Screen" -> renditionActions(cos).firstNotNullOfOrNull { (_, a) -> mediaRendition(dict(a.getDictionaryObject(R)))?.let(::clipData) }
-            ?.let { embedded(it.getDictionaryObject(D) as? COSDictionary) }
+    /** The embedded video stream of a video annotation (any supported form), or null; [index] a rendition's clip (0 = main). */
+    fun videoStream(cos: COSDictionary, index: Int = 0): COSStream? = when (cos.getNameAsString(COSName.SUBTYPE)) {
+        "Screen" -> if (index > 0) clips(cos).getOrNull(index)?.let { embedded(it.second.getDictionaryObject(D) as? COSDictionary) }
+            else renditionActions(cos).firstNotNullOfOrNull { (_, a) -> mediaRendition(dict(a.getDictionaryObject(R)))?.let(::clipData) }
+                ?.let { embedded(it.getDictionaryObject(D) as? COSDictionary) }
         "RichMedia" -> richAssets(dict(dict(cos.getDictionaryObject(RM_CONTENT))?.getDictionaryObject(ASSETS)))
             .firstOrNull { videoMime(it.first).isNotEmpty() && embedded(it.second) != null }?.let { embedded(it.second) }
         "FileAttachment" -> embedded(cos.getDictionaryObject(FS) as? COSDictionary)
@@ -474,8 +560,8 @@ object VideoPdf {
     }
 
     /** Stream the decoded video bytes of [cos] to [out]; returns the byte count (-1 when there is no embedded video). */
-    fun copyVideo(cos: COSDictionary, out: OutputStream): Long {
-        val s = videoStream(cos) ?: return -1L
+    fun copyVideo(cos: COSDictionary, out: OutputStream, index: Int = 0): Long {
+        val s = videoStream(cos, index) ?: return -1L
         return s.createInputStream().use { it.copyTo(out, 1 shl 16) }
     }
 

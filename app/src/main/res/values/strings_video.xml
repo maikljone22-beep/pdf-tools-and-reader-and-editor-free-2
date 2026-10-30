@@ -48,4 +48,12 @@
     <string name="vid_start_open">عند فتح الصفحة</string>
     <string name="vid_stop_hidden">الإيقاف عند إخفاء الصفحة أو إغلاقها</string>
     <string name="vid_actions_note">في هذا التطبيق يتوقف الفيديو دائمًا عند خروجه من الشاشة؛ تُحفظ هذه الإجراءات في الملف للبرامج الأخرى.</string>
+    <string name="vid_tab_renditions">البدائل</string>
+    <string name="vid_rend_hint">يُشغَّل أول مقطع تناسب شروطُه الجهاز: الرئيسي ثم البدائل بالترتيب. الحقول الفارغة تعني بلا شرط.</string>
+    <string name="vid_rend_main">1. المقطع الرئيسي</string>
+    <string name="vid_rend_add">إضافة مقطع بديل…</string>
+    <string name="vid_rend_kbps">أدنى سرعة (كيلوبت/ث)</string>
+    <string name="vid_rend_lang">اللغات (ar, en)</string>
+    <string name="vid_rend_min_w">أدنى عرض للشاشة (px)</string>
+    <string name="vid_rend_min_h">أدنى ارتفاع للشاشة (px)</string>
 </resources>
