@@ -5,6 +5,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -28,6 +29,7 @@ fun PageLabelsScreen(nav: NavHostController, uri: String?) {
     val doc = rememberE5Doc(uri)
     val runner = rememberToolRunner()
     var ranges by remember { mutableStateOf<List<LabelRange>>(emptyList()) }
+    val scope = rememberCoroutineScope()
     val processing = stringResource(R.string.processing)
     LaunchedEffect(doc.work) {
         val w = doc.work ?: return@LaunchedEffect
@@ -41,6 +43,8 @@ fun PageLabelsScreen(nav: NavHostController, uri: String?) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 AssistChip(onClick = { ranges = listOf(LabelRange(0, LabelStyle.ROMAN_LOWER), LabelRange(minOf(4, n - 1), LabelStyle.DECIMAL)) }, label = { Text(stringResource(R.string.e5_labels_preset_front)) })
                 AssistChip(onClick = { ranges = emptyList() }, label = { Text(stringResource(R.string.e5_labels_clear)) })
+                // FINAL_CHECK_2 Low: ranges from the bookmarks (section title as the prefix)
+                AssistChip(onClick = { val w = doc.work ?: return@AssistChip; scope.launch { val r = runCatching { PageBoxOps.labelsFromBookmarks(w, doc.password) }.getOrDefault(emptyList()); if (r.isNotEmpty()) ranges = r } }, label = { Text(stringResource(R.string.e5_labels_from_bookmarks)) })
             }
             ranges.sortedBy { it.startPage }.forEachIndexed { i, r ->
                 E5Section(stringResource(R.string.e5_labels_range, i + 1)) {

@@ -363,4 +363,5 @@
     <string name="e5_crop_page_size">تغيير حجم الصفحة (بدون تكبير المحتوى)</string>
     <string name="e5_crop_center_content">توسيط المحتوى</string>
     <string name="e5_crop_page_size_apply">تطبيق حجم الصفحة</string>
+    <string name="e5_labels_from_bookmarks">من الإشارات المرجعية</string>
 </resources>
