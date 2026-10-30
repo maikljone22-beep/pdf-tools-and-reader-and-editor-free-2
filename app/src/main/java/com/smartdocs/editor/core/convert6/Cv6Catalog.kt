@@ -10,7 +10,7 @@ enum class Fmt { PDF, WORD, EXCEL, PPT, IMAGE, JPG, PNG, WEBP, HEIC, TIFF, ZIP, 
 
 /** Options a conversion shows in its sheet. */
 enum class Opt { RANGE, AUTO_OCR, TABLES, INCLUDE_IMAGES, SINGLE_SHEET, PPT_MODE, LAYOUT, IMG_FORMAT, DPI, QUALITY, IMG_OUTPUT, GRAY,
-    PAGE_SETUP, MERGE, NUP, RESIZE, CSV_SHEETS, OCR_LANG, URL, TEXT, PDFA_STRICT, BW, SHEET_PER_TABLE, BOOKMARKS, FORM_FIELDS, TEXT_RECOVERY, SPEAKER_NOTES, CELL_COMMENTS, SLIDES, HEADERS, TEXT_LAYOUT, XLSX_CELLS, DOCX_TEXT, CREATE, EXCEL_FIT }
+    PAGE_SETUP, MERGE, NUP, RESIZE, CSV_SHEETS, OCR_LANG, URL, TEXT, PDFA_STRICT, BW, SHEET_PER_TABLE, BOOKMARKS, FORM_FIELDS, TEXT_RECOVERY, SPEAKER_NOTES, CELL_COMMENTS, EML_ATTACH, SLIDES, HEADERS, TEXT_LAYOUT, XLSX_CELLS, DOCX_TEXT, CREATE, EXCEL_FIT }
 
 /**
  * One hub conversion. [inputs] = accepted kinds (empty = no file: URL / clipboard / camera); [multi] = several inputs at once
@@ -81,7 +81,7 @@ object Cv6Catalog {
         Conv("html_pdf", listOf(Cv6Group.TO_PDF), Fmt.HTML, Fmt.PDF, setOf(Kind6.HTML), opts = setOf(Opt.MERGE, Opt.BOOKMARKS, Opt.FORM_FIELDS, Opt.CREATE), keywords = "html"),
         Conv("url_pdf", listOf(Cv6Group.TO_PDF, Cv6Group.OTHER), Fmt.WEB, Fmt.PDF, emptySet(), multi = false, opts = setOf(Opt.URL, Opt.BOOKMARKS), keywords = "web url link"),
         Conv("epub_pdf", listOf(Cv6Group.TO_PDF, Cv6Group.TEXT_BOOKS), Fmt.EPUB, Fmt.PDF, setOf(Kind6.EPUB), opts = setOf(Opt.MERGE, Opt.CREATE), keywords = "ebook"),
-        Conv("eml_pdf", listOf(Cv6Group.TO_PDF, Cv6Group.OTHER), Fmt.EMAIL, Fmt.PDF, setOf(Kind6.EML), opts = setOf(Opt.MERGE), keywords = "email eml mail"),
+        Conv("eml_pdf", listOf(Cv6Group.TO_PDF, Cv6Group.OTHER), Fmt.EMAIL, Fmt.PDF, setOf(Kind6.EML), opts = setOf(Opt.MERGE, Opt.EML_ATTACH), keywords = "email eml mail"),
         Conv("scan_pdf", listOf(Cv6Group.TO_PDF, Cv6Group.OCR), Fmt.CAMERA, Fmt.PDF, emptySet(), multi = false, route = "scan", keywords = "camera scan"),
         Conv("clipboard_pdf", listOf(Cv6Group.TO_PDF, Cv6Group.OTHER), Fmt.CLIPBOARD, Fmt.PDF, emptySet(), multi = false, opts = setOf(Opt.TEXT), keywords = "clipboard paste"),
         Conv("any_pdf", listOf(Cv6Group.TO_PDF, Cv6Group.OTHER), Fmt.ANY, Fmt.PDF, Kind6.entries.toSet() - setOf(Kind6.UNKNOWN, Kind6.ZIP), opts = setOf(Opt.MERGE, Opt.FORM_FIELDS, Opt.CREATE), keywords = "combine merge mixed"),

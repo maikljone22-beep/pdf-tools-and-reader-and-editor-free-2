@@ -83,4 +83,6 @@
     <string name="cv9_docx_comments_sub">PDF comments (notes, highlights, shapes) become Word comments on the text they sit on</string>
     <string name="cv9_xlsx_separators">Number separators in the source</string>
     <string name="cv9_out_show">Show the folder</string>
+    <string name="cv9_eml_attach">Convert the attachments and append them after the message</string>
+    <string name="cv9_info_eml_appended">%1$d attachments appended after the message</string>
 </resources>

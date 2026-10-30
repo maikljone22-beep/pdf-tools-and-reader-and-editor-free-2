@@ -234,6 +234,7 @@ private fun OptionsBody(conv: Conv, inputCount: Int, o: Cv6Opts, onChange: (Cv6O
             isError = !com.smartdocs.editor.core.pdf.PdfOps.rangeSyntaxOk(o.slideRange))
         SwitchRow(stringResource(R.string.cv9_hidden_slides), o.hiddenSlides) { onChange(o.copy(hiddenSlides = it)) }
     }
+    if (Opt.EML_ATTACH in opts) SwitchRow(stringResource(R.string.cv9_eml_attach), o.emlAttachments) { onChange(o.copy(emlAttachments = it)) }
     if (Opt.SPEAKER_NOTES in opts) SwitchRow(stringResource(R.string.cv9_speaker_notes), o.speakerNotes) { onChange(o.copy(speakerNotes = it)) }
     if (Opt.BOOKMARKS in opts) SwitchRow(stringResource(R.string.cv9_bookmarks), o.bookmarks, stringResource(R.string.cv9_bookmarks_sub)) { onChange(o.copy(bookmarks = it)) }
     if (Opt.SHEET_PER_TABLE in opts) SwitchRow(stringResource(R.string.pc_sheet_per_table), o.perTable) { onChange(o.copy(perTable = it)) }
