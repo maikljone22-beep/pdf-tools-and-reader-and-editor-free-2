@@ -88,9 +88,10 @@ object ScanBuilder {
         }
         images.forEach { (f, e) ->
             val b = ScanImage.load(f, if (kind == ScanKind.BOOK) maxDim * 3 / 2 else maxDim) ?: return@forEach
-            val done = ScanImage.apply(b, e)
+            val done = ScanImage.apply(b, e, dewarp = e.flatten && kind != ScanKind.BOOK)
             if (kind == ScanKind.BOOK) {
-                val halves = ScanImage.splitBook(done, bookRightFirst)
+                // a spread bends both ways from the spine: each page is flattened on its own
+                val halves = ScanImage.splitBook(done, bookRightFirst).map { if (e.flatten) ScanImage.flatten(it) else it }
                 halves.forEach { yield(ScanOut(it, ScanImage.isGray(e.filter))) }
                 if (halves.size > 1) done.recycle()
             } else yield(ScanOut(done, ScanImage.isGray(e.filter)))

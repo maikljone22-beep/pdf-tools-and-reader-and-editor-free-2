@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="sc_flatten">صفحة منحنية: تسوية الأسطر</string>
+    <string name="sc_flatten_sub">لصفحات الكتب والدفاتر المصوّرة مفتوحة</string>
+    <string name="sc_high_quality">جودة عالية</string>
+    <string name="sc_high_quality_sub">دقة كاميرا الهاتف كاملة وضغط أخف (ملف أكبر)</string>
+</resources>

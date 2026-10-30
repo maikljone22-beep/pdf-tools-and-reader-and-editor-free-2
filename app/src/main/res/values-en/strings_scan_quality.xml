@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="sc_flatten">Curved page: straighten lines</string>
+    <string name="sc_flatten_sub">For book and notebook pages photographed open</string>
+    <string name="sc_high_quality">High quality</string>
+    <string name="sc_high_quality_sub">Full phone-camera resolution, lighter compression (larger file)</string>
+</resources>
