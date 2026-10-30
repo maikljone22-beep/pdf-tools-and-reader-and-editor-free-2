@@ -67,7 +67,7 @@ fun DrawScope.drawAnnot2(a: Annot, g: PageGeometry) {
         }
         AnnotKind.FILE_ATTACH, AnnotKind.SOUND -> a.rects.firstOrNull()?.let { drawMediaIcon(a.kind, g.pdfRectToScreen(it), c) }
         // the in-page video box (the poster is drawn on top by InPageVideoLayer)
-        AnnotKind.VIDEO -> a.rects.firstOrNull()?.let { drawVideoBox(g.pdfRectToScreen(it)) }
+        AnnotKind.VIDEO -> a.rects.firstOrNull()?.let { if (a.video?.icon == true) drawMediaIcon(a.kind, g.pdfRectToScreen(it), c) else drawVideoBox(g.pdfRectToScreen(it)) }
         else -> {}
     }
 }
