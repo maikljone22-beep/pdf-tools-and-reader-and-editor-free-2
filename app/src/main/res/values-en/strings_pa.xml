@@ -51,4 +51,6 @@
     <string name="pc_tags_page_n">Page (of %1$d)</string>
     <string name="t5_acc_page_range">Page range to check (empty = all)</string>
     <string name="t5_acc_check_range">Check</string>
+    <string name="pa_tags_order_page">Order on the page</string>
+    <string name="pa_order_page_hint">Each numbered box is an element in reading order. Tap a box to move it, change its type or make it an artifact.</string>
 </resources>

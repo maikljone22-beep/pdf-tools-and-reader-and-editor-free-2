@@ -4,6 +4,12 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -119,15 +125,17 @@ fun TagsEditor(nav: NavHostController, source: File, onClose: () -> Unit, onSave
                 dismissButton = { TextButton(onClick = { bmDialog = false }) { Text(stringResource(R.string.cancel)) } })
         }
         // ---- Order panel (Foxit 34.44): reading order of one page, drag or move up / down
-        var mode by remember { mutableIntStateOf(0) }   // 0 tree, 1 order, 2 content (FINAL_CHECK_2 #20)
+        var mode by remember { mutableIntStateOf(0) }   // 0 tree, 1 order, 2 content (FINAL_CHECK_2 #20), 3 order on the page (#19)
         val orderMode = mode == 1
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             FilterChip(mode == 0, { mode = 0 }, label = { Text(stringResource(R.string.pa_tags_tree)) })
             FilterChip(mode == 1, { mode = 1 }, label = { Text(stringResource(R.string.pa_tags_order)) })
+            FilterChip(mode == 3, { mode = 3 }, label = { Text(stringResource(R.string.pa_tags_order_page)) })
             FilterChip(mode == 2, { mode = 2 }, label = { Text(stringResource(R.string.pa_tags_content)) })
         }
         if (orderMode) OrderPanel(nodes, ::edit)
         if (mode == 2) ContentPanel(work, password, version, ::edit)
+        if (mode == 3) OrderOnPage(work, password, version, ::edit)
         // ---- tree
         if (mode == 0) T5Card {
             nodes.forEach { n ->
@@ -227,6 +235,89 @@ private fun ContentPanel(work: File, password: String?, version: Int, edit: ((PD
                 val mcids = picked.mapNotNull { items.getOrNull(it)?.mcid }.filter { it >= 0 }
                 if (mcids.isNotEmpty()) edit { d -> com.smartdocs.editor.core.tools5.AccessContent.createTag(d, page, mcids, type) }
             }) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(4.dp)); Text(stringResource(R.string.pa_content_create)) }
+        }
+    }
+}
+
+/**
+ * FINAL_CHECK_2 #19 — reading order drawn on the page and the on-page touch-up tool: the page picture with a numbered
+ * box per element (reading order); tap a box to select it, then move it up / down in the order, change its type,
+ * or make it an artifact (its content leaves the structure).
+ */
+@Composable
+private fun OrderOnPage(work: File, password: String?, version: Int, edit: ((PDDocument) -> Unit) -> Unit) {
+    val ctx = LocalContext.current
+    var pageText by remember { mutableStateOf("1") }
+    var pageCount by remember { mutableIntStateOf(0) }
+    var boxes by remember { mutableStateOf<List<com.smartdocs.editor.core.tools5.AccessContent.ElemBox>>(emptyList()) }
+    var bitmap by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
+    var selected by remember { mutableStateOf<List<Int>?>(null) }
+    val page = (pageText.toIntOrNull() ?: 1) - 1
+    LaunchedEffect(version, page) {
+        selected = null
+        runCatching {
+            io { com.smartdocs.editor.core.pdf.PdfOps.load(work, password).use { d -> pageCount = d.numberOfPages; boxes = if (page in 0 until d.numberOfPages) com.smartdocs.editor.core.tools5.AccessContent.elementBoxes(d, page) else emptyList() } }
+            val s = com.smartdocs.editor.core.pdf.PdfSession.open(ctx, work, password)
+            try {
+                if (page in 0 until s.pageCount) {
+                    val (w, h) = s.pageSize(page)
+                    val tw = 900; val th = (tw * h / w.coerceAtLeast(1f)).toInt().coerceIn(1, 2400)
+                    val old = bitmap; bitmap = s.renderOwned(page, tw, th, annotations = true); old?.recycle()
+                }
+            } finally { s.closeAsync() }
+        }.onFailure { boxes = emptyList() }
+    }
+    DisposableEffect(Unit) { onDispose { bitmap?.recycle() } }
+    val sel = boxes.indexOfFirst { it.path == selected }
+    T5Card(stringResource(R.string.pa_tags_order_page), Icons.Default.Map) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            OutlinedTextField(pageText, { pageText = it.filter { c -> c.isDigit() }.take(5) }, Modifier.width(110.dp), singleLine = true, label = { Text(stringResource(R.string.pc_tags_page_n, pageCount)) })
+            Text(stringResource(R.string.pa_order_page_hint), Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        val bmp = bitmap
+        if (bmp != null && !bmp.isRecycled) {
+            val aspect = bmp.width.toFloat() / bmp.height
+            var size by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
+            Box(Modifier.fillMaxWidth().aspectRatio(aspect).onSizeChanged { size = it }.pointerInput(boxes) {
+                detectTapGestures { o ->
+                    val fx = o.x / size.width; val fy = o.y / size.height
+                    // the smallest box under the tap wins (a line inside a section)
+                    val hit = boxes.filter { fx in it.left..it.right && fy in it.top..it.bottom }.minByOrNull { (it.right - it.left) * (it.bottom - it.top) }
+                    selected = hit?.path
+                }
+            }) {
+                androidx.compose.foundation.Image(bmp.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = androidx.compose.ui.layout.ContentScale.Fit)
+                val primary = MaterialTheme.colorScheme.primary; val accent = MaterialTheme.colorScheme.tertiary
+                val measurer = androidx.compose.ui.text.rememberTextMeasurer()
+                androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
+                    boxes.forEachIndexed { i, b ->
+                        val on = b.path == selected
+                        val l = b.left * this.size.width; val t = b.top * this.size.height; val w = (b.right - b.left) * this.size.width; val h = (b.bottom - b.top) * this.size.height
+                        val col = if (on) accent else primary
+                        drawRect(col.copy(alpha = if (on) 0.25f else 0.08f), androidx.compose.ui.geometry.Offset(l, t), androidx.compose.ui.geometry.Size(w, h))
+                        drawRect(col, androidx.compose.ui.geometry.Offset(l, t), androidx.compose.ui.geometry.Size(w, h), style = androidx.compose.ui.graphics.drawscope.Stroke(if (on) 4f else 2f))
+                        val label = measurer.measure("${i + 1}", androidx.compose.ui.text.TextStyle(fontSize = 11.sp, color = androidx.compose.ui.graphics.Color.White))
+                        drawRect(col, androidx.compose.ui.geometry.Offset(l, t), androidx.compose.ui.geometry.Size(label.size.width + 8f, label.size.height + 2f))
+                        drawText(label, topLeft = androidx.compose.ui.geometry.Offset(l + 4f, t + 1f))
+                    }
+                }
+            }
+        }
+        if (boxes.isEmpty()) Text(stringResource(R.string.pa_order_none), style = MaterialTheme.typography.bodySmall)
+        if (sel >= 0) {
+            val b = boxes[sel]
+            Text("${sel + 1}. <${b.type}>", style = MaterialTheme.typography.labelLarge)
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                AssistChip(onClick = { edit { AccessTags.move(it, b.path, -1) } }, label = { Text(stringResource(R.string.pc_move_up)) }, leadingIcon = { Icon(Icons.Default.KeyboardArrowUp, null) })
+                AssistChip(onClick = { edit { AccessTags.move(it, b.path, 1) } }, label = { Text(stringResource(R.string.pc_move_down)) }, leadingIcon = { Icon(Icons.Default.KeyboardArrowDown, null) })
+                AssistChip(onClick = { edit { AccessTags.setType(it, b.path, "Artifact") } }, label = { Text(stringResource(R.string.pc_tags_artifact)) })
+                AssistChip(onClick = { edit { AccessTags.delete(it, b.path) } }, label = { Text(stringResource(R.string.pc_tags_delete)) })
+            }
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                listOf("P", "H1", "H2", "H3", "Figure", "Caption", "L", "LI", "Table", "TH", "TD", "Span").forEach { t ->
+                    FilterChip(b.type == t, { if (b.type != t) edit { AccessTags.setType(it, b.path, t) } }, label = { Text(t) })
+                }
+            }
         }
     }
 }
