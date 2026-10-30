@@ -415,4 +415,8 @@
     <string name="t5_form_fields_none">لم يُعثر على حقول في النموذج. افتح الملف في مصمم النماذج لإضافة الحقول يدوياً.</string>
     <string name="t5_paper_more">مقاسات أخرى (A0–A10، B، C، JIS…)</string>
     <string name="t5_paper_less">المقاسات الشائعة فقط</string>
+    <string name="t5_mm_record_range">نطاق السجلات (فارغ = الكل)</string>
+    <string name="t5_mm_email_column">عمود البريد الإلكتروني (لإرسال كل ملف إلى صاحبه)</string>
+    <string name="t5_mm_email_hint">يُنشأ ملف لكل سجل ويُفتح بريد لكل عنوان مع الملف مرفقاً؛ يتولى تطبيق البريد الإرسال.</string>
+    <string name="t5_mm_emailed">تم تجهيز %1$d رسالة بريد بالملفات المرفقة.</string>
 </resources>

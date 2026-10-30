@@ -75,6 +75,8 @@ table.docwrap>thead>tr>td,table.docwrap>tfoot>tr>td,table.docwrap>tbody>tr>td{bo
 .hdrf.f{border-top:1px solid #ccc;margin-top:8px;}
 .notes{border-top:1px solid #999;margin-top:1.2em;padding-top:.4em;font-size:.9em;}
 .notes .nm{vertical-align:super;font-size:.75em;margin-inline-end:.3em;}
+.cm{display:inline-block;background:#fff3b0;border:1px solid #e0c200;border-radius:3px;font-size:.78em;padding:0 .35em;margin:0 .25em;vertical-align:baseline;white-space:normal;}
+a.nref{text-decoration:none;color:inherit;}
 """
 
     /**
@@ -96,7 +98,10 @@ table.docwrap>thead>tr>td,table.docwrap>tfoot>tr>td,table.docwrap>tbody>tr>td{bo
         blocks(model.blocks, this)
         if (model.notes.isNotEmpty()) {
             append("<div class=\"notes\">")
-            model.notes.forEach { (m, bs) -> append("<div><span class=\"nm\">").append(esc(m)).append("</span>"); blocks(bs, this); append("</div>") }
+            model.notes.forEach { (m0, bs) ->
+                val m = m0.substringBefore('\t'); val id = m0.substringAfter('\t', "")
+                append("<div").also { if (id.isNotEmpty()) append(" id=\"note-").append(esc(id)).append('"') }.append("><span class=\"nm\">").append(esc(m)).append("</span>"); blocks(bs, this); append("</div>")
+            }
             append("</div>")
         }
         append("</div>")
@@ -163,6 +168,9 @@ table.docwrap>thead>tr>td,table.docwrap>tfoot>tr>td,table.docwrap>tbody>tr>td{bo
     }
 
     internal fun run(text: String, s: RunStyle, link: String?, sb: StringBuilder, scale: Float = 1f, ptUnit: String = "pt") {
+        // FINAL_CHECK_2 Low (B #20): a Word comment as a note bubble; a note marker as a link to its note
+        if (s.comment != null) { sb.append("<span class=\"cm\">💬 ").append(esc(s.comment)).append("</span>"); if (text.isEmpty()) return }
+        if (s.noteId != null && text.isNotEmpty()) { sb.append("<a class=\"nref\" href=\"#note-").append(esc(s.noteId)).append("\"><sup>").append(esc(text)).append("</sup></a>"); return }
         val css = runCss(s, scale, ptUnit)
         val safeLink = link?.takeIf { it.startsWith("http://") || it.startsWith("https://") || it.startsWith("mailto:") || it.startsWith("tel:") }
         if (safeLink != null) sb.append("<a href=\"").append(esc(safeLink)).append("\">")
