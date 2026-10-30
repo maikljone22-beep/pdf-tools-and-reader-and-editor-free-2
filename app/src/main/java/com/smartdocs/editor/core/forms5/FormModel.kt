@@ -75,6 +75,8 @@ data class FWidget(
     /** 8.28: text field with the RichText flag, and the style of its /RV / /DS (null when it has none). */
     val richText: Boolean = false,
     val rich: com.smartdocs.editor.core.annot.AnnotStyle.Rich? = null,
+    /** FINAL_CHECK_2 #14: per-character styles of the /RV body (ranges over the value). */
+    val richSpans: List<RichSpan> = emptyList(),
 ) {
     val mouseUp: List<PdfAction> get() = triggers[Trigger.MOUSE_UP].orEmpty()
 }
@@ -296,6 +298,7 @@ object FormModelLoader {
             val fileSelect = f is PDTextField && (f.cosObject.getInt(COSName.FF, 0) and FF_FILE_SELECT) != 0
             val richText = RichFields.isRich(f)
             val rich = if (richText) runCatching { RichFields.styleOf(f.cosObject) }.getOrNull() else null
+            val richSpans = if (richText) runCatching { RichFields.spansOf(f.cosObject, (f as? PDTextField)?.value.orEmpty()) }.getOrDefault(emptyList()) else emptyList()
             fun pic(k: String) = (f as? PDTextField)?.cosObject?.getString(COSName.getPDFName(k))?.takeIf { it.isNotBlank() }
             val picture = pic(com.smartdocs.editor.core.forms.XfaPicture.KEY)
             val editPicture = pic(com.smartdocs.editor.core.forms.XfaPicture.KEY_EDIT)
@@ -360,7 +363,7 @@ object FormModelLoader {
                     action = action, validate = validate,
                     hidden = runCatching { w.isHidden || w.isNoView }.getOrDefault(false),
                     mkRotation = runCatching { AppearanceRotation.rotationOf(w.cosObject) }.getOrDefault(0), pageRotation = FieldRotation.norm(g[4].toInt()),
-                    triggers = trig, fileSelect = fileSelect, xfaClick = f.cosObject.getBoolean(COSName.getPDFName(XfaEventRuntime.KEY_CLICK), false), picture = picture, editPicture = editPicture, validatePicture = validatePicture, richText = richText, rich = rich,
+                    triggers = trig, fileSelect = fileSelect, xfaClick = f.cosObject.getBoolean(COSName.getPDFName(XfaEventRuntime.KEY_CLICK), false), picture = picture, editPicture = editPicture, validatePicture = validatePicture, richText = richText, rich = rich, richSpans = richSpans,
                 )
             }
         }

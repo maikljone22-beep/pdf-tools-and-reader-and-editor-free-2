@@ -35,6 +35,7 @@ object FormValueWriter {
     suspend fun write(
         context: Context, src: File, values: Map<String, String>, display: Map<String, String>, images: Map<String, File>,
         out: File, password: String?, dropXfa: Boolean, rich: Map<String, com.smartdocs.editor.core.annot.AnnotStyle.Rich> = emptyMap(),
+        richSpans: Map<String, List<RichSpan>> = emptyMap(),
     ) = withContext(Dispatchers.IO) {
         val mid = if (images.isEmpty()) out else File(out.parentFile, ".${out.name}.v.pdf")
         // rotated widgets first get an appearance that matches /MK /R, so the new value is drawn in the right direction
@@ -42,7 +43,7 @@ object FormValueWriter {
         val rot = File(out.parentFile, ".${out.name}.r.pdf")
         val source = if (names.isNotEmpty() && runCatching { AppearanceRotation.prepare(src, password, names, rot) }.getOrDefault(false)) rot else src
         try {
-            if (values.isNotEmpty() || display.isNotEmpty() || dropXfa) FormOps.fillFields(source, values, mid, password, context, display, dropXfa, rich)
+            if (values.isNotEmpty() || display.isNotEmpty() || dropXfa) FormOps.fillFields(source, values, mid, password, context, display, dropXfa, rich, richSpans)
             else source.copyTo(mid, overwrite = true)
         } finally { rot.delete() }
         if (images.isEmpty()) return@withContext
@@ -65,6 +66,7 @@ object FormValueWriter {
     suspend fun writeSigned(
         context: Context?, src: File, values: Map<String, String>, display: Map<String, String>, images: Map<String, File>,
         hidden: Map<String, Boolean>, out: File, password: String?, rich: Map<String, com.smartdocs.editor.core.annot.AnnotStyle.Rich> = emptyMap(),
+        richSpans: Map<String, List<RichSpan>> = emptyMap(),
     ) = withContext(Dispatchers.IO) {
         PdfOps.loadRaw(src, password).use { doc ->
             com.smartdocs.editor.core.pdf.SignedSave.requireFormFillAllowed(doc)
@@ -74,7 +76,7 @@ object FormValueWriter {
             val v = values.filterKeys { it !in locked }; val dsp = display.filterKeys { it !in locked }; val img = images.filterKeys { it !in locked }
             val names = v.keys + dsp.keys
             if (names.isNotEmpty()) runCatching { AppearanceRotation.fixIn(doc, names, fixup = false) }
-            if (v.isNotEmpty() || dsp.isNotEmpty()) FormOps.fillIn(doc, v, context, dsp, dropXfa = false, fixup = false, rich = rich)
+            if (v.isNotEmpty() || dsp.isNotEmpty()) FormOps.fillIn(doc, v, context, dsp, dropXfa = false, fixup = false, rich = rich, richSpans = richSpans)
             img.forEach { (name, file) -> runCatching { setImage(doc, name, file) } }
             FieldVisibility.apply(doc, hidden)
             val barcodes = runCatching { com.smartdocs.editor.core.formsx.FxBarcodes.refreshAll(doc) }.getOrDefault(0)

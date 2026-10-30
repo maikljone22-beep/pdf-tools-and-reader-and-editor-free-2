@@ -379,6 +379,8 @@ class FormFillState internal constructor(val reader: ReaderState) {
     /** Set a raw value. Successive keystrokes in one field ([typing]) form a single undo step. */
     fun setValue(name: String, v: String, typing: Boolean = false) {
         if (value(name) == v && name !in computed) return
+        // FINAL_CHECK_2 #14: per-character styles follow the edit
+        spansOf(name).takeIf { it.isNotEmpty() }?.let { richSpans[name] = com.smartdocs.editor.core.forms5.RichSpans.adjust(it, value(name), v) }
         if (!typing || typingField != name) snapshot(fieldLabel(name), pageOf(name))
         typingField = if (typing) name else null
         if (v == model.values[name].orEmpty() && !isCalculated(name)) edits.remove(name) else edits[name] = v
@@ -694,9 +696,24 @@ class FormFillState internal constructor(val reader: ReaderState) {
     val richStyles = mutableStateMapOf<String, com.smartdocs.editor.core.annot.AnnotStyle.Rich>()
     fun richStyle(w: FWidget): com.smartdocs.editor.core.annot.AnnotStyle.Rich? = richStyles[w.name] ?: w.rich
 
-    /** Toggle 'b'old, 'i'talic or 'u'nderline of a rich-text field; the field is then saved with its value. */
-    fun toggleRich(w: FWidget, what: Char) {
+    /** FINAL_CHECK_2 #14: per-character styles of rich-text fields (ranges over the value), written into /RV on save. */
+    val richSpans = mutableStateMapOf<String, List<com.smartdocs.editor.core.forms5.RichSpan>>()
+    fun spansOf(name: String): List<com.smartdocs.editor.core.forms5.RichSpan> = richSpans[name] ?: model.widgets.firstOrNull { it.name == name }?.richSpans.orEmpty()
+
+    /**
+     * Toggle 'b'old, 'i'talic or 'u'nderline of a rich-text field; the field is then saved with its value. With a
+     * non-empty selection [start, end) only those characters change (a span); else the whole field.
+     */
+    fun toggleRich(w: FWidget, what: Char, start: Int = -1, end: Int = -1) {
         val base = richStyle(w) ?: com.smartdocs.editor.core.annot.AnnotStyle.Rich(if (w.fontSize > 0f) w.fontSize else 12f, w.textColor, false, false)
+        if (start >= 0 && end >= 0 && start != end) {
+            val v = value(w.name)
+            richSpans[w.name] = com.smartdocs.editor.core.forms5.RichSpans.toggle(spansOf(w.name), base, start, end, what, v.length)
+            if (richStyles[w.name] == null) richStyles[w.name] = base
+            edits[w.name] = v
+            markDirty()
+            return
+        }
         richStyles[w.name] = when (what) { 'b' -> base.copy(bold = !base.bold); 'i' -> base.copy(italic = !base.italic); else -> base.copy(underline = !base.underline) }
         edits[w.name] = value(w.name)
         markDirty()
@@ -749,11 +766,11 @@ class FormFillState internal constructor(val reader: ReaderState) {
         val (values, display) = pending()
         // audit V-01: a full rewrite would invalidate the signatures of a signed form; it is appended instead
         if (com.smartdocs.editor.core.pdf.SignedSave.isSigned(src, password)) {
-            FormValueWriter.writeSigned(reader.context, src, values, display, images.toMap(), hiddenOverride.toMap(), out, password, rich = richStyles.toMap())
+            FormValueWriter.writeSigned(reader.context, src, values, display, images.toMap(), hiddenOverride.toMap(), out, password, rich = richStyles.toMap(), richSpans = richSpans.toMap())
             writeScriptChangesSigned(src, out, password, offerCopy)
             return
         }
-        FormValueWriter.write(reader.context, src, values, display, images.toMap(), out, password, dropXfa = model.xfa == XfaSupport.Kind.STATIC, rich = richStyles.toMap())
+        FormValueWriter.write(reader.context, src, values, display, images.toMap(), out, password, dropXfa = model.xfa == XfaSupport.Kind.STATIC, rich = richStyles.toMap(), richSpans = richSpans.toMap())
         // field visibility changed by Hide actions + barcode fields re-encoded from the new values
         FieldVisibility.applyTo(out, password, hiddenOverride.toMap())
         // 8.84: addScript / setLock / addField of the form's scripts

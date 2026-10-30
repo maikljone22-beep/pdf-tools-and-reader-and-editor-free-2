@@ -32,14 +32,22 @@ object RichFields {
         return AnnotStyle.readRich(tmp)
     }
 
-    /** Write /RV and /DS of the rich fields among [values]; returns how many were written. */
-    fun updateIn(acro: PDAcroForm, values: Map<String, String>, styles: Map<String, AnnotStyle.Rich>): Int {
+    /** The per-character spans of a rich field's /RV, when its text is the field's [value] (else none). */
+    fun spansOf(cos: COSDictionary, value: String): List<RichSpan> {
+        val rv = cos.getString(RV) ?: return emptyList()
+        val (t, spans) = RichSpans.parse(rv)
+        return if (t == value) spans else emptyList()
+    }
+
+    /** Write /RV and /DS of the rich fields among [values] ([spans]: FINAL_CHECK_2 #14 per-character styles); returns how many were written. */
+    fun updateIn(acro: PDAcroForm, values: Map<String, String>, styles: Map<String, AnnotStyle.Rich>, spans: Map<String, List<RichSpan>> = emptyMap()): Int {
         var n = 0
         values.forEach { (name, v) ->
             val f = acro.getField(name) ?: return@forEach
             if (!isRich(f)) return@forEach
-            val style = styles[name] ?: styleOf(f.cosObject) ?: return@forEach
-            f.cosObject.setString(RV, AnnotStyle.richBody(v, style, ArabicShaper.isArabic(v)))
+            val style = styles[name] ?: styleOf(f.cosObject) ?: (if (spans[name].isNullOrEmpty()) return@forEach else AnnotStyle.Rich(12f, 0, false, false))
+            val sp = spans[name].orEmpty()
+            f.cosObject.setString(RV, if (sp.isEmpty()) AnnotStyle.richBody(v, style, ArabicShaper.isArabic(v)) else RichSpans.body(v, style, sp, ArabicShaper.isArabic(v)))
             f.cosObject.setString(DS, AnnotStyle.defaultStyle(style))
             n++
         }
