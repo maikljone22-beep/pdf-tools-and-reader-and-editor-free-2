@@ -62,7 +62,12 @@ class PageContent(
     val fills: List<Fill> = emptyList(),
     /** The page is one an older OCR build rebuilt (page picture + visible re-typed OCR words, [OcrText.ourVisibleLayer]). */
     val rebuiltByOcr: Boolean = false,
+    /** Markup annotations with a note (FINAL_CHECK_2 #5: DOCX export with comments). */
+    val comments: List<PageComment> = emptyList(),
 )
+
+/** A PDF comment (markup annotation with text) in page frame coordinates (x right, y down). [kind]: the annotation subtype. */
+data class PageComment(val rect: Rect, val author: String, val date: String, val text: String, val kind: String)
 
 data class Rect(val x0: Float, val y0: Float, val x1: Float, val y1: Float) {
     val w get() = x1 - x0
@@ -163,6 +168,8 @@ class PageLayout(
     val rebuiltByOcr: Boolean = false,
     /** Recognised (OCR) characters kept on the page. */
     val ocrChars: Int = 0,
+    /** The page's comments ([PageContent.comments]). */
+    val comments: List<PageComment> = emptyList(),
 ) {
     /** Strong RTL / LTR letter counts of the page text. */
     fun strongCounts(): IntArray {

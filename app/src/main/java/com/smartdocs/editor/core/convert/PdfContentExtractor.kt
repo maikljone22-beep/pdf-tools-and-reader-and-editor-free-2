@@ -62,7 +62,32 @@ class PdfContentExtractor(private val doc: PDDocument) {
         // invisible OCR words lying on real text are duplicates of it (an OCR layer over a digital page)
         val glyphs = OcrText.dropVertical(OcrText.dropDuplicates(frame.glyphs(raw)))
         val gfx = runCatching { GraphicsCollector(page, frame, withImages, glyphs).also { it.processPage(page) } }.getOrNull()
-        return PageContent(index, frame.width, frame.height, glyphs, gfx?.segments.orEmpty(), gfx?.images.orEmpty(), gfx?.fills.orEmpty(), rebuilt)
+        return PageContent(index, frame.width, frame.height, glyphs, gfx?.segments.orEmpty(), gfx?.images.orEmpty(), gfx?.fills.orEmpty(), rebuilt,
+            comments = runCatching { comments(page, frame) }.getOrDefault(emptyList()))
+    }
+
+    /** The page's markup annotations that carry a note (replies and pop-ups skipped), in frame coordinates. */
+    private fun comments(page: PDPage, frame: PageFrame): List<PageComment> {
+        val kinds = setOf("Text", "Highlight", "Underline", "StrikeOut", "Squiggly", "FreeText", "Square", "Circle", "Ink", "Line", "Polygon", "PolyLine", "Stamp", "Caret", "FileAttachment")
+        val llx = page.cropBox.lowerLeftX; val lly = page.cropBox.lowerLeftY
+        val out = ArrayList<PageComment>()
+        for (an in page.annotations) {
+            val cos = an.cosObject
+            val sub = cos.getNameAsString(COSName.SUBTYPE) ?: continue
+            if (sub !in kinds) continue
+            if (cos.getDictionaryObject(COSName.getPDFName("IRT")) != null) continue
+            val text = (an.contents ?: "").trim()
+            if (text.isEmpty()) continue
+            val r = an.rectangle ?: continue
+            val xs = FloatArray(4); val ys = FloatArray(4)
+            listOf(r.lowerLeftX to r.lowerLeftY, r.upperRightX to r.lowerLeftY, r.upperRightX to r.upperRightY, r.lowerLeftX to r.upperRightY).forEachIndexed { i, (x, y) ->
+                val m = frame.map(x - llx, y - lly); xs[i] = m[0]; ys[i] = m[1]
+            }
+            val author = cos.getString(COSName.T) ?: ""
+            val date = runCatching { cos.getDate(COSName.M)?.let { c -> java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US).apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }.format(c.time) } }.getOrNull() ?: ""
+            out += PageComment(Rect(xs.min(), ys.min(), xs.max(), ys.max()), author, date, text, sub)
+        }
+        return out
     }
 
     private class FontInfo(val bold: Boolean, val italic: Boolean, val family: String)

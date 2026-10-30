@@ -40,6 +40,8 @@ data class ConvertOptions(
     /** DOCX: character spacing added to every run (points) and pictures anchored at their place. */
     val docxCharSpacing: Float = 0f,
     val docxAnchorImages: Boolean = false,
+    /** DOCX: PDF comments (markup annotations with a note) become Word comments on the text they sit on (FINAL_CHECK_2 #5). */
+    val docxComments: Boolean = true,
     /** Tables from text alignment too (else lined tables only). */
     val streamTables: Boolean = true,
 )
@@ -88,7 +90,7 @@ object ConvertPipeline {
         progress(0, total)
         when (opts.format) {
             TargetFormat.DOCX -> DocxBuilder(out, title, furniture, opts.docxFlowing, exact = opts.docxExact, dropFurniture = opts.dropFurniture,
-                charSpacing = opts.docxCharSpacing, anchorImages = opts.docxAnchorImages).use { b ->
+                charSpacing = opts.docxCharSpacing, anchorImages = opts.docxAnchorImages, comments = opts.docxComments).use { b ->
                 pages.forEachIndexed { k, i -> b.addPage(layout(i, opts.includeImages)); step(k + 1) }
                 b.finish()
             }

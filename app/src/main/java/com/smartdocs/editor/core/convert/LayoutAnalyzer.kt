@@ -52,7 +52,7 @@ object LayoutAnalyzer {
         val rtlPage = lines.sumOf { if (it.rtl) it.text.length else 0 } * 2 > lines.sumOf { it.text.length }
         val ordered = ReadingOrder.order(blocks, rtlPage)
         return PageLayout(page.index, page.width, page.height, ordered, body, header, footer, hasFills = fills.isNotEmpty(),
-            rebuiltByOcr = page.rebuiltByOcr, ocrChars = lines.sumOf { l -> l.words.sumOf { if (it.ocr) it.text.length else 0 } })
+            rebuiltByOcr = page.rebuiltByOcr, ocrChars = lines.sumOf { l -> l.words.sumOf { if (it.ocr) it.text.length else 0 } }, comments = page.comments)
     }
 
     /**
