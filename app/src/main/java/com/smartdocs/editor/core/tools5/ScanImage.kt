@@ -27,7 +27,7 @@ fun ScanKind.defaultFilter(): ScanFilter = when (this) {
     ScanKind.RECEIPT -> ScanFilter.RECEIPT
     ScanKind.ID_CARD, ScanKind.BUSINESS_CARD -> ScanFilter.AUTO
     // text pages: white paper, darker sharper text, pictures kept in colour
-    ScanKind.DOCUMENT, ScanKind.BOOK, ScanKind.BATCH -> ScanFilter.ENHANCE
+    ScanKind.DOCUMENT, ScanKind.BOOK, ScanKind.BATCH, ScanKind.FORM -> ScanFilter.ENHANCE
     else -> ScanFilter.AUTO
 }
 

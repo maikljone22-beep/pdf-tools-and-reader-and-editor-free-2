@@ -63,7 +63,7 @@ fun ScanKind.label(): String = stringResource(
     when (this) {
         ScanKind.DOCUMENT -> R.string.t5_kind_document; ScanKind.ID_CARD -> R.string.t5_kind_id; ScanKind.BUSINESS_CARD -> R.string.t5_kind_card
         ScanKind.RECEIPT -> R.string.t5_kind_receipt; ScanKind.WHITEBOARD -> R.string.t5_kind_board; ScanKind.BOOK -> R.string.t5_kind_book
-        ScanKind.BATCH -> R.string.t5_kind_batch
+        ScanKind.BATCH -> R.string.t5_kind_batch; ScanKind.FORM -> R.string.t5_kind_form
     },
 )
 
@@ -148,12 +148,12 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
     )
 
     val savingMsg = stringResource(R.string.t5_scan_saving)
-    val prefixes = mapOf(ScanKind.RECEIPT to stringResource(R.string.t5_prefix_receipt), ScanKind.BUSINESS_CARD to stringResource(R.string.t5_prefix_card), ScanKind.ID_CARD to stringResource(R.string.t5_prefix_id), ScanKind.WHITEBOARD to stringResource(R.string.t5_prefix_board))
+    val prefixes = mapOf(ScanKind.RECEIPT to stringResource(R.string.t5_prefix_receipt), ScanKind.BUSINESS_CARD to stringResource(R.string.t5_prefix_card), ScanKind.ID_CARD to stringResource(R.string.t5_prefix_id), ScanKind.WHITEBOARD to stringResource(R.string.t5_prefix_board), ScanKind.FORM to stringResource(R.string.t5_prefix_form))
     fun save() {
         val all = groups.filter { it.isNotEmpty() }
         if (all.isEmpty()) return
         savePrefs()
-        val needText = autoOcr || kind == ScanKind.BUSINESS_CARD || kind == ScanKind.RECEIPT || smartName
+        val needText = autoOcr || kind == ScanKind.BUSINESS_CARD || kind == ScanKind.RECEIPT || kind == ScanKind.FORM || smartName   // FINAL_CHECK_2 #16: a form needs its text for field recognition
         val k = kind; val p = paper; val rf = rightFirst; val typed = name.trim()
         val rb = removeBlank; val tt = title; val au = author; val pf = portfolio; val kp = keepProject; val pa = pdfa
         prefs.edit().putBoolean("keep_project", kp).putBoolean("pdfa", pa).apply()
@@ -163,7 +163,7 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
         job.launch(savingMsg) {
             val engine = if (needText) OcrEngine(ctx.applicationContext) else null
             try {
-                val made = ArrayList<File>(); var lastText = ""
+                val made = ArrayList<File>(); var lastText = ""; var fieldsMade = 0
                 docs.forEachIndexed { gi, g ->
                     val today = t5Today()
                     val tmpOut = app.documents.newTemp("t5scan_out", "pdf")
@@ -186,6 +186,14 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                         PdfA.convert(ctx, tmpOut, null, a, PdfAOptions(level = PdfALevel.A2B), title = tt.ifBlank { null })
                         withContext(Dispatchers.IO) { a.copyTo(tmpOut, true); a.delete() }
                     }
+                    // FINAL_CHECK_2 #16 scan a paper form: the recognised lines, boxes and labels become fillable fields
+                    if (k == ScanKind.FORM) fieldsMade += withContext(Dispatchers.IO) {
+                        runCatching {
+                            val ff = app.documents.newTemp("t5scan_form", "pdf")
+                            val n = com.smartdocs.editor.core.pdf.PdfOps.loadRaw(tmpOut, null).use { d -> com.smartdocs.editor.core.formsx.FieldRecognition.recognizeAll(d).also { if (it > 0) d.save(ff) } }
+                            if (n > 0) { ff.copyTo(tmpOut, true) }; ff.delete(); n
+                        }.getOrDefault(0)
+                    }
                     val out = app.documents.uniqueFile(app.documents.scansDir, base)
                     withContext(Dispatchers.IO) { if (!tmpOut.renameTo(out)) { tmpOut.copyTo(out, true); tmpOut.delete() } }
                     runCatching { app.documents.touchRecent(out, r.pages) }
@@ -198,6 +206,7 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                     made.size == 1 -> result = made.first()
                     else -> results = made
                 }
+                if (k == ScanKind.FORM) info = if (fieldsMade > 0) ctx.getString(R.string.t5_form_fields_made, fieldsMade) else ctx.getString(R.string.t5_form_fields_none)
                 if (k == ScanKind.BUSINESS_CARD || k == ScanKind.RECEIPT) results = made
                 // Foxit "create a portfolio for all results"
                 if (pf && made.size > 1) {
@@ -322,7 +331,7 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
 private fun kindHint(k: ScanKind): Int = when (k) {
     ScanKind.DOCUMENT -> R.string.t5_kind_document_hint; ScanKind.ID_CARD -> R.string.t5_kind_id_hint; ScanKind.BUSINESS_CARD -> R.string.t5_kind_card_hint
     ScanKind.RECEIPT -> R.string.t5_kind_receipt_hint; ScanKind.WHITEBOARD -> R.string.t5_kind_board_hint; ScanKind.BOOK -> R.string.t5_kind_book_hint
-    ScanKind.BATCH -> R.string.t5_kind_batch_hint
+    ScanKind.BATCH -> R.string.t5_kind_batch_hint; ScanKind.FORM -> R.string.t5_kind_form_hint
 }
 
 /** Language auto-detection on the first page of a group. */

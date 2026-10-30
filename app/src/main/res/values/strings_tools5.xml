@@ -408,4 +408,9 @@
     <string name="t5_watch_pick_recipe">اختر الوصفة لهذا المجلد</string>
     <string name="t5_watch_recursive">يشمل المجلدات الفرعية</string>
     <string name="t5_watch_handled">%1$d ملف عولج</string>
+    <string name="t5_kind_form">نموذج ورقي</string>
+    <string name="t5_kind_form_hint">يُمسح النموذج ثم تُحوَّل الخطوط والمربعات والعناوين تلقائياً إلى حقول قابلة للتعبئة</string>
+    <string name="t5_prefix_form">نموذج</string>
+    <string name="t5_form_fields_made">تم التعرف على %1$d حقل قابل للتعبئة. افتح الملف واملأه، أو عدّل الحقول من مصمم النماذج.</string>
+    <string name="t5_form_fields_none">لم يُعثر على حقول في النموذج. افتح الملف في مصمم النماذج لإضافة الحقول يدوياً.</string>
 </resources>

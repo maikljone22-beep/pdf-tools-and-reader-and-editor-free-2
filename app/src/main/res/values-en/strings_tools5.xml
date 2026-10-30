@@ -408,4 +408,9 @@
     <string name="t5_watch_pick_recipe">Recipe for this folder</string>
     <string name="t5_watch_recursive">Include sub-folders</string>
     <string name="t5_watch_handled">%1$d files handled</string>
+    <string name="t5_kind_form">Paper form</string>
+    <string name="t5_kind_form_hint">The form is scanned, then its lines, boxes and labels become fillable fields automatically</string>
+    <string name="t5_prefix_form">Form</string>
+    <string name="t5_form_fields_made">%1$d fillable fields recognised. Open the file to fill it, or adjust the fields in the form designer.</string>
+    <string name="t5_form_fields_none">No fields were found on the form. Open it in the form designer to add fields by hand.</string>
 </resources>
