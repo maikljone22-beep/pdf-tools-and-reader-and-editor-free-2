@@ -250,7 +250,16 @@ object XfaTemplateParser {
     }
 
     private fun scripts(e: Element): XScripts {
-        fun js(s: Element?): String? = s?.takeIf { it.attr("contentType")?.contains("javascript", true) == true }?.textContent?.takeIf { it.isNotBlank() }
+        // JavaScript as is; FormCalc (the XFA default when contentType is absent) translated to JavaScript, else left out
+        fun js(s: Element?): String? {
+            val src = s?.textContent?.takeIf { it.isNotBlank() } ?: return null
+            val ct = s.attr("contentType")
+            return when {
+                ct?.contains("javascript", true) == true -> src
+                ct == null || ct.contains("formcalc", true) -> XfaFormCalc.toJs(src)
+                else -> null
+            }
+        }
         var init: String? = null
         val ready = ArrayList<String>()
         val events = LinkedHashMap<String, MutableList<String>>()
