@@ -154,6 +154,12 @@ fun CombineTab(initial: List<File>, job: T5Job, attachSrc: Boolean, srcDesc: Str
             }
         }
     }
+    // FINAL_CHECK_2 #1: page-level view (expand files into pages, move pages between files, drop pages)
+    var pageView by remember { mutableStateOf(false) }
+    if (entries.any { !it.attach && ToPdf.kindOf(it.file.name) == SourceKind.PDF }) OutlinedButton(onClick = { pageView = true }, Modifier.fillMaxWidth()) {
+        Icon(Icons.Default.GridView, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.cmb_page_view))
+    }
+    if (pageView) CombinePageView(entries.toList(), onDismiss = { pageView = false }) { folded -> pageView = false; entries.clear(); entries.addAll(folded) }
     entries.forEachIndexed { i, e ->
         T5Card {
             Row(verticalAlignment = Alignment.CenterVertically) {
