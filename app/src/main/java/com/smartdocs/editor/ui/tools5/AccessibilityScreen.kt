@@ -105,6 +105,7 @@ fun AccessibilityScreen(nav: NavHostController, uri: String?) {
     var tags by remember { mutableStateOf(false) }
     var report by remember { mutableStateOf<AccessAutoTag.Report?>(null) }
     var isUa by remember { mutableStateOf(false) }
+    var pageRange by remember { mutableStateOf("") }   // FINAL_CHECK_2 #20: checker page range ("" = all)
     val job = rememberT5Job()
     val pick = rememberPdfPicker {
         val f = it.firstOrNull()
@@ -131,9 +132,10 @@ fun AccessibilityScreen(nav: NavHostController, uri: String?) {
         try {
             val (res, figs) = io {
                 com.smartdocs.editor.core.pdf.PdfOps.loadRaw(f, pw).use { d ->
-                    val facts = AccessInspect.facts(d, PdfInspect.inspect(d))
+                    val range = pageRange.trim().takeIf { it.isNotEmpty() }?.let { com.smartdocs.editor.core.view5.PrintLayout.parseRange(it, d.numberOfPages).toSet() }?.takeIf { it.isNotEmpty() }
+                    val facts = AccessInspect.facts(d, PdfInspect.inspect(d), pages = range)
                     isUa = AccessUa.isUa(d)
-                    AccessRules.evaluate(facts) to AccessInspect.figures(d).map { it.page to (it.alt ?: "") }
+                    AccessRules.evaluate(facts) to AccessInspect.figures(d).filter { range == null || it.page in range || it.page < 0 }.map { it.page to (it.alt ?: "") }
                 }
             }
             results = res; figures = figs; wrongPw = false
@@ -141,6 +143,7 @@ fun AccessibilityScreen(nav: NavHostController, uri: String?) {
     }
     // re-checked when the password changes (typed in the prompt)
     LaunchedEffect(file, password) { if (!pwCancelled) file?.let { check(it) } }
+    var rangeDraft by remember { mutableStateOf("") }
     /** The Fix of rule [id]: a direct structure fix on a copy, the fix dialog, the tool that fixes it, or what to check by hand. */
     fun fixRule(id: String) {
         val f = file ?: return
@@ -198,6 +201,11 @@ fun AccessibilityScreen(nav: NavHostController, uri: String?) {
                     val cur = groups ?: emptySet(); val next = if (g in cur) cur - g else cur + g
                     groups = next.ifEmpty { null }
                 }, label = { Text(groupLabels[g].orEmpty()) }) }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(rangeDraft, { rangeDraft = it }, Modifier.weight(1f), singleLine = true, label = { Text(stringResource(R.string.t5_acc_page_range)) },
+                    placeholder = { Text("1-5, 8") })
+                OutlinedButton(onClick = { pageRange = rangeDraft; file?.let { check(it) } }, enabled = !job.running) { Text(stringResource(R.string.t5_acc_check_range)) }
             }
             if (isUa) Text(stringResource(R.string.pc_acc_is_ua), style = MaterialTheme.typography.bodySmall, color = T5Green)
             val counts = AccessRules.counts(shown)

@@ -40,4 +40,15 @@
     <string name="pa_ua_embedded_names">مرفقات بلا اسم ملف (F/UF)</string>
     <string name="pa_ua_ok">اجتاز المستند كل الفحوص الآلية</string>
     <string name="pa_ua_manual">ترتيب القراءة والتباين ومعنى النص البديل تحتاج فحصًا بشريًا</string>
+    <string name="pa_tags_content">المحتوى</string>
+    <string name="pa_content_mark">تعليم محتوى الصفحة</string>
+    <string name="pa_content_hint">عناصر المحتوى المعلَّمة في الصفحة بترتيب الرسم. إن كانت القائمة فارغة أو ناقصة، اضغط «تعليم محتوى الصفحة» ليحصل النص والصور غير المعلَّمة على معرّفات MCID، ثم اختر عناصر وأنشئ وسماً منها.</string>
+    <string name="pa_content_empty">لا توجد عناصر معلَّمة في هذه الصفحة.</string>
+    <string name="pa_content_artifact">زخرفة (Artifact)</string>
+    <string name="pa_content_untagged">غير موسوم</string>
+    <string name="pa_content_new_tag">إنشاء وسم من %1$d عنصر محدد</string>
+    <string name="pa_content_create">إنشاء الوسم</string>
+    <string name="pc_tags_page_n">صفحة (من %1$d)</string>
+    <string name="t5_acc_page_range">نطاق الصفحات للفحص (فارغ = الكل)</string>
+    <string name="t5_acc_check_range">فحص</string>
 </resources>

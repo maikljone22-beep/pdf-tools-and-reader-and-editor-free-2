@@ -85,7 +85,17 @@ object AccessAutoTag {
     private val pathOps = setOf("m", "l", "c", "v", "y", "h", "re", "S", "s", "f", "F", "f*", "B", "B*", "b", "b*", "n", "sh", "W", "W*")
 
     /** Rewrites one page's content; returns the records (MCID order) and the number of artifact runs. */
-    private fun rewrite(doc: PDDocument, page: PDPage, dropOldMcids: Boolean): Pair<List<Rec>, Int>? {
+    /**
+     * FINAL_CHECK_2 #20 Content panel: give a page's unmarked text runs and pictures MCIDs (numbered after the ones it
+     * already has) without touching its structure, so they can be tagged from the panel. False when nothing changed.
+     */
+    fun markContent(doc: PDDocument, page: PDPage): Boolean {
+        val existing = runCatching { PDFStreamParser(page).let { it.parse(); it.tokens }.filterIsInstance<COSDictionary>().mapNotNull { (it.getDictionaryObject(COSName.getPDFName("MCID")) as? com.tom_roush.pdfbox.cos.COSNumber)?.intValue() }.maxOrNull() }.getOrNull() ?: -1
+        val r = rewrite(doc, page, dropOldMcids = false, startMcid = existing + 1) ?: return false
+        return r.first.isNotEmpty()
+    }
+
+    private fun rewrite(doc: PDDocument, page: PDPage, dropOldMcids: Boolean, startMcid: Int = 0): Pair<List<Rec>, Int>? {
         val tokens: List<Any> = PDFStreamParser(page).let { it.parse(); it.tokens }
         if (tokens.isEmpty()) return null
         val res = page.resources
@@ -94,7 +104,7 @@ object AccessAutoTag {
         var depth = 0; var inText = false; var artifact = false; var artifacts = 0
         val skip = ArrayDeque<Boolean>()
         val pending = ArrayList<Any>()
-        fun bdc(tag: String) { out.add(COSName.getPDFName(tag)); out.add(COSDictionary().apply { setInt(COSName.getPDFName("MCID"), recs.size) }); out.add(Operator.getOperator("BDC")) }
+        fun bdc(tag: String) { out.add(COSName.getPDFName(tag)); out.add(COSDictionary().apply { setInt(COSName.getPDFName("MCID"), startMcid + recs.size) }); out.add(Operator.getOperator("BDC")) }
         fun emc() = out.add(Operator.getOperator("EMC"))
         fun endArtifact() { if (artifact) { emc(); artifact = false } }
         for (t in tokens) {
