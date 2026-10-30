@@ -108,6 +108,34 @@ fun PortfolioEditor(nav: NavHostController, source: File, onClose: () -> Unit) {
         val f = folder.orEmpty()
         change { w -> withContext(Dispatchers.IO) { val atts = fs.map { Attachment(it.name, Embed.mimeOf(it.name), it.readBytes()) }; PortfolioOps.edit(w, null, w) { PortfolioEdit.add(it, atts, f) } } }
     }
+    // FINAL_CHECK_2 Low (B #34): parts from the scanner and from the clipboard
+    val scanParts = com.smartdocs.editor.ui.gaps6.rememberCameraPages { files ->
+        val f = folder.orEmpty()
+        change { w -> withContext(Dispatchers.IO) {
+            val pdf = File(app.documents.tempDir, "pf_scan_${System.nanoTime()}.pdf")
+            com.smartdocs.editor.core.pdf.PdfOps.imagesToPdf(files, pdf)
+            PortfolioOps.edit(w, null, w) { PortfolioEdit.add(it, listOf(Attachment("Scan_" + java.text.SimpleDateFormat("yyyyMMdd_HHmm", java.util.Locale.US).format(java.util.Date()) + ".pdf", "application/pdf", pdf.readBytes())), f) }
+            pdf.delete()
+        } }
+    }
+    val clipEmptyMsg = stringResource(R.string.pc_clipboard_empty)
+    fun addClipboard() {
+        val cm = ctx.getSystemService(android.content.ClipboardManager::class.java)
+        val item = cm?.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)
+        val text = item?.coerceToText(ctx)?.toString()?.takeIf { it.isNotBlank() }
+        val uri = item?.uri
+        val f = folder.orEmpty()
+        when {
+            uri != null -> change { w -> withContext(Dispatchers.IO) {
+                val local = app.documents.localFile(uri)
+                PortfolioOps.edit(w, null, w) { PortfolioEdit.add(it, listOf(Attachment(local.name, Embed.mimeOf(local.name), local.readBytes())), f) }
+            } }
+            text != null -> change { w -> withContext(Dispatchers.IO) {
+                PortfolioOps.edit(w, null, w) { PortfolioEdit.add(it, listOf(Attachment("Clipboard_" + java.text.SimpleDateFormat("yyyyMMdd_HHmm", java.util.Locale.US).format(java.util.Date()) + ".txt", "text/plain", text.toByteArray())), f) }
+            } }
+            else -> error = clipEmptyMsg
+        }
+    }
     val addFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { tree ->
         if (tree != null) change { w ->
             // the picked folder (and its sub-folders, 4 levels) becomes portfolio folders
@@ -280,8 +308,31 @@ fun PortfolioEditor(nav: NavHostController, source: File, onClose: () -> Unit) {
             OutlinedButton(onClick = addFiles, Modifier.weight(1f)) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(4.dp)); Text(stringResource(R.string.t5_add_files)) }
             OutlinedButton(onClick = { addFolder.launch(null) }, Modifier.weight(1f)) { Icon(Icons.Default.CreateNewFolder, null); Spacer(Modifier.width(4.dp)); Text(stringResource(R.string.pc_add_folder)) }
         }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = scanParts, Modifier.weight(1f)) { Icon(Icons.Default.DocumentScanner, null); Spacer(Modifier.width(4.dp)); Text(stringResource(R.string.pc_pf_add_scan)) }
+            OutlinedButton(onClick = { addClipboard() }, Modifier.weight(1f)) { Icon(Icons.Default.ContentPaste, null); Spacer(Modifier.width(4.dp)); Text(stringResource(R.string.pc_pf_add_clipboard)) }
+        }
         OutlinedButton(onClick = { change { w -> PortfolioOps.regenerateCover(ctx, w, null, w, source.nameWithoutExtension, folderLabel) } }, Modifier.fillMaxWidth()) {
             Icon(Icons.Default.ListAlt, null); Spacer(Modifier.width(4.dp)); Text(stringResource(R.string.pc_pf_regen_cover))
+        }
+        // FINAL_CHECK_2 Low (B #26 / #33): convert every part to PDF; print all parts (or the selected one) in order
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = { change { w -> PortfolioOps.convertAllParts(ctx, w, null, w, app.documents.tempDir) } }, Modifier.weight(1f), enabled = inf.items.any { !it.name.endsWith(".pdf", true) }) {
+                Icon(Icons.Default.PictureAsPdf, null); Spacer(Modifier.width(4.dp)); Text(stringResource(R.string.pc_pf_convert_all))
+            }
+            OutlinedButton(onClick = {
+                val items = (selected?.let { listOf(it) } ?: inf.items).filter { it.name.endsWith(".pdf", true) || it.mime == "application/pdf" }
+                scope.launch {
+                    val files = items.mapNotNull { runCatching { extract(it) }.getOrNull() }
+                    if (files.isEmpty()) return@launch
+                    val merged = if (files.size == 1) files.first() else File(app.documents.tempDir, "pf_print_${System.nanoTime()}.pdf").also { out ->
+                        runCatching { com.smartdocs.editor.core.pdf.PdfOps.merge(files, out) }.onFailure { error = it.message }
+                    }
+                    if (merged.isFile) runCatching { com.smartdocs.editor.core.util.PdfPrint.print(ctx, merged, source.nameWithoutExtension) }.onFailure { error = it.message }
+                }
+            }, Modifier.weight(1f), enabled = inf.items.isNotEmpty()) {
+                Icon(Icons.Default.Print, null); Spacer(Modifier.width(4.dp)); Text(stringResource(if (selected != null) R.string.pc_pf_print_selected else R.string.pc_pf_print_all))
+            }
         }
         PrimaryButton(stringResource(R.string.pc_pf_save), enabled = dirty && !job.running, icon = Icons.Default.Save) {
             val w = work ?: return@PrimaryButton

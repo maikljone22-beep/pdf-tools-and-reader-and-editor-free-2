@@ -46,6 +46,23 @@ fun CombineTab(initial: List<File>, job: T5Job, attachSrc: Boolean, srcDesc: Str
         fs.filter { f -> entries.none { it.file.absolutePath == f.absolutePath } }.forEach { entries += CombineEntry(it, title(it)) }
     }
     var busy by remember { mutableStateOf(false) }
+    // FINAL_CHECK_2 Low (B #23): a picked portfolio is unpacked — its parts become the inputs (PDFs and convertible files)
+    LaunchedEffect(entries.size) {
+        val pf = entries.filter { ToPdf.kindOf(it.file.name) == SourceKind.PDF && runCatching { com.smartdocs.editor.core.tools5.Portfolio.isPortfolio(it.file, it.password) }.getOrDefault(false) }
+        if (pf.isEmpty()) return@LaunchedEffect
+        busy = true
+        for (e in pf) {
+            val dir = File(app.documents.tempDir, "cmb_pf_${System.nanoTime()}")
+            val parts = runCatching { com.smartdocs.editor.core.tools5.Portfolio.parts(e.file, e.password) }.getOrDefault(emptyList())
+            val files = parts.mapNotNull { p -> runCatching { com.smartdocs.editor.core.tools5.Portfolio.extract(e.file, p.name, dir, e.password) }.getOrNull() }
+                .filter { ToPdf.kindOf(it.name) != SourceKind.UNKNOWN }
+            val at = entries.indexOf(e)
+            if (at >= 0) entries.removeAt(at)
+            files.forEachIndexed { i, f -> if (entries.none { it.file.absolutePath == f.absolutePath }) entries.add((at + i).coerceIn(0, entries.size), CombineEntry(f, f.nameWithoutExtension)) }
+        }
+        busy = false
+    }
+    var asPortfolio by remember { mutableStateOf(false) }
     var note by remember { mutableStateOf<String?>(null) }
     var perFile by remember { mutableStateOf(true) }
     var keepBm by remember { mutableStateOf(true) }
@@ -200,6 +217,8 @@ fun CombineTab(initial: List<File>, job: T5Job, attachSrc: Boolean, srcDesc: Str
     SwitchRow(stringResource(R.string.pc_headings_bookmarks), headings, stringResource(R.string.pc_headings_bookmarks_sub)) { headings = it }
     SwitchRow(stringResource(R.string.pc_toc_page), toc) { toc = it }
     SwitchRow(stringResource(R.string.pc_save_pdfa), pdfa, stringResource(R.string.pc_save_pdfa_sub)) { pdfa = it }
+    // FINAL_CHECK_2 Low (B #26): the files kept as parts of a portfolio instead of one merged document
+    SwitchRow(stringResource(R.string.pc_combine_as_portfolio), asPortfolio, stringResource(R.string.pc_combine_as_portfolio_sub)) { asPortfolio = it }
     OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.t5_file_name_optional)) })
     // FINAL_CHECK_2 #2: an output folder for the combined file
     var outTree by remember { mutableStateOf("") }
@@ -210,6 +229,16 @@ fun CombineTab(initial: List<File>, job: T5Job, attachSrc: Boolean, srcDesc: Str
         val o = CombineOpts(perFile, keepBm, headings, toc, tocTitle)
         val base = name.ifBlank { if (list.size == 1) list[0].file.nameWithoutExtension else defaultName }
         val attach = attachSrc; val pa = pdfa
+        if (asPortfolio) {
+            job.launch(combining) {
+                val out = app.documents.uniqueFile(app.documents.docsDir, base)
+                com.smartdocs.editor.core.tools5.Portfolio.create(ctx, base, list.map { it.file }, out)
+                runCatching { app.documents.touchRecent(out) }
+                com.smartdocs.editor.ui.common.copyToOutputFolder(ctx, tree, listOf(out))
+                result = out
+            }
+            return@PrimaryButton
+        }
         job.launch(combining) {
             val out = app.documents.uniqueFile(app.documents.docsDir, base)
             val signedNames = ArrayList<String>()
