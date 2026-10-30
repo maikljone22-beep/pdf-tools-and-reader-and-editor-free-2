@@ -223,12 +223,15 @@ fun CombineTab(initial: List<File>, job: T5Job, attachSrc: Boolean, srcDesc: Str
     // FINAL_CHECK_2 #2: an output folder for the combined file
     var outTree by remember { mutableStateOf("") }
     com.smartdocs.editor.ui.common.OutputFolderRow(outTree) { outTree = it }
+    // FINAL_CHECK_2 Low: binder output — open the result when done
+    var openAfter by remember { mutableStateOf(false) }
+    SwitchRow(stringResource(R.string.pc_open_after), openAfter) { openAfter = it }
     PrimaryButton(stringResource(R.string.t5_combine), enabled = entries.isNotEmpty() && unsupported.isEmpty() && !badRange && !job.running && !busy, icon = Icons.Default.CallMerge) {
         val tree = outTree
         val list = entries.toList()
         val o = CombineOpts(perFile, keepBm, headings, toc, tocTitle)
         val base = name.ifBlank { if (list.size == 1) list[0].file.nameWithoutExtension else defaultName }
-        val attach = attachSrc; val pa = pdfa
+        val attach = attachSrc; val pa = pdfa; val oa = openAfter
         if (asPortfolio) {
             job.launch(combining) {
                 val out = app.documents.uniqueFile(app.documents.docsDir, base)
@@ -236,6 +239,7 @@ fun CombineTab(initial: List<File>, job: T5Job, attachSrc: Boolean, srcDesc: Str
                 runCatching { app.documents.touchRecent(out) }
                 com.smartdocs.editor.ui.common.copyToOutputFolder(ctx, tree, listOf(out))
                 result = out
+                if (oa) com.smartdocs.editor.ui.common.openInReader(ctx, out)
             }
             return@PrimaryButton
         }
@@ -258,6 +262,7 @@ fun CombineTab(initial: List<File>, job: T5Job, attachSrc: Boolean, srcDesc: Str
             info = signedNames.joinToString("\n") { ctx.getString(R.string.cvf_info_signed, it) }.ifBlank { null }
             com.smartdocs.editor.ui.common.copyToOutputFolder(ctx, tree, listOf(out))
             result = out
+            if (oa) com.smartdocs.editor.ui.common.openInReader(ctx, out)
         }
     }
     askPw?.let { i ->

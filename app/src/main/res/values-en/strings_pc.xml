@@ -423,4 +423,5 @@
     <string name="pc_pf_report_pdf">PDF report with the pages marked</string>
     <string name="pc_pf_read_mode">Read mode</string>
     <string name="pc_pf_edit_mode">Edit mode</string>
+    <string name="pc_open_after">Open the result when done</string>
 </resources>
