@@ -53,7 +53,15 @@ object TextLayer {
 
 /** Paper of a scan PDF; FIT = page sized to the picture (200 dpi). */
 /** Output page size of a scan (Foxit 5 paper sizes; CARD = ID-1). */
-enum class ScanPaper { FIT, A4, LETTER, LEGAL, A3, A5, B5, CARD }
+enum class ScanPaper {
+    FIT, A4, LETTER, LEGAL, A3, A5, B5, CARD,
+    // FINAL_CHECK_2 Low (B #29): the whole ISO A / B / C and JIS B ranges
+    A0, A1, A2, A6, A7, A8, A9, A10, B0, B1, B2, B3, B4, B6, B7, B8, B9, B10, C0, C1, C2, C3, C4, C5, C6, C7, C8, C9, C10,
+    JIS_B0, JIS_B1, JIS_B2, JIS_B3, JIS_B4, JIS_B5, JIS_B6, JIS_B7, JIS_B8, JIS_B9, JIS_B10, TABLOID, EXECUTIVE;
+
+    /** The common choices (the long list sits behind "more sizes"). */
+    val common: Boolean get() = ordinal <= CARD.ordinal
+}
 
 /** One finished page picture (after filters / composition) plus whether it is grey. */
 class ScanOut(val bitmap: Bitmap, val gray: Boolean)

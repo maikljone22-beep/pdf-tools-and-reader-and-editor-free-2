@@ -162,6 +162,19 @@ object ToPdf6 {
 
     private fun mils(twips: Int) = twips * 1000 / 1440
 
+    /**
+     * FINAL_CHECK_2 Low (page size for text sources): the hub's page setup as the web writer's paper — a preset or
+     * custom size, orientation, margin — for text / markdown / HTML sources. IMAGE (no paper) = A4.
+     */
+    fun textSetup(setup: PageSetup): WebPdfWriter.Setup {
+        val (w, h) = when (setup.size) { PageSize6.CUSTOM -> setup.customW to setup.customH; PageSize6.IMAGE -> PageSize6.A4.w to PageSize6.A4.h; else -> setup.size.w to setup.size.h }
+        fun mils(pt: Float) = (pt * 1000f / 72f).toInt().coerceIn(1000, 50_000)
+        val media = runCatching { PrintAttributes.MediaSize("text_page", "Page", mils(minOf(w, h)), mils(maxOf(w, h))) }.getOrDefault(PrintAttributes.MediaSize.ISO_A4)
+        val landscape = when (setup.orient) { Orient6.LANDSCAPE -> true; Orient6.PORTRAIT -> false; else -> w > h }
+        val margin = if (setup.marginPt > 0f) mils(setup.marginPt).coerceAtMost(3000) else 500
+        return WebPdfWriter.Setup(media = media, landscape = landscape, marginMils = margin, javaScript = false)
+    }
+
     /** Print setup of a Word document from its section (convert audit A-M4: always A4 portrait, 0.5" margins). */
     fun docxSetup(page: com.smartdocs.editor.core.office.DocPage?): WebPdfWriter.Setup {
         page ?: return WebPdfWriter.Setup(javaScript = false)
@@ -238,11 +251,11 @@ object ToPdf6 {
                 }
                 out
             }
-            kind == Kind6.MARKDOWN -> ToPdf.html(ctx, FlowHtml.write(withContext(Dispatchers.IO) { MdFlow.parse(ToPdf.readText(f), title, resolve = siblingResolver(f)) }), out)
+            kind == Kind6.MARKDOWN -> ToPdf.html(ctx, FlowHtml.write(withContext(Dispatchers.IO) { MdFlow.parse(ToPdf.readText(f), title, resolve = siblingResolver(f)) }), out, textSetup(setup))
             kind == Kind6.HTML -> ToPdf.html(ctx, withContext(Dispatchers.IO) { HtmlBits.sanitize(ToPdf.readHtml(f)) }, out).also {
                 if (bookmarks) runCatching { OfficeOutline.applyDetected(out) }      // row 93: headings → bookmarks
             }
-            kind == Kind6.TEXT -> ToPdf.htmlParts(ctx, ToPdf.textChunks(f).map { HtmlBits.page(title, TextHtml.body(it), HtmlBits.rtlDominant(it.take(20000)), TextHtml.CSS) }, out, tmp)
+            kind == Kind6.TEXT -> ToPdf.htmlParts(ctx, ToPdf.textChunks(f).map { HtmlBits.page(title, TextHtml.body(it), HtmlBits.rtlDominant(it.take(20000)), TextHtml.CSS) }, out, tmp, textSetup(setup))
             kind.isSheetLike -> {
                 val sheets = withContext(Dispatchers.IO) { readSheetsInfo(f, kind, maxRows = 65_536, maxCols = 512) }
                 sheets.cut.forEach { info(ctx.getString(R.string.cvf_info_sheet_cut, it)) }

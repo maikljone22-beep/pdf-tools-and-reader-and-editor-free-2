@@ -37,6 +37,8 @@ data class ConvertOptions(
     /** XLSX: one sheet row per line of multi-line table cells; no merged cells. */
     val xlsxSplitLines: Boolean = false,
     val xlsxNoMerge: Boolean = false,
+    /** XLSX: the source's number separators (BidiText.SEP_*). */
+    val xlsxSeparators: Int = BidiText.SEP_POINT,
     /** DOCX: character spacing added to every run (points) and pictures anchored at their place. */
     val docxCharSpacing: Float = 0f,
     val docxAnchorImages: Boolean = false,
@@ -94,7 +96,7 @@ object ConvertPipeline {
                 pages.forEachIndexed { k, i -> b.addPage(layout(i, opts.includeImages)); step(k + 1) }
                 b.finish()
             }
-            TargetFormat.XLSX -> XlsxBuilder(out, title, opts.xlsxSplitLines, opts.xlsxNoMerge).use { b ->
+            TargetFormat.XLSX -> XlsxBuilder(out, title, opts.xlsxSplitLines, opts.xlsxNoMerge, opts.xlsxSeparators).use { b ->
                 if (opts.xlsxSingleSheet) {
                     val all = pages.mapIndexed { k, i -> layout(i, false).also { step(k + 1) } }
                     b.addSheet(opts.singleSheetName, all)

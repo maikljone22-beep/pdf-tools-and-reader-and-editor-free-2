@@ -19,9 +19,28 @@ object ScanExtras {
             ScanPaper.A5 -> 419.53f to 595.28f
             ScanPaper.B5 -> 498.9f to 708.66f
             ScanPaper.CARD -> 243.78f to 153.07f          // ISO 7810 ID-1 (85.6 × 54 mm), landscape
+            ScanPaper.TABLOID -> 792f to 1224f
+            ScanPaper.EXECUTIVE -> 522f to 756f
+            else -> isoSize(paper) ?: (595.28f to 841.89f)
         }
         val wide = picW > picH
         return if (wide == (w > h)) PDRectangle(w, h) else PDRectangle(h, w)
+    }
+
+    private fun mm(w: Float, h: Float) = (w * 72f / 25.4f) to (h * 72f / 25.4f)
+
+    /** ISO 216 A / B, ISO 269 C and JIS P 0138 B sizes in points (portrait), from the series' sheet 0 halved n times. */
+    fun isoSize(paper: ScanPaper): Pair<Float, Float>? {
+        val name = paper.name
+        val (series, n) = when {
+            name.startsWith("JIS_B") -> "JIS_B" to name.removePrefix("JIS_B").toIntOrNull()
+            name.length in 2..3 && name[0] in "ABC" && name.substring(1).all { it.isDigit() } -> name.substring(0, 1) to name.substring(1).toIntOrNull()
+            else -> return null
+        }
+        if (n == null || n !in 0..10) return null
+        var (w, h) = when (series) { "A" -> 841f to 1189f; "B" -> 1000f to 1414f; "C" -> 917f to 1297f; else -> 1030f to 1456f }
+        repeat(n) { val nh = w; val nw = kotlin.math.floor(h / 2f); w = nw; h = nh }
+        return mm(w, h)
     }
 
     /** "Save multiple files": [n] pages per file (n <= 0 keeps one file). Pure. */

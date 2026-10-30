@@ -279,10 +279,13 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
         if (groups.isNotEmpty()) {
             T5Card(stringResource(R.string.t5_scan_output), Icons.Default.Tune) {
                 FieldLabel(stringResource(R.string.t5_paper))
-                ChoiceChips(ScanPaper.entries, paper, { when (it) {
+                var morePaper by remember { mutableStateOf(!paper.common) }
+                ChoiceChips(ScanPaper.entries.filter { morePaper || it.common }, paper, { when (it) {
                     ScanPaper.FIT -> stringResource(R.string.t5_paper_fit); ScanPaper.A4 -> stringResource(R.string.t5_paper_a4); ScanPaper.LETTER -> stringResource(R.string.t5_paper_letter)
-                    ScanPaper.CARD -> stringResource(R.string.pc_paper_card); else -> it.name.lowercase().replaceFirstChar { c -> c.uppercase() }.let { n -> if (n.length == 2) n.uppercase() else n }
+                    ScanPaper.CARD -> stringResource(R.string.pc_paper_card); ScanPaper.TABLOID -> "Tabloid"; ScanPaper.EXECUTIVE -> "Executive"
+                    else -> it.name.replace("JIS_", "JIS ")
                 } }) { paper = it }
+                TextButton(onClick = { morePaper = !morePaper }) { Text(stringResource(if (morePaper) R.string.t5_paper_less else R.string.t5_paper_more)) }
                 SwitchRow(stringResource(R.string.sc_own_camera), ownCamera, stringResource(R.string.sc_own_camera_sub)) {
                     ownCamera = it; ctx.getSharedPreferences("scan_studio", 0).edit().putBoolean("own_camera", it).apply()
                 }
@@ -310,6 +313,26 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                 OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.t5_file_name_optional)) })
             }
             PrimaryButton(stringResource(R.string.t5_scan_save), enabled = !job.running, icon = Icons.Default.PictureAsPdf) { save() }
+            // FINAL_CHECK_2 Low (K11): QR / barcodes on the scanned pages
+            var codes by remember { mutableStateOf<List<Pair<Int, com.smartdocs.editor.core.tools5.BarcodeScan.Code>>?>(null) }
+            var reading by remember { mutableStateOf(false) }
+            OutlinedButton(enabled = !reading, onClick = {
+                reading = true
+                val files = groups.flatten().map { it.file }
+                scope.launch {
+                    codes = withContext(Dispatchers.IO) {
+                        files.flatMapIndexed { i, f ->
+                            runCatching {
+                                val b = ScanImage.load(f, 1600) ?: return@runCatching emptyList()
+                                val px = IntArray(b.width * b.height); b.getPixels(px, 0, b.width, 0, 0, b.width, b.height); val w = b.width; val h = b.height; b.recycle()
+                                com.smartdocs.editor.core.tools5.BarcodeScan.decode(px, w, h).map { i to it }
+                            }.getOrDefault(emptyList())
+                        }
+                    }
+                    reading = false
+                }
+            }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.QrCodeScanner, null); Spacer(Modifier.width(6.dp)); Text(stringResource(if (reading) R.string.processing else R.string.sc_read_codes)) }
+            codes?.let { found -> BarcodeResultsDialog(found) { codes = null } }
         }
         if (job.results.isNotEmpty()) ResultsList(job.results, nav, "application/pdf")
     }

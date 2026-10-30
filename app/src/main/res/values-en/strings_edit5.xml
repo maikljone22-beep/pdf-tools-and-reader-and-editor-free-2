@@ -360,4 +360,7 @@
     <string name="e5_lock_out_keep">The output is protected with the same password as the source.</string>
     <string name="e5_lock_out_plain">The output has no password.</string>
     <string name="e5_lock_second_ok">The second file was opened with its password.</string>
+    <string name="e5_crop_page_size">Change page size (content not scaled)</string>
+    <string name="e5_crop_center_content">Centre the content</string>
+    <string name="e5_crop_page_size_apply">Apply page size</string>
 </resources>

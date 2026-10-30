@@ -48,6 +48,8 @@ import androidx.compose.material.icons.filled.FlashOff
 import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.GridOn
 import androidx.compose.material.icons.filled.MotionPhotosAuto
+import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.material3.Card
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
@@ -145,6 +147,10 @@ private fun CameraBody(pageLimit: Int, onDone: (List<File>) -> Unit, onClose: ()
     var autoCapture by remember { mutableStateOf(prefs.getBoolean("auto", true)) }
     var grid by remember { mutableStateOf(prefs.getBoolean("grid", false)) }
     var exposureOpen by remember { mutableStateOf(false) }
+    // FINAL_CHECK_2 Low (K11): QR / barcode mode — the analysis frames are decoded instead of edge-detected
+    var qrMode by remember { mutableStateOf(false) }
+    var qrFound by remember { mutableStateOf<com.smartdocs.editor.core.tools5.BarcodeScan.Code?>(null) }
+    var qrTick by remember { mutableIntStateOf(0) }
     var exposure by remember { mutableIntStateOf(0) }
     var quad by remember { mutableStateOf<PageQuad.Quad?>(null) }
     var frameSize by remember { mutableStateOf(IntSize(4, 3)) }
@@ -202,6 +208,11 @@ private fun CameraBody(pageLimit: Int, onDone: (List<File>) -> Unit, onClose: ()
             try {
                 if (shot != null || capturing) { quad = null; steady = 0; return@setImageAnalysisAnalyzer }
                 val (px, w, h) = rgba(img)
+                if (qrMode) {
+                    quad = null; steady = 0
+                    if (qrFound == null && qrTick++ % 2 == 0) com.smartdocs.editor.core.tools5.BarcodeScan.decode(px, w, h, multiple = false).firstOrNull()?.let { c -> scope.launch { qrFound = c } }
+                    return@setImageAnalysisAnalyzer
+                }
                 val q = PageQuad.detect(px, w, h)?.takeIf { it.area() < 0.97f }
                 val moved = if (q == null || last == null) 1f else q.distance(last!!)
                 last = q
@@ -252,11 +263,12 @@ private fun CameraBody(pageLimit: Int, onDone: (List<File>) -> Unit, onClose: ()
                 }
                 IconButton(onClick = { grid = !grid; prefs.edit().putBoolean("grid", grid).apply() }) { Icon(Icons.Default.GridOn, stringResource(R.string.sc_cam_grid), tint = if (grid) Color(0xFF4CD964) else Color.White) }
                 IconButton(onClick = { exposureOpen = !exposureOpen }) { Icon(Icons.Default.Exposure, stringResource(R.string.sc_cam_exposure), tint = if (exposureOpen) Color(0xFF4CD964) else Color.White) }
+                IconButton(onClick = { qrMode = !qrMode; qrFound = null }) { Icon(Icons.Default.QrCodeScanner, stringResource(R.string.sc_cam_qr), tint = if (qrMode) Color(0xFF4CD964) else Color.White) }
             }
         }
         // hint
         Text(
-            stringResource(when { capturing -> R.string.sc_cam_taking; quad == null -> R.string.sc_cam_hint_find; autoCapture && steady < 10 -> R.string.sc_cam_hint_hold; else -> R.string.sc_cam_hint_ready }),
+            stringResource(when { capturing -> R.string.sc_cam_taking; qrMode -> R.string.sc_cam_hint_qr; quad == null -> R.string.sc_cam_hint_find; autoCapture && steady < 10 -> R.string.sc_cam_hint_hold; else -> R.string.sc_cam_hint_ready }),
             Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 64.dp).background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(16.dp)).padding(horizontal = 14.dp, vertical = 6.dp),
             color = Color.White, style = MaterialTheme.typography.bodyMedium,
         )
@@ -280,6 +292,22 @@ private fun CameraBody(pageLimit: Int, onDone: (List<File>) -> Unit, onClose: ()
             }
         }
         if (capturing) Box(Modifier.fillMaxSize().background(Color.White.copy(alpha = 0.25f)))
+        qrFound?.let { c ->
+            val clip = androidx.compose.ui.platform.LocalClipboardManager.current
+            androidx.compose.material3.Card(Modifier.align(Alignment.Center).padding(24.dp)) {
+                Column(Modifier.padding(16.dp)) {
+                    Text(c.format.replace('_', ' '), style = MaterialTheme.typography.labelMedium)
+                    Text(c.text, style = MaterialTheme.typography.bodyLarge)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(onClick = { clip.setText(androidx.compose.ui.text.AnnotatedString(c.text)) }) { Text(stringResource(R.string.copy_text)) }
+                        if (com.smartdocs.editor.core.tools5.BarcodeScan.isLink(c.text)) TextButton(onClick = {
+                            runCatching { ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(c.text.trim())).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                        }) { Text(stringResource(R.string.sc_code_open)) }
+                        TextButton(onClick = { qrFound = null }) { Text(stringResource(R.string.sc_cam_qr_again)) }
+                    }
+                }
+            }
+        }
     }
 
     shot?.let { s ->

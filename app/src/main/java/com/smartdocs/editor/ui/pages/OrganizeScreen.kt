@@ -404,6 +404,23 @@ private fun InsertDialog(state: OrganizeState, kind: InsertKind, onDismiss: () -
     }
     var position by remember { mutableIntStateOf(if (ref == null) 2 else 1) } // 0 before, 1 after, 2 end
     var style by remember { mutableStateOf(PdfOps.PageStyle.BLANK) }
+    // FINAL_CHECK_2 Low: blank page size — like the neighbour, a preset, or custom width × height in mm / in / pt
+    var sizeKind by remember { mutableIntStateOf(0) }   // 0 neighbour, 1 A4, 2 Letter, 3 custom
+    var landscape by remember { mutableStateOf(false) }
+    var unit by remember { mutableIntStateOf(0) }       // 0 mm, 1 in, 2 pt
+    var wText by remember { mutableStateOf("210") }
+    var hText by remember { mutableStateOf("297") }
+    fun customSize(): com.tom_roush.pdfbox.pdmodel.common.PDRectangle? {
+        val k = when (unit) { 0 -> 72f / 25.4f; 1 -> 72f; else -> 1f }
+        val w = wText.replace(',', '.').toFloatOrNull()?.times(k) ?: return null
+        val h = hText.replace(',', '.').toFloatOrNull()?.times(k) ?: return null
+        if (w < 18f || h < 18f || w > 14400f || h > 14400f) return null
+        return com.tom_roush.pdfbox.pdmodel.common.PDRectangle(w, h)
+    }
+    fun chosenSize(): com.tom_roush.pdfbox.pdmodel.common.PDRectangle? {
+        val base = when (sizeKind) { 1 -> com.tom_roush.pdfbox.pdmodel.common.PDRectangle.A4; 2 -> com.tom_roush.pdfbox.pdmodel.common.PDRectangle.LETTER; 3 -> customSize(); else -> null } ?: return null
+        return if (landscape == (base.width > base.height)) base else com.tom_roush.pdfbox.pdmodel.common.PDRectangle(base.height, base.width)
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(when (kind) { InsertKind.Blank -> R.string.page_insert_blank; is InsertKind.File -> R.string.page_insert_file; is InsertKind.Images -> if (kind.fromCamera) R.string.g6_insert_camera else R.string.page_insert_image })) },
@@ -419,6 +436,29 @@ private fun InsertDialog(state: OrganizeState, kind: InsertKind, onDismiss: () -
                 }
                 if (kind is InsertKind.Blank) {
                     Spacer(Modifier.height(12.dp))
+                    Text(stringResource(R.string.pg_blank_size), style = MaterialTheme.typography.labelLarge)
+                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf(R.string.pg_size_neighbour, R.string.t5_paper_a4, R.string.t5_paper_letter, R.string.pg_size_custom).forEachIndexed { i, l -> FilterChip(sizeKind == i, { sizeKind = i }, label = { Text(stringResource(l)) }) }
+                    }
+                    if (sizeKind != 0) Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        FilterChip(!landscape, { landscape = false }, label = { Text(stringResource(R.string.pg_portrait)) })
+                        FilterChip(landscape, { landscape = true }, label = { Text(stringResource(R.string.pg_landscape)) })
+                    }
+                    if (sizeKind == 3) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                            OutlinedTextField(wText, { wText = it.take(8) }, Modifier.weight(1f), singleLine = true, label = { Text(stringResource(R.string.pg_width)) }, isError = customSize() == null)
+                            Text("×")
+                            OutlinedTextField(hText, { hText = it.take(8) }, Modifier.weight(1f), singleLine = true, label = { Text(stringResource(R.string.pg_height)) }, isError = customSize() == null)
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            listOf("mm", "in", "pt").forEachIndexed { i, u -> FilterChip(unit == i, {
+                                // convert the typed numbers to the new unit
+                                val from = when (unit) { 0 -> 72f / 25.4f; 1 -> 72f; else -> 1f }; val to = when (i) { 0 -> 72f / 25.4f; 1 -> 72f; else -> 1f }
+                                fun conv(t: String) = t.replace(',', '.').toFloatOrNull()?.let { v -> String.format(java.util.Locale.US, if (i == 1) "%.2f" else "%.0f", v * from / to) } ?: t
+                                wText = conv(wText); hText = conv(hText); unit = i
+                            }, label = { Text(u) }) }
+                        }
+                    }
                     Text(stringResource(R.string.page_style), style = MaterialTheme.typography.labelLarge)
                     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         PdfOps.PageStyle.entries.forEach { s ->
@@ -433,7 +473,7 @@ private fun InsertDialog(state: OrganizeState, kind: InsertKind, onDismiss: () -
             TextButton(onClick = {
                 val at = when (position) { 0 -> ref ?: state.pageCount; 1 -> (ref ?: -1) + 1; else -> state.pageCount }
                 when (kind) {
-                    InsertKind.Blank -> state.insertBlank(at, style)
+                    InsertKind.Blank -> state.insertBlank(at, style, chosenSize())
                     is InsertKind.File -> if (needsPw) onLockedFile(kind.file, at) else state.insertFrom(kind.file, at)
                     is InsertKind.Images -> state.insertImages(kind.files, at)
                 }

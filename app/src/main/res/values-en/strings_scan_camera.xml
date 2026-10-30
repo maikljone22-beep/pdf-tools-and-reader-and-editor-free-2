@@ -15,4 +15,12 @@
     <string name="sc_cam_use">Use</string>
     <string name="sc_own_camera">SmartDocs camera</string>
     <string name="sc_own_camera_sub">Full camera resolution with live page edges and auto capture. Off: the Google scanner is used.</string>
+    <string name="sc_read_codes">Read QR / barcodes on the pages</string>
+    <string name="sc_codes_title">Codes found (%1$d)</string>
+    <string name="sc_codes_none">No QR codes or barcodes were found on the pages.</string>
+    <string name="sc_code_on_page">%1$s · page %2$d</string>
+    <string name="sc_code_open">Open</string>
+    <string name="sc_cam_qr">QR / barcode mode</string>
+    <string name="sc_cam_hint_qr">Point the camera at a QR code or barcode</string>
+    <string name="sc_cam_qr_again">Scan another</string>
 </resources>

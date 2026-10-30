@@ -210,6 +210,8 @@ private fun OptionsBody(conv: Conv, inputCount: Int, o: Cv6Opts, onChange: (Cv6O
     if (Opt.XLSX_CELLS in opts) {
         // s6 Excel: split multi-line text into rows; reduce merged cells
         SwitchRow(stringResource(R.string.cv9_xlsx_split), o.xlsxSplitLines) { onChange(o.copy(xlsxSplitLines = it)) }
+        FieldLabel(stringResource(R.string.cv9_xlsx_separators))
+        ChoiceChips(listOf(0, 1, 2), o.xlsxSeparators, { when (it) { 1 -> "1.234,56"; 2 -> "1 234,56"; else -> "1,234.56" } }) { onChange(o.copy(xlsxSeparators = it)) }
         SwitchRow(stringResource(R.string.cv9_xlsx_nomerge), o.xlsxNoMerge) { onChange(o.copy(xlsxNoMerge = it)) }
     }
     if (Opt.HEADERS in opts) {

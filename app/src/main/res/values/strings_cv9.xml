@@ -81,4 +81,5 @@
     <string name="cv9_xfit_page">الورقة كلها في صفحة</string>
     <string name="cv9_docx_comments">تصدير التعليقات</string>
     <string name="cv9_docx_comments_sub">تعليقات PDF (الملاحظات، التظليل، الأشكال) تصبح تعليقات Word على النص الذي تقع عليه</string>
+    <string name="cv9_xlsx_separators">فواصل الأرقام في المصدر</string>
 </resources>
