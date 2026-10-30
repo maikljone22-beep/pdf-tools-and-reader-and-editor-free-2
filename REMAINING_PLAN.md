@@ -1,7 +1,6 @@
 # SmartDocs — remaining work (rebuilt plan, 2026-10-26)
 
-Baseline: v0.4.0 (local git commit "Baseline"). Work done in the old chat after 0.4.0 was lost; its module notes are in
-`D:\pdf\recovered-from-old-chat\` and are the spec for rebuilding. Status: [ ] todo, [~] in progress, [x] done (compiles).
+Baseline: v0.4.0. The old chat's post-0.4.0 work was NOT lost: specs and module notes are in `specs/` (see specs/README_handoff.md); its full source (handoff/smartdocs-full.zip) is on the owner's PC only, reference only — do not merge wholesale. Checkboxes below are historical; current status: STATUS.md and gaps/FINAL_CHECK_2.md.
 
 ## A. Post-0.4.0 work (spec = specs/old-chat-modules/MODULE_*.md; rebuilt as r5 modules)
 - [~] search4: Arabic-aware search (reader) — ArabicNormalizer/TextMatcher/SearchPrefs + reader menu switches
