@@ -201,6 +201,9 @@ private fun ContentPanel(work: File, password: String?, version: Int, edit: ((PD
     var pageCount by remember { mutableIntStateOf(0) }
     var picked by remember { mutableStateOf(setOf<Int>()) }
     var type by remember { mutableStateOf("P") }
+    var filter by remember { mutableStateOf(com.smartdocs.editor.core.tools5.AccessContent.Filter.ALL) }
+    var notFound by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
     val page = (pageText.toIntOrNull() ?: 1) - 1
     LaunchedEffect(version, page) {
         picked = emptySet()
@@ -213,8 +216,28 @@ private fun ContentPanel(work: File, password: String?, version: Int, edit: ((PD
             OutlinedButton(onClick = { edit { d -> if (page in 0 until d.numberOfPages) com.smartdocs.editor.core.tools5.AccessContent.markPage(d, page) } }) { Text(stringResource(R.string.pa_content_mark)) }
         }
         Text(stringResource(R.string.pa_content_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        // FINAL_CHECK_2 Low (Find Element): untagged content, artifacts, OCR suspects — on this page, or the next page that has them
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+            com.smartdocs.editor.core.tools5.AccessContent.Filter.entries.forEach { f ->
+                FilterChip(filter == f, { filter = f; notFound = false }, label = { Text(stringResource(when (f) {
+                    com.smartdocs.editor.core.tools5.AccessContent.Filter.ALL -> R.string.pa_find_all
+                    com.smartdocs.editor.core.tools5.AccessContent.Filter.UNTAGGED -> R.string.pa_content_untagged
+                    com.smartdocs.editor.core.tools5.AccessContent.Filter.ARTIFACTS -> R.string.pa_content_artifact
+                    com.smartdocs.editor.core.tools5.AccessContent.Filter.SUSPECT -> R.string.pa_find_suspect
+                })) })
+            }
+            if (filter != com.smartdocs.editor.core.tools5.AccessContent.Filter.ALL) TextButton(onClick = {
+                val f = filter
+                scope.launch {
+                    val next = runCatching { io { com.smartdocs.editor.core.pdf.PdfOps.load(work, password).use { d -> com.smartdocs.editor.core.tools5.AccessContent.nextPage(d, page, f) } } }.getOrNull()
+                    if (next == null) notFound = true else { notFound = false; pageText = (next + 1).toString() }
+                }
+            }) { Text(stringResource(R.string.pa_find_next_page)) }
+        }
+        if (notFound) Text(stringResource(R.string.pa_find_none), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
         if (items.isEmpty()) Text(stringResource(R.string.pa_content_empty), style = MaterialTheme.typography.bodySmall)
         items.forEachIndexed { i, it ->
+            if (!com.smartdocs.editor.core.tools5.AccessContent.matches(it, filter)) return@forEachIndexed
             Row(Modifier.fillMaxWidth().clickable(enabled = it.mcid >= 0) { picked = if (i in picked) picked - i else picked + i }.padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                 Checkbox(i in picked, { v -> picked = if (v) picked + i else picked - i }, enabled = it.mcid >= 0)
                 Icon(when (it.kind) { "image" -> Icons.Default.Image; "text" -> Icons.Default.TextFields; else -> Icons.Default.Widgets }, null, Modifier.size(18.dp))

@@ -53,4 +53,8 @@
     <string name="t5_acc_check_range">فحص</string>
     <string name="pa_tags_order_page">الترتيب على الصفحة</string>
     <string name="pa_order_page_hint">كل مربع مرقّم عنصر بترتيب القراءة. انقر مربعاً لتحريكه أو تغيير نوعه أو جعله زخرفة.</string>
+    <string name="pa_find_all">الكل</string>
+    <string name="pa_find_suspect">نص مشكوك فيه (OCR)</string>
+    <string name="pa_find_next_page">الصفحة التالية</string>
+    <string name="pa_find_none">لا توجد عناصر مطابقة في المستند</string>
 </resources>

@@ -24,6 +24,34 @@ object AccessContent {
     data class Item(val page: Int, val mcid: Int, val tag: String, val kind: String, val text: String, val elemType: String?, val elemPath: List<Int>?) {
         val tagged: Boolean get() = elemPath != null
         val artifact: Boolean get() = tag == "Artifact"
+        /** OCR / extraction suspect: replacement characters, or mostly symbols (no ToUnicode, bad OCR). */
+        val suspect: Boolean get() = kind == "text" && suspectText(text)
+    }
+
+    /** FINAL_CHECK_2 Low (Find Element): the filters of the Content panel. */
+    enum class Filter { ALL, UNTAGGED, ARTIFACTS, SUSPECT }
+
+    fun suspectText(t: String): Boolean {
+        val s = t.filterNot { it.isWhitespace() }
+        if (s.isEmpty()) return false
+        if ('\uFFFD' in s) return true
+        if (s.length < 4) return false
+        val good = s.count { it.isLetterOrDigit() || it in ".,;:!?()-'\"،؛؟٪%" }
+        return good * 2 < s.length
+    }
+
+    fun matches(i: Item, f: Filter): Boolean = when (f) {
+        Filter.ALL -> true
+        Filter.UNTAGGED -> !i.tagged && !i.artifact
+        Filter.ARTIFACTS -> i.artifact
+        Filter.SUSPECT -> i.suspect
+    }
+
+    /** The first page after [from] (wrapping) that has an item matching [f], or null. */
+    fun nextPage(doc: PDDocument, from: Int, f: Filter): Int? {
+        val n = doc.numberOfPages
+        for (k in 1..n) { val p = (from + k) % n; if (runCatching { items(doc, p) }.getOrDefault(emptyList()).any { matches(it, f) }) return p }
+        return null
     }
 
     private val N_ROOT = COSName.getPDFName("StructTreeRoot")
