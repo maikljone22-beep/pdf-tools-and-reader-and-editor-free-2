@@ -1,0 +1,11 @@
+name = "smartdocs-errors"
+main = "worker.js"
+compatibility_date = "2025-01-01"
+
+[vars]
+GITHUB_REPO = "maikljone22-beep/pdf-tools-and-reader-and-editor-free-2"
+
+# optional: issue numbers by error id + per-IP daily limit
+# [[kv_namespaces]]
+# binding = "ERRORS"
+# id = "<your KV namespace id>"

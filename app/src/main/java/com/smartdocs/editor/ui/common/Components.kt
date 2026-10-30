@@ -180,7 +180,7 @@ class ToolRunner(private val scope: CoroutineScope, private val ctx: android.con
         running = true; message = msg; error = null
         scope.launch {
             // Throwable: OutOfMemoryError / NoClassDefFoundError from PdfBox on big or odd files must show an error, not kill the app
-            try { result = withContext(Dispatchers.IO) { block() } } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Throwable) { error = messageOf(e) } finally { running = false }
+            try { result = withContext(Dispatchers.IO) { block() } } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Throwable) { com.smartdocs.editor.core.errors.ErrorCenter.record(e, "tool"); error = messageOf(e) } finally { running = false }
         }
     }
 
@@ -188,7 +188,7 @@ class ToolRunner(private val scope: CoroutineScope, private val ctx: android.con
         if (running) return
         running = true; message = msg; error = null
         scope.launch {
-            try { results = withContext(Dispatchers.IO) { block() } } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Throwable) { error = messageOf(e) } finally { running = false }
+            try { results = withContext(Dispatchers.IO) { block() } } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Throwable) { com.smartdocs.editor.core.errors.ErrorCenter.record(e, "tool"); error = messageOf(e) } finally { running = false }
         }
     }
 }

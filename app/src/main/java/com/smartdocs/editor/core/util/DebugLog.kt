@@ -41,7 +41,7 @@ object DebugLog {
         }
     }
 
-    fun error(tag: String, t: Throwable) = log(tag, t.stackTraceToString())
+    fun error(tag: String, t: Throwable) { com.smartdocs.editor.core.errors.ErrorCenter.record(t, tag); log(tag, t.stackTraceToString()) }
 
     fun clear(context: Context) { runCatching { file(context).delete() } }
 

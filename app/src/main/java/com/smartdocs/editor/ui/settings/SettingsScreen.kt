@@ -167,6 +167,7 @@ fun SettingsScreen(nav: NavHostController) {
                 GroupRow(stringResource(R.string.v5_trash), icon = Icons.Default.DeleteSweep, tile = tiles.purple, onClick = { nav.navigate(com.smartdocs.editor.ui.view5.V5Routes.TRASH) })
                 GroupRow(stringResource(R.string.v5_whats_new), icon = Icons.Default.NewReleases, tile = tiles.teal, onClick = { nav.navigate(com.smartdocs.editor.ui.view5.V5Routes.WHATS_NEW) })
                 GroupRow(stringResource(R.string.settings_help), icon = Icons.Default.HelpOutline, tile = tiles.green, onClick = { nav.navigate("help") })
+                GroupRow(stringResource(R.string.ec_title), stringResource(R.string.ec_settings_sub), icon = Icons.Default.BugReport, tile = tiles.rose, onClick = { nav.navigate(com.smartdocs.editor.ui.errors.ERROR_CENTER_ROUTE) })
                 com.smartdocs.editor.core.ads.AdsPrivacyOptionsItem()   // share6: renders only where UMP requires it
                 GroupDivider()
                 GroupRow(stringResource(R.string.app_name), stringResource(R.string.settings_version, BuildConfig.VERSION_NAME), icon = Icons.Default.Info, tile = tiles.blue)
