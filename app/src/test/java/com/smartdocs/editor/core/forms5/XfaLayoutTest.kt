@@ -182,7 +182,7 @@ class XfaLayoutTest {
                 <event activity="initialize"><script contentType="application/x-javascript">if (xfa.resolveNode("form1.Order.Qty").rawValue > 2) this.presence = "hidden";</script></event></field>
             </subform></subform>""", "<form1><Order><Qty>3</Qty><Price>2.5</Price><Vat>9</Vat></Order></form1>"), scripts = true)
         assertEquals("7.5", r.widget("form1[0].Order[0].Total[0]")!!.second.value)
-        assertEquals("9", r.widget("form1[0].Order[0].Vat[0]")!!.second.value)          // FormCalc is not run: the stored value stays
+        assertEquals("1.125", r.widget("form1[0].Order[0].Vat[0]")!!.second.value)      // FormCalc runs too (translated to JS): 7.5 × 0.15
         assertNull(r.widget("form1[0].Order[0].Secret[0]"))
     }
     @Test fun repeatPlacesSurviveTheDocumentInfoRoundTrip() {
