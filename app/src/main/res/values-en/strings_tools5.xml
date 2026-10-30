@@ -419,4 +419,5 @@
     <string name="t5_mm_email_column">E-mail column (send each file to its address)</string>
     <string name="t5_mm_email_hint">One file per record; an e-mail with the file attached opens for every address — the mail app sends it.</string>
     <string name="t5_mm_emailed">%1$d e-mails prepared with their files attached.</string>
+    <string name="t5_pf_fix_gray">Convert colours to grayscale (new copy)</string>
 </resources>

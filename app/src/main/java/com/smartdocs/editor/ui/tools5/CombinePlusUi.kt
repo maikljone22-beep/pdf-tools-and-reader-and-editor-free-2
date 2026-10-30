@@ -68,6 +68,7 @@ fun CombineTab(initial: List<File>, job: T5Job, attachSrc: Boolean, srcDesc: Str
     var keepBm by remember { mutableStateOf(true) }
     var headings by remember { mutableStateOf(false) }
     var toc by remember { mutableStateOf(false) }
+    var tocFormat by remember { mutableStateOf("") }
     var pdfa by remember { mutableStateOf(false) }
     var name by remember { mutableStateOf("") }
     var url by remember { mutableStateOf("") }
@@ -216,6 +217,9 @@ fun CombineTab(initial: List<File>, job: T5Job, attachSrc: Boolean, srcDesc: Str
     SwitchRow(stringResource(R.string.pc_keep_file_bookmarks), keepBm) { keepBm = it }
     SwitchRow(stringResource(R.string.pc_headings_bookmarks), headings, stringResource(R.string.pc_headings_bookmarks_sub)) { headings = it }
     SwitchRow(stringResource(R.string.pc_toc_page), toc) { toc = it }
+    // FINAL_CHECK_2 Low: a TOC line template with field codes
+    if (toc) OutlinedTextField(tocFormat, { tocFormat = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.pc_toc_format)) },
+        placeholder = { Text("{n}. {title} ({pages})") }, supportingText = { Text(stringResource(R.string.pc_toc_format_hint)) })
     SwitchRow(stringResource(R.string.pc_save_pdfa), pdfa, stringResource(R.string.pc_save_pdfa_sub)) { pdfa = it }
     // FINAL_CHECK_2 Low (B #26): the files kept as parts of a portfolio instead of one merged document
     SwitchRow(stringResource(R.string.pc_combine_as_portfolio), asPortfolio, stringResource(R.string.pc_combine_as_portfolio_sub)) { asPortfolio = it }
@@ -229,7 +233,7 @@ fun CombineTab(initial: List<File>, job: T5Job, attachSrc: Boolean, srcDesc: Str
     PrimaryButton(stringResource(R.string.t5_combine), enabled = entries.isNotEmpty() && unsupported.isEmpty() && !badRange && !job.running && !busy, icon = Icons.Default.CallMerge) {
         val tree = outTree
         val list = entries.toList()
-        val o = CombineOpts(perFile, keepBm, headings, toc, tocTitle)
+        val o = CombineOpts(perFile, keepBm, headings, toc, tocTitle, tocFormat = tocFormat)
         val base = name.ifBlank { if (list.size == 1) list[0].file.nameWithoutExtension else defaultName }
         val attach = attachSrc; val pa = pdfa; val oa = openAfter
         if (asPortfolio) {
@@ -283,7 +287,7 @@ fun CombineTab(initial: List<File>, job: T5Job, attachSrc: Boolean, srcDesc: Str
     val binderSaved = stringResource(R.string.pc_binder_saved)
     T5Card(stringResource(R.string.pc_binders), Icons.Default.Inventory2) {
         OutlinedButton(enabled = entries.isNotEmpty() && !busy, onClick = {
-            val p = com.smartdocs.editor.core.tools5.BinderProject(name.ifBlank { defaultName }, CombineOpts(perFile, keepBm, headings, toc, tocTitle), entries.toList())
+            val p = com.smartdocs.editor.core.tools5.BinderProject(name.ifBlank { defaultName }, CombineOpts(perFile, keepBm, headings, toc, tocTitle, tocFormat = tocFormat), entries.toList())
             work {
                 withContext(Dispatchers.IO) { com.smartdocs.editor.core.tools5.BinderStore.save(ctx, p) }
                 binders = withContext(Dispatchers.IO) { com.smartdocs.editor.core.tools5.BinderStore.list(ctx) }
@@ -295,7 +299,7 @@ fun CombineTab(initial: List<File>, job: T5Job, attachSrc: Boolean, srcDesc: Str
                 Text(stringResource(R.string.pc_binder_row, b.name, b.entries.size), Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)
                 TextButton(onClick = {
                     entries.clear(); entries.addAll(b.entries.filter { it.file.isFile })
-                    perFile = b.opts.bookmarkPerFile; keepBm = b.opts.keepBookmarks; headings = b.opts.headings; toc = b.opts.toc; name = b.name
+                    perFile = b.opts.bookmarkPerFile; keepBm = b.opts.keepBookmarks; headings = b.opts.headings; toc = b.opts.toc; tocFormat = b.opts.tocFormat; name = b.name
                 }) { Text(stringResource(R.string.pc_saved_scan_open)) }
                 IconButton(onClick = { com.smartdocs.editor.core.tools5.BinderStore.delete(dir); binders = binders.filter { it.first != dir } }) { Icon(Icons.Default.Delete, stringResource(R.string.pc_preset_delete, b.name)) }
             }

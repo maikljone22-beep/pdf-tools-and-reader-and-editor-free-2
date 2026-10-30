@@ -424,4 +424,6 @@
     <string name="pc_pf_read_mode">Read mode</string>
     <string name="pc_pf_edit_mode">Edit mode</string>
     <string name="pc_open_after">Open the result when done</string>
+    <string name="pc_toc_format">TOC line for each file</string>
+    <string name="pc_toc_format_hint">Fields: {title}, {file}, {pages}, {n} number, {date}</string>
 </resources>

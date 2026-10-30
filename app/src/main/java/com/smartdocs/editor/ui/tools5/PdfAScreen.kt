@@ -272,6 +272,19 @@ fun PdfAScreen(nav: NavHostController, uri: String?) {
                     result = out
                 }
             }, enabled = file != null && !job.running) { Icon(Icons.Default.Gesture, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.ett_fx_outlines)) }
+            // FINAL_CHECK_2 Low: fixup "convert colours to grayscale" (the converter's grayscale engine) to a new copy
+            OutlinedButton(onClick = {
+                val f = file ?: return@OutlinedButton
+                val pw = password.ifBlank { null }; val src = origin
+                job.launch(outliningMsg) {
+                    val out = app.documents.uniqueFile(app.documents.docsDir, f.nameWithoutExtension + "_gray")
+                    try { com.smartdocs.editor.core.convert6.PdfTransforms6.grayscale(f, pw, out, app.documents.tempDir, ctx) { d, t -> step(d, t) } }
+                    catch (e: kotlinx.coroutines.CancellationException) { out.delete(); throw e }
+                    catch (e: Exception) { out.delete(); error = ctx.getString(if (com.smartdocs.editor.core.edit5.E5Locks.isPasswordError(e)) R.string.tte5_pdfa_password else R.string.ett_fx_failed); return@launch }
+                    com.smartdocs.editor.core.pdf.ToolOutputs.record(out, src)
+                    result = out
+                }
+            }, enabled = file != null && !job.running) { Icon(Icons.Default.FilterBAndW, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.t5_pf_fix_gray)) }
         }
         T5Card(stringResource(R.string.t5_options), Icons.Default.Tune) {
             SwitchRow(stringResource(R.string.t5_pdfa_raster), raster, stringResource(R.string.t5_pdfa_raster_hint)) { raster = it }
