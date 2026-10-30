@@ -394,4 +394,17 @@
     <string name="pc_pf_print_selected">Print the selected part</string>
     <string name="pc_combine_as_portfolio">Save as a portfolio</string>
     <string name="pc_combine_as_portfolio_sub">The files stay separate parts of a PDF portfolio with a cover page, instead of one merged document</string>
+    <string name="pc_web_levels">Capture depth</string>
+    <string name="pc_web_level_0">This page only</string>
+    <string name="pc_web_level_n">%1$d levels of links</string>
+    <string name="pc_web_same_site">Same site only</string>
+    <string name="pc_web_same_site_sub">Only links inside the same host are followed (whole-site capture)</string>
+    <string name="pc_web_max_pages">At most %1$d pages</string>
+    <string name="pc_web_screen_look">Screen look instead of print look</string>
+    <string name="pc_web_screen_look_sub">The site\'s print style sheets are turned off so the page looks as on screen</string>
+    <string name="pc_web_zoom">Zoom: %1$d%%</string>
+    <string name="pc_web_header">Header ({title} {url} {date} {page})</string>
+    <string name="pc_web_footer">Footer</string>
+    <string name="pc_web_info_page">On a separate first page</string>
+    <string name="pc_web_info_page_sub">The header / footer information goes on a first page instead of every page</string>
 </resources>

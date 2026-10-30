@@ -75,6 +75,8 @@ object WebPdfWriter {
         val marginsMils: IntArray? = null,
         /** Row 93: the whole page on one long sheet (the paper as tall as the content; [landscape] is ignored). */
         val singlePage: Boolean = false,
+        /** FINAL_CHECK_2 Low: JavaScript run on a loaded URL just before printing (screen look, zoom). */
+        val preScript: String? = null,
     )
 
     /** Suspends until the page has been written to [out]. Call from the main dispatcher. Cancellable. */
@@ -152,6 +154,7 @@ object WebPdfWriter {
             if (printing || done) return
             printing = true
             clearTimers()
+            if (isUrl && setup.preScript != null && webView.settings.javaScriptEnabled) runCatching { webView.evaluateJavascript(setup.preScript, null) }
             if (isUrl && setup.css.isNotBlank() && webView.settings.javaScriptEnabled) runCatching {
                 val js = "(function(){var s=document.createElement('style');s.textContent=" + org.json.JSONObject.quote(setup.css) + ";(document.head||document.documentElement).appendChild(s);})()"
                 webView.evaluateJavascript(js, null)

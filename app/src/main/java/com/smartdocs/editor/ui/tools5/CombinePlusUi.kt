@@ -312,6 +312,16 @@ class WebOpts {
     /** Row 93: one single long page; PDF tags (the app's auto-tagger runs on the result). */
     var singlePage by mutableStateOf(false)
     var tags by mutableStateOf(false)
+    // FINAL_CHECK_2 Low (B #13-15): crawl levels / whole site, screen look, zoom, header / footer (own page or every page)
+    var levels by mutableStateOf(0)
+    var sameSite by mutableStateOf(true)
+    var maxPages by mutableStateOf(20)
+    var screenLook by mutableStateOf(false)
+    var zoom by mutableStateOf(100)
+    var header by mutableStateOf("")
+    var footer by mutableStateOf("")
+    var infoPage by mutableStateOf(false)
+    fun capture() = com.smartdocs.editor.core.tools5.WebCapture.Options(levels, sameSite, maxPages, screenLook, zoom, header, footer, infoPage)
 
     fun setup(): android.print.WebPdfWriter.Setup {
         val media = when (paper) {
@@ -339,6 +349,20 @@ fun WebOptionsCard(o: WebOpts) {
         SwitchRow(stringResource(R.string.pc_web_no_links), o.noLinks) { o.noLinks = it }
         SwitchRow(stringResource(R.string.cv9_web_single), o.singlePage) { o.singlePage = it }
         SwitchRow(stringResource(R.string.cv9_web_tags), o.tags, stringResource(R.string.cv9_web_tags_sub)) { o.tags = it }
+        // FINAL_CHECK_2 Low: capture depth, site limit, look, zoom, header / footer
+        Text(stringResource(R.string.pc_web_levels), style = MaterialTheme.typography.labelLarge)
+        ChoiceChips(listOf(0, 1, 2, 3), o.levels, { if (it == 0) stringResource(R.string.pc_web_level_0) else stringResource(R.string.pc_web_level_n, it) }) { o.levels = it }
+        if (o.levels > 0) {
+            SwitchRow(stringResource(R.string.pc_web_same_site), o.sameSite, stringResource(R.string.pc_web_same_site_sub)) { o.sameSite = it }
+            Text(stringResource(R.string.pc_web_max_pages, o.maxPages), style = MaterialTheme.typography.bodySmall)
+            Slider(o.maxPages.toFloat(), { o.maxPages = it.toInt() }, valueRange = 2f..100f)
+        }
+        SwitchRow(stringResource(R.string.pc_web_screen_look), o.screenLook, stringResource(R.string.pc_web_screen_look_sub)) { o.screenLook = it }
+        Text(stringResource(R.string.pc_web_zoom, o.zoom), style = MaterialTheme.typography.bodySmall)
+        Slider(o.zoom.toFloat(), { o.zoom = (it / 5).toInt() * 5 }, valueRange = 50f..200f)
+        OutlinedTextField(o.header, { o.header = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.pc_web_header)) }, placeholder = { Text("{title}") })
+        OutlinedTextField(o.footer, { o.footer = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.pc_web_footer)) }, placeholder = { Text("{url} · {date} · {page}") })
+        if (o.header.isNotBlank() || o.footer.isNotBlank()) SwitchRow(stringResource(R.string.pc_web_info_page), o.infoPage, stringResource(R.string.pc_web_info_page_sub)) { o.infoPage = it }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(o.appendTo?.let { stringResource(R.string.pc_append_to, it.name) } ?: stringResource(R.string.pc_append_none), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
             if (o.appendTo != null) IconButton(onClick = { o.appendTo = null }) { Icon(Icons.Default.Close, stringResource(R.string.t5_remove)) }
