@@ -37,3 +37,8 @@ Repo: `maikljone22-beep/pdf-tools-and-reader-and-editor-free-2`, branch `main`. 
 - Gradle locally: `--max-workers=2`, `-q`; Windows Arabic locale needs the `-Duser.language=en …` flags already in `gradle.properties`.
 - Owner actions (servers, keys, assetlinks): `SERVER_SETUP.md`. Release checklist: `STATUS.md`.
 - Debug builds install as `com.smartdocs.editor.test` («SmartDocs تجريبي»).
+
+## 6. WIP saved from the stopped local sessions (not merged)
+- `fix/pdf39-formcalc` (4f65d3f) → done: standalone FormCalc interpreter draft `core/forms/XfaFormCalc.kt` (322 lines); left: wire into the XFA event pipeline (calculate/validate), tests; compiles: unknown (not built, nothing references it yet).
+- pdf-3c `fix/web-print` (web-capture + virtual printer options): no work existed (branch had no commits, worktree clean) — nothing pushed; start fresh from gaps/FINAL_CHECK_2.md.
+- pdf-39 Combine page-level view, DOCX export with comments, Portfolio part edit, a11y 19-21, watched folder: no worktrees/commits found — not started; start fresh from gaps/FINAL_CHECK_2.md.
