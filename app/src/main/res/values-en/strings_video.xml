@@ -63,4 +63,7 @@
     <string name="vid_form_box_sub">A video box on the page you can move and resize; it plays in place.</string>
     <string name="vid_form_icon">Video icon</string>
     <string name="vid_form_icon_sub">A small icon on the page; tapping it pops up the full-screen player.</string>
+    <string name="vid_default_video">Use these settings for new videos</string>
+    <string name="vid_default_audio">Use these settings for new sounds</string>
+    <string name="vid_default_saved">Saved as the default ✓</string>
 </resources>

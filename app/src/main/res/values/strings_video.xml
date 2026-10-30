@@ -63,4 +63,7 @@
     <string name="vid_form_box_sub">صندوق فيديو على الصفحة يمكنك تحريكه وتغيير حجمه، ويعمل في مكانه.</string>
     <string name="vid_form_icon">أيقونة فيديو</string>
     <string name="vid_form_icon_sub">أيقونة صغيرة على الصفحة؛ عند النقر عليها ينبثق المشغّل بملء الشاشة.</string>
+    <string name="vid_default_video">اجعل هذه الإعدادات افتراضية لمقاطع الفيديو الجديدة</string>
+    <string name="vid_default_audio">اجعل هذه الإعدادات افتراضية للمقاطع الصوتية الجديدة</string>
+    <string name="vid_default_saved">حُفظت كإعدادات افتراضية ✓</string>
 </resources>
