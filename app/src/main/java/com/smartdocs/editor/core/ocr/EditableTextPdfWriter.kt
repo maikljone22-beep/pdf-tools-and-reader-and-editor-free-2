@@ -51,7 +51,7 @@ class EditableTextPdfWriter(private val context: Context, src: File, password: S
      * Replace page [pageIndex] by [image] (the page rendered in display orientation, must be mutable — it is
      * modified) cleaned of the recognised words, plus the words of [page] as real text.
      */
-    suspend fun replacePage(pageIndex: Int, image: Bitmap, page: OcrPage, minConfidence: Float = 75f) = withContext(Dispatchers.Default) {
+    suspend fun replacePage(pageIndex: Int, image: Bitmap, page: OcrPage, minConfidence: Float = 75f, vectorRules: Boolean = true) = withContext(Dispatchers.Default) {
         val all = page.words.filter { it.text.isNotBlank() && it.box.width() > 1 && it.box.height() > 1 && it.text.any { c -> c.isLetterOrDigit() } }
         if (all.isEmpty()) return@withContext
         // drop junk "words": far taller than a text line (decorations, borders, big margin marks)
@@ -91,6 +91,19 @@ class EditableTextPdfWriter(private val context: Context, src: File, password: S
             }
         }
 
+        // FINAL_CHECK_2 Low: table rules / ruled lines become vector lines (erased from the picture, drawn sharp)
+        val rules = if (!vectorRules) emptyList() else runCatching {
+            val px = IntArray(bmp.width * bmp.height).also { bmp.getPixels(it, 0, bmp.width, 0, 0, bmp.width, bmp.height) }
+            TableRules.detect(px, bmp.width, bmp.height).also { list ->
+                list.forEach { r ->
+                    val ry = if (r.horizontal) (r.y0 - 2).coerceAtLeast(0) else (r.y0 + r.y1) / 2
+                    val rx = if (r.horizontal) (r.x0 + r.x1) / 2 else (r.x0 - 2).coerceAtLeast(0)
+                    fill.color = px[ry * bmp.width + rx]
+                    canvas.drawRect(r.x0 - 1f, r.y0 - 1f, r.x1 + 2f, r.y1 + 2f, fill)
+                }
+            }
+        }.getOrDefault(emptyList())
+
         // 2. background image at ~200 dpi
         val pxPerPt = bmp.width / dispW
         val target = 200f / 72f
@@ -107,6 +120,13 @@ class EditableTextPdfWriter(private val context: Context, src: File, password: S
             pdPage.resources = PDResources()
             PDPageContentStream(doc, pdPage, PDPageContentStream.AppendMode.OVERWRITE, true, true).use { cs ->
                 cs.drawImage(img, 0f, 0f, dispW, dispH)
+                rules.forEach { r ->
+                    cs.setStrokingColor(((r.color shr 16) and 0xFF) / 255f, ((r.color shr 8) and 0xFF) / 255f, (r.color and 0xFF) / 255f)
+                    cs.setLineWidth((r.thick * s).coerceAtLeast(0.3f))
+                    if (r.horizontal) { val y = dispH - (r.y0 + r.y1 + 1) / 2f * s; cs.moveTo(r.x0 * s, y); cs.lineTo((r.x1 + 1) * s, y) }
+                    else { val x = (r.x0 + r.x1 + 1) / 2f * s; cs.moveTo(x, dispH - r.y0 * s); cs.lineTo(x, dispH - (r.y1 + 1) * s) }
+                    cs.stroke()
+                }
                 cs.beginText()
                 // visual line order (left to right), as SearchablePdfWriter writes its invisible words, so PDFium keeps lines together
                 SearchablePdfWriter.visualLines(words).flatten().forEach { w -> runCatching { writeWord(cs, w, w in strong, ink[w] ?: 0x000000, s, dispH) } }
