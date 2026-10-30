@@ -15,8 +15,9 @@ import org.mozilla.javascript.ScriptableObject
  * over a small XFA object model: every instance is an object with `rawValue`, `presence`, `name`, `index`,
  * `parent`, `className`, `isNull`, `access`, `resolveNode(som)`, `instanceManager.count` and its named children
  * as properties; `xfa.resolveNode`, `xfa.host.messageBox`, `xfa.layout.pageCount()`, `app.alert`. Names are
- * resolved like XFA does (the field's container, then its ancestors). FormCalc scripts are not run (the parser
- * keeps JavaScript only), their stored values stay. Errors and time-outs leave the values unchanged.
+ * resolved like XFA does (the field's container, then its ancestors). FormCalc scripts run too: the parser translates
+ * them to JavaScript ([XfaFormCalc]); one it cannot translate is left out and its stored value stays. Errors and
+ * time-outs leave the values unchanged.
  */
 object XfaJs {
 
@@ -121,6 +122,7 @@ object XfaJs {
         val out = sandbox.run(totalMillis) { cx ->
             val scope = cx.initSafeStandardObjects(null, false)
             cx.evaluateString(scope, LIB, "xfa-om.js", 1, null)
+            cx.evaluateString(scope, XfaFormCalc.LIB, "formcalc.js", 1, null)   // __fc helpers for translated FormCalc scripts
             val x = ScriptableObject.getProperty(scope, "__xfa") as Scriptable
             ScriptableObject.callMethod(cx, x, "init", arrayOf<Any>(tree))
             fun runScript(i: Int, src: String, calc: Boolean): Any? {

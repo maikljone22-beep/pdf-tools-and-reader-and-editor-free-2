@@ -310,6 +310,143 @@ object XfaFormCalc {
         fun propName(n: String) = when (n.lowercase(Locale.ROOT)) { "rawvalue" -> "rawValue"; "formattedvalue" -> "formattedValue"; else -> n.lowercase(Locale.ROOT) }
     }
 
+    /**
+     * The `__fc` runtime the translated scripts call, evaluated after the XFA object model ([XfaJs]). FormCalc
+     * semantics: null / "" count as 0 in arithmetic, comparisons and logic give 1 / 0, aggregates skip nulls and
+     * expand `A[*]`, dates are day numbers with 1 = 1 January 1900.
+     */
+    const val LIB = $$"""
+(function (G) {
+function isNode(x) { return x !== null && typeof x === "object" && typeof x.__i === "number"; }
+function v(x) { if (isNode(x)) return x.rawValue; if (x === undefined) return null; return x; }
+function num(x) {
+  x = v(x); if (x === null || x === "") return 0; if (typeof x === "boolean") return x ? 1 : 0;
+  if (typeof x === "number") return x; var n = parseFloat(String(x)); return isNaN(n) ? 0 : n;
+}
+function str(x) { x = v(x); if (x === null) return ""; if (typeof x === "number") return fmtNum(x); return String(x); }
+function fmtNum(n) { if (!isFinite(n)) return ""; if (n === Math.floor(n) && Math.abs(n) < 1e15) return String(n); return String(parseFloat(n.toPrecision(12))); }
+function numeric(x) { return typeof x === "number" || typeof x === "boolean" || (typeof x === "string" && x !== "" && !isNaN(Number(x))); }
+function flat(a) {
+  var out = [];
+  function add(x) {
+    if (x instanceof Array) { for (var k = 0; k < x.length; k++) add(x[k]); return; }
+    out.push(x);
+  }
+  add(a); return out;
+}
+function vals(args) { var a = flat(Array.prototype.slice.call(args)), out = []; for (var k = 0; k < a.length; k++) { var x = v(a[k]); if (x !== null && x !== "") out.push(x); } return out; }
+function sibs(o) {
+  if (!isNode(o)) return [];
+  var p = o.parent; if (!p) return [o];
+  var all = p.nodes, out = []; for (var k = 0; k < all.length; k++) if (all[k].name === o.name) out.push(all[k]);
+  return out;
+}
+var MON = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+var DAY = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+var EPOCH = Date.UTC(1900, 0, 1);
+function dayNum(d) { return Math.floor((d - EPOCH) / 86400000) + 1; }
+function pad(n, w) { var s = String(n); while (s.length < w) s = "0" + s; return s; }
+function num2date(n, fmt) {
+  n = num(n); if (n < 1) return "";
+  var d = new Date(EPOCH + (n - 1) * 86400000), Y = d.getUTCFullYear(), M = d.getUTCMonth(), D = d.getUTCDate(), W = d.getUTCDay();
+  fmt = fmt === null || fmt === undefined || fmt === "" ? "MMM D, YYYY" : String(fmt);
+  return fmt.replace(/YYYY|YY|MMMM|MMM|MM|M|DD|D|EEEE|EEE/g, function (t) {
+    switch (t) {
+      case "YYYY": return String(Y); case "YY": return pad(Y % 100, 2);
+      case "MMMM": return MON[M]; case "MMM": return MON[M].substring(0, 3); case "MM": return pad(M + 1, 2); case "M": return String(M + 1);
+      case "DD": return pad(D, 2); case "D": return String(D); case "EEEE": return DAY[W]; case "EEE": return DAY[W].substring(0, 3);
+    }
+    return t;
+  });
+}
+function date2num(s, fmt) {
+  s = str(s); if (s === "") return 0;
+  fmt = fmt === null || fmt === undefined || fmt === "" ? null : String(fmt);
+  var Y = -1, M = -1, D = -1;
+  if (fmt) {
+    var toks = fmt.match(/YYYY|YY|MMMM|MMM|MM|M|DD|D|[^YMD]+/g) || [], pos = 0;
+    for (var k = 0; k < toks.length; k++) {
+      var t = toks[k], m;
+      if (t === "YYYY") { m = /^\d{4}/.exec(s.substring(pos)); if (!m) return 0; Y = +m[0]; }
+      else if (t === "YY") { m = /^\d{2}/.exec(s.substring(pos)); if (!m) return 0; Y = +m[0] + (+m[0] < 50 ? 2000 : 1900); }
+      else if (t === "MMMM" || t === "MMM") { m = /^[A-Za-z]+/.exec(s.substring(pos)); if (!m) return 0; for (var q = 0; q < 12; q++) if (MON[q].toLowerCase().indexOf(m[0].toLowerCase()) === 0) M = q; }
+      else if (t === "MM" || t === "M") { m = /^\d{1,2}/.exec(s.substring(pos)); if (!m) return 0; M = +m[0] - 1; }
+      else if (t === "DD" || t === "D") { m = /^\d{1,2}/.exec(s.substring(pos)); if (!m) return 0; D = +m[0]; }
+      else { m = [s.substring(pos, pos + t.length)]; }
+      pos += m[0].length;
+    }
+  } else {
+    var a = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(s) || null;
+    if (a) { Y = +a[1]; M = +a[2] - 1; D = +a[3]; }
+    else { var b = /^(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(s); if (b) { M = +b[1] - 1; D = +b[2]; Y = +b[3]; } else { var t2 = Date.parse(s); if (isNaN(t2)) return 0; return dayNum(t2); } }
+  }
+  if (Y < 0 || M < 0 || D < 1) return 0;
+  return dayNum(Date.UTC(Y, M, D));
+}
+G.__fc = {
+  v: v, num: num, flat: flat, sibs: sibs,
+  t: function (x) { return num(x) !== 0; },
+  name: function (fn, n) { try { var r = fn(); return r === undefined ? null : r; } catch (e) { return G.xfa.resolveNode(n); } },
+  kid: function (o, n) { if (!isNode(o)) return null; if (o[n] !== undefined && isNode(o[n])) return o[n]; return o.resolveNode(n); },
+  nth: function (o, i) { var a = sibs(o); i = num(i); return i >= 0 && i < a.length ? a[i] : null; },
+  set: function (o, x) { x = v(x); if (isNode(o)) o.rawValue = x; return x; },
+  and: function (a, b) { return num(a) !== 0 && num(b) !== 0 ? 1 : 0; },
+  or: function (a, b) { return num(a) !== 0 || num(b) !== 0 ? 1 : 0; },
+  cmp: function (op, a, b) {
+    a = v(a); b = v(b);
+    var eq = op === "==" || op === "eq", ne = op === "<>" || op === "ne";
+    if (eq || ne) {
+      var same;
+      if (a === null || b === null) same = (a === null || a === "") && (b === null || b === "");
+      else if (numeric(a) && numeric(b)) same = num(a) === num(b);
+      else same = String(a) === String(b);
+      return (eq ? same : !same) ? 1 : 0;
+    }
+    var r;
+    if (typeof a === "string" && typeof b === "string" && !numeric(a) && !numeric(b)) r = a < b ? -1 : a > b ? 1 : 0;
+    else { var x = num(a), y = num(b); r = x < y ? -1 : x > y ? 1 : 0; }
+    switch (op) { case "<": case "lt": return r < 0 ? 1 : 0; case ">": case "gt": return r > 0 ? 1 : 0;
+      case "<=": case "le": return r <= 0 ? 1 : 0; default: return r >= 0 ? 1 : 0; }
+  },
+  f: {
+    sum: function () { var a = vals(arguments), s = 0; for (var k = 0; k < a.length; k++) s += num(a[k]); return s; },
+    avg: function () { var a = vals(arguments); if (!a.length) return null; var s = 0; for (var k = 0; k < a.length; k++) s += num(a[k]); return s / a.length; },
+    min: function () { var a = vals(arguments); if (!a.length) return null; var m = num(a[0]); for (var k = 1; k < a.length; k++) m = Math.min(m, num(a[k])); return m; },
+    max: function () { var a = vals(arguments); if (!a.length) return null; var m = num(a[0]); for (var k = 1; k < a.length; k++) m = Math.max(m, num(a[k])); return m; },
+    count: function () { return vals(arguments).length; },
+    round: function (x, d) { if (v(x) === null) return null; var p = Math.pow(10, d === undefined ? 0 : Math.min(12, num(d))), n = num(x); return Math.round(Math.abs(n) * p + 1e-9) / p * (n < 0 ? -1 : 1); },
+    abs: function (x) { return v(x) === null ? null : Math.abs(num(x)); },
+    floor: function (x) { return v(x) === null ? null : Math.floor(num(x)); },
+    ceil: function (x) { return v(x) === null ? null : Math.ceil(num(x)); },
+    mod: function (a, b) { if (v(a) === null || v(b) === null) return null; var x = num(a), y = num(b); if (y === 0) throw new Error("division by zero"); return x % y; },
+    pow: function (a, b) { return v(a) === null || v(b) === null ? null : Math.pow(num(a), num(b)); },
+    concat: function () { var a = flat(Array.prototype.slice.call(arguments)), s = ""; for (var k = 0; k < a.length; k++) s += str(a[k]); return s; },
+    len: function (s) { return str(s).length; },
+    left: function (s, n) { return v(s) === null ? null : str(s).substring(0, Math.max(0, num(n))); },
+    right: function (s, n) { if (v(s) === null) return null; s = str(s); return s.substring(Math.max(0, s.length - num(n))); },
+    substr: function (s, st, n) { if (v(s) === null) return null; s = str(s); var b = Math.max(1, num(st)) - 1; return s.substring(b, b + Math.max(0, num(n))); },
+    upper: function (s) { return v(s) === null ? null : str(s).toUpperCase(); },
+    lower: function (s) { return v(s) === null ? null : str(s).toLowerCase(); },
+    ltrim: function (s) { return v(s) === null ? null : str(s).replace(/^\s+/, ""); },
+    rtrim: function (s) { return v(s) === null ? null : str(s).replace(/\s+$/, ""); },
+    str: function (n, w, p) { if (v(n) === null) return null; w = w === undefined ? 10 : num(w); p = p === undefined ? 0 : num(p); var s = num(n).toFixed(Math.max(0, Math.min(15, p))); while (s.length < w) s = " " + s; return s.length > w ? new Array(w + 1).join("*") : s; },
+    at: function (s1, s2) { return str(s1).indexOf(str(s2)) + 1; },
+    replace: function (s1, s2, s3) { if (v(s1) === null) return null; var a = str(s1), b = str(s2), c = s3 === undefined ? "" : str(s3); return b === "" ? a : a.split(b).join(c); },
+    space: function (n) { return new Array(Math.max(0, num(n)) + 1).join(" "); },
+    repeat: function (s, n) { return new Array(Math.max(0, num(n)) + 1).join(str(s)); },
+    date: function () { return dayNum(new Date().getTime()); },
+    num2date: function (n, f) { return num2date(n, v(f)); },
+    date2num: function (s, f) { return date2num(s, v(f)); },
+    hasvalue: function (x) { var y = v(x); return y !== null && String(y).replace(/\s/g, "") !== "" ? 1 : 0; },
+    oneof: function (s) { var x = str(s), a = vals(Array.prototype.slice.call(arguments, 1)); for (var k = 0; k < a.length; k++) if (str(a[k]) === x) return 1; return 0; },
+    within: function (s, lo, hi) { var x = v(s); if (x === null) return null; if (numeric(x)) return num(x) >= num(lo) && num(x) <= num(hi) ? 1 : 0; x = str(x); return x >= str(lo) && x <= str(hi) ? 1 : 0; },
+    choose: function (n) { var i = Math.floor(num(n)); return i >= 1 && i < arguments.length ? v(arguments[i]) : ""; },
+    exists: function (x) { return x !== null && x !== undefined ? 1 : 0; }
+  }
+};
+})(this);
+"""
+
     fun jsStr(s: String): String = buildString {
         append('"')
         for (c in s) when (c) {
