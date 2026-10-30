@@ -130,6 +130,26 @@ fun PortfolioEditor(nav: NavHostController, source: File, onClose: () -> Unit) {
         return Portfolio.extract(w, item.key, File(app.documents.tempDir, "pf_parts_${source.nameWithoutExtension}"))
     }
 
+    // FINAL_CHECK_2 #12: parts opened for editing (key → extracted file, size and time when opened); when the editor
+    // comes back and the file changed (the reader saved it), the new bytes go back into the portfolio
+    val opened = remember { HashMap<String, Triple<File, Long, Long>>() }
+    val savedBack = stringResource(R.string.pc_pf_saved_back)
+    fun openForEdit(item: PfItem, f: File) { opened[item.key] = Triple(f, f.length(), f.lastModified()); openPdf(nav, f) }
+    val owner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+    DisposableEffect(owner) {
+        val obs = androidx.lifecycle.LifecycleEventObserver { _, e ->
+            if (e != androidx.lifecycle.Lifecycle.Event.ON_RESUME) return@LifecycleEventObserver
+            val changed = opened.filter { (_, v) -> v.first.isFile && (v.first.length() != v.second || v.first.lastModified() != v.third) }
+            if (changed.isEmpty()) return@LifecycleEventObserver
+            changed.forEach { (key, v) ->
+                opened[key] = Triple(v.first, v.first.length(), v.first.lastModified())
+                change { w -> PortfolioOps.replacePart(w, null, key, v.first, w); snackbar.showSnackbar(savedBack) }
+            }
+        }
+        owner.lifecycle.addObserver(obs)
+        onDispose { owner.lifecycle.removeObserver(obs) }
+    }
+
     ToolScaffold(stringResource(R.string.t5_portfolio_title), nav, snackbar = snackbar, actions = {
         IconButton(onClick = onClose) { Icon(Icons.Default.Close, stringResource(R.string.pc_pf_close)) }
     }) {
@@ -178,7 +198,7 @@ fun PortfolioEditor(nav: NavHostController, source: File, onClose: () -> Unit) {
                 hs.take(50).forEach { h ->
                     Column(Modifier.fillMaxWidth().clickable {
                         val item = inf.items.firstOrNull { it.key == h.key } ?: return@clickable
-                        scope.launch { extract(item)?.let { nav.navigate(Routes.reader(Uri.fromFile(it).toString(), h.page)) } }
+                        scope.launch { extract(item)?.let { opened[item.key] = Triple(it, it.length(), it.lastModified()); nav.navigate(Routes.reader(Uri.fromFile(it).toString(), h.page)) } }
                     }.padding(vertical = 4.dp)) {
                         Text(stringResource(R.string.pc_pf_hit_page, h.name, h.page + 1), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                         Text(h.snippet, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -202,7 +222,7 @@ fun PortfolioEditor(nav: NavHostController, source: File, onClose: () -> Unit) {
             val pdf = item.name.endsWith(".pdf", true) || item.mime == "application/pdf"
             DropdownMenuItem(text = { Text(stringResource(R.string.t5_open)) }, onClick = { onDismiss(); scope.launch {
                 if (!pdf && !com.smartdocs.editor.ui.security.DocSecurityGate.confirmAttachment(ctx, item.name)) return@launch
-                extract(item)?.let { f -> if (pdf) openPdf(nav, f) else shareFiles(ctx, app.documents, listOf(f), item.mime) } } })
+                extract(item)?.let { f -> if (pdf) openForEdit(item, f) else shareFiles(ctx, app.documents, listOf(f), item.mime) } } })
             DropdownMenuItem(text = { Text(stringResource(R.string.share)) }, onClick = { onDismiss(); scope.launch { extract(item)?.let { shareFiles(ctx, app.documents, listOf(it), item.mime) } } })
             DropdownMenuItem(text = { Text(stringResource(R.string.pc_pf_rename)) }, onClick = { onDismiss(); ask = PfAsk.Rename(item) })
             DropdownMenuItem(text = { Text(stringResource(R.string.pc_pf_edit_description)) }, onClick = { onDismiss(); ask = PfAsk.Describe(item) })
