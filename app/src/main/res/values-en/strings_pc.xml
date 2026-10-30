@@ -382,4 +382,9 @@
     <string name="pc_save_pdfa_sub">For long-term archiving; the file is checked after conversion.</string>
     <string name="pc_std_verify">Verify</string>
     <string name="pc_pf_saved_back">The part\'s changes were saved back into the portfolio.</string>
+    <string name="cmb_page_view">Page view</string>
+    <string name="cmb_page_view_hint">Every page of the PDF files in combine order. Select pages and move them up / down, to the start / end, or drop them — a file\'s pages can go between another file\'s pages.</string>
+    <string name="cmb_pages_n">%1$d pages · %2$d selected</string>
+    <string name="cmb_to_start">To the start</string>
+    <string name="cmb_to_end">To the end</string>
 </resources>

@@ -382,4 +382,9 @@
     <string name="pc_save_pdfa_sub">للأرشفة طويلة الأمد؛ يُفحص الملف بعد التحويل.</string>
     <string name="pc_std_verify">التحقق</string>
     <string name="pc_pf_saved_back">تم حفظ تعديلات الجزء في الحافظة (Portfolio).</string>
+    <string name="cmb_page_view">عرض الصفحات</string>
+    <string name="cmb_page_view_hint">كل صفحات ملفات PDF بترتيب الدمج. حدد صفحات وحرّكها لأعلى/لأسفل أو إلى البداية/النهاية أو احذفها — يمكن وضع صفحات ملف بين صفحات ملف آخر.</string>
+    <string name="cmb_pages_n">%1$d صفحة · %2$d محددة</string>
+    <string name="cmb_to_start">إلى البداية</string>
+    <string name="cmb_to_end">إلى النهاية</string>
 </resources>
