@@ -30,7 +30,13 @@ class DocxBuilder(
     private val charSpacing: Float = 0f,
     /** s6 "image anchoring": pictures float at their PDF position (anchored to the page) instead of sitting in line. */
     private val anchorImages: Boolean = false,
+    /** FINAL_CHECK_2 #5: PDF comments become Word comments anchored on the paragraph they sit on. */
+    private val comments: Boolean = false,
 ) : Closeable {
+    /** Word comments written so far: id → (author, date, text). */
+    private val commentList = ArrayList<Triple<String, String, String>>()
+    /** Comments of the page being added, by the paragraph block they anchor on (identity). */
+    private var pageComments: Map<Block, List<Int>> = emptyMap()
     private val flowing = flowing0 && !exact
 
     /** framePr of a block placed at [r] (PDF points, y down) on its page; a little wider so its lines do not wrap. */
@@ -65,6 +71,7 @@ class DocxBuilder(
         }
         pages++
         if (page.rtl) rtlVotes++ else rtlVotes--
+        pageComments = if (comments && page.comments.isNotEmpty()) anchorComments(page) else emptyMap()
         for (b in page.blocks) when (b) {
             is ParagraphBlock -> paragraph(b)
             is TableBlock -> table(b)
@@ -112,6 +119,26 @@ class DocxBuilder(
         }
     }
 
+    /**
+     * Each comment goes to the paragraph it overlaps most (else the nearest paragraph on the page); the comment text
+     * is registered for comments.xml and the ids are grouped per block.
+     */
+    private fun anchorComments(page: PageLayout): Map<Block, List<Int>> {
+        val paras = page.blocks.filterIsInstance<ParagraphBlock>()
+        if (paras.isEmpty()) return emptyMap()
+        val out = HashMap<Block, MutableList<Int>>()
+        for (c in page.comments) {
+            fun overlap(r: Rect): Float = maxOf(0f, minOf(r.x1, c.rect.x1) - maxOf(r.x0, c.rect.x0)) * maxOf(0f, minOf(r.y1, c.rect.y1) - maxOf(r.y0, c.rect.y0))
+            val best = paras.maxByOrNull { overlap(it.rect) }?.takeIf { overlap(it.rect) > 0f }
+                ?: paras.minByOrNull { b -> val dx = (b.rect.x0 + b.rect.x1 - c.rect.x0 - c.rect.x1) / 2; val dy = (b.rect.y0 + b.rect.y1 - c.rect.y0 - c.rect.y1) / 2; dx * dx + dy * dy }
+                ?: continue
+            val id = commentList.size
+            commentList += Triple(c.author, c.date, if (c.kind == "Text" || c.kind == "FreeText") c.text else "[${c.kind}] ${c.text}")
+            out.getOrPut(best) { ArrayList() } += id
+        }
+        return out
+    }
+
     private fun jc(a: Align): String? = when (a) {
         Align.START -> null
         Align.CENTER -> "center"
@@ -128,8 +155,30 @@ class DocxBuilder(
         if (exact) body.append("<w:spacing w:before=\"0\" w:after=\"0\"/>")
         jc(b.align)?.let { body.append("<w:jc w:val=\"").append(it).append("\"/>") }
         body.append("</w:pPr>")
+        val ids = pageComments[b].orEmpty()
+        ids.forEach { body.append("<w:commentRangeStart w:id=\"").append(it).append("\"/>") }
         runs(body, TextRuns.ofParagraph(b.lines), b.rtl)
+        ids.forEach { body.append("<w:commentRangeEnd w:id=\"").append(it).append("\"/><w:r><w:rPr><w:rStyle w:val=\"CommentReference\"/></w:rPr><w:commentReference w:id=\"").append(it).append("\"/></w:r>") }
         body.append("</w:p>")
+    }
+
+    /** word/comments.xml: one comment per registered note, paragraphs per line. */
+    private fun commentsXml(): String {
+        val sb = StringBuilder(XML_HEAD).append("<w:comments xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\">")
+        commentList.forEachIndexed { id, (author, date, text) ->
+            sb.append("<w:comment w:id=\"").append(id).append("\" w:author=\"").append(BidiText.xml(author.ifBlank { "PDF" })).append("\" w:initials=\"")
+                .append(BidiText.xml(author.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }.take(2).joinToString("") { it.take(1) }.ifBlank { "P" })).append('"')
+            if (date.isNotBlank()) sb.append(" w:date=\"").append(date).append('"')
+            sb.append('>')
+            val lines = text.lines().ifEmpty { listOf("") }
+            lines.forEachIndexed { i, l ->
+                sb.append("<w:p>")
+                if (i == 0) sb.append("<w:r><w:rPr><w:rStyle w:val=\"CommentReference\"/></w:rPr><w:annotationRef/></w:r>")
+                sb.append("<w:r><w:t xml:space=\"preserve\">").append(BidiText.xml(l)).append("</w:t></w:r></w:p>")
+            }
+            sb.append("</w:comment>")
+        }
+        return sb.append("</w:comments>").toString()
     }
 
     private fun table(t: TableBlock) {
@@ -264,6 +313,7 @@ class DocxBuilder(
         imageRels.forEach { (id, name) -> rels += Triple(id, "$REL_DOC/image", "media/$name") }
         headerXml?.let { zip.text("word/header1.xml", it); rels += Triple("rIdHdr1", "$REL_DOC/header", "header1.xml") }
         footerXml?.let { zip.text("word/footer1.xml", it); rels += Triple("rIdFtr1", "$REL_DOC/footer", "footer1.xml") }
+        if (commentList.isNotEmpty()) { zip.text("word/comments.xml", commentsXml()); rels += Triple("rIdCmt1", "$REL_DOC/comments", "comments.xml") }
         zip.text("word/_rels/document.xml.rels", OoxmlZip.rels(*rels.toTypedArray()))
         zip.text("_rels/.rels", OoxmlZip.rels(
             Triple("rId1", "$REL_DOC/officeDocument", "word/document.xml"),
@@ -278,6 +328,7 @@ class DocxBuilder(
             "<Override PartName=\"/word/styles.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml\"/>" +
             (if (headerXml != null) "<Override PartName=\"/word/header1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml\"/>" else "") +
             (if (footerXml != null) "<Override PartName=\"/word/footer1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml\"/>" else "") +
+            (if (commentList.isNotEmpty()) "<Override PartName=\"/word/comments.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml\"/>" else "") +
             "<Override PartName=\"/docProps/core.xml\" ContentType=\"" + OoxmlZip.CT_CORE + "\"/></Types>")
         zip.close()
     }
@@ -326,6 +377,7 @@ class DocxBuilder(
             "<w:pPrDefault><w:pPr><w:spacing w:after=\"120\" w:line=\"276\" w:lineRule=\"auto\"/></w:pPr></w:pPrDefault></w:docDefaults>" +
             "<w:style w:type=\"paragraph\" w:default=\"1\" w:styleId=\"Normal\"><w:name w:val=\"Normal\"/><w:qFormat/></w:style>" +
             heading(1, maxOf(hp + 12, 32)) + heading(2, maxOf(hp + 6, 26)) + heading(3, maxOf(hp + 2, 24)) +
+            "<w:style w:type=\"character\" w:styleId=\"CommentReference\"><w:name w:val=\"annotation reference\"/><w:uiPriority w:val=\"99\"/><w:semiHidden/><w:unhideWhenUsed/><w:rPr><w:sz w:val=\"16\"/><w:szCs w:val=\"16\"/></w:rPr></w:style>" +
             "<w:style w:type=\"table\" w:default=\"1\" w:styleId=\"TableNormal\"><w:name w:val=\"Normal Table\"/><w:tblPr><w:tblInd w:w=\"0\" w:type=\"dxa\"/>" +
             "<w:tblCellMar><w:top w:w=\"0\" w:type=\"dxa\"/><w:left w:w=\"108\" w:type=\"dxa\"/><w:bottom w:w=\"0\" w:type=\"dxa\"/><w:right w:w=\"108\" w:type=\"dxa\"/></w:tblCellMar></w:tblPr></w:style>" +
             "</w:styles>"

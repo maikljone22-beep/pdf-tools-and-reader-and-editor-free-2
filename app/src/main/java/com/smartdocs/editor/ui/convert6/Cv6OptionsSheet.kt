@@ -205,6 +205,7 @@ private fun OptionsBody(conv: Conv, inputCount: Int, o: Cv6Opts, onChange: (Cv6O
         FieldLabel(stringResource(R.string.cv9_char_spacing))
         ChoiceChips(listOf(-0.5f, 0f, 0.5f, 1f), o.docxCharSpacing, { if (it == 0f) stringResource(R.string.cv9_spacing_normal) else (if (it > 0) "+" else "") + it.toString() + " pt" }) { onChange(o.copy(docxCharSpacing = it)) }
         SwitchRow(stringResource(R.string.cv9_anchor_images), o.docxAnchorImages, stringResource(R.string.cv9_anchor_images_sub)) { onChange(o.copy(docxAnchorImages = it)) }
+        SwitchRow(stringResource(R.string.cv9_docx_comments), o.docxComments, stringResource(R.string.cv9_docx_comments_sub)) { onChange(o.copy(docxComments = it)) }
     }
     if (Opt.XLSX_CELLS in opts) {
         // s6 Excel: split multi-line text into rows; reduce merged cells

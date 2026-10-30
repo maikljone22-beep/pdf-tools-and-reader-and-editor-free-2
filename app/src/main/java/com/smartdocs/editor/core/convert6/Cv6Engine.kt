@@ -88,6 +88,8 @@ data class Cv6Opts(
     /** PDF → Word (s6): character spacing (pt) and anchored pictures. */
     val docxCharSpacing: Float = 0f,
     val docxAnchorImages: Boolean = false,
+    /** PDF → Word: PDF comments become Word comments (FINAL_CHECK_2 #5). */
+    val docxComments: Boolean = true,
     /** Table detection: also tables found from text alignment (false = lined tables only). */
     val streamTables: Boolean = true,
     /** s6 Batch "page range per file": a range for one input (its path → range); others use [range]. */
@@ -295,7 +297,7 @@ class Cv6Engine(private val ctx: Context, private val docs: DocumentRepository) 
             val out = out(base, "docx")
             val opts = ConvertOptions(format = TargetFormat.DOCX, pages = pages, detectTables = o.tables, includeImages = o.includeImages, docxFlowing = flowing && !o.exactLayout,
                 docxExact = o.exactLayout, detectHeaders = o.headerMode != 1, dropFurniture = o.headerMode == 2,
-                docxCharSpacing = o.docxCharSpacing, docxAnchorImages = o.docxAnchorImages, streamTables = o.streamTables)
+                docxCharSpacing = o.docxCharSpacing, docxAnchorImages = o.docxAnchorImages, docxComments = o.docxComments, streamTables = o.streamTables)
             val stats = ConvertEngine.convert(ctx, inp.file, pw, opts, out, p, cancelled)
             val info = ArrayList<String>()
             info += if (stats.textPages == 0) ctx.getString(R.string.cv_scanned_warning) else ctx.getString(R.string.cv6_info_pages, stats.pages, stats.tables, stats.images)

@@ -79,4 +79,6 @@
     <string name="cv9_xfit_actual">الحجم الفعلي</string>
     <string name="cv9_xfit_cols">كل الأعمدة في عرض صفحة</string>
     <string name="cv9_xfit_page">الورقة كلها في صفحة</string>
+    <string name="cv9_docx_comments">تصدير التعليقات</string>
+    <string name="cv9_docx_comments_sub">تعليقات PDF (الملاحظات، التظليل، الأشكال) تصبح تعليقات Word على النص الذي تقع عليه</string>
 </resources>
