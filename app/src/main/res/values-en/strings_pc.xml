@@ -421,4 +421,6 @@
     <string name="pc_pf_vt_claim">There is no PDF/VT identifier</string>
     <string name="pc_pf_vt_dpart">The document part metadata (DPart) that PDF/VT requires is missing</string>
     <string name="pc_pf_report_pdf">PDF report with the pages marked</string>
+    <string name="pc_pf_read_mode">Read mode</string>
+    <string name="pc_pf_edit_mode">Edit mode</string>
 </resources>

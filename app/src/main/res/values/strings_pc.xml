@@ -421,4 +421,6 @@
     <string name="pc_pf_vt_claim">لا يوجد معرّف PDF/VT</string>
     <string name="pc_pf_vt_dpart">لا توجد بيانات أجزاء المستند (DPart) التي يتطلبها PDF/VT</string>
     <string name="pc_pf_report_pdf">تقرير PDF مع تمييز الصفحات</string>
+    <string name="pc_pf_read_mode">وضع القراءة</string>
+    <string name="pc_pf_edit_mode">وضع التحرير</string>
 </resources>

@@ -245,6 +245,13 @@ fun ResizeScreen(nav: NavHostController, uri: String?) {
                 doc.export(app.documents.docsDir, unique, "resized")
             }
         }
+        // FINAL_CHECK_2 Low: a page resized earlier (in this app) goes back to its original size
+        OutlinedButton(onClick = {
+            runner.run(processing) {
+                doc.apply(app.documents.tempDir) { s, o, p -> PageBoxOps.resetSize(s, o, p, PageBoxOps.resizedPages(s, p)) }
+                doc.export(app.documents.docsDir, unique, "original_size")
+            }
+        }, enabled = doc.work != null, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.AspectRatio, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.tte5_resize_reset)) }
         if (doc.canUndo || doc.changed) OutlinedButton(onClick = {
             runner.run(processing) { doc.export(app.documents.docsDir, unique, "resized") }
         }, enabled = doc.changed, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.Save, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.e5_save_copy)) }
