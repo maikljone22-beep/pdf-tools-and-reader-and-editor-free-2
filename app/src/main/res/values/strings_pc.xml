@@ -381,4 +381,5 @@
     <string name="pc_save_pdfa">الحفظ بصيغة PDF/A</string>
     <string name="pc_save_pdfa_sub">للأرشفة طويلة الأمد؛ يُفحص الملف بعد التحويل.</string>
     <string name="pc_std_verify">التحقق</string>
+    <string name="pc_pf_saved_back">تم حفظ تعديلات الجزء في الحافظة (Portfolio).</string>
 </resources>

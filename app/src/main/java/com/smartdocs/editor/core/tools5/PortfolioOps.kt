@@ -107,6 +107,19 @@ object PortfolioOps {
     }
 
     /**
+     * FINAL_CHECK_2 #12: a part edited outside (opened in the reader, saved) goes back into the portfolio: same name,
+     * folder and description, new bytes.
+     */
+    suspend fun replacePart(src: File, password: String?, key: String, edited: File, out: File): File = edit(src, password, out) { doc ->
+        val (fid, name) = PortfolioEdit.splitKey(key)
+        val folder = PortfolioEdit.folderPaths(doc)[fid].orEmpty()
+        val desc = Embed.all(doc)[key]?.fileDescription
+        PortfolioEdit.remove(doc, listOf(key))
+        val nk = PortfolioEdit.add(doc, listOf(Attachment(name, Embed.mimeOf(name), edited.readBytes())), folder)
+        if (desc != null) nk.firstOrNull()?.let { PortfolioEdit.setDescription(doc, it, desc) }
+    }
+
+    /**
      * Rebuilds the cover sheet (page 1): title, then every part grouped by folder; PDF parts get a link that opens
      * them (GoToE) — Foxit "portfolio table of contents" / "regenerate TOC".
      */
