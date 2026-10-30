@@ -743,6 +743,38 @@ internal object ImageEdit5 {
 
     suspend fun infoFile(src: File, password: String?, page: Int, op: Int): ImageInfo? = read(src, password) { info(it, page, op) }
 
+    /** The marked-content id the operator at [op] lies in (innermost BDC with an /MCID), or null. Pure over the scanned ops. */
+    fun mcidOf(ops: List<OpInfo>, op: Int): Int? {
+        val stack = ArrayDeque<Int?>()
+        for (i in 0..minOf(op, ops.lastIndex)) {
+            val o = ops[i]
+            when (o.name) {
+                "BDC" -> stack.addLast((o.operands.lastOrNull() as? com.tom_roush.pdfbox.cos.COSDictionary)?.getInt(COSName.getPDFName("MCID"), -1)?.takeIf { it >= 0 })
+                "BMC" -> stack.addLast(null)
+                "EMC" -> stack.removeLastOrNull()
+            }
+        }
+        return stack.lastOrNull { it != null }
+    }
+
+    /** FINAL_CHECK_2 Low (D §34.38): the alt text of the figure that owns the image at [op] — (alt, element path, mcid); path null = no element. */
+    suspend fun altTextFile(src: File, password: String?, page: Int, op: Int): Triple<String?, List<Int>?, Int?> = read(src, password) { doc ->
+        val mcid = mcidOf(scan(doc.getPage(page)).ops, op) ?: return@read Triple(null, null, null)
+        val owner = com.smartdocs.editor.core.tools5.AccessContent.owners(doc, page)[mcid] ?: return@read Triple(null, null, mcid)
+        val elem = com.smartdocs.editor.core.tools5.AccessTags.at(doc, owner.second)
+        Triple(elem?.getString(COSName.getPDFName("Alt")), owner.second, mcid)
+    }
+
+    /** Write [alt] on the image's figure element (a Figure is created around its MCID when it has none). */
+    suspend fun setAltTextFile(src: File, out: File, password: String?, page: Int, op: Int, alt: String) = edit(src, out, password) { doc ->
+        val mcid = mcidOf(scan(doc.getPage(page)).ops, op) ?: throw IllegalStateException("no mcid")
+        val path = com.smartdocs.editor.core.tools5.AccessContent.owners(doc, page)[mcid]?.second
+            ?: com.smartdocs.editor.core.tools5.AccessContent.createTag(doc, page, listOf(mcid), "Figure")
+        com.smartdocs.editor.core.tools5.AccessTags.at(doc, path)?.let { e ->
+            if (alt.isBlank()) e.removeItem(COSName.getPDFName("Alt")) else e.setItem(COSName.getPDFName("Alt"), com.tom_roush.pdfbox.cos.COSString(alt))
+        }
+    }
+
     suspend fun lookFile(src: File, password: String?, page: Int, op: Int): Look = read(src, password) { look(it, page, op) }
 
     suspend fun objectsFile(src: File, password: String?, page: Int): List<Obj> = read(src, password) { objects(it.getPage(page)) }

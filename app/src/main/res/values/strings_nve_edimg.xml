@@ -151,4 +151,6 @@
     <string name="ni_ia_proportional">تحجيم متناسب</string>
     <string name="ni_ia_pos_x">الموضع الأفقي %1$d٪</string>
     <string name="ni_ia_pos_y">الموضع الرأسي %1$d٪</string>
+    <string name="ni_p_alt_unmarked">لا يمكن إضافة نص بديل: الصورة غير معلَّمة (MCID). شغّل «وسم لإمكانية الوصول» أولاً.</string>
+    <string name="ni_p_alt_new_figure">ستُنشأ وسمة Figure للصورة عند الحفظ.</string>
 </resources>

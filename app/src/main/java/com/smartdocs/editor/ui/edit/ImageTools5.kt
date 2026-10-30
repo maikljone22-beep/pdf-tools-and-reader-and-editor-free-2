@@ -1178,6 +1178,22 @@ private fun PropsDialog5(c: EditController) {
                 PropRow5(R.string.ni_p_smask, if (n.softMask) yes else no)
                 PropRow5(R.string.ni_p_crop, if (n.cropped) yes else no)
                 PropRow5(R.string.ni_p_opacity, "${Math.round(n.opacity * 100)}% · ${n.blend}")
+                // FINAL_CHECK_2 Low (D §34.38): the figure's alt text, edited from the page
+                val altInfo by produceState<Triple<String?, List<Int>?, Int?>?>(null, i.op) { value = runCatching { ImageEdit5.altTextFile(f, c.state.password, c.page, i.op) }.getOrNull() }
+                altInfo?.let { (alt0, path, mcid) ->
+                    var alt by remember(alt0) { mutableStateOf(alt0.orEmpty()) }
+                    HorizontalDivider()
+                    if (mcid == null) Text(stringResource(R.string.ni_p_alt_unmarked), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    else {
+                        OutlinedTextField(alt, { alt = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.t5_acc_alt)) }, minLines = 2)
+                        if (path == null) Text(stringResource(R.string.ni_p_alt_new_figure), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        TextButton(enabled = alt != alt0.orEmpty(), onClick = {
+                            val p = c.page; val op = i.op; val a = alt; val pw = c.state.password
+                            t.sheet = null
+                            c.runNve(R.string.ed_saved) { src, out -> ImageEdit5.setAltTextFile(src, out, pw, p, op, a) }
+                        }) { Text(stringResource(R.string.t5_acc_save_alt)) }
+                    }
+                }
             }
         })
 }
