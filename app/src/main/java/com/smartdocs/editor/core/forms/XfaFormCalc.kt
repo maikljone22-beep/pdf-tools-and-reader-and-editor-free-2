@@ -109,7 +109,7 @@ object XfaFormCalc {
         fun program(): String {
             val body = block(emptySet())
             if (peek().t != T.EOF) throw FcError("unexpected ${peek().s}")
-            return "var __r = null;\n$body__r;"
+            return "var __r = null;\n${body}__r;"
         }
 
         /** Statements until one of the keywords [ends] (or the end). */
@@ -387,7 +387,10 @@ G.__fc = {
   v: v, num: num, flat: flat, sibs: sibs,
   t: function (x) { return num(x) !== 0; },
   name: function (fn, n) { try { var r = fn(); return r === undefined ? null : r; } catch (e) { return G.xfa.resolveNode(n); } },
-  kid: function (o, n) { if (!isNode(o)) return null; if (o[n] !== undefined && isNode(o[n])) return o[n]; return o.resolveNode(n); },
+  kid: function (o, n) {
+    if (o instanceof Array) { var out = []; for (var k = 0; k < o.length; k++) { var c = G.__fc.kid(o[k], n); if (c !== null) out.push(c); } return out; }   // A[*].B
+    if (!isNode(o)) return null; if (o[n] !== undefined && isNode(o[n])) return o[n]; return o.resolveNode(n);
+  },
   nth: function (o, i) { var a = sibs(o); i = num(i); return i >= 0 && i < a.length ? a[i] : null; },
   set: function (o, x) { x = v(x); if (isNode(o)) o.rawValue = x; return x; },
   and: function (a, b) { return num(a) !== 0 && num(b) !== 0 ? 1 : 0; },
