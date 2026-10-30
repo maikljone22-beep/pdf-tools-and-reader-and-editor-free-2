@@ -127,8 +127,8 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
     fun launchScanner() {
         val act = ctx.activity() ?: run { scope.launch { snackbar.showSnackbar(unavailable) }; return }
         runCatching {
-            val limit = when (kind) { ScanKind.ID_CARD, ScanKind.BUSINESS_CARD -> 2; ScanKind.RECEIPT -> 5; else -> 50 }
-            val opts = GmsDocumentScannerOptions.Builder().setGalleryImportAllowed(true).setPageLimit(limit)
+            val limit = when (kind) { ScanKind.ID_CARD, ScanKind.BUSINESS_CARD -> 2; ScanKind.RECEIPT -> 5; else -> 0 }   // 0 = no page limit
+            val opts = GmsDocumentScannerOptions.Builder().setGalleryImportAllowed(true).apply { if (limit > 0) setPageLimit(limit) }
                 .setResultFormats(GmsDocumentScannerOptions.RESULT_FORMAT_JPEG).setScannerMode(GmsDocumentScannerOptions.SCANNER_MODE_FULL).build()
             GmsDocumentScanning.getClient(opts).getStartScanIntent(act)
                 .addOnSuccessListener { s -> runCatching { scanLauncher.launch(IntentSenderRequest.Builder(s).build()) } }
