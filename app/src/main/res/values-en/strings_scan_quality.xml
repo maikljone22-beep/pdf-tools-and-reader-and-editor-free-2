@@ -4,4 +4,5 @@
     <string name="sc_flatten_sub">For book and notebook pages photographed open</string>
     <string name="sc_high_quality">High quality</string>
     <string name="sc_high_quality_sub">Full phone-camera resolution, lighter compression (larger file)</string>
+    <string name="sc_f_enhance">Smart enhance</string>
 </resources>

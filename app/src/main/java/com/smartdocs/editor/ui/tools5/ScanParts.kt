@@ -35,7 +35,7 @@ fun ScanFilter.label(): String = stringResource(
     when (this) {
         ScanFilter.ORIGINAL -> R.string.t5_f_original; ScanFilter.AUTO -> R.string.t5_f_auto; ScanFilter.GRAY -> R.string.t5_f_gray
         ScanFilter.BW -> R.string.t5_f_bw; ScanFilter.WHITEBOARD -> R.string.t5_f_board; ScanFilter.NO_SHADOW -> R.string.t5_f_shadow
-        ScanFilter.RECEIPT -> R.string.t5_f_receipt
+        ScanFilter.RECEIPT -> R.string.t5_f_receipt; ScanFilter.ENHANCE -> R.string.sc_f_enhance
     },
 )
 

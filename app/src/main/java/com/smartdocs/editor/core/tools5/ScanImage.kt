@@ -12,7 +12,7 @@ import androidx.exifinterface.media.ExifInterface
 import java.io.File
 
 /** Scan filters of the studio. */
-enum class ScanFilter { ORIGINAL, AUTO, GRAY, BW, WHITEBOARD, NO_SHADOW, RECEIPT }
+enum class ScanFilter { ORIGINAL, AUTO, GRAY, BW, WHITEBOARD, NO_SHADOW, RECEIPT, ENHANCE }
 
 /** Per-page edits; [rotation] is clockwise 0/90/180/270. */
 /** Edits of one scanned picture; [erase] rects are fractions (left, top, right, bottom) of the rotated picture. */
@@ -26,6 +26,8 @@ fun ScanKind.defaultFilter(): ScanFilter = when (this) {
     ScanKind.WHITEBOARD -> ScanFilter.WHITEBOARD
     ScanKind.RECEIPT -> ScanFilter.RECEIPT
     ScanKind.ID_CARD, ScanKind.BUSINESS_CARD -> ScanFilter.AUTO
+    // text pages: white paper, darker sharper text, pictures kept in colour
+    ScanKind.DOCUMENT, ScanKind.BOOK, ScanKind.BATCH -> ScanFilter.ENHANCE
     else -> ScanFilter.AUTO
 }
 
@@ -77,12 +79,19 @@ object ScanImage {
             // uneven light (a shadow, a lamp on one side) is evened out first
             ScanFilter.AUTO -> { if (PixelOps.unevenLight(px, w, h)) PixelOps.normalizeBackground(px, w, h); PixelOps.autoLevels(px) }
             ScanFilter.GRAY -> { PixelOps.toGray(px); PixelOps.autoLevels(px) }
-            ScanFilter.BW -> { PixelOps.normalizeBackground(px, w, h); PixelOps.sauvola(px, w, h) }
+            ScanFilter.BW -> {
+                PixelOps.normalizeBackground(px, w, h)
+                ScanFilters.sharpen(px, w, h, 0.7f).copyInto(px)     // crisper strokes before thresholding
+                PixelOps.sauvola(px, w, h)
+                ScanClean.despeckle(px, w, h)                        // no salt-and-pepper noise left
+            }
+            ScanFilter.ENHANCE -> ScanEnhance.enhance(px, w, h, (0.7f + (edit.contrast - 1f) * 0.6f).coerceIn(0.2f, 1f))
             ScanFilter.WHITEBOARD -> { PixelOps.normalizeBackground(px, w, h); PixelOps.saturate(px, 1.6f); PixelOps.brightnessContrast(px, 0f, 1.25f) }
             ScanFilter.NO_SHADOW -> { PixelOps.normalizeBackground(px, w, h); PixelOps.autoLevels(px, 0.005f, 0.995f) }
             ScanFilter.RECEIPT -> { PixelOps.toGray(px); PixelOps.normalizeBackground(px, w, h); PixelOps.brightnessContrast(px, 0f, 1.5f) }
         }
-        if (edit.filter != ScanFilter.BW) PixelOps.brightnessContrast(px, edit.brightness, edit.contrast)
+        // ENHANCE uses the contrast slider as its strength
+        if (edit.filter != ScanFilter.BW) PixelOps.brightnessContrast(px, edit.brightness, if (edit.filter == ScanFilter.ENHANCE) 1f else edit.contrast)
         // old plan K12 / K8: dust removal and the eraser
         if (edit.despeckle) ScanClean.despeckle(px, w, h)
         if (edit.erase.isNotEmpty()) ScanClean.erase(px, w, h, edit.erase)
