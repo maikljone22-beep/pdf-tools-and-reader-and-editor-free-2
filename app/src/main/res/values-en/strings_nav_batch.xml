@@ -100,6 +100,10 @@
     <string name="nbt_print_summary">Add the comment summary at the end</string>
     <string name="nbt_print_what">Print what</string>
     <string name="nbt_printer_none">No recipe</string>
+    <string name="nbt_printer_version">PDF version</string>
+    <string name="nbt_printer_version_keep">Keep</string>
+    <string name="nbt_printer_append_none">Save as a new file</string>
+    <string name="nbt_printer_open">Open the file after printing</string>
     <string name="nbt_printer_sub">The chosen recipe is applied to every file printed to the SmartDocs PDF printer (security, watermark, header, PDF/A…)</string>
     <string name="nbt_printer_title">SmartDocs PDF printer</string>
     <string name="nbt_profile_none">No profile</string>

@@ -100,6 +100,10 @@
     <string name="nbt_print_summary">إضافة ملخص التعليقات في النهاية</string>
     <string name="nbt_print_what">ما يُطبع</string>
     <string name="nbt_printer_none">بدون وصفة</string>
+    <string name="nbt_printer_version">إصدار PDF</string>
+    <string name="nbt_printer_version_keep">كما هو</string>
+    <string name="nbt_printer_append_none">حفظ كملف جديد</string>
+    <string name="nbt_printer_open">فتح الملف بعد الطباعة</string>
     <string name="nbt_printer_sub">تُطبَّق الوصفة المختارة على كل ملف يُطبع إلى طابعة SmartDocs PDF (حماية، علامة مائية، ترويسة، PDF/A…)</string>
     <string name="nbt_printer_title">طابعة SmartDocs PDF</string>
     <string name="nbt_profile_none">بدون ملف تعريفي</string>

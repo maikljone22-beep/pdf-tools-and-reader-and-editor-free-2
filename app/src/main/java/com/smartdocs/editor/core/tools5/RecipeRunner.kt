@@ -70,6 +70,11 @@ object RecipeStore {
     fun printerRecipe(ctx: Context): Recipe? = p(ctx).getString("printer", null)?.let { find(ctx, it) }
     fun setPrinterRecipe(ctx: Context, id: String?) { p(ctx).edit().putString("printer", id).apply() }
 
+    /** FINAL_CHECK_2 Low (B #22 / printer rows): the virtual printer's own settings — PDF version, append target, open after printing. */
+    data class PrinterPrefs(val version: String = "", val appendTo: String = "", val autoOpen: Boolean = false)
+    fun printerPrefs(ctx: Context): PrinterPrefs = p(ctx).let { PrinterPrefs(it.getString("pr_version", "") ?: "", it.getString("pr_append", "") ?: "", it.getBoolean("pr_open", false)) }
+    fun setPrinterPrefs(ctx: Context, v: PrinterPrefs) { p(ctx).edit().putString("pr_version", v.version).putString("pr_append", v.appendTo).putBoolean("pr_open", v.autoOpen).apply() }
+
     fun delete(ctx: Context, id: String) { p(ctx).edit().putString("list", RecipeJson.listToJson(user(ctx).filter { it.id != id })).apply() }
 }
 
