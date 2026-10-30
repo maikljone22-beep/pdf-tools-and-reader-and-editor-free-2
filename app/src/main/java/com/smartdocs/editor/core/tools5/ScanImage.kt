@@ -12,18 +12,22 @@ import androidx.exifinterface.media.ExifInterface
 import java.io.File
 
 /** Scan filters of the studio. */
-enum class ScanFilter { ORIGINAL, AUTO, GRAY, BW, WHITEBOARD, NO_SHADOW, RECEIPT }
+enum class ScanFilter { ORIGINAL, AUTO, GRAY, BW, WHITEBOARD, NO_SHADOW, RECEIPT, ENHANCE }
 
 /** Per-page edits; [rotation] is clockwise 0/90/180/270. */
 /** Edits of one scanned picture; [erase] rects are fractions (left, top, right, bottom) of the rotated picture. */
 data class PageEdit(val filter: ScanFilter = ScanFilter.AUTO, val brightness: Float = 0f, val contrast: Float = 1f, val rotation: Int = 0,
-                    val despeckle: Boolean = false, val erase: List<FloatArray> = emptyList())
+                    val despeckle: Boolean = false, val erase: List<FloatArray> = emptyList(),
+                    /** Straighten the text lines of a curved page (book / notebook), see [PageDewarp]. */
+                    val flatten: Boolean = false)
 
 /** Default filter for a scan kind. */
 fun ScanKind.defaultFilter(): ScanFilter = when (this) {
     ScanKind.WHITEBOARD -> ScanFilter.WHITEBOARD
     ScanKind.RECEIPT -> ScanFilter.RECEIPT
     ScanKind.ID_CARD, ScanKind.BUSINESS_CARD -> ScanFilter.AUTO
+    // text pages: white paper, darker sharper text, pictures kept in colour
+    ScanKind.DOCUMENT, ScanKind.BOOK, ScanKind.BATCH -> ScanFilter.ENHANCE
     else -> ScanFilter.AUTO
 }
 
@@ -63,27 +67,44 @@ object ScanImage {
     }
 
     /** Apply [edit] (rotation, filter, brightness/contrast). May recycle [src]; returns a mutable ARGB bitmap. */
-    fun apply(src: Bitmap, edit: PageEdit): Bitmap {
+    fun apply(src: Bitmap, edit: PageEdit, dewarp: Boolean = edit.flatten): Bitmap {
         val b0 = rotate(src, edit.rotation)
         val b = if (b0.isMutable && b0.config == Bitmap.Config.ARGB_8888) b0 else b0.copy(Bitmap.Config.ARGB_8888, true).also { if (it !== b0) b0.recycle() }
         val w = b.width; val h = b.height
         val px = IntArray(w * h)
         b.getPixels(px, 0, w, 0, 0, w, h)
+        if (dewarp) PageDewarp.flatten(px, w, h)
         when (edit.filter) {
             ScanFilter.ORIGINAL -> {}
-            ScanFilter.AUTO -> PixelOps.autoLevels(px)
+            // uneven light (a shadow, a lamp on one side) is evened out first
+            ScanFilter.AUTO -> { if (PixelOps.unevenLight(px, w, h)) PixelOps.normalizeBackground(px, w, h); PixelOps.autoLevels(px) }
             ScanFilter.GRAY -> { PixelOps.toGray(px); PixelOps.autoLevels(px) }
-            ScanFilter.BW -> { PixelOps.normalizeBackground(px, w, h); PixelOps.sauvola(px, w, h) }
+            ScanFilter.BW -> {
+                PixelOps.normalizeBackground(px, w, h)
+                ScanFilters.sharpen(px, w, h, 0.7f).copyInto(px)     // crisper strokes before thresholding
+                PixelOps.sauvola(px, w, h)
+                ScanClean.despeckle(px, w, h)                        // no salt-and-pepper noise left
+            }
+            ScanFilter.ENHANCE -> ScanEnhance.enhance(px, w, h, (0.7f + (edit.contrast - 1f) * 0.6f).coerceIn(0.2f, 1f))
             ScanFilter.WHITEBOARD -> { PixelOps.normalizeBackground(px, w, h); PixelOps.saturate(px, 1.6f); PixelOps.brightnessContrast(px, 0f, 1.25f) }
             ScanFilter.NO_SHADOW -> { PixelOps.normalizeBackground(px, w, h); PixelOps.autoLevels(px, 0.005f, 0.995f) }
             ScanFilter.RECEIPT -> { PixelOps.toGray(px); PixelOps.normalizeBackground(px, w, h); PixelOps.brightnessContrast(px, 0f, 1.5f) }
         }
-        if (edit.filter != ScanFilter.BW) PixelOps.brightnessContrast(px, edit.brightness, edit.contrast)
+        // ENHANCE uses the contrast slider as its strength
+        if (edit.filter != ScanFilter.BW) PixelOps.brightnessContrast(px, edit.brightness, if (edit.filter == ScanFilter.ENHANCE) 1f else edit.contrast)
         // old plan K12 / K8: dust removal and the eraser
         if (edit.despeckle) ScanClean.despeckle(px, w, h)
         if (edit.erase.isNotEmpty()) ScanClean.erase(px, w, h, edit.erase)
         b.setPixels(px, 0, w, 0, 0, w, h)
         return b
+    }
+
+    /** Flattens one page picture (a half of a book spread) in place. */
+    fun flatten(b: Bitmap): Bitmap {
+        val m = if (b.isMutable && b.config == Bitmap.Config.ARGB_8888) b else b.copy(Bitmap.Config.ARGB_8888, true)
+        val px = IntArray(m.width * m.height); m.getPixels(px, 0, m.width, 0, 0, m.width, m.height)
+        if (PageDewarp.flatten(px, m.width, m.height)) m.setPixels(px, 0, m.width, 0, 0, m.width, m.height)
+        return m
     }
 
     /** True for filters whose output is grey (stored as grey JPEG / lossless). */

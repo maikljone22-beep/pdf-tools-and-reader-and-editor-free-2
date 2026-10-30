@@ -78,6 +78,8 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
     var kind by remember { mutableStateOf(runCatching { ScanKind.valueOf(prefs.getString("kind", "DOCUMENT")!!) }.getOrDefault(ScanKind.DOCUMENT)) }
     var groups by remember { mutableStateOf<List<List<ScanPage>>>(emptyList()) }
     var paper by remember { mutableStateOf(ScanPaper.FIT) }
+    // full camera resolution and light compression (bigger files) instead of 2400 px / JPEG 82
+    var highQuality by remember { mutableStateOf(ctx.getSharedPreferences("scan_studio", 0).getBoolean("high_quality", true)) }
     var autoOcr by remember { mutableStateOf(prefs.getBoolean("ocr", true)) }
     var langs by remember { mutableStateOf(prefs.getString("langs", "auto") ?: "auto") }
     var smartName by remember { mutableStateOf(prefs.getBoolean("smart", true)) }
@@ -106,7 +108,7 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
         .putBoolean("blank", removeBlank).putInt("per_file", perFile).putString("author", author).apply()
 
     fun addPictures(files: List<File>, newGroup: Boolean) {
-        val pages = files.map { ScanPage(it, PageEdit(filter = kind.defaultFilter())) }
+        val pages = files.map { ScanPage(it, PageEdit(filter = kind.defaultFilter(), flatten = kind == ScanKind.BOOK)) }
         groups = if (newGroup || groups.isEmpty() || kind == ScanKind.BATCH) groups + listOf(pages) else groups.dropLast(1) + listOf(groups.last() + pages)
     }
 
@@ -158,8 +160,8 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                     val today = t5Today()
                     val tmpOut = app.documents.newTemp("t5scan_out", "pdf")
                     val ocrLangs = if (!needText) null else if (langs == "auto") detectLangs(engine!!, g.first()) else langs
-                    val pictures = ScanBuilder.pagePictures(g.map { it.file to it.edit }, k, rf)
-                    val r = ScanBuilder.build(ctx, pictures, tmpOut, ScanBuildOptions(paper = p, ocrLangs = ocrLangs), engine) { n -> step(gi * 100 + n, docs.size * 100) }
+                    val pictures = ScanBuilder.pagePictures(g.map { it.file to it.edit }, k, rf, maxDim = if (highQuality) 4096 else 2400)
+                    val r = ScanBuilder.build(ctx, pictures, tmpOut, ScanBuildOptions(paper = p, quality = if (highQuality) 92 else 82, ocrLangs = ocrLangs), engine) { n -> step(gi * 100 + n, docs.size * 100) }
                     val base = when {
                         typed.isNotEmpty() -> if (docs.size > 1) "${typed}_${gi + 1}" else typed
                         smartName && r.text.isNotBlank() -> SmartNaming.suggest(r.text, k, today, prefixes)
@@ -264,6 +266,9 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                     ScanPaper.FIT -> stringResource(R.string.t5_paper_fit); ScanPaper.A4 -> stringResource(R.string.t5_paper_a4); ScanPaper.LETTER -> stringResource(R.string.t5_paper_letter)
                     ScanPaper.CARD -> stringResource(R.string.pc_paper_card); else -> it.name.lowercase().replaceFirstChar { c -> c.uppercase() }.let { n -> if (n.length == 2) n.uppercase() else n }
                 } }) { paper = it }
+                SwitchRow(stringResource(R.string.sc_high_quality), highQuality, stringResource(R.string.sc_high_quality_sub)) {
+                    highQuality = it; ctx.getSharedPreferences("scan_studio", 0).edit().putBoolean("high_quality", it).apply()
+                }
                 SwitchRow(stringResource(R.string.pc_scan_remove_blank), removeBlank) { removeBlank = it }
                 OutlinedTextField(if (perFile > 0) perFile.toString() else "", { t -> perFile = com.smartdocs.editor.core.edit5.Digits.toWestern(t).filter { it.isDigit() }.take(3).toIntOrNull() ?: 0 },
                     Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.pc_scan_per_file)) }, placeholder = { Text(stringResource(R.string.pc_scan_per_file_all)) })

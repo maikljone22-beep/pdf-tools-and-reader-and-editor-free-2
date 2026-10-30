@@ -80,6 +80,17 @@ object PixelOps {
     }
 
     /** Divide by the background so paper becomes white: removes shadows and uneven light (shadow / whiteboard filters). */
+    /** True when the paper is lit unevenly (a shadow or a gradient): its light varies by more than ~16 % over the page. */
+    fun unevenLight(px: IntArray, w: Int, h: Int): Boolean {
+        val step = maxOf(1, maxOf(w, h) / 200)
+        val sw = (w + step - 1) / step; val sh = (h + step - 1) / step
+        val small = IntArray(sw * sh) { i -> px[minOf(h - 1, (i / sw) * step) * w + minOf(w - 1, (i % sw) * step)] }
+        val bg = background(small, sw, sh).map { it and 0xFF }.sorted()
+        if (bg.isEmpty()) return false
+        val lo = bg[bg.size / 20]; val hi = bg[bg.size - 1 - bg.size / 20]
+        return hi > 60 && hi - lo > 40
+    }
+
     fun normalizeBackground(px: IntArray, w: Int, h: Int) {
         val bg = background(px, w, h)
         for (i in px.indices) {

@@ -65,7 +65,7 @@ object ScanProjects {
         groups.forEachIndexed { g, pages ->
             pages.forEach { (f, e) ->
                 val erase = e.erase.joinToString("/") { r -> r.joinToString(",") { "%.4f".format(java.util.Locale.US, it) } }
-                append("$g|$f|${e.filter.name}|${e.brightness}|${e.contrast}|${e.rotation}|${e.despeckle}|$erase\n")
+                append("$g|$f|${e.filter.name}|${e.brightness}|${e.contrast}|${e.rotation}|${e.despeckle}|$erase|${e.flatten}\n")
             }
         }
     }
@@ -81,7 +81,7 @@ object ScanProjects {
             val g = p[0].toIntOrNull() ?: return@forEach
             val erase = p.getOrNull(7).orEmpty().split('/').filter { it.isNotBlank() }.mapNotNull { r -> r.split(',').mapNotNull { it.toFloatOrNull() }.takeIf { it.size == 4 }?.toFloatArray() }
             val e = PageEdit(runCatching { ScanFilter.valueOf(p[2]) }.getOrDefault(ScanFilter.AUTO), p[3].toFloatOrNull() ?: 0f, p[4].toFloatOrNull() ?: 1f, p[5].toIntOrNull() ?: 0,
-                p.getOrNull(6)?.toBooleanStrictOrNull() ?: false, erase)
+                p.getOrNull(6)?.toBooleanStrictOrNull() ?: false, erase, p.getOrNull(8)?.toBooleanStrictOrNull() ?: false)
             byGroup.getOrPut(g) { ArrayList() } += p[1] to e
         }
         return name to byGroup.values.toList()
