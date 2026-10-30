@@ -30,6 +30,8 @@ enum class StepType(val defaults: Map<String, String>) {
     SET_INFO(mapOf("title" to "", "author" to "", "subject" to "", "keywords" to "", "baseUrl" to "", "custom" to "")),
     FLATTEN(mapOf("forms" to "true")),
     AUTO_TAG(mapOf("lang" to "ar", "pdfua" to "false")),
+    /** FINAL_CHECK_2 #21: alt text for tagged figures without one — "ai" (suggestion from the page / vision hook), "text" (one fixed text), "decorative". */
+    ALT_TEXT(mapOf("mode" to "ai", "fallback" to "")),
     PROTECT(mapOf("password" to "")),
     // nav-batch: Nitro batch commands / Foxit Action Wizard commands
     JAVASCRIPT(mapOf("code" to "")),
@@ -170,7 +172,7 @@ object BuiltInRecipes {
         Recipe("builtin_web", "web", listOf(Step(StepType.REMOVE_METADATA), Step(StepType.OPTIMIZE, mapOf("dpi" to "110", "quality" to "60", "strip" to "true"))), OutputOptions("{name}_web"), true),
         Recipe("builtin_ocr", "ocr", listOf(Step(StepType.OCR)), OutputOptions("{name}_ocr"), true),
         Recipe("builtin_number", "number", listOf(Step(StepType.PAGE_NUMBERS)), OutputOptions("{name}_numbered"), true),
-        Recipe("builtin_access", "access", listOf(Step(StepType.OCR), Step(StepType.SET_INFO, ask = true), Step(StepType.AUTO_TAG, ask = true), Step(StepType.ACCESS_CHECK)), OutputOptions("{name}_accessible"), true),
+        Recipe("builtin_access", "access", listOf(Step(StepType.OCR), Step(StepType.SET_INFO, ask = true), Step(StepType.AUTO_TAG, ask = true), Step(StepType.ALT_TEXT, ask = true), Step(StepType.ACCESS_CHECK)), OutputOptions("{name}_accessible"), true),
         Recipe("builtin_share", "share", listOf(Step(StepType.FLATTEN), Step(StepType.REMOVE_METADATA), Step(StepType.OPTIMIZE)), OutputOptions("{name}_share"), true),
         // nav-batch: the other Foxit Action Wizard built-ins
         Recipe("builtin_distribute", "distribute", listOf(
@@ -181,7 +183,7 @@ object BuiltInRecipes {
             Step(StepType.SANITIZE), Step(StepType.OPTIMIZE), Step(StepType.PROTECT, ask = true),
         ), OutputOptions("{name}_redacted"), true),
         Recipe("builtin_pdfua", "pdfua", listOf(
-            Step(StepType.OCR), Step(StepType.SET_INFO, ask = true), Step(StepType.AUTO_TAG, mapOf("lang" to "ar", "pdfua" to "true"), ask = true), Step(StepType.ACCESS_CHECK),
+            Step(StepType.OCR), Step(StepType.SET_INFO, ask = true), Step(StepType.AUTO_TAG, mapOf("lang" to "ar", "pdfua" to "true"), ask = true), Step(StepType.ALT_TEXT, ask = true), Step(StepType.ACCESS_CHECK),
         ), OutputOptions("{name}_pdfua"), true),
     )
 }

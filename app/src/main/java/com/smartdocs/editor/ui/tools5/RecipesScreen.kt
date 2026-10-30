@@ -44,7 +44,7 @@ fun StepType.label(): String = stringResource(
         StepType.OCR -> R.string.t5_st_ocr; StepType.OPTIMIZE -> R.string.t5_st_optimize; StepType.PDFA -> R.string.t5_st_pdfa
         StepType.WATERMARK -> R.string.t5_st_watermark; StepType.PAGE_NUMBERS -> R.string.t5_st_numbers; StepType.ROTATE -> R.string.t5_st_rotate
         StepType.REMOVE_METADATA -> R.string.t5_st_nometa; StepType.SET_INFO -> R.string.t5_st_info; StepType.FLATTEN -> R.string.t5_st_flatten
-        StepType.AUTO_TAG -> R.string.t5_st_tag; StepType.PROTECT -> R.string.t5_st_protect
+        StepType.AUTO_TAG -> R.string.t5_st_tag; StepType.ALT_TEXT -> R.string.t5_st_alt; StepType.PROTECT -> R.string.t5_st_protect
         StepType.JAVASCRIPT -> R.string.nbt_st_js; StepType.DELETE_COMMENTS -> R.string.nbt_st_del_comments; StepType.HEADER_FOOTER -> R.string.nbt_st_hf
         StepType.BATES -> R.string.nbt_st_bates; StepType.REDACT -> R.string.nbt_st_redact; StepType.SANITIZE -> R.string.nbt_st_sanitize
         StepType.ACCESS_CHECK -> R.string.nbt_st_access_check; StepType.CONVERT_OFFICE -> R.string.nbt_st_convert; StepType.PRINT -> R.string.nbt_st_print

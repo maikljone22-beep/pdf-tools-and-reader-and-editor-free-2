@@ -43,6 +43,7 @@ private fun paramLabel(key: String): String = stringResource(
         "suffix" -> R.string.nbt_p_suffix; "digits" -> R.string.nbt_p_digits; "position" -> R.string.nbt_p_position; "terms" -> R.string.nbt_p_terms
         "patterns" -> R.string.nbt_p_patterns; "regex" -> R.string.nbt_p_regex; "sanitize" -> R.string.nbt_p_sanitize; "items" -> R.string.nbt_p_items
         "format" -> R.string.nbt_p_format; "merged" -> R.string.nbt_print_merged; "recipe" -> R.string.nbt_p_recipe
+        "mode" -> R.string.t5_p_alt_mode; "fallback" -> R.string.t5_p_alt_fallback
         else -> R.string.t5_p_value
     },
 )
@@ -72,6 +73,7 @@ fun StepType.hint(): String? = when (this) {
     StepType.RUN_RECIPE -> stringResource(R.string.nbt_hint_recipe)
     StepType.CONVERT_OFFICE -> stringResource(R.string.nbt_hint_convert)
     StepType.REDACT -> stringResource(R.string.nbt_hint_redact)
+    StepType.ALT_TEXT -> stringResource(R.string.t5_hint_alt)
     else -> null
 }
 
@@ -98,6 +100,14 @@ fun StepParam(s: Step, key: String, recipes: List<Recipe>, selfId: String, onCha
             Text(paramLabel(key), style = MaterialTheme.typography.labelMedium)
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 BatchSteps.officeConversions.keys.forEach { f -> FilterChip(s.p(key).equals(f, true), { set(f) }, label = { Text(f.uppercase()) }) }
+            }
+        }
+        key == "mode" && s.type == StepType.ALT_TEXT -> {
+            Text(paramLabel(key), style = MaterialTheme.typography.labelMedium)
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf("ai" to R.string.t5_alt_mode_ai, "text" to R.string.t5_alt_mode_text, "decorative" to R.string.t5_alt_mode_decorative).forEach { (v, l) ->
+                    FilterChip(s.p(key).equals(v, true), { set(v) }, label = { Text(stringResource(l)) })
+                }
             }
         }
         key == "position" -> {

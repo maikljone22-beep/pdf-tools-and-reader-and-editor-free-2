@@ -394,4 +394,11 @@
     <string name="t5_word">Word</string>
     <string name="t5_word_picture">Picture of the word</string>
     <string name="t5_zip">Pack into a ZIP file</string>
+    <string name="t5_st_alt">Alt text for figures</string>
+    <string name="t5_hint_alt">Tagged figures without alt text get one: an AI suggestion from the page text (or the picture when vision is available), a fixed text, or they are marked decorative.</string>
+    <string name="t5_p_alt_mode">Alt text mode</string>
+    <string name="t5_p_alt_fallback">Fallback text (when no suggestion)</string>
+    <string name="t5_alt_mode_ai">AI suggestion</string>
+    <string name="t5_alt_mode_text">Fixed text</string>
+    <string name="t5_alt_mode_decorative">Decorative</string>
 </resources>

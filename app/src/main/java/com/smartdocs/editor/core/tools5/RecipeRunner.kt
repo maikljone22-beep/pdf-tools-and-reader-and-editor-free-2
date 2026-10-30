@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.RectF
 import com.smartdocs.editor.R
 import com.smartdocs.editor.SmartDocsApp
+import kotlinx.coroutines.flow.first
 import com.smartdocs.editor.core.convert6.Cv6Catalog
 import com.smartdocs.editor.core.convert6.Cv6Engine
 import com.smartdocs.editor.core.convert6.Cv6Opts
@@ -188,6 +189,40 @@ class RecipeRunner(private val ctx: Context, private val tempDir: File) {
                     }
                     d.save(out)
                 }
+            }
+            StepType.ALT_TEXT -> {
+                // FINAL_CHECK_2 #21: figures without alt text get one (AI suggestion / fixed text) or become decorative
+                val mode = s.p("mode").trim().lowercase()
+                val fallback = s.p("fallback").trim()
+                val app = ctx.applicationContext as SmartDocsApp
+                val settings = app.settings.settings.first()
+                val arabic = com.smartdocs.editor.core.data.AppLang.isArabic(settings)
+                val useAi = mode == "ai" && AltTextAi.available(settings)
+                val changed = withContext(Dispatchers.IO) {
+                    PdfOps.load(src, password).use { d ->
+                        val missing = AccessInspect.figures(d).filter { it.alt.isNullOrBlank() }
+                        if (missing.isEmpty()) return@use false
+                        val texts = HashMap<Int, String>()
+                        fun pageText(p: Int): String = texts.getOrPut(p) {
+                            if (p < 0) "" else runCatching { com.tom_roush.pdfbox.text.PDFTextStripper().apply { startPage = p + 1; endPage = p + 1 }.getText(d) }.getOrDefault("")
+                        }
+                        for (fig in missing) {
+                            if (mode == "decorative") { AccessFix.markDecorative(fig); continue }
+                            var alt = if (mode == "text") fallback else ""
+                            if (alt.isBlank() && useAi) alt = runCatching { AltTextAi.suggest(ctx, settings, null, pageText(fig.page), arabic) }.getOrDefault("")
+                            if (alt.isBlank()) alt = fallback
+                            if (alt.isBlank()) {
+                                // no AI and no text: a context caption from the page's first line, so the figure is not left silent
+                                val line = pageText(fig.page).lineSequence().map { it.trim() }.firstOrNull { it.length > 3 }.orEmpty().take(100)
+                                alt = if (line.isBlank()) (if (arabic) "شكل" else "Figure") else (if (arabic) "شكل: $line" else "Figure: $line")
+                            }
+                            AccessFix.setAlt(fig, alt.take(250))
+                        }
+                        d.save(out)
+                        true
+                    }
+                }
+                if (!changed) return src
             }
             StepType.PROTECT -> {
                 val pw = s.p("password").ifBlank { return src }
