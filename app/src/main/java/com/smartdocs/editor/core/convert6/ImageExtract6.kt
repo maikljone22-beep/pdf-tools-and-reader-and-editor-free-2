@@ -51,19 +51,35 @@ object ImageExtract6 {
      * Re-encode [items] into [fmt] (JPG / PNG / WebP at [quality]); pictures already in that format, and ones Android
      * cannot decode (JPEG 2000, CMYK TIFF …), stay as they are. Returns the new list (files replaced in the work folder).
      */
-    suspend fun convertAll(items: List<Extracted>, fmt: ImgFmt?, quality: Int): List<Extracted> = withContext(kotlinx.coroutines.Dispatchers.IO) {
-        if (fmt == null) return@withContext items
+    suspend fun convertAll(items: List<Extracted>, fmt: ImgFmt?, quality: Int, gray: Boolean = false, maxSide: Int = 0): List<Extracted> = withContext(kotlinx.coroutines.Dispatchers.IO) {
+        // FINAL_CHECK_2 Low (B #32): colour space (grayscale) and resolution (longest side) on top of the format
+        if (fmt == null && !gray && maxSide <= 0) return@withContext items
         items.map { e ->
             coroutineContext.ensureActive()
             val ext = targetExt(fmt, e.ext)
-            if (ext == e.ext || (ext == "jpg" && e.ext == "jpeg")) return@map e
-            val bmp = runCatching { android.graphics.BitmapFactory.decodeFile(e.file.path) }.getOrNull() ?: return@map e
+            val needResize = maxSide > 0 && maxOf(e.width, e.height) > maxSide
+            if ((ext == e.ext || (ext == "jpg" && e.ext == "jpeg")) && !gray && !needResize) return@map e
+            var bmp = runCatching { android.graphics.BitmapFactory.decodeFile(e.file.path) }.getOrNull() ?: return@map e
             try {
-                val out = File(e.file.parentFile, e.file.nameWithoutExtension + "." + ext)
-                val ok = out.outputStream().use { os -> bmp.compress(ImageIo6.compressFormat(fmt), if (fmt == ImgFmt.PNG) 100 else quality.coerceIn(30, 100), os) }
-                if (!ok) { out.delete(); return@map e }
+                if (needResize) {
+                    val k = maxSide.toFloat() / maxOf(bmp.width, bmp.height)
+                    val s = android.graphics.Bitmap.createScaledBitmap(bmp, (bmp.width * k).toInt().coerceAtLeast(1), (bmp.height * k).toInt().coerceAtLeast(1), true)
+                    if (s !== bmp) { bmp.recycle(); bmp = s }
+                }
+                if (gray) {
+                    val g = bmp.copy(android.graphics.Bitmap.Config.ARGB_8888, true); if (g !== bmp) { bmp.recycle(); bmp = g }
+                    val px = IntArray(bmp.width * bmp.height); bmp.getPixels(px, 0, bmp.width, 0, 0, bmp.width, bmp.height)
+                    com.smartdocs.editor.core.tools5.PixelOps.toGray(px); bmp.setPixels(px, 0, bmp.width, 0, 0, bmp.width, bmp.height)
+                }
+                val outFmt = fmt ?: when (ext) { "png" -> ImgFmt.PNG; "webp" -> ImgFmt.WEBP; "jpg", "jpeg" -> ImgFmt.JPG; else -> ImgFmt.PNG }
+                val outExt = targetExt(outFmt, ext)
+                val out = File(e.file.parentFile, e.file.nameWithoutExtension + "." + outExt)
+                val tmp = File(out.parentFile, out.name + ".part")
+                val ok = tmp.outputStream().use { os -> bmp.compress(ImageIo6.compressFormat(outFmt), if (outFmt == ImgFmt.PNG) 100 else quality.coerceIn(30, 100), os) }
+                if (!ok) { tmp.delete(); return@map e }
                 if (out != e.file) e.file.delete()
-                Extracted(out, e.page, e.indexOnPage, e.resource, e.caption, e.width, e.height, ext)
+                tmp.renameTo(out)
+                Extracted(out, e.page, e.indexOnPage, e.resource, e.caption, bmp.width, bmp.height, outExt)
             } finally { bmp.recycle() }
         }
     }

@@ -27,6 +27,8 @@ data class ImageExportOptions(
     val format: ImageFormat = ImageFormat.PNG,
     val dpi: Int = 150,
     val gray: Boolean = false,
+    /** FINAL_CHECK_2 Low (B #31): monochrome (black / white, adaptive threshold) output. */
+    val bw: Boolean = false,
     val quality: Int = 90,
     /** Zero-based pages; empty = all. */
     val pages: List<Int> = emptyList(),
@@ -54,7 +56,11 @@ object ExportPlus {
                 val bmp = Bitmap.createBitmap(raw.width, raw.height, Bitmap.Config.ARGB_8888)
                 Canvas(bmp).apply { drawColor(Color.WHITE); drawBitmap(raw, 0f, 0f, null) }
                 s.invalidateCache()
-                if (o.gray) { val px = IntArray(bmp.width * bmp.height); bmp.getPixels(px, 0, bmp.width, 0, 0, bmp.width, bmp.height); PixelOps.toGray(px); bmp.setPixels(px, 0, bmp.width, 0, 0, bmp.width, bmp.height) }
+                if (o.gray || o.bw) {
+                    val px = IntArray(bmp.width * bmp.height); bmp.getPixels(px, 0, bmp.width, 0, 0, bmp.width, bmp.height)
+                    if (o.bw) PixelOps.sauvola(px, bmp.width, bmp.height) else PixelOps.toGray(px)
+                    bmp.setPixels(px, 0, bmp.width, 0, 0, bmp.width, bmp.height)
+                }
                 val f = File(outDir, src.nameWithoutExtension + "_" + (i + 1).toString().padStart(3, '0') + "." + o.format.ext)
                 @Suppress("DEPRECATION")
                 val fmt = when (o.format) {
