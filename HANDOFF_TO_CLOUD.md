@@ -18,7 +18,7 @@ Repo: `maikljone22-beep/pdf-tools-and-reader-and-editor-free-2`, branch `main`. 
 
 ## 3. Remaining work, priority order
 1. **Specs are in `specs/`** (word.md, excel.md, powerpoint.md, desktop_gap.md, acrobat_gap.md, OFFICE_BRIEF.md, MASTER_BACKLOG.md = 1,339-feature checklist with owner/status, old-chat-modules/). The old chat's full source (`handoff/smartdocs-full.zip`, incl. partial core/office/word5a|5b, excel5a|5b, pptx5a|5b) is on the owner's PC only, not committed: ask the owner for it if needed; reuse code/ideas only where main is missing or weaker, never merge it wholesale.
-2. Remaining rows of `gaps/FINAL_CHECK_2.md` (no High left; ~24 Medium, ~140 Low), minus what is already done by later merges (re-verify each row against code first).
+2. Remaining rows of `gaps/FINAL_CHECK_2.md`: all Medium rows are DONE (2026-10-30); ~140 Low rows left (re-verify each row against code first).
 3. Large Word / Excel / PowerPoint feature round from `specs/`, using `specs/MASTER_BACKLOG.md` as the checklist so no feature is skipped — the post-0.5.0 scope.
 4. Signed release build 0.5.0 (APK + AAB) after the device test — needs the local signing key (see build notes); cannot be done in the cloud.
 5. Fix bugs from the user's tablet test (`TEST_CHECKLIST.md`).

@@ -20,7 +20,9 @@ Scope is FROZEN for 0.5.0: no new features are started until 0.5.0 is released. 
 - [x] Reader tab audits: View+Edit 59, Comment 37, Fill&Sign+Sign 37, Tools+Pages 98, redact sub-audit 20 — fixed (gaps/tabs-audit/FIXED_*.md)
 - [x] Central signed/certified gate (SignedGuard) used by every writer
 - [x] Open every file type, selection menus per tab, in-page video, Pro OCR (PP-OCRv5 + fine-tuned Tesseract), PDF→Word fix
-- [ ] FINAL_CHECK_2.md: remaining Medium/Low rows (pdf-39: pages/convert/forms/a11y; pdf-3c: edit/reader/AI/Low)
+- [x] FINAL_CHECK_2.md: all 24 Medium rows done (cloud session 2026-10-30: #1 Combine page view, #5 DOCX comments, #12 portfolio part save-back, #14 rich text per character, #16 scan paper form → form, #19 order on the page + touch-up, #20 content panel / checker page range / tag from selection, #21 alt-text step, #22 watched folders; the rest by earlier merges)
+- [ ] FINAL_CHECK_2.md: ~140 Low rows (web-capture / printer options, Combine / portfolio / export options, preflight, PDF/X-E-A-4, JS stubs, XFA events, tab groups, 6400 % zoom, nested XObject text, bookmark options, AI extras)
+- [x] Scanner: SmartDocs camera (full resolution, live edges, auto-capture, corner editor), smart-enhance filter, curved-page flattening, high-quality output; video icon / player choice; error centre with auto-send to GitHub issues (ai-proxy/errors)
 - [ ] Device test with TEST_CHECKLIST.md (user)
 - [ ] Owner actions in SERVER_SETUP.md (user)
 
