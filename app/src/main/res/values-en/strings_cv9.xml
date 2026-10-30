@@ -81,4 +81,5 @@
     <string name="cv9_xfit_page">Whole sheet on one page</string>
     <string name="cv9_docx_comments">Export comments</string>
     <string name="cv9_docx_comments_sub">PDF comments (notes, highlights, shapes) become Word comments on the text they sit on</string>
+    <string name="cv9_xlsx_separators">Number separators in the source</string>
 </resources>

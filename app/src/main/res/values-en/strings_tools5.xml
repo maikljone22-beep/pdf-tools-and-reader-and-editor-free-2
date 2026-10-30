@@ -413,4 +413,6 @@
     <string name="t5_prefix_form">Form</string>
     <string name="t5_form_fields_made">%1$d fillable fields recognised. Open the file to fill it, or adjust the fields in the form designer.</string>
     <string name="t5_form_fields_none">No fields were found on the form. Open it in the form designer to add fields by hand.</string>
+    <string name="t5_paper_more">More sizes (A0–A10, B, C, JIS…)</string>
+    <string name="t5_paper_less">Common sizes only</string>
 </resources>

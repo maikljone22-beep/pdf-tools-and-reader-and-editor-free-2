@@ -348,14 +348,15 @@ object PdfOps {
         return page
     }
 
-    suspend fun insertBlankPage(src: File, atIndex: Int, out: File, style: PageStyle = PageStyle.BLANK, password: String? = null) = withContext(Dispatchers.IO) {
+    /** [size]: FINAL_CHECK_2 Low (custom blank page size): a page size in points instead of the neighbour's (then no /Rotate is copied). */
+    suspend fun insertBlankPage(src: File, atIndex: Int, out: File, style: PageStyle = PageStyle.BLANK, password: String? = null, size: PDRectangle? = null) = withContext(Dispatchers.IO) {
         load(src, password).use { doc ->
             // audit 5 T-11: the new page looks like its neighbour (the page before it; the first page when inserted
             // at the start): the neighbour's visible (crop) size and its /Rotate
             val refPage = if (doc.numberOfPages > 0) doc.getPage((atIndex - 1).coerceIn(0, doc.numberOfPages - 1)) else null
-            val ref = refPage?.cropBox ?: PDRectangle.A4
+            val ref = size ?: refPage?.cropBox ?: PDRectangle.A4
             val p = stylePage(doc, PDRectangle(ref.width, ref.height), false, style, 0xFFFFFF)
-            refPage?.let { p.rotation = ((it.rotation % 360) + 360) % 360 }
+            if (size == null) refPage?.let { p.rotation = ((it.rotation % 360) + 360) % 360 }
             // audit 5 E-5: the other pages keep their labels; the blank page continues the run before it
             com.smartdocs.editor.core.edit5.PageLabelRemap.keep(doc) {
                 if (atIndex >= doc.numberOfPages) doc.addPage(p) else doc.pages.insertBefore(p, doc.getPage(atIndex))

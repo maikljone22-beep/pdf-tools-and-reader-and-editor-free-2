@@ -413,4 +413,6 @@
     <string name="t5_prefix_form">نموذج</string>
     <string name="t5_form_fields_made">تم التعرف على %1$d حقل قابل للتعبئة. افتح الملف واملأه، أو عدّل الحقول من مصمم النماذج.</string>
     <string name="t5_form_fields_none">لم يُعثر على حقول في النموذج. افتح الملف في مصمم النماذج لإضافة الحقول يدوياً.</string>
+    <string name="t5_paper_more">مقاسات أخرى (A0–A10، B، C، JIS…)</string>
+    <string name="t5_paper_less">المقاسات الشائعة فقط</string>
 </resources>

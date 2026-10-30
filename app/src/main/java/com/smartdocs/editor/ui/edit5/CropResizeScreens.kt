@@ -2,6 +2,8 @@ package com.smartdocs.editor.ui.edit5
 
 import android.graphics.RectF
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.*
@@ -100,6 +102,32 @@ fun CropScreen(nav: NavHostController, uri: String?) {
             PrimaryButton(stringResource(R.string.e5_crop_apply), enabled = (useMargins || rect != null), icon = Icons.Default.Crop) {
                 val r = if (useMargins) null else rect; val m = if (useMargins) margins else null; val b = box; val t = doc.targets(range, subset)
                 run { s, o, p -> PageBoxOps.crop(s, o, p, t, r, m, b) }
+            }
+            // FINAL_CHECK_2 Low: change the page size (fixed sizes / custom) with the content centred, no scaling
+            E5Section(stringResource(R.string.e5_crop_page_size)) {
+                var preset by remember { mutableIntStateOf(0) }
+                var pw by remember { mutableFloatStateOf(595.28f) }; var ph by remember { mutableFloatStateOf(841.89f) }
+                var centerIt by remember { mutableStateOf(true) }
+                var land by remember { mutableStateOf(false) }
+                val presets = listOf("A4" to (595.28f to 841.89f), "Letter" to (612f to 792f), "Legal" to (612f to 1008f), "A3" to (841.89f to 1190.55f), "A5" to (419.53f to 595.28f), "B5" to (498.9f to 708.66f))
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    presets.forEachIndexed { i, (n, s) -> FilterChip(preset == i, { preset = i; pw = s.first; ph = s.second }, label = { Text(n) }) }
+                    FilterChip(preset == presets.size, { preset = presets.size }, label = { Text(stringResource(R.string.pg_size_custom)) })
+                }
+                if (preset == presets.size) {
+                    UnitChips(unit) { unit = it }
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        FloatField(unit.fromPt(pw), stringResource(R.string.pg_width), Modifier.weight(1f)) { pw = unit.toPt(it).coerceIn(18f, 14400f) }
+                        FloatField(unit.fromPt(ph), stringResource(R.string.pg_height), Modifier.weight(1f)) { ph = unit.toPt(it).coerceIn(18f, 14400f) }
+                    }
+                }
+                SwitchRow(stringResource(R.string.pg_landscape), land) { land = it }
+                SwitchRow(stringResource(R.string.e5_crop_center_content), centerIt) { centerIt = it }
+                OutlinedButton(onClick = {
+                    val t = doc.targets(range, subset); val c = centerIt
+                    val (w, h) = if (land == (pw > ph)) pw to ph else ph to pw
+                    run { s, o, p -> PageBoxOps.setPageSize(s, o, p, t, w, h, c) }
+                }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.e5_crop_page_size_apply)) }
             }
             E5Section(stringResource(R.string.e5_crop_auto)) {
                 FloatField(pad, stringResource(R.string.e5_crop_pad)) { pad = it.coerceIn(0f, 72f) }

@@ -15,4 +15,12 @@
     <string name="sc_cam_use">استخدام</string>
     <string name="sc_own_camera">كاميرا SmartDocs</string>
     <string name="sc_own_camera_sub">التقاط بدقة الكاميرا الكاملة مع كشف حدود الصفحة والالتقاط التلقائي. عند الإيقاف يُستخدم ماسح Google.</string>
+    <string name="sc_read_codes">قراءة رموز QR / الباركود من الصفحات</string>
+    <string name="sc_codes_title">الرموز المكتشفة (%1$d)</string>
+    <string name="sc_codes_none">لم يُعثر على رموز QR أو باركود في الصفحات.</string>
+    <string name="sc_code_on_page">%1$s · صفحة %2$d</string>
+    <string name="sc_code_open">فتح</string>
+    <string name="sc_cam_qr">وضع QR / الباركود</string>
+    <string name="sc_cam_hint_qr">وجّه الكاميرا نحو رمز QR أو باركود</string>
+    <string name="sc_cam_qr_again">مسح آخر</string>
 </resources>

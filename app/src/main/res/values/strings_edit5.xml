@@ -360,4 +360,7 @@
     <string name="e5_lock_out_keep">الناتج محمي بكلمة مرور المصدر نفسها.</string>
     <string name="e5_lock_out_plain">الناتج بلا كلمة مرور.</string>
     <string name="e5_lock_second_ok">تم فتح الملف الثاني بكلمة المرور.</string>
+    <string name="e5_crop_page_size">تغيير حجم الصفحة (بدون تكبير المحتوى)</string>
+    <string name="e5_crop_center_content">توسيط المحتوى</string>
+    <string name="e5_crop_page_size_apply">تطبيق حجم الصفحة</string>
 </resources>

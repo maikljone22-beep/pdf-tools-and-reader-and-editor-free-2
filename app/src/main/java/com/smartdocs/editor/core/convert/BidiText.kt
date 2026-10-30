@@ -226,10 +226,25 @@ object BidiText {
     private val plain = Regex("""^[-+]?(\d+)(\.\d+)?$""")
     private val grouped = Regex("""^[-+]?\d{1,3}(,\d{3})+(\.\d+)?$""")
 
-    /** Parse a cell text as a number (Arabic-Indic digits accepted). Codes with leading zeros stay text. */
-    fun parseNumber(text: String): Num? {
+    /** Decimal / thousands separator conventions of the source: 0 = 1,234.56 · 1 = 1.234,56 · 2 = 1 234,56 (or 1 234.56). */
+    const val SEP_POINT = 0
+    const val SEP_COMMA = 1
+    const val SEP_SPACE = 2
+
+    /**
+     * Parse a cell text as a number (Arabic-Indic digits accepted). Codes with leading zeros stay text.
+     * [separators]: FINAL_CHECK_2 Low (XLSX decimal / thousands separator) — the source's convention; the text is
+     * normalised to "1,234.56" first.
+     */
+    fun parseNumber(text: String, separators: Int = SEP_POINT): Num? {
         var s = asciiDigits(text.trim()).replace(" ", "").replace(" ", "")
         if (s.isEmpty() || s.length > 22) return null
+        s = s.replace("\u202F", "").replace("'", "").replace('٫', '.').replace('٬', ',')
+        s = when (separators) {
+            SEP_COMMA -> s.replace(".", "\u0000").replace(",", ".").replace("\u0000", ",")        // 1.234,56 → 1,234.56
+            SEP_SPACE -> if (s.count { it == ',' } == 1 && !s.contains('.')) s.replace(",", ".") else s   // 1 234,56 → 1234.56 (spaces already dropped)
+            else -> s
+        }
         var neg = false
         if (s.startsWith("(") && s.endsWith(")")) { neg = true; s = s.substring(1, s.length - 1) }
         var pct = false

@@ -282,8 +282,8 @@ class OrganizeState(
         apply(keepSelection = true) { src, out -> com.smartdocs.editor.core.edit5.PageOps5.replace(src, out, password, sel, other, otherPassword, sel.indices.toList()) }
     }
 
-    fun insertBlank(at: Int, style: PdfOps.PageStyle) {
-        apply(remap = insertRemap(at)) { src, out -> PdfOps.insertBlankPage(src, at, out, style, password) }
+    fun insertBlank(at: Int, style: PdfOps.PageStyle, size: com.tom_roush.pdfbox.pdmodel.common.PDRectangle? = null) {
+        apply(remap = insertRemap(at)) { src, out -> PdfOps.insertBlankPage(src, at, out, style, password, size) }
     }
 
     fun insertFrom(other: File, at: Int) = insertFrom(other, at, null)

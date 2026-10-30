@@ -96,4 +96,11 @@
     <string name="pg_redact_pan">Pan</string>
     <string name="pg_redact_draw">Draw</string>
     <string name="pg_redact_pages_affected">%1$d pages will be redacted</string>
+    <string name="pg_blank_size">Page size</string>
+    <string name="pg_size_neighbour">Like the neighbour</string>
+    <string name="pg_size_custom">Custom</string>
+    <string name="pg_portrait">Portrait</string>
+    <string name="pg_landscape">Landscape</string>
+    <string name="pg_width">Width</string>
+    <string name="pg_height">Height</string>
 </resources>

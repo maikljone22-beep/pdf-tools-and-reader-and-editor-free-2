@@ -43,6 +43,29 @@ object PageBoxOps {
         }
     }
 
+    /**
+     * FINAL_CHECK_2 Low (crop dialog page size + centering, Acrobat "Change page size"): the pages get a fixed
+     * [w] × [h] (points, display orientation) without scaling the content — the media and crop boxes are set to that
+     * size around the content, centred on the current crop box when [center], else anchored at its top-left corner.
+     * Other boxes are dropped (they would lie outside).
+     */
+    suspend fun setPageSize(src: File, out: File, password: String?, pages: List<Int>, w: Float, h: Float, center: Boolean = true) = withContext(Dispatchers.IO) {
+        E5Io.edit(src, out, password) { doc ->
+            for (i in pages) {
+                if (i !in 0 until doc.numberOfPages) continue
+                val page = doc.getPage(i)
+                val info = PageInfo.of(page)
+                // the new box in display space (origin bottom-left of the current crop box), then to user space
+                val l = if (center) (info.displayW - w) / 2f else 0f
+                val t = if (center) (info.displayH + h) / 2f else info.displayH
+                val user = E5Geom.rect(info.rectToUser(RectF(l, t, l + w, t - h)))
+                page.mediaBox = user
+                page.cropBox = user
+                page.cosObject.removeItem(COSName.TRIM_BOX); page.cosObject.removeItem(COSName.BLEED_BOX); page.cosObject.removeItem(COSName.ART_BOX)
+            }
+        }
+    }
+
     /** Remove white margins automatically (rendered with PDFium per page), keeping [pad] points around the content. */
     suspend fun autoCrop(context: Context, src: File, out: File, password: String?, pages: List<Int>, pad: Float = 6f, sameForAll: Boolean = false, onProgress: (Float) -> Unit = {}): Int = withContext(Dispatchers.IO) {
         val found = HashMap<Int, RectF>()   // display rects

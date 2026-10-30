@@ -17,6 +17,8 @@ class XlsxBuilder(
     private val splitLines: Boolean = false,
     /** s6 "reduce merged cells": spans are not merged; the text stays in the first cell. */
     private val noMerge: Boolean = false,
+    /** FINAL_CHECK_2 Low: the source's decimal / thousands separators ([BidiText.SEP_POINT] / SEP_COMMA / SEP_SPACE). */
+    private val separators: Int = BidiText.SEP_POINT,
 ) : Closeable {
 
     private val zip = OoxmlZip(out)
@@ -82,7 +84,7 @@ class XlsxBuilder(
         val colFmt = IntArray(nc)
         for (cell in t.cells) {
             if (header && cell.row == 0) continue
-            val f = BidiText.parseNumber(cell.text)?.format ?: continue
+            val f = BidiText.parseNumber(cell.text, separators)?.format ?: continue
             if (f == 1 || f == 2) colFmt[cell.col] = maxOf(colFmt[cell.col], f)
         }
         // split mode: extra sheet rows each table row needs for its multi-line cells (single-row cells only)
@@ -96,7 +98,7 @@ class XlsxBuilder(
             val text = cell.text.take(32000)
             val spanEnd = startRow + rowAt[(cell.row + cell.rowSpan).coerceIn(0, t.rows)] - 1      // last sheet row the cell covers
             val isHeader = header && cell.row == 0
-            val num = if (isHeader) null else BidiText.parseNumber(text)
+            val num = if (isHeader) null else BidiText.parseNumber(text, separators)
             // PDF cell fill and text colour; the synthetic header shading only when the PDF has no fills of its own
             val color = cell.lines.firstOrNull()?.words?.firstOrNull()?.color ?: 0
             val fill: Int? = cell.fill ?: if (isHeader && pdfFills) StyleBook.NO_FILL else null
