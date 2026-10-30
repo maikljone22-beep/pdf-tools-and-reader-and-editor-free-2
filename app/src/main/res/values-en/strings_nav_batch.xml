@@ -139,4 +139,16 @@
     <string name="nbt_st_redact">Redact by search</string>
     <string name="nbt_st_sanitize">Remove hidden information</string>
     <string name="nbt_stop">Stop</string>
+    <string name="nbt_st_preflight">Preflight check</string>
+    <string name="nbt_st_divider">Divider / panel title</string>
+    <string name="nbt_hint_preflight">Check only, no change: with errors the file either stops with an error, is left out of the batch, or goes on with a note.</string>
+    <string name="nbt_hint_divider">A title that splits the recipe into panels; does nothing when run.</string>
+    <string name="nbt_p_on_fail">On failure</string>
+    <string name="nbt_p_report">Attach the report to the file (HTML)</string>
+    <string name="nbt_fail_stop">Stop the file with an error</string>
+    <string name="nbt_fail_skip">Skip the file</string>
+    <string name="nbt_fail_continue">Continue with a note</string>
+    <string name="nbt_divider_text">Divider text</string>
+    <string name="nbt_note_preflight">Preflight %1$s: %2$d errors, %3$d warnings</string>
+    <string name="nbt_export_log">Export log (CSV)</string>
 </resources>

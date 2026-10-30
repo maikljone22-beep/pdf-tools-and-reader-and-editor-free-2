@@ -50,6 +50,7 @@ fun StepType.label(): String = stringResource(
         StepType.BATES -> R.string.nbt_st_bates; StepType.REDACT -> R.string.nbt_st_redact; StepType.SANITIZE -> R.string.nbt_st_sanitize
         StepType.ACCESS_CHECK -> R.string.nbt_st_access_check; StepType.CONVERT_OFFICE -> R.string.nbt_st_convert; StepType.PRINT -> R.string.nbt_st_print
         StepType.NOTE -> R.string.nbt_st_note; StepType.RUN_RECIPE -> R.string.nbt_st_recipe
+        StepType.PREFLIGHT -> R.string.nbt_st_preflight; StepType.DIVIDER -> R.string.nbt_st_divider
     },
 )
 
@@ -416,7 +417,19 @@ fun BatchScreen(nav: NavHostController) {
             },
             confirmButton = {
                 val outs = log.mapNotNull { it.output?.let(::File) }.filter { it.exists() }
-                TextButton(onClick = { shareFiles(ctx, app.documents, outs, if (outs.all { it.extension.equals("pdf", true) }) "application/pdf" else "*/*") }, enabled = outs.isNotEmpty()) { Text(stringResource(R.string.share)) }
+                Row {
+                    // FINAL_CHECK_2 Low (§37): the run's log as a CSV file (Action Wizard "export log")
+                    TextButton(onClick = {
+                        val csv = buildString {
+                            append("input,ok,skipped,output,seconds,message\n")
+                            fun q(v: String) = "\"" + v.replace("\"", "\"\"") + "\""
+                            log.forEach { e -> append(listOf(q(e.input), e.ok.toString(), e.skipped.toString(), q(e.output.orEmpty()), (e.millis / 1000).toString(), q(e.message)).joinToString(",")).append("\n") }
+                        }
+                        val f = app.documents.uniqueFile(app.documents.docsDir, j.title.ifBlank { "batch" } + "_log", "csv")
+                        runCatching { f.writeText(csv); shareFiles(ctx, app.documents, listOf(f), "text/csv") }
+                    }, enabled = log.isNotEmpty()) { Text(stringResource(R.string.nbt_export_log)) }
+                    TextButton(onClick = { shareFiles(ctx, app.documents, outs, if (outs.all { it.extension.equals("pdf", true) }) "application/pdf" else "*/*") }, enabled = outs.isNotEmpty()) { Text(stringResource(R.string.share)) }
+                }
             },
             dismissButton = { TextButton(onClick = { open = null }) { Text(stringResource(R.string.close)) } },
         )
