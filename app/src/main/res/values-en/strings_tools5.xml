@@ -415,4 +415,8 @@
     <string name="t5_form_fields_none">No fields were found on the form. Open it in the form designer to add fields by hand.</string>
     <string name="t5_paper_more">More sizes (A0–A10, B, C, JIS…)</string>
     <string name="t5_paper_less">Common sizes only</string>
+    <string name="t5_mm_record_range">Record range (empty = all)</string>
+    <string name="t5_mm_email_column">E-mail column (send each file to its address)</string>
+    <string name="t5_mm_email_hint">One file per record; an e-mail with the file attached opens for every address — the mail app sends it.</string>
+    <string name="t5_mm_emailed">%1$d e-mails prepared with their files attached.</string>
 </resources>

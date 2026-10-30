@@ -31,6 +31,28 @@ internal class DocxReader(private val pkg: OoxmlPackage) {
     private var headerRef: String? = null
     private var footerRef: String? = null
     private val noteRefs = ArrayList<Pair<String, String>>()   // (kind "footnote"/"endnote", id) in reference order
+    /** Word comments (word/comments.xml): id → "author: text"; loaded on the first reference. */
+    private var comments: Map<String, String>? = null
+    private fun comment(id: String?): String? {
+        id ?: return null
+        val map = comments ?: runCatching { loadComments() }.getOrDefault(emptyMap()).also { comments = it }
+        return map[id]
+    }
+    private fun loadComments(): Map<String, String> {
+        val path = pkg.rels(docPath).values.firstOrNull { it.type.endsWith("/comments") }?.target ?: "word/comments.xml"
+        val p = pkg.parser(path) ?: return emptyMap()
+        if (!p.seek("comments")) return emptyMap()
+        val out = HashMap<String, String>()
+        p.forEachChild { n ->
+            if (n == "comment") {
+                val id = p.attr("id"); val author = p.attr("author").orEmpty()
+                val sb = StringBuilder()
+                p.forEachChild { c -> if (c == "p") { if (sb.isNotEmpty()) sb.append(' '); p.forEachChild { r -> if (r == "r") p.forEachChild { t -> if (t == "t") sb.append(p.readText()) } } } }
+                if (id != null) out[id] = (if (author.isBlank()) "" else "$author: ") + sb.toString().trim()
+            }
+        }
+        return out
+    }
     private var equations = 0
     private var unrendered = 0
 
@@ -76,7 +98,8 @@ internal class DocxReader(private val pkg: OoxmlPackage) {
         val end = runCatching { load("endnote") }.getOrDefault(emptyMap())
         var fn = 0; var en = 0
         return noteRefs.mapNotNull { (kind, id) ->
-            if (kind == "footnote") foot[id]?.let { (++fn).toString() to it } else end[id]?.let { NumberText.roman(++en).lowercase() to it }
+            // the marker text carries the note id after a tab so the HTML can give the note an anchor (OfficeHtml strips it)
+            if (kind == "footnote") foot[id]?.let { "${++fn}\t$kind-$id" to it } else end[id]?.let { "${NumberText.roman(++en).lowercase()}\t$kind-$id" to it }
         }
     }
 
@@ -264,9 +287,10 @@ internal class DocxReader(private val pkg: OoxmlPackage) {
                     if (c == "Choice" && out.size == before) p.forEachChild { k -> if (k == "drawing") readDrawing(p, out) else if (k == "pict" || k == "object") readVml(p, out) }
                     else if (c == "Fallback" && out.size == before) p.forEachChild { k -> if (k == "pict" || k == "object") readVml(p, out) else if (k == "drawing") readDrawing(p, out) }
                 } }
-                "footnoteReference", "endnoteReference" -> noteMarker(if (n == "footnoteReference") "footnote" else "endnote", p.attr("id"))?.let { m ->
-                    out.add(Inline.Text(m, style.copy(vertAlign = "superscript"), link))
-                }
+                "footnoteReference", "endnoteReference" -> { val kind = if (n == "footnoteReference") "footnote" else "endnote"; val id = p.attr("id")
+                    noteMarker(kind, id)?.let { m -> out.add(Inline.Text(m, style.copy(vertAlign = "superscript", noteId = "$kind-$id"), link)) } }
+                // FINAL_CHECK_2 Low (B #20): a Word comment anchored here becomes a note bubble after the run
+                "commentReference" -> comment(p.attr("id"))?.let { c -> out.add(Inline.Text("", style.copy(comment = c), link)) }
             }
         }
     }

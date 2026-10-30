@@ -22,6 +22,10 @@ data class RunStyle(
     /** "superscript" / "subscript" / null. */
     val vertAlign: String? = null,
     val rtl: Boolean = false,
+    /** FINAL_CHECK_2 Low (B #20): a Word comment at this run ("author: text"), shown as a note bubble. */
+    val comment: String? = null,
+    /** FINAL_CHECK_2 Low (B #20): a footnote / endnote marker: the id of the note it links to (the note gets the same id). */
+    val noteId: String? = null,
 )
 
 enum class Align { START, CENTER, END, JUSTIFY, LEFT, RIGHT }

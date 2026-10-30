@@ -58,6 +58,9 @@ fun MailMergeScreen(nav: NavHostController, uri: String?) {
     var nameColumn by remember { mutableStateOf<String?>(null) }
     var merged by remember { mutableStateOf(false) }
     var flatten by remember { mutableStateOf(false) }
+    // FINAL_CHECK_2 Low (B #21): record range ("" = all) and an e-mail column — each merged PDF is mailed to its address
+    var recordRange by remember { mutableStateOf("") }
+    var emailColumn by remember { mutableStateOf<String?>(null) }
     val job = rememberT5Job()
     val noForm = stringResource(R.string.t5_mm_no_form)
     val badData = stringResource(R.string.t5_mm_bad_data)
@@ -102,14 +105,33 @@ fun MailMergeScreen(nav: NavHostController, uri: String?) {
                 ColumnDropdown(stringResource(R.string.t5_mm_name_column), t.header, nameColumn) { nameColumn = it }
                 SwitchRow(stringResource(R.string.t5_mm_merged), merged, stringResource(R.string.t5_mm_merged_hint)) { merged = it }
                 SwitchRow(stringResource(R.string.t5_mm_flatten), flatten) { flatten = it }
+                OutlinedTextField(recordRange, { recordRange = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.t5_mm_record_range)) }, placeholder = { Text("1-50, 60") })
+                ColumnDropdown(stringResource(R.string.t5_mm_email_column), t.header, emailColumn) { emailColumn = it }
+                if (emailColumn != null) Text(stringResource(R.string.t5_mm_email_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             PrimaryButton(stringResource(R.string.t5_mm_run, t.rows.size), enabled = !job.running && t.rows.isNotEmpty() && mapping.values.any { it != null }, icon = Icons.Default.MergeType) {
                 val tpl = template ?: return@PrimaryButton
-                val m = mapping; val nc = nameColumn; val mg = merged; val fl = flatten
+                val m = mapping; val nc = nameColumn; val fl = flatten
+                val picked = com.smartdocs.editor.core.view5.PrintLayout.parseRange(recordRange, t.rows.size)
+                val sub = if (recordRange.isBlank() || picked.isEmpty()) t else MergeTable(t.header, picked.map { t.rows[it] })
+                val ec = emailColumn; val mg = merged && ec == null   // mailing needs one file per record
                 job.launch(running) {
                     val dir = File(app.documents.docsDir, tpl.nameWithoutExtension + "_merge")
-                    val out = MailMerge.run(ctx, tpl, null, t, m, if (mg) app.documents.docsDir else dir, tpl.nameWithoutExtension, nc, mg, fl) { d, n -> step(d, n) }
+                    val out = MailMerge.run(ctx, tpl, null, sub, m, if (mg) app.documents.docsDir else dir, tpl.nameWithoutExtension, nc, mg, fl) { d, n -> step(d, n) }
                     if (out.size == 1) result = out[0] else results = out
+                    if (ec != null) {
+                        // one e-mail intent per record with its PDF attached (the mail app sends it)
+                        val col = sub.header.indexOf(ec)
+                        val mails = sub.rows.mapIndexed { i, r -> r.getOrNull(col).orEmpty().trim() to out.getOrNull(i) }.filter { it.first.contains('@') && it.second != null }
+                        mails.forEach { (to, f) -> runCatching {
+                            val uri = app.documents.shareUri(f!!)
+                            val send = android.content.Intent(android.content.Intent.ACTION_SEND).setType("application/pdf")
+                                .putExtra(android.content.Intent.EXTRA_EMAIL, arrayOf(to)).putExtra(android.content.Intent.EXTRA_SUBJECT, f.nameWithoutExtension)
+                                .putExtra(android.content.Intent.EXTRA_STREAM, uri).addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                            ctx.startActivity(android.content.Intent.createChooser(send, null).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+                        } }
+                        info = ctx.getString(R.string.t5_mm_emailed, mails.size)
+                    }
                 }
             }
         }
