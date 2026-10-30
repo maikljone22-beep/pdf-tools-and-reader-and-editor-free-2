@@ -14,22 +14,26 @@ import com.tom_roush.pdfbox.pdmodel.graphics.image.PDImageXObject
 
 /** PDF/A levels (Foxit 8 / Nitro 20): part 1–3, conformance a (tagged), b (visual), u (Unicode text). */
 enum class PdfALevel(val part: Int, val conformance: String) {
-    A1A(1, "A"), A1B(1, "B"), A2A(2, "A"), A2B(2, "B"), A2U(2, "U"), A3A(3, "A"), A3B(3, "B"), A3U(3, "U");
+    A1A(1, "A"), A1B(1, "B"), A2A(2, "A"), A2B(2, "B"), A2U(2, "U"), A3A(3, "A"), A3B(3, "B"), A3U(3, "U"),
+    /** FINAL_CHECK_2 Low (B #44): ISO 19005-4 (PDF 2.0): plain, "e" (engineering: 3D / rich media allowed) and "f" (any embedded files). */
+    A4(4, ""), A4E(4, "E"), A4F(4, "F");
 
     val label get() = "PDF/A-$part${conformance.lowercase()}"
     val needsTags get() = conformance == "A"
     val needsUnicode get() = conformance != "B"
     /** PDF/A-1 allows no transparency, no layers, PDF ≤ 1.4. */
     val strict1 get() = part == 1
-    /** PDF/A-3 allows any attachment (with an /AFRelationship). */
-    val anyAttachments get() = part == 3
+    /** PDF/A-3 (and PDF/A-4f) allow any attachment (with an /AFRelationship). */
+    val anyAttachments get() = part == 3 || conformance == "F"
+    /** PDF/A-4 is built on PDF 2.0. */
+    val part4 get() = part == 4
 }
 
 /** Standards a file says it follows. */
 data class Claims(val pdfa: String?, val pdfua: String?, val pdfx: String?, val pdfe: String?, val pdfvt: String?, val facturX: String?)
 
 /** Preflight profiles (Foxit "Profiles" tab); [code] maps to "pc_prof_<code>". */
-enum class PreflightProfile(val code: String) { PDFA_1B("a1b"), PDFA_2B("a2b"), PDFA_2U("a2u"), PDFA_3B("a3b"), PDFX_4("x4"), PDFE_1("e1"), PRINT("print"), VERSION("version"), ZUGFERD("zugferd"), PDFUA_1("ua1") }
+enum class PreflightProfile(val code: String) { PDFA_1B("a1b"), PDFA_2B("a2b"), PDFA_2U("a2u"), PDFA_3B("a3b"), PDFA_4("a4"), PDFX_4("x4"), PDFX_1A("x1a"), PDFX_3("x3"), PDFVT("vt"), PDFE_1("e1"), PRINT("print"), VERSION("version"), ZUGFERD("zugferd"), PDFUA_1("ua1") }
 
 /** Print-production facts of a page range (Foxit preflight print checks). */
 data class PrintFacts(
@@ -184,8 +188,8 @@ object Standards {
         val out = ArrayList<Finding>()
         fun add(code: String, sev: Severity, n: Int = 0, pg: Collection<Int> = emptyList(), detail: String = "") { out += Finding(code, sev, n, pg.sorted(), false, detail) }
         when (profile) {
-            PreflightProfile.PDFA_1B, PreflightProfile.PDFA_2B, PreflightProfile.PDFA_2U, PreflightProfile.PDFA_3B -> {
-                val level = when (profile) { PreflightProfile.PDFA_1B -> PdfALevel.A1B; PreflightProfile.PDFA_2U -> PdfALevel.A2U; PreflightProfile.PDFA_3B -> PdfALevel.A3B; else -> PdfALevel.A2B }
+            PreflightProfile.PDFA_1B, PreflightProfile.PDFA_2B, PreflightProfile.PDFA_2U, PreflightProfile.PDFA_3B, PreflightProfile.PDFA_4 -> {
+                val level = when (profile) { PreflightProfile.PDFA_1B -> PdfALevel.A1B; PreflightProfile.PDFA_2U -> PdfALevel.A2U; PreflightProfile.PDFA_3B -> PdfALevel.A3B; PreflightProfile.PDFA_4 -> PdfALevel.A4; else -> PdfALevel.A2B }
                 out += levelReport(facts, pf, level).findings.map(::page).filter { it.pages.isNotEmpty() || it.count > 0 || it.code !in setOf("cmyk", "transparency") }
             }
             PreflightProfile.PDFX_4 -> {
@@ -199,6 +203,35 @@ object Standards {
                 if (doc.documentInformation?.cosObject?.containsKey(COSName.getPDFName("Trapped")) != true) add("x_trapped", Severity.ERROR)
                 if (facts.javascript) add("js", Severity.ERROR)
                 if (facts.multimedia > 0) add("multimedia", Severity.ERROR, facts.multimedia)
+            }
+            // FINAL_CHECK_2 Low (B #48 / #49): the other PDF/X variants and PDF/VT, as heuristics like X-4
+            PreflightProfile.PDFX_1A, PreflightProfile.PDFX_3 -> {
+                val want = if (profile == PreflightProfile.PDFX_1A) "PDF/X-1a" else "PDF/X-3"
+                if (claims.pdfx == null) add("x_claim", Severity.ERROR) else if (!claims.pdfx.startsWith(want)) add("x_claim_other", Severity.WARNING, detail = claims.pdfx)
+                val intents = (deref(doc.documentCatalog.cosObject.getDictionaryObject(COSName.getPDFName("OutputIntents"))) as? COSArray)
+                if (intents == null || (0 until intents.size()).none { (deref(intents.get(it)) as? COSDictionary)?.getNameAsString(COSName.S) == "GTS_PDFX" }) add("x_intent", Severity.ERROR)
+                if (facts.fontsNotEmbedded.isNotEmpty()) add("fonts", Severity.ERROR, facts.fontsNotEmbedded.size, detail = facts.fontsNotEmbedded.joinToString { it.name }.take(300))
+                if (facts.encrypted) add("encrypted", Severity.ERROR)
+                val noTrim = pages.filter { it in 0 until doc.numberOfPages }.filter { p -> doc.getPage(p).cosObject.let { !it.containsKey(COSName.TRIM_BOX) && !it.containsKey(COSName.ART_BOX) } }
+                if (noTrim.isNotEmpty()) add("x_trim", Severity.ERROR, noTrim.size, noTrim)
+                if (doc.documentInformation?.cosObject?.containsKey(COSName.getPDFName("Trapped")) != true) add("x_trapped", Severity.ERROR)
+                if (facts.javascript) add("js", Severity.ERROR)
+                if (facts.multimedia > 0) add("multimedia", Severity.ERROR, facts.multimedia)
+                // X-1a and X-3 predate transparency and layers; X-1a is CMYK / spot only
+                if (facts.transparencyPages.isNotEmpty()) add("transparency", Severity.ERROR, facts.transparencyPages.size, facts.transparencyPages.filter { it in inRange })
+                if (pf.layers) add("a_layers", Severity.ERROR)
+                if (facts.version > 1.4f && profile == PreflightProfile.PDFX_1A) add("a_version14", Severity.ERROR)
+                if (profile == PreflightProfile.PDFX_1A && facts.cmykPages.size < pages.count { it in 0 until doc.numberOfPages }) add("x_rgb", Severity.WARNING)
+            }
+            PreflightProfile.PDFVT -> {
+                if (claims.pdfvt == null) add("vt_claim", Severity.ERROR)
+                // PDF/VT-1 is PDF/X-4 plus document part metadata
+                if (claims.pdfx == null) add("x_claim", Severity.ERROR)
+                val dparts = deref(doc.documentCatalog.cosObject.getDictionaryObject(COSName.getPDFName("DPartRoot")))
+                if (dparts == null) add("vt_dpart", Severity.ERROR)
+                if (facts.fontsNotEmbedded.isNotEmpty()) add("fonts", Severity.ERROR, facts.fontsNotEmbedded.size)
+                if (facts.encrypted) add("encrypted", Severity.ERROR)
+                if (facts.javascript) add("js", Severity.ERROR)
             }
             PreflightProfile.PDFE_1 -> {
                 if (claims.pdfe == null) add("e_claim", Severity.ERROR)
@@ -296,6 +329,7 @@ object Standards {
             if (pf.jpx) put("a_jpx", Severity.ERROR)
         }
         if (level.needsUnicode && facts.fontsWithoutUnicode.isNotEmpty()) put("unicode", Severity.ERROR, facts.fontsWithoutUnicode.size)
+        if (level.part4) { base.removeAll { it.code == "version" }; if (facts.version < 2.0f) put("a_version20", Severity.ERROR) }
         if (level.needsTags && !pf.tagged) put("a_tags", Severity.ERROR)
         if (level.anyAttachments) base.removeAll { it.code == "attachments" }
         facts.pdfaClaim?.let { c -> if (!c.startsWith("PDF/A-${level.part}")) put("a_claim_other", Severity.WARNING) }
