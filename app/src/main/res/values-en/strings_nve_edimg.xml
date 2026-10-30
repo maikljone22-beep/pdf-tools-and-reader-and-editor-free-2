@@ -151,4 +151,6 @@
     <string name="ni_ia_proportional">Scale proportionally</string>
     <string name="ni_ia_pos_x">Horizontal position %1$d%%</string>
     <string name="ni_ia_pos_y">Vertical position %1$d%%</string>
+    <string name="ni_p_alt_unmarked">No alt text possible: the image is not marked (MCID). Run "Accessibility tags" first.</string>
+    <string name="ni_p_alt_new_figure">A Figure tag will be created for the image on save.</string>
 </resources>

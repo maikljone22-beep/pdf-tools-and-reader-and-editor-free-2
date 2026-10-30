@@ -276,7 +276,8 @@ class Cv6Engine(private val ctx: Context, private val docs: DocumentRepository) 
                 ImageIo6.imagesToPdf(listOf(f0), t, PageSetup(PageSize6.IMAGE))
                 return@pdfOf onePdf(conv, t, f0.nameWithoutExtension, null, o, p, false)
             }
-            val ocr = if (wantsOcr && isPdf) PdfFlow6.ocrCopy(ctx, f0, pw, o.ocrLangs, tempDir, forceOcr) { d, t -> progress(Stage.OCR, d, t) } else null
+            // FINAL_CHECK_2 Low (C #51): text recovery "all pages" for the Excel / PowerPoint / HTML targets too (not only Word)
+            val ocr = if (wantsOcr && isPdf) PdfFlow6.ocrCopy(ctx, f0, pw, o.ocrLangs, tempDir, forceOcr || (o.recoverAllPages && Opt.TEXT_RECOVERY in conv.opts)) { d, t -> progress(Stage.OCR, d, t) } else null
             val f = ocr ?: f0
             val fpw = if (ocr != null) null else pw
             val r = try { onePdf(conv, f, f0.nameWithoutExtension, fpw, o, p, encrypted && ocr == null, f0, pw) } finally { ocr?.delete() }
