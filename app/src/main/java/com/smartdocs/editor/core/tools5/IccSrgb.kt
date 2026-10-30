@@ -111,12 +111,16 @@ object XmpWriter {
     fun packet(
         title: String?, author: String?, subject: String?, keywords: String?, creatorTool: String, producer: String,
         created: String, modified: String, part: Int = 2, conformance: String = "B", uaPart: Int? = null, lang: String = "x-default",
+        /** FINAL_CHECK_2 Low: a PDF/X version ("PDF/X-4") or PDF/E version ("PDF/E-1") claimed instead of PDF/A (part is then ignored). */
+        pdfx: String? = null, pdfe: String? = null,
     ): String = buildString {
         append("<?xpacket begin=\"\uFEFF\" id=\"W5M0MpCehiHzreSzNTczkc9d\"?>\n")
         append("<x:xmpmeta xmlns:x=\"adobe:ns:meta/\">\n<rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">\n")
         append("<rdf:Description rdf:about=\"\" xmlns:dc=\"http://purl.org/dc/elements/1.1/\" xmlns:xmp=\"http://ns.adobe.com/xap/1.0/\"")
         append(" xmlns:pdf=\"http://ns.adobe.com/pdf/1.3/\" xmlns:pdfaid=\"http://www.aiim.org/pdfa/ns/id/\"")
         if (uaPart != null) append(" xmlns:pdfuaid=\"http://www.aiim.org/pdfua/ns/id/\"")
+        if (pdfx != null) append(" xmlns:pdfxid=\"http://www.npes.org/pdfx/ns/id/\"")
+        if (pdfe != null) append(" xmlns:pdfe=\"http://www.aiim.org/pdfe/ns/id/\"")
         append(">\n")
         append("<dc:format>application/pdf</dc:format>\n")
         if (!title.isNullOrBlank()) append("<dc:title><rdf:Alt><rdf:li xml:lang=\"x-default\">").append(esc(title)).append("</rdf:li></rdf:Alt></dc:title>\n")
@@ -128,8 +132,15 @@ object XmpWriter {
         append("<xmp:CreateDate>").append(created).append("</xmp:CreateDate>\n")
         append("<xmp:ModifyDate>").append(modified).append("</xmp:ModifyDate>\n")
         append("<xmp:MetadataDate>").append(modified).append("</xmp:MetadataDate>\n")
-        append("<pdfaid:part>").append(part).append("</pdfaid:part>\n")
-        append("<pdfaid:conformance>").append(conformance).append("</pdfaid:conformance>\n")
+        when {
+            pdfx != null -> append("<pdfxid:GTS_PDFXVersion>").append(esc(pdfx)).append("</pdfxid:GTS_PDFXVersion>\n")
+            pdfe != null -> append("<pdfe:ISO_PDFEVersion>").append(esc(pdfe)).append("</pdfe:ISO_PDFEVersion>\n")
+            else -> {
+                append("<pdfaid:part>").append(part).append("</pdfaid:part>\n")
+                if (part >= 4) append("<pdfaid:rev>2020</pdfaid:rev>\n")
+                if (conformance.isNotBlank()) append("<pdfaid:conformance>").append(conformance).append("</pdfaid:conformance>\n")
+            }
+        }
         if (uaPart != null) append("<pdfuaid:part>").append(uaPart).append("</pdfuaid:part>\n")
         append("</rdf:Description>\n</rdf:RDF>\n</x:xmpmeta>\n")
         repeat(20) { append("                                                                                \n") }

@@ -31,6 +31,7 @@ private fun findingTitle(code: String): String = stringResource(
         // Stage G: level, PDF/X, PDF/E, print, version and Factur-X checks
         "a_layers" -> R.string.pc_pf_a_layers; "a_version14" -> R.string.pc_pf_a_version14; "a_jpx" -> R.string.pc_pf_a_jpx; "a_tags" -> R.string.pc_pf_a_tags
         "a_claim_other" -> R.string.pc_pf_a_claim_other; "x_claim" -> R.string.pc_pf_x_claim; "x_intent" -> R.string.pc_pf_x_intent; "x_trim" -> R.string.pc_pf_x_trim
+        "a_version20" -> R.string.pc_pf_a_version20; "x_claim_other" -> R.string.pc_pf_x_claim_other; "x_rgb" -> R.string.pc_pf_x_rgb; "vt_claim" -> R.string.pc_pf_vt_claim; "vt_dpart" -> R.string.pc_pf_vt_dpart
         "x_trapped" -> R.string.pc_pf_x_trapped; "e_claim" -> R.string.pc_pf_e_claim; "hairline" -> R.string.pc_pf_hairline; "overprint" -> R.string.pc_pf_overprint
         "spot" -> R.string.pc_pf_spot; "ppi_low" -> R.string.pc_pf_ppi_low; "invisible" -> R.string.pc_pf_invisible; "courier" -> R.string.pc_pf_courier
         "v_needed" -> R.string.pc_pf_v_needed; "zf_xml" -> R.string.pc_pf_zf_xml; "zf_relationship" -> R.string.pc_pf_zf_relationship; "zf_af" -> R.string.pc_pf_zf_af
@@ -95,6 +96,7 @@ fun PdfAScreen(nav: NavHostController, uri: String?) {
     val prefs = remember { ctx.getSharedPreferences("pc_preflight", android.content.Context.MODE_PRIVATE) }
     var level by remember { mutableStateOf(PdfALevel.A2B) }
     var ua by remember { mutableStateOf(false) }
+    var standard by remember { mutableStateOf("A") }   // FINAL_CHECK_2 Low: PDF/A, PDF/E-1 or PDF/X-4
     var lang by remember { mutableStateOf("") }
     var profile by remember { mutableStateOf(PreflightProfile.PDFA_2B) }
     var favs by remember { mutableStateOf(prefs.getStringSet("fav", emptySet()).orEmpty()) }
@@ -181,7 +183,7 @@ fun PdfAScreen(nav: NavHostController, uri: String?) {
                 rows.forEach { (prefix, v) ->
                     if (v != null) Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(v, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-                        if (prefix != "pdfvtid" && prefix != "fx") TextButton(onClick = {
+                        if (prefix != "fx") TextButton(onClick = {   // FINAL_CHECK_2 Low (B #49): the PDF/VT claim can be removed too
                             val f = file ?: return@TextButton
                             val pw = password.ifBlank { null }; val src = origin
                             job.launch(convertingMsg) {
@@ -248,10 +250,15 @@ fun PdfAScreen(nav: NavHostController, uri: String?) {
                     style = MaterialTheme.typography.bodySmall, color = T5Orange)
             }
             if (!level.anyAttachments) SwitchRow(stringResource(R.string.t5_pdfa_attach), dropAttach, stringResource(R.string.t5_pdfa_attach_hint)) { dropAttach = it }
-            Text(stringResource(R.string.pc_pdfa_level), style = MaterialTheme.typography.labelLarge)
-            com.smartdocs.editor.ui.tools.ChoiceChips(PdfALevel.entries, level, { it.label }) { level = it }
-            Text(stringResource(when { level.needsTags -> R.string.pc_pdfa_level_a; level.needsUnicode -> R.string.pc_pdfa_level_u; level.strict1 -> R.string.pc_pdfa_level_1; level.anyAttachments -> R.string.pc_pdfa_level_3; else -> R.string.pc_pdfa_level_b }),
-                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            // FINAL_CHECK_2 Low: the standard written — PDF/A (a level), PDF/E-1 or PDF/X-4
+            Text(stringResource(R.string.pc_standard), style = MaterialTheme.typography.labelLarge)
+            com.smartdocs.editor.ui.tools.ChoiceChips(listOf("A", "E", "X"), standard, { when (it) { "E" -> "PDF/E-1"; "X" -> "PDF/X-4"; else -> "PDF/A" } }) { standard = it }
+            if (standard == "A") {
+                Text(stringResource(R.string.pc_pdfa_level), style = MaterialTheme.typography.labelLarge)
+                com.smartdocs.editor.ui.tools.ChoiceChips(PdfALevel.entries, level, { it.label }) { level = it }
+                Text(stringResource(when { level.part4 -> R.string.pc_pdfa_level_4; level.needsTags -> R.string.pc_pdfa_level_a; level.needsUnicode -> R.string.pc_pdfa_level_u; level.strict1 -> R.string.pc_pdfa_level_1; level.anyAttachments -> R.string.pc_pdfa_level_3; else -> R.string.pc_pdfa_level_b }),
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else Text(stringResource(if (standard == "E") R.string.pc_standard_e_hint else R.string.pc_standard_x_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (level.needsTags) OutlinedTextField(lang, { lang = it.trim() }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.t5_acc_doc_lang)) })
             SwitchRow(stringResource(R.string.pc_acc_mark_ua), ua, stringResource(R.string.pc_pdfa_ua_hint)) { ua = it }
         }
@@ -259,10 +266,10 @@ fun PdfAScreen(nav: NavHostController, uri: String?) {
             val f = file ?: return@PrimaryButton
             val pw = password.ifBlank { null }
             val opt = PdfAOptions(rasterizeProblemPages = raster, flattenTransparency = flatten, removeAttachments = dropAttach && !level.anyAttachments,
-                level = level, uaPart = if (ua) 1 else null, lang = lang)
+                level = level, uaPart = if (ua) 1 else null, lang = lang, standard = standard)
             val src = origin
             job.launch(convertingMsg) {
-                val out = app.documents.uniqueFile(app.documents.docsDir, f.nameWithoutExtension + "_" + opt.level.label.replace("/", "").replace("-", ""))
+                val out = app.documents.uniqueFile(app.documents.docsDir, f.nameWithoutExtension + "_" + (when (opt.standard) { "E" -> "PDFE1"; "X" -> "PDFX4"; else -> opt.level.label.replace("/", "").replace("-", "") }))
                 val r = try { PdfA.convert(ctx, f, pw, out, opt, title = f.nameWithoutExtension) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) {
                     out.delete()
                     error = ctx.getString(when { e is PdfA.OwnerRequired -> R.string.tte5_pdfa_owner; com.smartdocs.editor.core.edit5.E5Locks.isPasswordError(e) -> R.string.tte5_pdfa_password; else -> R.string.tte5_pdfa_failed })
@@ -289,6 +296,7 @@ fun PdfAScreen(nav: NavHostController, uri: String?) {
 private fun profileLabel(p: PreflightProfile): String = stringResource(when (p) {
     PreflightProfile.PDFA_1B -> R.string.pc_prof_a1b; PreflightProfile.PDFA_2B -> R.string.pc_prof_a2b; PreflightProfile.PDFA_2U -> R.string.pc_prof_a2u
     PreflightProfile.PDFA_3B -> R.string.pc_prof_a3b; PreflightProfile.PDFX_4 -> R.string.pc_prof_x4; PreflightProfile.PDFE_1 -> R.string.pc_prof_e1
+    PreflightProfile.PDFA_4 -> R.string.pc_prof_a4; PreflightProfile.PDFX_1A -> R.string.pc_prof_x1a; PreflightProfile.PDFX_3 -> R.string.pc_prof_x3; PreflightProfile.PDFVT -> R.string.pc_prof_vt
     PreflightProfile.PRINT -> R.string.pc_prof_print; PreflightProfile.VERSION -> R.string.pc_prof_version; PreflightProfile.ZUGFERD -> R.string.pc_prof_zugferd
     PreflightProfile.PDFUA_1 -> R.string.pa_prof_ua1
 })

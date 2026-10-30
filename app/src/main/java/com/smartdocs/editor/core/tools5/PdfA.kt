@@ -49,6 +49,8 @@ data class PdfAOptions(
     val uaPart: Int? = null,
     /** Document language for the "a" levels (auto-tagging) when the file has none. */
     val lang: String = "",
+    /** FINAL_CHECK_2 Low (B #47 / #50 / #51): the standard written — "A" (PDF/A [level]), "E" (PDF/E-1) or "X" (PDF/X-4). */
+    val standard: String = "A",
 )
 
 /** PDF/A-2b preflight + conversion (best effort, on device). */
@@ -109,13 +111,13 @@ object PdfA {
         }
     }
 
-    private fun outputIntent(doc: PDDocument): COSDictionary {
+    private fun outputIntent(doc: PDDocument, subtype: String = "GTS_PDFA1"): COSDictionary {
         val icc = doc.document.createCOSStream()
         icc.setInt(N.n("N"), 3)
         icc.createOutputStream(COSName.FLATE_DECODE).use { it.write(IccSrgb.bytes) }
         return COSDictionary().apply {
             setItem(N.Type, N.n("OutputIntent"))
-            setItem(N.S, N.n("GTS_PDFA1"))
+            setItem(N.S, N.n(subtype))
             setString(N.n("OutputConditionIdentifier"), "sRGB IEC61966-2.1")
             setString(N.n("Info"), "sRGB IEC61966-2.1")
             setString(N.n("RegistryName"), "http://www.color.org")
@@ -218,8 +220,14 @@ object PdfA {
             if (opt.level.strict1 && cat.containsKey(COSName.getPDFName("OCProperties"))) { cat.removeItem(COSName.getPDFName("OCProperties")); fixed += "a_layers" }
             if (opt.level.needsTags && !cat.containsKey(COSName.getPDFName("StructTreeRoot"))) { runCatching { AccessAutoTag.tag(d, opt.lang, false) }; fixed += "a_tags" }
             if (opt.lang.isNotBlank() && !cat.containsKey(COSName.LANG)) cat.setItem(COSName.LANG, COSString(opt.lang))
-            // output intent (sRGB)
-            cat.setItem(N.OutputIntents, COSArray().apply { add(outputIntent(d)) }); fixed += "intent"
+            // output intent (sRGB); PDF/X files carry a GTS_PDFX intent, a trim box on every page and the Trapped key
+            cat.setItem(N.OutputIntents, COSArray().apply { add(outputIntent(d, if (opt.standard == "X") "GTS_PDFX" else "GTS_PDFA1")) }); fixed += "intent"
+            if (opt.standard == "X") {
+                d.pages.forEach { p -> if (!p.cosObject.containsKey(COSName.TRIM_BOX) && !p.cosObject.containsKey(COSName.ART_BOX)) p.trimBox = p.cropBox }
+                d.documentInformation.cosObject.setName(COSName.getPDFName("Trapped"), "False")
+                d.documentInformation.cosObject.setString(COSName.getPDFName("GTS_PDFXVersion"), "PDF/X-4")
+                fixed += "x_trim"; fixed += "x_trapped"
+            }
             // info + XMP kept in sync
             val info = d.documentInformation
             val now = Calendar.getInstance()
@@ -229,7 +237,8 @@ object PdfA {
             info.producer = "SmartDocs"
             if (info.creator.isNullOrBlank()) info.creator = "SmartDocs"
             val xmp = XmpWriter.packet(info.title, info.author, info.subject, info.keywords, info.creator ?: "SmartDocs", "SmartDocs", XmpWriter.isoDate(created), XmpWriter.isoDate(now),
-                part = opt.level.part, conformance = opt.level.conformance, uaPart = opt.uaPart)
+                part = opt.level.part, conformance = opt.level.conformance, uaPart = opt.uaPart,
+                pdfx = if (opt.standard == "X") "PDF/X-4" else null, pdfe = if (opt.standard == "E") "PDF/E-1" else null)
             val md = PDMetadata(d)
             md.importXMPMetadata(xmp.toByteArray(Charsets.UTF_8))
             d.documentCatalog.metadata = md
@@ -238,6 +247,8 @@ object PdfA {
             val id = MessageDigest.getInstance("MD5").digest((src.absolutePath + now.timeInMillis).toByteArray())
             d.document.trailer.setItem(N.ID, COSArray().apply { add(COSString(id)); add(COSString(id)) })
             if (opt.level.strict1) { if (d.version != 1.4f) { d.version = 1.4f; fixed += "a_version14" } }
+            else if (opt.standard == "A" && opt.level.part4) { if (d.version < 2.0f) { d.version = 2.0f; fixed += "a_version20" } }
+            else if (opt.standard == "E") { if (d.version > 1.6f || d.version < 1.4f) { d.version = 1.6f; fixed += "version" } }
             else if (d.version > 1.7f || d.version < 1.4f) { d.version = 1.7f; fixed += "version" }
             kotlin.coroutines.coroutineContext.ensureActive()
             onProgress(total - 1, total)
@@ -245,7 +256,13 @@ object PdfA {
         }
         onProgress(total, total)
         // self-check of the written file
-        val after = PDDocument.load(out).use { Standards.levelReport(PdfInspect.inspect(it), Standards.printFacts(it, (0 until it.numberOfPages).toList()), opt.level) }
+        val after = PDDocument.load(out).use { d ->
+            when (opt.standard) {
+                "X" -> Standards.preflight(d, PreflightProfile.PDFX_4, (0 until d.numberOfPages).toList())
+                "E" -> Standards.preflight(d, PreflightProfile.PDFE_1, (0 until d.numberOfPages).toList())
+                else -> Standards.levelReport(PdfInspect.inspect(d), Standards.printFacts(d, (0 until d.numberOfPages).toList()), opt.level)
+            }
+        }
         after to fixed
     }
 

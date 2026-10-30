@@ -407,4 +407,17 @@
     <string name="pc_web_footer">Footer</string>
     <string name="pc_web_info_page">On a separate first page</string>
     <string name="pc_web_info_page_sub">The header / footer information goes on a first page instead of every page</string>
+    <string name="pc_standard">Standard</string>
+    <string name="pc_standard_e_hint">PDF/E-1 (ISO 24517) for engineering documents: embedded fonts, no encryption, JavaScript or LZW, XMP present; approximate check on the device.</string>
+    <string name="pc_standard_x_hint">PDF/X-4 for print: a GTS_PDFX output intent, a trim box on every page, the Trapped key, no JavaScript or media; approximate check on the device.</string>
+    <string name="pc_pdfa_level_4">PDF/A-4 (ISO 19005-4, on PDF 2.0): full Unicode text; "e" allows 3D and rich media, "f" any attachments.</string>
+    <string name="pc_prof_a4">PDF/A-4 (approximate)</string>
+    <string name="pc_prof_x1a">PDF/X-1a (approximate)</string>
+    <string name="pc_prof_x3">PDF/X-3 (approximate)</string>
+    <string name="pc_prof_vt">PDF/VT (approximate)</string>
+    <string name="pc_pf_a_version20">The version must be PDF 2.0 (PDF/A-4)</string>
+    <string name="pc_pf_x_claim_other">The file claims a different PDF/X version</string>
+    <string name="pc_pf_x_rgb">Pages with RGB colour (PDF/X-1a allows CMYK and spot colours only)</string>
+    <string name="pc_pf_vt_claim">There is no PDF/VT identifier</string>
+    <string name="pc_pf_vt_dpart">The document part metadata (DPart) that PDF/VT requires is missing</string>
 </resources>
