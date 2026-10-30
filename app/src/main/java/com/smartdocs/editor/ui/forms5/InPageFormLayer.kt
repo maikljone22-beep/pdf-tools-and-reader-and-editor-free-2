@@ -346,7 +346,9 @@ private fun ActiveTextEditor(fs: FormFillState, w: FWidget, screen: Rect, scale:
         textStyle = TextStyle(fontSize = fontSp, color = Color.Black, textAlign = align, textDirection = TextDirection.Content)
             .let { st -> if (w.richText) fs.richStyle(w)?.let { st.merge(richTextStyle(it)) } ?: st else st },
         singleLine = !w.multiline,
-        visualTransformation = if (w.password) PasswordVisualTransformation() else if (ks == KeystrokeKind.NONE) com.smartdocs.editor.ui.nve.spellTransformation(com.smartdocs.editor.ui.nve.rememberSpellIssues(tfv.text)) else VisualTransformation.None,   // NVE: live spell check
+        visualTransformation = if (w.password) PasswordVisualTransformation()
+            else if (w.richText && fs.spansOf(w.name).isNotEmpty()) spansTransformation(fs.spansOf(w.name), fs.richStyle(w))   // FINAL_CHECK_2 #14: per-character styles
+            else if (ks == KeystrokeKind.NONE) com.smartdocs.editor.ui.nve.spellTransformation(com.smartdocs.editor.ui.nve.rememberSpellIssues(tfv.text)) else VisualTransformation.None,   // NVE: live spell check
         keyboardOptions = KeyboardOptions(keyboardType = keyboard, imeAction = if (w.multiline) ImeAction.Default else ImeAction.Next),
         keyboardActions = KeyboardActions(onNext = { fs.step(1) }, onDone = { fs.done() }),
         cursorBrush = SolidColor(accent),
@@ -359,9 +361,11 @@ private fun ActiveTextEditor(fs: FormFillState, w: FWidget, screen: Rect, scale:
         Row(Modifier.absoluteOffset { IntOffset(r.left.roundToInt(), (r.top - barH).coerceAtLeast(0f).roundToInt()) }
             .background(Color.White).border(1.dp, accent), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
             listOf('b' to "B", 'i' to "I", 'u' to "U").forEach { (k, label) ->
-                val on = when (k) { 'b' -> rs?.bold == true; 'i' -> rs?.italic == true; else -> rs?.underline == true }
+                val selA = tfv.selection.min; val selB = tfv.selection.max
+                val on = if (selA != selB) (selA until selB).all { com.smartdocs.editor.core.forms5.RichSpans.effective(fs.spansOf(w.name), rs, it, k) }
+                    else when (k) { 'b' -> rs?.bold == true; 'i' -> rs?.italic == true; else -> rs?.underline == true }
                 Box(Modifier.size(32.dp).background(if (on) accent.copy(alpha = 0.25f) else Color.Transparent)
-                    .clickable(onClickLabel = label) { fs.toggleRich(w, k) }, contentAlignment = Alignment.Center) {
+                    .clickable(onClickLabel = label) { fs.toggleRich(w, k, selA, selB) }, contentAlignment = Alignment.Center) {
                     androidx.compose.material3.Text(label, color = Color.Black,
                         style = when (k) { 'b' -> TextStyle(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
                             'i' -> TextStyle(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic)
@@ -370,6 +374,20 @@ private fun ActiveTextEditor(fs: FormFillState, w: FWidget, screen: Rect, scale:
             }
         }
     }
+}
+
+/** FINAL_CHECK_2 #14: the editor shows the per-character spans (bold / italic / underline) of a rich-text field. */
+private fun spansTransformation(spans: List<com.smartdocs.editor.core.forms5.RichSpan>, base: com.smartdocs.editor.core.annot.AnnotStyle.Rich?): VisualTransformation = VisualTransformation { text ->
+    val b = androidx.compose.ui.text.AnnotatedString.Builder(text.text)
+    spans.forEach { s ->
+        val st = androidx.compose.ui.text.SpanStyle(
+            fontWeight = s.bold?.let { if (it) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Normal },
+            fontStyle = s.italic?.let { if (it) androidx.compose.ui.text.font.FontStyle.Italic else androidx.compose.ui.text.font.FontStyle.Normal },
+            textDecoration = s.underline?.let { if (it) androidx.compose.ui.text.style.TextDecoration.Underline else androidx.compose.ui.text.style.TextDecoration.None },
+        )
+        if (s.start < text.length) b.addStyle(st, s.start, s.end.coerceAtMost(text.length))
+    }
+    androidx.compose.ui.text.input.TransformedText(b.toAnnotatedString(), androidx.compose.ui.text.input.OffsetMapping.Identity)
 }
 
 /** 12 sp in px at the current density: the editor text never gets smaller than this, even on tiny fields. */
