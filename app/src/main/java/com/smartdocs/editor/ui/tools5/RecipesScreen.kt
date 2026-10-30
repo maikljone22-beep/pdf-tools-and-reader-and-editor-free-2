@@ -4,6 +4,7 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -298,6 +299,20 @@ private fun PrinterRecipeCard(recipes: List<Recipe>, version: Int, onChanged: ()
                 recipes.forEach { r -> DropdownMenuItem(text = { Text(r.title()) }, onClick = { RecipeStore.setPrinterRecipe(ctx, r.id); open = false; onChanged() }) }
             }
         }
+        // FINAL_CHECK_2 Low: PDF version, append to an existing PDF, open after printing
+        var pp by remember(version) { mutableStateOf(RecipeStore.printerPrefs(ctx)) }
+        fun save(v: RecipeStore.PrinterPrefs) { pp = v; RecipeStore.setPrinterPrefs(ctx, v) }
+        Text(stringResource(R.string.nbt_printer_version), style = MaterialTheme.typography.labelMedium)
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            listOf("", "1.4", "1.5", "1.6", "1.7").forEach { v -> FilterChip(pp.version == v, { save(pp.copy(version = v)) }, label = { Text(if (v.isEmpty()) stringResource(R.string.nbt_printer_version_keep) else "PDF $v") }) }
+        }
+        val pickAppend = com.smartdocs.editor.ui.common.rememberPdfPicker { f -> f.firstOrNull()?.let { save(pp.copy(appendTo = it.absolutePath)) } }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(pp.appendTo.takeIf { it.isNotBlank() }?.let { stringResource(R.string.pc_append_to, File(it).name) } ?: stringResource(R.string.nbt_printer_append_none), Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+            if (pp.appendTo.isNotBlank()) IconButton(onClick = { save(pp.copy(appendTo = "")) }) { Icon(Icons.Default.Close, stringResource(R.string.t5_remove)) }
+            TextButton(onClick = pickAppend) { Text(stringResource(R.string.pc_append_pick)) }
+        }
+        SwitchRow(stringResource(R.string.nbt_printer_open), pp.autoOpen) { save(pp.copy(autoOpen = it)) }
     }
 }
 

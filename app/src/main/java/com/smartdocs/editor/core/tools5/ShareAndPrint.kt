@@ -140,15 +140,29 @@ class T5PrintService : PrintService() {
                     if (printJob.isCancelled) { out.delete(); throw kotlinx.coroutines.CancellationException("cancelled") }
                     // nav-batch: the printer's "conversion settings" are a recipe (security, watermark, header/footer, PDF/A…)
                     val recipe = RecipeStore.printerRecipe(this@T5PrintService)
-                    if (recipe == null) out else {
+                    val printed = if (recipe == null) out else {
                         val tmp = File(cacheDir, "t5_print_tmp").apply { mkdirs() }
                         val runner = RecipeRunner(this@T5PrintService, tmp)
                         val e = try { runner.run(out, null, recipe.copy(output = recipe.output.copy(pattern = "{name}", sameFolder = false, conflict = Conflict.RENAME)), recipe.name, dir, 0) } finally { runner.close() }
                         e.output?.let(::File)?.takeIf { e.ok && it.exists() }?.also { out.delete() } ?: out
                     }
+                    // FINAL_CHECK_2 Low: PDF version, append to an existing PDF
+                    val prefs = RecipeStore.printerPrefs(this@T5PrintService)
+                    prefs.version.toFloatOrNull()?.let { v -> runCatching {
+                        val t = File(printed.parentFile, ".${printed.name}.v.pdf")
+                        com.smartdocs.editor.core.pdf.PdfOps.load(printed, null).use { d -> d.version = v; d.save(t) }
+                        t.copyTo(printed, overwrite = true); t.delete()
+                    } }
+                    val target = prefs.appendTo.takeIf { it.isNotBlank() }?.let(::File)?.takeIf { it.isFile }
+                    if (target != null) {
+                        val merged = File(target.parentFile, ".${target.name}.append.pdf")
+                        com.smartdocs.editor.core.pdf.PdfOps.merge(listOf(target, printed), merged)
+                        merged.copyTo(target, overwrite = true); merged.delete(); printed.delete()
+                        target
+                    } else printed
                 }
             }
-            result.onSuccess { f -> printJob.complete(); notifySaved(f) }.onFailure { e ->
+            result.onSuccess { f -> printJob.complete(); notifySaved(f); if (RecipeStore.printerPrefs(this@T5PrintService).autoOpen) openPrinted(f) }.onFailure { e ->
                 if (e is kotlinx.coroutines.CancellationException || printJob.isCancelled) runCatching { printJob.cancel() }
                 else printJob.fail(com.smartdocs.editor.ui.convert6.Cv6ErrorText.of(this@T5PrintService, e))
             }
@@ -178,6 +192,13 @@ class T5PrintService : PrintService() {
             .setSmallIcon(android.R.drawable.stat_sys_download_done)
             .setContentTitle(getString(com.smartdocs.editor.R.string.cvf_print_saved, "Documents/Printed")).setContentText(f.name).setContentIntent(pi).setAutoCancel(true).build()
         nm.notify(f.name.hashCode(), n)
+    }
+
+    /** "Open after printing": the saved file opens in the reader. */
+    private fun openPrinted(f: File) = runCatching {
+        val uri = androidx.core.content.FileProvider.getUriForFile(this, "$packageName.fileprovider", f)
+        startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, "application/pdf").setClassName(packageName, "com.smartdocs.editor.MainActivity")
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION))
     }
 
     companion object { const val CHANNEL = "t5_print" }
