@@ -106,6 +106,15 @@ object PortfolioOps {
         } finally { inFile.delete(); pdf.delete() }
     }
 
+    /** FINAL_CHECK_2 Low: "convert all parts to PDF" — every non-PDF part that the converter accepts; returns how many were converted. */
+    suspend fun convertAllParts(ctx: Context, src: File, password: String?, out: File, tempDir: File): Int {
+        val keys = withContext(Dispatchers.IO) { E5Io.load(src, password).use { d -> Embed.all(d).keys.filter { k -> val n = PortfolioEdit.splitKey(k).second; !n.endsWith(".pdf", true) && ToPdf.kindOf(n) != SourceKind.UNKNOWN } } }
+        var n = 0
+        var cur = src
+        for (k in keys) { runCatching { convertPart(ctx, cur, password, k, out, tempDir) }.onSuccess { n++; cur = out } }
+        return n
+    }
+
     /**
      * FINAL_CHECK_2 #12: a part edited outside (opened in the reader, saved) goes back into the portfolio: same name,
      * folder and description, new bytes.

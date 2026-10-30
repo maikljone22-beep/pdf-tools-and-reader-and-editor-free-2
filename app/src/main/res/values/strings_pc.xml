@@ -387,4 +387,11 @@
     <string name="cmb_pages_n">%1$d صفحة · %2$d محددة</string>
     <string name="cmb_to_start">إلى البداية</string>
     <string name="cmb_to_end">إلى النهاية</string>
+    <string name="pc_pf_add_scan">من الماسح</string>
+    <string name="pc_pf_add_clipboard">من الحافظة</string>
+    <string name="pc_pf_convert_all">تحويل كل الأجزاء إلى PDF</string>
+    <string name="pc_pf_print_all">طباعة كل الأجزاء</string>
+    <string name="pc_pf_print_selected">طباعة الجزء المحدد</string>
+    <string name="pc_combine_as_portfolio">حفظ كحافظة (Portfolio)</string>
+    <string name="pc_combine_as_portfolio_sub">تبقى الملفات أجزاءً مستقلة داخل حافظة PDF مع صفحة غلاف، بدل دمجها في مستند واحد</string>
 </resources>

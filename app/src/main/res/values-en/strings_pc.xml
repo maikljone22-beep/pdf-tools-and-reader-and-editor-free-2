@@ -387,4 +387,11 @@
     <string name="cmb_pages_n">%1$d pages · %2$d selected</string>
     <string name="cmb_to_start">To the start</string>
     <string name="cmb_to_end">To the end</string>
+    <string name="pc_pf_add_scan">From the scanner</string>
+    <string name="pc_pf_add_clipboard">From the clipboard</string>
+    <string name="pc_pf_convert_all">Convert all parts to PDF</string>
+    <string name="pc_pf_print_all">Print all parts</string>
+    <string name="pc_pf_print_selected">Print the selected part</string>
+    <string name="pc_combine_as_portfolio">Save as a portfolio</string>
+    <string name="pc_combine_as_portfolio_sub">The files stay separate parts of a PDF portfolio with a cover page, instead of one merged document</string>
 </resources>
