@@ -119,14 +119,17 @@ fun TagsEditor(nav: NavHostController, source: File, onClose: () -> Unit, onSave
                 dismissButton = { TextButton(onClick = { bmDialog = false }) { Text(stringResource(R.string.cancel)) } })
         }
         // ---- Order panel (Foxit 34.44): reading order of one page, drag or move up / down
-        var orderMode by remember { mutableStateOf(false) }
+        var mode by remember { mutableIntStateOf(0) }   // 0 tree, 1 order, 2 content (FINAL_CHECK_2 #20)
+        val orderMode = mode == 1
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            FilterChip(!orderMode, { orderMode = false }, label = { Text(stringResource(R.string.pa_tags_tree)) })
-            FilterChip(orderMode, { orderMode = true }, label = { Text(stringResource(R.string.pa_tags_order)) })
+            FilterChip(mode == 0, { mode = 0 }, label = { Text(stringResource(R.string.pa_tags_tree)) })
+            FilterChip(mode == 1, { mode = 1 }, label = { Text(stringResource(R.string.pa_tags_order)) })
+            FilterChip(mode == 2, { mode = 2 }, label = { Text(stringResource(R.string.pa_tags_content)) })
         }
         if (orderMode) OrderPanel(nodes, ::edit)
+        if (mode == 2) ContentPanel(work, password, version, ::edit)
         // ---- tree
-        if (!orderMode) T5Card {
+        if (mode == 0) T5Card {
             nodes.forEach { n ->
                 if (matches != null) { if (n.path !in matches) return@forEach }
                 else if (collapsed.any { c -> n.path.size > c.size && n.path.subList(0, c.size) == c }) return@forEach
@@ -177,6 +180,55 @@ fun TagsEditor(nav: NavHostController, source: File, onClose: () -> Unit, onSave
         }
     }
     T5JobUi(job, nav, snackbar)
+}
+
+/**
+ * FINAL_CHECK_2 #20 Content panel: the marked-content items of one page (tag, MCID, text / picture, owning element);
+ * "mark page content" gives unmarked runs MCIDs; "create tag from selection" makes one element of the chosen items.
+ */
+@Composable
+private fun ContentPanel(work: File, password: String?, version: Int, edit: ((PDDocument) -> Unit) -> Unit) {
+    var pageText by remember { mutableStateOf("1") }
+    var items by remember { mutableStateOf<List<com.smartdocs.editor.core.tools5.AccessContent.Item>>(emptyList()) }
+    var pageCount by remember { mutableIntStateOf(0) }
+    var picked by remember { mutableStateOf(setOf<Int>()) }
+    var type by remember { mutableStateOf("P") }
+    val page = (pageText.toIntOrNull() ?: 1) - 1
+    LaunchedEffect(version, page) {
+        picked = emptySet()
+        runCatching { io { com.smartdocs.editor.core.pdf.PdfOps.load(work, password).use { d -> pageCount = d.numberOfPages; if (page in 0 until d.numberOfPages) com.smartdocs.editor.core.tools5.AccessContent.items(d, page) else emptyList() } } }
+            .onSuccess { items = it }.onFailure { items = emptyList() }
+    }
+    T5Card(stringResource(R.string.pa_tags_content), Icons.Default.Article) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            OutlinedTextField(pageText, { pageText = it.filter { c -> c.isDigit() }.take(5) }, Modifier.width(110.dp), singleLine = true, label = { Text(stringResource(R.string.pc_tags_page_n, pageCount)) })
+            OutlinedButton(onClick = { edit { d -> if (page in 0 until d.numberOfPages) com.smartdocs.editor.core.tools5.AccessContent.markPage(d, page) } }) { Text(stringResource(R.string.pa_content_mark)) }
+        }
+        Text(stringResource(R.string.pa_content_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (items.isEmpty()) Text(stringResource(R.string.pa_content_empty), style = MaterialTheme.typography.bodySmall)
+        items.forEachIndexed { i, it ->
+            Row(Modifier.fillMaxWidth().clickable(enabled = it.mcid >= 0) { picked = if (i in picked) picked - i else picked + i }.padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(i in picked, { v -> picked = if (v) picked + i else picked - i }, enabled = it.mcid >= 0)
+                Icon(when (it.kind) { "image" -> Icons.Default.Image; "text" -> Icons.Default.TextFields; else -> Icons.Default.Widgets }, null, Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Column(Modifier.weight(1f)) {
+                    Text((if (it.mcid >= 0) "MCID ${it.mcid} · " else "") + (it.elemType?.let { t -> "<$t>" } ?: if (it.artifact) stringResource(R.string.pa_content_artifact) else stringResource(R.string.pa_content_untagged)),
+                        style = MaterialTheme.typography.labelMedium, color = if (it.tagged || it.artifact) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.error)
+                    if (it.text.isNotEmpty()) Text(it.text, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
+            }
+        }
+        if (picked.isNotEmpty()) {
+            Text(stringResource(R.string.pa_content_new_tag, picked.size), style = MaterialTheme.typography.labelLarge)
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                listOf("P", "H1", "H2", "H3", "Figure", "Caption", "L", "LI", "Table", "Span", "Artifact").forEach { t -> FilterChip(type == t, { type = t }, label = { Text(t) }) }
+            }
+            Button(onClick = {
+                val mcids = picked.mapNotNull { items.getOrNull(it)?.mcid }.filter { it >= 0 }
+                if (mcids.isNotEmpty()) edit { d -> com.smartdocs.editor.core.tools5.AccessContent.createTag(d, page, mcids, type) }
+            }) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(4.dp)); Text(stringResource(R.string.pa_content_create)) }
+        }
+    }
 }
 
 /** Properties and actions of one tag. */

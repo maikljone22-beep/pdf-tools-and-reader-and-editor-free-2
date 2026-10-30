@@ -71,7 +71,8 @@ object AccessInspect {
         return out
     }
 
-    fun facts(doc: PDDocument, pdf: PdfFacts, textCheckPages: Int = 200): AccessFacts {
+    /** [pages]: FINAL_CHECK_2 #20 checker page range (zero-based); null = the whole document. */
+    fun facts(doc: PDDocument, pdf: PdfFacts, textCheckPages: Int = 200, pages: Set<Int>? = null): AccessFacts {
         val cat = doc.documentCatalog.cosObject
         val root = cat.getDictionaryObject(N.StructTreeRoot) as? COSDictionary
         val mark = (cat.getDictionaryObject(N.MarkInfo) as? COSDictionary)?.getDictionaryObject(N.Marked)
@@ -83,14 +84,15 @@ object AccessInspect {
         val n = doc.numberOfPages
         runCatching {
             val st = PDFTextStripper()
-            for (i in 1..minOf(n, textCheckPages)) { st.startPage = i; st.endPage = i; if (st.getText(doc).isBlank()) noText++ }
-            if (n > textCheckPages && noText == textCheckPages) noText = n
+            for (i in 1..minOf(n, textCheckPages)) { if (pages != null && (i - 1) !in pages) continue; st.startPage = i; st.endPage = i; if (st.getText(doc).isBlank()) noText++ }
+            if (pages == null && n > textCheckPages && noText == textCheckPages) noText = n
         }
 
         // annotations
         var annots = 0; var annotsUntagged = 0; var links = 0; var linksUntagged = 0; var widgets = 0; var widgetsUntagged = 0
         var mediaUntagged = 0; var noTabs = 0; var pagesUntagged = 0
-        doc.pages.forEach { p ->
+        doc.pages.forEachIndexed { pi, p ->
+            if (pages != null && pi !in pages) return@forEachIndexed
             val list = runCatching { p.annotations }.getOrDefault(emptyList())
             var pageHasAnnots = false
             list.forEach { a ->
@@ -124,6 +126,8 @@ object AccessInspect {
 
         fun walk(e: COSDictionary, parent: String, depth: Int): Sub {
             if (depth > 60 || !seen.add(e)) return Sub(false, false, false, false)
+            // outside the checked page range: counted as plain content, not inspected
+            if (pages != null) { val pi = pageIndex(doc, e); if (pi >= 0 && pi !in pages) return Sub(true, false, false, parent == "TR") }
             val t = typeOf(e, roles)
             var content = false; var objr = false; var altBelow = false; var th = t == "TH"
             val rowCells = ArrayList<Int>()

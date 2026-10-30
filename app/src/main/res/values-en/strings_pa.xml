@@ -40,4 +40,15 @@
     <string name="pa_ua_embedded_names">Attachments without a file name (F/UF)</string>
     <string name="pa_ua_ok">The document passes every machine check</string>
     <string name="pa_ua_manual">Reading order, contrast and the meaning of alternate text need a human check</string>
+    <string name="pa_tags_content">Content</string>
+    <string name="pa_content_mark">Mark page content</string>
+    <string name="pa_content_hint">The page\'s marked-content items in drawing order. If the list is empty or incomplete, "Mark page content" gives unmarked text and pictures MCIDs; then select items and create a tag from them.</string>
+    <string name="pa_content_empty">No marked content on this page.</string>
+    <string name="pa_content_artifact">Artifact</string>
+    <string name="pa_content_untagged">Untagged</string>
+    <string name="pa_content_new_tag">Create a tag from %1$d selected items</string>
+    <string name="pa_content_create">Create tag</string>
+    <string name="pc_tags_page_n">Page (of %1$d)</string>
+    <string name="t5_acc_page_range">Page range to check (empty = all)</string>
+    <string name="t5_acc_check_range">Check</string>
 </resources>
