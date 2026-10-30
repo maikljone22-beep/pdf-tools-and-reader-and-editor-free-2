@@ -16,3 +16,6 @@ license.properties
 .dev.vars
 ai-proxy/**/.wrangler/
 .kotlin/
+
+# old-chat archives (reference only, never commit)
+handoff/

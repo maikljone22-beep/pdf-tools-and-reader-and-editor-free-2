@@ -172,6 +172,53 @@ class VideoPdfTest {
         assertEquals(0.4f, o.gain, 1e-4f); assertEquals(0f, o.copy(muted = true).gain, 1e-4f)
     }
 
+    /** Renditions editor: alternate clips with media criteria in a selector rendition, read back and extracted by index. */
+    @Test fun renditionsWithCriteriaRoundTrip() {
+        val out = tmp.newFile("rend.pdf")
+        val main = fakeVideo(2000); val low = fakeVideo(500); val ar = fakeVideo(800)
+        val o = VideoPdf.Options(criteria = VideoPdf.Criteria(bitrate = 2_000_000, minWidth = 1280, minHeight = 720), alternates = listOf(
+            VideoPdf.Alternate(ar.path, "talk_ar.mp4", "video/mp4", VideoPdf.Criteria(languages = listOf("ar"))),
+            VideoPdf.Alternate(low.path, "talk_low.mp4", "video/mp4"),
+        ))
+        PDDocument().use { doc ->
+            doc.addPage(PDPage())
+            VideoPdf.writeScreen(doc, doc.getPage(0), 10f, 10f, 170f, 100f, main, "talk.mp4", "video/mp4", o, poster = null)
+            doc.save(out)
+        }
+        val (doc, list) = annots(out)
+        doc.use {
+            val cos = list[0].cosObject
+            val r = d(d(cos.getDictionaryObject(COSName.A)).getDictionaryObject(COSName.getPDFName("R")))
+            assertEquals("SR", r.getNameAsString(COSName.S))
+            assertEquals(3, (r.getDictionaryObject(COSName.getPDFName("R")) as COSArray).size())
+            val mr0 = d((r.getDictionaryObject(COSName.getPDFName("R")) as COSArray).getObject(0))
+            val crit = d(d(mr0.getDictionaryObject(COSName.getPDFName("MH"))).getDictionaryObject(COSName.C))
+            assertEquals("MediaCriteria", crit.getNameAsString(COSName.TYPE)); assertEquals(2_000_000, crit.getInt(COSName.getPDFName("R")))
+            assertEquals("MinScreenSize", d(crit.getDictionaryObject(COSName.getPDFName("Z"))).getNameAsString(COSName.TYPE))
+            val info = VideoPdf.detect(list[0])!!
+            assertEquals("talk.mp4", info.name)
+            assertEquals(o.criteria, info.options.criteria)
+            assertEquals(listOf("talk_ar.mp4", "talk_low.mp4"), info.options.alternates.map { it.name })
+            assertEquals(listOf("ar"), info.options.alternates[0].criteria.languages)
+            assertTrue(info.options.alternates[1].criteria.isEmpty)
+            fun clip(k: Int) = ByteArrayOutputStream().also { VideoPdf.copyVideo(cos, it, k) }.toByteArray()
+            assertArrayEquals(main.readBytes(), clip(0)); assertArrayEquals(ar.readBytes(), clip(1)); assertArrayEquals(low.readBytes(), clip(2))
+            assertEquals(-1L, VideoPdf.copyVideo(cos, ByteArrayOutputStream(), 3))
+        }
+    }
+
+    @Test fun selectPicksTheFirstAcceptableClip() {
+        val hd = VideoPdf.Criteria(bitrate = 2_000_000, minWidth = 1280, minHeight = 720)
+        val ar = VideoPdf.Criteria(languages = listOf("ar"))
+        val any = VideoPdf.Criteria()
+        val list = listOf(hd, ar, any)
+        assertEquals(0, VideoPdf.select(list, 10_000_000, "en-US", 2400, 1080))   // fast, big screen (either orientation)
+        assertEquals(1, VideoPdf.select(list, 500_000, "ar-YE", 2400, 1080))     // slow: the Arabic clip
+        assertEquals(2, VideoPdf.select(list, 10_000_000, "en", 800, 480))       // small screen, not Arabic
+        assertEquals(1, VideoPdf.select(listOf(hd, ar), 1_000, "fr", 100, 100))   // none accepted: the last one
+        assertEquals(0, VideoPdf.select(emptyList(), 0, "en", 0, 0))
+    }
+
     @Test fun oldFileAttachmentFormIsAVideo() {
         val video = fakeVideo(5000)
         val out = tmp.newFile("old.pdf")

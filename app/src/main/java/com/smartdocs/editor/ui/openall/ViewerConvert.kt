@@ -38,7 +38,9 @@ object ViewerConvert {
                 val b = withContext(Dispatchers.IO) { ImageLoad.decode(ctx, f, 2400) } ?: throw it
                 canvasToPdf(out, listOf(b.width * 0.75f to b.height * 0.75f)) { c, _ -> c.scale(0.75f, 0.75f); c.drawBitmap(b, 0f, 0f, null) }
             }
-            FType.MHT, FType.MSG, FType.FB2, FType.MOBI, FType.PPT, FType.VCF, FType.ICS, FType.CODE, FType.CSV, FType.TEXT, FType.EML, FType.MARKDOWN, FType.HTML -> {
+            // fix/files-index: .ppt through the converter (slide layout and pictures), its text print as the fallback
+            FType.PPT -> if (runCatching { ToPdf6.convert(ctx, f, out) }.isFailure) ToPdf.html(ctx, withContext(Dispatchers.IO) { WebDocs.forPrint(ctx, v) }, out)
+            FType.MHT, FType.MSG, FType.FB2, FType.MOBI, FType.VCF, FType.ICS, FType.CODE, FType.CSV, FType.TEXT, FType.EML, FType.MARKDOWN, FType.HTML -> {
                 val html = withContext(Dispatchers.IO) { WebDocs.forPrint(ctx, v) }
                 ToPdf.html(ctx, html, out)
             }

@@ -14,6 +14,13 @@ class FloatingNoteTest {
         assertEquals(0f to 0f, FloatingNoteGeom.clamp(50f, 50f, 500f, 400f, 400f, 300f))   // larger than the viewport
     }
 
+    @Test fun resizeStaysBetweenMinimumAndViewport() {
+        assertEquals(300f to 150f, FloatingNoteGeom.resize(260f, 100f, 40f, 50f, 180f, 48f, 400f, 300f))
+        assertEquals(180f to 48f, FloatingNoteGeom.resize(260f, 100f, -500f, -500f, 180f, 48f, 400f, 300f))
+        assertEquals(400f to 300f, FloatingNoteGeom.resize(260f, 100f, 900f, 900f, 180f, 48f, 400f, 300f))
+        assertEquals(180f to 48f, FloatingNoteGeom.resize(260f, 100f, 0f, 0f, 180f, 48f, 100f, 20f))   // viewport smaller than the minimum
+    }
+
     @Test fun noteKeepsItsTarget() {
         val n = FloatingNote(AnnotTarget.Pending(7, 2), "Sara", "hello")
         assertEquals(n, n.copy())

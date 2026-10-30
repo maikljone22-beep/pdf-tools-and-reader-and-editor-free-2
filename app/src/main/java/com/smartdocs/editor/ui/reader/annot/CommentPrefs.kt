@@ -79,14 +79,17 @@ fun Annot2Host.styleNew(a: Annot): Annot = when (a.kind) {
 /** Text box formatting of section 24.99-24.107 (everything except bold / italic / underline, which have chips). */
 data class TextFmt(val family: Int = 0, val strike: Boolean = false, val align: Int = -1, val lineSpacing: Float = 1.3f,
                    val charSpacing: Float = 0f, val wordSpacing: Float = 0f, val hScale: Float = 1f, val bullets: Boolean = false,
-                   val bold: Boolean = false, val italic: Boolean = false, val underline: Boolean = false, val script: Int = 0) {
+                   val bold: Boolean = false, val italic: Boolean = false, val underline: Boolean = false, val script: Int = 0,
+                   val numbering: Boolean = false, val indent: Float = 0f, val paraSpacing: Float = 0f) {
     /** Everything including bold / italic / underline (editing an existing text box). */
     fun applyAll(a: Annot): Annot = applyTo(a).copy(bold = bold, italic = italic, underline = underline)
 
     fun applyTo(a: Annot): Annot = a.copy(fontFamily = family, strike = strike, align = align, lineSpacing = lineSpacing,
-        charSpacing = charSpacing, wordSpacing = wordSpacing, hScale = hScale, bullets = bullets, script = script)
+        charSpacing = charSpacing, wordSpacing = wordSpacing, hScale = hScale, bullets = bullets, script = script,
+        numbering = numbering, indent = indent, paraSpacing = paraSpacing)
 
     companion object {
-        fun of(a: Annot) = TextFmt(a.fontFamily, a.strike, a.align, a.lineSpacing, a.charSpacing, a.wordSpacing, a.hScale, a.bullets, a.bold, a.italic, a.underline, a.script)
+        fun of(a: Annot) = TextFmt(a.fontFamily, a.strike, a.align, a.lineSpacing, a.charSpacing, a.wordSpacing, a.hScale, a.bullets, a.bold, a.italic, a.underline, a.script,
+            a.numbering, a.indent, a.paraSpacing)
     }
 }

@@ -23,7 +23,9 @@ import com.smartdocs.editor.core.view5.Geom
 import com.smartdocs.editor.core.view5.P
 import com.smartdocs.editor.core.view5.PageGraphics
 import com.smartdocs.editor.ui.reader.ToolChip
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private data class WToolDef(val tool: WTool, val icon: ImageVector, val label: Int)
 
@@ -34,6 +36,11 @@ private val measureTools = listOf(
     WToolDef(WTool.CIRCLE, Icons.Default.RadioButtonUnchecked, R.string.v5_tool_circle),
     WToolDef(WTool.ANGLE, Icons.Default.Architecture, R.string.v5_tool_angle),
     WToolDef(WTool.COUNT, Icons.Default.Pin, R.string.v5_tool_count),
+    // §41
+    WToolDef(WTool.VOLUME, Icons.Default.ViewInAr, R.string.cmr_tool_volume),
+    WToolDef(WTool.POLYLENGTH, Icons.Default.Polyline, R.string.cmr_tool_polylength),
+    WToolDef(WTool.DIAMETER, Icons.Default.Adjust, R.string.cmr_tool_diameter),
+    WToolDef(WTool.RADIUS, Icons.Default.DonutLarge, R.string.cmr_tool_radius),
 )
 private val commentTools = listOf(
     WToolDef(WTool.CALLOUT, Icons.Default.Comment, R.string.v5_tool_callout),
@@ -43,6 +50,8 @@ private val commentTools = listOf(
     WToolDef(WTool.CROSS, Icons.Default.Close, R.string.v5_tool_cross),
     WToolDef(WTool.AREA_HIGHLIGHT, Icons.Default.HighlightAlt, R.string.v5_tool_area_highlight),
     WToolDef(WTool.LINE, Icons.Default.ArrowOutward, R.string.v5_tool_line),
+    // 24.27 / 25.18 / 25.19: drag handles of placed measurements, lines and callouts (pending and saved)
+    WToolDef(WTool.ADJUST, Icons.Default.OpenWith, R.string.cmr_tool_adjust),
 )
 
 /**
@@ -87,6 +96,15 @@ fun WorkbenchSheet(v: V5State, measureFirst: Boolean, onMessage: (String) -> Uni
         Geom.snapToSegments(p, segments, tol.toDouble(), own + glyphCorners)
     }
     fun close() { m.persist(); v.workbenchModel = null; v.close() }
+    // 24.27 / 25.19: the saved measurements, lines and callouts of the page that can be dragged (ADJUST)
+    val stored by produceState(emptyList<com.smartdocs.editor.core.view5.StoredEdit.Editable>(), m.page, s.renderVersion, m.tool == WTool.ADJUST) {
+        val f = s.file
+        value = if (m.tool != WTool.ADJUST || f == null) emptyList() else withContext(Dispatchers.IO) {
+            runCatching { (if (s.password.isNullOrEmpty()) com.tom_roush.pdfbox.pdmodel.PDDocument.load(f) else com.tom_roush.pdfbox.pdmodel.PDDocument.load(f, s.password))
+                .use { com.smartdocs.editor.core.view5.StoredEdit.read(it, m.page) } }.getOrDefault(emptyList())
+        }
+    }
+    var showDepth by remember { mutableStateOf(false) }
     var showLeader by remember { mutableStateOf(false) }
     var showEditLast by remember { mutableStateOf(false) }
     // scales stored in the document (/VP or measurements): the page's own scale is used (7.47 / 25.10)
@@ -95,28 +113,28 @@ fun WorkbenchSheet(v: V5State, measureFirst: Boolean, onMessage: (String) -> Uni
         v.docScales[m.page]?.let { ps -> if (ps.scale.label() != v.scale.label()) { v.scale = ps.scale; v.scaleDescription = ps.description } }
     }
 
-    Dialog(onDismissRequest = { if (m.items.isEmpty()) close() else confirmClose = true },
+    Dialog(onDismissRequest = { if (!m.hasChanges) close() else confirmClose = true },
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
             Column(Modifier.fillMaxSize().systemBarsPadding()) {
                 // ---- header ----
                 Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { if (m.items.isEmpty()) close() else confirmClose = true }) { Icon(Icons.Default.Close, stringResource(R.string.close)) }
+                    IconButton(onClick = { if (!m.hasChanges) close() else confirmClose = true }) { Icon(Icons.Default.Close, stringResource(R.string.close)) }
                     Text(stringResource(if (measureFirst) R.string.v5_measure else R.string.v5_comment_tools), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                     IconButton(onClick = { if (m.page > 0) { m.page--; m.pts.clear() } }, enabled = m.page > 0) { Icon(Icons.Default.ChevronLeft, stringResource(R.string.previous)) }
                     Text("${m.page + 1}/${s.pageCount}", style = MaterialTheme.typography.labelLarge)
                     IconButton(onClick = { if (m.page < s.pageCount - 1) { m.page++; m.pts.clear() } }, enabled = m.page < s.pageCount - 1) { Icon(Icons.Default.ChevronRight, stringResource(R.string.next)) }
                     IconButton(onClick = { m.undoPoint() }, enabled = m.pts.isNotEmpty() || m.items.isNotEmpty()) { Icon(Icons.AutoMirrored.Filled.Undo, stringResource(R.string.undo)) }
-                    Button(enabled = m.items.isNotEmpty() && !saving, onClick = {
+                    Button(enabled = m.hasChanges && !saving, onClick = {
                         saving = true
                         scope.launch {
                             val r = runCatching { s.applyInPlace(label = { s.context.getString(R.string.hi_workbench) }, action = com.smartdocs.editor.core.security.DocAction.ANNOTATE) { src, out, pw -> m.writeAll(ctx, src, out, pw) } }
                             saving = false
                             // null = nothing written (signed / certified file: the "save a copy" dialog is shown); the items stay
-                            r.onSuccess { f -> if (f != null) { m.items.clear(); onMessage(ctx.getString(R.string.v5_saved_items)); close() } }
+                            r.onSuccess { f -> if (f != null) { m.items.clear(); m.storedEdits.clear(); onMessage(ctx.getString(R.string.v5_saved_items)); close() } }
                                 .onFailure { onMessage(it.message ?: ctx.getString(R.string.error_generic)) }
                         }
-                    }) { Text(stringResource(R.string.save) + if (m.items.isNotEmpty()) " (${m.items.size})" else "") }
+                    }) { Text(stringResource(R.string.save) + if (m.hasChanges) " (${m.items.size + m.storedEdits.size})" else "") }
                 }
                 // ---- tools ----
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 6.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -140,7 +158,11 @@ fun WorkbenchSheet(v: V5State, measureFirst: Boolean, onMessage: (String) -> Uni
                         AssistChip(onClick = { showEditLast = true }, enabled = m.lastMeasure() != null, label = { Text(stringResource(R.string.cx_edit_last_measure)) }, leadingIcon = { Icon(Icons.Default.Edit, null, Modifier.size(16.dp)) })
                         FilterChip(v.ortho, { v.ortho = !v.ortho }, label = { Text("45°") })
                         FilterChip(m.arabicDigits, { m.arabicDigits = !m.arabicDigits }, label = { Text("١٢٣") })
-                        if (m.tool == WTool.AREA || m.tool == WTool.CIRCLE) FilterChip(m.fillArea, { m.fillArea = !m.fillArea }, label = { Text(stringResource(R.string.v5_fill)) })
+                        if (m.tool in setOf(WTool.AREA, WTool.CIRCLE, WTool.VOLUME, WTool.DIAMETER, WTool.RADIUS)) FilterChip(m.fillArea, { m.fillArea = !m.fillArea }, label = { Text(stringResource(R.string.v5_fill)) })
+                        // §41: depth of a volume / height of a polylength wall
+                        if (m.tool == WTool.VOLUME || m.tool == WTool.POLYLENGTH) AssistChip(onClick = { showDepth = true },
+                            label = { Text(stringResource(R.string.cmr_depth, "%.2f".format(java.util.Locale.US, m.depth) + " " + v.scale.realUnit.code)) },
+                            leadingIcon = { Icon(Icons.Default.Height, null, Modifier.size(16.dp)) })
                     }
                     if (m.tool == WTool.LINE || m.isMeasure) AssistChip(onClick = { showStyle = true }, label = { Text(stringResource(R.string.v5_line_style)) }, leadingIcon = { Icon(Icons.Default.LineStyle, null, Modifier.size(16.dp)) })
                     if (m.tool == WTool.TICK || m.tool == WTool.CROSS) listOf(10f, 16f, 24f).forEach { sz ->
@@ -151,7 +173,9 @@ fun WorkbenchSheet(v: V5State, measureFirst: Boolean, onMessage: (String) -> Uni
                 // ---- hint / live status ----
                 val hint = when {
                     m.calibrating -> stringResource(R.string.v5_hint_calibrate)
-                    m.tool == WTool.PERIMETER || m.tool == WTool.AREA || m.tool == WTool.COUNT -> stringResource(R.string.v5_hint_multi)
+                    m.tool == WTool.PERIMETER || m.tool == WTool.AREA || m.tool == WTool.COUNT || m.tool == WTool.VOLUME || m.tool == WTool.POLYLENGTH -> stringResource(R.string.v5_hint_multi)
+                    m.tool == WTool.ADJUST -> stringResource(R.string.cmr_hint_adjust)
+                    m.tool == WTool.DIAMETER || m.tool == WTool.RADIUS -> stringResource(R.string.cmr_hint_diameter)
                     m.tool == WTool.CALLOUT -> stringResource(R.string.v5_hint_callout)
                     m.tool == WTool.ANGLE -> stringResource(R.string.v5_hint_angle)
                     m.tool == WTool.CIRCLE -> stringResource(R.string.v5_hint_circle)
@@ -174,7 +198,7 @@ fun WorkbenchSheet(v: V5State, measureFirst: Boolean, onMessage: (String) -> Uni
                     }
                 }
                 Box(Modifier.weight(1f).fillMaxWidth().background(Color(0xFF9E9E9E))) {
-                    WorkbenchCanvas(m, bitmap, view, snapTo)
+                    WorkbenchCanvas(m, bitmap, view, snapTo, stored)
                     if (bitmap == null) CircularProgressIndicator(Modifier.align(Alignment.Center))
                     if (saving) LinearProgressIndicator(Modifier.fillMaxWidth().align(Alignment.TopCenter))
                 }
@@ -186,12 +210,26 @@ fun WorkbenchSheet(v: V5State, measureFirst: Boolean, onMessage: (String) -> Uni
     LaunchedEffect(m.calibrationPts) { if (m.calibrationPts != null) showScale = true }
     if (showStyle) LineStyleDialog(m) { showStyle = false }
     if (showLeader) LeaderDialog(m) { showLeader = false }
+    if (showDepth) {
+        var txt by remember { mutableStateOf(if (m.depth > 0f) "%.2f".format(java.util.Locale.US, m.depth) else "") }
+        AlertDialog(onDismissRequest = { showDepth = false }, title = { Text(stringResource(R.string.cmr_depth_title)) },
+            text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(stringResource(R.string.cmr_depth_hint), style = MaterialTheme.typography.bodySmall)
+                OutlinedTextField(txt, { txt = it }, singleLine = true, suffix = { Text(v.scale.realUnit.code) },
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal))
+            } },
+            confirmButton = { TextButton(onClick = {
+                m.depth = com.smartdocs.editor.core.view5.Digits.toLatin(txt).replace(',', '.').replace('٫', '.').toFloatOrNull()?.coerceIn(0f, 1_000_000f) ?: 0f
+                showDepth = false
+            }) { Text(stringResource(R.string.ok)) } },
+            dismissButton = { TextButton(onClick = { showDepth = false }) { Text(stringResource(R.string.cancel)) } })
+    }
     if (showEditLast) m.lastMeasure()?.let { last -> EditMeasureDialog(last, onDismiss = { showEditLast = false }) { m.replaceLastMeasure(it); showEditLast = false } }
     m.textRequest?.let { req ->
         TextBoxDialog(req, m.color, m.dash, s.authorName, onDone = { spec -> m.items += WItem.Text(spec); m.textRequest = null }, onDismiss = { m.textRequest = null })
     }
     if (confirmClose) AlertDialog(onDismissRequest = { confirmClose = false },
-        title = { Text(stringResource(R.string.v5_discard_items_title)) }, text = { Text(stringResource(R.string.v5_discard_items, m.items.size)) },
-        confirmButton = { TextButton(onClick = { confirmClose = false; m.items.clear(); close() }) { Text(stringResource(R.string.v5_discard)) } },
+        title = { Text(stringResource(R.string.v5_discard_items_title)) }, text = { Text(stringResource(R.string.v5_discard_items, m.items.size + m.storedEdits.size)) },
+        confirmButton = { TextButton(onClick = { confirmClose = false; m.items.clear(); m.storedEdits.clear(); close() }) { Text(stringResource(R.string.v5_discard)) } },
         dismissButton = { TextButton(onClick = { confirmClose = false }) { Text(stringResource(R.string.cancel)) } })
 }

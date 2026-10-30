@@ -103,7 +103,6 @@ fun ScannerScreen(nav: NavHostController) {
         try {
             val options = GmsDocumentScannerOptions.Builder()
                 .setGalleryImportAllowed(true)
-                .setPageLimit(50)
                 // the app builds the PDF itself (paper size, colour mode, quality): ML Kit's own PDF is not asked for (audit A-L10)
                 .setResultFormats(GmsDocumentScannerOptions.RESULT_FORMAT_JPEG)
                 .setScannerMode(GmsDocumentScannerOptions.SCANNER_MODE_FULL)

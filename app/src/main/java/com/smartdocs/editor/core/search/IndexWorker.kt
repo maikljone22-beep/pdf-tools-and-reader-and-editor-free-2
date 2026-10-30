@@ -23,42 +23,75 @@ import java.util.concurrent.TimeUnit
  * readable paths of [com.smartdocs.editor.core.files.DocumentRepository.scanDevicePdfs]), indexes the new or changed
  * ones (page text via PDFium, comments/bookmarks/fields/attachments via [DocParts]), records password-protected
  * files as locked, prunes deleted files and publishes progress through [FullTextIndex.progressFlow].
+ * fix/files-index: works on one named index ([FidIndexes]); its include folders (SAF trees) are read too.
  */
-class Indexer(private val context: Context) {
+class Indexer(private val context: Context, private val def: IndexDef = IndexDef(FidIndexes.DEFAULT)) {
 
-    suspend fun sources(): List<File> {
+    /** A file to index: [key] is its path, or its content uri when it is only reachable through SAF. */
+    class Source(val key: String, val name: String, val size: Long, val mtime: Long, val file: File?, val uri: Uri?)
+
+    private fun indexable(name: String, size: Long) = size > 0 && (name.endsWith(".pdf", true) || com.smartdocs.editor.core.openall.OpenAllText.isIndexableName(name, size))
+
+    suspend fun sources(): List<File> = collect().mapNotNull { it.file }
+
+    /** Every source of [def]: the app sources (when on) and the include folders. */
+    suspend fun collect(): List<Source> {
         val app = context.applicationContext as? SmartDocsApp
-        val out = LinkedHashMap<String, File>()
+        val out = LinkedHashMap<String, Source>()
         val nveOpts = com.smartdocs.editor.ui.nve.search.NveIndexPrefs.load(context)   // NVE-search: excluded folders
         // open-all: text of Word / e-book / e-mail / text / sheet files is searchable too
         fun add(f: File) {
-            if (f.isFile && f.canRead() && f.length() > 0 && (f.extension.equals("pdf", true) || com.smartdocs.editor.core.openall.OpenAllText.isIndexable(f)) &&
-                !com.smartdocs.editor.core.nve.NveSearchCore.excluded(f.absolutePath, nveOpts)) out.putIfAbsent(f.absolutePath, f)
+            if (f.isFile && f.canRead() && indexable(f.name, f.length()) &&
+                !com.smartdocs.editor.core.nve.NveSearchCore.excluded(f.absolutePath, nveOpts)) out.putIfAbsent(f.absolutePath, Source(f.absolutePath, f.name, f.length(), f.lastModified(), f, null))
         }
-        app?.documents?.docsDir?.walkTopDown()?.maxDepth(6)?.forEach { if (it.isFile) add(it) }
-        runCatching {
-            withTimeoutOrNull(5_000) { app?.db?.docs()?.recents()?.first() }?.forEach { r ->
-                val u = Uri.parse(r.uri)
-                if (u.scheme == "file") u.path?.let { add(File(it)) }
+        if (def.appSources) {
+            app?.documents?.docsDir?.walkTopDown()?.maxDepth(6)?.forEach { if (it.isFile) add(it) }
+            runCatching {
+                withTimeoutOrNull(5_000) { app?.db?.docs()?.recents()?.first() }?.forEach { r ->
+                    val u = Uri.parse(r.uri)
+                    if (u.scheme == "file") u.path?.let { add(File(it)) }
+                }
+            }
+            runCatching { app?.documents?.scanDevicePdfs()?.forEach { d -> if (d.path.isNotBlank()) add(File(d.path)) } }
+        }
+        // fix/files-index: include folders — read directly when the path is readable, else through the SAF tree
+        for (folder in def.folders) runCatching {
+            val uri = if (folder.startsWith("content:")) Uri.parse(folder) else null
+            val dir = (uri?.let { com.smartdocs.editor.ui.nve.search.NveIndexPrefs.treePath(it) } ?: folder.takeIf { uri == null })?.let { File(it) }
+            if (dir != null && dir.isDirectory && dir.listFiles() != null) dir.walkTopDown().maxDepth(8).take(20_000).forEach { if (it.isFile) add(it) }
+            else if (uri != null) {
+                val root = androidx.documentfile.provider.DocumentFile.fromTreeUri(context, uri) ?: return@runCatching
+                var count = 0
+                fun walk(d: androidx.documentfile.provider.DocumentFile, depth: Int) {
+                    if (depth > 8 || count > 20_000) return
+                    for (c in d.listFiles()) {
+                        if (c.isDirectory) walk(c, depth + 1)
+                        else {
+                            val n = c.name ?: continue
+                            count++
+                            if (indexable(n, c.length())) out.putIfAbsent(c.uri.toString(), Source(c.uri.toString(), n, c.length(), c.lastModified(), null, c.uri))
+                        }
+                    }
+                }
+                walk(root, 0)
             }
         }
-        runCatching { app?.documents?.scanDevicePdfs()?.forEach { d -> if (d.path.isNotBlank()) add(File(d.path)) } }
         return out.values.toList()
     }
 
     /** Indexes [only] (one file) or every source. Returns the number of files (re)indexed. */
     suspend fun run(only: File? = null, force: Boolean = false): Int {
-        val index = FullTextIndex.get(context)
-        val files = if (only != null) listOf(only) else sources()
-        val todo = files.filter { force || runCatching { index.needsIndex(it) }.getOrDefault(true) }
+        val index = FullTextIndex.get(context, def.id)
+        val files = if (only != null) listOf(Source(only.absolutePath, only.name, only.length(), only.lastModified(), only, null)) else collect()
+        val todo = files.filter { force || runCatching { index.needsIndex(it.key, it.size, it.mtime) }.getOrDefault(true) }
         var done = 0
         FullTextIndex.progressState.value = IndexProgress(true, 0, todo.size, null)
         try {
-            for (f in todo) {
-                FullTextIndex.progressState.value = IndexProgress(true, done, todo.size, f.name)
+            for (s in todo) {
+                FullTextIndex.progressState.value = IndexProgress(true, done, todo.size, s.name)
                 val t0 = System.currentTimeMillis()
-                runCatching { indexFile(index, f) }.onFailure { FcsIndexPrefs.log(context, "FAILED ${f.absolutePath}: ${it.message}") }
-                    .onSuccess { FcsIndexPrefs.log(context, "indexed ${f.absolutePath} (${System.currentTimeMillis() - t0} ms)") }   // fc-settings: index log
+                runCatching { indexSource(index, s) }.onFailure { FcsIndexPrefs.log(context, "FAILED ${s.key}: ${it.message}") }
+                    .onSuccess { FcsIndexPrefs.log(context, "indexed ${s.key} (${System.currentTimeMillis() - t0} ms)") }   // fc-settings: index log
                 done++
             }
             if (only == null) runCatching { index.prune().let { if (it > 0) FcsIndexPrefs.log(context, "pruned $it missing file(s)") } }
@@ -70,14 +103,26 @@ class Indexer(private val context: Context) {
         return done
     }
 
-    private suspend fun indexFile(index: FullTextIndex, f: File) {
+    /** A SAF source is copied to the cache first (PDFium and the text readers need a file). */
+    private suspend fun indexSource(index: FullTextIndex, s: Source) {
+        if (s.file != null) { indexFile(index, s.file, s); return }
+        val uri = s.uri ?: return
+        val dir = File(context.cacheDir, "fid_index_tmp").apply { mkdirs() }
+        val tmp = File(dir, "src." + s.name.substringAfterLast('.', "bin").take(8))
+        try {
+            context.contentResolver.openInputStream(uri)?.use { i -> tmp.outputStream().use { i.copyTo(it) } } ?: return
+            indexFile(index, tmp, s)
+        } finally { tmp.delete() }
+    }
+
+    private suspend fun indexFile(index: FullTextIndex, f: File, s: Source) {
         if (!f.extension.equals("pdf", true)) {
             val text = com.smartdocs.editor.core.openall.OpenAllText.extract(f)
-            index.put(f, 1, if (text != null) listOf(DocPart(PartKind.TEXT, 0, text)) else emptyList(), locked = false)
+            index.put(s.key, s.name, s.size, s.mtime, 1, if (text != null) listOf(DocPart(PartKind.TEXT, 0, text)) else emptyList(), locked = false)
             return
         }
         val session = try { PdfSession.open(context, f, null) }
-        catch (e: PdfSession.Companion.PasswordRequiredException) { index.put(f, 0, emptyList(), locked = true); FcsIndexPrefs.log(context, "locked ${f.absolutePath}"); return }
+        catch (e: PdfSession.Companion.PasswordRequiredException) { index.put(s.key, s.name, s.size, s.mtime, 0, emptyList(), locked = true); FcsIndexPrefs.log(context, "locked ${s.key}"); return }
         val parts = ArrayList<DocPart>()
         val pages = session.pageCount
         try {
@@ -88,7 +133,7 @@ class Indexer(private val context: Context) {
         } finally { session.closeAsync() }
         val (extra, title) = DocParts.loadForIndex(f, null, FcsIndexPrefs.meta(context))   // fc-settings: XMP / custom properties / tags, title
         parts += extra
-        index.put(f, pages, parts, locked = false, title = title)
+        index.put(s.key, s.name, s.size, s.mtime, pages, parts, locked = false, title = title)
     }
 }
 
@@ -98,12 +143,16 @@ class IndexWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
     override suspend fun doWork(): Result {
         val path = inputData.getString(KEY_FILE)
         val force = inputData.getBoolean(KEY_FORCE, false)
-        return runCatching { Indexer(applicationContext).run(path?.let { File(it) }, force); Result.success() }.getOrElse { Result.retry() }
+        val only = inputData.getString(KEY_INDEX)
+        // fix/files-index: every index (or the one asked for); a single file goes to the indexes that take app files
+        val defs = FidIndexes.list(applicationContext).filter { d -> (only == null || d.id == only) && (path == null || d.appSources) }
+        return runCatching { defs.forEach { d -> Indexer(applicationContext, d).run(path?.let { File(it) }, force) }; Result.success() }.getOrElse { Result.retry() }
     }
 
     companion object {
         const val KEY_FILE = "file"
         const val KEY_FORCE = "force"
+        const val KEY_INDEX = "index"
         private const val PERIODIC = "search_index_periodic"
         private const val NOW = "search_index_now"
 
@@ -117,11 +166,11 @@ class IndexWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
             }
         }
 
-        /** Index everything now (re-index changed files; [force] re-indexes all). */
-        fun runNow(context: Context, force: Boolean = false) {
+        /** Index everything now (re-index changed files; [force] re-indexes all). [index]: only that index (fix/files-index). */
+        fun runNow(context: Context, force: Boolean = false, index: String? = null) {
             runCatching {
-                val req = OneTimeWorkRequestBuilder<IndexWorker>().setInputData(workDataOf(KEY_FORCE to force)).build()
-                WorkManager.getInstance(context).enqueueUniqueWork(NOW, ExistingWorkPolicy.KEEP, req)
+                val req = OneTimeWorkRequestBuilder<IndexWorker>().setInputData(workDataOf(KEY_FORCE to force, KEY_INDEX to index)).build()
+                WorkManager.getInstance(context).enqueueUniqueWork(if (index == null) NOW else NOW + "_" + index, ExistingWorkPolicy.KEEP, req)
             }
         }
 

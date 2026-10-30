@@ -1,9 +1,8 @@
 # SmartDocs — remaining work (rebuilt plan, 2026-10-26)
 
-Baseline: v0.4.0 (local git commit "Baseline"). Work done in the old chat after 0.4.0 was lost; its module notes are in
-`D:\pdf\recovered-from-old-chat\` and are the spec for rebuilding. Status: [ ] todo, [~] in progress, [x] done (compiles).
+Baseline: v0.4.0. The old chat's post-0.4.0 work was NOT lost: specs and module notes are in `specs/` (see specs/README_handoff.md); its full source (handoff/smartdocs-full.zip) is on the owner's PC only, reference only — do not merge wholesale. Checkboxes below are historical; current status: STATUS.md and gaps/FINAL_CHECK_2.md.
 
-## A. Rebuild lost post-0.4.0 work (spec = recovered MODULE_*.md)
+## A. Post-0.4.0 work (spec = specs/old-chat-modules/MODULE_*.md; rebuilt as r5 modules)
 - [~] search4: Arabic-aware search (reader) — ArabicNormalizer/TextMatcher/SearchPrefs + reader menu switches
 - [ ] search4: search across all files (FTS index + worker), find & replace, search & highlight, sanitize, pattern redaction, mark→review→apply redaction, whole-page redaction, AES-256 + 8 permissions (protect_advanced)
 - [ ] ai4: whole-document AI (chunked retrieval) with page citations, custom summary, suggested questions, study tools (flashcards, quiz, study guide, glossary, mind map), voice chat/dictation, spaces (multi-file), translate with layout, rewrite/grammar/explain, PII detection, form-fill suggestions
@@ -35,7 +34,7 @@ Baseline: v0.4.0 (local git commit "Baseline"). Work done in the old chat after 
 - [ ] Home: template entry, tool wizard; Home/Files two-pane on tablets
 - [ ] System overlay magnifier (over other apps) — low priority
 
-## C. Office feature rounds (specs: excel.md recovered; Word/PowerPoint specs lost — re-derive)
+## C. Office feature rounds after 0.5.0 — specs: specs/word.md, specs/excel.md, specs/powerpoint.md, rules specs/OFFICE_BRIEF.md; checklist: specs/MASTER_BACKLOG.md (1,339 features with owner/status — tick every row, skip none)
 - [ ] Word: ~382 features    - [ ] Excel: ~260 features + ~220 functions    - [ ] PowerPoint: ~319 features
 
 ## D. Not feasible on Android (keep documented)

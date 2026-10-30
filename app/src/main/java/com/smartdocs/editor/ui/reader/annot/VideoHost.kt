@@ -166,7 +166,10 @@ class VideoHost(private val s: ReaderState) {
         val key = item.key
         job = s.scope.launch {
             try {
-                val f = item.file?.takeIf { it.isFile } ?: extract(item)
+                // renditions: the first clip whose criteria this device meets (main clip, then the alternates)
+                val idx = chooseClip(item)
+                val local = if (idx == 0) item.file else item.options.alternates.getOrNull(idx - 1)?.path?.takeIf { it.isNotBlank() }?.let(::File)
+                val f = local?.takeIf { it.isFile } ?: extract(item, idx)
                     ?: throw java.io.FileNotFoundException(str(R.string.vid_no_file))
                 if (activeKey != key) return@launch
                 val p = withContext(Dispatchers.Main) {
@@ -237,13 +240,26 @@ class VideoHost(private val s: ReaderState) {
     // =============== stored videos ===============
 
     /** Stream the stored video of [item] out of the PDF into the cache (reused while the file is unchanged). */
-    private suspend fun extract(item: VideoItem): File? {
+    /** Index of the clip to play: 0 the main clip, k the k-th alternate ([VideoPdf.select] on this device). */
+    private fun chooseClip(item: VideoItem): Int {
+        val o = item.options
+        if (o.alternates.isEmpty()) return 0
+        val dm = s.context.resources.displayMetrics
+        val bandwidth = runCatching {
+            val cm = s.context.getSystemService(android.net.ConnectivityManager::class.java)
+            cm.getNetworkCapabilities(cm.activeNetwork)?.linkDownstreamBandwidthKbps?.toLong()?.times(1000)
+        }.getOrNull() ?: Long.MAX_VALUE
+        return VideoPdf.select(listOf(o.criteria) + o.alternates.map { it.criteria }, bandwidth, java.util.Locale.getDefault().toLanguageTag(), dm.widthPixels, dm.heightPixels)
+    }
+
+    private suspend fun extract(item: VideoItem, clip: Int = 0): File? {
         val e = item.stored ?: return null
         val src = s.file ?: return null
         val pw = s.password
         return withContext(Dispatchers.IO) {
-            val ext = item.name.substringAfterLast('.', "").takeIf { it.length in 2..5 } ?: "mp4"
-            val id = sha1("${src.absolutePath}|${src.length()}|${src.lastModified()}|${e.page}|${e.index}|${e.subtype}")
+            val clipName = if (clip == 0) item.name else item.options.alternates.getOrNull(clip - 1)?.name.orEmpty()
+            val ext = clipName.substringAfterLast('.', "").takeIf { it.length in 2..5 } ?: "mp4"
+            val id = sha1("${src.absolutePath}|${src.length()}|${src.lastModified()}|${e.page}|${e.index}|${e.subtype}|$clip")
             val out = File(cacheDir, "$id.$ext")
             if (out.isFile && out.length() > 0) return@withContext out
             val part = File(cacheDir, "$id.part")
@@ -254,7 +270,7 @@ class VideoHost(private val s: ReaderState) {
                     val r = PageGeometry.normPdf(e.rect)
                     val i = VideoPdf.findIndex(page, e.index, e.subtype, floatArrayOf(r.left, r.bottom, r.right, r.top))
                     val an = VideoPdf.annotDicts(page).getOrNull(i) ?: return@withContext null
-                    val n = part.outputStream().buffered(1 shl 16).use { VideoPdf.copyVideo(an, it) }
+                    val n = part.outputStream().buffered(1 shl 16).use { VideoPdf.copyVideo(an, it, clip) }
                     if (n <= 0) { part.delete(); return@withContext null }
                 }
                 if (!part.renameTo(out)) { part.copyTo(out, overwrite = true); part.delete() }

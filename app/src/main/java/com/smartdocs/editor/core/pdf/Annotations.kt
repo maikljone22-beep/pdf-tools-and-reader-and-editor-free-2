@@ -78,6 +78,9 @@ data class Annot(
     val wordSpacing: Float = 0f,                // Tw, points
     val hScale: Float = 1f,                     // Tz / 100
     val bullets: Boolean = false,
+    val numbering: Boolean = false,             // 24.105: numbered list ("1. ") instead of bullets
+    val indent: Float = 0f,                     // 24.105: paragraph indent in points (from the reading start side)
+    val paraSpacing: Float = 0f,                // 24.107: extra space after each paragraph, points
     val script: Int = 0,                        // Foxit 24.102: 0 normal, 1 superscript, 2 subscript
     // ---- LINE / ARROW: show the note text on the line (/Cap, Foxit 24.42) ----
     val caption: Boolean = false,
@@ -166,6 +169,8 @@ object AnnotationWriter {
                     writeOne(page, a)
                     // /NM for every new annotation (merge de-duplication) and /IRT /RT /Group for grouped ones
                     com.smartdocs.editor.core.annot.Annot2Writer.afterWrite(page, before, a, groups)
+                    // §41: keys of other editors (Bluebeam /BSI ...) kept when a stored comment was edited
+                    com.smartdocs.editor.core.annot.ForeignKeys.restore(page, before, a)
                 }.onSuccess { written++ }.onFailure { e ->
                     // drop whatever a half-written annotation appended, so a retry does not duplicate it
                     runCatching { val l = page.annotations; if (l.size > before) page.annotations = l.subList(0, before).toMutableList() }
@@ -253,7 +258,7 @@ object AnnotationWriter {
                 if (a.kind == AnnotKind.STAMP_TEXT) ft.cosObject.setName(name("IT"), "FreeTextStamp")
                 else if (a.comb <= 0) com.smartdocs.editor.core.annot.AnnotStyle.applyRich(ft.cosObject, a.text,
                     com.smartdocs.editor.core.annot.AnnotStyle.Rich(a.fontSize, a.color, a.bold, a.italic, a.underline, a.strike, a.fontFamily, a.align,
-                        a.lineSpacing, a.charSpacing, a.wordSpacing, a.bullets, a.script), ArabicShaper.isArabic(a.text))
+                        a.lineSpacing, a.charSpacing, a.wordSpacing, a.bullets, a.script, a.numbering, a.indent, a.paraSpacing), ArabicShaper.isArabic(a.text))
                 // Acrobat's /Rotate of a FreeText on a turned page (viewers that rebuild the appearance from /DA)
                 if (rot != 0) ft.cosObject.setInt(COSName.ROTATE, rot)
                 ft.appearance = apDict(if (a.comb > 0) combAppearance(context, doc, rect, a, rot) else textAppearance(context, doc, rect, a, rot))
@@ -445,9 +450,10 @@ object AnnotationWriter {
             // 24.102: super- / subscript text is smaller and raised / lowered; lines keep the full line height
             val full = a.fontSize
             val size = com.smartdocs.editor.core.annot.AnnotStyle.scriptSize(full, a.script)
-            val lines = a.text.split('\n').map { if (a.bullets && it.isNotBlank()) "\u2022 $it" else it }
+            val lines = com.smartdocs.editor.core.annot.TextLists.decorate(a.text, a.bullets, a.numbering)
             val rtl = ArabicShaper.isArabic(a.text)
-            val avail = rect.width - 8f
+            val ind = a.indent.coerceIn(0f, (rect.width - 16f).coerceAtLeast(0f))   // 24.105: indent from the reading start side
+            val avail = rect.width - 8f - ind
             var y = rect.height - full - 4f + com.smartdocs.editor.core.annot.AnnotStyle.scriptRise(full, a.script)
             val decorations = ArrayList<FloatArray>()      // x0, x1, y of underline / strike
             lines.forEachIndexed { li, raw ->
@@ -460,11 +466,11 @@ object AnnotationWriter {
                 var tc = a.charSpacing
                 if (justify) tc += ((avail - glyphW - a.charSpacing * gaps - a.wordSpacing * spaces) / gaps).coerceAtLeast(0f)
                 val w = if (justify) avail else glyphW + tc * gaps + (if (std != null) a.wordSpacing * spaces else 0f)
-                val start = if (rtl) (rect.width - w - 4f) else 4f
+                val start = if (rtl) (rect.width - w - 4f - ind) else 4f + ind
                 val x = when (a.align) {
                     1 -> (rect.width - w) / 2
                     2 -> if (rtl) 4f else rect.width - w - 4f
-                    3 -> 4f
+                    3 -> if (rtl) 4f else 4f + ind
                     0 -> start
                     else -> start
                 }.coerceAtLeast(2f)
@@ -478,7 +484,7 @@ object AnnotationWriter {
                 cs.endText()
                 if (a.underline) decorations += floatArrayOf(x, x + w, y - size * 0.15f)
                 if (a.strike) decorations += floatArrayOf(x, x + w, y + size * 0.3f)
-                y -= full * a.lineSpacing.coerceIn(0.8f, 4f)
+                y -= full * a.lineSpacing.coerceIn(0.8f, 4f) + a.paraSpacing.coerceIn(0f, 72f)   // 24.107 paragraph spacing
             }
             if (decorations.isNotEmpty()) {
                 setColors(cs, a.color); cs.setLineWidth((size / 16f).coerceAtLeast(0.6f))
@@ -701,7 +707,8 @@ object AnnotationWriter {
                     bold = rich?.bold ?: false, italic = rich?.italic ?: false, underline = rich?.underline ?: false,
                     strike = rich?.strike ?: false, fontFamily = rich?.family ?: 0, align = rich?.align ?: -1, lineSpacing = rich?.lineHeight ?: 1.3f,
                     charSpacing = rich?.letterSpacing ?: 0f, wordSpacing = rich?.wordSpacing ?: 0f, bullets = rich?.bullets ?: false, script = rich?.script ?: 0,
-                    text = rich?.takeIf { it.bullets }?.let { contents.split('\n').joinToString("\n") { l -> l.removePrefix("\u2022 ") } } ?: contents,
+                    numbering = rich?.numbering ?: false, indent = rich?.indent ?: 0f, paraSpacing = rich?.paraSpacing ?: 0f,
+                    text = rich?.takeIf { it.bullets || it.numbering }?.let { com.smartdocs.editor.core.annot.TextLists.strip(contents, it.bullets, it.numbering) } ?: contents,
                     comb = if (stamp) 0 else cos.getInt(FillSignKeys.COMB, 0).coerceIn(0, CombLayout.MAX_CELLS))
             }
             "Text" -> base.copy(kind = AnnotKind.NOTE, rects = listOf(RectF(rect.left, rect.top, rect.left + 20f, rect.top - 20f)), color = color ?: 0xFFEB3B,

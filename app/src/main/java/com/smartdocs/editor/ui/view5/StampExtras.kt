@@ -25,17 +25,23 @@ object StampMeta {
     private const val PREFS = "stamp_meta"
     private fun p(ctx: Context) = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
-    data class Custom(val name: String = "", val category: String = "", val opacity: Float = 1f, val whiteTransparent: Boolean = false)
+    /** [locked] / [set]: a stamp of an imported shared (enterprise) stamp set; locked ones cannot be edited (24.58 / §41). */
+    data class Custom(val name: String = "", val category: String = "", val opacity: Float = 1f, val whiteTransparent: Boolean = false,
+                      val locked: Boolean = false, val set: String = "")
 
     fun custom(ctx: Context, id: Long): Custom {
         val raw = p(ctx).getString("c_$id", null) ?: return Custom()
         val f = raw.split('\u001F')
-        return Custom(f.getOrElse(0) { "" }, f.getOrElse(1) { "" }, f.getOrNull(2)?.toFloatOrNull() ?: 1f, f.getOrNull(3) == "1")
+        return Custom(f.getOrElse(0) { "" }, f.getOrElse(1) { "" }, f.getOrNull(2)?.toFloatOrNull() ?: 1f, f.getOrNull(3) == "1",
+            f.getOrNull(4) == "1", f.getOrElse(5) { "" })
     }
 
     fun saveCustom(ctx: Context, id: Long, c: Custom) {
-        p(ctx).edit().putString("c_$id", listOf(c.name, c.category, c.opacity.toString(), if (c.whiteTransparent) "1" else "0").joinToString("\u001F")).apply()
+        p(ctx).edit().putString("c_$id", listOf(c.name, c.category, c.opacity.toString(), if (c.whiteTransparent) "1" else "0",
+            if (c.locked) "1" else "0", c.set).joinToString("\u001F")).apply()
     }
+
+    fun forget(ctx: Context, id: Long) { p(ctx).edit().remove("c_$id").apply() }
 
     fun favourites(ctx: Context): Set<String> = p(ctx).getStringSet("favs", emptySet())?.toSet() ?: emptySet()
     fun toggleFavourite(ctx: Context, key: String) {

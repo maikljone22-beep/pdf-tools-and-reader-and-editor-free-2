@@ -8,7 +8,8 @@ class UnsupportedBookException(val reason: String) : Exception(reason)
 /**
  * MOBI / PRC / AZW / AZW3 (Mobipocket, PalmDOC compression) → [HtmlBook]. Own decoder of the public PalmDB / MOBI
  * headers; HUFF/CDIC-compressed and DRM-protected books are refused with [UnsupportedBookException]. KF8 (AZW3)
- * books come out as one reflowed flow (their skeleton/fragment layout is not rebuilt). Pure.
+ * books come out as one reflowed flow (their skeleton/fragment layout is not rebuilt), with their pictures placed
+ * (fix/files-index: "kindle:embed" resources). Pure.
  */
 object MobiReader {
 
@@ -109,21 +110,26 @@ object MobiReader {
         var html = String(raw, cs)
         if (!isMobi && !html.contains('<')) html = "<pre>" + BookHtml.esc(html) + "</pre>"   // plain PalmDOC text
         // images: <img recindex="00003"> → data URI of record firstImage + n - 1
+        fun imageUri(n: Int): String? {
+            if (firstImage <= 0 || n < 1) return null
+            val r = rec(firstImage + n - 1)
+            if (r.isEmpty() || r.count() > 20 * 1024 * 1024) return null
+            val bytes = b.copyOfRange(r.first, r.last + 1)
+            val ext = FileSniffer.imageExt(bytes) ?: return null
+            return "data:image/$ext;base64," + Base64.getEncoder().encodeToString(bytes)
+        }
         if (firstImage > 0) {
             html = Regex("""(?i)<img\b([^>]*?)recindex\s*=\s*["']?(\d+)["']?([^>]*)>""").replace(html) { m ->
-                val n = m.groupValues[2].toIntOrNull() ?: return@replace ""
-                val r = rec(firstImage + n - 1)
-                if (r.isEmpty() || r.count() > 20 * 1024 * 1024) return@replace ""
-                val bytes = b.copyOfRange(r.first, r.last + 1)
-                val ext = FileSniffer.imageExt(bytes) ?: return@replace ""
-                "<img src=\"data:image/$ext;base64," + Base64.getEncoder().encodeToString(bytes) + "\">"
+                imageUri(m.groupValues[2].toIntOrNull() ?: 0)?.let { "<img src=\"$it\">" } ?: ""
             }
+            // fix/files-index: KF8 (AZW3) resources "kindle:embed:XXXX?mime=…" (base-32 resource number, 1-based)
+            html = kindleEmbeds(html) { n -> imageUri(n) }
         }
         html = html.replace(Regex("""(?i)<mbp:pagebreak\s*/?>"""), "<hr>")
             .replace(Regex("""(?is)<script\b.*?</script\s*>"""), "")
             .replace(Regex("""(?i)\son\w+\s*=\s*(["']).*?\1"""), "")
             .replace(Regex("""(?i)</?(mbp:[\w-]+|html|head|body)\b[^>]*>"""), "")
-            // KF8 image references cannot be resolved without the resource index
+            // KF8 image references that did not resolve to a picture record
             .replace(Regex("""(?i)<img\b[^>]*kindle:embed[^>]*>"""), "")
         val t = title.ifBlank { fallbackTitle }
         val plain = html.take(30000).replace(Regex("<[^>]*>"), "")
@@ -138,6 +144,16 @@ object MobiReader {
         }
         return HtmlBook(t, "", rtl, BookHtml.page(t, html, rtl), toc)
     }
+
+    /** Base-32 number of a KF8 resource reference ("0001" … "VVVV", digits 0-9 A-V). */
+    fun base32(s: String): Int? = s.uppercase().fold(0) { acc, c ->
+        val d = when (c) { in '0'..'9' -> c - '0'; in 'A'..'V' -> c - 'A' + 10; else -> return null }
+        acc * 32 + d
+    }
+
+    /** Every "kindle:embed:XXXX[?mime=…]" reference → [uri] of that resource number; references that do not resolve stay. */
+    fun kindleEmbeds(html: String, uri: (Int) -> String?): String =
+        Regex("""kindle:embed:([0-9A-Va-v]{1,6})(\?mime=[\w/+.-]*)?""").replace(html) { m -> base32(m.groupValues[1])?.let(uri) ?: m.value }
 
     fun info(b: ByteArray): Info? = runCatching {
         val nRec = u16(b, 76); if (nRec < 1) return null

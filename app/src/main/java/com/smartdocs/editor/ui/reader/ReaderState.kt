@@ -137,7 +137,7 @@ class ReaderState(
     var tool: ReaderTool?
         get() = toolState
         set(v) {
-            if (v != null && v != toolState && ReaderGuard.actionFor(v)?.let { guard.check(it) } == false) return
+            if (v != null && v != toolState && !guard.checkTool(v)) return      // reader-prefs: Fill & Sign tools pass PDF/A view mode
             // tabs audit CM-06: the settings of the tool being left are kept on every change, also when a tool clears itself
             val old = toolState
             if (old != null && old != v) {
@@ -561,7 +561,7 @@ class ReaderState(
     }
 
     fun addAnnot(a: Annot) {
-        if (!guard.check(com.smartdocs.editor.core.security.DocAction.ANNOTATE)) return
+        if (!guard.checkAnnot()) return
         val before = annots.toList()
         annots += a; dirty = true
         annotStep(R.string.hi_add_annot, a.page, before)
@@ -570,7 +570,7 @@ class ReaderState(
 
     /** Several pending-annotation changes as one undo step (multi-select, handwriting to text). */
     fun batchAnnots(change: (MutableList<Annot>) -> Unit) {
-        if (!guard.check(com.smartdocs.editor.core.security.DocAction.ANNOTATE)) return
+        if (!guard.checkAnnot()) return
         val before = annots.toList()
         val copy = before.toMutableList(); change(copy)
         if (copy == before) return
@@ -603,7 +603,7 @@ class ReaderState(
 
     fun replaceAnnot(a: Annot) {
         val i = annots.indexOfFirst { it.id == a.id }; if (i < 0) return
-        if (!guard.check(com.smartdocs.editor.core.security.DocAction.ANNOTATE)) return
+        if (!guard.checkAnnot()) return
         val before = annots.toList()
         annots[i] = a; dirty = true
         annotStep(R.string.hi_edit_annot, a.page, before)

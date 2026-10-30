@@ -13,7 +13,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 /** Where a piece of searchable text lives. The ordinal is stored in the index: append only. */
-enum class PartKind { TEXT, COMMENTS, BOOKMARK, FIELD, ATTACHMENT, METADATA }   // fc-settings: METADATA = XMP, custom properties, tag texts
+enum class PartKind { TEXT, COMMENTS, BOOKMARK, FIELD, ATTACHMENT, METADATA, SIGNATURE, LAYER }   // fc-settings: METADATA = XMP, custom properties, tag texts; fix/files-index: SIGNATURE, LAYER
 
 /** Searchable text that is not page content. [page] is -1 for document-level items. */
 data class DocPart(val kind: PartKind, val page: Int, val text: String)
@@ -67,6 +67,9 @@ object DocParts {
                 out += DocPart(PartKind.FIELD, page, listOf(label, v).filter { it.isNotBlank() }.joinToString(": "))
             }
         }
+        // fix/files-index: signature texts (signer, reason, location, appearance) and layer names / layer content
+        runCatching { out += FidPdfText.signatures(doc, pageOf) }
+        runCatching { out += FidPdfText.layers(doc) }
         // document-level attachments
         runCatching {
             val ef = (doc.documentCatalog.cosObject.getDictionaryObject(COSName.NAMES) as? COSDictionary)?.getDictionaryObject(COSName.EMBEDDED_FILES) as? COSDictionary

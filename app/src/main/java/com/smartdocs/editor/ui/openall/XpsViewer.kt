@@ -110,7 +110,58 @@ object XpsRender {
                 c.drawBitmap(bmp, null, RectF(vp[0], vp[1], vp[0] + vp[2], vp[1] + vp[3]), Paint(Paint.FILTER_BITMAP_FLAG).apply { this.alpha = (alpha * 255).toInt().coerceIn(0, 255) })
                 c.restore()
             }
+            is XBrush.Gradient -> c.drawPath(p, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                shader = shader(b, alpha)
+                if (stroke != null) { style = Paint.Style.STROKE; strokeWidth = stroke; strokeJoin = Paint.Join.ROUND }
+            })
+            is XBrush.Visual -> {
+                // fix/files-index: the visual mapped from its viewbox into the viewport, tiled over the filled area
+                if (stroke != null) { fill(c, strokeOutline(p, stroke), b, alpha, pkg, null); return }
+                c.save(); c.clipPath(p)
+                b.transform?.let { c.concat(matrix(it)) }
+                val vb = b.viewbox; val vp = b.viewport
+                val sx = vp[2] / vb[2]; val sy = vp[3] / vb[3]
+                fun tile(ox: Float, oy: Float) {
+                    c.save(); c.translate(vp[0] + ox, vp[1] + oy); c.clipRect(0f, 0f, vp[2], vp[3]); c.scale(sx, sy); c.translate(-vb[0], -vb[1])
+                    el(c, b.visual, alpha * b.opacity, pkg)
+                    c.restore()
+                }
+                if (b.tile == "None" || vp[2] <= 0f || vp[3] <= 0f) tile(0f, 0f)
+                else {
+                    val clip = android.graphics.Rect(); c.getClipBounds(clip)
+                    val i0 = kotlin.math.floor((clip.left - vp[0]) / vp[2]).toInt(); val i1 = kotlin.math.ceil((clip.right - vp[0]) / vp[2]).toInt()
+                    val j0 = kotlin.math.floor((clip.top - vp[1]) / vp[3]).toInt(); val j1 = kotlin.math.ceil((clip.bottom - vp[1]) / vp[3]).toInt()
+                    if ((i1 - i0).toLong() * (j1 - j0) <= 400) for (i in i0 until i1) for (j in j0 until j1) tile(i * vp[2], j * vp[3]) else tile(0f, 0f)
+                }
+                c.restore()
+            }
         }
+    }
+
+    /** The outline of a stroke as a fillable path (visual-brush strokes). */
+    private fun strokeOutline(p: Path, w: Float): Path = Path().also { out ->
+        Paint().apply { style = Paint.Style.STROKE; strokeWidth = w; strokeJoin = Paint.Join.ROUND }.getFillPath(p, out)
+    }
+
+    /** fix/files-index: XPS gradient → Android shader (absolute page units, brush transform as the local matrix). */
+    private fun shader(g: XBrush.Gradient, alpha: Float): android.graphics.Shader {
+        val colors = IntArray(g.stops.size) { argb(g.stops[it].second, alpha * g.opacity) }
+        val pos = FloatArray(g.stops.size) { g.stops[it].first }
+        val mode = when (g.spread) { 1 -> android.graphics.Shader.TileMode.MIRROR; 2 -> android.graphics.Shader.TileMode.REPEAT; else -> android.graphics.Shader.TileMode.CLAMP }
+        val p = g.p
+        val local = android.graphics.Matrix()
+        val sh: android.graphics.Shader = if (!g.radial) android.graphics.LinearGradient(p[0], p[1], p[2], p[3], colors, pos, mode)
+        else {
+            val rx = p[4].coerceAtLeast(0.01f); val ry = p[5].coerceAtLeast(0.01f)
+            // a circle of radius rx, squashed to ry; the focal point (GradientOrigin) where the platform allows it
+            local.setScale(1f, ry / rx, p[0], p[1])
+            if (android.os.Build.VERSION.SDK_INT >= 29 && (p[2] != p[0] || p[3] != p[1]))
+                android.graphics.RadialGradient(p[2], p[1] + (p[3] - p[1]) * rx / ry, 0f, p[0], p[1], rx, LongArray(colors.size) { android.graphics.Color.pack(colors[it]) }, pos, mode)
+            else android.graphics.RadialGradient(p[0], p[1], rx, colors, pos, mode)
+        }
+        g.transform?.let { local.postConcat(matrix(it)) }
+        sh.setLocalMatrix(local)
+        return sh
     }
 
     private fun el(c: Canvas, e: XEl, alpha0: Float, pkg: XpsPackage) {
@@ -133,6 +184,7 @@ object XpsRender {
                     isFakeBoldText = e.bold
                     if (e.italic) textSkewX = -0.25f
                     color = argb(((e.fill as? XBrush.Solid)?.argb) ?: 0xFF000000, alpha)
+                    (e.fill as? XBrush.Gradient)?.let { shader = shader(it, alpha) }   // fix/files-index: gradient text
                 }
                 val adv = e.advances
                 val simple = adv != null && !e.rtl && e.text.none { it.code in 0x0590..0x08FF || it.code >= 0x0900 && it.code < 0x0E80 }

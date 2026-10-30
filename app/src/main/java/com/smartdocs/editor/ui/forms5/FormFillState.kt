@@ -251,7 +251,7 @@ class FormFillState internal constructor(val reader: ReaderState) {
         val seenRadio = HashSet<String>()
         val items = m.widgets.filter { w -> isTabStop(w) && (w.kind != WKind.RADIO || seenRadio.add(w.name)) }
             .map { NavItem(it.id, it.page, it.box, it.annotIndex) }
-        FieldNavigation.order(items, rtl = { rtlPages[it] == true }, tabs = { m.tabs[it] })
+        FieldNavigation.order(items, rtl = { rtlPages[it] == true }, tabs = { m.tabs[it] ?: com.smartdocs.editor.core.annot.NavOrderPrefs.order.tabs })   // §37 fallback
     }
 
     val active: FWidget? get() = activeId?.let { id -> model.widgets.firstOrNull { it.id == id } }

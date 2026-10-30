@@ -130,8 +130,20 @@ private fun TickRow(state: ReaderState) {
     FilterChip(cx.tickMode == TickMode.NUMBER, { cx.tickMode = TickMode.NUMBER }, label = { Text(stringResource(R.string.cx_tick_numbers)) }, modifier = Modifier.height(30.dp))
     FilterChip(cx.tickMode == TickMode.LETTER, { cx.tickMode = TickMode.LETTER }, label = { Text(stringResource(R.string.cx_tick_letters)) }, modifier = Modifier.height(30.dp))
     FilterChip(cx.tickMode == TickMode.SYMBOL, { cx.tickMode = TickMode.SYMBOL }, label = { Text(stringResource(R.string.cx_tick_symbols)) }, modifier = Modifier.height(30.dp))
-    if (cx.tickMode == TickMode.SYMBOL) TickSymbols.all.forEach { (code, glyph) ->
-        FilterChip(cx.tickSymbol == code, { cx.tickSymbol = code }, label = { Text(glyph) }, modifier = Modifier.height(30.dp))
+    // 25.27: the 31-symbol palette opens as a grid from the current symbol
+    if (cx.tickMode == TickMode.SYMBOL) Box {
+        var palette by remember { mutableStateOf(false) }
+        AssistChip(onClick = { palette = true }, label = { Text(TickSymbols.all.firstOrNull { it.first == cx.tickSymbol }?.second ?: "?") },
+            trailingIcon = { Icon(Icons.Default.ArrowDropDown, stringResource(R.string.cmr_tick_palette), Modifier.size(16.dp)) }, modifier = Modifier.height(30.dp))
+        DropdownMenu(palette, { palette = false }) {
+            TickSymbols.all.chunked(6).forEach { row ->
+                Row(Modifier.padding(horizontal = 6.dp)) {
+                    row.forEach { (code, glyph) ->
+                        FilterChip(cx.tickSymbol == code, { cx.tickSymbol = code; palette = false }, label = { Text(glyph) }, modifier = Modifier.padding(2.dp).height(34.dp))
+                    }
+                }
+            }
+        }
     }
     VerticalDivider(Modifier.height(24.dp))
     Text("${stringResource(R.string.cx_tick_size)} ${cx.tickSize.toInt()}", style = MaterialTheme.typography.labelSmall)
@@ -490,6 +502,16 @@ fun SummaryOptionsFields(o: com.smartdocs.editor.core.annot.SummaryOptions, page
     SwRow(o.thumbnails, R.string.cx_sum_thumbs) { onChange(o.copy(thumbnails = it)) }
     SwRow(o.includeEmptyPages, R.string.cx_sum_empty_pages) { onChange(o.copy(includeEmptyPages = it)) }
     if (o.thumbnails) SwRow(o.connectors, R.string.cf_sum_connectors) { onChange(o.copy(connectors = it)) }   // 24.87
+    if (o.thumbnails && o.connectors) {   // 24.87: connector colour and opacity
+        Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(stringResource(R.string.cmr_connector_color), style = MaterialTheme.typography.labelMedium)
+            (listOf(0xE53935) + PALETTE).distinct().forEach { c -> ColorDot(c, o.connectorColor == c, 24.dp) { onChange(o.copy(connectorColor = c)) } }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(stringResource(R.string.cmr_connector_opacity, (o.connectorOpacity * 100).toInt()), style = MaterialTheme.typography.labelMedium)
+            Slider(o.connectorOpacity, { onChange(o.copy(connectorOpacity = it)) }, valueRange = 0.1f..1f, modifier = Modifier.weight(1f))
+        }
+    }
     SwRow(o.replies, R.string.cx_sum_replies) { onChange(o.copy(replies = it)) }
     SwRow(o.status, R.string.cx_sum_status) { onChange(o.copy(status = it)) }
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -542,7 +564,13 @@ fun TextFormatDialog(initial: TextFmt, onDismiss: () -> Unit, showBiu: Boolean =
                         FilterChip(f.script == i, { f = f.copy(script = i) }, label = { Text(stringResource(r)) })
                     }
                 }
-                Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(f.bullets, { f = f.copy(bullets = it) }); Text(stringResource(R.string.cx_bullets)) }
+                Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(f.bullets, { f = f.copy(bullets = it, numbering = if (it) false else f.numbering) }); Text(stringResource(R.string.cx_bullets)) }
+                // 24.105 numbering and indent, 24.107 paragraph spacing
+                Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(f.numbering, { f = f.copy(numbering = it, bullets = if (it) false else f.bullets) }); Text(stringResource(R.string.cmr_numbering)) }
+                Text(stringResource(R.string.cmr_indent, "%.0f".format(java.util.Locale.US, f.indent)), style = MaterialTheme.typography.labelMedium)
+                Slider(f.indent, { f = f.copy(indent = it) }, valueRange = 0f..72f)
+                Text(stringResource(R.string.cmr_para_spacing, "%.0f".format(java.util.Locale.US, f.paraSpacing)), style = MaterialTheme.typography.labelMedium)
+                Slider(f.paraSpacing, { f = f.copy(paraSpacing = it) }, valueRange = 0f..36f)
                 Text(stringResource(R.string.cx_line_spacing, "%.2f".format(java.util.Locale.US, f.lineSpacing)), style = MaterialTheme.typography.labelMedium)
                 Slider(f.lineSpacing, { f = f.copy(lineSpacing = it) }, valueRange = 0.9f..3f)
                 Text(stringResource(R.string.cx_char_spacing, "%.1f".format(java.util.Locale.US, f.charSpacing)), style = MaterialTheme.typography.labelMedium)

@@ -26,7 +26,7 @@ data class FileResult(val path: String, val name: String, val pages: Int, val hi
  * `parts_fts(body)` whose rowid is the part id and whose body is [IndexText.body] (folded words + light stems).
  * [search] takes FTS stem-prefix candidates and verifies them with [TextMatcher] using the user's options.
  */
-class FullTextIndex private constructor(context: Context) : SQLiteOpenHelper(context.applicationContext, DB_NAME, null, 2) {
+class FullTextIndex private constructor(context: Context, dbName: String = DB_NAME) : SQLiteOpenHelper(context.applicationContext, dbName, null, 2) {
     private val appCtx: Context = context.applicationContext   // NVE-search
 
     override fun onCreate(db: SQLiteDatabase) {
@@ -44,19 +44,26 @@ class FullTextIndex private constructor(context: Context) : SQLiteOpenHelper(con
     }
 
     /** True when [file] is not indexed yet or changed since (size / modification time). */
-    fun needsIndex(file: File): Boolean = readableDatabase.rawQuery("SELECT size, mtime FROM docs WHERE path = ?", arrayOf(file.absolutePath)).use { c ->
-        !c.moveToFirst() || c.getLong(0) != file.length() || c.getLong(1) != file.lastModified()
+    fun needsIndex(file: File): Boolean = needsIndex(file.absolutePath, file.length(), file.lastModified())
+
+    /** fix/files-index: the same for any key (a file path or the content uri of a file in an include folder). */
+    fun needsIndex(path: String, size: Long, mtime: Long): Boolean = readableDatabase.rawQuery("SELECT size, mtime FROM docs WHERE path = ?", arrayOf(path)).use { c ->
+        !c.moveToFirst() || c.getLong(0) != size || c.getLong(1) != mtime
     }
 
     /** Replaces the index entry of [file]. [locked] files (password) are recorded without content. */
-    fun put(file: File, pages: Int, parts: List<DocPart>, locked: Boolean, title: String = "") {
+    fun put(file: File, pages: Int, parts: List<DocPart>, locked: Boolean, title: String = "") =
+        put(file.absolutePath, file.name, file.length(), file.lastModified(), pages, parts, locked, title)
+
+    /** fix/files-index: [put] under any key ([path] may be a content uri); [size] / [mtime] detect later changes. */
+    fun put(path: String, name: String, size: Long, mtime: Long, pages: Int, parts: List<DocPart>, locked: Boolean, title: String = "") {
         val db = writableDatabase
         val opts = com.smartdocs.editor.ui.nve.search.NveIndexPrefs.load(appCtx)   // NVE-search: stop words / numbers
         db.beginTransaction()
         try {
-            deleteLocked(db, file.absolutePath)
+            deleteLocked(db, path)
             val id = db.insert("docs", null, ContentValues().apply {
-                put("path", file.absolutePath); put("name", file.name); put("size", file.length()); put("mtime", file.lastModified())
+                put("path", path); put("name", name); put("size", size); put("mtime", mtime)
                 put("pages", pages); put("locked", if (locked) 1 else 0); put("indexed", System.currentTimeMillis()); put("title", title)
             })
             for (p in parts) {
@@ -96,11 +103,16 @@ class FullTextIndex private constructor(context: Context) : SQLiteOpenHelper(con
     /** Drops entries whose file no longer exists. Returns how many were removed. */
     fun prune(): Int {
         val gone = readableDatabase.rawQuery("SELECT path FROM docs", null).use { c ->
-            val l = ArrayList<String>(); while (c.moveToNext()) { val p = c.getString(0); if (!File(p).exists()) l += p }; l
+            val l = ArrayList<String>(); while (c.moveToNext()) { val p = c.getString(0); if (!exists(p)) l += p }; l
         }
         gone.forEach { remove(it) }
         return gone.size
     }
+
+    /** A file path, or a content uri of an include folder (fix/files-index) that the provider still knows. */
+    private fun exists(p: String): Boolean = if (p.startsWith("content:")) runCatching {
+        androidx.documentfile.provider.DocumentFile.fromSingleUri(appCtx, android.net.Uri.parse(p))?.exists() == true
+    }.getOrDefault(true) else File(p).exists()
 
     /**
      * fc-settings ("Fast Find" cache size): drops the stored text of the oldest indexed documents until the stored text
@@ -183,8 +195,17 @@ class FullTextIndex private constructor(context: Context) : SQLiteOpenHelper(con
 
     companion object {
         const val DB_NAME = "search_index.db"
-        @Volatile private var instance: FullTextIndex? = null
-        fun get(context: Context): FullTextIndex = instance ?: synchronized(this) { instance ?: FullTextIndex(context).also { instance = it } }
+        private val instances = HashMap<String, FullTextIndex>()
+        /** The default (app) index. */
+        fun get(context: Context): FullTextIndex = get(context, FidIndexes.DEFAULT)
+        /** fix/files-index: the index [id] (see [FidIndexes]); one open helper per database. */
+        fun get(context: Context, id: String): FullTextIndex = synchronized(this) {
+            instances.getOrPut(id) { FullTextIndex(context, FidIndexes.dbName(id)) }
+        }
+        /** Every defined index (rename / delete hooks keep all of them in step). */
+        fun all(context: Context): List<FullTextIndex> = FidIndexes.list(context).map { get(context, it.id) }
+        /** Closes and drops the helper of a deleted index. */
+        fun forget(id: String) { synchronized(this) { instances.remove(id) }?.let { runCatching { it.close() } } }
 
         internal val progressState = MutableStateFlow(IndexProgress())
         /** Live progress of the indexer (observed by the global search screen). */

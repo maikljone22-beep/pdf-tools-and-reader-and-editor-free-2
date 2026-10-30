@@ -135,7 +135,9 @@ class AnnotEditor(private val s: ReaderState) {
                     val match = now.firstOrNull { it.page == e.page && it.subtype == e.subtype && close(it.rect, e.rect) && it.index == e.index }
                         ?: now.firstOrNull { it.page == e.page && it.subtype == e.subtype && close(it.rect, e.rect) }
                         ?: return@withContext null
-                    val a = AnnotationWriter.extract(f, match.page, match.index, s.password) ?: return@withContext null
+                    // §41: the keys other editors wrote (Bluebeam /BSI ...) are kept aside and written back on save
+                    val a = AnnotationWriter.extract(f, match.page, match.index, s.password)
+                        ?.let { com.smartdocs.editor.core.annot.ForeignKeys.capture(f, s.password, match.page, match.index, it) } ?: return@withContext null
                     if (backup == null) {
                         val b = File(f.parentFile, ".${f.nameWithoutExtension}.annotedit.pdf")
                         f.copyTo(b, overwrite = true); backup = b
@@ -175,8 +177,8 @@ class AnnotEditor(private val s: ReaderState) {
         // free text: grow the box so every line stays visible
         val r = PageGeometry.normPdf(a.rects.firstOrNull() ?: return@edit a.copy(text = text))
         val lines = text.split('\n')
-        val needH = lines.size * a.fontSize * 1.3f + 8f
-        val needW = (lines.maxOfOrNull { it.length } ?: 1) * a.fontSize * 0.58f + 12f
+        val needH = lines.size * (a.fontSize * 1.3f + a.paraSpacing) + 8f   // 24.107 paragraph spacing
+        val needW = ((lines.maxOfOrNull { it.length } ?: 1) + (if (a.numbering || a.bullets) 3 else 0)) * a.fontSize * 0.58f + 12f + a.indent
         val rtl = text.any { it in '\u0600'..'\u06FF' }
         val w = max(r.right - r.left, needW); val h = max(r.top - r.bottom, needH)
         val nr = if (rtl) RectF(r.right - w, r.top, r.right, r.top - h) else RectF(r.left, r.top, r.left + w, r.top - h)

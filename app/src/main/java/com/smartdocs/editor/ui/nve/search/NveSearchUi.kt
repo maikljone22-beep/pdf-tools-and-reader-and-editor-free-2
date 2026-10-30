@@ -54,7 +54,7 @@ fun NveFindScopes(state: ReaderState) {
     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically) {
         Text(stringResource(R.string.ns_find_also), style = MaterialTheme.typography.labelMedium)
-        listOf(PartKind.BOOKMARK, PartKind.COMMENTS, PartKind.FIELD, PartKind.ATTACHMENT).forEach { k ->
+        listOf(PartKind.BOOKMARK, PartKind.COMMENTS, PartKind.FIELD, PartKind.ATTACHMENT, PartKind.SIGNATURE, PartKind.LAYER).forEach { k ->   // fix/files-index: + signatures, layers
             FilterChip(k in scopes, { scopes = if (k in scopes) scopes - k else scopes + k; NveFind.setScopes(ctx, scopes); NveFindBus.version++ },
                 label = { Text(kindLabel(k)) }, modifier = Modifier.height(30.dp))
         }

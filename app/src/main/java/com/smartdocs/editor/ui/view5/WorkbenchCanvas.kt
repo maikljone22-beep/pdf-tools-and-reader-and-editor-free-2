@@ -35,6 +35,7 @@ import com.smartdocs.editor.core.view5.DashStyle
 import com.smartdocs.editor.core.view5.Geom
 import com.smartdocs.editor.core.view5.MarkKind
 import com.smartdocs.editor.core.view5.P
+import com.smartdocs.editor.core.view5.StoredEdit
 import kotlin.math.roundToInt
 
 /**
@@ -75,10 +76,15 @@ private fun dashEffect(d: DashStyle, w: Float): PathEffect? = d.scaled(w)?.let {
  * Two fingers: zoom and pan.
  */
 @Composable
-fun WorkbenchCanvas(m: WorkbenchModel, bitmap: Bitmap?, view: WbView, snapTo: (P, Float) -> P?, modifier: Modifier = Modifier) {
+fun WorkbenchCanvas(m: WorkbenchModel, bitmap: Bitmap?, view: WbView, snapTo: (P, Float) -> P?,
+                    stored: List<StoredEdit.Editable> = emptyList(), modifier: Modifier = Modifier) {
     val img: ImageBitmap? = remember(bitmap) { bitmap?.asImageBitmap() }
     var cursor by remember { mutableStateOf<Offset?>(null) }
     var snapped by remember { mutableStateOf<P?>(null) }
+    // 24.27 / 25.18 / 25.19 (ADJUST): the handle being dragged and where it is now
+    var grab by remember { mutableStateOf<AdjustHandle?>(null) }
+    var grabAt by remember { mutableStateOf<P?>(null) }
+    val storedNow by rememberUpdatedState(stored)
     val slop = LocalViewConfiguration.current.touchSlop
     val labelPaint = remember { Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 34f; typeface = Typeface.DEFAULT_BOLD } }
     val textPaint = remember { Paint(Paint.ANTI_ALIAS_FLAG) }
@@ -93,7 +99,8 @@ fun WorkbenchCanvas(m: WorkbenchModel, bitmap: Bitmap?, view: WbView, snapTo: (P
             val d = view.toDisplay(p)
             p = view.fromDisplay(Math.round(d.x / step) * step, Math.round(d.y / step) * step)
         }
-        if (m.v.ortho && m.pts.isNotEmpty() && (m.tool == WTool.DISTANCE || m.tool == WTool.PERIMETER || m.tool == WTool.AREA || m.tool == WTool.LINE || m.calibrating)) p = Geom.constrain45(m.pts.last(), p)
+        if (m.v.ortho && m.pts.isNotEmpty() && (m.tool == WTool.DISTANCE || m.tool == WTool.PERIMETER || m.tool == WTool.AREA || m.tool == WTool.LINE ||
+                m.tool == WTool.VOLUME || m.tool == WTool.POLYLENGTH || m.calibrating)) p = Geom.constrain45(m.pts.last(), p)
         return p
     }
 
@@ -103,6 +110,10 @@ fun WorkbenchCanvas(m: WorkbenchModel, bitmap: Bitmap?, view: WbView, snapTo: (P
             awaitEachGesture {
                 val down = awaitFirstDown(requireUnconsumed = false)
                 var multi = false; var dragged = false
+                // ADJUST: a gesture that starts on a handle drags it; elsewhere nothing is placed
+                val adjust = m.tool == WTool.ADJUST && !m.calibrating
+                val handle = if (adjust) Adjust.hit(m, storedNow, view, down.position) else null
+                grab = handle; grabAt = null
                 do {
                     val ev = awaitPointerEvent()
                     val pressed = ev.changes.count { it.pressed }
@@ -117,11 +128,15 @@ fun WorkbenchCanvas(m: WorkbenchModel, bitmap: Bitmap?, view: WbView, snapTo: (P
                     } else if (!multi && pressed == 1) {
                         val ch = ev.changes.first { it.pressed }
                         if (!dragged && (ch.position - down.position).getDistance() > slop) dragged = true
-                        if (dragged) { cursor = ch.position; snapped = resolve(ch.position); ch.consume() }
+                        if (dragged && (!adjust || handle != null)) {
+                            cursor = ch.position; snapped = resolve(ch.position); ch.consume()
+                            if (handle != null) grabAt = snapped
+                        }
                     }
                 } while (ev.changes.any { it.pressed })
-                if (!multi) m.addPoint(if (dragged) (snapped ?: resolve(cursor ?: down.position)) else resolve(down.position))
-                cursor = null; snapped = null
+                if (adjust) { if (!multi && dragged && handle != null) grabAt?.let { Adjust.commit(m, storedNow, handle, it) } }
+                else if (!multi) m.addPoint(if (dragged) (snapped ?: resolve(cursor ?: down.position)) else resolve(down.position))
+                cursor = null; snapped = null; grab = null; grabAt = null
             }
         }) {
         val s = view.scale
@@ -129,13 +144,18 @@ fun WorkbenchCanvas(m: WorkbenchModel, bitmap: Bitmap?, view: WbView, snapTo: (P
             dstOffset = IntOffset(view.panX.roundToInt(), view.panY.roundToInt()), dstSize = IntSize((view.pageW * s).roundToInt(), (view.pageH * s).roundToInt()))
         // pending items
         m.items.filter { it.page == m.page }.forEach { drawItem(it, view, labelPaint, textPaint) }
+        // ADJUST: saved shapes as they will be (dashed) and every handle; the dragged one follows the finger
+        if (m.tool == WTool.ADJUST) Adjust.draw(this, m, stored, view, grab, grabAt)
         // in progress
         val pts = m.pts.toList() + listOfNotNull(snapped)
         if (pts.isNotEmpty()) {
             val c = col(if (m.calibrating) 0x1E88E5 else m.color)
             val sp = pts.map { view.toScreen(it) }
             when {
-                m.tool == WTool.CIRCLE && sp.size >= 2 && !m.calibrating -> drawCircle(c, (sp[1] - sp[0]).getDistance(), sp[0], style = Stroke(3f))
+                (m.tool == WTool.CIRCLE || m.tool == WTool.DIAMETER || m.tool == WTool.RADIUS) && sp.size >= 2 && !m.calibrating -> {
+                    drawCircle(c, (sp[1] - sp[0]).getDistance(), sp[0], style = Stroke(3f))
+                    if (m.tool == WTool.DIAMETER) drawLine(c, sp[0] * 2f - sp[1], sp[1], 3f) else if (m.tool == WTool.RADIUS) drawLine(c, sp[0], sp[1], 3f)
+                }
                 (m.tool == WTool.TEXTBOX || m.tool == WTool.AREA_HIGHLIGHT) && sp.size >= 2 && !m.calibrating ->
                     drawRect(c.copy(alpha = 0.25f), Offset(minOf(sp[0].x, sp[1].x), minOf(sp[0].y, sp[1].y)), Size(kotlin.math.abs(sp[1].x - sp[0].x), kotlin.math.abs(sp[1].y - sp[0].y)))
                 m.tool == WTool.CALLOUT && sp.size >= 3 -> {
@@ -143,7 +163,7 @@ fun WorkbenchCanvas(m: WorkbenchModel, bitmap: Bitmap?, view: WbView, snapTo: (P
                     drawRect(c, Offset(minOf(sp[1].x, sp[2].x), minOf(sp[1].y, sp[2].y)), Size(kotlin.math.abs(sp[2].x - sp[1].x), kotlin.math.abs(sp[2].y - sp[1].y)), style = Stroke(3f))
                 }
                 else -> {
-                    val path = Path().apply { sp.forEachIndexed { i, o -> if (i == 0) moveTo(o.x, o.y) else lineTo(o.x, o.y) }; if (m.tool == WTool.AREA && sp.size > 2) close() }
+                    val path = Path().apply { sp.forEachIndexed { i, o -> if (i == 0) moveTo(o.x, o.y) else lineTo(o.x, o.y) }; if ((m.tool == WTool.AREA || m.tool == WTool.VOLUME) && sp.size > 2) close() }
                     if (m.tool != WTool.COUNT) drawPath(path, c, style = Stroke(3f, cap = StrokeCap.Round, pathEffect = dashEffect(m.dash, 2f)))
                 }
             }
@@ -186,11 +206,15 @@ private fun DrawScope.drawItem(it: WItem, v: WbView, label: Paint, text: Paint) 
             val sp = it.m.pts.map { p -> v.toScreen(p) }
             val w = (it.m.width * v.scale).coerceAtLeast(2f)
             val fx = dashEffect(it.m.dash, w)
+            val closed = it.m.type == com.smartdocs.editor.core.view5.MeasureType.AREA || it.m.type == com.smartdocs.editor.core.view5.MeasureType.VOLUME
             when (it.m.type) {
-                com.smartdocs.editor.core.view5.MeasureType.CIRCLE -> if (sp.size >= 2) {
+                com.smartdocs.editor.core.view5.MeasureType.CIRCLE, com.smartdocs.editor.core.view5.MeasureType.DIAMETER,
+                com.smartdocs.editor.core.view5.MeasureType.RADIUS -> if (sp.size >= 2) {
                     val r = (sp[1] - sp[0]).getDistance()
                     it.m.fill?.let { f -> drawCircle(col(f, 0.25f), r, sp[0]) }
                     drawCircle(c, r, sp[0], style = Stroke(w, pathEffect = fx))
+                    if (it.m.type == com.smartdocs.editor.core.view5.MeasureType.DIAMETER) drawLine(c, sp[0] * 2f - sp[1], sp[1], w)
+                    else if (it.m.type == com.smartdocs.editor.core.view5.MeasureType.RADIUS) drawLine(c, sp[0], sp[1], w)
                 }
                 com.smartdocs.editor.core.view5.MeasureType.COUNT -> sp.forEachIndexed { i, o ->
                     drawCircle(c, 18f, o)
@@ -198,18 +222,24 @@ private fun DrawScope.drawItem(it: WItem, v: WbView, label: Paint, text: Paint) 
                     val t = (i + 1).toString(); drawContext.canvas.nativeCanvas.drawText(t, o.x - label.measureText(t) / 2, o.y + 12f, label)
                 }
                 else -> {
-                    val path = Path().apply { sp.forEachIndexed { i, o -> if (i == 0) moveTo(o.x, o.y) else lineTo(o.x, o.y) }; if (it.m.type == com.smartdocs.editor.core.view5.MeasureType.AREA) close() }
-                    if (it.m.type == com.smartdocs.editor.core.view5.MeasureType.AREA) it.m.fill?.let { f -> drawPath(path, col(f, 0.25f)) }
+                    val path = Path().apply { sp.forEachIndexed { i, o -> if (i == 0) moveTo(o.x, o.y) else lineTo(o.x, o.y) }; if (closed) close() }
+                    if (closed) it.m.fill?.let { f -> drawPath(path, col(f, 0.25f)) }
                     drawPath(path, c, style = Stroke(w, pathEffect = fx))
                 }
             }
             if (it.m.type != com.smartdocs.editor.core.view5.MeasureType.COUNT && sp.isNotEmpty()) {
-                val at = if (it.m.type == com.smartdocs.editor.core.view5.MeasureType.AREA) Offset(sp.map { o -> o.x }.average().toFloat(), sp.map { o -> o.y }.average().toFloat())
-                    else if (sp.size >= 2) Offset((sp[sp.size - 2].x + sp.last().x) / 2, (sp[sp.size - 2].y + sp.last().y) / 2) else sp[0]
+                // 25.18: the label where the file will have it (its own place + the dragged offset)
+                val at = v.toScreen(com.smartdocs.editor.core.view5.MeasureWriter.labelAt(it.m))
                 label.color = 0xFF000000.toInt() or it.m.color
-                val tw = label.measureText(it.m.label)
+                val shown = com.smartdocs.editor.core.view5.MeasureWriter.shownLabel(it.m)
+                val tw = label.measureText(shown)
                 drawRect(Color(0xEEFFFFFF), Offset(at.x - tw / 2 - 6, at.y - 30f), Size(tw + 12, 40f))
-                drawContext.canvas.nativeCanvas.drawText(it.m.label, at.x - tw / 2, at.y, label)
+                drawContext.canvas.nativeCanvas.drawText(shown, at.x - tw / 2, at.y, label)
+                if (it.m.extraLabel.isNotBlank()) {
+                    val ew = label.measureText(it.m.extraLabel)
+                    drawRect(Color(0xEEFFFFFF), Offset(at.x - ew / 2 - 6, at.y + 6f), Size(ew + 12, 40f))
+                    drawContext.canvas.nativeCanvas.drawText(it.m.extraLabel, at.x - ew / 2, at.y + 36f, label)
+                }
             }
         }
         is WItem.Text -> {
