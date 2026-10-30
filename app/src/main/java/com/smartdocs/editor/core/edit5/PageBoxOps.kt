@@ -199,6 +199,27 @@ object PageBoxOps {
         }
     }
 
+    /**
+     * FINAL_CHECK_2 Low (D §41): label ranges from the top-level bookmarks — every bookmark that points at a page
+     * starts a range with the bookmark title as the prefix (numbers restart at 1); pages before the first bookmark keep
+     * plain numbers. Returns the ranges (empty when the file has no usable bookmarks).
+     */
+    suspend fun labelsFromBookmarks(src: File, password: String?, maxPrefix: Int = 24): List<LabelRange> = withContext(Dispatchers.IO) {
+        E5Io.load(src, password).use { doc ->
+            val root = doc.documentCatalog.documentOutline ?: return@use emptyList()
+            val out = ArrayList<LabelRange>()
+            var item = root.firstChild
+            while (item != null) {
+                val page = runCatching { item.findDestinationPage(doc) }.getOrNull()
+                val idx = page?.let { p -> doc.pages.indexOf(p) } ?: -1
+                val title = item.title.orEmpty().trim().take(maxPrefix)
+                if (idx >= 0 && title.isNotEmpty() && out.none { it.startPage == idx }) out += LabelRange(idx, LabelStyle.DECIMAL, "$title ", 1)
+                item = item.nextSibling
+            }
+            out.sortedBy { it.startPage }
+        }
+    }
+
     /** Write page labels ([ranges] empty removes them). The first range is forced to start at page 0 (required by the spec). */
     suspend fun writeLabels(src: File, out: File, password: String?, ranges: List<LabelRange>) = withContext(Dispatchers.IO) {
         E5Io.edit(src, out, password) { doc ->

@@ -20,6 +20,8 @@ import com.smartdocs.editor.ui.tools.PrimaryButton
 import com.smartdocs.editor.ui.tools.ResultsList
 import com.smartdocs.editor.ui.tools.ToolScaffold
 import java.io.File
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /** E-mail header labels for the EML reader, from string resources. */
 @Composable
@@ -63,6 +65,7 @@ fun ToPdfPlusScreen(nav: NavHostController, uri: String?) {
     var html by remember { mutableStateOf("") }
     var background by remember { mutableStateOf(false) }
     var attachSrc by remember { mutableStateOf(false) }   // nav-attach: "attach source file"
+    var eachPdfa by remember { mutableStateOf(false) }    // FINAL_CHECK_2 Low (B #7): PDF/A-2b for the "each file" outputs
     var outTree by remember { mutableStateOf("") }   // FINAL_CHECK_2 #2: output folder
     val srcDesc = stringResource(R.string.nat_source_desc)
     val job = rememberT5Job()
@@ -120,14 +123,20 @@ fun ToPdfPlusScreen(nav: NavHostController, uri: String?) {
                     }
                 } else {
                     SwitchRow(stringResource(R.string.t5_run_background), background, stringResource(R.string.t5_run_background_hint)) { background = it }
+                    SwitchRow(stringResource(R.string.pc_save_pdfa), eachPdfa, stringResource(R.string.pc_save_pdfa_sub)) { eachPdfa = it }
                     PrimaryButton(stringResource(R.string.t5_convert_each), enabled = files.isNotEmpty() && unsupported.isEmpty() && !job.running, icon = Icons.Default.PictureAsPdf) {
                         val list = files.toList()
                         if (background) {
                             BatchJobs.enqueue(ctx, converting, list.map { it to null }, null, true, app.documents.docsDir)
                             job.info = queued
                             nav.navigate(com.smartdocs.editor.ui.Routes.tool("batch"))
-                        } else { val attach = attachSrc; val tree = outTree; job.launch(converting) {
+                        } else { val attach = attachSrc; val tree = outTree; val pa = eachPdfa; job.launch(converting) {
                             val (out, failed) = convertEachToPdf(ctx, app.documents, list, { d, t -> step(d, t) }) { f, dst ->
+                                if (pa) {
+                                    val a = File(app.documents.tempDir, "each_pdfa_${System.nanoTime()}.pdf")
+                                    com.smartdocs.editor.core.tools5.PdfA.convert(ctx, dst, null, a, com.smartdocs.editor.core.tools5.PdfAOptions(level = com.smartdocs.editor.core.tools5.PdfALevel.A2B), title = f.nameWithoutExtension)
+                                    withContext(Dispatchers.IO) { a.copyTo(dst, true); a.delete() }
+                                }
                                 if (attach) com.smartdocs.editor.core.pdf.AttachmentOps.attachSources(dst, listOf(f), srcDesc)
                             }
                             com.smartdocs.editor.ui.common.copyToOutputFolder(ctx, tree, out)
@@ -159,7 +168,14 @@ fun ToPdfPlusScreen(nav: NavHostController, uri: String?) {
                     job.launch(converting) {
                         val out = app.documents.uniqueFile(app.documents.docsDir, "html_" + t5Today())
                         val page = if (h.contains("<html", true) || h.contains("<body", true)) h else HtmlBits.page("", h, HtmlBits.rtlDominant(h))
-                        result = ToPdf.html(ctx, page, out, web.setup()).also { tagIfAsked(web, it) }
+                        result = ToPdf.html(ctx, page, out, web.setup()).also { tagIfAsked(web, it) }.also { f ->
+                            // FINAL_CHECK_2 Low: HTML header / footer text (same fields as the web capture)
+                            if (web.header.isNotBlank() || web.footer.isNotBlank()) {
+                                val date = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
+                                fun fill(t: String) = t.replace("{url}", "").replace("{title}", f.nameWithoutExtension).replace("{date}", date)
+                                com.smartdocs.editor.core.edit5.HeaderFooterOps.apply(ctx, f, f, null, com.smartdocs.editor.core.edit5.HFSpec(topCenter = fill(web.header), bottomCenter = fill(web.footer)))
+                            }
+                        }
                     }
                 }
             }

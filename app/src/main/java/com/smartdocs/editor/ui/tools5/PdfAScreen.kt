@@ -173,6 +173,37 @@ fun PdfAScreen(nav: NavHostController, uri: String?) {
                         }
                     }) { Text(fmt.uppercase()) }
                 }
+                // FINAL_CHECK_2 Low (B #42): the report as a PDF, with the problem pages highlighted (a page list per finding)
+                OutlinedButton(onClick = {
+                    val f = file ?: return@OutlinedButton
+                    job.launch(checking) {
+                        val html = Standards.reportText(f.name, profName, r, { labels[it] ?: it }, "html")
+                        val out = app.documents.uniqueFile(app.documents.docsDir, f.nameWithoutExtension + "_preflight")
+                        com.smartdocs.editor.core.tools5.ToPdf.html(ctx, html, out)
+                        // the pages with errors get a red "preflight" note in the report's copy of the document, so they are easy to find
+                        val pagesHit = r.findings.filter { it.severity == Severity.ERROR && !it.fixed }.flatMap { it.pages }.toSet()
+                        if (pagesHit.isNotEmpty()) runCatching {
+                            val marked = app.documents.uniqueFile(app.documents.docsDir, f.nameWithoutExtension + "_preflight_pages")
+                            io {
+                                com.smartdocs.editor.core.pdf.PdfOps.load(f, password.ifBlank { null }).use { d ->
+                                    pagesHit.filter { it in 0 until d.numberOfPages }.forEach { pi ->
+                                        val page = d.getPage(pi)
+                                        val box = page.cropBox
+                                        val note = com.tom_roush.pdfbox.pdmodel.interactive.annotation.PDAnnotationText().apply {
+                                            rectangle = com.tom_roush.pdfbox.pdmodel.common.PDRectangle(box.lowerLeftX + 8f, box.upperRightY - 28f, 20f, 20f)
+                                            contents = r.findings.filter { pi in it.pages && it.severity == Severity.ERROR }.joinToString("\n") { labels[it.code] ?: it.code }
+                                            setTitlePopup("Preflight"); setColor(com.tom_roush.pdfbox.pdmodel.graphics.color.PDColor(floatArrayOf(1f, 0f, 0f), com.tom_roush.pdfbox.pdmodel.graphics.color.PDDeviceRGB.INSTANCE)); setOpen(false)
+                                        }
+                                        page.annotations.add(note)
+                                    }
+                                    d.save(marked)
+                                }
+                            }
+                            results = listOf(out, marked)
+                        } ?: run { result = out }
+                        if (pagesHit.isEmpty()) result = out
+                    }
+                }) { Icon(Icons.Default.PictureAsPdf, null); Spacer(Modifier.width(4.dp)); Text(stringResource(R.string.pc_pf_report_pdf)) }
             }
         }
         // ---- standards panel: what the file claims, remove a claim, save as a PDF version

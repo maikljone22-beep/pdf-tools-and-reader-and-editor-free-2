@@ -420,4 +420,5 @@
     <string name="pc_pf_x_rgb">Pages with RGB colour (PDF/X-1a allows CMYK and spot colours only)</string>
     <string name="pc_pf_vt_claim">There is no PDF/VT identifier</string>
     <string name="pc_pf_vt_dpart">The document part metadata (DPart) that PDF/VT requires is missing</string>
+    <string name="pc_pf_report_pdf">PDF report with the pages marked</string>
 </resources>
