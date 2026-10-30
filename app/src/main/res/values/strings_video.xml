@@ -56,4 +56,11 @@
     <string name="vid_rend_lang">اللغات (ar, en)</string>
     <string name="vid_rend_min_w">أدنى عرض للشاشة (px)</string>
     <string name="vid_rend_min_h">أدنى ارتفاع للشاشة (px)</string>
+    <!-- طريقة إضافة الفيديو: مشغّل داخل الصفحة أو أيقونة -->
+    <string name="vid_place_title">كيف تريد إضافة الفيديو؟</string>
+    <string name="vid_form">شكل العرض</string>
+    <string name="vid_form_box">مشغّل داخل الصفحة</string>
+    <string name="vid_form_box_sub">صندوق فيديو على الصفحة يمكنك تحريكه وتغيير حجمه، ويعمل في مكانه.</string>
+    <string name="vid_form_icon">أيقونة فيديو</string>
+    <string name="vid_form_icon_sub">أيقونة صغيرة على الصفحة؛ عند النقر عليها ينبثق المشغّل بملء الشاشة.</string>
 </resources>

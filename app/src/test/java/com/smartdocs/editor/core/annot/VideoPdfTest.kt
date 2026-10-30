@@ -119,6 +119,25 @@ class VideoPdfTest {
         }
     }
 
+    /** Icon form: the option round-trips through /SDVideo and the appearance is the film icon (no poster image). */
+    @Test fun iconFormRoundTrips() {
+        val out = tmp.newFile("icon.pdf")
+        PDDocument().use { doc ->
+            doc.addPage(PDPage())
+            VideoPdf.writeScreen(doc, doc.getPage(0), 10f, 10f, 10f + VideoPdf.ICON_SIZE, 10f + VideoPdf.ICON_SIZE, fakeVideo(1000), "a.mp4", "video/mp4",
+                VideoPdf.Options(icon = true), poster = VideoPdf.Poster(ByteArray(10), 16, 9), color = 0x1E6FD9)
+            doc.save(out)
+        }
+        val (doc, list) = annots(out)
+        doc.use {
+            val info = VideoPdf.detect(list[0])!!
+            assertTrue(info.options.icon)
+            assertTrue(info.hasAppearance)
+            val ap = d(d(list[0].cosObject.getDictionaryObject(COSName.AP))!!.getDictionaryObject(COSName.N))!!
+            assertNull(d(ap.getDictionaryObject(COSName.RESOURCES))?.getDictionaryObject(COSName.XOBJECT))
+        }
+    }
+
     @Test fun defaultOptionsHaveNoAutoplayAction() {
         val out = tmp.newFile("plain.pdf")
         PDDocument().use { doc ->

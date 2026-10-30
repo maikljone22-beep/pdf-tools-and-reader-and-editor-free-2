@@ -338,7 +338,7 @@ class Annot2Host(val s: ReaderState) {
     /** Video tool: place the already picked video, or open the picker and place it when it returns. */
     private fun placeVideoOrPick(tap: Tap2) {
         val pv = s.video.picked
-        if (pv != null && pv.file.isFile) s.video.place(pv, tap.page, tap.rect, tap.x, tap.y)
+        if (pv != null && pv.file.isFile) s.video.ask(pv, tap.page, tap.rect, tap.x, tap.y)
         else { pendingTap = tap; launchVideo() }
     }
 

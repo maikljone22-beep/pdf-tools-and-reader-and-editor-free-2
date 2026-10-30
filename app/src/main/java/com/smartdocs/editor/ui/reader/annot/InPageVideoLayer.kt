@@ -139,7 +139,8 @@ private fun VideoBox(state: ReaderState, item: VideoItem, box: Rect, active: Boo
         Modifier.offset { IntOffset(box.left.roundToInt(), box.top.roundToInt()) }.size(wDp, hDp).clipToBounds()
             .semantics { contentDescription = desc },
     ) {
-        if (!active) {
+        // an icon video plays in the pop-up: its icon stays as it is on the page
+        if (!active || (host.fullscreen && item.options.icon)) {
             if (!selected) IdlePoster(item)
             if (interactive) Box(Modifier.fillMaxSize().pointerInput(item.key) {
                 detectTapGestures(
@@ -159,7 +160,7 @@ private fun VideoBox(state: ReaderState, item: VideoItem, box: Rect, active: Boo
 /** Poster of a pending video (the page bitmap does not have it yet), or a placeholder for videos without a picture. */
 @Composable
 private fun IdlePoster(item: VideoItem) {
-    if (item.drawnByPage && item.supported) return
+    if ((item.drawnByPage || item.options.icon) && item.supported) return
     val bmp by produceState<android.graphics.Bitmap?>(null, item.posterPath) {
         value = item.posterPath?.let { p -> withContext(Dispatchers.IO) { runCatching { BitmapFactory.decodeFile(p) }.getOrNull() } }
     }

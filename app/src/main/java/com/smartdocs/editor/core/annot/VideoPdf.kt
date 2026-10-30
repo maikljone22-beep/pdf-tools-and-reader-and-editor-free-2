@@ -49,6 +49,8 @@ object VideoPdf {
         val stopWhenHidden: Boolean = true,
         val poster: Int = POSTER_AUTO,
         val alt: String = "",
+        /** Shown as a small video icon (tap → pop-up player) instead of an in-page player box. */
+        val icon: Boolean = false,
         /** Renditions: the selection criteria of the main clip and the alternate clips (tried in order after it). */
         val criteria: Criteria = Criteria(),
         val alternates: List<Alternate> = emptyList(),
@@ -89,6 +91,8 @@ object VideoPdf {
     const val POSTER_NONE = 1
     const val POSTER_FILE = 2
     const val MAX_REPEAT = 99
+    /** Side of the video icon form (PDF points). */
+    const val ICON_SIZE = 28f
 
     /** A baseline JPEG and its pixel size. */
     class Poster(val jpeg: ByteArray, val width: Int, val height: Int)
@@ -209,7 +213,7 @@ object VideoPdf {
         if (options.autoplay) aa.setItem(if (options.startOn == START_OPEN) PO else PV, renditionAction(rendition, annot))
         if (options.stopWhenHidden) { aa.setItem(PI, stopAction(annot)); aa.setItem(PC, stopAction(annot)) }
         if (aa.size() > 0) annot.setItem(AA, aa)
-        annot.setItem(AP, COSDictionary().apply { setItem(N, appearance(doc, w, h, poster)) })
+        annot.setItem(AP, COSDictionary().apply { setItem(N, if (options.icon) iconAppearance(doc, w, h, color) else appearance(doc, w, h, poster)) })
 
         // PDAnnotationUnknown directly: createAnnotation only logs "unsupported subtype" for /Screen
         val an = com.tom_roush.pdfbox.pdmodel.interactive.annotation.PDAnnotationUnknown(annot)
@@ -293,6 +297,7 @@ object VideoPdf {
         setInt(COSName.getPDFName("StartOn"), o.startOn)
         setBoolean(COSName.getPDFName("StopHidden"), o.stopWhenHidden)
         setInt(COSName.getPDFName("Poster"), o.poster)
+        if (o.icon) setBoolean(COSName.getPDFName("Icon"), true)
         if (o.alt.isNotBlank()) setString(COSName.getPDFName("Alt"), o.alt)
     }
 
@@ -310,6 +315,32 @@ object VideoPdf {
     private fun rgb(c: Int) = floatArrayOf(((c shr 16) and 0xFF) / 255f, ((c shr 8) and 0xFF) / 255f, (c and 0xFF) / 255f)
 
     private fun f(v: Float) = String.format(Locale.US, "%.3f", v)
+
+    /** Form XObject of the icon form: a white rounded card with a film frame and a play triangle in the annotation colour. */
+    private fun iconAppearance(doc: PDDocument, w: Float, h: Float, color: Int): COSStream {
+        val form = doc.document.createCOSStream()
+        form.setName(COSName.TYPE, "XObject"); form.setName(COSName.SUBTYPE, "Form")
+        form.setItem(COSName.BBOX, PDRectangle(0f, 0f, w, h).cosArray)
+        form.setItem(COSName.RESOURCES, COSDictionary())
+        val c = rgb(color); val lw = (w / 14f).coerceAtLeast(0.8f)
+        val sb = StringBuilder()
+        sb.append("q 1 1 1 rg ").append(f(c[0])).append(' ').append(f(c[1])).append(' ').append(f(c[2])).append(" RG ").append(f(lw)).append(" w 1 j\n")
+        sb.append(f(lw / 2)).append(' ').append(f(lw / 2)).append(' ').append(f(w - lw)).append(' ').append(f(h - lw)).append(" re B\n")
+        // film frame
+        sb.append(f(w * 0.16f)).append(' ').append(f(h * 0.24f)).append(' ').append(f(w * 0.68f)).append(' ').append(f(h * 0.52f)).append(" re S\n")
+        // sprocket holes
+        for (k in 0 until 4) {
+            val x = w * (0.22f + 0.18f * k); val hw = w * 0.07f; val hh = h * 0.06f
+            sb.append(f(x)).append(' ').append(f(h * 0.76f)).append(' ').append(f(hw)).append(' ').append(f(hh)).append(" re S\n")
+            sb.append(f(x)).append(' ').append(f(h * 0.18f)).append(' ').append(f(hw)).append(' ').append(f(hh)).append(" re S\n")
+        }
+        // play triangle
+        sb.append(f(c[0])).append(' ').append(f(c[1])).append(' ').append(f(c[2])).append(" rg ")
+        sb.append(f(w * 0.42f)).append(' ').append(f(h * 0.64f)).append(" m ").append(f(w * 0.64f)).append(' ').append(f(h * 0.5f)).append(" l ")
+        sb.append(f(w * 0.42f)).append(' ').append(f(h * 0.36f)).append(" l h f Q\n")
+        form.createOutputStream().use { it.write(sb.toString().toByteArray(Charsets.US_ASCII)) }
+        return form
+    }
 
     /** Form XObject: black box, the poster fitted inside (aspect kept), a translucent disc with a white play triangle. */
     private fun appearance(doc: PDDocument, w: Float, h: Float, poster: Poster?): COSStream {
@@ -444,7 +475,8 @@ object VideoPdf {
             volume = int(it, "Volume", 100).coerceIn(0, 100), repeat = int(it, "Repeat", 1).coerceIn(1, MAX_REPEAT),
             keepOpen = bool(it, "KeepOpen", true), fullscreen = bool(it, "Fullscreen", false),
             startOn = int(it, "StartOn", START_VISIBLE).coerceIn(START_VISIBLE, START_OPEN), stopWhenHidden = bool(it, "StopHidden", true),
-            poster = int(it, "Poster", POSTER_AUTO).coerceIn(POSTER_AUTO, POSTER_FILE), alt = it.getString(COSName.getPDFName("Alt")) ?: "")
+            poster = int(it, "Poster", POSTER_AUTO).coerceIn(POSTER_AUTO, POSTER_FILE), alt = it.getString(COSName.getPDFName("Alt")) ?: "",
+            icon = bool(it, "Icon", false))
     }
 
     /** True when /AA [key] of [cos] holds a rendition action that stops the media (`/OP 1`). */

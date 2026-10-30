@@ -61,6 +61,9 @@ object VideoPlayback {
 /** A picked video waiting for its box on the page (Video tool). [aspect] = width / height. */
 data class PickedVideo(val file: File, val name: String, val mime: String, val aspect: Float, val posterPath: String?)
 
+/** A picked video and the tap / rectangle it goes to, waiting for the user's choice: in-page player or icon. */
+data class VideoPlacement(val video: PickedVideo, val page: Int, val rect: RectF?, val x: Float, val y: Float)
+
 /**
  * The in-page video player of the reader (`state.video`): which video plays, the single ExoPlayer, extraction of
  * stored videos into the cache, the Video tool's picked file, and the dialogs' state. Main thread only.
@@ -87,6 +90,8 @@ class VideoHost(private val s: ReaderState) {
     var picked by mutableStateOf<PickedVideo?>(null)
     var largeWarning by mutableStateOf<Pair<Uri, Long>?>(null)
     var importing by mutableStateOf(false)
+    /** The "player box or icon?" question after a video was picked and its place tapped. */
+    var placement by mutableStateOf<VideoPlacement?>(null)
     /** Options dialog / save launcher of the selected video. */
     var optionsOpen by mutableStateOf(false)
     var launchSave: (name: String, file: File) -> Unit = { _, _ -> }
@@ -162,7 +167,8 @@ class VideoHost(private val s: ReaderState) {
         error = null; loading = true; aspect = 0f; rotation = 0
         muted = item.options.muted; loop = item.options.loop; plays = 1
         controlsVisible = true
-        if (item.options.fullscreen) fullscreen = true
+        // an icon has no box to play in: it opens the pop-up (full-screen) player
+        if (item.options.fullscreen || item.options.icon) fullscreen = true
         val key = item.key
         job = s.scope.launch {
             try {
@@ -201,6 +207,11 @@ class VideoHost(private val s: ReaderState) {
     }
 
     fun isActive(item: VideoItem) = activeKey == item.key
+
+    /** Leave the pop-up player: an icon video stops (it has no box to play in), a box video goes on in its box. */
+    fun exitFullscreen() { if (active?.options?.icon == true) deactivate() else fullscreen = false }
+
+    fun message(id: Int) { s.annot2.message = str(id) }
 
     fun togglePlay() {
         val p = player ?: return
@@ -333,7 +344,18 @@ class VideoHost(private val s: ReaderState) {
         optionsOpen = false
         s.edit.edit { a ->
             val poster = when (p.options.poster) { VideoPdf.POSTER_FILE -> p.posterPath ?: a.posterPath; VideoPdf.POSTER_NONE -> a.posterPath; else -> if (a.video?.poster == VideoPdf.POSTER_FILE) null else a.posterPath }
-            a.copy(video = p.options, author = p.title, locked = p.locked, posterPath = poster)
+            val wasIcon = a.video?.icon == true
+            val rects = when {
+                p.options.icon && !wasIcon -> a.rects.firstOrNull()?.let { r -> val n = PageGeometry.normPdf(r); val (pw, ph) = s.pageSizes[a.page] ?: (595f to 842f); listOf(iconBox(n.left, n.top, pw, ph)) } ?: a.rects
+                !p.options.icon && wasIcon -> a.rects.firstOrNull()?.let { r ->
+                    val n = PageGeometry.normPdf(r); val (pw, ph) = s.pageSizes[a.page] ?: (595f to 842f)
+                    val w = pw * 0.4f; val h = w * 9f / 16f
+                    val l = n.left.coerceIn(0f, (pw - w).coerceAtLeast(0f)); val t = n.top.coerceIn(h, ph)
+                    listOf(RectF(l, t, l + w, t - h))
+                } ?: a.rects
+                else -> a.rects
+            }
+            a.copy(video = p.options, author = p.title, locked = p.locked, posterPath = poster, rects = rects)
         }
     }
 
@@ -360,23 +382,43 @@ class VideoHost(private val s: ReaderState) {
                 val mime = VideoPdf.videoMime(name).ifBlank { com.smartdocs.editor.core.annot.MediaAnnots.mimeOf(name) }
                 val pv = PickedVideo(file, name, mime, aspect, posterPath)
                 if (meta == null) s.annot2.message = str(R.string.vid_maybe_unsupported)
-                if (tap != null) place(pv, tap.page, tap.rect, tap.x, tap.y) else { picked = pv; s.annot2.message = str(R.string.vid_tool_hint) }
+                if (tap != null) ask(pv, tap.page, tap.rect, tap.x, tap.y) else { picked = pv; s.annot2.message = str(R.string.vid_tool_hint) }
             } finally { importing = false }
         }
     }
 
-    /** Put [pv] on [page]: in the dragged [rect] (PDF), else a box of 40 % of the page width centred on (x, y). */
-    fun place(pv: PickedVideo, page: Int, rect: RectF?, x: Float, y: Float) {
+    /** Ask how [pv] goes on the page (in-page player box, or an icon that pops up the player); [place] follows. */
+    fun ask(pv: PickedVideo, page: Int, rect: RectF?, x: Float, y: Float) { placement = VideoPlacement(pv, page, rect, x, y) }
+
+    /** The placement dialog's answer. */
+    fun placeChosen(icon: Boolean) {
+        val p = placement ?: return
+        placement = null
+        place(p.video, p.page, p.rect, p.x, p.y, icon)
+    }
+
+    /**
+     * Put [pv] on [page]: in the dragged [rect] (PDF), else a box of 40 % of the page width centred on (x, y).
+     * [icon]: a small video icon at (x, y) instead (tap → pop-up player); a dragged rectangle is ignored.
+     */
+    fun place(pv: PickedVideo, page: Int, rect: RectF?, x: Float, y: Float, icon: Boolean = false) {
         val (pw, ph) = s.pageSizes[page] ?: (595f to 842f)
-        val box = rect?.let { PageGeometry.normPdf(it) } ?: run {
+        val box = if (icon) iconBox(x, y, pw, ph) else rect?.let { PageGeometry.normPdf(it) } ?: run {
             var w = pw * 0.4f; var h = w / pv.aspect.coerceIn(0.2f, 5f)
             if (h > ph * 0.6f) { h = ph * 0.6f; w = h * pv.aspect }
             val l = (x - w / 2).coerceIn(0f, (pw - w).coerceAtLeast(0f)); val t = (y + h / 2).coerceIn(h, ph)
             RectF(l, t, l + w, t - h)
         }
-        val a: Annot = s.newAnnot(AnnotKind.VIDEO, page, rects = listOf(box), text = pv.name, color = 0x000000)
-            .copy(filePath = pv.file.absolutePath, mime = pv.mime, video = VideoPdf.Options(), posterPath = pv.posterPath, opacity = 1f)
+        val a: Annot = s.newAnnot(AnnotKind.VIDEO, page, rects = listOf(box), text = pv.name, color = if (icon) 0x1E6FD9 else 0x000000)
+            .copy(filePath = pv.file.absolutePath, mime = pv.mime, video = VideoPdf.Options(icon = icon), posterPath = pv.posterPath, opacity = 1f)
         picked = null
         s.addAnnot(a)
+    }
+
+    /** The icon form's square (PDF, top = larger y) centred on (x, y), kept inside the page. */
+    private fun iconBox(x: Float, y: Float, pw: Float, ph: Float): RectF {
+        val sz = VideoPdf.ICON_SIZE
+        val l = (x - sz / 2).coerceIn(0f, (pw - sz).coerceAtLeast(0f)); val t = (y + sz / 2).coerceIn(sz, ph)
+        return RectF(l, t, l + sz, t - sz)
     }
 }

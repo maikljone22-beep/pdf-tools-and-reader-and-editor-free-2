@@ -19,6 +19,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Card
+import androidx.compose.material3.Icon
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Movie
+import androidx.compose.material.icons.filled.SmartDisplay
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
@@ -136,6 +141,7 @@ fun VideoDialogs(state: ReaderState) {
     val importClip: suspend (Uri) -> VideoPdf.Alternate? = { uri ->
         MediaIntents.importUri(ctx, uri, h.mediaDir())?.let { (f, n) -> VideoPdf.Alternate(f.absolutePath, n, VideoPdf.videoMime(n).ifBlank { "video/mp4" }) }
     }
+    host.placement?.let { VideoPlacementDialog(onPick = { host.placeChosen(it) }, onDismiss = { host.placement = null; host.picked = it.video; host.message(R.string.vid_tool_hint) }) }
     if (host.optionsOpen) VideoOptionsDialog(host.selectedProps(), importClip, onOk = { host.applyOptions(it) }, onDismiss = { host.optionsOpen = false })
     if (host.fullscreen && host.active != null) FullscreenPlayer(host)
 }
@@ -195,6 +201,8 @@ private fun VideoOptionsDialog(initial: VideoProps, importClip: suspend (Uri) ->
                         OutlinedTextField(title, { title = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.vid_title)) })
                         OutlinedTextField(o.alt, { o = o.copy(alt = it) }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.vid_alt)) })
                         row(R.string.vid_locked, locked) { locked = it }
+                        Text(stringResource(R.string.vid_form), style = MaterialTheme.typography.labelLarge)
+                        chips(listOf(0 to R.string.vid_form_box, 1 to R.string.vid_form_icon), if (o.icon) 1 else 0) { v -> o = o.copy(icon = v == 1) }
                         Text(stringResource(R.string.vid_poster), style = MaterialTheme.typography.labelLarge)
                         chips(listOf(VideoPdf.POSTER_AUTO to R.string.vid_poster_auto, VideoPdf.POSTER_NONE to R.string.vid_poster_none,
                             VideoPdf.POSTER_FILE to R.string.vid_poster_file), o.poster) { v ->
@@ -296,6 +304,33 @@ private fun Context.activity(): Activity? {
  * Full-screen player inside the app (same player: playback continues where it was). Back / the exit button return
  * to the page at the same scroll position. Any orientation; the rotate button forces landscape and back.
  */
+/** After a video was picked and its place tapped: an in-page player box, or an icon that opens the player. */
+@Composable
+private fun VideoPlacementDialog(onPick: (icon: Boolean) -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.vid_place_title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                PlacementChoice(Icons.Default.SmartDisplay, R.string.vid_form_box, R.string.vid_form_box_sub) { onPick(false) }
+                PlacementChoice(Icons.Default.Movie, R.string.vid_form_icon, R.string.vid_form_icon_sub) { onPick(true) }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
+    )
+}
+
+@Composable
+private fun PlacementChoice(icon: androidx.compose.ui.graphics.vector.ImageVector, title: Int, sub: Int, onClick: () -> Unit) {
+    Card(onClick = onClick, Modifier.fillMaxWidth()) {
+        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Icon(icon, null, Modifier.size(32.dp), tint = MaterialTheme.colorScheme.primary)
+            Column { Text(stringResource(title), style = MaterialTheme.typography.titleSmall); Text(stringResource(sub), style = MaterialTheme.typography.bodySmall) }
+        }
+    }
+}
+
 @Composable
 private fun FullscreenPlayer(host: VideoHost) {
     val ctx = LocalContext.current
@@ -307,7 +342,7 @@ private fun FullscreenPlayer(host: VideoHost) {
         onDispose { activity?.requestedOrientation = original }
     }
     Dialog(
-        onDismissRequest = { host.fullscreen = false },
+        onDismissRequest = { host.exitFullscreen() },
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
     ) {
         val view = LocalView.current
@@ -327,7 +362,7 @@ private fun FullscreenPlayer(host: VideoHost) {
             if (host.loading) CircularProgressIndicator(Modifier.size(40.dp), color = Color.White)
             host.error?.let { Text(it, Modifier.padding(24.dp), color = Color.White) }
             Box(Modifier.fillMaxSize().pointerInput(Unit) {
-                detectTapGestures(onTap = { host.controlsVisible = !host.controlsVisible }, onDoubleTap = { host.fullscreen = false })
+                detectTapGestures(onTap = { host.controlsVisible = !host.controlsVisible }, onDoubleTap = { host.exitFullscreen() })
             })
             AutoHide(host)
             if (host.controlsVisible) PlayerControls(

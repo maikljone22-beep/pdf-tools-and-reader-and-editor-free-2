@@ -56,4 +56,11 @@
     <string name="vid_rend_lang">Languages (ar, en)</string>
     <string name="vid_rend_min_w">Min. screen width (px)</string>
     <string name="vid_rend_min_h">Min. screen height (px)</string>
+    <!-- how a video is added: in-page player or icon -->
+    <string name="vid_place_title">How do you want to add the video?</string>
+    <string name="vid_form">Shown as</string>
+    <string name="vid_form_box">Player in the page</string>
+    <string name="vid_form_box_sub">A video box on the page you can move and resize; it plays in place.</string>
+    <string name="vid_form_icon">Video icon</string>
+    <string name="vid_form_icon_sub">A small icon on the page; tapping it pops up the full-screen player.</string>
 </resources>
