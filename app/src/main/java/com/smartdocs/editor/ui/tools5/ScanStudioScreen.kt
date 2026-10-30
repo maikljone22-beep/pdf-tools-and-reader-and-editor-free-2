@@ -80,6 +80,8 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
     var paper by remember { mutableStateOf(ScanPaper.FIT) }
     // full camera resolution and light compression (bigger files) instead of 2400 px / JPEG 82
     var highQuality by remember { mutableStateOf(ctx.getSharedPreferences("scan_studio", 0).getBoolean("high_quality", true)) }
+    var ownCamera by remember { mutableStateOf(ctx.getSharedPreferences("scan_studio", 0).getBoolean("own_camera", true)) }
+    var cameraOpen by remember { mutableStateOf(false) }
     var autoOcr by remember { mutableStateOf(prefs.getBoolean("ocr", true)) }
     var langs by remember { mutableStateOf(prefs.getString("langs", "auto") ?: "auto") }
     var smartName by remember { mutableStateOf(prefs.getBoolean("smart", true)) }
@@ -127,9 +129,10 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
     }
     val unavailable = stringResource(R.string.t5_scan_unavailable)
     fun launchScanner() {
+        val limit = when (kind) { ScanKind.ID_CARD, ScanKind.BUSINESS_CARD -> 2; ScanKind.RECEIPT -> 5; else -> 0 }   // 0 = no page limit
+        if (ownCamera) { cameraOpen = true; return }
         val act = ctx.activity() ?: run { scope.launch { snackbar.showSnackbar(unavailable) }; return }
         runCatching {
-            val limit = when (kind) { ScanKind.ID_CARD, ScanKind.BUSINESS_CARD -> 2; ScanKind.RECEIPT -> 5; else -> 0 }   // 0 = no page limit
             val opts = GmsDocumentScannerOptions.Builder().setGalleryImportAllowed(true).apply { if (limit > 0) setPageLimit(limit) }
                 .setResultFormats(GmsDocumentScannerOptions.RESULT_FORMAT_JPEG).setScannerMode(GmsDocumentScannerOptions.SCANNER_MODE_FULL).build()
             GmsDocumentScanning.getClient(opts).getStartScanIntent(act)
@@ -138,6 +141,11 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
         }.onFailure { scope.launch { snackbar.showSnackbar(unavailable) } }
     }
     val pickGallery = rememberImagePicker { files -> addPictures(files, kind == ScanKind.BATCH) }
+    if (cameraOpen) ScanCameraScreen(
+        pageLimit = when (kind) { ScanKind.ID_CARD, ScanKind.BUSINESS_CARD -> 2; ScanKind.RECEIPT -> 5; else -> 0 },
+        onDone = { files -> cameraOpen = false; if (files.isNotEmpty()) addPictures(files, kind == ScanKind.BATCH) },
+        onClose = { cameraOpen = false },
+    )
 
     val savingMsg = stringResource(R.string.t5_scan_saving)
     val prefixes = mapOf(ScanKind.RECEIPT to stringResource(R.string.t5_prefix_receipt), ScanKind.BUSINESS_CARD to stringResource(R.string.t5_prefix_card), ScanKind.ID_CARD to stringResource(R.string.t5_prefix_id), ScanKind.WHITEBOARD to stringResource(R.string.t5_prefix_board))
@@ -266,6 +274,9 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                     ScanPaper.FIT -> stringResource(R.string.t5_paper_fit); ScanPaper.A4 -> stringResource(R.string.t5_paper_a4); ScanPaper.LETTER -> stringResource(R.string.t5_paper_letter)
                     ScanPaper.CARD -> stringResource(R.string.pc_paper_card); else -> it.name.lowercase().replaceFirstChar { c -> c.uppercase() }.let { n -> if (n.length == 2) n.uppercase() else n }
                 } }) { paper = it }
+                SwitchRow(stringResource(R.string.sc_own_camera), ownCamera, stringResource(R.string.sc_own_camera_sub)) {
+                    ownCamera = it; ctx.getSharedPreferences("scan_studio", 0).edit().putBoolean("own_camera", it).apply()
+                }
                 SwitchRow(stringResource(R.string.sc_high_quality), highQuality, stringResource(R.string.sc_high_quality_sub)) {
                     highQuality = it; ctx.getSharedPreferences("scan_studio", 0).edit().putBoolean("high_quality", it).apply()
                 }

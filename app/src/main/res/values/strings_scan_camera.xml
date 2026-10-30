@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- كاميرا SmartDocs للماسح (ui/tools5/ScanCameraScreen) -->
+    <string name="sc_cam_flash">الفلاش</string>
+    <string name="sc_cam_auto">التقاط تلقائي</string>
+    <string name="sc_cam_grid">شبكة</string>
+    <string name="sc_cam_exposure">التعريض</string>
+    <string name="sc_cam_taking">جارٍ الالتقاط…</string>
+    <string name="sc_cam_hint_find">وجّه الكاميرا نحو الصفحة لتظهر حدودها</string>
+    <string name="sc_cam_hint_hold">ثبّت الهاتف… سيتم الالتقاط تلقائياً</string>
+    <string name="sc_cam_hint_ready">الصفحة جاهزة — انقر زر الالتقاط</string>
+    <string name="sc_cam_done">إنهاء</string>
+    <string name="sc_cam_retake">إعادة</string>
+    <string name="sc_cam_full">الصورة كاملة</string>
+    <string name="sc_cam_use">استخدام</string>
+    <string name="sc_own_camera">كاميرا SmartDocs</string>
+    <string name="sc_own_camera_sub">التقاط بدقة الكاميرا الكاملة مع كشف حدود الصفحة والالتقاط التلقائي. عند الإيقاف يُستخدم ماسح Google.</string>
+</resources>
