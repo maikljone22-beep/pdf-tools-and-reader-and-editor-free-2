@@ -188,6 +188,58 @@ object AccessContent {
         return arr
     }
 
+    /** A structure element's content box on a page, in page space with the origin top-left (fractions 0..1 of the page size). */
+    data class ElemBox(val path: List<Int>, val type: String, val left: Float, val top: Float, val right: Float, val bottom: Float)
+
+    /**
+     * FINAL_CHECK_2 #19 (reading order on the page): the box of every element that has content on [page], in tree
+     * (reading) order — the union of its marked content's glyph boxes (figures without text: their /BBox attribute).
+     */
+    fun elementBoxes(doc: PDDocument, page: Int): List<ElemBox> {
+        val owners = owners(doc, page)
+        if (owners.isEmpty()) return emptyList()
+        val pd = doc.getPage(page)
+        val cb = pd.cropBox
+        val rot = ((pd.rotation % 360) + 360) % 360
+        val pw = if (rot % 180 == 0) cb.width else cb.height; val ph = if (rot % 180 == 0) cb.height else cb.width
+        val ex = object : PDFMarkedContentExtractor() {}
+        runCatching { ex.processPage(pd) }
+        val boxes = HashMap<List<Int>, FloatArray>()   // path → l, t, r, b (fractions)
+        fun add(path: List<Int>, l: Float, t: Float, r: Float, b: Float) {
+            val a = boxes.getOrPut(path) { floatArrayOf(1f, 1f, 0f, 0f) }
+            a[0] = minOf(a[0], l); a[1] = minOf(a[1], t); a[2] = maxOf(a[2], r); a[3] = maxOf(a[3], b)
+        }
+        fun collect(path: List<Int>, c: Any?) {
+            when (c) {
+                is TextPosition -> {
+                    // TextPosition: origin top-left after the page rotation, in points
+                    val x = c.xDirAdj; val y = c.yDirAdj; val w = c.widthDirAdj; val h = c.heightDir
+                    add(path, (x / pw).coerceIn(0f, 1f), ((y - h) / ph).coerceIn(0f, 1f), ((x + w) / pw).coerceIn(0f, 1f), (y / ph).coerceIn(0f, 1f))
+                }
+                is com.tom_roush.pdfbox.pdmodel.documentinterchange.markedcontent.PDMarkedContent -> c.contents.forEach { collect(path, it) }
+                else -> Unit
+            }
+        }
+        ex.markedContents.forEach { mc -> owners[mc.mcid]?.let { (_, path) -> mc.contents.forEach { collect(path, it) } } }
+        // figures with a /BBox but no text (PDF space, y up)
+        AccessInspect.figures(doc).forEach { f ->
+            if (f.page != page || f.bbox == null || f.bbox.size < 4) return@forEach
+            val o = owners.values.map { it.second }.distinct().firstOrNull { p -> boxes[p] == null && AccessTags.at(doc, p) === f.elem } ?: return@forEach
+            val l = (f.bbox[0] - cb.lowerLeftX) / cb.width; val r = (f.bbox[2] - cb.lowerLeftX) / cb.width
+            val t = 1f - (f.bbox[3] - cb.lowerLeftY) / cb.height; val b = 1f - (f.bbox[1] - cb.lowerLeftY) / cb.height
+            if (rot == 0) add(o, l.coerceIn(0f, 1f), t.coerceIn(0f, 1f), r.coerceIn(0f, 1f), b.coerceIn(0f, 1f))
+        }
+        // reading order = the order the owners were met in the tree walk (paths compare lexicographically)
+        return boxes.entries.sortedWith { a, b -> comparePaths(a.key, b.key) }
+            .map { (path, a) -> ElemBox(path, owners.values.firstOrNull { it.second == path }?.first ?: "?", a[0], a[1], a[2], a[3]) }
+            .filter { it.right > it.left && it.bottom > it.top }
+    }
+
+    private fun comparePaths(a: List<Int>, b: List<Int>): Int {
+        for (i in 0 until minOf(a.size, b.size)) { val c = a[i].compareTo(b[i]); if (c != 0) return c }
+        return a.size.compareTo(b.size)
+    }
+
     /** Marks a page's unmarked content with MCIDs (text runs as P, pictures as Figure, decoration as artifacts) without structure, so it can be tagged. */
     fun markPage(doc: PDDocument, page: Int): Boolean = AccessAutoTag.markContent(doc, doc.getPage(page))
 }
