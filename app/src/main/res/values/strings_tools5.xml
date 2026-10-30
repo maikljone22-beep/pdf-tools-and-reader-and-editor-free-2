@@ -401,4 +401,11 @@
     <string name="t5_alt_mode_ai">اقتراح ذكي</string>
     <string name="t5_alt_mode_text">نص ثابت</string>
     <string name="t5_alt_mode_decorative">زخرفية</string>
+    <string name="t5_watch_title">المجلدات المراقبة</string>
+    <string name="t5_watch_sub">اختر مجلداً ووصفة: كل ملف جديد يُضاف إلى المجلد يمرّ بالوصفة تلقائياً (فحص كل 15 دقيقة)، وتُحفظ النتائج في مجلد فرعي «SmartDocs Output».</string>
+    <string name="t5_watch_add">إضافة مجلد</string>
+    <string name="t5_watch_scan_now">فحص الآن</string>
+    <string name="t5_watch_pick_recipe">اختر الوصفة لهذا المجلد</string>
+    <string name="t5_watch_recursive">يشمل المجلدات الفرعية</string>
+    <string name="t5_watch_handled">%1$d ملف عولج</string>
 </resources>

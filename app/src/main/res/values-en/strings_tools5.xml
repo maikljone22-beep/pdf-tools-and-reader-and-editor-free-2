@@ -401,4 +401,11 @@
     <string name="t5_alt_mode_ai">AI suggestion</string>
     <string name="t5_alt_mode_text">Fixed text</string>
     <string name="t5_alt_mode_decorative">Decorative</string>
+    <string name="t5_watch_title">Watched folders</string>
+    <string name="t5_watch_sub">Pick a folder and a recipe: every new file in the folder runs through the recipe automatically (checked every 15 minutes); results go to a "SmartDocs Output" sub-folder.</string>
+    <string name="t5_watch_add">Add folder</string>
+    <string name="t5_watch_scan_now">Scan now</string>
+    <string name="t5_watch_pick_recipe">Recipe for this folder</string>
+    <string name="t5_watch_recursive">Include sub-folders</string>
+    <string name="t5_watch_handled">%1$d files handled</string>
 </resources>

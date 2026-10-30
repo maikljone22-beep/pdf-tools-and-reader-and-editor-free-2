@@ -48,16 +48,26 @@ object SafFolders {
     }
 
     /** Documents of [tree] accepted by [accept] (by name), sub-folders too when [recursive]; sorted by path. */
-    fun list(ctx: Context, tree: Uri, recursive: Boolean, accept: (String) -> Boolean, limit: Int = 2000): List<Entry> {
+    fun list(ctx: Context, tree: Uri, recursive: Boolean, accept: (String) -> Boolean, limit: Int = 2000, skipDir: (String) -> Boolean = { false }): List<Entry> {
         val out = ArrayList<Entry>()
         fun walk(folder: Uri, depth: Int) {
             val kids = runCatching { children(ctx, folder) }.getOrDefault(emptyList()).sortedBy { it.name.lowercase() }
             kids.filter { !it.dir && accept(it.name) }.forEach { if (out.size < limit) out += Entry(it.uri, it.name, folder) }
-            if (recursive && depth < 12) kids.filter { it.dir }.forEach { walk(it.uri, depth + 1) }
+            if (recursive && depth < 12) kids.filter { it.dir && !skipDir(it.name) }.forEach { walk(it.uri, depth + 1) }
         }
         walk(root(tree), 0)
         return out
     }
+
+    /** Size and last-modified time of a document (0 when the provider does not say). */
+    fun stat(ctx: Context, doc: Uri): Pair<Long, Long> = runCatching {
+        ctx.contentResolver.query(doc, arrayOf(DocumentsContract.Document.COLUMN_SIZE, DocumentsContract.Document.COLUMN_LAST_MODIFIED), null, null, null)?.use { c ->
+            if (c.moveToFirst()) (if (c.isNull(0)) 0L else c.getLong(0)) to (if (c.isNull(1)) 0L else c.getLong(1)) else null
+        }
+    }.getOrNull() ?: (0L to 0L)
+
+    /** The sub-folder [name] of [folder], or null when there is none. */
+    fun childDir(ctx: Context, folder: Uri, name: String): Uri? = runCatching { children(ctx, folder).firstOrNull { it.dir && it.name == name }?.uri }.getOrNull()
 
     /** Names of the files in [folder] (to check output names before a run). */
     fun names(ctx: Context, folder: Uri): Set<String> = runCatching { children(ctx, folder).filter { !it.dir }.map { it.name }.toSet() }.getOrDefault(emptySet())

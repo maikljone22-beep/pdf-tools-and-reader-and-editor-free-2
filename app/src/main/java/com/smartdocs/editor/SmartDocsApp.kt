@@ -30,6 +30,7 @@ class SmartDocsApp : Application() {
         documents = DocumentRepository(this, db)
         com.smartdocs.editor.core.search.IndexWorker.schedule(this)
         com.smartdocs.editor.core.errors.ErrorReporter.schedule(this)   // send errors left from the last run
+        com.smartdocs.editor.core.tools5.WatchedFolders.schedule(this)   // FINAL_CHECK_2 #22: watched folders keep being checked
         runCatching { com.smartdocs.editor.core.files.NpfSaveFolder.start(this) }   // nav-prefs: default save folder + index of new outputs
         // share6
         runCatching { com.smartdocs.editor.core.sync.SyncLive.install(this) }                 // near-real-time sync, 15-min jobs, review notifications
