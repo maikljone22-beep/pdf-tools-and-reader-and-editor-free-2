@@ -179,4 +179,9 @@
     <string name="cv6_ex_saved_n">Saved %1$d images</string>
     <string name="cv6_ex_gallery_n">Added %1$d images to the gallery (Pictures/SmartDocs)</string>
     <string name="cv6_err_web_timeout">The page did not load within a minute. Check the connection or try another link.</string>
+    <string name="cv6_ex_colour">Colour</string>
+    <string name="cv6_ex_colour_keep">As is</string>
+    <string name="cv6_ex_resolution">Resolution (longest side)</string>
+    <string name="cv6_ex_res_keep">Original</string>
+    <string name="cv6_ex_res_px">Up to %1$d px</string>
 </resources>

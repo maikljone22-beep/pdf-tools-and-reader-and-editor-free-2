@@ -225,7 +225,7 @@ internal class Cv6Engine2(private val ctx: Context, private val docs: DocumentRe
         try {
             val fmt = when (o.imgFormat) { ImgFmt.PNG -> ImageFormat.PNG; ImgFmt.WEBP -> ImageFormat.WEBP; else -> ImageFormat.JPG }
             val dir = engine.workDir(f.nameWithoutExtension + "_images")
-            val pages = ExportPlus.images(ctx, pdf, null, ImageExportOptions(fmt, o.dpi, false, o.quality), dir, p)
+            val pages = ExportPlus.images(ctx, pdf, null, ImageExportOptions(fmt, o.dpi, false, false, o.quality), dir, p)
             // ExportPlus names pages after the PDF: rename to the source document
             val named = pages.map { x -> val n = File(dir, x.name.replace(pdf.nameWithoutExtension, f.nameWithoutExtension)); if (n != x && x.renameTo(n)) n else x }
             return engine.packFiles(named, o.zip, f.nameWithoutExtension + "_images")

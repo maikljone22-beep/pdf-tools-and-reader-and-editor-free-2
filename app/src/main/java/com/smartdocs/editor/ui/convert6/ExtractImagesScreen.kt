@@ -74,6 +74,9 @@ fun ExtractImagesScreen(nav: NavHostController, uri: String?) {
     var minSide by remember { mutableIntStateOf(32) }
     /** s6: output format of the extracted pictures (null = original). */
     var outFmt by remember { mutableStateOf<com.smartdocs.editor.core.convert6.ImgFmt?>(null) }
+    // FINAL_CHECK_2 Low (B #32): colour space and resolution of the extracted pictures
+    var grayOut by remember { mutableStateOf(false) }
+    var maxSide by remember { mutableIntStateOf(0) }
     var mode by remember { mutableStateOf(NameMode.PAGE_INDEX) }
     var items by remember { mutableStateOf<List<Extracted>>(emptyList()) }
     var selected by remember { mutableStateOf<Set<Int>>(emptySet()) }
@@ -108,7 +111,7 @@ fun ExtractImagesScreen(nav: NavHostController, uri: String?) {
 
     fun extract() {
         val f = file ?: return
-        val r = range; val m = minSide; val pw = password.ifBlank { null }; val fmt = outFmt
+        val r = range; val m = minSide; val pw = password.ifBlank { null }; val fmt = outFmt; val exGray = grayOut; val exMaxSide = maxSide
         job.launch(ctx.getString(R.string.cv6_ex_running)) {
             // audit 5 C-18: the work folder is cleared off the main thread
             val work = withContext(Dispatchers.IO) { File(app.documents.tempDir, "cv6_extract").also { it.deleteRecursively(); it.mkdirs() } }
@@ -125,7 +128,7 @@ fun ExtractImagesScreen(nav: NavHostController, uri: String?) {
                 needPw = true; error = ctx.getString(if (pw == null) R.string.cv_password_needed else R.string.cvf_pw_wrong_short); return@launch
             }
             needPw = false
-            val converted = ImageExtract6.convertAll(list, fmt, 90)
+            val converted = ImageExtract6.convertAll(list, fmt, 90, exGray, exMaxSide)
             items = converted; selected = converted.indices.toSet(); overrides = emptyMap()
             if (list.isEmpty()) error = if (skipped > 0) ctx.getString(R.string.cvf_ex_skipped, skipped) else ctx.getString(R.string.cv6_ex_none)
             else if (skipped > 0) error = ctx.getString(R.string.cvf_ex_skipped, skipped)
@@ -188,6 +191,10 @@ fun ExtractImagesScreen(nav: NavHostController, uri: String?) {
                     // s6: output format (original encoding kept by default)
                     ChoiceChips(listOf(null, com.smartdocs.editor.core.convert6.ImgFmt.JPG, com.smartdocs.editor.core.convert6.ImgFmt.PNG, com.smartdocs.editor.core.convert6.ImgFmt.WEBP), outFmt,
                         { it?.name ?: stringResource(R.string.cv9_ex_original) }) { outFmt = it }
+                    FieldLabel(stringResource(R.string.cv6_ex_colour))
+                    ChoiceChips(listOf(false, true), grayOut, { stringResource(if (it) R.string.cv6_gray else R.string.cv6_ex_colour_keep) }) { grayOut = it }
+                    FieldLabel(stringResource(R.string.cv6_ex_resolution))
+                    ChoiceChips(listOf(0, 800, 1600, 3200), maxSide, { if (it == 0) stringResource(R.string.cv6_ex_res_keep) else stringResource(R.string.cv6_ex_res_px, it) }) { maxSide = it }
                     FieldLabel(stringResource(R.string.cv6_ex_naming))
                     ChoiceChips(NameMode.entries, mode, { when (it) { NameMode.PAGE_INDEX -> stringResource(R.string.cv6_ex_name_page); NameMode.RESOURCE -> stringResource(R.string.cv6_ex_name_res); NameMode.CAPTION -> stringResource(R.string.cv6_ex_name_caption) } }) { mode = it }
                     Text(stringResource(R.string.cv6_ex_example, if (names.isNotEmpty()) names.first() else ImageExtract6.names(listOf(Extracted(File("x.png"), 3, 1, "Im7", ctx.getString(R.string.cv6_ex_sample_caption), 0, 0, "png")), mode, docName).first()),

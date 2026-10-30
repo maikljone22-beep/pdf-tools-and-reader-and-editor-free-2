@@ -344,7 +344,7 @@ class Cv6Engine(private val ctx: Context, private val docs: DocumentRepository) 
         "pdf_images" -> {
             val fmt = when (o.imgFormat) { ImgFmt.PNG -> ImageFormat.PNG; ImgFmt.WEBP -> ImageFormat.WEBP; else -> ImageFormat.JPG }
             val dir = workDir(base + "_images")
-            val files = ExportPlus.images(ctx, f, pw, ImageExportOptions(fmt, o.dpi, o.gray, o.quality, pagesOf(f, pw, o.rangeFor(f)), zip = false), dir, p)
+            val files = ExportPlus.images(ctx, f, pw, ImageExportOptions(fmt, o.dpi, o.gray, o.bw, o.quality, pagesOf(f, pw, o.rangeFor(f)), zip = false), dir, p)
                 .map { x -> File(dir, x.name.replace(f.nameWithoutExtension, base)).let { n -> if (n != x && x.renameTo(n)) n else x } }
             Cv6Result(pack(files, o.zip, base + "_images"))
         }
