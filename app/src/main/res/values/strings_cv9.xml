@@ -83,4 +83,6 @@
     <string name="cv9_docx_comments_sub">تعليقات PDF (الملاحظات، التظليل، الأشكال) تصبح تعليقات Word على النص الذي تقع عليه</string>
     <string name="cv9_xlsx_separators">فواصل الأرقام في المصدر</string>
     <string name="cv9_out_show">عرض المجلد</string>
+    <string name="cv9_eml_attach">تحويل المرفقات وإلحاقها بعد الرسالة</string>
+    <string name="cv9_info_eml_appended">أُلحقت %1$d من المرفقات بعد الرسالة</string>
 </resources>

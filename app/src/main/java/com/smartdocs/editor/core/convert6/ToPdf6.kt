@@ -190,7 +190,7 @@ object ToPdf6 {
      */
     suspend fun convert(ctx: Context, f: File, out: File, setup: PageSetup = PageSetup(), quality: Int = 88, bookmarks: Boolean = false,
                         speakerNotes: Boolean = false, cellComments: Boolean = false, slideRange: String = "", hiddenSlides: Boolean = true,
-                        excelFit: Int = ExcelFit.AUTO, info: (String) -> Unit = {}): File {
+                        excelFit: Int = ExcelFit.AUTO, emlAttachments: Boolean = false, info: (String) -> Unit = {}): File {
         coroutineContext.ensureActive()
         val kind = FileKind6.of(f)
         val title = f.nameWithoutExtension
@@ -248,6 +248,28 @@ object ToPdf6 {
                         com.smartdocs.editor.core.pdf.PdfOps.loadRaw(out, null).use { pd -> Embed.addFiles(pd, doc.attachments); pd.save(att) }
                         if (!att.renameTo(out)) att.copyTo(out, overwrite = true)
                     } finally { att.delete() }
+                }
+                // FINAL_CHECK_2 Low: convert the attachments too and append them after the message
+                if (emlAttachments && doc.attachments.isNotEmpty()) {
+                    val parts = ArrayList<File>(); val names = ArrayList<String>()
+                    val dir = File(tmp, "eml_att_${System.nanoTime()}").apply { mkdirs() }
+                    try {
+                        doc.attachments.forEachIndexed { i, a ->
+                            val src = File(dir, "${i}_" + a.name.replace(Regex("[\\\\/:*?\"<>|]"), "_").take(80))
+                            withContext(Dispatchers.IO) { src.writeBytes(a.bytes) }
+                            val k = FileKind6.of(src)
+                            if (k == Kind6.UNKNOWN || k == Kind6.ZIP || k == Kind6.EML) return@forEachIndexed
+                            val pdf = if (k == Kind6.PDF) src else File(dir, "${i}.pdf")
+                            val ok = k == Kind6.PDF || runCatching { convert(ctx, src, pdf, setup, quality) { } }.isSuccess
+                            if (ok && pdf.length() > 0) { parts += pdf; names += a.name }
+                        }
+                        if (parts.isNotEmpty()) {
+                            val merged = File(dir, "merged.pdf")
+                            com.smartdocs.editor.core.pdf.PdfOps.merge(listOf(out) + parts, merged)
+                            withContext(Dispatchers.IO) { merged.copyTo(out, overwrite = true) }
+                            info(ctx.getString(R.string.cv9_info_eml_appended, names.size))
+                        }
+                    } finally { dir.deleteRecursively() }
                 }
                 out
             }
