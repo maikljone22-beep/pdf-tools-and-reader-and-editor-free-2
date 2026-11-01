@@ -38,6 +38,50 @@ object ScanClean {
     }
 
     /** Eraser: paints the [rects] (fractions of the picture: left, top, right, bottom) white. */
+    /** Skin tone (YCbCr box rule, also for darker skin). */
+    internal fun skin(c: Int): Boolean {
+        val r = (c shr 16) and 0xFF; val g = (c shr 8) and 0xFF; val b = c and 0xFF
+        val y = 0.299 * r + 0.587 * g + 0.114 * b
+        val cb = 128 - 0.168736 * r - 0.331264 * g + 0.5 * b
+        val cr = 128 + 0.5 * r - 0.418688 * g - 0.081312 * b
+        return y > 40 && cb in 77.0..127.0 && cr in 135.0..173.0 && r > b && r > g
+    }
+
+    /**
+     * Scanner essentials: fingers holding a book open — skin-coloured areas that touch the left, right or bottom edge
+     * of the page, inside the outer [band] of it, are painted with the paper colour. Returns the pixels changed. Pure.
+     */
+    fun removeFingers(px: IntArray, w: Int, h: Int, band: Float = 0.16f): Int {
+        if (w < 16 || h < 16) return 0
+        val bw = (w * band).toInt().coerceAtLeast(2); val bh = (h * band).toInt().coerceAtLeast(2)
+        fun inBand(x: Int, y: Int) = x < bw || x >= w - bw || y >= h - bh
+        val hit = BooleanArray(w * h); val stack = IntArray(w * h); var sp = 0
+        fun push(i: Int) { if (!hit[i] && skin(px[i])) { val x = i % w; val y = i / w; if (inBand(x, y)) { hit[i] = true; stack[sp++] = i } } }
+        for (y in 0 until h) { push(y * w); push(y * w + w - 1) }
+        for (x in 0 until w) push((h - 1) * w + x)
+        while (sp > 0) {
+            val i = stack[--sp]; val x = i % w; val y = i / w
+            if (x > 0) push(i - 1); if (x < w - 1) push(i + 1); if (y > 0) push(i - w); if (y < h - 1) push(i + w)
+        }
+        var n = 0; for (v in hit) if (v) n++
+        // too small to be a finger (a skin-toned print), or more than the band (a photo of a person): leave it
+        if (n < w * h / 2000 || n > w * h / 6) return 0
+        // paper colour: the light, non-skin pixels of the band
+        val samples = ArrayList<Int>()
+        var i = 0
+        while (i < px.size) { val x = i % w; val y = i / w; if (inBand(x, y) && !hit[i]) samples += px[i]; i += 37 }
+        val paper = samples.sortedBy { c -> ((c shr 16) and 0xFF) + ((c shr 8) and 0xFF) + (c and 0xFF) }.let { if (it.isEmpty()) -0x1 else it[it.size * 4 / 5] }
+        // a little around the finger too (its shadow and soft edge)
+        val grow = (minOf(w, h) / 150).coerceAtLeast(1)
+        val out = hit.copyOf()
+        for (y in 0 until h) for (x in 0 until w) if (hit[y * w + x]) for (dy in -grow..grow) for (dx in -grow..grow) {
+            val xx = x + dx; val yy = y + dy; if (xx in 0 until w && yy in 0 until h) out[yy * w + xx] = true
+        }
+        var changed = 0
+        for (k in out.indices) if (out[k]) { px[k] = paper; changed++ }
+        return changed
+    }
+
     fun erase(px: IntArray, w: Int, h: Int, rects: List<FloatArray>) {
         for (r in rects) {
             if (r.size < 4) continue

@@ -101,4 +101,21 @@
     <string name="sc_format_pdf_needed">This kind is saved as PDF because its text is read.</string>
     <string name="sc_drop_edits">Keep the edits on this page?</string>
     <string name="sc_discard_edits">Discard</string>
+    <string name="sc_format_word">Word file</string>
+    <string name="sc_word_hint">The text is recognised and the scan becomes an editable Word file.</string>
+    <string name="sc_saving_word">Creating the Word file…</string>
+    <string name="sc_save_word">Save as Word</string>
+    <string name="sc_save_append">Add the pages to the file</string>
+    <string name="sc_append_none">Saved as a new file</string>
+    <string name="sc_append_target">Pages are added to the end of: %1$s</string>
+    <string name="sc_append_pick">Add to an existing PDF…</string>
+    <string name="sc_appended_to">Pages added to %1$s</string>
+    <string name="sc_appended_copy">%1$s could not be written, so a full copy was saved in scans</string>
+    <string name="sc_fingers">Remove fingers from book edges</string>
+    <string name="sc_fingers_sub">Fingers seen at the edges are painted with the paper colour</string>
+    <string name="sc_auto_rotate">Turn pages upright automatically</string>
+    <string name="sc_auto_rotate_sub">Upside-down or sideways pages are turned by their text</string>
+    <string name="sc_orienting">Turning pages upright…</string>
+    <string name="sc_page_deleted">Page deleted</string>
+    <string name="sc_undo">Undo</string>
 </resources>

@@ -82,7 +82,7 @@ class ScanBuildResult(val file: File, val pages: Int, val text: String)
 object ScanBuilder {
 
     /** Turn the captured images + edits of one document into page pictures, according to the scan [kind]. */
-    fun pagePictures(images: List<Pair<File, PageEdit>>, kind: ScanKind, bookRightFirst: Boolean, maxDim: Int = 2400): Sequence<ScanOut> = sequence {
+    fun pagePictures(images: List<Pair<File, PageEdit>>, kind: ScanKind, bookRightFirst: Boolean, maxDim: Int = 2400, removeFingers: Boolean = false): Sequence<ScanOut> = sequence {
         if (kind == ScanKind.ID_CARD) {
             val shots = images.take(2).mapNotNull { (f, e) -> ScanImage.load(f, ScanImage.loadDim(maxDim, e.crop))?.let { ScanImage.apply(it, e, maxOut = maxDim) } }
             if (shots.isNotEmpty()) {
@@ -98,6 +98,11 @@ object ScanBuilder {
             val target = if (kind == ScanKind.BOOK) minOf(maxDim * 3 / 2, 4200) else maxDim
             val b = ScanImage.load(f, minOf(ScanImage.loadDim(target, e.crop), if (kind == ScanKind.BOOK) 4600 else 5300)) ?: return@forEach
             val done = ScanImage.apply(b, e, dewarp = e.flatten && kind != ScanKind.BOOK, maxOut = target)
+            // scanner essentials: fingers holding a book open are painted over with the paper
+            if (removeFingers && kind == ScanKind.BOOK) {
+                val fp = IntArray(done.width * done.height); done.getPixels(fp, 0, done.width, 0, 0, done.width, done.height)
+                if (ScanClean.removeFingers(fp, done.width, done.height) > 0) done.setPixels(fp, 0, done.width, 0, 0, done.width, done.height)
+            }
             if (kind == ScanKind.BOOK) {
                 // a spread bends both ways from the spine: each page is flattened on its own
                 // deep audit E11: a half flattened into a new bitmap frees the old one
