@@ -88,6 +88,7 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
     var asImages by remember { mutableStateOf(prefs.getBoolean("as_images", false)) }
     // scanner essentials: Word output, add to an existing PDF, upright pages, fingers off book edges
     var asWord by remember { mutableStateOf(prefs.getBoolean("as_word", false)) }
+    var wordFont by remember { mutableStateOf(prefs.getString("word_font", "Simplified Arabic") ?: "Simplified Arabic") }
     var appendTo by remember { mutableStateOf<android.net.Uri?>(null) }
     var appendName by remember { mutableStateOf("") }
     var autoRotate by remember { mutableStateOf(prefs.getBoolean("auto_rotate", true)) }
@@ -298,6 +299,24 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                     val today = t5Today()
                     val tmpOut = app.documents.newTemp("t5scan_out", "pdf")
                     val ocrLangs = if (!needText) null else if (langs == "auto") detectLangs(engine!!, g.first()) else langs
+                    // photo → faithful Word (specs/SCAN_TO_WORD_PLAN.md phase 1): straight from the page pictures, no PDF
+                    // in between — page size, sizes, bold, colour, ruled tables and figures kept
+                    if (word) {
+                        tmpOut.delete()
+                        val l = ocrLangs ?: "ara+eng"
+                        engine!!.ensureLanguages(l)
+                        if (!engine.init(l)) throw IllegalStateException(ctx.getString(R.string.sc_save_failed))
+                        val wbase = typed.ifEmpty { (prefixes[k] ?: "Scan") + "_" + SimpleDateFormat("yyyyMMdd_HHmm", Locale.US).format(Date()) } + if (docs.size > 1) "_${gi + 1}" else ""
+                        val outDocx = app.documents.uniqueFile(app.documents.scansDir, wbase, "docx")
+                        val pics = ScanBuilder.pagePictures(g.map { it.file to it.edit }, k, rf, maxDim = maxOf(sizeDim(lvl), 2400), removeFingers = fingers)
+                        val wr = try {
+                            com.smartdocs.editor.core.scan2word.ScanToWordRunner.convert(pics, engine, outDocx, wbase, wordFont, "Times New Roman") { n -> step(gi * 100 + minOf(99, n * 100 / g.size.coerceAtLeast(1)), docs.size * 100) }
+                        } catch (e: Throwable) { outDocx.delete(); throw e }
+                        runCatching { app.documents.touchRecent(outDocx, wr.pages) }
+                        made += outDocx; lastText = wr.text
+                        if (wr.text.isNotBlank()) { if (texts.isNotEmpty()) texts.append("\n\n"); texts.append(wr.text) }
+                        return@forEachIndexed
+                    }
                     val pictures = ScanBuilder.pagePictures(g.map { it.file to it.edit }, k, rf, maxDim = sizeDim(sizeLevel), removeFingers = fingers)
                     val r = ScanBuilder.build(ctx, pictures, tmpOut, ScanBuildOptions(paper = p, quality = sizeQuality(sizeLevel), ocrLangs = ocrLangs), engine) { n -> step(gi * 100 + n, docs.size * 100) }
                     val base = when {
@@ -326,18 +345,6 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                             val n = com.smartdocs.editor.core.pdf.PdfOps.loadRaw(tmpOut, null).use { d -> com.smartdocs.editor.core.formsx.FieldRecognition.recognizeAll(d).also { if (it > 0) d.save(ff) } }
                             if (n > 0) { ff.copyTo(tmpOut, true) }; ff.delete(); n
                         }.getOrDefault(0)
-                    }
-                    // scanner essentials: Word — the searchable scan converted to a .docx (the PDF is not kept)
-                    if (word) {
-                        val named = File(app.documents.tempDir, "${com.smartdocs.editor.core.files.FileNames.clean(base).ifBlank { "Scan" }}.pdf").also { it.delete() }
-                        withContext(Dispatchers.IO) { if (!tmpOut.renameTo(named)) { tmpOut.copyTo(named, true); tmpOut.delete() } }
-                        try {
-                            val conv = com.smartdocs.editor.core.convert6.Cv6Catalog.byId("pdf_docx") ?: throw IllegalStateException("docx")
-                            val res = com.smartdocs.editor.core.convert6.Cv6Engine(ctx, app.documents).run(conv, listOf(named), com.smartdocs.editor.core.convert6.Cv6Opts(), null) { _, _, _ -> }
-                            made += res.files; lastText = r.text
-                            if (r.text.isNotBlank()) { if (texts.isNotEmpty()) texts.append("\n\n"); texts.append(r.text) }
-                        } finally { named.delete() }
-                        return@forEachIndexed
                     }
                     // scanner essentials: add the pages at the end of an existing PDF (written back when the app may)
                     if (target != null && docs.size == 1) {
@@ -503,6 +510,11 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                 }
                 if ((!asImages && !asWord) || kindNeedsPdf(kind)) SwitchRow(stringResource(R.string.t5_auto_ocr), autoOcr, stringResource(R.string.t5_auto_ocr_hint)) { autoOcr = it }
                 if (asWord && !kindNeedsPdf(kind)) Text(stringResource(R.string.sc_word_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (asWord && !kindNeedsPdf(kind)) {
+                    // the nearest of the common Arabic text faces (a photo cannot tell the exact font)
+                    FieldLabel(stringResource(R.string.sc_word_font))
+                    ChoiceChips(listOf("Simplified Arabic", "Traditional Arabic", "Arial"), wordFont, { it }) { wordFont = it; prefs.edit().putString("word_font", it).apply() }
+                }
                 // add to an existing PDF (one document only)
                 if (!asImages && !asWord && groups.size == 1) Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(if (appendTo != null) stringResource(R.string.sc_append_target, appendName) else stringResource(R.string.sc_append_none), Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
