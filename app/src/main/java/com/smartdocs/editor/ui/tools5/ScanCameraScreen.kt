@@ -39,6 +39,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import com.smartdocs.editor.core.tools5.ScanKind
+import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.ui.semantics.selected
 import androidx.compose.runtime.produceState
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenuItem
@@ -133,7 +140,8 @@ import kotlin.math.roundToInt
  * still returned when there are any).
  */
 @Composable
-fun ScanCameraScreen(pageLimit: Int = 0, onDone: (List<Pair<File, PageQuad.Quad?>>) -> Unit, onClose: () -> Unit, onUseGoogle: (() -> Unit)? = null) {
+fun ScanCameraScreen(pageLimit: Int = 0, onDone: (List<Pair<File, PageQuad.Quad?>>) -> Unit, onClose: () -> Unit, onUseGoogle: (() -> Unit)? = null,
+                     kind: ScanKind = ScanKind.DOCUMENT, onKind: ((ScanKind) -> Unit)? = null, onGallery: ((List<Pair<File, PageQuad.Quad?>>) -> Unit)? = null) {
     val ctx = LocalContext.current
     var granted by remember { mutableStateOf(ContextCompat.checkSelfPermission(ctx, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) }
     var denied by remember { mutableStateOf(false) }
@@ -148,7 +156,7 @@ fun ScanCameraScreen(pageLimit: Int = 0, onDone: (List<Pair<File, PageQuad.Quad?
         owner.lifecycle.addObserver(obs); onDispose { owner.lifecycle.removeObserver(obs) }
     }
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false, dismissOnBackPress = false)) {
-        if (granted) Box(Modifier.fillMaxSize()) { CameraBody(pageLimit, onDone, onClose) }
+        if (granted) Box(Modifier.fillMaxSize()) { CameraBody(pageLimit, onDone, onClose, kind, onKind, onGallery) }
         else if (denied) {
             // scanner UX audit: a refused permission used to close the camera without a word
             BackHandler { onClose() }
@@ -173,7 +181,8 @@ fun ScanCameraScreen(pageLimit: Int = 0, onDone: (List<Pair<File, PageQuad.Quad?
 private class Shot(val file: File, val preview: Bitmap, val fullW: Int, val fullH: Int, var quad: PageQuad.Quad)
 
 @Composable
-private fun CameraBody(pageLimit: Int, onDone: (List<Pair<File, PageQuad.Quad?>>) -> Unit, onClose: () -> Unit) {
+private fun CameraBody(pageLimit: Int, onDone: (List<Pair<File, PageQuad.Quad?>>) -> Unit, onClose: () -> Unit,
+                       kind: ScanKind, onKind: ((ScanKind) -> Unit)?, onGallery: ((List<Pair<File, PageQuad.Quad?>>) -> Unit)?) {
     val ctx = LocalContext.current
     val app = LocalApp.current
     val lifecycle = LocalLifecycleOwner.current
@@ -369,11 +378,23 @@ private fun CameraBody(pageLimit: Int, onDone: (List<Pair<File, PageQuad.Quad?>>
             )
             if (status.isNotEmpty()) Text(status, Modifier.padding(top = 6.dp).background(Color(0xCC1E6FD9), RoundedCornerShape(12.dp)).padding(horizontal = 10.dp, vertical = 4.dp)
                 .semantics { liveRegion = LiveRegionMode.Polite }, color = Color.White, style = MaterialTheme.typography.labelLarge)
+            // S4: what to photograph for this kind (ID card: front, then back …)
+            kindGuide(kind, pages.value.size)?.let { g -> Text(stringResource(g), Modifier.padding(top = 6.dp).background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(12.dp)).padding(horizontal = 10.dp, vertical = 4.dp),
+                color = Color(0xFFFFE082), style = MaterialTheme.typography.labelLarge) }
             if (pageLimit > 0) Text(stringResource(R.string.sc_cam_limit, pages.value.size, pageLimit), Modifier.padding(top = 6.dp), color = Color.White, style = MaterialTheme.typography.labelMedium)
         }
         LaunchedEffect(status) { if (status.isNotEmpty()) { kotlinx.coroutines.delay(2200); status = "" } }
         // bottom: exposure, shutter, pages
         Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding().padding(bottom = 16.dp)) {
+            // S4: the scan kinds right in the camera (they were chosen on the screen before)
+            if (onKind != null) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                ScanKind.entries.forEach { k ->
+                    val sel = k == kind
+                    Text(k.label(), Modifier.clip(RoundedCornerShape(16.dp)).background(if (sel) Color.White else Color.Black.copy(alpha = 0.45f))
+                        .clickable(enabled = !capturing) { onKind(k) }.semantics { selected = sel }.padding(horizontal = 12.dp, vertical = 8.dp),
+                        color = if (sel) Color.Black else Color.White, style = MaterialTheme.typography.labelLarge)
+                }
+            }
             if (exposureOpen) {
                 val st = controller.cameraInfo?.exposureState
                 val lo = st?.exposureCompensationRange?.lower ?: 0; val hi = st?.exposureCompensationRange?.upper ?: 0
@@ -382,7 +403,10 @@ private fun CameraBody(pageLimit: Int, onDone: (List<Pair<File, PageQuad.Quad?>>
                     Modifier.fillMaxWidth().padding(horizontal = 32.dp).semantics { contentDescription = expLabel }, valueRange = lo.toFloat()..hi.toFloat(), steps = (hi - lo - 1).coerceAtLeast(0))
             }
             Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(56.dp))
+                // gallery: the pages taken so far are kept, then photos are picked
+                if (onGallery != null) FilledIconButton(onClick = { if (!capturing) onGallery(pages.value) }, Modifier.size(56.dp), colors = IconButtonDefaults.filledIconButtonColors(containerColor = Color.Black.copy(alpha = 0.5f))) {
+                    Icon(Icons.Default.PhotoLibrary, stringResource(R.string.t5_from_gallery), tint = Color.White)
+                } else Box(Modifier.size(56.dp))
                 val shutterLabel = stringResource(R.string.sc_cam_shutter)
                 FilledIconButton(onClick = { capture() }, Modifier.size(78.dp).semantics { contentDescription = shutterLabel }, enabled = !capturing, shape = CircleShape,
                     colors = IconButtonDefaults.filledIconButtonColors(containerColor = Color.White)) {
@@ -591,4 +615,15 @@ internal fun ScanCornerEditor(file: File, initial: FloatArray?, onCancel: () -> 
             }
         }
     }
+}
+
+/** S4: what to photograph next for [kind] after [taken] photos (null = the general hint is enough). */
+private fun kindGuide(kind: ScanKind, taken: Int): Int? = when (kind) {
+    ScanKind.ID_CARD, ScanKind.BUSINESS_CARD -> if (taken == 0) R.string.sc_guide_front else R.string.sc_guide_back
+    ScanKind.BOOK -> R.string.sc_guide_book
+    ScanKind.RECEIPT -> R.string.sc_guide_receipt
+    ScanKind.WHITEBOARD -> R.string.sc_guide_board
+    ScanKind.FORM -> R.string.sc_guide_form
+    ScanKind.BATCH -> R.string.sc_guide_batch
+    else -> null
 }

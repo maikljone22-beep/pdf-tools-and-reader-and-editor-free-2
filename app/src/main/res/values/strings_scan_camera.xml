@@ -74,4 +74,11 @@
     <string name="sc_apply_all_look">تطبيق الفلتر والإضاءة والتباين على كل الصفحات</string>
     <string name="sc_prev_page">الصفحة السابقة</string>
     <string name="sc_next_page">الصفحة التالية</string>
+    <string name="sc_guide_front">الوجه الأمامي للبطاقة</string>
+    <string name="sc_guide_back">الآن اقلب البطاقة: الوجه الخلفي</string>
+    <string name="sc_guide_book">ضع الكتاب مفتوحاً: صفحتان في كل صورة</string>
+    <string name="sc_guide_receipt">صوّر الإيصال كاملاً من أعلاه إلى أسفله</string>
+    <string name="sc_guide_board">صوّر السبورة من الأمام قدر الإمكان</string>
+    <string name="sc_guide_form">صوّر النموذج كاملاً، ستصبح خاناته قابلة للتعبئة</string>
+    <string name="sc_guide_batch">كل جولة تصوير تصبح ملفاً مستقلاً</string>
 </resources>

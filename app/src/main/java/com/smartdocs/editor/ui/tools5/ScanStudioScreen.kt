@@ -125,6 +125,13 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
     fun savePrefs() = prefs.edit().putString("kind", kind.name).putBoolean("ocr", autoOcr).putString("langs", langs).putBoolean("smart", smartName).putBoolean("rtl_book", rightFirst)
         .putBoolean("blank", removeBlank).putInt("per_file", perFile).putString("author", author).apply()
 
+    /** A new kind; pages still on the old kind's defaults follow it (deep audit E8). */
+    fun changeKind(nk: ScanKind) {
+        val old = kind
+        groups = groups.map { g -> g.map { p -> if (p.edit.filter == old.defaultFilter() && p.edit.flatten == (old == ScanKind.BOOK)) p.copy(edit = p.edit.copy(filter = nk.defaultFilter(), flatten = nk == ScanKind.BOOK)) else p } }
+        kind = nk; savePrefs()
+    }
+
     fun addPictures(files: List<File>, newGroup: Boolean, crops: List<FloatArray?> = emptyList()) {
         val pages = files.mapIndexed { i, f -> ScanPage(f, PageEdit(filter = kind.defaultFilter(), flatten = kind == ScanKind.BOOK, crop = crops.getOrNull(i))) }
         groups = if (newGroup || groups.isEmpty() || kind == ScanKind.BATCH) groups + listOf(pages) else groups.dropLast(1) + listOf(groups.last() + pages)
@@ -169,6 +176,9 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
         onDone = { shots -> cameraOpen = false; if (shots.isNotEmpty()) addPictures(shots.map { it.first }, kind == ScanKind.BATCH, shots.map { (_, q) -> q?.let { it.x + it.y } }) },
         onClose = { cameraOpen = false },
         onUseGoogle = { cameraOpen = false; useGoogleOnce = true; launchScanner() },
+        kind = kind,
+        onKind = { nk -> changeKind(nk) },
+        onGallery = { shots -> cameraOpen = false; if (shots.isNotEmpty()) addPictures(shots.map { it.first }, kind == ScanKind.BATCH, shots.map { (_, q) -> q?.let { it.x + it.y } }); pickGallery() },
     )
     // S1: opened from "Scan" — straight to the camera, once (not again when coming back)
     LaunchedEffect(Unit) { if (autoStart && !started && groups.isEmpty()) { started = true; launchScanner() } }
@@ -257,11 +267,7 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
         if (groups.isNotEmpty()) IconButton(onClick = { askClear = true }) { Icon(Icons.Default.DeleteSweep, stringResource(R.string.sc_delete_all_pages)) }
     }, onBack = { if (groups.isNotEmpty()) askDiscard = true else nav.popBackStack() }) {
         FieldLabel(stringResource(R.string.t5_scan_kind))
-        ChoiceChips(ScanKind.entries, kind, { it.label() }) { nk ->
-            val old = kind
-            groups = groups.map { g -> g.map { p -> if (p.edit.filter == old.defaultFilter() && p.edit.flatten == (old == ScanKind.BOOK)) p.copy(edit = p.edit.copy(filter = nk.defaultFilter(), flatten = nk == ScanKind.BOOK)) else p } }
-            kind = nk; savePrefs()
-        }
+        ChoiceChips(ScanKind.entries, kind, { it.label() }) { nk -> changeKind(nk) }
         Text(stringResource(kindHint(kind)), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = { launchScanner() }, Modifier.weight(1f)) { Icon(Icons.Default.DocumentScanner, null); Spacer(Modifier.width(6.dp)); Text(stringResource(if (groups.isEmpty()) R.string.t5_scan_start else R.string.t5_scan_more)) }

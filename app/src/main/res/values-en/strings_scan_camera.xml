@@ -66,4 +66,11 @@
     <string name="sc_apply_all_look">Apply filter, brightness and contrast to all pages</string>
     <string name="sc_prev_page">Previous page</string>
     <string name="sc_next_page">Next page</string>
+    <string name="sc_guide_front">Front of the card</string>
+    <string name="sc_guide_back">Now turn the card over: the back</string>
+    <string name="sc_guide_book">Lay the book open: two pages per photo</string>
+    <string name="sc_guide_receipt">Photograph the whole receipt, top to bottom</string>
+    <string name="sc_guide_board">Photograph the board as straight on as you can</string>
+    <string name="sc_guide_form">Photograph the whole form; its boxes become fillable</string>
+    <string name="sc_guide_batch">Each round of photos becomes its own file</string>
 </resources>
