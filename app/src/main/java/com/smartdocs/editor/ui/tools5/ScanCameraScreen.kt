@@ -39,6 +39,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CropFree
@@ -120,13 +121,38 @@ import kotlin.math.roundToInt
  * still returned when there are any).
  */
 @Composable
-fun ScanCameraScreen(pageLimit: Int = 0, onDone: (List<File>) -> Unit, onClose: () -> Unit) {
+fun ScanCameraScreen(pageLimit: Int = 0, onDone: (List<File>) -> Unit, onClose: () -> Unit, onUseGoogle: (() -> Unit)? = null) {
     val ctx = LocalContext.current
     var granted by remember { mutableStateOf(ContextCompat.checkSelfPermission(ctx, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) }
-    val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted = it; if (!it) onClose() }
+    var denied by remember { mutableStateOf(false) }
+    val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted = it; denied = !it }
     LaunchedEffect(Unit) { if (!granted) ask.launch(Manifest.permission.CAMERA) }
+    // coming back from the system settings with the permission given
+    val owner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(owner) {
+        val obs = androidx.lifecycle.LifecycleEventObserver { _, e ->
+            if (e == androidx.lifecycle.Lifecycle.Event.ON_RESUME && !granted && ContextCompat.checkSelfPermission(ctx, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) { granted = true; denied = false }
+        }
+        owner.lifecycle.addObserver(obs); onDispose { owner.lifecycle.removeObserver(obs) }
+    }
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false, dismissOnBackPress = false)) {
         if (granted) Box(Modifier.fillMaxSize()) { CameraBody(pageLimit, onDone, onClose) }
+        else if (denied) {
+            // scanner UX audit: a refused permission used to close the camera without a word
+            BackHandler { onClose() }
+            Column(Modifier.fillMaxSize().background(Color.Black).padding(24.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(Icons.Default.CameraAlt, null, tint = Color.White, modifier = Modifier.size(56.dp))
+                Spacer(Modifier.height(12.dp))
+                Text(stringResource(R.string.sc_cam_denied), color = Color.White, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                Spacer(Modifier.height(16.dp))
+                Button(onClick = { ask.launch(Manifest.permission.CAMERA) }) { Text(stringResource(R.string.sc_cam_allow)) }
+                TextButton(onClick = {
+                    runCatching { ctx.startActivity(android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.fromParts("package", ctx.packageName, null)).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                }) { Text(stringResource(R.string.sc_cam_settings), color = Color.White) }
+                if (onUseGoogle != null) TextButton(onClick = onUseGoogle) { Text(stringResource(R.string.sc_cam_use_google), color = Color.White) }
+                TextButton(onClick = onClose) { Text(stringResource(R.string.close), color = Color.White) }
+            }
+        }
         else Box(Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
     }
 }

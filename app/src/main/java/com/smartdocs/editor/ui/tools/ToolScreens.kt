@@ -81,7 +81,8 @@ private fun ToolScreensInner(nav: NavHostController, id: String, uri: String?) {
 
         // --- screens owned by other modules ---
         "organize", "rotate", "extract" -> OrganizeScreen(nav, uri)
-        "scan" -> ScannerScreen(nav)
+        // scanner UX audit S1: one scanner — the studio, opening the camera directly
+        "scan" -> com.smartdocs.editor.ui.tools5.ScanStudioScreen(nav, uri, autoStart = true)
         "ocr" -> OcrScreen(nav, uri)
         "redact" -> RedactScreen(nav, uri)
         "search_all" -> com.smartdocs.editor.ui.search.GlobalSearchScreen(nav, uri?.takeIf { it.startsWith("q:") }?.drop(2).orEmpty())

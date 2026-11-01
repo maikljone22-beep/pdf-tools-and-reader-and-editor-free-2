@@ -64,6 +64,8 @@ fun ToolScaffold(
     scrollable: Boolean = true,
     snackbar: SnackbarHostState? = null,
     actions: @Composable RowScope.() -> Unit = {},
+    /** The top-bar back arrow (default: leave the screen). */
+    onBack: (() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val host = snackbar ?: remember { SnackbarHostState() }
@@ -73,7 +75,7 @@ fun ToolScaffold(
         runner.error = null
     }
     Scaffold(
-        topBar = { AppTopBar(title, onBack = { nav.popBackStack() }, actions = actions) },
+        topBar = { AppTopBar(title, onBack = { if (onBack != null) onBack() else nav.popBackStack() }, actions = actions) },
         snackbarHost = { SnackbarHost(host) },
     ) { pad ->
         val base = Modifier.padding(pad).fillMaxSize()
