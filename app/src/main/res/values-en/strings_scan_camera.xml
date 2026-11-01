@@ -13,7 +13,7 @@
     <string name="sc_cam_retake">Retake</string>
     <string name="sc_cam_full">Whole photo</string>
     <string name="sc_cam_use">Use</string>
-    <string name="sc_own_camera">SmartDocs camera</string>
+    <string name="sc_own_camera">App camera</string>
     <string name="sc_own_camera_sub">Full camera resolution with live page edges and auto capture. Off: the Google scanner is used.</string>
     <string name="sc_read_codes">Read QR / barcodes on the pages</string>
     <string name="sc_codes_title">Codes found (%1$d)</string>
@@ -66,4 +66,34 @@
     <string name="sc_apply_all_look">Apply filter, brightness and contrast to all pages</string>
     <string name="sc_prev_page">Previous page</string>
     <string name="sc_next_page">Next page</string>
+    <string name="sc_guide_front">Front of the card</string>
+    <string name="sc_guide_back">Now turn the card over: the back</string>
+    <string name="sc_guide_book">Lay the book open: two pages per photo</string>
+    <string name="sc_guide_receipt">Photograph the whole receipt, top to bottom</string>
+    <string name="sc_guide_board">Photograph the board as straight on as you can</string>
+    <string name="sc_guide_form">Photograph the whole form; its boxes become fillable</string>
+    <string name="sc_guide_batch">Each round of photos becomes its own file</string>
+    <string name="sc_size">File size</string>
+    <string name="sc_size_small">Small for sharing</string>
+    <string name="sc_size_medium">Medium</string>
+    <string name="sc_size_best">Best quality</string>
+    <string name="sc_save_failed">The scan could not be saved</string>
+    <string name="sc_saved_partly">Saved %1$d of %2$d; the rest stay here to try again</string>
+    <string name="sc_doc_n">Document %1$d</string>
+    <plurals name="sc_pages_n">
+        <item quantity="one">1 page</item>
+        <item quantity="other">%1$d pages</item>
+    </plurals>
+    <string name="sc_new_document">Scan a separate document</string>
+    <string name="sc_duplex_hint">Double-sided sheets: scan the fronts, then “Scan a separate document” for the backs, then “Merge both sides”.</string>
+    <string name="sc_projects_size">Space used: %1$s</string>
+    <string name="sc_preset_applied">Preset “%1$s” applied</string>
+    <string name="sc_format">Format</string>
+    <string name="sc_format_pdf">PDF file</string>
+    <string name="sc_format_jpg">JPG pictures</string>
+    <string name="sc_name_auto_text">Named automatically from the recognised text</string>
+    <string name="sc_name_auto_date">Named automatically by kind and date</string>
+    <string name="sc_advanced">Advanced options</string>
+    <string name="sc_copy_text">Copy the recognised text</string>
+    <string name="sc_text_copied">Text copied</string>
 </resources>

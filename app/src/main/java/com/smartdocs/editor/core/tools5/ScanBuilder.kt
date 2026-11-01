@@ -99,7 +99,8 @@ object ScanBuilder {
             val done = ScanImage.apply(b, e, dewarp = e.flatten && kind != ScanKind.BOOK)
             if (kind == ScanKind.BOOK) {
                 // a spread bends both ways from the spine: each page is flattened on its own
-                val halves = ScanImage.splitBook(done, bookRightFirst).map { if (e.flatten) ScanImage.flatten(it) else it }
+                // deep audit E11: a half flattened into a new bitmap frees the old one
+                val halves = ScanImage.splitBook(done, bookRightFirst).map { h -> if (e.flatten) ScanImage.flatten(h).also { if (it !== h && h !== done) h.recycle() } else h }
                 halves.forEach { yield(ScanOut(it, ScanImage.isGray(e.filter))) }
                 if (halves.size > 1) done.recycle()
             } else yield(ScanOut(done, ScanImage.isGray(e.filter)))

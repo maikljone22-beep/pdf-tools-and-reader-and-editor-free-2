@@ -154,9 +154,20 @@ fun ResultsList(files: List<File>, nav: NavHostController, mime: String) {
     if (files.isEmpty()) return
     val app = LocalApp.current
     val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val savedMsg = stringResource(R.string.tl_saved_to_folder)
+    val pickFolder = rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocumentTree()) { u ->
+        if (u != null) scope.launch {
+            val n = com.smartdocs.editor.ui.common.copyToOutputFolder(ctx, u.toString(), files)
+            android.widget.Toast.makeText(ctx, if (n > 0) savedMsg.format(n) else ctx.getString(R.string.fx_save_failed, ""), android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(bottom = 8.dp)) {
             SectionTitle(stringResource(R.string.tl_results_count, files.size)) {
+                TextButton(onClick = { runCatching { pickFolder.launch(null) } }) {
+                    Icon(Icons.Default.SaveAlt, null, Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text(stringResource(R.string.tl_save_to_folder))
+                }
                 TextButton(onClick = { runCatching { ctx.startActivity(Intent.createChooser(app.documents.shareIntent(files, mime), null)) } }) {
                     Icon(Icons.Default.Share, null, Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text(stringResource(R.string.tl_share_all))
                 }

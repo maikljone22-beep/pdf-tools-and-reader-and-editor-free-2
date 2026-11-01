@@ -80,7 +80,13 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
     var groups by androidx.compose.runtime.saveable.rememberSaveable(stateSaver = ScanGroupsSaver) { mutableStateOf<List<List<ScanPage>>>(emptyList()) }
     var paper by remember { mutableStateOf(ScanPaper.FIT) }
     // full camera resolution and light compression (bigger files) instead of 2400 px / JPEG 82
-    var highQuality by remember { mutableStateOf(ctx.getSharedPreferences("scan_studio", 0).getBoolean("high_quality", true)) }
+    var sizeLevel by remember { mutableIntStateOf(ctx.getSharedPreferences("scan_studio", 0).let { sp -> sp.getInt("size", if (sp.contains("high_quality") && sp.getBoolean("high_quality", false)) 2 else 1) }) }
+    var asImages by remember { mutableStateOf(prefs.getBoolean("as_images", false)) }
+    var advanced by remember { mutableStateOf(false) }
+    var nextNewGroup by remember { mutableStateOf(false) }
+    var openedProject by remember { mutableStateOf<ScanProjects.Project?>(null) }
+    var recognised by remember { mutableStateOf("") }
+    var resultMime by remember { mutableStateOf("application/pdf") }
     var ownCamera by remember { mutableStateOf(ctx.getSharedPreferences("scan_studio", 0).getBoolean("own_camera", true)) }
     var cameraOpen by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
     var started by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
@@ -125,9 +131,17 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
     fun savePrefs() = prefs.edit().putString("kind", kind.name).putBoolean("ocr", autoOcr).putString("langs", langs).putBoolean("smart", smartName).putBoolean("rtl_book", rightFirst)
         .putBoolean("blank", removeBlank).putInt("per_file", perFile).putString("author", author).apply()
 
+    /** A new kind; pages still on the old kind's defaults follow it (deep audit E8). */
+    fun changeKind(nk: ScanKind) {
+        val old = kind
+        groups = groups.map { g -> g.map { p -> if (p.edit.filter == old.defaultFilter() && p.edit.flatten == (old == ScanKind.BOOK)) p.copy(edit = p.edit.copy(filter = nk.defaultFilter(), flatten = nk == ScanKind.BOOK)) else p } }
+        kind = nk; savePrefs()
+    }
+
     fun addPictures(files: List<File>, newGroup: Boolean, crops: List<FloatArray?> = emptyList()) {
         val pages = files.mapIndexed { i, f -> ScanPage(f, PageEdit(filter = kind.defaultFilter(), flatten = kind == ScanKind.BOOK, crop = crops.getOrNull(i))) }
-        groups = if (newGroup || groups.isEmpty() || kind == ScanKind.BATCH) groups + listOf(pages) else groups.dropLast(1) + listOf(groups.last() + pages)
+        groups = if (newGroup || nextNewGroup || groups.isEmpty() || kind == ScanKind.BATCH) groups + listOf(pages) else groups.dropLast(1) + listOf(groups.last() + pages)
+        nextNewGroup = false
     }
 
     val scanLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { res ->
@@ -169,6 +183,9 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
         onDone = { shots -> cameraOpen = false; if (shots.isNotEmpty()) addPictures(shots.map { it.first }, kind == ScanKind.BATCH, shots.map { (_, q) -> q?.let { it.x + it.y } }) },
         onClose = { cameraOpen = false },
         onUseGoogle = { cameraOpen = false; useGoogleOnce = true; launchScanner() },
+        kind = kind,
+        onKind = { nk -> changeKind(nk) },
+        onGallery = { shots -> cameraOpen = false; if (shots.isNotEmpty()) addPictures(shots.map { it.first }, kind == ScanKind.BATCH, shots.map { (_, q) -> q?.let { it.x + it.y } }); pickGallery() },
     )
     // S1: opened from "Scan" — straight to the camera, once (not again when coming back)
     LaunchedEffect(Unit) { if (autoStart && !started && groups.isEmpty()) { started = true; launchScanner() } }
@@ -179,31 +196,60 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
         val all = groups.filter { it.isNotEmpty() }
         if (all.isEmpty()) return
         savePrefs()
-        val needText = autoOcr || kind == ScanKind.BUSINESS_CARD || kind == ScanKind.RECEIPT || kind == ScanKind.FORM || smartName   // FINAL_CHECK_2 #16: a form needs its text for field recognition
-        val k = kind; val p = paper; val rf = rightFirst; val typed = name.trim()
+        // FINAL_CHECK_2 #16: a form needs its text for field recognition. Smart naming no longer forces OCR (switching OCR off
+        // did not make saving faster, scanner audit U14): without text it names by kind and date. Pictures need no text.
+        val imgs = asImages
+        val needText = !imgs && (autoOcr || kind == ScanKind.BUSINESS_CARD || kind == ScanKind.RECEIPT || kind == ScanKind.FORM)
+        val k = kind; val rf = rightFirst; val typed = name.trim()
+        // deep audit E17: the ID card page is an A4 sheet at real card size — another paper shrank or mis-scaled it
+        val p = if (k == ScanKind.ID_CARD) ScanPaper.A4 else paper
+        val lvl = sizeLevel; val reopened = openedProject
         val rb = removeBlank; val tt = title; val au = author; val pf = portfolio; val kp = keepProject; val pa = pdfa
         prefs.edit().putBoolean("keep_project", kp).putBoolean("pdfa", pa).apply()
         val keep = all.map { g -> g.map { it.file to it.edit } }
         // "save multiple files": every group is cut into files of N pages
-        val docs = all.flatMap { ScanExtras.chunks(it, perFile) }
+        // deep audit E16: "pages per file" counts output pages — an ID card is two photos, a book photo two pages
+        val chunk = when { perFile <= 0 -> 0; k == ScanKind.ID_CARD -> perFile * 2; k == ScanKind.BOOK -> maxOf(1, perFile / 2); else -> perFile }
+        val docs = all.flatMap { ScanExtras.chunks(it, chunk) }
         job.launch(savingMsg) {
             val engine = if (needText) OcrEngine(ctx.applicationContext) else null
             try {
                 val made = ArrayList<File>(); var lastText = ""; var fieldsMade = 0
+                val failed = ArrayList<List<ScanPage>>(); val texts = StringBuilder()
                 docs.forEachIndexed { gi, g ->
+                  // a failing document no longer stops the others; it stays on screen for another try (audit U30)
+                  try {
+                    if (imgs) {
+                        // scanner audit U23: the pages as JPEG pictures (no PDF)
+                        val stamp = typed.ifEmpty { (prefixes[k] ?: "Scan") + "_" + SimpleDateFormat("yyyyMMdd_HHmm", Locale.US).format(Date()) } + if (docs.size > 1) "_${gi + 1}" else ""
+                        var n = 0
+                        withContext(Dispatchers.IO) {
+                            ScanBuilder.pagePictures(g.map { it.file to it.edit }, k, rf, maxDim = sizeDim(lvl)).forEach { o ->
+                                n++
+                                val f = app.documents.uniqueFile(app.documents.scansDir, "${stamp}_$n", "jpg")
+                                f.outputStream().use { o.bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, sizeQuality(lvl), it) }
+                                o.bitmap.recycle(); made += f
+                            }
+                        }
+                        step((gi + 1) * 100, docs.size * 100)
+                        return@forEachIndexed
+                    }
                     val today = t5Today()
                     val tmpOut = app.documents.newTemp("t5scan_out", "pdf")
                     val ocrLangs = if (!needText) null else if (langs == "auto") detectLangs(engine!!, g.first()) else langs
-                    val pictures = ScanBuilder.pagePictures(g.map { it.file to it.edit }, k, rf, maxDim = if (highQuality) 3508 else 2400)
-                    val r = ScanBuilder.build(ctx, pictures, tmpOut, ScanBuildOptions(paper = p, quality = if (highQuality) 92 else 82, ocrLangs = ocrLangs), engine) { n -> step(gi * 100 + n, docs.size * 100) }
+                    val pictures = ScanBuilder.pagePictures(g.map { it.file to it.edit }, k, rf, maxDim = sizeDim(sizeLevel))
+                    val r = ScanBuilder.build(ctx, pictures, tmpOut, ScanBuildOptions(paper = p, quality = sizeQuality(sizeLevel), ocrLangs = ocrLangs), engine) { n -> step(gi * 100 + n, docs.size * 100) }
                     val base = when {
                         typed.isNotEmpty() -> if (docs.size > 1) "${typed}_${gi + 1}" else typed
                         smartName && r.text.isNotBlank() -> SmartNaming.suggest(r.text, k, today, prefixes)
                         else -> (prefixes[k]?.let { "${it}_" } ?: "Scan_") + SimpleDateFormat("yyyyMMdd_HHmm", Locale.US).format(Date()) + if (docs.size > 1) "_${gi + 1}" else ""
                     }
+                    var pageCount = r.pages
+                    // file work off the main thread (deep audit E10); the page count follows the removed blank pages (E19)
                     if (rb) runCatching {
                         val clean = app.documents.newTemp("t5scan_clean", "pdf")
-                        if (com.smartdocs.editor.core.edit5.PageOrganize.deleteBlank(ctx, tmpOut, clean, null).isNotEmpty()) { clean.copyTo(tmpOut, true) }
+                        val removed = com.smartdocs.editor.core.edit5.PageOrganize.deleteBlank(ctx, tmpOut, clean, null)
+                        if (removed.isNotEmpty()) { withContext(Dispatchers.IO) { clean.copyTo(tmpOut, true) }; pageCount -= removed.size }
                         clean.delete()
                     }
                     withContext(Dispatchers.IO) { runCatching { ScanExtras.setInfo(tmpOut, if (docs.size > 1 && tt.isNotBlank()) "$tt (${gi + 1})" else tt, au) } }
@@ -222,18 +268,24 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                     }
                     val out = app.documents.uniqueFile(app.documents.scansDir, base)
                     withContext(Dispatchers.IO) { if (!tmpOut.renameTo(out)) { tmpOut.copyTo(out, true); tmpOut.delete() } }
-                    runCatching { app.documents.touchRecent(out, r.pages) }
+                    runCatching { app.documents.touchRecent(out, pageCount) }
                     made += out; lastText = r.text
+                    if (r.text.isNotBlank()) { if (texts.isNotEmpty()) texts.append("\n\n"); texts.append(r.text) }
+                  } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Throwable) { failed += g }
                 }
+                recognised = texts.toString()
+                resultMime = if (imgs) "image/jpeg" else "application/pdf"
+                if (made.isEmpty()) throw IllegalStateException(ctx.getString(R.string.sc_save_failed))
                 // when OCR was only needed for naming / parsing, the text layer stays: it makes the scan searchable
                 when {
+                    imgs -> results = made
                     k == ScanKind.BUSINESS_CARD -> contact = BusinessCardParser.parse(lastText)
                     k == ScanKind.RECEIPT -> receipt = ReceiptParser.parse(lastText) to made.last()
                     made.size == 1 -> result = made.first()
                     else -> results = made
                 }
                 if (k == ScanKind.FORM) info = if (fieldsMade > 0) ctx.getString(R.string.t5_form_fields_made, fieldsMade) else ctx.getString(R.string.t5_form_fields_none)
-                if (k == ScanKind.BUSINESS_CARD || k == ScanKind.RECEIPT) results = made
+                if (!imgs && (k == ScanKind.BUSINESS_CARD || k == ScanKind.RECEIPT)) results = made
                 // Foxit "create a portfolio for all results"
                 if (pf && made.size > 1) {
                     val po = app.documents.uniqueFile(app.documents.scansDir, (typed.ifEmpty { "Scans" }) + "_portfolio")
@@ -242,11 +294,15 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                 }
                 if (kp) withContext(Dispatchers.IO) {
                     runCatching { ScanProjects.save(ctx, made.firstOrNull()?.nameWithoutExtension ?: "Scan", keep) }
+                    // a reopened project is replaced by the new save, not copied again (scanner audit U6 / E15)
+                    reopened?.let { runCatching { ScanProjects.delete(it) } }
                     projects = runCatching { ScanProjects.list(ctx) }.getOrDefault(projects)
                 }
-                val savedPages = all.flatten()
+                openedProject = null
+                val savedPages = all.flatten() - failed.flatten().toSet()
                 withContext(Dispatchers.IO) { dropTemp(savedPages) }
-                groups = emptyList(); name = ""
+                groups = failed.toList(); if (failed.isEmpty()) name = ""
+                if (failed.isNotEmpty()) info = ctx.getString(R.string.sc_saved_partly, docs.size - failed.size, docs.size)
                 lastScan = made.firstOrNull { it.extension.equals("pdf", true) }
                 withContext(Dispatchers.IO) { refreshRecent() }
             } finally { engine?.close() }
@@ -257,11 +313,7 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
         if (groups.isNotEmpty()) IconButton(onClick = { askClear = true }) { Icon(Icons.Default.DeleteSweep, stringResource(R.string.sc_delete_all_pages)) }
     }, onBack = { if (groups.isNotEmpty()) askDiscard = true else nav.popBackStack() }) {
         FieldLabel(stringResource(R.string.t5_scan_kind))
-        ChoiceChips(ScanKind.entries, kind, { it.label() }) { nk ->
-            val old = kind
-            groups = groups.map { g -> g.map { p -> if (p.edit.filter == old.defaultFilter() && p.edit.flatten == (old == ScanKind.BOOK)) p.copy(edit = p.edit.copy(filter = nk.defaultFilter(), flatten = nk == ScanKind.BOOK)) else p } }
-            kind = nk; savePrefs()
-        }
+        ChoiceChips(ScanKind.entries, kind, { it.label() }) { nk -> changeKind(nk) }
         Text(stringResource(kindHint(kind)), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = { launchScanner() }, Modifier.weight(1f)) { Icon(Icons.Default.DocumentScanner, null); Spacer(Modifier.width(6.dp)); Text(stringResource(if (groups.isEmpty()) R.string.t5_scan_start else R.string.t5_scan_more)) }
@@ -278,17 +330,24 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
             SwitchRow(stringResource(R.string.sc_own_camera), ownCamera, stringResource(R.string.sc_own_camera_sub)) {
                 ownCamera = it; ctx.getSharedPreferences("scan_studio", 0).edit().putBoolean("own_camera", it).apply()
             }
-            SwitchRow(stringResource(R.string.sc_high_quality), highQuality, stringResource(R.string.sc_high_quality_sub)) {
-                highQuality = it; ctx.getSharedPreferences("scan_studio", 0).edit().putBoolean("high_quality", it).apply()
+            // file size: small for sharing (WhatsApp, slow data) / medium / best quality (A4 at 300 dpi)
+            FieldLabel(stringResource(R.string.sc_size))
+            ChoiceChips(listOf(0, 1, 2), sizeLevel, { stringResource(when (it) { 0 -> R.string.sc_size_small; 1 -> R.string.sc_size_medium; else -> R.string.sc_size_best }) }) {
+                sizeLevel = it; ctx.getSharedPreferences("scan_studio", 0).edit().putInt("size", it).apply()
             }
         }
         if (groups.isNotEmpty()) Text(stringResource(R.string.sc_tap_to_edit), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         groups.forEachIndexed { gi, g ->
-            T5Card(if (groups.size > 1) stringResource(R.string.t5_scan_doc_n, gi + 1, g.size) else stringResource(R.string.t5_scan_pages_n, g.size), Icons.Default.Collections) {
+            T5Card(if (groups.size > 1) stringResource(R.string.sc_doc_n, gi + 1) + " · " + pluralStringResource(R.plurals.sc_pages_n, g.size, g.size) else pluralStringResource(R.plurals.sc_pages_n, g.size, g.size), Icons.Default.Collections) {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     itemsIndexed(g, key = { i, p -> "$i:" + p.file.absolutePath }) { pi, p -> PageThumb(p, pi) { editing = gi to pi } }
                 }
             }
+        }
+        // a second document (e.g. the backs of double-sided pages) — this was only possible with the "batch" kind
+        if (groups.isNotEmpty()) {
+            TextButton(onClick = { nextNewGroup = true; launchScanner() }) { Icon(Icons.Default.LibraryAdd, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.sc_new_document)) }
+            if (groups.size == 1) Text(stringResource(R.string.sc_duplex_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         // manual duplex: the first document holds the fronts, the second the backs
         if (groups.size == 2) T5Card(stringResource(R.string.pc_duplex), Icons.Default.FlipToBack) {
@@ -297,24 +356,31 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
             OutlinedButton(onClick = { groups = listOf(ScanExtras.duplex(groups[0], groups[1], backsReversed)) }, Modifier.fillMaxWidth()) { Text(stringResource(R.string.pc_duplex_merge)) }
         }
         if (groups.isEmpty() && projects.isNotEmpty()) T5Card(stringResource(R.string.pc_saved_scans), Icons.Default.History) {
-            projects.take(6).forEach { pr ->
+            var allProjects by remember { mutableStateOf(false) }
+            val total by produceState(0L, projects) { value = withContext(Dispatchers.IO) { projects.sumOf { p -> p.dir.walkTopDown().filter { it.isFile }.sumOf { it.length() } } } }
+            Text(stringResource(R.string.sc_projects_size, com.smartdocs.editor.core.files.DocumentRepository.formatSize(total)), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            (if (allProjects) projects else projects.take(6)).forEach { pr ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(stringResource(R.string.pc_saved_scan_row, pr.name, pr.pages), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, maxLines = 1)
                     TextButton(onClick = { scope.launch {
                         val g = withContext(Dispatchers.IO) { runCatching { ScanProjects.load(pr) }.getOrDefault(emptyList()) }
-                        groups = g.map { pages -> pages.map { (f, e) -> ScanPage(f, e) } }; name = pr.name
+                        groups = g.map { pages -> pages.map { (f, e) -> ScanPage(f, e) } }; name = pr.name; openedProject = pr
                     } }) { Text(stringResource(R.string.pc_saved_scan_open)) }
                     IconButton(onClick = { projectToDelete = pr }) { Icon(Icons.Default.Delete, stringResource(R.string.pc_preset_delete, pr.name)) }
                 }
             }
+            if (projects.size > 6) TextButton(onClick = { allProjects = !allProjects }) { Text(if (allProjects) stringResource(R.string.t5_paper_less) else stringResource(R.string.sc_show_all, projects.size)) }
         }
         T5Card(stringResource(R.string.pc_presets), Icons.Default.Bookmarks) {
             if (presets.isNotEmpty()) Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 presets.forEach { ps ->
-                    InputChip(false, onClick = {
-                        kind = ps.kind; paper = ps.paper; autoOcr = ps.ocr; langs = ps.langs; removeBlank = ps.removeBlank; perFile = ps.perFile; author = ps.author; savePrefs()
+                    val active = kind == ps.kind && paper == ps.paper && autoOcr == ps.ocr && langs == ps.langs && removeBlank == ps.removeBlank && perFile == ps.perFile && author == ps.author
+                    val appliedMsg = stringResource(R.string.sc_preset_applied, ps.name)
+                    InputChip(active, onClick = {
+                        changeKind(ps.kind); paper = ps.paper; autoOcr = ps.ocr; langs = ps.langs; removeBlank = ps.removeBlank; perFile = ps.perFile; author = ps.author; savePrefs()
+                        scope.launch { snackbar.showSnackbar(appliedMsg) }
                     }, label = { Text(ps.name) }, trailingIcon = {
-                        Icon(Icons.Default.Close, stringResource(R.string.pc_preset_delete, ps.name), Modifier.size(18.dp).clickable { savePresets(presets - ps) })
+                        IconButton(onClick = { savePresets(presets - ps) }, Modifier.size(32.dp)) { Icon(Icons.Default.Close, stringResource(R.string.pc_preset_delete, ps.name), Modifier.size(18.dp)) }
                     })
                 }
             }
@@ -336,15 +402,10 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                     else -> it.name.replace("JIS_", "JIS ")
                 } }) { paper = it }
                 TextButton(onClick = { morePaper = !morePaper }) { Text(stringResource(if (morePaper) R.string.t5_paper_less else R.string.t5_paper_more)) }
-                SwitchRow(stringResource(R.string.pc_scan_remove_blank), removeBlank) { removeBlank = it }
-                OutlinedTextField(if (perFile > 0) perFile.toString() else "", { t -> perFile = com.smartdocs.editor.core.edit5.Digits.toWestern(t).filter { it.isDigit() }.take(3).toIntOrNull() ?: 0 },
-                    Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.pc_scan_per_file)) }, placeholder = { Text(stringResource(R.string.pc_scan_per_file_all)) })
-                OutlinedTextField(title, { title = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.pc_doc_title)) })
-                OutlinedTextField(author, { author = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.pc_doc_author)) })
-                SwitchRow(stringResource(R.string.pc_save_pdfa), pdfa, stringResource(R.string.pc_save_pdfa_sub)) { pdfa = it }
-                SwitchRow(stringResource(R.string.pc_keep_project), keepProject, stringResource(R.string.pc_keep_project_sub)) { keepProject = it }
-                if (groups.size > 1 || perFile > 0 || kind == ScanKind.BATCH) SwitchRow(stringResource(R.string.pc_scan_portfolio), portfolio) { portfolio = it }
-                SwitchRow(stringResource(R.string.t5_auto_ocr), autoOcr, stringResource(R.string.t5_auto_ocr_hint)) { autoOcr = it }
+                // scanner audit U23: PDF or pictures
+                FieldLabel(stringResource(R.string.sc_format))
+                ChoiceChips(listOf(false, true), asImages, { stringResource(if (it) R.string.sc_format_jpg else R.string.sc_format_pdf) }) { asImages = it; prefs.edit().putBoolean("as_images", it).apply() }
+                if (!asImages) SwitchRow(stringResource(R.string.t5_auto_ocr), autoOcr, stringResource(R.string.t5_auto_ocr_hint)) { autoOcr = it }
                 if (autoOcr || kind == ScanKind.BUSINESS_CARD || kind == ScanKind.RECEIPT) {
                     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         listOf("auto", "ara", "eng", "ara+eng", "fra", "ara+fra").forEach { l ->
@@ -352,9 +413,25 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                         }
                     }
                 }
-                SwitchRow(stringResource(R.string.t5_smart_name), smartName, stringResource(R.string.t5_smart_name_hint)) { smartName = it }
                 if (kind == ScanKind.BOOK) SwitchRow(stringResource(R.string.t5_book_rtl), rightFirst, stringResource(R.string.t5_book_rtl_hint)) { rightFirst = it }
-                OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.t5_file_name_optional)) })
+                OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.t5_file_name_optional)) },
+                    supportingText = { if (name.isBlank()) Text(stringResource(if (smartName && autoOcr && !asImages) R.string.sc_name_auto_text else R.string.sc_name_auto_date)) })
+                // the rest, folded (15 options in one card were too many)
+                TextButton(onClick = { advanced = !advanced }) { Text(stringResource(R.string.sc_advanced)); Icon(if (advanced) Icons.Default.ExpandLess else Icons.Default.ExpandMore, null) }
+                if (advanced) {
+                    SwitchRow(stringResource(R.string.t5_smart_name), smartName, stringResource(R.string.t5_smart_name_hint)) { smartName = it; savePrefs() }
+                    SwitchRow(stringResource(R.string.pc_scan_remove_blank), removeBlank) { removeBlank = it; savePrefs() }
+                    OutlinedTextField(if (perFile > 0) perFile.toString() else "", { t -> perFile = com.smartdocs.editor.core.edit5.Digits.toWestern(t).filter { it.isDigit() }.take(3).toIntOrNull() ?: 0; savePrefs() },
+                        Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.pc_scan_per_file)) }, placeholder = { Text(stringResource(R.string.pc_scan_per_file_all)) },
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number))
+                    if (!asImages) {
+                        OutlinedTextField(title, { title = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.pc_doc_title)) })
+                        OutlinedTextField(author, { author = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.pc_doc_author)) })
+                        SwitchRow(stringResource(R.string.pc_save_pdfa), pdfa, stringResource(R.string.pc_save_pdfa_sub)) { pdfa = it; prefs.edit().putBoolean("pdfa", it).apply() }
+                        if (groups.size > 1 || perFile > 0 || kind == ScanKind.BATCH) SwitchRow(stringResource(R.string.pc_scan_portfolio), portfolio) { portfolio = it }
+                    }
+                    SwitchRow(stringResource(R.string.pc_keep_project), keepProject, stringResource(R.string.pc_keep_project_sub)) { keepProject = it; prefs.edit().putBoolean("keep_project", it).apply() }
+                }
             }
             PrimaryButton(stringResource(R.string.t5_scan_save), enabled = !job.running, icon = Icons.Default.PictureAsPdf) { save() }
             // FINAL_CHECK_2 Low (K11): QR / barcodes on the scanned pages
@@ -378,7 +455,14 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
             }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.QrCodeScanner, null); Spacer(Modifier.width(6.dp)); Text(stringResource(if (reading) R.string.processing else R.string.sc_read_codes)) }
             codes?.let { found -> BarcodeResultsDialog(found) { codes = null } }
         }
-        if (job.results.isNotEmpty()) ResultsList(job.results, nav, "application/pdf")
+        if (job.results.isNotEmpty()) ResultsList(job.results, nav, resultMime)
+        if (recognised.isNotBlank() && groups.isEmpty()) {
+            val clip = androidx.compose.ui.platform.LocalClipboardManager.current
+            val copiedMsg = stringResource(R.string.sc_text_copied)
+            OutlinedButton(onClick = { clip.setText(androidx.compose.ui.text.AnnotatedString(recognised)); scope.launch { snackbar.showSnackbar(copiedMsg) } }, Modifier.fillMaxWidth()) {
+                Icon(Icons.Default.ContentCopy, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.sc_copy_text))
+            }
+        }
         lastScan?.takeIf { it.exists() }?.let { f -> com.smartdocs.editor.ui.scanner.ScanAiBar(f, nav) { lastScan = null } }
         // S7: one history — the saved scans (PDF files) are listed here too
         if (groups.isEmpty() && recent.isNotEmpty()) T5Card(stringResource(R.string.pg_scan_previous), Icons.Default.PictureAsPdf) {
@@ -447,7 +531,7 @@ private fun PageThumb(p: ScanPage, index: Int, onClick: () -> Unit) {
     val label = stringResource(R.string.t5_page_n, index + 1)
     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(92.dp).clickable(onClickLabel = stringResource(R.string.t5_edit_page), onClick = onClick)) {
         Box(Modifier.size(88.dp, 118.dp).clip(RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) {
-            bmp?.let { Image(it.asImageBitmap(), label, Modifier.fillMaxSize(), contentScale = ContentScale.Crop) } ?: CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+            bmp?.let { Image(it.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop) } ?: CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
         }
         Text(label, style = MaterialTheme.typography.labelSmall)
     }
@@ -491,3 +575,7 @@ internal val ScanGroupsSaver: androidx.compose.runtime.saveable.Saver<List<List<
         save = { v -> ScanProjects.encode("", v.map { g -> g.map { it.file.absolutePath to it.edit } }) },
         restore = { s -> ScanProjects.decode(s).second.map { g -> g.mapNotNull { (p, e) -> File(p).takeIf { it.isFile }?.let { ScanPage(it, e) } } }.filter { it.isNotEmpty() } },
     )
+
+/** Picture side for the size choice: small (sharing), medium, best (A4 at 300 dpi). */
+internal fun sizeDim(level: Int) = when (level) { 0 -> 1600; 1 -> 2400; else -> 3508 }
+internal fun sizeQuality(level: Int) = when (level) { 0 -> 72; 1 -> 82; else -> 92 }

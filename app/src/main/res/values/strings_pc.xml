@@ -126,7 +126,7 @@
     <string name="pc_preset_name">اسم الإعداد</string>
     <string name="pc_preset_save">حفظ كإعداد</string>
     <string name="pc_eraser">ممحاة</string>
-    <string name="pc_eraser_undo">تراجع عن المسح</string>
+    <string name="pc_eraser_undo">تراجع عن آخر محو</string>
     <string name="pc_despeckle">إزالة النقاط والغبار</string>
     <string name="pc_keep_project">الاحتفاظ بالمسح لتعديله لاحقًا</string>
     <string name="pc_keep_project_sub">تُحفظ الصور الأصلية وتعديلاتها داخل التطبيق.</string>

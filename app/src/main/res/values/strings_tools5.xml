@@ -147,7 +147,7 @@
     <string name="t5_job_log_empty">لا توجد نتائج بعد</string>
     <string name="t5_job_queued">في الانتظار</string>
     <string name="t5_job_running">قيد التشغيل</string>
-    <string name="t5_kind_batch">دفعة</string>
+    <string name="t5_kind_batch">عدة مستندات</string>
     <string name="t5_kind_batch_hint">كل جولة مسح تصبح ملفاً مستقلاً بتسمية ذكية</string>
     <string name="t5_kind_board">سبورة</string>
     <string name="t5_kind_board_hint">تبييض الخلفية وتقوية الألوان</string>
@@ -339,12 +339,12 @@
     <string name="t5_scan_doc_n">مستند %1$d · %2$d صفحة</string>
     <string name="t5_scan_kind">نوع المسح</string>
     <string name="t5_scan_more">مسح المزيد</string>
-    <string name="t5_scan_output">الحفظ</string>
+    <string name="t5_scan_output">الحفظ والإخراج</string>
     <string name="t5_scan_pages_n">%1$d صفحة</string>
     <string name="t5_scan_save">حفظ PDF</string>
     <string name="t5_scan_saving">جارٍ إنشاء PDF…</string>
-    <string name="t5_scan_start">بدء المسح</string>
-    <string name="t5_scan_title">استوديو المسح</string>
+    <string name="t5_scan_start">ابدأ المسح</string>
+    <string name="t5_scan_title">المسح الضوئي</string>
     <string name="t5_scan_unavailable">الماسح غير متاح على هذا الجهاز؛ استخدم المعرض</string>
     <string name="t5_share_empty">لم يصل محتوى من التطبيق الآخر</string>
     <string name="t5_share_title">مشاركة إلى PDF</string>
