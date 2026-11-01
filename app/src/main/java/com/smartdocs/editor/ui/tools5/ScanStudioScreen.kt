@@ -12,6 +12,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.ui.zIndex
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -82,6 +86,13 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
     // full camera resolution and light compression (bigger files) instead of 2400 px / JPEG 82
     var sizeLevel by remember { mutableIntStateOf(ctx.getSharedPreferences("scan_studio", 0).let { sp -> sp.getInt("size", if (sp.getBoolean("high_quality", true)) 2 else 1) }) }
     var asImages by remember { mutableStateOf(prefs.getBoolean("as_images", false)) }
+    // scanner essentials: Word output, add to an existing PDF, upright pages, fingers off book edges
+    var asWord by remember { mutableStateOf(prefs.getBoolean("as_word", false)) }
+    var appendTo by remember { mutableStateOf<android.net.Uri?>(null) }
+    var appendName by remember { mutableStateOf("") }
+    var autoRotate by remember { mutableStateOf(prefs.getBoolean("auto_rotate", true)) }
+    var removeFingers by remember { mutableStateOf(prefs.getBoolean("fingers", true)) }
+    var orienting by remember { mutableIntStateOf(0) }
     var advanced by remember { mutableStateOf(false) }
     var nextNewGroup by remember { mutableStateOf(false) }
     var openedProject by remember { mutableStateOf<ScanProjects.Project?>(null) }
@@ -144,10 +155,39 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
         kind = nk; savePrefs()
     }
 
+    /** Pages turned upright one by one in the background; a page the user already turned is left alone. */
+    fun orient(pages: List<ScanPage>) {
+        if (pages.isEmpty()) return
+        orienting += pages.size
+        var finished = 0
+        scope.launch {
+            val engine = withContext(Dispatchers.IO) {
+                runCatching { OcrEngine(ctx.applicationContext).takeIf { it.isLanguageInstalled("ara") && it.isLanguageInstalled("eng") } }.getOrNull()
+            }
+            try {
+                val ready = engine != null && runCatching { engine.init("ara+eng") }.getOrDefault(false)
+                for (p in pages) {
+                    try {
+                        val turn = withContext(Dispatchers.Default) {
+                            val b = ScanImage.preview(p.file, p.edit.copy(filter = ScanFilter.GRAY, rotation = 0, erase = emptyList(), flatten = false), 900) ?: return@withContext 0
+                            try { ScanOrient.turnFor(b, if (ready) engine else null) } finally { b.recycle() }
+                        }
+                        if (turn != 0) groups = groups.map { g -> g.map { q -> if (q.file == p.file && q.edit.rotation == 0) q.copy(edit = q.edit.copy(rotation = turn)) else q } }
+                    } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Throwable) { }
+                    orienting = (orienting - 1).coerceAtLeast(0); finished++
+                }
+            } finally {
+                // pages not reached (screen left, cancelled) no longer hold the save button
+                orienting = (orienting - (pages.size - finished)).coerceAtLeast(0); engine?.close()
+            }
+        }
+    }
+
     fun addPictures(files: List<File>, newGroup: Boolean, crops: List<FloatArray?> = emptyList()) {
         val pages = files.mapIndexed { i, f -> ScanPage(f, PageEdit(filter = kind.defaultFilter(), flatten = kind == ScanKind.BOOK, crop = crops.getOrNull(i))) }
         groups = if (newGroup || nextNewGroup || groups.isEmpty() || kind == ScanKind.BATCH) groups + listOf(pages) else groups.dropLast(1) + listOf(groups.last() + pages)
         nextNewGroup = false
+        if (autoRotate && kind != ScanKind.BOOK && kind != ScanKind.ID_CARD && kind != ScanKind.BUSINESS_CARD) orient(pages)
     }
 
     val scanLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { res ->
@@ -178,6 +218,13 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
         }.onFailure { scope.launch { snackbar.showSnackbar(unavailable) } }
     }
     // S3: photos from the gallery get their page edges found and corrected like camera photos (they were used as is)
+    val pickAppend = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { u ->
+        if (u != null) {
+            runCatching { ctx.contentResolver.takePersistableUriPermission(u, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION) }
+            appendTo = u
+            appendName = runCatching { androidx.documentfile.provider.DocumentFile.fromSingleUri(ctx, u)?.name }.getOrNull() ?: "PDF"
+        }
+    }
     val pickGallery = rememberImagePicker { files ->
         scope.launch {
             val crops = withContext(Dispatchers.Default) { files.map { f -> runCatching { ScanEdges.detect(f) }.getOrNull() } }
@@ -197,7 +244,10 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
     LaunchedEffect(Unit) { if (autoStart && !started && groups.isEmpty()) { started = true; launchScanner() } }
 
     val savingMsg = stringResource(R.string.t5_scan_saving)
+    val pageDeletedMsg = stringResource(R.string.sc_page_deleted)
+    val undoLabel = stringResource(R.string.sc_undo)
     val savingImagesMsg = stringResource(R.string.sc_saving_images)
+    val savingWordMsg = stringResource(R.string.sc_saving_word)
     val prefixes = mapOf(ScanKind.RECEIPT to stringResource(R.string.t5_prefix_receipt), ScanKind.BUSINESS_CARD to stringResource(R.string.t5_prefix_card), ScanKind.ID_CARD to stringResource(R.string.t5_prefix_id), ScanKind.WHITEBOARD to stringResource(R.string.t5_prefix_board), ScanKind.FORM to stringResource(R.string.t5_prefix_form))
     fun save() {
         val all = groups.filter { it.isNotEmpty() }
@@ -205,8 +255,12 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
         savePrefs()
         // FINAL_CHECK_2 #16: a form needs its text for field recognition. Smart naming no longer forces OCR (switching OCR off
         // did not make saving faster, scanner audit U14): without text it names by kind and date. Pictures need no text.
-        val imgs = asImages && !kindNeedsPdf(kind)
-        val needText = !imgs && (autoOcr || kind == ScanKind.BUSINESS_CARD || kind == ScanKind.RECEIPT || kind == ScanKind.FORM)
+        val word = asWord && !kindNeedsPdf(kind)
+        val imgs = asImages && !word && !kindNeedsPdf(kind)
+        // Word needs the text of every page
+        val needText = !imgs && (word || autoOcr || kind == ScanKind.BUSINESS_CARD || kind == ScanKind.RECEIPT || kind == ScanKind.FORM)
+        val fingers = removeFingers
+        val target = appendTo.takeIf { !imgs && !word }; val targetName = appendName
         val k = kind; val rf = rightFirst; val typed = name.trim()
         // deep audit E17: the ID card page is an A4 sheet at real card size — another paper shrank or mis-scaled it
         val p = if (k == ScanKind.ID_CARD) ScanPaper.A4 else paper
@@ -218,7 +272,7 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
         // deep audit E16: "pages per file" counts output pages — an ID card is two photos, a book photo two pages
         val chunk = when { perFile <= 0 -> 0; k == ScanKind.ID_CARD -> perFile * 2; k == ScanKind.BOOK -> maxOf(1, perFile / 2); else -> perFile }
         val docs = all.flatMap { ScanExtras.chunks(it, chunk) }
-        job.launch(if (imgs) savingImagesMsg else savingMsg) {
+        job.launch(when { imgs -> savingImagesMsg; word -> savingWordMsg; else -> savingMsg }) {
             val engine = if (needText) OcrEngine(ctx.applicationContext) else null
             try {
                 val made = ArrayList<File>(); var lastText = ""; var fieldsMade = 0
@@ -231,7 +285,7 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                         val stamp = typed.ifEmpty { (prefixes[k] ?: "Scan") + "_" + SimpleDateFormat("yyyyMMdd_HHmm", Locale.US).format(Date()) } + if (docs.size > 1) "_${gi + 1}" else ""
                         var n = 0
                         withContext(Dispatchers.IO) {
-                            ScanBuilder.pagePictures(g.map { it.file to it.edit }, k, rf, maxDim = sizeDim(lvl)).forEach { o ->
+                            ScanBuilder.pagePictures(g.map { it.file to it.edit }, k, rf, maxDim = sizeDim(lvl), removeFingers = fingers).forEach { o ->
                                 n++
                                 val f = app.documents.uniqueFile(app.documents.scansDir, "${stamp}_$n", "jpg")
                                 f.outputStream().use { o.bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, sizeQuality(lvl), it) }
@@ -244,7 +298,7 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                     val today = t5Today()
                     val tmpOut = app.documents.newTemp("t5scan_out", "pdf")
                     val ocrLangs = if (!needText) null else if (langs == "auto") detectLangs(engine!!, g.first()) else langs
-                    val pictures = ScanBuilder.pagePictures(g.map { it.file to it.edit }, k, rf, maxDim = sizeDim(sizeLevel))
+                    val pictures = ScanBuilder.pagePictures(g.map { it.file to it.edit }, k, rf, maxDim = sizeDim(sizeLevel), removeFingers = fingers)
                     val r = ScanBuilder.build(ctx, pictures, tmpOut, ScanBuildOptions(paper = p, quality = sizeQuality(sizeLevel), ocrLangs = ocrLangs), engine) { n -> step(gi * 100 + n, docs.size * 100) }
                     val base = when {
                         typed.isNotEmpty() -> if (docs.size > 1) "${typed}_${gi + 1}" else typed
@@ -273,6 +327,33 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                             if (n > 0) { ff.copyTo(tmpOut, true) }; ff.delete(); n
                         }.getOrDefault(0)
                     }
+                    // scanner essentials: Word — the searchable scan converted to a .docx (the PDF is not kept)
+                    if (word) {
+                        val named = File(app.documents.tempDir, "${com.smartdocs.editor.core.files.FileNames.clean(base).ifBlank { "Scan" }}.pdf").also { it.delete() }
+                        withContext(Dispatchers.IO) { if (!tmpOut.renameTo(named)) { tmpOut.copyTo(named, true); tmpOut.delete() } }
+                        try {
+                            val conv = com.smartdocs.editor.core.convert6.Cv6Catalog.byId("pdf_docx") ?: throw IllegalStateException("docx")
+                            val res = com.smartdocs.editor.core.convert6.Cv6Engine(ctx, app.documents).run(conv, listOf(named), com.smartdocs.editor.core.convert6.Cv6Opts(), null) { _, _, _ -> }
+                            made += res.files; lastText = r.text
+                            if (r.text.isNotBlank()) { if (texts.isNotEmpty()) texts.append("\n\n"); texts.append(r.text) }
+                        } finally { named.delete() }
+                        return@forEachIndexed
+                    }
+                    // scanner essentials: add the pages at the end of an existing PDF (written back when the app may)
+                    if (target != null && docs.size == 1) {
+                        val local = withContext(Dispatchers.IO) { app.documents.localFile(target) }
+                        val merged = app.documents.newTemp("t5scan_merge", "pdf")
+                        com.smartdocs.editor.core.pdf.PdfOps.merge(listOf(local, tmpOut), merged)
+                        tmpOut.delete()
+                        val wrote = withContext(Dispatchers.IO) { runCatching { ctx.contentResolver.openOutputStream(target, "wt")!!.use { o -> merged.inputStream().use { it.copyTo(o) } } }.isSuccess }
+                        val out = app.documents.uniqueFile(app.documents.scansDir, targetName.substringBeforeLast('.').ifBlank { base })
+                        withContext(Dispatchers.IO) { if (!merged.renameTo(out)) { merged.copyTo(out, true); merged.delete() } }
+                        info = ctx.getString(if (wrote) R.string.sc_appended_to else R.string.sc_appended_copy, targetName)
+                        runCatching { app.documents.touchRecent(out) }
+                        made += out; lastText = r.text
+                        if (r.text.isNotBlank()) { if (texts.isNotEmpty()) texts.append("\n\n"); texts.append(r.text) }
+                        return@forEachIndexed
+                    }
                     val out = app.documents.uniqueFile(app.documents.scansDir, base)
                     withContext(Dispatchers.IO) { if (!tmpOut.renameTo(out)) { tmpOut.copyTo(out, true); tmpOut.delete() } }
                     runCatching { app.documents.touchRecent(out, pageCount) }
@@ -281,11 +362,12 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                   } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Throwable) { failed += g }
                 }
                 recognised = texts.toString()
-                resultMime = if (imgs) "image/jpeg" else "application/pdf"
+                resultMime = when { imgs -> "image/jpeg"; word -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document"; else -> "application/pdf" }
+                if (target != null && failed.isEmpty()) { appendTo = null; appendName = "" }
                 if (made.isEmpty()) throw IllegalStateException(ctx.getString(R.string.sc_save_failed))
                 // when OCR was only needed for naming / parsing, the text layer stays: it makes the scan searchable
                 when {
-                    imgs -> results = made
+                    imgs || word -> results = made
                     k == ScanKind.BUSINESS_CARD -> contact = BusinessCardParser.parse(lastText)
                     k == ScanKind.RECEIPT -> receipt = ReceiptParser.parse(lastText) to made.last()
                     made.size == 1 -> result = made.first()
@@ -339,6 +421,7 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
             SwitchRow(stringResource(R.string.sc_own_camera), ownCamera, stringResource(R.string.sc_own_camera_sub)) {
                 ownCamera = it; ctx.getSharedPreferences("scan_studio", 0).edit().putBoolean("own_camera", it).apply()
             }
+            SwitchRow(stringResource(R.string.sc_auto_rotate), autoRotate, stringResource(R.string.sc_auto_rotate_sub)) { autoRotate = it; prefs.edit().putBoolean("auto_rotate", it).apply() }
             // file size: small for sharing (WhatsApp, slow data) / medium / best quality (A4 at 300 dpi)
             FieldLabel(stringResource(R.string.sc_size))
             ChoiceChips(listOf(0, 1, 2), sizeLevel, { stringResource(when (it) { 0 -> R.string.sc_size_small; 1 -> R.string.sc_size_medium; else -> R.string.sc_size_best }) }) {
@@ -348,8 +431,9 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
         if (groups.isNotEmpty()) Text(stringResource(R.string.sc_tap_to_edit), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         groups.forEachIndexed { gi, g ->
             T5Card(if (groups.size > 1) stringResource(R.string.sc_doc_n, gi + 1) + " · " + pluralStringResource(R.plurals.sc_pages_n, g.size, g.size) else pluralStringResource(R.plurals.sc_pages_n, g.size, g.size), Icons.Default.Collections) {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    itemsIndexed(g, key = { i, p -> "$i:" + p.file.absolutePath }) { pi, p -> PageThumb(p, pi) { editing = gi to pi } }
+                // scanner essentials: long-press a page and drag it to a new place
+                DraggablePageRow(g, onEdit = { pi -> editing = gi to pi }) { from, to ->
+                    groups = groups.mapIndexed { i, gg -> if (i != gi) gg else gg.toMutableList().apply { add(to.coerceIn(0, size - 1), removeAt(from)) } }
                 }
             }
         }
@@ -414,8 +498,18 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                 // scanner audit U23: PDF or pictures
                 FieldLabel(stringResource(R.string.sc_format))
                 if (kindNeedsPdf(kind)) Text(stringResource(R.string.sc_format_pdf_needed), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                else ChoiceChips(listOf(false, true), asImages, { stringResource(if (it) R.string.sc_format_jpg else R.string.sc_format_pdf) }) { asImages = it; prefs.edit().putBoolean("as_images", it).apply() }
-                if (!asImages || kindNeedsPdf(kind)) SwitchRow(stringResource(R.string.t5_auto_ocr), autoOcr, stringResource(R.string.t5_auto_ocr_hint)) { autoOcr = it }
+                else ChoiceChips(listOf(0, 1, 2), if (asWord) 2 else if (asImages) 1 else 0, { stringResource(when (it) { 1 -> R.string.sc_format_jpg; 2 -> R.string.sc_format_word; else -> R.string.sc_format_pdf }) }) {
+                    asImages = it == 1; asWord = it == 2; prefs.edit().putBoolean("as_images", asImages).putBoolean("as_word", asWord).apply()
+                }
+                if ((!asImages && !asWord) || kindNeedsPdf(kind)) SwitchRow(stringResource(R.string.t5_auto_ocr), autoOcr, stringResource(R.string.t5_auto_ocr_hint)) { autoOcr = it }
+                if (asWord && !kindNeedsPdf(kind)) Text(stringResource(R.string.sc_word_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                // add to an existing PDF (one document only)
+                if (!asImages && !asWord && groups.size == 1) Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(if (appendTo != null) stringResource(R.string.sc_append_target, appendName) else stringResource(R.string.sc_append_none), Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+                    if (appendTo != null) IconButton(onClick = { appendTo = null; appendName = "" }) { Icon(Icons.Default.Close, stringResource(R.string.cancel)) }
+                    TextButton(onClick = { runCatching { pickAppend.launch(arrayOf("application/pdf")) } }) { Text(stringResource(R.string.sc_append_pick)) }
+                }
+                if (kind == ScanKind.BOOK) SwitchRow(stringResource(R.string.sc_fingers), removeFingers, stringResource(R.string.sc_fingers_sub)) { removeFingers = it; prefs.edit().putBoolean("fingers", it).apply() }
                 if (autoOcr || kind == ScanKind.BUSINESS_CARD || kind == ScanKind.RECEIPT) {
                     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         listOf("auto", "ara", "eng", "ara+eng", "fra", "ara+fra").forEach { l ->
@@ -443,8 +537,14 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                     SwitchRow(stringResource(R.string.pc_keep_project), keepProject, stringResource(R.string.pc_keep_project_sub)) { keepProject = it; prefs.edit().putBoolean("keep_project", it).apply() }
                 }
             }
-            PrimaryButton(stringResource(if (asImages && !kindNeedsPdf(kind)) R.string.sc_save_images else R.string.t5_scan_save), enabled = !job.running,
-                icon = if (asImages && !kindNeedsPdf(kind)) Icons.Default.Image else Icons.Default.PictureAsPdf) { save() }
+            if (orienting > 0) Row(verticalAlignment = Alignment.CenterVertically) {
+                CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp); Spacer(Modifier.width(8.dp))
+                Text(stringResource(R.string.sc_orienting), style = MaterialTheme.typography.bodySmall)
+            }
+            val fmtWord = asWord && !kindNeedsPdf(kind); val fmtJpg = asImages && !fmtWord && !kindNeedsPdf(kind)
+            PrimaryButton(stringResource(when { fmtJpg -> R.string.sc_save_images; fmtWord -> R.string.sc_save_word; appendTo != null && groups.size == 1 -> R.string.sc_save_append; else -> R.string.t5_scan_save }),
+                enabled = !job.running && orienting == 0,
+                icon = when { fmtJpg -> Icons.Default.Image; fmtWord -> Icons.Default.Description; else -> Icons.Default.PictureAsPdf }) { save() }
             // FINAL_CHECK_2 Low (K11): QR / barcodes on the scanned pages
             var codes by remember { mutableStateOf<List<Pair<Int, com.smartdocs.editor.core.tools5.BarcodeScan.Code>>?>(null) }
             var reading by remember { mutableStateOf(false) }
@@ -514,7 +614,12 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
         if (page == null) editing = null else key(gi, pi) { ScanPageEditor(
             page = page, index = pi, count = size,
             onApply = { e, all -> groups = groups.mapIndexed { i, g -> if (i != gi) g else g.mapIndexed { j, p -> if (j == pi || all) p.copy(edit = if (j == pi) e else p.edit.copy(filter = e.filter, brightness = e.brightness, contrast = e.contrast)) else p } }; editing = null },
-            onDelete = { groups = groups.mapIndexed { i, g -> if (i != gi) g else g.filterIndexed { j, _ -> j != pi } }.filter { it.isNotEmpty() }; editing = null },
+            onDelete = {
+                val before = groups
+                groups = groups.mapIndexed { i, g -> if (i != gi) g else g.filterIndexed { j, _ -> j != pi } }.filter { it.isNotEmpty() }; editing = null
+                // scanner essentials: a deleted page can be brought back
+                scope.launch { if (snackbar.showSnackbar(pageDeletedMsg, actionLabel = undoLabel, duration = SnackbarDuration.Long) == SnackbarResult.ActionPerformed) groups = before }
+            },
             // the editor stays open on the moved page with its edits (moving used to close it and drop them)
             onMove = { e, d -> keep(e); val t = (pi + d).coerceIn(0, size - 1); groups = groups.mapIndexed { i, g -> if (i != gi) g else g.toMutableList().apply { add(t, removeAt(pi)) } }; editing = gi to t },
             onGo = { e, d -> keep(e); editing = gi to (pi + d).coerceIn(0, size - 1) },
@@ -595,3 +700,35 @@ internal fun sizeQuality(level: Int) = when (level) { 0 -> 72; 1 -> 82; else -> 
 
 /** Kinds whose result is read from the text (contact, receipt CSV, fillable fields) need a PDF. */
 internal fun kindNeedsPdf(k: ScanKind) = k == ScanKind.BUSINESS_CARD || k == ScanKind.RECEIPT || k == ScanKind.FORM
+
+/** The pages of one document in a row: tap = edit, long-press and drag = move (right-to-left aware). */
+@Composable
+private fun DraggablePageRow(pages: List<ScanPage>, onEdit: (Int) -> Unit, onMove: (Int, Int) -> Unit) {
+    val rtl = androidx.compose.ui.platform.LocalLayoutDirection.current == androidx.compose.ui.unit.LayoutDirection.Rtl
+    val step = with(androidx.compose.ui.platform.LocalDensity.current) { 100.dp.toPx() }   // 92 dp page + 8 dp gap
+    var dragging by remember { mutableStateOf(-1) }
+    var dx by remember { mutableStateOf(0f) }
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        itemsIndexed(pages, key = { _, p -> p.file.absolutePath }) { pi, p ->
+            val moving = dragging == pi
+            Box(Modifier
+                .zIndex(if (moving) 1f else 0f)
+                .graphicsLayer { if (moving) { translationX = dx; scaleX = 1.06f; scaleY = 1.06f; alpha = 0.9f } }
+                .pointerInput(pages.size, pi) {
+                    detectDragGesturesAfterLongPress(
+                        onDragStart = { dragging = pi; dx = 0f; haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress) },
+                        onDragEnd = {
+                            val shift = Math.round(dx / step) * (if (rtl) -1 else 1)
+                            val to = (pi + shift).coerceIn(0, pages.size - 1)
+                            dragging = -1; dx = 0f
+                            if (to != pi) onMove(pi, to)
+                        },
+                        onDragCancel = { dragging = -1; dx = 0f },
+                    ) { change, d -> change.consume(); dx += d.x }
+                }) {
+                PageThumb(p, pi) { onEdit(pi) }
+            }
+        }
+    }
+}

@@ -219,7 +219,8 @@ private fun CameraBody(pageLimit: Int, onDone: (List<Pair<File, PageQuad.Quad?>>
     var steady by remember { mutableIntStateOf(0) }
     var capturing by remember { mutableStateOf(false) }
     var shot by remember { mutableStateOf<Shot?>(null) }
-    val pages = remember { mutableStateOf(listOf<Pair<File, PageQuad.Quad?>>()) }
+    // scanner essentials: the pages taken so far survive the system closing the app while the camera is open
+    val pages = androidx.compose.runtime.saveable.rememberSaveable(saver = CamPagesSaver) { mutableStateOf(listOf<Pair<File, PageQuad.Quad?>>()) }
     var lastAuto by remember { mutableStateOf(0L) }
     var viewSize by remember { mutableStateOf(IntSize.Zero) }
 
@@ -639,3 +640,14 @@ private fun kindGuide(kind: ScanKind, taken: Int): Int? = when (kind) {
     ScanKind.BATCH -> R.string.sc_guide_batch
     else -> null
 }
+
+/** Camera pages as text lines "path|x0,x1,x2,x3,y0,y1,y2,y3" (no corners = whole photo). */
+internal val CamPagesSaver: androidx.compose.runtime.saveable.Saver<androidx.compose.runtime.MutableState<List<Pair<File, PageQuad.Quad?>>>, String> =
+    androidx.compose.runtime.saveable.Saver(
+        save = { st -> st.value.joinToString("\n") { (f, q) -> f.absolutePath + "|" + (q?.let { (it.x + it.y).joinToString(",") } ?: "") } },
+        restore = { s -> mutableStateOf(s.lines().filter { it.isNotBlank() }.mapNotNull { l ->
+            val p = l.split('|'); val f = File(p[0]).takeIf { it.isFile } ?: return@mapNotNull null
+            val v = p.getOrNull(1)?.split(',')?.mapNotNull { it.toFloatOrNull() }
+            f to v?.takeIf { it.size == 8 }?.let { PageQuad.Quad(it.subList(0, 4).toFloatArray(), it.subList(4, 8).toFloatArray()) }
+        }) },
+    )
