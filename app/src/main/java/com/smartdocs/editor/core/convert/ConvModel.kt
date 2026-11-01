@@ -116,7 +116,8 @@ class Line(val visual: List<Word>, val words: List<Word>, val rtl: Boolean, val 
     val neutral: Boolean get() = BidiText.strongCounts(text).let { it[0] == 0 && it[1] == 0 }
 }
 
-enum class Align { START, CENTER, END }
+/** [JUSTIFY]: both edges (a printed line that runs the full width — photo → Word keeps the book's look). */
+enum class Align { START, CENTER, END, JUSTIFY }
 
 sealed class Block {
     abstract val rect: Rect
@@ -170,6 +171,8 @@ class PageLayout(
     val ocrChars: Int = 0,
     /** The page's comments ([PageContent.comments]). */
     val comments: List<PageComment> = emptyList(),
+    /** Scanned pages: the printed line pitch in points (0 = unknown); writers keep lines this far apart. */
+    val linePitch: Float = 0f,
 ) {
     /** Strong RTL / LTR letter counts of the page text. */
     fun strongCounts(): IntArray {

@@ -114,7 +114,7 @@
     <string name="sc_drop_edits">حفظ تعديلات هذه الصفحة؟</string>
     <string name="sc_discard_edits">تجاهلها</string>
     <string name="sc_format_word">ملف Word</string>
-    <string name="sc_word_hint">يُتعرَّف على النص ثم يُحوَّل المسح إلى ملف Word قابل للتعديل.</string>
+    <string name="sc_word_hint">يُتعرَّف على النص ثم تُبنى صفحة Word قريبة من الأصل: حجم الورقة والأحجام والغامق والألوان والجداول ذات الحدود والصور. الخط أقرب خط وليس الخط نفسه.</string>
     <string name="sc_saving_word">جارٍ إنشاء ملف Word…</string>
     <string name="sc_save_word">حفظ كملف Word</string>
     <string name="sc_save_append">إضافة الصفحات إلى الملف</string>
@@ -130,4 +130,5 @@
     <string name="sc_orienting">جارٍ ضبط اتجاه الصفحات…</string>
     <string name="sc_page_deleted">حُذفت الصفحة</string>
     <string name="sc_undo">تراجع</string>
+    <string name="sc_word_font">خط النص في Word (أقرب خط)</string>
 </resources>
