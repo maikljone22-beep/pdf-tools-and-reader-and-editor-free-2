@@ -302,7 +302,7 @@ private fun CameraBody(pageLimit: Int, onDone: (List<Pair<File, PageQuad.Quad?>>
                 scope.launch {
                     frameSize = IntSize(w, h); quad = q; steady = st; lastSig = sig
                     // re-arm once the page is gone or clearly different from the last photo
-                    if (!armed && !capturing && shot == null && (q == null || shotSig == null || sigDiff(sig, shotSig!!) > 14)) armed = true
+                    if (!armed && !capturing && shot == null && (q == null || shotSig == null || sigDiff(sig, shotSig!!) > 10)) armed = true
                     blurry = autoCapture && q != null && st >= 10 && !sharp
                     val now = System.currentTimeMillis()
                     if (autoCapture && armed && q != null && st >= 10 && sharp && now - lastAuto > 1500L && !capturing && shot == null) { lastAuto = now; capture() }
@@ -485,7 +485,8 @@ private fun openShot(f: File): Shot? {
     if (o.outWidth <= 0) return null
     val rot = exifRotation(f)
     val fullW = if (rot % 180 == 0) o.outWidth else o.outHeight; val fullH = if (rot % 180 == 0) o.outHeight else o.outWidth
-    val preview = decode(f, 1400, rot) ?: return null
+    // same orientation rules as the page builder (mirrored EXIF included), so the corners match the output
+    val preview = com.smartdocs.editor.core.tools5.ScanImage.load(f, 1400) ?: return null
     val px = IntArray(preview.width * preview.height); preview.getPixels(px, 0, preview.width, 0, 0, preview.width, preview.height)
     // detection on a small copy
     val k = max(1, max(preview.width, preview.height) / 560)
@@ -585,13 +586,16 @@ private fun CamToggle(icon: androidx.compose.ui.graphics.vector.ImageVector, lab
 }
 
 /** A 16×12 grey thumbnail of a frame: tells whether the page under the camera changed since the last photo. */
-private fun signature(px: IntArray, w: Int, h: Int): IntArray = IntArray(16 * 12) { i ->
+internal fun signature(px: IntArray, w: Int, h: Int): IntArray = IntArray(16 * 12) { i ->
     val gx = i % 16; val gy = i / 16
-    val x = (gx * w / 16 + w / 32).coerceIn(0, w - 1); val y = (gy * h / 12 + h / 24).coerceIn(0, h - 1)
-    val c = px[y * w + x]; (((c shr 16) and 0xFF) * 299 + ((c shr 8) and 0xFF) * 587 + (c and 0xFF) * 114) / 1000
+    val x0 = gx * w / 16; val x1 = maxOf(x0 + 1, (gx + 1) * w / 16); val y0 = gy * h / 12; val y1 = maxOf(y0 + 1, (gy + 1) * h / 12)
+    var s = 0L; var n = 0
+    var y = y0
+    while (y < y1 && y < h) { var x = x0; while (x < x1 && x < w) { val c = px[y * w + x]; s += (((c shr 16) and 0xFF) * 299 + ((c shr 8) and 0xFF) * 587 + (c and 0xFF) * 114) / 1000; n++; x += 2 }; y += 2 }
+    if (n == 0) 0 else (s / n).toInt()
 }
 
-private fun sigDiff(a: IntArray, b: IntArray): Int { var s = 0; for (i in a.indices) s += kotlin.math.abs(a[i] - b[i]); return s / a.size }
+internal fun sigDiff(a: IntArray, b: IntArray): Int { var s = 0; for (i in a.indices) s += kotlin.math.abs(a[i] - b[i]); return s / a.size }
 
 /** Scanner UX audit S2: change the corners of a page later (from the page editor). */
 @Composable

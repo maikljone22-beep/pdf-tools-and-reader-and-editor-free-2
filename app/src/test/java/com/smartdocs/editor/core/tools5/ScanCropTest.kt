@@ -31,4 +31,11 @@ class ScanCropTest {
         // an old manifest line (no crop field) still reads
         assertEquals(1, ScanProjects.decode("0|a.jpg|AUTO|0.0|1.0|0|false||false\n").second.size)
     }
+
+    @Test fun croppedPagesAreDecodedLarger() {
+        assertEquals(2400, ScanImage.loadDim(2400, null))
+        // a page covering 70 % of the photo: decoded at 2400 / 0.7, capped at 1.5×
+        assertEquals(3428, ScanImage.loadDim(2400, floatArrayOf(0.1f, 0.8f, 0.8f, 0.1f, 0.1f, 0.1f, 0.6f, 0.6f)))
+        assertEquals(3600, ScanImage.loadDim(2400, floatArrayOf(0.4f, 0.6f, 0.6f, 0.4f, 0.4f, 0.4f, 0.6f, 0.6f)))
+    }
 }
