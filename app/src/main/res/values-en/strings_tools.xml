@@ -100,4 +100,6 @@
     <string name="tl_help_wifi_t">Network transfer</string>
     <string name="tl_help_wifi_b">Move files between your phone and a computer through the browser on the same Wi-Fi network, without a cable.</string>
     <string name="tl_help_privacy">All files are processed on your device and are not sent to any server, except for the AI assistant and web page conversion, which need the internet.</string>
+    <string name="tl_save_to_folder">Save to folder</string>
+    <string name="tl_saved_to_folder">%1$d saved to the folder</string>
 </resources>

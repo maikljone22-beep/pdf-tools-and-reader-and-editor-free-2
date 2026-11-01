@@ -126,4 +126,6 @@
     <string name="tl_help_wifi_t">النقل عبر الشبكة</string>
     <string name="tl_help_wifi_b">انقل الملفات بين الهاتف والكمبيوتر عبر المتصفح على نفس شبكة Wi-Fi دون كابل.</string>
     <string name="tl_help_privacy">تُعالج جميع الملفات على جهازك ولا تُرسل إلى أي خادم، باستثناء ميزات المساعد الذكي وتحويل صفحات الويب التي تحتاج إلى الإنترنت.</string>
+    <string name="tl_save_to_folder">حفظ في مجلد</string>
+    <string name="tl_saved_to_folder">حُفظ %1$d في المجلد</string>
 </resources>

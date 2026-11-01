@@ -147,7 +147,7 @@
     <string name="t5_job_log_empty">No results yet</string>
     <string name="t5_job_queued">Queued</string>
     <string name="t5_job_running">Running</string>
-    <string name="t5_kind_batch">Batch</string>
+    <string name="t5_kind_batch">Several documents</string>
     <string name="t5_kind_batch_hint">Each scan round becomes its own file with a smart name</string>
     <string name="t5_kind_board">Whiteboard</string>
     <string name="t5_kind_board_hint">Whitens the board and boosts colours</string>
@@ -344,7 +344,7 @@
     <string name="t5_scan_save">Save PDF</string>
     <string name="t5_scan_saving">Creating the PDF…</string>
     <string name="t5_scan_start">Start scanning</string>
-    <string name="t5_scan_title">Scan studio</string>
+    <string name="t5_scan_title">Scan</string>
     <string name="t5_scan_unavailable">The scanner is not available on this device; use the gallery</string>
     <string name="t5_share_empty">Nothing was shared</string>
     <string name="t5_share_title">Share to PDF</string>
