@@ -47,6 +47,9 @@ object ScanToWord {
     /** Stroke / box-height ratio from which type reads as bold (regular book text ≈ 0.08–0.10, bold ≈ 0.13–0.16). */
     const val BOLD_ABS = 0.118f
 
+    /** Stroke width / em from which type reads as bold (regular Arabic book text ≈ 0.07–0.09 em, bold ≈ 0.11–0.16). */
+    const val BOLD_EM = 0.105f
+
     private val SIZES = floatArrayOf(8f, 9f, 10f, 11f, 12f, 13f, 14f, 16f, 18f, 20f, 22f, 24f, 28f, 32f, 36f, 40f, 48f)
 
     /**
@@ -250,6 +253,12 @@ object ScanToWord {
     fun junk(b: OcrBox): Boolean {
         val t = b.text.filterNot { it == '\u200e' || it == '\u200f' }.trim()
         val letters = t.count { it.isLetter() }; val digits = t.count { it.isDigit() }
+        // question / answer labels (س١، ج٢) are short but real
+        if (t.length <= 3 && t[0] in "سج" && t.drop(1).all { it in '٠'..'٩' || it == ':' }) return false
+        // Latin and Arabic-Indic digits mixed in one token: an italic or underlined word misread (٠٠٠٠٠.7٦)
+        if (t.any { it in '0'..'9' } && t.any { it in '٠'..'٩' }) return true
+        // one letter four times running: a border or a pattern, not a word (للالللللكيل)
+        if (Regex("(.)\\1{3}").containsMatchIn(t)) return true
         if (letters + digits == 0) return !(t.length == 1 && t[0] in ".:،؛؟?!()-–—*•") || b.conf < 60f
         if (b.conf < 30f) return true
         // a row of ornaments read as a few letters: the box is far wider than its letters could be
@@ -268,16 +277,30 @@ object ScanToWord {
         val s = pw / w
         val rules = rules0 ?: rules(px, w, h)
         // bidi marks the OCR adds are not text
-        val clean = words1.map { it.copy(text = it.text.filterNot { c -> c == '\u200e' || c == '\u200f' || c == '\u200b' }) }
+        val clean = words1.map { wd ->
+            val t = wd.text.filterNot { c -> c == '\u200e' || c == '\u200f' || c == '\u200b' }
+            // a bold Arabic comma is read as Arabic zero: a lone ٠ (maybe with a dot) between words is the comma
+            wd.copy(text = if (t.matches(Regex("[٠][.:]*"))) "،" else t)
+        }
         // an Arabic page: a Latin "word" read with low confidence is a misread Arabic word or a mark (EGG, Joey, OER…)
         val arabicPage = clean.count { w -> w.text.any { it in '؀'..'ۿ' } } * 10 >= clean.size * 6
-        val words0 = clean.filterNot { junk(it) || (arabicPage && it.conf < 80f && it.text.any { c -> c in 'A'..'Z' || c in 'a'..'z' }) }
+        // a page numbered in Arabic-Indic digits: a Latin number read with less than high confidence is a misread word
+        // (counted on confidently read words only: the misreads are what this test is for)
+        val sure = clean.filter { it.conf >= 90f }
+        val indicPage = sure.sumOf { w -> w.text.count { it in '٠'..'٩' } } > sure.sumOf { w -> w.text.count { it in '0'..'9' } }
+        val kept = clean.filterNot { junk(it) || (arabicPage && it.conf < 80f && it.text.any { c -> c in 'A'..'Z' || c in 'a'..'z' }) ||
+            (indicPage && it.conf < 90f && it.text.any { c -> c in '0'..'9' }) }
+        // a whole line read with low confidence is a border, a pattern or a decorated title gone wrong
+        // (judged on everything read on the line, the junk included; one surely read word of 3+ letters saves it)
+        val lineOk = clean.groupBy { it.line }.mapValues { (_, lw) ->
+            lw.map { it.conf }.sorted()[lw.size / 2] >= 50f || lw.any { it.conf >= 85f && it.text.count { c -> c.isLetter() } >= 3 }
+        }
+        val words0 = kept.filter { lineOk[it.line] != false }
         val figs = figures(px, w, h, words0, rules)
         // words inside a figure belong to the picture (labels of a diagram)
         val words = words0.filter { wd -> figs.none { f -> wd.l >= f[0] - 2 && wd.r <= f[2] + 2 && wd.t >= f[1] - 2 && wd.b <= f[3] + 2 } && wd.text.isNotBlank() }
         // per line: one size (the median box height), bold when most of its words are thick, colour when shared
         val strokes = words.associateWith { strokeRatio(px, w, it.l, it.t, it.r, it.b) }
-        val regular = strokes.values.filter { it > 0f }.sorted().let { if (it.isEmpty()) 0f else it[it.size * 2 / 5] }
         val byLine = words.groupBy { it.line }
         // the page's body size: most lines are body text; a line only gets its own size when clearly bigger or smaller
         // (box heights vary ±20 % with the letters a line happens to have)
@@ -288,17 +311,25 @@ object ScanToWord {
         }
         val sizes = byLine.values.filter { it.size >= 2 }.map { lineSize(it) to it.size }
         val body = sizes.groupBy { it.first }.maxByOrNull { e -> e.value.sumOf { it.second } }?.key ?: 14f
+        // stroke width in px; the page is "set in bold" when its usual stroke is thick for the body size
+        val widths = words.associateWith { (strokes[it] ?: 0f) * (it.b - it.t + 1) }
+        val emPx = body / s
+        val pageStroke = widths.values.filter { it > 0f }.sorted().let { if (it.isEmpty()) 0f else it[it.size / 2] }
+        val pageBold = pageStroke >= BOLD_EM * emPx
         val glyphs = ArrayList<Glyph>()
         for ((_, lw) in byLine) {
             val arabic = lw.any { wd -> wd.text.any { it in '؀'..'ۿ' } }
             val own = lineSize(lw)
             // bold: thick strokes for this page (a heading among regular text), or thick in absolute terms (a page set in
             // bold all through, as Yemeni school books often are — then nothing stands out from the page's own norm)
-            val lineStroke = lw.mapNotNull { strokes[it]?.takeIf { v -> v > 0f } }.sorted().let { if (it.isEmpty()) 0f else it[it.size / 2] }
-            val bold = lineStroke >= BOLD_ABS || (regular > 0f && lw.count { (strokes[it] ?: 0f) > regular * 1.35f } * 2 > lw.size)
+            // measured as the absolute stroke width (OCR boxes are line-tall, so a ratio to the box height wanders)
+            val lineStroke = lw.mapNotNull { widths[it]?.takeIf { v -> v > 0f } }.sorted().let { if (it.isEmpty()) 0f else it[it.size / 2] }
+            val bold = if (pageBold) lineStroke >= pageStroke * 0.8f else lineStroke >= max(BOLD_EM * emPx, pageStroke * 1.3f)
             // headings are clearly taller and printed bold; anything else is body text (a regular line measured tall
             // has an underline, diacritics or noise in its boxes; smaller boxes are short words or fragments)
-            val size = if (own >= body * 1.45f && lw.size in 2..8 && bold) own else body
+            // on a page set in bold all through, a heading is also thicker than the page's usual stroke
+            val heading = if (pageBold) lineStroke >= pageStroke * 1.15f else bold
+            val size = if (own >= body * 1.45f && lw.size in 2..8 && heading) own else body
             val colors = lw.map { inkColor(px, w, it.l, it.t, it.r, it.b) }
             val color = colors.groupingBy { it }.eachCount().maxBy { it.value }.key.takeIf { c -> colors.count { it == c } * 2 > colors.size } ?: 0
             val sortedLw = lw.sortedBy { it.l }
@@ -357,7 +388,7 @@ object ScanToWord {
             val rows = ArrayList<ArrayList<Glyph>>()
             for (gs in groups.values.sortedBy { g -> g.minOf { it.top } }) {
                 val t = gs.minOf { it.top }; val b = gs.maxOf { it.top + it.h }
-                val row = rows.firstOrNull { rr -> val rt = rr.minOf { it.top }; val rb = rr.maxOf { it.top + it.h }; min(b, rb) - max(t, rt) >= 0.5f * min(b - t, rb - rt) }
+                val row = rows.firstOrNull { rr -> val rt = rr.minOf { it.top }; val rb = rr.maxOf { it.top + it.h }; abs((t + b) - (rt + rb)) / 2f < 0.3f * min(b - t, rb - rt) }
                 if (row != null) row += gs else rows += gs
             }
             return rows.mapNotNull { gs -> LayoutAnalyzer.buildLines(gs).let { ls -> if (ls.isEmpty()) null else if (ls.size == 1) ls[0] else LayoutAnalyzer.lineOf(ls.flatMap { it.words }) } }.sortedBy { it.top }

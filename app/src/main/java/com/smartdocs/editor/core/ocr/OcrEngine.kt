@@ -354,6 +354,8 @@ class OcrEngine(private val context: Context, val fast: Boolean = false) : AutoC
         /** The languages Tesseract is started with: the fine-tuned model replaces «ara» (and «eng», which it reads too). */
         fun effectiveLangs(langs: String, ftInstalled: Boolean, mode: OcrEngineMode, fast: Boolean): String {
             val parts = langs.split('+').map { it.trim() }.filter { it.isNotEmpty() }
+            // asked for both (photo → Word: the two models together read bold book pages best), when the model is there
+            if (ARABIC_FT in parts) return (if (ftInstalled) parts.filter { it != "eng" } else parts.filter { it != ARABIC_FT }).distinct().joinToString("+")
             if (!ftInstalled || fast || mode == OcrEngineMode.TESSERACT || "ara" !in parts) return langs
             return parts.filter { it != "eng" }.map { if (it == "ara") ARABIC_FT else it }.distinct().joinToString("+")
         }

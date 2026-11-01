@@ -43,8 +43,15 @@ class DocxBuilder(
     /** Line pitch of the page being added ([PageLayout.linePitch]); 0 = the style's spacing. */
     private var pagePitch = 0f
     /** Exact line spacing at the printed pitch (never below 1.2 × the line's size, so tall letters are not cut). */
-    private fun pitched(size: Float) = if (pagePitch <= 0f) "" else
-        "<w:spacing w:before=\"0\" w:after=\"0\" w:line=\"" + Math.round(maxOf(pagePitch, size * 1.2f) * 20f) + "\" w:lineRule=\"exact\"/>"
+    private fun pitched(size: Float, before: Float = 0f) = if (pagePitch <= 0f) "" else
+        "<w:spacing w:before=\"" + Math.round(before * 20f) + "\" w:after=\"0\" w:line=\"" + Math.round(maxOf(pagePitch, size * 1.2f) * 20f) + "\" w:lineRule=\"exact\"/>"
+    /** Where the next block would start with no extra gap (scanned pages), so a wider printed gap becomes space before. */
+    private var nextTop = -1f
+    private fun gapBefore(y0: Float): Float {
+        if (pagePitch <= 0f || nextTop < 0f) return 0f
+        val g = y0 - nextTop
+        return if (g > pagePitch * 0.5f) g else 0f
+    }
 
     /** framePr of a block placed at [r] (PDF points, y down) on its page; a little wider so its lines do not wrap. */
     private fun frame(r: Rect): String {
@@ -70,6 +77,7 @@ class DocxBuilder(
         if (pages == 0) setupFirstPage(page)
         pageHasFills = page.hasFills
         pagePitch = if (exact) 0f else page.linePitch
+        nextTop = -1f
         // a page break before every page but the first (the old else-branch of the footer test put one before the first
         // page and skipped the one before the page that first had a footer)
         if (pages > 0 && !flowing) body.append("<w:p><w:r><w:br w:type=\"page\"/></w:r></w:p>")
@@ -161,7 +169,8 @@ class DocxBuilder(
         if (exact) body.append(frame(b.rect))                // schema order: pStyle, framePr, shd, bidi, spacing, jc
         b.shade?.let { body.append("<w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"").append(Decorations.hex(it)).append("\"/>") }
         if (b.rtl) body.append("<w:bidi/>")
-        if (exact) body.append("<w:spacing w:before=\"0\" w:after=\"0\"/>") else body.append(pitched(b.fontSize))
+        if (exact) body.append("<w:spacing w:before=\"0\" w:after=\"0\"/>") else body.append(pitched(b.fontSize, gapBefore(b.rect.y0)))
+        if (pagePitch > 0f) nextTop = b.rect.y0 + pagePitch
         jc(b.align)?.let { body.append("<w:jc w:val=\"").append(it).append("\"/>") }
         body.append("</w:pPr>")
         val ids = pageComments[b].orEmpty()
@@ -207,7 +216,9 @@ class DocxBuilder(
             val l = lc(c.col, c.colSpan)
             for (dr in 0 until c.rowSpan) for (dc in 0 until c.colSpan) owner[key(c.row + dr, l + dc)] = Own(c, l)
         }
-        val border = if (t.ruled) "w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"808080\"" else "w:val=\"none\" w:sz=\"0\" w:space=\"0\" w:color=\"auto\""
+        // scanned pages: printed rules are black and about 1 pt (PDF tables keep the light grid)
+        val border = if (t.ruled && pagePitch > 0f) "w:val=\"single\" w:sz=\"8\" w:space=\"0\" w:color=\"000000\""
+            else if (t.ruled) "w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"808080\"" else "w:val=\"none\" w:sz=\"0\" w:space=\"0\" w:color=\"auto\""
         body.append("<w:tbl><w:tblPr>")
         // precisely laid out: a floating table at its place on the page
         if (exact) body.append("<w:tblpPr w:leftFromText=\"0\" w:rightFromText=\"0\" w:vertAnchor=\"page\" w:horzAnchor=\"page\" w:tblpX=\"")
@@ -215,7 +226,7 @@ class DocxBuilder(
         if (rtl) body.append("<w:bidiVisual/>")
         body.append("<w:tblW w:w=\"").append(w.sum()).append("\" w:type=\"dxa\"/><w:tblBorders>")
         for (side in listOf("top", "left", "bottom", "right", "insideH", "insideV")) body.append("<w:").append(side).append(' ').append(border).append("/>")
-        body.append("</w:tblBorders><w:tblLayout w:type=\"fixed\"/><w:tblCellMar><w:left w:w=\"80\" w:type=\"dxa\"/><w:right w:w=\"80\" w:type=\"dxa\"/></w:tblCellMar>")
+        body.append("</w:tblBorders><w:tblLayout w:type=\"fixed\"/><w:tblCellMar><w:left w:w=\"").append(if (pagePitch > 0f) 30 else 80).append("\" w:type=\"dxa\"/><w:right w:w=\"").append(if (pagePitch > 0f) 30 else 80).append("\" w:type=\"dxa\"/></w:tblCellMar>")
             .append("<w:tblLook w:val=\"04A0\" w:firstRow=\"1\" w:lastRow=\"0\" w:firstColumn=\"0\" w:lastColumn=\"0\" w:noHBand=\"1\" w:noVBand=\"1\"/></w:tblPr><w:tblGrid>")
         w.forEach { body.append("<w:gridCol w:w=\"").append(it).append("\"/>") }
         body.append("</w:tblGrid>")
@@ -239,6 +250,7 @@ class DocxBuilder(
             body.append("</w:tr>")
         }
         body.append("</w:tbl><w:p/>")
+        if (pagePitch > 0f) nextTop = t.rect.y1 + pagePitch   // the empty paragraph after the table takes about a line
     }
 
     private fun tc(width: Int, span: Int, vMerge: String?, cell: TableCell?, headerCell: Boolean) {
