@@ -19,7 +19,13 @@ enum class ScanFilter { ORIGINAL, AUTO, GRAY, BW, WHITEBOARD, NO_SHADOW, RECEIPT
 data class PageEdit(val filter: ScanFilter = ScanFilter.AUTO, val brightness: Float = 0f, val contrast: Float = 1f, val rotation: Int = 0,
                     val despeckle: Boolean = false, val erase: List<FloatArray> = emptyList(),
                     /** Straighten the text lines of a curved page (book / notebook), see [PageDewarp]. */
-                    val flatten: Boolean = false)
+                    val flatten: Boolean = false,
+                    /**
+                     * Scanner UX audit S2: the page corners in the upright photo (x0..x3, y0..y3 as 0..1 fractions,
+                     * top-left, top-right, bottom-right, bottom-left); null = the picture as it is. Kept so the edges can
+                     * be changed later, not burnt into the file.
+                     */
+                    val crop: FloatArray? = null)
 
 /** Default filter for a scan kind. */
 fun ScanKind.defaultFilter(): ScanFilter = when (this) {
@@ -39,15 +45,16 @@ object ScanImage {
         val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeFile(f.absolutePath, o)
         if (o.outWidth <= 0 || o.outHeight <= 0) return null
+        // deep audit E1: a 50 MP photo decoded at sample 1 (≈ 200 MB) ran out of memory — subsample until the decoded
+        // side is at most 1.5 × the wanted one, then scale exactly
         var sample = 1
-        while (maxOf(o.outWidth, o.outHeight) / (sample * 2) >= maxDim) sample *= 2
+        while (maxOf(o.outWidth, o.outHeight) / (sample * 2) >= maxDim * 3 / 4) sample *= 2
         val raw = BitmapFactory.decodeFile(f.absolutePath, BitmapFactory.Options().apply { inSampleSize = sample; inPreferredConfig = Bitmap.Config.ARGB_8888 }) ?: return null
-        val deg = runCatching {
-            when (ExifInterface(f.absolutePath).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)) {
-                ExifInterface.ORIENTATION_ROTATE_90 -> 90; ExifInterface.ORIENTATION_ROTATE_180 -> 180; ExifInterface.ORIENTATION_ROTATE_270 -> 270; else -> 0
-            }
-        }.getOrDefault(0)
-        var b = if (deg != 0) rotate(raw, deg) else raw
+        // deep audit E7: mirrored orientations (front camera, some galleries) — rotate, then mirror
+        val exif = runCatching { ExifInterface(f.absolutePath) }.getOrNull()
+        val deg = runCatching { exif?.rotationDegrees ?: 0 }.getOrDefault(0)
+        val flip = runCatching { exif?.isFlipped == true }.getOrDefault(false)
+        var b = if (deg != 0 || flip) Bitmap.createBitmap(raw, 0, 0, raw.width, raw.height, Matrix().apply { postRotate(deg.toFloat()); if (flip) postScale(-1f, 1f) }, true).also { if (it !== raw) raw.recycle() } else raw
         val long = maxOf(b.width, b.height)
         if (long > maxDim) {
             val k = maxDim.toFloat() / long
@@ -68,7 +75,7 @@ object ScanImage {
 
     /** Apply [edit] (rotation, filter, brightness/contrast). May recycle [src]; returns a mutable ARGB bitmap. */
     fun apply(src: Bitmap, edit: PageEdit, dewarp: Boolean = edit.flatten): Bitmap {
-        val b0 = rotate(src, edit.rotation)
+        val b0 = rotate(cropped(src, edit.crop), edit.rotation)
         val b = if (b0.isMutable && b0.config == Bitmap.Config.ARGB_8888) b0 else b0.copy(Bitmap.Config.ARGB_8888, true).also { if (it !== b0) b0.recycle() }
         val w = b.width; val h = b.height
         val px = IntArray(w * h)
@@ -97,6 +104,19 @@ object ScanImage {
         if (edit.erase.isNotEmpty()) ScanClean.erase(px, w, h, edit.erase)
         b.setPixels(px, 0, w, 0, 0, w, h)
         return b
+    }
+
+    /** [src] perspective-corrected to the [crop] corners (src recycled when a new picture is made). */
+    fun cropped(src: Bitmap, crop: FloatArray?): Bitmap {
+        if (crop == null || crop.size != 8) return src
+        val q = PageQuad.Quad(crop.copyOfRange(0, 4), crop.copyOfRange(4, 8))
+        if (q.distance(PageQuad.Quad.FULL) < 0.002f) return src
+        val w = src.width; val h = src.height
+        val px = IntArray(w * h); src.getPixels(px, 0, w, 0, 0, w, h)
+        val (out, ow, oh) = PageQuad.warp(px, w, h, q, maxDim = maxOf(w, h))
+        val r = Bitmap.createBitmap(ow, oh, Bitmap.Config.ARGB_8888); r.setPixels(out, 0, ow, 0, 0, ow, oh)
+        src.recycle()
+        return r
     }
 
     /** Flattens one page picture (a half of a book spread) in place. */

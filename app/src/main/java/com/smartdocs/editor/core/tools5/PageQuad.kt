@@ -175,6 +175,21 @@ object PageQuad {
         return Quad(x, y)
     }
 
+    /**
+     * Corners a person dragged: put back in order (top-left, top-right, bottom-right, bottom-left by angle around the
+     * centre) and accept only a convex quad of at least [minArea] of the picture; null = not a usable page (crossed,
+     * collapsed). Pure.
+     */
+    fun normalize(q: Quad, minArea: Float = 0.02f): Quad? {
+        val cx = q.x.average().toFloat(); val cy = q.y.average().toFloat()
+        val order = (0 until 4).sortedBy { i -> kotlin.math.atan2((q.y[i] - cy).toDouble(), (q.x[i] - cx).toDouble()) }
+        // atan2 order starts at the left side going up (y grows downwards): rotate so the corner nearest the top-left comes first
+        val start = order.indices.minBy { k -> q.x[order[k]] + q.y[order[k]] }
+        val idx = List(4) { order[(start + it) % 4] }
+        val r = Quad(FloatArray(4) { q.x[idx[it]] }, FloatArray(4) { q.y[idx[it]] })
+        return if (convex(r) && r.area() >= minArea) r else null
+    }
+
     private fun convex(q: Quad): Boolean {
         var sign = 0
         for (i in 0 until 4) {

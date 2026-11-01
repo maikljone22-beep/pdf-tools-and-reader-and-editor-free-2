@@ -125,8 +125,8 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
     fun savePrefs() = prefs.edit().putString("kind", kind.name).putBoolean("ocr", autoOcr).putString("langs", langs).putBoolean("smart", smartName).putBoolean("rtl_book", rightFirst)
         .putBoolean("blank", removeBlank).putInt("per_file", perFile).putString("author", author).apply()
 
-    fun addPictures(files: List<File>, newGroup: Boolean) {
-        val pages = files.map { ScanPage(it, PageEdit(filter = kind.defaultFilter(), flatten = kind == ScanKind.BOOK)) }
+    fun addPictures(files: List<File>, newGroup: Boolean, crops: List<FloatArray?> = emptyList()) {
+        val pages = files.mapIndexed { i, f -> ScanPage(f, PageEdit(filter = kind.defaultFilter(), flatten = kind == ScanKind.BOOK, crop = crops.getOrNull(i))) }
         groups = if (newGroup || groups.isEmpty() || kind == ScanKind.BATCH) groups + listOf(pages) else groups.dropLast(1) + listOf(groups.last() + pages)
     }
 
@@ -157,10 +157,16 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                 .addOnFailureListener { scope.launch { snackbar.showSnackbar(unavailable) } }
         }.onFailure { scope.launch { snackbar.showSnackbar(unavailable) } }
     }
-    val pickGallery = rememberImagePicker { files -> addPictures(files, kind == ScanKind.BATCH) }
+    // S3: photos from the gallery get their page edges found and corrected like camera photos (they were used as is)
+    val pickGallery = rememberImagePicker { files ->
+        scope.launch {
+            val crops = withContext(Dispatchers.Default) { files.map { f -> runCatching { ScanEdges.detect(f) }.getOrNull() } }
+            addPictures(files, kind == ScanKind.BATCH, crops)
+        }
+    }
     if (cameraOpen) ScanCameraScreen(
         pageLimit = when (kind) { ScanKind.ID_CARD, ScanKind.BUSINESS_CARD -> 2; ScanKind.RECEIPT -> 5; else -> 0 },
-        onDone = { files -> cameraOpen = false; if (files.isNotEmpty()) addPictures(files, kind == ScanKind.BATCH) },
+        onDone = { shots -> cameraOpen = false; if (shots.isNotEmpty()) addPictures(shots.map { it.first }, kind == ScanKind.BATCH, shots.map { (_, q) -> q?.let { it.x + it.y } }) },
         onClose = { cameraOpen = false },
         onUseGoogle = { cameraOpen = false; useGoogleOnce = true; launchScanner() },
     )
@@ -188,7 +194,7 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                     val today = t5Today()
                     val tmpOut = app.documents.newTemp("t5scan_out", "pdf")
                     val ocrLangs = if (!needText) null else if (langs == "auto") detectLangs(engine!!, g.first()) else langs
-                    val pictures = ScanBuilder.pagePictures(g.map { it.file to it.edit }, k, rf, maxDim = if (highQuality) 4096 else 2400)
+                    val pictures = ScanBuilder.pagePictures(g.map { it.file to it.edit }, k, rf, maxDim = if (highQuality) 3508 else 2400)
                     val r = ScanBuilder.build(ctx, pictures, tmpOut, ScanBuildOptions(paper = p, quality = if (highQuality) 92 else 82, ocrLangs = ocrLangs), engine) { n -> step(gi * 100 + n, docs.size * 100) }
                     val base = when {
                         typed.isNotEmpty() -> if (docs.size > 1) "${typed}_${gi + 1}" else typed
@@ -251,7 +257,11 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
         if (groups.isNotEmpty()) IconButton(onClick = { askClear = true }) { Icon(Icons.Default.DeleteSweep, stringResource(R.string.sc_delete_all_pages)) }
     }, onBack = { if (groups.isNotEmpty()) askDiscard = true else nav.popBackStack() }) {
         FieldLabel(stringResource(R.string.t5_scan_kind))
-        ChoiceChips(ScanKind.entries, kind, { it.label() }) { kind = it; savePrefs() }
+        ChoiceChips(ScanKind.entries, kind, { it.label() }) { nk ->
+            val old = kind
+            groups = groups.map { g -> g.map { p -> if (p.edit.filter == old.defaultFilter() && p.edit.flatten == (old == ScanKind.BOOK)) p.copy(edit = p.edit.copy(filter = nk.defaultFilter(), flatten = nk == ScanKind.BOOK)) else p } }
+            kind = nk; savePrefs()
+        }
         Text(stringResource(kindHint(kind)), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = { launchScanner() }, Modifier.weight(1f)) { Icon(Icons.Default.DocumentScanner, null); Spacer(Modifier.width(6.dp)); Text(stringResource(if (groups.isEmpty()) R.string.t5_scan_start else R.string.t5_scan_more)) }
@@ -402,13 +412,17 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
     projectToDelete?.let { askDeleteProject = it; projectToDelete = null }
     editing?.let { (gi, pi) ->
         val page = groups.getOrNull(gi)?.getOrNull(pi)
-        if (page == null) editing = null else ScanPageEditor(
-            page = page,
+        fun keep(e: PageEdit) { groups = groups.mapIndexed { i, g -> if (i != gi) g else g.mapIndexed { j, p -> if (j == pi) p.copy(edit = e) else p } } }
+        val size = groups.getOrNull(gi)?.size ?: 0
+        if (page == null) editing = null else key(gi, pi) { ScanPageEditor(
+            page = page, index = pi, count = size,
             onApply = { e, all -> groups = groups.mapIndexed { i, g -> if (i != gi) g else g.mapIndexed { j, p -> if (j == pi || all) p.copy(edit = if (j == pi) e else p.edit.copy(filter = e.filter, brightness = e.brightness, contrast = e.contrast)) else p } }; editing = null },
             onDelete = { groups = groups.mapIndexed { i, g -> if (i != gi) g else g.filterIndexed { j, _ -> j != pi } }.filter { it.isNotEmpty() }; editing = null },
-            onMove = { d -> groups = groups.mapIndexed { i, g -> if (i != gi) g else g.toMutableList().apply { val t = (pi + d).coerceIn(0, size - 1); add(t, removeAt(pi)) } }; editing = null },
+            // the editor stays open on the moved page with its edits (moving used to close it and drop them)
+            onMove = { e, d -> keep(e); val t = (pi + d).coerceIn(0, size - 1); groups = groups.mapIndexed { i, g -> if (i != gi) g else g.toMutableList().apply { add(t, removeAt(pi)) } }; editing = gi to t },
+            onGo = { e, d -> keep(e); editing = gi to (pi + d).coerceIn(0, size - 1) },
             onDismiss = { editing = null },
-        )
+        ) }
     }
     contact?.let { c -> ContactSheet(c, onDismiss = { contact = null }) }
     receipt?.let { (r, f) -> ReceiptSheet(r, f, onDismiss = { receipt = null }) }

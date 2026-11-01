@@ -38,4 +38,32 @@
         <item quantity="one">The captured page will be deleted.</item>
         <item quantity="other">%1$d captured pages will be deleted.</item>
     </plurals>
+    <string name="sc_cam_captured">Page %1$d captured</string>
+    <string name="sc_cam_bad_corners">These corners do not make a page: drag them to the four corners of the paper.</string>
+    <string name="sc_cam_failed">The photo could not be taken, try again.</string>
+    <string name="sc_state_on">On</string>
+    <string name="sc_state_off">Off</string>
+    <string name="sc_flash_on">on</string>
+    <string name="sc_flash_off">off</string>
+    <string name="sc_flash_auto">auto</string>
+    <string name="sc_cam_torch">Torch</string>
+    <string name="sc_cam_review_each">Adjust edges after each photo</string>
+    <string name="sc_cam_more">More options</string>
+    <string name="sc_cam_hint_next">Turn the page or place a new sheet</string>
+    <string name="sc_cam_hint_blurry">Not sharp: hold the phone still or add light</string>
+    <string name="sc_cam_limit">%1$d of %2$d</string>
+    <string name="sc_cam_shutter">Capture a page</string>
+    <plurals name="sc_cam_done_n">
+        <item quantity="one">Done, 1 page</item>
+        <item quantity="other">Done, %1$d pages</item>
+    </plurals>
+    <string name="sc_copied">Copied</string>
+    <string name="sc_cam_detected">Detected edges</string>
+    <string name="sc_page_of">%1$d of %2$d</string>
+    <string name="sc_edit_edges">Adjust page edges</string>
+    <string name="sc_move_before">Move before</string>
+    <string name="sc_move_after">Move after</string>
+    <string name="sc_apply_all_look">Apply filter, brightness and contrast to all pages</string>
+    <string name="sc_prev_page">Previous page</string>
+    <string name="sc_next_page">Next page</string>
 </resources>

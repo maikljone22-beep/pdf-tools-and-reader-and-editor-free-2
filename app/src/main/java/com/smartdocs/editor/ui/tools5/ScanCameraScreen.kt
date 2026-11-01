@@ -39,6 +39,18 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.runtime.produceState
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.material.icons.filled.FlashlightOn
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
@@ -121,7 +133,7 @@ import kotlin.math.roundToInt
  * still returned when there are any).
  */
 @Composable
-fun ScanCameraScreen(pageLimit: Int = 0, onDone: (List<File>) -> Unit, onClose: () -> Unit, onUseGoogle: (() -> Unit)? = null) {
+fun ScanCameraScreen(pageLimit: Int = 0, onDone: (List<Pair<File, PageQuad.Quad?>>) -> Unit, onClose: () -> Unit, onUseGoogle: (() -> Unit)? = null) {
     val ctx = LocalContext.current
     var granted by remember { mutableStateOf(ContextCompat.checkSelfPermission(ctx, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) }
     var denied by remember { mutableStateOf(false) }
@@ -161,7 +173,7 @@ fun ScanCameraScreen(pageLimit: Int = 0, onDone: (List<File>) -> Unit, onClose: 
 private class Shot(val file: File, val preview: Bitmap, val fullW: Int, val fullH: Int, var quad: PageQuad.Quad)
 
 @Composable
-private fun CameraBody(pageLimit: Int, onDone: (List<File>) -> Unit, onClose: () -> Unit) {
+private fun CameraBody(pageLimit: Int, onDone: (List<Pair<File, PageQuad.Quad?>>) -> Unit, onClose: () -> Unit) {
     val ctx = LocalContext.current
     val app = LocalApp.current
     val lifecycle = LocalLifecycleOwner.current
@@ -173,6 +185,20 @@ private fun CameraBody(pageLimit: Int, onDone: (List<File>) -> Unit, onClose: ()
     var autoCapture by remember { mutableStateOf(prefs.getBoolean("auto", true)) }
     var grid by remember { mutableStateOf(prefs.getBoolean("grid", false)) }
     var exposureOpen by remember { mutableStateOf(false) }
+    // S2: the corner editor after every photo is optional (off: continuous capture, edges adjusted in the review)
+    var reviewEach by remember { mutableStateOf(prefs.getBoolean("review_each", false)) }
+    var torch by remember { mutableStateOf(false) }
+    // deep audit E3: after a photo, auto-capture waits until the page changes (turned / replaced) or leaves the frame
+    var armed by remember { mutableStateOf(true) }
+    var shotSig by remember { mutableStateOf<IntArray?>(null) }
+    var lastSig by remember { mutableStateOf<IntArray?>(null) }
+    var blurry by remember { mutableStateOf(false) }
+    var status by remember { mutableStateOf("") }
+    val view = androidx.compose.ui.platform.LocalView.current
+    val sound = remember { runCatching { android.media.MediaActionSound().apply { load(android.media.MediaActionSound.SHUTTER_CLICK) } }.getOrNull() }
+    val capturedMsg = stringResource(R.string.sc_cam_captured)
+    val badCorners = stringResource(R.string.sc_cam_bad_corners)
+    val captureFailed = stringResource(R.string.sc_cam_failed)
     // FINAL_CHECK_2 Low (K11): QR / barcode mode — the analysis frames are decoded instead of edge-detected
     var qrMode by remember { mutableStateOf(false) }
     var qrFound by remember { mutableStateOf<com.smartdocs.editor.core.tools5.BarcodeScan.Code?>(null) }
@@ -183,7 +209,7 @@ private fun CameraBody(pageLimit: Int, onDone: (List<File>) -> Unit, onClose: ()
     var steady by remember { mutableIntStateOf(0) }
     var capturing by remember { mutableStateOf(false) }
     var shot by remember { mutableStateOf<Shot?>(null) }
-    val pages = remember { mutableStateOf(listOf<File>()) }
+    val pages = remember { mutableStateOf(listOf<Pair<File, PageQuad.Quad?>>()) }
     var lastAuto by remember { mutableStateOf(0L) }
     var viewSize by remember { mutableStateOf(IntSize.Zero) }
 
@@ -205,25 +231,43 @@ private fun CameraBody(pageLimit: Int, onDone: (List<File>) -> Unit, onClose: ()
     LaunchedEffect(flash) { controller.imageCaptureFlashMode = flash; prefs.edit().putInt("flash", flash).apply() }
     DisposableEffect(Unit) {
         controller.bindToLifecycle(lifecycle)
-        onDispose { controller.unbind(); executor.shutdown() }
+        onDispose { controller.unbind(); executor.shutdown(); sound?.release() }
+    }
+    LaunchedEffect(torch) { runCatching { controller.enableTorch(torch) } }
+
+    fun finish() { if (!capturing) onDone(pages.value) }
+
+    /** A page kept with its corners (FULL = the whole photo). */
+    fun addPage(f: File, q: PageQuad.Quad) {
+        pages.value = pages.value + (f to q.takeIf { it.distance(PageQuad.Quad.FULL) >= 0.002f })
+        lastAuto = System.currentTimeMillis()
+        val n = pages.value.size
+        status = capturedMsg.format(n)
+        if (pageLimit > 0 && n >= pageLimit) finish()
     }
 
-    fun finish() { onDone(pages.value) }
-
-    /** Full-resolution capture; the photo then opens in the corner editor. */
+    /** Full-resolution capture; the page is kept with its detected corners (or opens in the corner editor). */
     fun capture() {
         if (capturing || shot != null) return
         capturing = true
+        armed = false; shotSig = lastSig
+        runCatching { sound?.play(android.media.MediaActionSound.SHUTTER_CLICK) }
+        view.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)
         val f = app.documents.newTemp("cam_raw", "jpg")
         controller.takePicture(ImageCapture.OutputFileOptions.Builder(f).build(), executor, object : ImageCapture.OnImageSavedCallback {
             override fun onImageSaved(r: ImageCapture.OutputFileResults) {
                 scope.launch {
                     val s = withContext(Dispatchers.IO) { runCatching { openShot(f) }.getOrNull() }
                     capturing = false
-                    if (s != null) shot = s else f.delete()
+                    when {
+                        s == null -> { f.delete(); status = captureFailed }
+                        reviewEach -> shot = s
+                        else -> { s.preview.recycle(); addPage(f, s.quad) }
+                    }
                 }
             }
-            override fun onError(e: ImageCaptureException) { scope.launch { capturing = false; f.delete() } }
+            // deep audit E25: a failed capture said nothing
+            override fun onError(e: ImageCaptureException) { scope.launch { capturing = false; f.delete(); status = captureFailed } }
         })
     }
 
@@ -243,19 +287,22 @@ private fun CameraBody(pageLimit: Int, onDone: (List<File>) -> Unit, onClose: ()
                 val moved = if (q == null || last == null) 1f else q.distance(last!!)
                 last = q
                 val st = if (q != null && moved < 0.012f) steady + 1 else 0
+                val sig = signature(px, w, h)
+                // sharpness on the analysis thread (it was on the main thread)
+                val sharp = if (autoCapture && q != null && st >= 10) PageQuad.sharpness(px, w, h) > 6.0 else true
                 scope.launch {
-                    frameSize = IntSize(w, h); quad = q; steady = st
+                    frameSize = IntSize(w, h); quad = q; steady = st; lastSig = sig
+                    // re-arm once the page is gone or clearly different from the last photo
+                    if (!armed && !capturing && shot == null && (q == null || shotSig == null || sigDiff(sig, shotSig!!) > 14)) armed = true
+                    blurry = autoCapture && q != null && st >= 10 && !sharp
                     val now = System.currentTimeMillis()
-                    if (autoCapture && q != null && st >= 10 && now - lastAuto > 2500L && !capturing && shot == null) {
-                        // steady for ~1 s: check the frame is sharp enough, then take the photo
-                        if (PageQuad.sharpness(px, w, h) > 6.0) { lastAuto = now; capture() }
-                    }
+                    if (autoCapture && armed && q != null && st >= 10 && sharp && now - lastAuto > 1500L && !capturing && shot == null) { lastAuto = now; capture() }
                 }
             } finally { img.close() }
         }
     }
 
-    BackHandler { if (shot != null) { shot?.file?.delete(); shot = null } else if (pages.value.isNotEmpty()) finish() else onClose() }
+    BackHandler { if (qrFound != null) qrFound = null else if (shot != null) { shot?.file?.delete(); shot = null; armed = true } else if (capturing) Unit else if (pages.value.isNotEmpty()) finish() else onClose() }
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         AndroidView(factory = { c -> PreviewView(c).apply { scaleType = PreviewView.ScaleType.FILL_CENTER; this.controller = controller } },
@@ -279,41 +326,70 @@ private fun CameraBody(pageLimit: Int, onDone: (List<File>) -> Unit, onClose: ()
         }
         // top bar
         Row(Modifier.fillMaxWidth().statusBarsPadding().padding(8.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = { if (pages.value.isNotEmpty()) finish() else onClose() }) { Icon(Icons.Default.Close, stringResource(R.string.close), tint = Color.White) }
+            // X = done with the pages taken so far (they are kept), or close when there are none
+            IconButton(onClick = { if (capturing) Unit else if (pages.value.isNotEmpty()) finish() else onClose() }) { Icon(Icons.Default.Close, stringResource(if (pages.value.isNotEmpty()) R.string.sc_cam_done else R.string.close), tint = Color.White) }
             Row {
-                IconButton(onClick = { flash = when (flash) { ImageCapture.FLASH_MODE_AUTO -> ImageCapture.FLASH_MODE_ON; ImageCapture.FLASH_MODE_ON -> ImageCapture.FLASH_MODE_OFF; else -> ImageCapture.FLASH_MODE_AUTO } }) {
-                    Icon(when (flash) { ImageCapture.FLASH_MODE_ON -> Icons.Default.FlashOn; ImageCapture.FLASH_MODE_OFF -> Icons.Default.FlashOff; else -> Icons.Default.FlashAuto }, stringResource(R.string.sc_cam_flash), tint = Color.White)
+                val on = stringResource(R.string.sc_state_on); val off = stringResource(R.string.sc_state_off)
+                // scanner audit U8: every toggle says its state (not colour only); the flash names its mode
+                val flashState = stringResource(when (flash) { ImageCapture.FLASH_MODE_ON -> R.string.sc_flash_on; ImageCapture.FLASH_MODE_OFF -> R.string.sc_flash_off; else -> R.string.sc_flash_auto })
+                CamToggle(when (flash) { ImageCapture.FLASH_MODE_ON -> Icons.Default.FlashOn; ImageCapture.FLASH_MODE_OFF -> Icons.Default.FlashOff; else -> Icons.Default.FlashAuto },
+                    stringResource(R.string.sc_cam_flash) + ": " + flashState, flash != ImageCapture.FLASH_MODE_OFF, null) {
+                    flash = when (flash) { ImageCapture.FLASH_MODE_AUTO -> ImageCapture.FLASH_MODE_ON; ImageCapture.FLASH_MODE_ON -> ImageCapture.FLASH_MODE_OFF; else -> ImageCapture.FLASH_MODE_AUTO }
                 }
-                IconButton(onClick = { autoCapture = !autoCapture; prefs.edit().putBoolean("auto", autoCapture).apply() }) {
-                    Icon(Icons.Default.MotionPhotosAuto, stringResource(R.string.sc_cam_auto), tint = if (autoCapture) Color(0xFF4CD964) else Color.White)
+                CamToggle(Icons.Default.FlashlightOn, stringResource(R.string.sc_cam_torch), torch, if (torch) on else off) { torch = !torch }
+                CamToggle(Icons.Default.MotionPhotosAuto, stringResource(R.string.sc_cam_auto), autoCapture, if (autoCapture) on else off) { autoCapture = !autoCapture; prefs.edit().putBoolean("auto", autoCapture).apply() }
+                CamToggle(Icons.Default.QrCodeScanner, stringResource(R.string.sc_cam_qr), qrMode, if (qrMode) on else off) { qrMode = !qrMode; qrFound = null }
+                // less used settings in a menu, so the bar fits a 360 dp phone; each item names its state
+                var more by remember { mutableStateOf(false) }
+                Box {
+                    IconButton(onClick = { more = true }) { Icon(Icons.Default.MoreVert, stringResource(R.string.sc_cam_more), tint = Color.White) }
+                    DropdownMenu(more, { more = false }) {
+                        @Composable fun item(label: Int, checked: Boolean, act: () -> Unit) = DropdownMenuItem(text = { Text(stringResource(label)) }, onClick = { act() },
+                            leadingIcon = { Checkbox(checked, null) })
+                        item(R.string.sc_cam_review_each, reviewEach) { reviewEach = !reviewEach; prefs.edit().putBoolean("review_each", reviewEach).apply() }
+                        item(R.string.sc_cam_grid, grid) { grid = !grid; prefs.edit().putBoolean("grid", grid).apply() }
+                        item(R.string.sc_cam_exposure, exposureOpen) { exposureOpen = !exposureOpen; more = false }
+                    }
                 }
-                IconButton(onClick = { grid = !grid; prefs.edit().putBoolean("grid", grid).apply() }) { Icon(Icons.Default.GridOn, stringResource(R.string.sc_cam_grid), tint = if (grid) Color(0xFF4CD964) else Color.White) }
-                IconButton(onClick = { exposureOpen = !exposureOpen }) { Icon(Icons.Default.Exposure, stringResource(R.string.sc_cam_exposure), tint = if (exposureOpen) Color(0xFF4CD964) else Color.White) }
-                IconButton(onClick = { qrMode = !qrMode; qrFound = null }) { Icon(Icons.Default.QrCodeScanner, stringResource(R.string.sc_cam_qr), tint = if (qrMode) Color(0xFF4CD964) else Color.White) }
             }
         }
         // hint
-        Text(
-            stringResource(when { capturing -> R.string.sc_cam_taking; qrMode -> R.string.sc_cam_hint_qr; quad == null -> R.string.sc_cam_hint_find; autoCapture && steady < 10 -> R.string.sc_cam_hint_hold; else -> R.string.sc_cam_hint_ready }),
-            Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 64.dp).background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(16.dp)).padding(horizontal = 14.dp, vertical = 6.dp),
-            color = Color.White, style = MaterialTheme.typography.bodyMedium,
-        )
+        Column(Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 64.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                stringResource(when {
+                    capturing -> R.string.sc_cam_taking; qrMode -> R.string.sc_cam_hint_qr
+                    autoCapture && !armed && pages.value.isNotEmpty() -> R.string.sc_cam_hint_next
+                    quad == null -> R.string.sc_cam_hint_find; blurry -> R.string.sc_cam_hint_blurry
+                    autoCapture && steady < 10 -> R.string.sc_cam_hint_hold; autoCapture -> R.string.sc_cam_hint_hold
+                    else -> R.string.sc_cam_hint_ready
+                }),
+                Modifier.background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(16.dp)).padding(horizontal = 14.dp, vertical = 6.dp)
+                    .semantics { liveRegion = LiveRegionMode.Polite },
+                color = Color.White, style = MaterialTheme.typography.bodyMedium,
+            )
+            if (status.isNotEmpty()) Text(status, Modifier.padding(top = 6.dp).background(Color(0xCC1E6FD9), RoundedCornerShape(12.dp)).padding(horizontal = 10.dp, vertical = 4.dp)
+                .semantics { liveRegion = LiveRegionMode.Polite }, color = Color.White, style = MaterialTheme.typography.labelLarge)
+            if (pageLimit > 0) Text(stringResource(R.string.sc_cam_limit, pages.value.size, pageLimit), Modifier.padding(top = 6.dp), color = Color.White, style = MaterialTheme.typography.labelMedium)
+        }
+        LaunchedEffect(status) { if (status.isNotEmpty()) { kotlinx.coroutines.delay(2200); status = "" } }
         // bottom: exposure, shutter, pages
         Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding().padding(bottom = 16.dp)) {
             if (exposureOpen) {
                 val st = controller.cameraInfo?.exposureState
                 val lo = st?.exposureCompensationRange?.lower ?: 0; val hi = st?.exposureCompensationRange?.upper ?: 0
+                val expLabel = stringResource(R.string.sc_cam_exposure)
                 if (hi > lo) Slider(exposure.toFloat(), { v -> exposure = v.roundToInt(); controller.cameraControl?.setExposureCompensationIndex(exposure) },
-                    Modifier.fillMaxWidth().padding(horizontal = 32.dp), valueRange = lo.toFloat()..hi.toFloat(), steps = (hi - lo - 1).coerceAtLeast(0))
+                    Modifier.fillMaxWidth().padding(horizontal = 32.dp).semantics { contentDescription = expLabel }, valueRange = lo.toFloat()..hi.toFloat(), steps = (hi - lo - 1).coerceAtLeast(0))
             }
             Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(56.dp))
-                FilledIconButton(onClick = { capture() }, Modifier.size(78.dp), enabled = !capturing, shape = CircleShape,
+                val shutterLabel = stringResource(R.string.sc_cam_shutter)
+                FilledIconButton(onClick = { capture() }, Modifier.size(78.dp).semantics { contentDescription = shutterLabel }, enabled = !capturing, shape = CircleShape,
                     colors = IconButtonDefaults.filledIconButtonColors(containerColor = Color.White)) {
                     if (capturing) CircularProgressIndicator(Modifier.size(32.dp)) else Box(Modifier.size(62.dp).background(Color.White, CircleShape).padding(3.dp).background(Color.Black, CircleShape).padding(2.dp).background(Color.White, CircleShape))
                 }
                 if (pages.value.isNotEmpty()) BadgedBox(badge = { Badge { Text(pages.value.size.toString()) } }) {
-                    FilledIconButton(onClick = { finish() }, Modifier.size(56.dp)) { Icon(Icons.Default.Check, stringResource(R.string.sc_cam_done)) }
+                    FilledIconButton(onClick = { finish() }, Modifier.size(56.dp), enabled = !capturing) { Icon(Icons.Default.Check, pluralStringResource(R.plurals.sc_cam_done_n, pages.value.size, pages.value.size)) }
                 } else Box(Modifier.size(56.dp))
             }
         }
@@ -325,8 +401,9 @@ private fun CameraBody(pageLimit: Int, onDone: (List<File>) -> Unit, onClose: ()
                     Text(c.format.replace('_', ' '), style = MaterialTheme.typography.labelMedium)
                     Text(c.text, style = MaterialTheme.typography.bodyLarge)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        TextButton(onClick = { clip.setText(androidx.compose.ui.text.AnnotatedString(c.text)) }) { Text(stringResource(R.string.copy_text)) }
-                        if (com.smartdocs.editor.core.tools5.BarcodeScan.isLink(c.text)) TextButton(onClick = {
+                        val copied = stringResource(R.string.sc_copied)
+                        TextButton(onClick = { clip.setText(androidx.compose.ui.text.AnnotatedString(c.text)); status = copied }) { Text(stringResource(R.string.copy_text)) }
+                        if (com.smartdocs.editor.core.tools5.BarcodeScan.isLink(c.text) && !c.text.trim().startsWith("WIFI:", true)) TextButton(onClick = {
                             runCatching { ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(c.text.trim())).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
                         }) { Text(stringResource(R.string.sc_code_open)) }
                         TextButton(onClick = { qrFound = null }) { Text(stringResource(R.string.sc_cam_qr_again)) }
@@ -337,16 +414,12 @@ private fun CameraBody(pageLimit: Int, onDone: (List<File>) -> Unit, onClose: ()
     }
 
     shot?.let { s ->
-        CornerEditor(s, onRetake = { s.file.delete(); shot = null }, onUse = { q ->
-            shot = null
-            scope.launch {
-                val out = withContext(Dispatchers.IO) { runCatching { straighten(ctx, s, q, app.documents.newTemp("cam", "jpg")) }.getOrNull() }
-                s.file.delete()
-                if (out != null) {
-                    pages.value = pages.value + out
-                    if (pageLimit > 0 && pages.value.size >= pageLimit) finish()
-                }
-            }
+        CornerEditor(s, leftLabel = R.string.sc_cam_retake, onRetake = { s.file.delete(); s.preview.recycle(); shot = null; armed = true }, onUse = { q ->
+            // deep audit E6: crossed / collapsed corners are refused instead of making a garbled page
+            val ok = PageQuad.normalize(q)
+            if (ok == null) { status = badCorners; return@CornerEditor }
+            shot = null; s.preview.recycle()
+            addPage(s.file, ok)
         })
     }
 }
@@ -416,21 +489,10 @@ private fun decode(f: File, maxDim: Int, rot: Int): Bitmap? {
     return Bitmap.createBitmap(b, 0, 0, b.width, b.height, m, true).also { if (it !== b) b.recycle() }
 }
 
-/** Perspective-correct the full-resolution photo with [q] and write a JPEG (quality 96) to [out]. */
-private fun straighten(ctx: Context, s: Shot, q: PageQuad.Quad, out: File): File {
-    // the full photo, capped at 16 MP so two copies fit in memory
-    val b = decode(s.file, 4096, exifRotation(s.file)) ?: throw IllegalStateException("decode")
-    val px = IntArray(b.width * b.height); b.getPixels(px, 0, b.width, 0, 0, b.width, b.height); b.recycle()
-    val (wp, ow, oh) = if (q === PageQuad.Quad.FULL || q.distance(PageQuad.Quad.FULL) < 0.002f) Triple(px, b.width, b.height) else PageQuad.warp(px, b.width, b.height, q, maxDim = 6000)
-    val r = Bitmap.createBitmap(ow, oh, Bitmap.Config.ARGB_8888); r.setPixels(wp, 0, ow, 0, 0, ow, oh)
-    out.outputStream().use { r.compress(Bitmap.CompressFormat.JPEG, 96, it) }
-    r.recycle()
-    return out
-}
-
 /** The photo with four draggable corner handles; "use" straightens it, "full" takes the whole photo. */
 @Composable
-private fun CornerEditor(s: Shot, onRetake: () -> Unit, onUse: (PageQuad.Quad) -> Unit) {
+private fun CornerEditor(s: Shot, leftLabel: Int, onRetake: () -> Unit, onUse: (PageQuad.Quad) -> Unit) {
+    val detected = remember(s) { s.quad }
     var qx by remember { mutableStateOf(s.quad.x.copyOf()) }
     var qy by remember { mutableStateOf(s.quad.y.copyOf()) }
     var box by remember { mutableStateOf(IntSize.Zero) }
@@ -472,15 +534,61 @@ private fun CornerEditor(s: Shot, onRetake: () -> Unit, onUse: (PageQuad.Quad) -
                 drawPath(p, Color(0xFF2F8CFF), style = Stroke(4f))
                 for (i in 0 until 4) {
                     val c = Offset(r.left + qx[i] * r.width, r.top + qy[i] * r.height)
-                    drawCircle(Color.White, if (drag == i) 22f else 16f, c); drawCircle(Color(0xFF2F8CFF), if (drag == i) 22f else 16f, c, style = Stroke(3f))
+                    val rad = (if (drag == i) 16.dp else 12.dp).toPx()
+                    drawCircle(Color.White, rad, c); drawCircle(Color(0xFF2F8CFF), rad, c, style = Stroke(3.dp.toPx()))
                 }
             }
         }
         Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(12.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = onRetake) { Icon(Icons.Default.Refresh, null, tint = Color.White); Spacer(Modifier.width(4.dp)); Text(stringResource(R.string.sc_cam_retake), color = Color.White) }
-            OutlinedButton(onClick = { qx = PageQuad.Quad.FULL.x.copyOf(); qy = PageQuad.Quad.FULL.y.copyOf() }) { Icon(Icons.Default.CropFree, null); Spacer(Modifier.width(4.dp)); Text(stringResource(R.string.sc_cam_full)) }
+            TextButton(onClick = onRetake) { Icon(Icons.Default.Refresh, null, tint = Color.White); Spacer(Modifier.width(4.dp)); Text(stringResource(leftLabel), color = Color.White) }
+            // whole photo ⇄ back to the detected edges (the full-photo choice could not be undone)
+            val isFull = PageQuad.Quad(qx, qy).distance(PageQuad.Quad.FULL) < 0.002f
+            OutlinedButton(onClick = {
+                if (isFull) { qx = detected.x.copyOf(); qy = detected.y.copyOf() } else { qx = PageQuad.Quad.FULL.x.copyOf(); qy = PageQuad.Quad.FULL.y.copyOf() }
+            }) { Icon(Icons.Default.CropFree, null); Spacer(Modifier.width(4.dp)); Text(stringResource(if (isFull) R.string.sc_cam_detected else R.string.sc_cam_full), color = Color.White) }
             Button(onClick = { onUse(PageQuad.Quad(qx, qy)) }) { Icon(Icons.Default.Check, null); Spacer(Modifier.width(4.dp)); Text(stringResource(R.string.sc_cam_use)) }
         }
         Spacer(Modifier.height(4.dp))
+    }
+}
+
+/** A camera toggle that says its name and state to TalkBack (state was shown by colour only). */
+@Composable
+private fun CamToggle(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, on: Boolean, state: String?, onClick: () -> Unit) {
+    IconButton(onClick = onClick, Modifier.semantics { if (state != null) stateDescription = state }) {
+        Icon(icon, label, tint = if (on) Color(0xFF4CD964) else Color.White)
+    }
+}
+
+/** A 16×12 grey thumbnail of a frame: tells whether the page under the camera changed since the last photo. */
+private fun signature(px: IntArray, w: Int, h: Int): IntArray = IntArray(16 * 12) { i ->
+    val gx = i % 16; val gy = i / 16
+    val x = (gx * w / 16 + w / 32).coerceIn(0, w - 1); val y = (gy * h / 12 + h / 24).coerceIn(0, h - 1)
+    val c = px[y * w + x]; (((c shr 16) and 0xFF) * 299 + ((c shr 8) and 0xFF) * 587 + (c and 0xFF) * 114) / 1000
+}
+
+private fun sigDiff(a: IntArray, b: IntArray): Int { var s = 0; for (i in a.indices) s += kotlin.math.abs(a[i] - b[i]); return s / a.size }
+
+/** Scanner UX audit S2: change the corners of a page later (from the page editor). */
+@Composable
+internal fun ScanCornerEditor(file: File, initial: FloatArray?, onCancel: () -> Unit, onApply: (FloatArray?) -> Unit) {
+    val shot by produceState<Shot?>(null, file) { value = withContext(Dispatchers.IO) { runCatching { openShot(file) }.getOrNull() } }
+    val bad = stringResource(R.string.sc_cam_bad_corners)
+    var err by remember { mutableStateOf(false) }
+    Dialog(onDismissRequest = onCancel, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+        val s = shot
+        if (s == null) Box(Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+        else {
+            val start = remember(s) { initial?.takeIf { it.size == 8 }?.let { PageQuad.Quad(it.copyOfRange(0, 4), it.copyOfRange(4, 8)) } }
+            val shown = remember(s) { Shot(s.file, s.preview, s.fullW, s.fullH, start ?: s.quad) }
+            DisposableEffect(s) { onDispose { s.preview.recycle() } }
+            Box {
+                CornerEditor(shown, leftLabel = R.string.cancel, onRetake = onCancel, onUse = { q ->
+                    if (q.distance(PageQuad.Quad.FULL) < 0.002f) onApply(null)
+                    else PageQuad.normalize(q)?.let { onApply(it.x + it.y) } ?: run { err = true }
+                })
+                if (err) Text(bad, Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 16.dp).background(Color(0xCCB00020), RoundedCornerShape(12.dp)).padding(10.dp), color = Color.White)
+            }
+        }
     }
 }
