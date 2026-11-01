@@ -74,8 +74,8 @@ object ScanImage {
     }
 
     /** Apply [edit] (rotation, filter, brightness/contrast). May recycle [src]; returns a mutable ARGB bitmap. */
-    fun apply(src: Bitmap, edit: PageEdit, dewarp: Boolean = edit.flatten): Bitmap {
-        val b0 = rotate(cropped(src, edit.crop), edit.rotation)
+    fun apply(src: Bitmap, edit: PageEdit, dewarp: Boolean = edit.flatten, maxOut: Int = Int.MAX_VALUE): Bitmap {
+        val b0 = rotate(cropped(src, edit.crop, maxOut), edit.rotation)
         val b = if (b0.isMutable && b0.config == Bitmap.Config.ARGB_8888) b0 else b0.copy(Bitmap.Config.ARGB_8888, true).also { if (it !== b0) b0.recycle() }
         val w = b.width; val h = b.height
         val px = IntArray(w * h)
@@ -107,13 +107,23 @@ object ScanImage {
     }
 
     /** [src] perspective-corrected to the [crop] corners (src recycled when a new picture is made). */
-    fun cropped(src: Bitmap, crop: FloatArray?): Bitmap {
+    /**
+     * Review fix: the decode side for a page with stored corners. The page is only part of the photo, so the photo is
+     * decoded larger (up to 1.5×) to keep the page itself near [maxDim] (it came out ~70 % of it before). Pure.
+     */
+    fun loadDim(maxDim: Int, crop: FloatArray?): Int {
+        if (crop == null || crop.size != 8) return maxDim
+        val ext = maxOf(crop.copyOfRange(0, 4).let { it.max() - it.min() }, crop.copyOfRange(4, 8).let { it.max() - it.min() }).coerceIn(0.2f, 1f)
+        return minOf((maxDim / ext).toInt(), maxDim * 3 / 2)
+    }
+
+    fun cropped(src: Bitmap, crop: FloatArray?, maxOut: Int = Int.MAX_VALUE): Bitmap {
         if (crop == null || crop.size != 8) return src
         val q = PageQuad.Quad(crop.copyOfRange(0, 4), crop.copyOfRange(4, 8))
         if (q.distance(PageQuad.Quad.FULL) < 0.002f) return src
         val w = src.width; val h = src.height
         val px = IntArray(w * h); src.getPixels(px, 0, w, 0, 0, w, h)
-        val (out, ow, oh) = PageQuad.warp(px, w, h, q, maxDim = maxOf(w, h))
+        val (out, ow, oh) = PageQuad.warp(px, w, h, q, maxDim = minOf(maxOf(w, h), maxOut))
         val r = Bitmap.createBitmap(ow, oh, Bitmap.Config.ARGB_8888); r.setPixels(out, 0, ow, 0, 0, ow, oh)
         src.recycle()
         return r
