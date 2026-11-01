@@ -32,12 +32,19 @@ class DocxBuilder(
     private val anchorImages: Boolean = false,
     /** FINAL_CHECK_2 #5: PDF comments become Word comments anchored on the paragraph they sit on. */
     private val comments: Boolean = false,
+    /** Scanned pages: one paragraph per printed line, so no space after paragraphs and single line spacing. */
+    private val tight: Boolean = false,
 ) : Closeable {
     /** Word comments written so far: id → (author, date, text). */
     private val commentList = ArrayList<Triple<String, String, String>>()
     /** Comments of the page being added, by the paragraph block they anchor on (identity). */
     private var pageComments: Map<Block, List<Int>> = emptyMap()
     private val flowing = flowing0 && !exact
+    /** Line pitch of the page being added ([PageLayout.linePitch]); 0 = the style's spacing. */
+    private var pagePitch = 0f
+    /** Exact line spacing at the printed pitch (never below 1.2 × the line's size, so tall letters are not cut). */
+    private fun pitched(size: Float) = if (pagePitch <= 0f) "" else
+        "<w:spacing w:before=\"0\" w:after=\"0\" w:line=\"" + Math.round(maxOf(pagePitch, size * 1.2f) * 20f) + "\" w:lineRule=\"exact\"/>"
 
     /** framePr of a block placed at [r] (PDF points, y down) on its page; a little wider so its lines do not wrap. */
     private fun frame(r: Rect): String {
@@ -62,6 +69,7 @@ class DocxBuilder(
     fun addPage(page: PageLayout) {
         if (pages == 0) setupFirstPage(page)
         pageHasFills = page.hasFills
+        pagePitch = if (exact) 0f else page.linePitch
         // a page break before every page but the first (the old else-branch of the footer test put one before the first
         // page and skipped the one before the page that first had a footer)
         if (pages > 0 && !flowing) body.append("<w:p><w:r><w:br w:type=\"page\"/></w:r></w:p>")
@@ -144,6 +152,7 @@ class DocxBuilder(
         Align.CENTER -> "center"
         // in a bidi paragraph Word's "right" is the trailing (left) edge, so END is "right" in both directions
         Align.END -> "right"
+        Align.JUSTIFY -> "both"
     }
 
     private fun paragraph(b: ParagraphBlock) {
@@ -152,7 +161,7 @@ class DocxBuilder(
         if (exact) body.append(frame(b.rect))                // schema order: pStyle, framePr, shd, bidi, spacing, jc
         b.shade?.let { body.append("<w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"").append(Decorations.hex(it)).append("\"/>") }
         if (b.rtl) body.append("<w:bidi/>")
-        if (exact) body.append("<w:spacing w:before=\"0\" w:after=\"0\"/>")
+        if (exact) body.append("<w:spacing w:before=\"0\" w:after=\"0\"/>") else body.append(pitched(b.fontSize))
         jc(b.align)?.let { body.append("<w:jc w:val=\"").append(it).append("\"/>") }
         body.append("</w:pPr>")
         val ids = pageComments[b].orEmpty()
@@ -244,7 +253,7 @@ class DocxBuilder(
         for (line in lines) {
             body.append("<w:p><w:pPr>")
             if (line.rtl) body.append("<w:bidi/>")
-            body.append("<w:spacing w:after=\"0\"/>")
+            body.append(pitched(line.fontSize).ifEmpty { "<w:spacing w:after=\"0\"/>" })
             if (headerCell) body.append("<w:jc w:val=\"center\"/>")
             body.append("</w:pPr>")
             runs(body, TextRuns.of(line), line.rtl, forceBold = headerCell)
@@ -374,7 +383,7 @@ class DocxBuilder(
         return XML_HEAD + "<w:styles xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\">" +
             "<w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii=\"Calibri\" w:hAnsi=\"Calibri\" w:eastAsia=\"Calibri\" w:cs=\"Arial\"/>" +
             "<w:sz w:val=\"$hp\"/><w:szCs w:val=\"$hp\"/><w:lang w:val=\"${if (rtl) "ar-SA" else "en-US"}\" w:bidi=\"ar-SA\"/></w:rPr></w:rPrDefault>" +
-            "<w:pPrDefault><w:pPr><w:spacing w:after=\"120\" w:line=\"276\" w:lineRule=\"auto\"/></w:pPr></w:pPrDefault></w:docDefaults>" +
+            "<w:pPrDefault><w:pPr><w:spacing w:after=\"${if (tight) 0 else 120}\" w:line=\"${if (tight) 240 else 276}\" w:lineRule=\"auto\"/></w:pPr></w:pPrDefault></w:docDefaults>" +
             "<w:style w:type=\"paragraph\" w:default=\"1\" w:styleId=\"Normal\"><w:name w:val=\"Normal\"/><w:qFormat/></w:style>" +
             heading(1, maxOf(hp + 12, 32)) + heading(2, maxOf(hp + 6, 26)) + heading(3, maxOf(hp + 2, 24)) +
             "<w:style w:type=\"character\" w:styleId=\"CommentReference\"><w:name w:val=\"annotation reference\"/><w:uiPriority w:val=\"99\"/><w:semiHidden/><w:unhideWhenUsed/><w:rPr><w:sz w:val=\"16\"/><w:szCs w:val=\"16\"/></w:rPr></w:style>" +

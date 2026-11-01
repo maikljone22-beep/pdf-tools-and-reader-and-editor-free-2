@@ -2,7 +2,6 @@ package com.smartdocs.editor.core.scan2word
 
 import android.graphics.Bitmap
 import com.smartdocs.editor.core.convert.DocxBuilder
-import com.smartdocs.editor.core.convert.LayoutAnalyzer
 import com.smartdocs.editor.core.convert.PageLayout
 import com.smartdocs.editor.core.ocr.OcrEngine
 import com.smartdocs.editor.core.tools5.ScanOut
@@ -28,23 +27,36 @@ object ScanToWordRunner {
             try {
                 val w = bmp.width; val h = bmp.height
                 val px = IntArray(w * h); bmp.getPixels(px, 0, w, 0, 0, w, h)
-                val ocr = engine.recognize(bmp, wantWords = true)
-                if (ocr.text.isNotBlank()) { if (text.isNotEmpty()) text.append("\n\n"); text.append(ocr.text) }
-                // OCR boxes are in the recognised picture's pixels; it may have been scaled for recognition
-                val kx = w.toFloat() / ocr.imageWidth.coerceAtLeast(1); val ky = h.toFloat() / ocr.imageHeight.coerceAtLeast(1)
-                val boxes = ocr.words.map { wd -> ScanToWord.OcrBox(wd.text, (wd.box.left * kx).toInt(), (wd.box.top * ky).toInt(), (wd.box.right * kx).toInt(), (wd.box.bottom * ky).toInt(), wd.confidence, wd.line) }
-                val content = ScanToWord.page(n, px, w, h, boxes, arabicFont, latinFont) { f ->
+                // rules found once: long ones painted out for OCR, all of them used for the regions and the Word tables
+                val rules = ScanToWord.rules(px, w, h)
+                val clean = ScanToWord.forOcr(px, w, h, ScanToWord.longRules(rules, w, h))
+                // each band / table cell recognised alone, so lines of neighbouring cells never mix
+                val boxes = ArrayList<ScanToWord.OcrBox>()
+                ScanToWord.ocrRegions(rules, w, h).forEachIndexed { ri, r ->
+                    val rw = r[2] - r[0]; val rh = r[3] - r[1]
+                    if (rw < 8 || rh < 8) return@forEachIndexed
+                    val ob = Bitmap.createBitmap(rw, rh, Bitmap.Config.ARGB_8888)
+                    ob.setPixels(clean, r[1] * w + r[0], w, 0, 0, rw, rh)
+                    val ocr = try { engine.recognize(ob, wantWords = true, singleBlock = true) } finally { ob.recycle() }
+                    if (ocr.text.isNotBlank()) { if (text.isNotEmpty()) text.append("\n"); text.append(ocr.text.trim()) }
+                    // OCR boxes are in the recognised picture's pixels; it may have been scaled for recognition
+                    val kx = rw.toFloat() / ocr.imageWidth.coerceAtLeast(1); val ky = rh.toFloat() / ocr.imageHeight.coerceAtLeast(1)
+                    ocr.words.forEach { wd ->
+                        boxes += ScanToWord.OcrBox(wd.text, r[0] + (wd.box.left * kx).toInt(), r[1] + (wd.box.top * ky).toInt(),
+                            r[0] + (wd.box.right * kx).toInt(), r[1] + (wd.box.bottom * ky).toInt(), wd.confidence, ri * 100000 + wd.line)
+                    }
+                }
+                layouts += ScanToWord.layout(n, px, w, h, boxes, arabicFont, latinFont, rules) { f ->
                     runCatching {
                         val c = Bitmap.createBitmap(bmp, f[0], f[1], (f[2] - f[0]).coerceAtLeast(1), (f[3] - f[1]).coerceAtLeast(1))
                         val bos = ByteArrayOutputStream(); c.compress(Bitmap.CompressFormat.JPEG, 88, bos); if (c !== bmp) c.recycle()
                         bos.toByteArray() to "jpeg"
                     }.getOrNull()
                 }
-                layouts += LayoutAnalyzer.analyze(content, detectTables = true)
             } finally { bmp.recycle() }
             n++; onPage(n)
         }
-        withContext(Dispatchers.IO) { out.outputStream().use { os -> DocxBuilder(os, title).use { b -> layouts.forEach { b.addPage(it) }; b.finish() } } }
+        withContext(Dispatchers.IO) { out.outputStream().use { os -> DocxBuilder(os, title, tight = true).use { b -> layouts.forEach { b.addPage(it) }; b.finish() } } }
         Result(n, text.toString())
     }
 }

@@ -17,8 +17,8 @@ class ScanToWordTest {
     }
 
     @Test fun pointSizeFromBoxHeight() {
-        assertEquals(14f, ScanToWord.pointSize(18.5f, arabic = true))
-        assertEquals(12f, ScanToWord.pointSize(13.4f, arabic = false))
+        assertEquals(16f, ScanToWord.pointSize(16.1f, arabic = true))
+        assertEquals(12f, ScanToWord.pointSize(10.9f, arabic = false))
     }
 
     @Test fun thickStrokesReadAsBold() {

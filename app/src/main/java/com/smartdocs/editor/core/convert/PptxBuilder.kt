@@ -110,6 +110,7 @@ class PptxBuilder(out: OutputStream, private val title: String, firstPageW: Floa
         Align.CENTER -> "ctr"
         Align.START -> if (rtl) "r" else "l"
         Align.END -> if (rtl) "l" else "r"
+        Align.JUSTIFY -> "just"
     }
 
     private fun textBox(sb: StringBuilder, id: Int, b: ParagraphBlock, f: Frame) {
