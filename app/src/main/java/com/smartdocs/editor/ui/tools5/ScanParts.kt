@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -41,15 +43,23 @@ fun ScanFilter.label(): String = stringResource(
 
 /** Per-page editor: filter, brightness / contrast, rotation, order, delete; "apply to all pages". */
 @Composable
-fun ScanPageEditor(page: ScanPage, onApply: (PageEdit, Boolean) -> Unit, onDelete: () -> Unit, onMove: (Int) -> Unit, onDismiss: () -> Unit) {
+fun ScanPageEditor(page: ScanPage, index: Int, count: Int, onApply: (PageEdit, Boolean) -> Unit, onDelete: () -> Unit, onMove: (PageEdit, Int) -> Unit,
+                   onGo: (PageEdit, Int) -> Unit, onDismiss: () -> Unit) {
     var edit by remember(page) { mutableStateOf(page.edit) }
     var all by remember { mutableStateOf(false) }
+    var edges by remember { mutableStateOf(false) }
     val preview by produceState<Bitmap?>(null, page.file, edit) {
+        // deep audit E9: wait for the slider to settle before the heavy preview (a run per tick piled up)
+        kotlinx.coroutines.delay(180)
         value = withContext(Dispatchers.Default) { runCatching { ScanImage.preview(page.file, edit, 900) }.getOrNull() }
     }
+    if (edges) ScanCornerEditor(page.file, edit.crop, onCancel = { edges = false }, onApply = { c -> edges = false; edit = edit.copy(crop = c) })
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.t5_edit_page)) },
+        // a tap outside used to throw the edits away
+        properties = androidx.compose.ui.window.DialogProperties(dismissOnClickOutside = false, usePlatformDefaultWidth = false),
+        modifier = Modifier.fillMaxWidth(0.94f),
+        title = { Text(stringResource(R.string.t5_edit_page) + " · " + stringResource(R.string.sc_page_of, index + 1, count)) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 var erasing by remember { mutableStateOf(false) }
@@ -86,19 +96,27 @@ fun ScanPageEditor(page: ScanPage, onApply: (PageEdit, Boolean) -> Unit, onDelet
                     Spacer(Modifier.width(8.dp))
                     TextButton(onClick = { edit = edit.copy(erase = edit.erase.dropLast(1)) }, enabled = edit.erase.isNotEmpty()) { Text(stringResource(R.string.pc_eraser_undo)) }
                 }
+                // S2: the page edges can be changed after capture
+                OutlinedButton(onClick = { edges = true }, Modifier.fillMaxWidth()) { Icon(Icons.Default.Crop, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.sc_edit_edges)) }
                 SwitchRow(stringResource(R.string.pc_despeckle), edit.despeckle) { edit = edit.copy(despeckle = it) }
                 SwitchRow(stringResource(R.string.sc_flatten), edit.flatten, stringResource(R.string.sc_flatten_sub)) { edit = edit.copy(flatten = it) }
                 ChoiceChips(ScanFilter.entries, edit.filter, { it.label() }) { edit = edit.copy(filter = it) }
                 LabeledSlider(stringResource(R.string.t5_brightness), edit.brightness, -0.5f..0.5f, { edit = edit.copy(brightness = it) }) { "%+.0f%%".format(it * 100) }
                 LabeledSlider(stringResource(R.string.t5_contrast), edit.contrast, 0.5f..2f, { edit = edit.copy(contrast = it) }) { "%.1f×".format(it) }
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    IconButton(onClick = { edit = edit.copy(rotation = (edit.rotation + 270) % 360, erase = emptyList()) }) { Icon(Icons.Default.RotateLeft, stringResource(R.string.t5_rotate_left)) }
-                    IconButton(onClick = { edit = edit.copy(rotation = (edit.rotation + 90) % 360, erase = emptyList()) }) { Icon(Icons.Default.RotateRight, stringResource(R.string.t5_rotate_right)) }
-                    IconButton(onClick = { onMove(-1) }) { Icon(Icons.Default.KeyboardArrowUp, stringResource(R.string.t5_move_up)) }
-                    IconButton(onClick = { onMove(1) }) { Icon(Icons.Default.KeyboardArrowDown, stringResource(R.string.t5_move_down)) }
+                    // rotating keeps the eraser marks (they are turned with the page; they used to be wiped)
+                    IconButton(onClick = { edit = edit.copy(rotation = (edit.rotation + 270) % 360, erase = edit.erase.map { rotateRect(it, false) }) }) { Icon(Icons.Default.RotateLeft, stringResource(R.string.t5_rotate_left)) }
+                    IconButton(onClick = { edit = edit.copy(rotation = (edit.rotation + 90) % 360, erase = edit.erase.map { rotateRect(it, true) }) }) { Icon(Icons.Default.RotateRight, stringResource(R.string.t5_rotate_right)) }
+                    // order in the page row (right-to-left in Arabic): before / after, mirrored arrows; the edits are kept
+                    IconButton(onClick = { onMove(edit, -1) }, enabled = index > 0) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.sc_move_before)) }
+                    IconButton(onClick = { onMove(edit, 1) }, enabled = index < count - 1) { Icon(Icons.AutoMirrored.Filled.ArrowForward, stringResource(R.string.sc_move_after)) }
                     IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, stringResource(R.string.t5_remove)) }
                 }
-                SwitchRow(stringResource(R.string.t5_apply_all), all) { all = it }
+                SwitchRow(stringResource(R.string.sc_apply_all_look), all) { all = it }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    TextButton(onClick = { onGo(edit, -1) }, enabled = index > 0) { Text(stringResource(R.string.sc_prev_page)) }
+                    TextButton(onClick = { onGo(edit, 1) }, enabled = index < count - 1) { Text(stringResource(R.string.sc_next_page)) }
+                }
             }
         },
         confirmButton = { TextButton(onClick = { onApply(edit, all) }) { Text(stringResource(R.string.t5_apply)) } },
@@ -231,3 +249,7 @@ fun BarcodeResultsDialog(found: List<Pair<Int, com.smartdocs.editor.core.tools5.
         confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.ok)) } },
     )
 }
+
+/** An eraser rect (left, top, right, bottom fractions) turned with the page by 90° clockwise ([cw]) or counter-clockwise. */
+internal fun rotateRect(r: FloatArray, cw: Boolean): FloatArray =
+    if (cw) floatArrayOf(1f - r[3], r[0], 1f - r[1], r[2]) else floatArrayOf(r[1], 1f - r[2], r[3], 1f - r[0])

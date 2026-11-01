@@ -42,4 +42,36 @@
         <item quantity="many">ستُحذف %1$d صفحة ملتقطة.</item>
         <item quantity="other">ستُحذف %1$d صفحة ملتقطة.</item>
     </plurals>
+    <string name="sc_cam_captured">تم التقاط الصفحة %1$d</string>
+    <string name="sc_cam_bad_corners">الزوايا غير صالحة: اسحبها إلى أركان الورقة الأربعة.</string>
+    <string name="sc_cam_failed">تعذّر التقاط الصورة، حاول مرة أخرى.</string>
+    <string name="sc_state_on">مفعّل</string>
+    <string name="sc_state_off">متوقف</string>
+    <string name="sc_flash_on">يعمل</string>
+    <string name="sc_flash_off">متوقف</string>
+    <string name="sc_flash_auto">تلقائي</string>
+    <string name="sc_cam_torch">إضاءة مستمرة</string>
+    <string name="sc_cam_review_each">ضبط الحواف بعد كل صورة</string>
+    <string name="sc_cam_more">خيارات أخرى</string>
+    <string name="sc_cam_hint_next">قلّب الصفحة أو ضع ورقة جديدة</string>
+    <string name="sc_cam_hint_blurry">الصورة غير واضحة: ثبّت الهاتف أو زد الإضاءة</string>
+    <string name="sc_cam_limit">%1$d من %2$d</string>
+    <string name="sc_cam_shutter">التقاط صفحة</string>
+    <plurals name="sc_cam_done_n">
+        <item quantity="zero">تم</item>
+        <item quantity="one">تم، صفحة واحدة</item>
+        <item quantity="two">تم، صفحتان</item>
+        <item quantity="few">تم، %1$d صفحات</item>
+        <item quantity="many">تم، %1$d صفحة</item>
+        <item quantity="other">تم، %1$d صفحة</item>
+    </plurals>
+    <string name="sc_copied">نُسخ</string>
+    <string name="sc_cam_detected">الحواف المكتشفة</string>
+    <string name="sc_page_of">%1$d من %2$d</string>
+    <string name="sc_edit_edges">تعديل حواف الصفحة</string>
+    <string name="sc_move_before">نقل قبلها</string>
+    <string name="sc_move_after">نقل بعدها</string>
+    <string name="sc_apply_all_look">تطبيق الفلتر والإضاءة والتباين على كل الصفحات</string>
+    <string name="sc_prev_page">الصفحة السابقة</string>
+    <string name="sc_next_page">الصفحة التالية</string>
 </resources>
