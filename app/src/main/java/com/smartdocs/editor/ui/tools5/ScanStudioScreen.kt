@@ -78,9 +78,9 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
     val prefs = remember { ctx.getSharedPreferences("t5_scan", Context.MODE_PRIVATE) }
     var kind by remember { mutableStateOf(runCatching { ScanKind.valueOf(prefs.getString("kind", "DOCUMENT")!!) }.getOrDefault(ScanKind.DOCUMENT)) }
     var groups by androidx.compose.runtime.saveable.rememberSaveable(stateSaver = ScanGroupsSaver) { mutableStateOf<List<List<ScanPage>>>(emptyList()) }
-    var paper by remember { mutableStateOf(ScanPaper.FIT) }
+    var paper by remember { mutableStateOf(runCatching { ScanPaper.valueOf(prefs.getString("paper", "FIT")!!) }.getOrDefault(ScanPaper.FIT)) }
     // full camera resolution and light compression (bigger files) instead of 2400 px / JPEG 82
-    var sizeLevel by remember { mutableIntStateOf(ctx.getSharedPreferences("scan_studio", 0).let { sp -> sp.getInt("size", if (sp.contains("high_quality") && sp.getBoolean("high_quality", false)) 2 else 1) }) }
+    var sizeLevel by remember { mutableIntStateOf(ctx.getSharedPreferences("scan_studio", 0).let { sp -> sp.getInt("size", if (sp.getBoolean("high_quality", true)) 2 else 1) }) }
     var asImages by remember { mutableStateOf(prefs.getBoolean("as_images", false)) }
     var advanced by remember { mutableStateOf(false) }
     var nextNewGroup by remember { mutableStateOf(false) }
@@ -103,7 +103,13 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
     }
     var recent by remember { mutableStateOf(emptyList<File>()) }
     fun refreshRecent() { recent = (app.documents.scansDir.listFiles() ?: emptyArray()).filter { it.extension.equals("pdf", true) }.sortedByDescending { it.lastModified() } }
-    LaunchedEffect(Unit) { withContext(Dispatchers.IO) { refreshRecent() } }
+    LaunchedEffect(Unit) {
+        withContext(Dispatchers.IO) {
+            refreshRecent()
+            if (groups.isEmpty()) { val old = System.currentTimeMillis() - 24 * 3600_000L
+                app.documents.tempDir.listFiles { f -> (f.name.startsWith("cam_") || f.name.startsWith("t5scan_")) && f.lastModified() < old }?.forEach { it.delete() } }
+        }
+    }
     var autoOcr by remember { mutableStateOf(prefs.getBoolean("ocr", true)) }
     var langs by remember { mutableStateOf(prefs.getString("langs", "auto") ?: "auto") }
     var smartName by remember { mutableStateOf(prefs.getBoolean("smart", true)) }
@@ -191,6 +197,7 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
     LaunchedEffect(Unit) { if (autoStart && !started && groups.isEmpty()) { started = true; launchScanner() } }
 
     val savingMsg = stringResource(R.string.t5_scan_saving)
+    val savingImagesMsg = stringResource(R.string.sc_saving_images)
     val prefixes = mapOf(ScanKind.RECEIPT to stringResource(R.string.t5_prefix_receipt), ScanKind.BUSINESS_CARD to stringResource(R.string.t5_prefix_card), ScanKind.ID_CARD to stringResource(R.string.t5_prefix_id), ScanKind.WHITEBOARD to stringResource(R.string.t5_prefix_board), ScanKind.FORM to stringResource(R.string.t5_prefix_form))
     fun save() {
         val all = groups.filter { it.isNotEmpty() }
@@ -198,7 +205,7 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
         savePrefs()
         // FINAL_CHECK_2 #16: a form needs its text for field recognition. Smart naming no longer forces OCR (switching OCR off
         // did not make saving faster, scanner audit U14): without text it names by kind and date. Pictures need no text.
-        val imgs = asImages
+        val imgs = asImages && !kindNeedsPdf(kind)
         val needText = !imgs && (autoOcr || kind == ScanKind.BUSINESS_CARD || kind == ScanKind.RECEIPT || kind == ScanKind.FORM)
         val k = kind; val rf = rightFirst; val typed = name.trim()
         // deep audit E17: the ID card page is an A4 sheet at real card size — another paper shrank or mis-scaled it
@@ -211,7 +218,7 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
         // deep audit E16: "pages per file" counts output pages — an ID card is two photos, a book photo two pages
         val chunk = when { perFile <= 0 -> 0; k == ScanKind.ID_CARD -> perFile * 2; k == ScanKind.BOOK -> maxOf(1, perFile / 2); else -> perFile }
         val docs = all.flatMap { ScanExtras.chunks(it, chunk) }
-        job.launch(savingMsg) {
+        job.launch(if (imgs) savingImagesMsg else savingMsg) {
             val engine = if (needText) OcrEngine(ctx.applicationContext) else null
             try {
                 val made = ArrayList<File>(); var lastText = ""; var fieldsMade = 0
@@ -292,13 +299,15 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                     com.smartdocs.editor.core.tools5.Portfolio.create(ctx, typed.ifEmpty { "Scans" }, made, po)
                     results = made + po
                 }
-                if (kp) withContext(Dispatchers.IO) {
-                    runCatching { ScanProjects.save(ctx, made.firstOrNull()?.nameWithoutExtension ?: "Scan", keep) }
-                    // a reopened project is replaced by the new save, not copied again (scanner audit U6 / E15)
-                    reopened?.let { runCatching { ScanProjects.delete(it) } }
+                // only the documents that were saved are kept as a project; a reopened project is replaced (not copied
+                // again) — and only when everything was saved, so its pictures stay while some pages still need a retry
+                val failedSet = failed.flatten().map { it.file }.toSet()
+                val keepSaved = keep.map { g -> g.filter { it.first !in failedSet } }.filter { it.isNotEmpty() }
+                if (kp && keepSaved.isNotEmpty()) withContext(Dispatchers.IO) {
+                    runCatching { ScanProjects.save(ctx, made.firstOrNull()?.nameWithoutExtension ?: "Scan", keepSaved, replacing = reopened.takeIf { failed.isEmpty() }) }
                     projects = runCatching { ScanProjects.list(ctx) }.getOrDefault(projects)
                 }
-                openedProject = null
+                if (failed.isEmpty()) openedProject = null
                 val savedPages = all.flatten() - failed.flatten().toSet()
                 withContext(Dispatchers.IO) { dropTemp(savedPages) }
                 groups = failed.toList(); if (failed.isEmpty()) name = ""
@@ -310,8 +319,8 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
     }
 
     ToolScaffold(stringResource(R.string.t5_scan_title), nav, snackbar = snackbar, actions = {
-        if (groups.isNotEmpty()) IconButton(onClick = { askClear = true }) { Icon(Icons.Default.DeleteSweep, stringResource(R.string.sc_delete_all_pages)) }
-    }, onBack = { if (groups.isNotEmpty()) askDiscard = true else nav.popBackStack() }) {
+        if (groups.isNotEmpty()) IconButton(onClick = { askClear = true }, enabled = !job.running) { Icon(Icons.Default.DeleteSweep, stringResource(R.string.sc_delete_all_pages)) }
+    }, onBack = { if (job.running) Unit else if (groups.isNotEmpty()) askDiscard = true else nav.popBackStack() }) {
         FieldLabel(stringResource(R.string.t5_scan_kind))
         ChoiceChips(ScanKind.entries, kind, { it.label() }) { nk -> changeKind(nk) }
         Text(stringResource(kindHint(kind)), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -400,12 +409,13 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                     ScanPaper.FIT -> stringResource(R.string.t5_paper_fit); ScanPaper.A4 -> stringResource(R.string.t5_paper_a4); ScanPaper.LETTER -> stringResource(R.string.t5_paper_letter)
                     ScanPaper.CARD -> stringResource(R.string.pc_paper_card); ScanPaper.TABLOID -> "Tabloid"; ScanPaper.EXECUTIVE -> "Executive"
                     else -> it.name.replace("JIS_", "JIS ")
-                } }) { paper = it }
+                } }) { paper = it; prefs.edit().putString("paper", it.name).apply() }
                 TextButton(onClick = { morePaper = !morePaper }) { Text(stringResource(if (morePaper) R.string.t5_paper_less else R.string.t5_paper_more)) }
                 // scanner audit U23: PDF or pictures
                 FieldLabel(stringResource(R.string.sc_format))
-                ChoiceChips(listOf(false, true), asImages, { stringResource(if (it) R.string.sc_format_jpg else R.string.sc_format_pdf) }) { asImages = it; prefs.edit().putBoolean("as_images", it).apply() }
-                if (!asImages) SwitchRow(stringResource(R.string.t5_auto_ocr), autoOcr, stringResource(R.string.t5_auto_ocr_hint)) { autoOcr = it }
+                if (kindNeedsPdf(kind)) Text(stringResource(R.string.sc_format_pdf_needed), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                else ChoiceChips(listOf(false, true), asImages, { stringResource(if (it) R.string.sc_format_jpg else R.string.sc_format_pdf) }) { asImages = it; prefs.edit().putBoolean("as_images", it).apply() }
+                if (!asImages || kindNeedsPdf(kind)) SwitchRow(stringResource(R.string.t5_auto_ocr), autoOcr, stringResource(R.string.t5_auto_ocr_hint)) { autoOcr = it }
                 if (autoOcr || kind == ScanKind.BUSINESS_CARD || kind == ScanKind.RECEIPT) {
                     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         listOf("auto", "ara", "eng", "ara+eng", "fra", "ara+fra").forEach { l ->
@@ -433,7 +443,8 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                     SwitchRow(stringResource(R.string.pc_keep_project), keepProject, stringResource(R.string.pc_keep_project_sub)) { keepProject = it; prefs.edit().putBoolean("keep_project", it).apply() }
                 }
             }
-            PrimaryButton(stringResource(R.string.t5_scan_save), enabled = !job.running, icon = Icons.Default.PictureAsPdf) { save() }
+            PrimaryButton(stringResource(if (asImages && !kindNeedsPdf(kind)) R.string.sc_save_images else R.string.t5_scan_save), enabled = !job.running,
+                icon = if (asImages && !kindNeedsPdf(kind)) Icons.Default.Image else Icons.Default.PictureAsPdf) { save() }
             // FINAL_CHECK_2 Low (K11): QR / barcodes on the scanned pages
             var codes by remember { mutableStateOf<List<Pair<Int, com.smartdocs.editor.core.tools5.BarcodeScan.Code>>?>(null) }
             var reading by remember { mutableStateOf(false) }
@@ -444,7 +455,9 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                     codes = withContext(Dispatchers.IO) {
                         files.flatMapIndexed { i, f ->
                             runCatching {
-                                val b = ScanImage.load(f, 1600) ?: return@runCatching emptyList()
+                                val e = groups.flatten().firstOrNull { it.file == f }?.edit
+                                val b0 = ScanImage.load(f, ScanImage.loadDim(1600, e?.crop)) ?: return@runCatching emptyList()
+                                val b = ScanImage.cropped(b0, e?.crop, 1600)
                                 val px = IntArray(b.width * b.height); b.getPixels(px, 0, b.width, 0, 0, b.width, b.height); val w = b.width; val h = b.height; b.recycle()
                                 com.smartdocs.editor.core.tools5.BarcodeScan.decode(px, w, h).map { i to it }
                             }.getOrDefault(emptyList())
@@ -473,7 +486,7 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
     }
     T5JobUi(job, nav, snackbar)
     // leaving with unsaved pages asks first (they were lost without a word)
-    androidx.activity.compose.BackHandler(enabled = groups.isNotEmpty() && !cameraOpen) { askDiscard = true }
+    androidx.activity.compose.BackHandler(enabled = groups.isNotEmpty() && !cameraOpen) { if (!job.running) askDiscard = true }
     if (askDiscard || askClear) {
         val n = groups.sumOf { it.size }
         AlertDialog(onDismissRequest = { askDiscard = false; askClear = false },
@@ -579,3 +592,6 @@ internal val ScanGroupsSaver: androidx.compose.runtime.saveable.Saver<List<List<
 /** Picture side for the size choice: small (sharing), medium, best (A4 at 300 dpi). */
 internal fun sizeDim(level: Int) = when (level) { 0 -> 1600; 1 -> 2400; else -> 3508 }
 internal fun sizeQuality(level: Int) = when (level) { 0 -> 72; 1 -> 82; else -> 92 }
+
+/** Kinds whose result is read from the text (contact, receipt CSV, fillable fields) need a PDF. */
+internal fun kindNeedsPdf(k: ScanKind) = k == ScanKind.BUSINESS_CARD || k == ScanKind.RECEIPT || k == ScanKind.FORM

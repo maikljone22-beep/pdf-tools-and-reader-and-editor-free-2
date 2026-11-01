@@ -95,4 +95,29 @@ class PageQuadTest {
         assertEquals(src[17 * w + 23], out[17 * w + 23])
         assertNull(null)
     }
+
+    /** Field report: a white sheet on a light patterned carpet that runs to the frame edges. */
+    @Test fun sheetOnPatternedCarpetIsNotTheWholeFloor() {
+        val w = 320; val h = 240
+        val qx = floatArrayOf(0.3f, 0.7f, 0.72f, 0.28f); val qy = floatArrayOf(0.2f, 0.22f, 0.8f, 0.78f)
+        val px = scene(w, h, qx, qy, paper = rgb(240, 240, 238))
+        // carpet: light grey flowers on mid grey, touching the sheet and every edge of the frame
+        for (y in 0 until h) for (x in 0 until w) {
+            if (inside((x + 0.5f) / w, (y + 0.5f) / h, qx, qy)) continue
+            px[y * w + x] = if ((x / 6 + y / 6) % 3 == 0) rgb(205, 205, 200) else rgb(120, 115, 110)
+        }
+        val q = PageQuad.detect(px, w, h)
+        // either the sheet itself or nothing — never a quad spreading over the carpet
+        if (q != null) {
+            for (i in 0 until 4) { assertEquals(qx[i], q.x[i], 0.06f); assertEquals(qy[i], q.y[i], 0.06f) }
+        }
+    }
+
+    @Test fun morphologyRoundTrip() {
+        val w = 20; val h = 10
+        val m = BooleanArray(w * h); m[5 * w + 10] = true
+        val d = PageQuad.dilate(m, w, h, 2)
+        assertEquals(25, d.count { it })
+        assertEquals(1, PageQuad.erode(d, w, h, 2).count { it })
+    }
 }

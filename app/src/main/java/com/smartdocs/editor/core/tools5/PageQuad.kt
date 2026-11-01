@@ -46,18 +46,83 @@ object PageQuad {
     fun detect(px: IntArray, w: Int, h: Int): Quad? {
         if (w < 32 || h < 32) return null
         val g = blur(PixelOps.gray(px), w, h)
-        val t = otsu(g)
+        val otsuT = otsu(g)
         // the side the centre belongs to is the paper
-        var bright = 0; var n = 0
-        for (y in h * 2 / 5 until h * 3 / 5 step 2) for (x in w * 2 / 5 until w * 3 / 5 step 2) { if (g[y * w + x] > t) bright++; n++ }
-        val paperBright = bright * 2 >= n
-        val mask = BooleanArray(w * h) { (g[it] > t) == paperBright }
-        // connected region under the centre (flood fill), with a margin so the outer frame of a desk is not taken
-        val region = fill(mask, w, h, w / 2, h / 2) ?: return null
+        val centre = ArrayList<Int>()
+        for (y in h * 2 / 5 until h * 3 / 5 step 2) for (x in w * 2 / 5 until w * 3 / 5 step 2) centre += g[y * w + x]
+        val paperBright = centre.count { it > otsuT } * 2 >= centre.size
+        // field report (a sheet on a patterned carpet): with one global threshold the light parts of the background
+        // joined the page and the "page" became the whole floor. A bright page is now measured against its own white
+        // (the centre's light level), not only the frame's histogram.
+        val t = if (paperBright) max(otsuT, (centre.sorted()[centre.size * 3 / 4] * 0.80f).toInt()) else otsuT
+        val raw = BooleanArray(w * h) { (g[it] > t) == paperBright }
+        // text and lines on the page are holes in the mask: closed first; then thin bridges to the background are cut
+        // (opening) before the region under the centre is taken
+        val r1 = max(1, min(w, h) / 90); val r2 = max(2, min(w, h) / 45)
+        val closed = erode(dilate(raw, w, h, r1), w, h, r1)
+        val core = erode(closed, w, h, r2)
+        val seed = seedNearCentre(core, w, h) ?: return null
+        val grown = fill(core, w, h, seed % w, seed / w) ?: return null
+        // text, pictures and tables are holes inside the sheet: filled, so only the outline counts
+        val region = fillHoles(dilate(grown, w, h, r2).also { for (i in it.indices) it[i] = it[i] && closed[i] }, w, h)
+        // a region spread along two or more frame edges is background, not a sheet held in view
+        if (bordersTouched(region, w, h) >= 2) return null
         val quad = extremes(region, w, h) ?: return null
         if (quad.area() < MIN_AREA) return null
+        // a sheet fills its outline; a leaked, ragged region does not
+        if (region.count { it } < quad.area() * w * h * 0.82f) return null
         val refined = refine(quad, g, w, h)
         return if (refined.area() >= MIN_AREA && convex(refined)) refined else null
+    }
+
+    /** True cells within [r] (square window) of a true cell. Separable running counts, O(w·h). */
+    internal fun dilate(m: BooleanArray, w: Int, h: Int, r: Int): BooleanArray {
+        val tmp = BooleanArray(w * h); val out = BooleanArray(w * h)
+        for (y in 0 until h) { var c = 0; val o = y * w
+            for (x in 0 until min(r, w)) if (m[o + x]) c++
+            for (x in 0 until w) { if (x + r < w && m[o + x + r]) c++; if (x - r - 1 >= 0 && m[o + x - r - 1]) c--; tmp[o + x] = c > 0 } }
+        for (x in 0 until w) { var c = 0
+            for (y in 0 until min(r, h)) if (tmp[y * w + x]) c++
+            for (y in 0 until h) { if (y + r < h && tmp[(y + r) * w + x]) c++; if (y - r - 1 >= 0 && tmp[(y - r - 1) * w + x]) c--; out[y * w + x] = c > 0 } }
+        return out
+    }
+
+    internal fun erode(m: BooleanArray, w: Int, h: Int, r: Int): BooleanArray {
+        val inv = BooleanArray(m.size) { !m[it] }
+        val d = dilate(inv, w, h, r)
+        return BooleanArray(m.size) { !d[it] }
+    }
+
+    /** [m] with every enclosed hole filled (cells not reachable from the frame edge through false cells). */
+    private fun fillHoles(m: BooleanArray, w: Int, h: Int): BooleanArray {
+        val outside = BooleanArray(w * h); val stack = IntArray(w * h); var sp = 0
+        fun push(i: Int) { if (!m[i] && !outside[i]) { outside[i] = true; stack[sp++] = i } }
+        for (x in 0 until w) { push(x); push((h - 1) * w + x) }
+        for (y in 0 until h) { push(y * w); push(y * w + w - 1) }
+        while (sp > 0) {
+            val i = stack[--sp]; val x = i % w; val y = i / w
+            if (x > 0) push(i - 1); if (x < w - 1) push(i + 1); if (y > 0) push(i - w); if (y < h - 1) push(i + w)
+        }
+        return BooleanArray(w * h) { !outside[it] }
+    }
+
+    /** The mask cell nearest the centre (the centre itself may sit on a dark title or picture). */
+    private fun seedNearCentre(m: BooleanArray, w: Int, h: Int): Int? {
+        val cx = w / 2; val cy = h / 2
+        for (r in 0..min(w, h) / 6) for (dy in -r..r) for (dx in -r..r) {
+            if (max(abs(dx), abs(dy)) != r) continue
+            val x = cx + dx; val y = cy + dy
+            if (x in 0 until w && y in 0 until h && m[y * w + x]) return y * w + x
+        }
+        return null
+    }
+
+    /** How many frame edges the region covers for more than a quarter of their length. */
+    private fun bordersTouched(r: BooleanArray, w: Int, h: Int): Int {
+        var top = 0; var bottom = 0; var left = 0; var right = 0
+        for (x in 0 until w) { if (r[x]) top++; if (r[(h - 1) * w + x]) bottom++ }
+        for (y in 0 until h) { if (r[y * w]) left++; if (r[y * w + w - 1]) right++ }
+        return listOf(top > w / 4, bottom > w / 4, left > h / 4, right > h / 4).count { it }
     }
 
     /**

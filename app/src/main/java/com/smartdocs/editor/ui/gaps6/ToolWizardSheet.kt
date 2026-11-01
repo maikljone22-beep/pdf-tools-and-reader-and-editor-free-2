@@ -53,7 +53,7 @@ fun ToolWizardContent(onTool: (String) -> Unit, modifier: Modifier = Modifier) {
     var query by rememberSaveable { mutableStateOf("") }
     val allowed = remember(settings.aiEnabled) { ToolWizard.KEYWORDS.keys.filter { AiGate.allowsTool(settings, it) }.toSet() }
     val hits = remember(query, allowed) { ToolWizard.rank(query, limit = 8, allowed = allowed) }
-    val byId = remember { allTools.associateBy { it.id } }
+    val byId = remember { allTools.associateBy { it.id } + ("scan_studio" to allTools.first { it.id == "scan" }) }
     val goals = remember(allowed) { ToolWizard.SUGGESTED.filter { ToolWizard.rank(it, 1, allowed).isNotEmpty() } }
     Column(modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
         Text(stringResource(R.string.g6_wizard_title), style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(vertical = 4.dp))

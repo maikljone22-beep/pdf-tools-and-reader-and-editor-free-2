@@ -96,7 +96,7 @@ object ScanBuilder {
         }
         images.forEach { (f, e) ->
             val target = if (kind == ScanKind.BOOK) minOf(maxDim * 3 / 2, 4200) else maxDim
-            val b = ScanImage.load(f, minOf(ScanImage.loadDim(target, e.crop), 5300)) ?: return@forEach
+            val b = ScanImage.load(f, minOf(ScanImage.loadDim(target, e.crop), if (kind == ScanKind.BOOK) 4600 else 5300)) ?: return@forEach
             val done = ScanImage.apply(b, e, dewarp = e.flatten && kind != ScanKind.BOOK, maxOut = target)
             if (kind == ScanKind.BOOK) {
                 // a spread bends both ways from the spine: each page is flattened on its own

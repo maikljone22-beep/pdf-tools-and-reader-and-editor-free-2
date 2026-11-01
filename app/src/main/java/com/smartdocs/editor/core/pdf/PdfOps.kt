@@ -407,7 +407,8 @@ object PdfOps {
         val rot = runCatching { exif?.rotationDegrees ?: 0 }.getOrDefault(0)
         val flip = runCatching { exif?.isFlipped == true }.getOrDefault(false)
         if (rot == 0 && !flip) return bmp
-        val m = Matrix().apply { postRotate(rot.toFloat()); if (flip) postScale(-1f, 1f) }   // EXIF: rotate, then mirror
+        // androidx reports TRANSPOSE as 270° + flip and TRANSVERSE as 90° + flip: mirror first, then rotate
+        val m = Matrix().apply { if (flip) postScale(-1f, 1f); postRotate(rot.toFloat()) }
         return Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, m, true).also { if (it !== bmp) bmp.recycle() }
     }
 

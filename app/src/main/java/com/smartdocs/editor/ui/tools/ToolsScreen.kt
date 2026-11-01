@@ -36,6 +36,9 @@ import com.smartdocs.editor.ui.common.ToolCard
 
 data class ToolDef(val id: String, val label: Int, val icon: ImageVector, val group: Int)
 
+/** A tool by id; old ids that were merged map to their tool ("scan_studio" is the scanner since the scanner rework). */
+fun toolDef(id: String): ToolDef? = allTools.firstOrNull { it.id == (if (id == "scan_studio") "scan" else id) }
+
 /** Every tool in the Tools tab. Ids map to [ToolScreens]. */
 val allTools = listOf(
     ToolDef("scan", R.string.tool_scan, Icons.Default.DocumentScanner, 0),
