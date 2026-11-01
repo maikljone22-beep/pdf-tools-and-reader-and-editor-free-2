@@ -53,9 +53,13 @@ fun ScanPageEditor(page: ScanPage, index: Int, count: Int, onApply: (PageEdit, B
         kotlinx.coroutines.delay(180)
         value = withContext(Dispatchers.Default) { runCatching { ScanImage.preview(page.file, edit, 900) }.getOrNull() }
     }
-    if (edges) ScanCornerEditor(page.file, edit.crop, onCancel = { edges = false }, onApply = { c -> edges = false; edit = edit.copy(crop = c) })
+    if (edges) ScanCornerEditor(page.file, edit.crop, onCancel = { edges = false }, onApply = { c -> edges = false; edit = edit.copy(crop = c, erase = if (c?.contentEquals(edit.crop) == true || (c == null && edit.crop == null)) edit.erase else emptyList()) })
+    var askLeave by remember { mutableStateOf(false) }
+    if (askLeave) AlertDialog(onDismissRequest = { askLeave = false }, text = { Text(stringResource(R.string.sc_drop_edits)) },
+        confirmButton = { TextButton(onClick = { askLeave = false; onApply(edit, all) }) { Text(stringResource(R.string.t5_apply)) } },
+        dismissButton = { TextButton(onClick = { askLeave = false; onDismiss() }) { Text(stringResource(R.string.sc_discard_edits)) } })
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (edit != page.edit) askLeave = true else onDismiss() },
         // a tap outside used to throw the edits away
         properties = androidx.compose.ui.window.DialogProperties(dismissOnClickOutside = false, usePlatformDefaultWidth = false),
         modifier = Modifier.fillMaxWidth(0.94f),

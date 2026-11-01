@@ -74,7 +74,7 @@ fun NveUserTabToolbar(tabId: String, navigateTool: (String) -> Unit, onMissing: 
     if (tab == null) { LaunchedEffect(tabId) { onMissing() }; return }
     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 6.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
         // tabs audit CM-21: AI tools follow the AI switch like the Tools toolbar
-        tab.tools.mapNotNull { id -> allTools.firstOrNull { it.id == id } }.filter { com.smartdocs.editor.core.gaps6.AiGate.allowsTool(settings, it.id) }
+        tab.tools.mapNotNull { id -> com.smartdocs.editor.ui.tools.toolDef(id) }.distinctBy { it.id }.filter { com.smartdocs.editor.core.gaps6.AiGate.allowsTool(settings, it.id) }
             .forEach { t -> ToolChip(t.icon, stringResource(t.label)) { navigateTool(t.id) } }
         if (tab.tools.isEmpty()) Text(stringResource(R.string.nl_user_tab_empty), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(8.dp))
     }

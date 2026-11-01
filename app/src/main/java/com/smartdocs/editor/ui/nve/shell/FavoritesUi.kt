@@ -99,7 +99,7 @@ fun BoxScope.NveFavoriteBadge(id: String) {
 fun NveHomeFavorites(nav: NavHostController) {
     val ctx = LocalContext.current
     val v = NveShellPrefs.version.intValue
-    val favs = remember(v) { NveShellPrefs.favorites(ctx).mapNotNull { id -> allTools.firstOrNull { it.id == id } } }
+    val favs = remember(v) { NveShellPrefs.favorites(ctx).mapNotNull { id -> com.smartdocs.editor.ui.tools.toolDef(id) }.distinctBy { it.id } }
     if (favs.isEmpty()) return
     val title = remember(v) { NveShellPrefs.favoritesTitle(ctx) }
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {

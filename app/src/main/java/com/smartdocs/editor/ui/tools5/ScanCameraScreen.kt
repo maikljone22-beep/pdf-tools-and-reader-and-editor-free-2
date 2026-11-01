@@ -39,6 +39,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.runtime.rememberUpdatedState
 import com.smartdocs.editor.core.tools5.ScanKind
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.ui.draw.clip
@@ -244,7 +245,10 @@ private fun CameraBody(pageLimit: Int, onDone: (List<Pair<File, PageQuad.Quad?>>
     }
     LaunchedEffect(torch) { runCatching { controller.enableTorch(torch) } }
 
-    fun finish() { if (!capturing) onDone(pages.value) }
+    // the analyzer is installed once: it reaches the current limit / callback / capture through these
+    val limitNow by rememberUpdatedState(pageLimit)
+    val doneNow by rememberUpdatedState(onDone)
+    fun finish() { if (!capturing) doneNow(pages.value) }
 
     /** A page kept with its corners (FULL = the whole photo). */
     fun addPage(f: File, q: PageQuad.Quad) {
@@ -252,7 +256,7 @@ private fun CameraBody(pageLimit: Int, onDone: (List<Pair<File, PageQuad.Quad?>>
         lastAuto = System.currentTimeMillis()
         val n = pages.value.size
         status = capturedMsg.format(n)
-        if (pageLimit > 0 && n >= pageLimit) finish()
+        if (limitNow > 0 && n >= limitNow) finish()
     }
 
     /** Full-resolution capture; the page is kept with its detected corners (or opens in the corner editor). */
@@ -281,6 +285,8 @@ private fun CameraBody(pageLimit: Int, onDone: (List<Pair<File, PageQuad.Quad?>>
     }
 
     // live page edges + auto-capture
+    val captureNow by rememberUpdatedState<() -> Unit>({ capture() })
+    var missing by remember { mutableIntStateOf(0) }
     LaunchedEffect(Unit) {
         var last: PageQuad.Quad? = null
         controller.setImageAnalysisAnalyzer(executor) { img ->
@@ -302,10 +308,11 @@ private fun CameraBody(pageLimit: Int, onDone: (List<Pair<File, PageQuad.Quad?>>
                 scope.launch {
                     frameSize = IntSize(w, h); quad = q; steady = st; lastSig = sig
                     // re-arm once the page is gone or clearly different from the last photo
-                    if (!armed && !capturing && shot == null && (q == null || shotSig == null || sigDiff(sig, shotSig!!) > 10)) armed = true
+                    missing = if (q == null) missing + 1 else 0
+                    if (!armed && !capturing && shot == null && (missing >= 4 || shotSig == null || sigDiff(sig, shotSig!!) > 10)) armed = true
                     blurry = autoCapture && q != null && st >= 10 && !sharp
                     val now = System.currentTimeMillis()
-                    if (autoCapture && armed && q != null && st >= 10 && sharp && now - lastAuto > 1500L && !capturing && shot == null) { lastAuto = now; capture() }
+                    if (autoCapture && armed && q != null && st >= 10 && sharp && now - lastAuto > 1500L && !capturing && shot == null) { lastAuto = now; captureNow() }
                 }
             } finally { img.close() }
         }
@@ -438,11 +445,12 @@ private fun CameraBody(pageLimit: Int, onDone: (List<Pair<File, PageQuad.Quad?>>
     }
 
     shot?.let { s ->
-        CornerEditor(s, leftLabel = R.string.sc_cam_retake, onRetake = { s.file.delete(); s.preview.recycle(); shot = null; armed = true }, onUse = { q ->
+        DisposableEffect(s) { onDispose { s.preview.recycle() } }
+        CornerEditor(s, leftLabel = R.string.sc_cam_retake, onRetake = { s.file.delete(); shot = null; armed = true }, onUse = { q ->
             // deep audit E6: crossed / collapsed corners are refused instead of making a garbled page
             val ok = PageQuad.normalize(q)
             if (ok == null) { status = badCorners; return@CornerEditor }
-            shot = null; s.preview.recycle()
+            shot = null
             addPage(s.file, ok)
         })
     }

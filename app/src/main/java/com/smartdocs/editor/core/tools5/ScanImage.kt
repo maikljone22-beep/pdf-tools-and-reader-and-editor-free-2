@@ -48,13 +48,15 @@ object ScanImage {
         // deep audit E1: a 50 MP photo decoded at sample 1 (≈ 200 MB) ran out of memory — subsample until the decoded
         // side is at most 1.5 × the wanted one, then scale exactly
         var sample = 1
-        while (maxOf(o.outWidth, o.outHeight) / (sample * 2) >= maxDim * 3 / 4) sample *= 2
+        while (maxOf(o.outWidth, o.outHeight) / (sample * 2) >= maxDim) sample *= 2
+        // a pixel budget keeps very large sensors (50 MP) from running out of memory
+        while ((o.outWidth.toLong() / sample) * (o.outHeight.toLong() / sample) > 24_000_000L) sample *= 2
         val raw = BitmapFactory.decodeFile(f.absolutePath, BitmapFactory.Options().apply { inSampleSize = sample; inPreferredConfig = Bitmap.Config.ARGB_8888 }) ?: return null
         // deep audit E7: mirrored orientations (front camera, some galleries) — rotate, then mirror
         val exif = runCatching { ExifInterface(f.absolutePath) }.getOrNull()
         val deg = runCatching { exif?.rotationDegrees ?: 0 }.getOrDefault(0)
         val flip = runCatching { exif?.isFlipped == true }.getOrDefault(false)
-        var b = if (deg != 0 || flip) Bitmap.createBitmap(raw, 0, 0, raw.width, raw.height, Matrix().apply { postRotate(deg.toFloat()); if (flip) postScale(-1f, 1f) }, true).also { if (it !== raw) raw.recycle() } else raw
+        var b = if (deg != 0 || flip) Bitmap.createBitmap(raw, 0, 0, raw.width, raw.height, Matrix().apply { if (flip) postScale(-1f, 1f); postRotate(deg.toFloat()) }, true).also { if (it !== raw) raw.recycle() } else raw
         val long = maxOf(b.width, b.height)
         if (long > maxDim) {
             val k = maxDim.toFloat() / long

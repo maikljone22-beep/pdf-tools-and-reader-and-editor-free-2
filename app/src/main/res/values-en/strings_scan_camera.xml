@@ -96,4 +96,9 @@
     <string name="sc_advanced">Advanced options</string>
     <string name="sc_copy_text">Copy the recognised text</string>
     <string name="sc_text_copied">Text copied</string>
+    <string name="sc_save_images">Save pictures</string>
+    <string name="sc_saving_images">Saving pictures…</string>
+    <string name="sc_format_pdf_needed">This kind is saved as PDF because its text is read.</string>
+    <string name="sc_drop_edits">Keep the edits on this page?</string>
+    <string name="sc_discard_edits">Discard</string>
 </resources>

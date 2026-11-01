@@ -108,4 +108,9 @@
     <string name="sc_advanced">خيارات متقدمة</string>
     <string name="sc_copy_text">نسخ النص المتعرَّف عليه</string>
     <string name="sc_text_copied">نُسخ النص</string>
+    <string name="sc_save_images">حفظ الصور</string>
+    <string name="sc_saving_images">جارٍ حفظ الصور…</string>
+    <string name="sc_format_pdf_needed">هذا النوع يُحفظ PDF لأن النص يُقرأ منه.</string>
+    <string name="sc_drop_edits">حفظ تعديلات هذه الصفحة؟</string>
+    <string name="sc_discard_edits">تجاهلها</string>
 </resources>

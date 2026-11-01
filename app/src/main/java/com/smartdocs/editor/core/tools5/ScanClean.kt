@@ -90,10 +90,14 @@ object ScanProjects {
     }
 
     /** Keep [groups] (pictures + edits) as a project; the oldest projects beyond [MAX] are removed. */
-    fun save(ctx: Context, name: String, groups: List<List<Pair<File, PageEdit>>>): File {
+    fun save(ctx: Context, name: String, groups: List<List<Pair<File, PageEdit>>>, replacing: Project? = null): File {
         val dir = File(root(ctx), System.currentTimeMillis().toString()).apply { mkdirs() }
-        val named = groups.mapIndexed { g, pages -> pages.mapIndexed { i, (f, e) -> val n = "p${g}_$i.${f.extension.ifBlank { "jpg" }}"; f.copyTo(File(dir, n), true); n to e } }
-        File(dir, "manifest.txt").writeText(encode(name, named))
+        try {
+            val named = groups.mapIndexed { g, pages -> pages.mapIndexed { i, (f, e) -> val n = "p${g}_$i.${f.extension.ifBlank { "jpg" }}"; f.copyTo(File(dir, n), true); n to e } }
+            File(dir, "manifest.txt").writeText(encode(name, named))
+        } catch (e: Exception) { dir.deleteRecursively(); throw e }
+        // the reopened project is replaced only once the new copy is complete, and before pruning (so no other project goes)
+        replacing?.takeIf { it.dir != dir }?.let { delete(it) }
         list(ctx).drop(MAX).forEach { it.dir.deleteRecursively() }
         return dir
     }
