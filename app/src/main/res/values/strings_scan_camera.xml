@@ -23,4 +23,23 @@
     <string name="sc_cam_qr">وضع QR / الباركود</string>
     <string name="sc_cam_hint_qr">وجّه الكاميرا نحو رمز QR أو باركود</string>
     <string name="sc_cam_qr_again">مسح آخر</string>
+    <string name="sc_capture_settings">إعدادات الالتقاط</string>
+    <string name="sc_google_scanner">ماسح Google</string>
+    <string name="sc_tap_to_edit">اضغط على أي صفحة لتعديلها: القص والتدوير والفلتر والممحاة والترتيب.</string>
+    <string name="sc_show_all">عرض الكل (%1$d)</string>
+    <string name="sc_cam_denied">يحتاج الماسح إذن الكاميرا لتصوير الأوراق. لم يُمنح الإذن.</string>
+    <string name="sc_cam_allow">السماح بالكاميرا</string>
+    <string name="sc_cam_settings">فتح إعدادات التطبيق</string>
+    <string name="sc_cam_use_google">استخدام ماسح Google بدلاً منها</string>
+    <string name="sc_delete_all_pages">حذف كل الصفحات</string>
+    <string name="sc_discard_title">الخروج دون حفظ؟</string>
+    <string name="sc_discard">تجاهل الصفحات</string>
+    <plurals name="sc_pages_will_go">
+        <item quantity="zero">لا توجد صفحات.</item>
+        <item quantity="one">ستُحذف الصفحة الملتقطة.</item>
+        <item quantity="two">ستُحذف الصفحتان الملتقطتان.</item>
+        <item quantity="few">ستُحذف %1$d صفحات ملتقطة.</item>
+        <item quantity="many">ستُحذف %1$d صفحة ملتقطة.</item>
+        <item quantity="other">ستُحذف %1$d صفحة ملتقطة.</item>
+    </plurals>
 </resources>

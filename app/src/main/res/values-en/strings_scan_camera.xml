@@ -23,4 +23,19 @@
     <string name="sc_cam_qr">QR / barcode mode</string>
     <string name="sc_cam_hint_qr">Point the camera at a QR code or barcode</string>
     <string name="sc_cam_qr_again">Scan another</string>
+    <string name="sc_capture_settings">Capture settings</string>
+    <string name="sc_google_scanner">Google scanner</string>
+    <string name="sc_tap_to_edit">Tap any page to edit it: crop, rotate, filter, eraser, order.</string>
+    <string name="sc_show_all">Show all (%1$d)</string>
+    <string name="sc_cam_denied">The scanner needs the camera permission to photograph pages. It was not granted.</string>
+    <string name="sc_cam_allow">Allow the camera</string>
+    <string name="sc_cam_settings">Open app settings</string>
+    <string name="sc_cam_use_google">Use the Google scanner instead</string>
+    <string name="sc_delete_all_pages">Delete all pages</string>
+    <string name="sc_discard_title">Leave without saving?</string>
+    <string name="sc_discard">Discard pages</string>
+    <plurals name="sc_pages_will_go">
+        <item quantity="one">The captured page will be deleted.</item>
+        <item quantity="other">%1$d captured pages will be deleted.</item>
+    </plurals>
 </resources>

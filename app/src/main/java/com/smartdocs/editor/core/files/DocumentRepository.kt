@@ -31,7 +31,9 @@ class DocumentRepository(private val context: Context, private val db: AppDataba
     val tempDir: File get() = File(context.cacheDir, "tmp").apply { mkdirs() }
     val signaturesDir: File get() = File(context.filesDir, "signatures").apply { mkdirs() }
 
-    fun newTemp(prefix: String = "doc", ext: String = "pdf") = File(tempDir, "${prefix}_${System.currentTimeMillis()}.$ext")
+    // the millisecond alone repeats when two temp files are made at once (camera pages straightened in parallel)
+    private val tempSeq = java.util.concurrent.atomic.AtomicInteger()
+    fun newTemp(prefix: String = "doc", ext: String = "pdf") = File(tempDir, "${prefix}_${System.currentTimeMillis()}_${tempSeq.incrementAndGet()}.$ext")
 
     /** A new name in [dir] (never an existing file); the base is cleaned and cut to fit the 255-byte name limit ([FileNames]). */
     fun uniqueFile(dir: File, baseName: String, ext: String = "pdf"): File = FileNames.unique(dir, baseName, ext)

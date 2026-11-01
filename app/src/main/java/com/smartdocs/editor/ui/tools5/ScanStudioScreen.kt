@@ -25,6 +25,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
@@ -69,19 +70,34 @@ fun ScanKind.label(): String = stringResource(
 
 /** Scan studio: kinds, per-page filters, auto OCR, smart names, business card → contact, receipt → CSV, batch. */
 @Composable
-fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: String?) {
+fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: String?, autoStart: Boolean = false) {
     val app = LocalApp.current
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
     val prefs = remember { ctx.getSharedPreferences("t5_scan", Context.MODE_PRIVATE) }
     var kind by remember { mutableStateOf(runCatching { ScanKind.valueOf(prefs.getString("kind", "DOCUMENT")!!) }.getOrDefault(ScanKind.DOCUMENT)) }
-    var groups by remember { mutableStateOf<List<List<ScanPage>>>(emptyList()) }
+    var groups by androidx.compose.runtime.saveable.rememberSaveable(stateSaver = ScanGroupsSaver) { mutableStateOf<List<List<ScanPage>>>(emptyList()) }
     var paper by remember { mutableStateOf(ScanPaper.FIT) }
     // full camera resolution and light compression (bigger files) instead of 2400 px / JPEG 82
     var highQuality by remember { mutableStateOf(ctx.getSharedPreferences("scan_studio", 0).getBoolean("high_quality", true)) }
     var ownCamera by remember { mutableStateOf(ctx.getSharedPreferences("scan_studio", 0).getBoolean("own_camera", true)) }
-    var cameraOpen by remember { mutableStateOf(false) }
+    var cameraOpen by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    var started by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    // the camera was refused: this launch uses Google's scanner
+    var useGoogleOnce by remember { mutableStateOf(false) }
+    var lastScan by remember { mutableStateOf<File?>(null) }
+    var askDiscard by remember { mutableStateOf(false) }
+    var projectToDelete by remember { mutableStateOf<ScanProjects.Project?>(null) }
+    var askClear by remember { mutableStateOf(false) }
+    /** The picture copies in the temp folder (camera / Google scanner) — not pages reopened from a saved project. */
+    fun dropTemp(pages: List<ScanPage>) {
+        val tmp = runCatching { app.documents.tempDir.canonicalPath }.getOrNull() ?: return
+        pages.forEach { p -> runCatching { if (p.file.canonicalPath.startsWith(tmp)) p.file.delete() } }
+    }
+    var recent by remember { mutableStateOf(emptyList<File>()) }
+    fun refreshRecent() { recent = (app.documents.scansDir.listFiles() ?: emptyArray()).filter { it.extension.equals("pdf", true) }.sortedByDescending { it.lastModified() } }
+    LaunchedEffect(Unit) { withContext(Dispatchers.IO) { refreshRecent() } }
     var autoOcr by remember { mutableStateOf(prefs.getBoolean("ocr", true)) }
     var langs by remember { mutableStateOf(prefs.getString("langs", "auto") ?: "auto") }
     var smartName by remember { mutableStateOf(prefs.getBoolean("smart", true)) }
@@ -130,7 +146,8 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
     val unavailable = stringResource(R.string.t5_scan_unavailable)
     fun launchScanner() {
         val limit = when (kind) { ScanKind.ID_CARD, ScanKind.BUSINESS_CARD -> 2; ScanKind.RECEIPT -> 5; else -> 0 }   // 0 = no page limit
-        if (ownCamera) { cameraOpen = true; return }
+        if (ownCamera && !useGoogleOnce) { cameraOpen = true; return }
+        useGoogleOnce = false
         val act = ctx.activity() ?: run { scope.launch { snackbar.showSnackbar(unavailable) }; return }
         runCatching {
             val opts = GmsDocumentScannerOptions.Builder().setGalleryImportAllowed(true).apply { if (limit > 0) setPageLimit(limit) }
@@ -145,7 +162,10 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
         pageLimit = when (kind) { ScanKind.ID_CARD, ScanKind.BUSINESS_CARD -> 2; ScanKind.RECEIPT -> 5; else -> 0 },
         onDone = { files -> cameraOpen = false; if (files.isNotEmpty()) addPictures(files, kind == ScanKind.BATCH) },
         onClose = { cameraOpen = false },
+        onUseGoogle = { cameraOpen = false; useGoogleOnce = true; launchScanner() },
     )
+    // S1: opened from "Scan" — straight to the camera, once (not again when coming back)
+    LaunchedEffect(Unit) { if (autoStart && !started && groups.isEmpty()) { started = true; launchScanner() } }
 
     val savingMsg = stringResource(R.string.t5_scan_saving)
     val prefixes = mapOf(ScanKind.RECEIPT to stringResource(R.string.t5_prefix_receipt), ScanKind.BUSINESS_CARD to stringResource(R.string.t5_prefix_card), ScanKind.ID_CARD to stringResource(R.string.t5_prefix_id), ScanKind.WHITEBOARD to stringResource(R.string.t5_prefix_board), ScanKind.FORM to stringResource(R.string.t5_prefix_form))
@@ -218,14 +238,18 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                     runCatching { ScanProjects.save(ctx, made.firstOrNull()?.nameWithoutExtension ?: "Scan", keep) }
                     projects = runCatching { ScanProjects.list(ctx) }.getOrDefault(projects)
                 }
+                val savedPages = all.flatten()
+                withContext(Dispatchers.IO) { dropTemp(savedPages) }
                 groups = emptyList(); name = ""
+                lastScan = made.firstOrNull { it.extension.equals("pdf", true) }
+                withContext(Dispatchers.IO) { refreshRecent() }
             } finally { engine?.close() }
         }
     }
 
     ToolScaffold(stringResource(R.string.t5_scan_title), nav, snackbar = snackbar, actions = {
-        if (groups.isNotEmpty()) IconButton(onClick = { groups = emptyList() }) { Icon(Icons.Default.DeleteSweep, stringResource(R.string.t5_clear)) }
-    }) {
+        if (groups.isNotEmpty()) IconButton(onClick = { askClear = true }) { Icon(Icons.Default.DeleteSweep, stringResource(R.string.sc_delete_all_pages)) }
+    }, onBack = { if (groups.isNotEmpty()) askDiscard = true else nav.popBackStack() }) {
         FieldLabel(stringResource(R.string.t5_scan_kind))
         ChoiceChips(ScanKind.entries, kind, { it.label() }) { kind = it; savePrefs() }
         Text(stringResource(kindHint(kind)), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -233,6 +257,22 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
             Button(onClick = { launchScanner() }, Modifier.weight(1f)) { Icon(Icons.Default.DocumentScanner, null); Spacer(Modifier.width(6.dp)); Text(stringResource(if (groups.isEmpty()) R.string.t5_scan_start else R.string.t5_scan_more)) }
             OutlinedButton(onClick = pickGallery, Modifier.weight(1f)) { Icon(Icons.Default.PhotoLibrary, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.t5_from_gallery)) }
         }
+        // S1: how pictures are taken — visible before scanning
+        var camSettings by remember { mutableStateOf(false) }
+        TextButton(onClick = { camSettings = !camSettings }) {
+            Icon(Icons.Default.CameraAlt, null); Spacer(Modifier.width(6.dp))
+            Text(stringResource(R.string.sc_capture_settings) + " · " + stringResource(if (ownCamera) R.string.sc_own_camera else R.string.sc_google_scanner))
+            Icon(if (camSettings) Icons.Default.ExpandLess else Icons.Default.ExpandMore, null)
+        }
+        if (camSettings) {
+            SwitchRow(stringResource(R.string.sc_own_camera), ownCamera, stringResource(R.string.sc_own_camera_sub)) {
+                ownCamera = it; ctx.getSharedPreferences("scan_studio", 0).edit().putBoolean("own_camera", it).apply()
+            }
+            SwitchRow(stringResource(R.string.sc_high_quality), highQuality, stringResource(R.string.sc_high_quality_sub)) {
+                highQuality = it; ctx.getSharedPreferences("scan_studio", 0).edit().putBoolean("high_quality", it).apply()
+            }
+        }
+        if (groups.isNotEmpty()) Text(stringResource(R.string.sc_tap_to_edit), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         groups.forEachIndexed { gi, g ->
             T5Card(if (groups.size > 1) stringResource(R.string.t5_scan_doc_n, gi + 1, g.size) else stringResource(R.string.t5_scan_pages_n, g.size), Icons.Default.Collections) {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -254,7 +294,7 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                         val g = withContext(Dispatchers.IO) { runCatching { ScanProjects.load(pr) }.getOrDefault(emptyList()) }
                         groups = g.map { pages -> pages.map { (f, e) -> ScanPage(f, e) } }; name = pr.name
                     } }) { Text(stringResource(R.string.pc_saved_scan_open)) }
-                    IconButton(onClick = { ScanProjects.delete(pr); projects = projects - pr }) { Icon(Icons.Default.Delete, stringResource(R.string.pc_preset_delete, pr.name)) }
+                    IconButton(onClick = { projectToDelete = pr }) { Icon(Icons.Default.Delete, stringResource(R.string.pc_preset_delete, pr.name)) }
                 }
             }
         }
@@ -286,12 +326,6 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                     else -> it.name.replace("JIS_", "JIS ")
                 } }) { paper = it }
                 TextButton(onClick = { morePaper = !morePaper }) { Text(stringResource(if (morePaper) R.string.t5_paper_less else R.string.t5_paper_more)) }
-                SwitchRow(stringResource(R.string.sc_own_camera), ownCamera, stringResource(R.string.sc_own_camera_sub)) {
-                    ownCamera = it; ctx.getSharedPreferences("scan_studio", 0).edit().putBoolean("own_camera", it).apply()
-                }
-                SwitchRow(stringResource(R.string.sc_high_quality), highQuality, stringResource(R.string.sc_high_quality_sub)) {
-                    highQuality = it; ctx.getSharedPreferences("scan_studio", 0).edit().putBoolean("high_quality", it).apply()
-                }
                 SwitchRow(stringResource(R.string.pc_scan_remove_blank), removeBlank) { removeBlank = it }
                 OutlinedTextField(if (perFile > 0) perFile.toString() else "", { t -> perFile = com.smartdocs.editor.core.edit5.Digits.toWestern(t).filter { it.isDigit() }.take(3).toIntOrNull() ?: 0 },
                     Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.pc_scan_per_file)) }, placeholder = { Text(stringResource(R.string.pc_scan_per_file_all)) })
@@ -335,8 +369,37 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
             codes?.let { found -> BarcodeResultsDialog(found) { codes = null } }
         }
         if (job.results.isNotEmpty()) ResultsList(job.results, nav, "application/pdf")
+        lastScan?.takeIf { it.exists() }?.let { f -> com.smartdocs.editor.ui.scanner.ScanAiBar(f, nav) { lastScan = null } }
+        // S7: one history — the saved scans (PDF files) are listed here too
+        if (groups.isEmpty() && recent.isNotEmpty()) T5Card(stringResource(R.string.pg_scan_previous), Icons.Default.PictureAsPdf) {
+            var all by remember { mutableStateOf(false) }
+            (if (all) recent else recent.take(5)).forEach { f -> RecentScanRow(f, nav) { withContext(Dispatchers.IO) { f.delete(); refreshRecent() } } }
+            if (recent.size > 5) TextButton(onClick = { all = !all }) { Text(stringResource(if (all) R.string.t5_paper_less else R.string.sc_show_all, recent.size)) }
+        }
     }
     T5JobUi(job, nav, snackbar)
+    // leaving with unsaved pages asks first (they were lost without a word)
+    androidx.activity.compose.BackHandler(enabled = groups.isNotEmpty() && !cameraOpen) { askDiscard = true }
+    if (askDiscard || askClear) {
+        val n = groups.sumOf { it.size }
+        AlertDialog(onDismissRequest = { askDiscard = false; askClear = false },
+            title = { Text(stringResource(if (askDiscard) R.string.sc_discard_title else R.string.sc_delete_all_pages)) },
+            text = { Text(pluralStringResource(R.plurals.sc_pages_will_go, n, n)) },
+            confirmButton = { TextButton(onClick = {
+                val leaving = askDiscard; askDiscard = false; askClear = false
+                val old = groups.flatten(); groups = emptyList()
+                scope.launch(Dispatchers.IO) { dropTemp(old) }
+                if (leaving) nav.popBackStack()
+            }) { Text(stringResource(if (askDiscard) R.string.sc_discard else R.string.delete), color = MaterialTheme.colorScheme.error) } },
+            dismissButton = { TextButton(onClick = { askDiscard = false; askClear = false }) { Text(stringResource(R.string.cancel)) } })
+    }
+    var askDeleteProject by remember { mutableStateOf<ScanProjects.Project?>(null) }
+    askDeleteProject?.let { pr ->
+        AlertDialog(onDismissRequest = { askDeleteProject = null }, title = { Text(stringResource(R.string.delete)) }, text = { Text(pr.name) },
+            confirmButton = { TextButton(onClick = { askDeleteProject = null; projects = projects - pr; scope.launch(Dispatchers.IO) { ScanProjects.delete(pr) } }) { Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error) } },
+            dismissButton = { TextButton(onClick = { askDeleteProject = null }) { Text(stringResource(R.string.cancel)) } })
+    }
+    projectToDelete?.let { askDeleteProject = it; projectToDelete = null }
     editing?.let { (gi, pi) ->
         val page = groups.getOrNull(gi)?.getOrNull(pi)
         if (page == null) editing = null else ScanPageEditor(
@@ -376,3 +439,41 @@ private fun PageThumb(p: ScanPage, index: Int, onClick: () -> Unit) {
     }
 }
 
+
+/** A saved scan (PDF): open, OCR, share, delete. */
+@Composable
+private fun RecentScanRow(f: File, nav: NavHostController, onDelete: suspend () -> Unit) {
+    val ctx = LocalContext.current
+    val app = LocalApp.current
+    val scope = rememberCoroutineScope()
+    var menu by remember { mutableStateOf(false) }
+    var confirm by remember { mutableStateOf(false) }
+    ListItem(
+        modifier = Modifier.clickable { nav.navigate(com.smartdocs.editor.ui.Routes.reader(android.net.Uri.fromFile(f).toString())) },
+        leadingContent = { Icon(Icons.Default.PictureAsPdf, null, tint = MaterialTheme.colorScheme.primary) },
+        headlineContent = { Text(f.name, maxLines = 1) },
+        supportingContent = { Text("${com.smartdocs.editor.core.files.DocumentRepository.formatSize(f.length())} · ${com.smartdocs.editor.core.files.DocumentRepository.formatDate(f.lastModified())}", maxLines = 1) },
+        trailingContent = {
+            Box {
+                IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, stringResource(R.string.pc_cd_more)) }
+                DropdownMenu(menu, { menu = false }) {
+                    DropdownMenuItem(text = { Text(stringResource(R.string.open)) }, onClick = { menu = false; nav.navigate(com.smartdocs.editor.ui.Routes.reader(android.net.Uri.fromFile(f).toString())) })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.tool_ocr)) }, onClick = { menu = false; nav.navigate(com.smartdocs.editor.ui.Routes.tool("ocr", android.net.Uri.fromFile(f).toString())) })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.share)) }, onClick = { menu = false; runCatching { ctx.startActivity(android.content.Intent.createChooser(app.documents.shareIntent(listOf(f)), null)) } })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.delete)) }, onClick = { menu = false; confirm = true })
+                }
+            }
+        },
+    )
+    // the old list deleted at once; a scan is someone's only copy of a paper
+    if (confirm) AlertDialog(onDismissRequest = { confirm = false }, title = { Text(stringResource(R.string.delete)) }, text = { Text(f.name) },
+        confirmButton = { TextButton(onClick = { confirm = false; scope.launch { onDelete() } }) { Text(stringResource(R.string.delete)) } },
+        dismissButton = { TextButton(onClick = { confirm = false }) { Text(stringResource(R.string.cancel)) } })
+}
+
+/** The scanned pages survive leaving the screen and process death (files + edits as a ScanProjects manifest). */
+internal val ScanGroupsSaver: androidx.compose.runtime.saveable.Saver<List<List<ScanPage>>, String> =
+    androidx.compose.runtime.saveable.Saver(
+        save = { v -> ScanProjects.encode("", v.map { g -> g.map { it.file.absolutePath to it.edit } }) },
+        restore = { s -> ScanProjects.decode(s).second.map { g -> g.mapNotNull { (p, e) -> File(p).takeIf { it.isFile }?.let { ScanPage(it, e) } } }.filter { it.isNotEmpty() } },
+    )

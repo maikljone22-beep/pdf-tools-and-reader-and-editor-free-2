@@ -76,7 +76,6 @@ val allTools = listOf(
     ToolDef("find_replace", R.string.s5_replace_title, Icons.Default.FindReplace, 3),
     ToolDef("search_remove", R.string.ett_sr_title, Icons.Default.DeleteSweep, 3),      // edit-text-tools #17
     ToolDef("compare", R.string.tool_compare, Icons.Default.Compare, 3),
-    ToolDef("scan_studio", R.string.t5_scan_title, Icons.Default.DocumentScanner, 0),
     ToolDef("to_pdf_plus", R.string.t5_topdf_title, Icons.Default.PictureAsPdf, 0),
     ToolDef("mail_merge", R.string.t5_mm_title, Icons.Default.MergeType, 0),
     ToolDef("portfolio", R.string.t5_portfolio_title, Icons.Default.FolderZip, 0),

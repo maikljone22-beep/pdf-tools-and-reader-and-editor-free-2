@@ -344,7 +344,7 @@ fun rememberImagePicker(multiple: Boolean = true, onCancel: (() -> Unit)? = null
     val one = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri -> copyIn(listOfNotNull(uri)) }
     return {
         // tab-view-core E-16: picked copies older than a day are removed (callers may still use the recent ones)
-        scope.launch(Dispatchers.IO) { val old = System.currentTimeMillis() - 24 * 3600_000L; app.documents.tempDir.listFiles { f -> f.name.startsWith("img_") && f.lastModified() < old }?.forEach { it.delete() } }
+        scope.launch(Dispatchers.IO) { val old = System.currentTimeMillis() - 24 * 3600_000L; app.documents.tempDir.listFiles { f -> (f.name.startsWith("img_") || f.name.startsWith("cam_") || f.name.startsWith("t5scan_")) && f.lastModified() < old }?.forEach { it.delete() } }
         val req = androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
         if (multiple) many.launch(req) else one.launch(req)
     }
