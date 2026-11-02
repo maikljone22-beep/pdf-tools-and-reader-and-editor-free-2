@@ -175,8 +175,11 @@ class DocumentRepository(private val context: Context, private val db: AppDataba
         val base = if (extKnown) name.substringBeforeLast('.') else name
         var target = replace?.takeIf { it.parentFile?.exists() == true } ?: uniqueFile(docsDir, base, if (extKnown) rawExt else "import")
         val tmp = File(target.parentFile, ".${target.name}.import")
-        context.contentResolver.openInputStream(uri)?.use { i -> tmp.outputStream().use { o -> i.copyTo(o) } }
-            ?: throw IllegalStateException("cannot open $uri")
+        // red team R17: a copy that fails half-way (storage full, provider gone) leaves no partial file behind
+        try {
+            context.contentResolver.openInputStream(uri)?.use { i -> tmp.outputStream().use { o -> i.copyTo(o) } }
+                ?: throw IllegalStateException("cannot open $uri")
+        } catch (e: Throwable) { tmp.delete(); throw e }
         if (!extKnown && replace == null) {
             val t = com.smartdocs.editor.core.openall.FileSniffer.of(tmp, name, runCatching { context.contentResolver.getType(uri) }.getOrNull())
             target = uniqueFile(docsDir, base, com.smartdocs.editor.core.openall.FileSniffer.extFor(t))
@@ -231,6 +234,13 @@ class DocumentRepository(private val context: Context, private val db: AppDataba
         var originWhole = true
         try {
             val backedUp = runCatching { cr.openInputStream(origin)?.use { i -> backup.outputStream().use { i.copyTo(it) } } != null }.getOrDefault(false)
+            // red team R4: with no backup (storage full, unreadable origin) a failed write could not be undone — the
+            // origin would stay truncated. Only go on without one when there is clearly room for the whole file.
+            if (!backedUp) {
+                backup.delete()
+                val free = runCatching { tempDir.usableSpace }.getOrDefault(0L)
+                if (free < local.length() * 2) return@withContext WriteBack.Failed("no backup of the original (storage full?)")
+            }
             fun restore() {
                 if (!backedUp) return
                 runCatching {

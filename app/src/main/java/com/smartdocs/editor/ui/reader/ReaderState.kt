@@ -473,6 +473,8 @@ class ReaderState(
                 }
                 edit.committed()
                 dirty = false
+                if (b != null && wroteBackDuringEdit) runCatching { app.documents.writeBack(f) }
+                wroteBackDuringEdit = false
                 if (b != null) reopen() else renderVersion++
             }
         }
@@ -511,7 +513,11 @@ class ReaderState(
             runCatching { session?.closeAsync() }; session = null
             runCatching { s?.closeAsync() }
             // discarded edits: put back the file as it was before stored annotations were taken out for editing
-            restore?.let { (backup, target) -> runCatching { if (!backup.renameTo(target)) { backup.copyTo(target, overwrite = true); backup.delete() } } }
+            restore?.let { (backup, target) ->
+                runCatching { if (!backup.renameTo(target)) { backup.copyTo(target, overwrite = true); backup.delete() } }
+                // red team R1: the original was already written without the annotations taken out — put them back there too
+                if (wroteBackDuringEdit) runCatching { app.documents.writeBack(target) }
+            }
             history.dispose()      // the document is closed for good: its history folder goes too
         }
     }
@@ -639,6 +645,13 @@ class ReaderState(
     val fileUndoBlocked: Boolean get() = edit.hasBackup
 
     /**
+     * Red team R1: a delete / erase was written to the original while stored annotations were out of the file for
+     * editing — so the original already lacks those annotations. Restoring the backup on Discard / Revert must then be
+     * written back too, or the original keeps an annotation removed that the user never deleted.
+     */
+    @Volatile private var wroteBackDuringEdit = false
+
+    /**
      * Undo through the file step that saved [before] (done bars that kept the returned copy). False: no longer in the
      * history, or newer changes were made since (audit AN-08: they are not undone silently; see [DocHistory.newerStepsThan]).
      */
@@ -716,7 +729,7 @@ class ReaderState(
                 wrote = formsSaved
                 if (annots.isEmpty()) {
                     // stored annotations may have been taken out for editing and then deleted: the file already reflects it
-                    if (edit.hasBackup || formsSaved) { wrote = true; writeBackResult = runCatching { app.documents.writeBack(f) }.getOrNull().also { com.smartdocs.editor.core.cloud.SaveHooks.onSaved(app, f) }; if (edit.hasBackup) edit.committed() }
+                    if (edit.hasBackup || formsSaved) { wrote = true; writeBackResult = runCatching { app.documents.writeBack(f) }.getOrNull().also { com.smartdocs.editor.core.cloud.SaveHooks.onSaved(app, f) }; if (edit.hasBackup) { edit.committed(); wroteBackDuringEdit = false } }
                     dirty = false; return true
                 }
                 saving = true
@@ -738,7 +751,7 @@ class ReaderState(
                     val keep = stillPendingAfterSave(annots.toList(), pending, failed)
                     annots.retainAll { a -> keep.any { it.id == a.id } }
                     dirty = annots.isNotEmpty() || forms5.hasPending
-                    edit.committed()
+                    edit.committed(); wroteBackDuringEdit = false
                     if (failed.isNotEmpty()) { error = str(R.string.fx_annots_not_saved, failed.size); return false }
                     if (wrote) guard.afterSave(f)      // nitro-protect2: a trusted document stays trusted
                     return true
@@ -803,22 +816,24 @@ class ReaderState(
     fun eraseStoredInk(page: Int, pts: List<Pair<Float, Float>>, radius: Float) {
         if (!guard.check(com.smartdocs.editor.core.security.DocAction.ANNOTATE)) return      // nitro-protect2
         if (pts.isEmpty() || saving) return
-        val candidates = existing.filter { it.page == page && it.subtype == "Ink" && !it.locked && EraseLogic.nearRect(it.rect.left, it.rect.bottom, it.rect.right, it.rect.top, pts, radius + 4f) }
-        if (candidates.isEmpty()) return
+        if (existing.none { it.page == page && it.subtype == "Ink" && !it.locked && EraseLogic.nearRect(it.rect.left, it.rect.bottom, it.rect.right, it.rect.top, pts, radius + 4f) }) return
         scope.launch {
             saveMutex.withLock {
                 val f = file ?: return@withLock
                 saving = true
                 try {
                     withContext(NonCancellable) {
+                        // red team R3: candidates from the file as it is now (the shown listing may be a rewrite behind)
                         val hit = withContext(Dispatchers.IO) {
-                            candidates.filter { e -> AnnotationWriter.extract(f, e.page, e.index, password)?.let { a -> EraseLogic.touches(a.paths, a.strokeWidth, pts, radius) } == true }.map { it.index }
+                            AnnotationWriter.list(f, password).filter { it.page == page && it.subtype == "Ink" && !it.locked && EraseLogic.nearRect(it.rect.left, it.rect.bottom, it.rect.right, it.rect.top, pts, radius + 4f) }
+                                .filter { e -> AnnotationWriter.extract(f, e.page, e.index, password)?.let { a -> EraseLogic.touches(a.paths, a.strokeWidth, pts, radius) } == true }.map { it.index }
                         }
                         if (hit.isEmpty()) return@withContext
                         val tmp = File(f.parentFile, ".${f.nameWithoutExtension}.saving.pdf")
                         com.smartdocs.editor.core.annot.StoredOps.removeOnly(f, tmp, password, page, hit)
                         swapFile(tmp, str(R.string.fx_erase_stored))
                         writeBackResult = runCatching { app.documents.writeBack(f) }.getOrNull().also { com.smartdocs.editor.core.cloud.SaveHooks.onSaved(app, f) }
+                        if (edit.hasBackup) wroteBackDuringEdit = true
                     }
                 } catch (ex: Exception) { error = ex.message ?: ex.toString() } finally { saving = false }
             }
@@ -832,10 +847,13 @@ class ReaderState(
             saving = true
             try {
                 withContext(NonCancellable) {
+                    // red team R3: the annotation as it is in the file now, not by a possibly stale index
+                    val m = withContext(Dispatchers.IO) { edit.locate(f, e) } ?: error(str(R.string.hi_del_stored) + ": ?")
                     val tmp = File(f.parentFile, ".${f.nameWithoutExtension}.saving.pdf")
-                    AnnotationWriter.delete(f, e.page, e.index, tmp, password)
+                    AnnotationWriter.delete(f, m.page, m.index, tmp, password)
                     swapFile(tmp, str(R.string.hi_del_stored))
                     writeBackResult = runCatching { app.documents.writeBack(f) }.getOrNull().also { com.smartdocs.editor.core.cloud.SaveHooks.onSaved(app, f) }
+                    if (edit.hasBackup) wroteBackDuringEdit = true
                 }
                 if ((edit.target as? AnnotTarget.Stored)?.e == e) edit.clear()
             } catch (ex: Exception) { error = ex.message ?: ex.toString() } finally { saving = false }
@@ -1020,9 +1038,10 @@ class ReaderState(
             searching = true
             delay(250)
             val norm = com.smartdocs.editor.core.search.SearchPrefs.load(context, matchCase)
-            val hits = runCatching {
+            val hits = try {
                 s.searchWith { com.smartdocs.editor.core.search.TextMatcher.find(it, query, norm, wholeWords) }
-            }.getOrElse { runCatching { s.search(query, matchCase, wholeWords) }.getOrDefault(emptyList()) }
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e      // red team R9: a cancelled search writes nothing
+            } catch (_: Exception) { try { s.search(query, matchCase, wholeWords) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { emptyList() } }
             val max = com.smartdocs.editor.core.data.NpfPrefs.searchMax   // nav-prefs: maximum results
             searchHits = if (max > 0) hits.take(max) else hits
             searchIndex = if (hits.isEmpty()) -1 else {
