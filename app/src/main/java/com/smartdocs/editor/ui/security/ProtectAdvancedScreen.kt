@@ -145,7 +145,7 @@ fun ProtectAdvancedScreen(nav: NavHostController, uri: String?) {
         },
         bottomBar = {
             Surface(tonalElevation = 3.dp) {
-                Button(onClick = ::protect, enabled = file != null && !mismatch && !nothing && !runner.running && !needsOwner && !notLatin && !ownerSame, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)) {
+                Button(onClick = ::protect, enabled = file != null && !mismatch && !nothing && !runner.running && !needsOwner && !notLatin && !ownerSame, modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 10.dp)) {
                     Icon(Icons.Default.EnhancedEncryption, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.s5_protect_apply))
                 }
             }

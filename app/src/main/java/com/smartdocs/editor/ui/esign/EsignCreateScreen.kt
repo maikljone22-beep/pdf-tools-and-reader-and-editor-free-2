@@ -197,7 +197,7 @@ fun EsignCreateScreen(nav: NavHostController, uri: String?, mode: EsignCreateMod
         topBar = { AppTopBar(stringResource(titles[step]), onBack = { if (step > 0) step-- else nav.popBackStack() }) },
         bottomBar = {
             Surface(tonalElevation = 3.dp) {
-                Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(stringResource(R.string.cn_step_n, step + 1, 4), style = MaterialTheme.typography.labelLarge)
                     Spacer(Modifier.weight(1f))
                     if (step > 0) OutlinedButton(onClick = { step-- }, shape = PillShape) { Text(stringResource(R.string.cn_back)) }

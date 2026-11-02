@@ -178,7 +178,7 @@ fun ComicViewer(nav: NavHostController, v: ViewFile) {
         bottomBar = {
             if (n > 1) CompositionLocalProvider(LocalLayoutDirection provides if (rtl) LayoutDirection.Rtl else LayoutDirection.Ltr) {
                 Surface(tonalElevation = 3.dp) {
-                    Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = { page = (cur - 1).coerceAtLeast(0) }, enabled = cur > 0) { Icon(Icons.AutoMirrored.Filled.NavigateBefore, stringResource(R.string.oa_prev)) }
                         Slider(value = cur.toFloat(), onValueChange = { page = it.toInt() }, valueRange = 0f..(n - 1).toFloat(), modifier = Modifier.weight(1f))
                         Text("${cur + 1}/$n", Modifier.padding(horizontal = 6.dp), style = MaterialTheme.typography.labelMedium)

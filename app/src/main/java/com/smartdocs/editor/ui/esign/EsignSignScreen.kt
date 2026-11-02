@@ -92,7 +92,7 @@ fun EsignSignScreen(nav: NavHostController, id: String, token: String) {
         bottomBar = {
             val v = view
             if (v != null && v.canSign && done == null) Surface(tonalElevation = 3.dp) {
-                Column(Modifier.fillMaxWidth().padding(12.dp)) {
+                Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(12.dp)) {
                     Row(Modifier.clickable { consent = !consent }, verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(consent, { consent = it }); Text(stringResource(R.string.cn_consent), style = MaterialTheme.typography.bodySmall)
                     }

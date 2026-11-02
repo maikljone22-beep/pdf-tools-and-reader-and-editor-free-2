@@ -293,7 +293,7 @@ fun FormsScreen(nav: NavHostController, uri: String?) {
         } },
         bottomBar = {
             if (loaded && (fields.isNotEmpty() || xfaFields.isNotEmpty())) Surface(tonalElevation = 3.dp) {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                     val changes = if (dynamicXfa) xfaEdits.size else pendingCount
                     val total = if (dynamicXfa) xfaFields.size else fields.size
                     Text(if (changes == 0) stringResource(R.string.form_fields) + ": $total" else stringResource(R.string.pg_form_modified, changes), Modifier.weight(1f), style = MaterialTheme.typography.labelLarge)

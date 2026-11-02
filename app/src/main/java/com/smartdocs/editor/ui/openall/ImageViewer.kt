@@ -229,7 +229,7 @@ fun ImageViewer(nav: NavHostController, v: ViewFile) {
         bottomBar = {
             val n = bmps?.size ?: 0
             if (n > 1) Surface(tonalElevation = 3.dp) {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = { page = (page - 1).coerceAtLeast(0) }, enabled = page > 0) { Icon(Icons.AutoMirrored.Filled.NavigateBefore, stringResource(R.string.oa_prev)) }
                     Text(stringResource(R.string.oa_page_of, page + 1, n), Modifier.weight(1f), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                     IconButton(onClick = { page = (page + 1).coerceAtMost(n - 1) }, enabled = page < n - 1) { Icon(Icons.AutoMirrored.Filled.NavigateNext, stringResource(R.string.oa_next)) }

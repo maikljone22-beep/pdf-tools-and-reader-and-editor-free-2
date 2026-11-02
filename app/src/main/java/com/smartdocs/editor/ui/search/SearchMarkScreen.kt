@@ -104,7 +104,7 @@ fun SearchMarkScreen(nav: NavHostController, uri: String?) {
         topBar = { AppTopBar(stringResource(R.string.s5_mark_title), onBack = { nav.popBackStack() }) },
         bottomBar = {
             if (found.isNotEmpty()) Surface(tonalElevation = 3.dp) {
-                Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 8.dp)) {
                     SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                         val kinds = listOf(AnnotKind.HIGHLIGHT, AnnotKind.UNDERLINE, AnnotKind.STRIKEOUT, AnnotKind.SQUIGGLY)
                         kinds.forEachIndexed { i, k ->

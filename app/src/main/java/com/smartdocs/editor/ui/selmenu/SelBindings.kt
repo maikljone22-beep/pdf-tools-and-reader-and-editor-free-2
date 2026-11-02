@@ -25,6 +25,8 @@ object SelBindings {
         SelAction.THUMB_INSERT_FILE -> R.string.tpn_insert_file
         SelAction.THUMB_REPLACE -> R.string.tpn_replace
         SelAction.THUMB_PRINT -> R.string.tpn_print
+        SelAction.THUMB_SAVE_IMAGE -> R.string.tpn_save_image
+        SelAction.THUMB_SHARE_IMAGE -> R.string.tpn_share_image
         SelAction.CALL -> R.string.sm_call
         SelAction.WHATSAPP -> R.string.sm_whatsapp
         SelAction.SMS -> R.string.sm_sms
@@ -175,6 +177,8 @@ object SelBindings {
         SelAction.THUMB_INSERT_FILE -> Icons.Default.FileOpen
         SelAction.THUMB_REPLACE -> Icons.Default.FindReplace
         SelAction.THUMB_PRINT -> Icons.Default.Print
+        SelAction.THUMB_SAVE_IMAGE -> Icons.Default.Download
+        SelAction.THUMB_SHARE_IMAGE -> Icons.Default.Share
         SelAction.CALL -> Icons.Default.Call
         SelAction.WHATSAPP -> Icons.Default.Chat
         SelAction.SMS -> Icons.Default.Sms

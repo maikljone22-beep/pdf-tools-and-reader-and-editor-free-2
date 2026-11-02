@@ -181,6 +181,16 @@ fun OrganizeScreen(nav: NavHostController, uri: String?) {
                 saving = true
                 scope.launch { try { state.printPages(pages) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { snack = state.message(e) } finally { saving = false } }
             }
+            SelAction.THUMB_SAVE_IMAGE, SelAction.THUMB_SHARE_IMAGE -> requirePermission(com.smartdocs.editor.core.security.DocAction.COPY) {
+                val src = state.work ?: return@requirePermission
+                saving = true
+                scope.launch {
+                    try {
+                        if (a == SelAction.THUMB_SHARE_IMAGE) PageImageExport.share(ctx, src, state.password, pages)
+                        else { val n = PageImageExport.save(ctx, src, state.password, pages); if (n > 0) snack = ctx.getString(R.string.tpn_images_saved, n) }
+                    } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { snack = state.message(e) } finally { saving = false }
+                }
+            }
             else -> Unit
         }
     }
@@ -310,10 +320,12 @@ fun OrganizeScreen(nav: NavHostController, uri: String?) {
                             pageAct(R.string.pc_page_ocr) { p -> requirePermission(com.smartdocs.editor.core.security.DocAction.MODIFY) { state.ocrPage(p) } },
                         ),
                         dragEnabled = state.filter == PageFilter.ALL && !state.busy,
-                        onTap = { p -> if (state.selectMode) state.toggle(p) else { state.selectMode = true; state.selected = setOf(p) } },
+                        // user report: one tap selected the page. Selecting starts with a long press (menu → Select) or the select button; a tap opens the page
+                        onTap = { p -> if (state.selectMode) state.toggle(p) else openPage(p) },
                         // fix/thumbs-panel: long-press opens the thumbnail menu (Select is one of its items); long-press + drag still moves
                         onLongPress = { p -> if (!state.busy) thumbMenu = p },
                         menuPage = thumbMenu,
+                        onMenuDismiss = { thumbMenu = null },
                         menu = { p ->
                             com.smartdocs.editor.ui.selmenu.ThumbSelMenu(
                                 com.smartdocs.editor.ui.selmenu.organizeThumbEnv(state::allows, com.smartdocs.editor.LocalSettings.current.aiEnabled),
@@ -540,7 +552,8 @@ private fun OrganizeToolbar(
     val noSel = stringResource(R.string.pg_no_selection)
     val single = state.selected.size == 1
     Surface(tonalElevation = 3.dp) {
-        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 4.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+        // the buttons sit above the system navigation / task bar (they were drawn under it on tablets)
+        Row(Modifier.fillMaxWidth().navigationBarsPadding().horizontalScroll(rememberScrollState()).padding(horizontal = 4.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
             ToolbarButton(Icons.Default.NoteAdd, stringResource(R.string.page_insert_blank), onClick = onInsertBlank)
             ToolbarButton(Icons.Default.FileOpen, stringResource(R.string.page_insert_file), onClick = onInsertFile)
             ToolbarButton(Icons.Default.Image, stringResource(R.string.page_insert_image), onClick = onInsertImage)

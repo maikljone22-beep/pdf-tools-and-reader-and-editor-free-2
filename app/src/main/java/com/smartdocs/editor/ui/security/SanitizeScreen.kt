@@ -94,7 +94,7 @@ fun SanitizeScreen(nav: NavHostController, uri: String?) {
         } },
         bottomBar = {
             if (scan != null) Surface(tonalElevation = 3.dp) {
-                Button(onClick = ::clean, enabled = selected.isNotEmpty() && !runner.running, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)) {
+                Button(onClick = ::clean, enabled = selected.isNotEmpty() && !runner.running, modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 10.dp)) {
                     Icon(Icons.Default.CleaningServices, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.s5_clean_n, selected.size))
                 }
             }

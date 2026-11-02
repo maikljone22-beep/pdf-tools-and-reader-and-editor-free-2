@@ -160,7 +160,7 @@ fun RedactScreen(nav: NavHostController, uri: String?) {
         },
         bottomBar = {
             if (doc.session != null) Surface(tonalElevation = 3.dp) {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                     val active = st.activeMarks()
                     Text(stringResource(R.string.s5_marks_n, active.size) + " · " + stringResource(R.string.pg_redact_pages_affected, active.map { it.page }.distinct().size),
                         Modifier.weight(1f), style = MaterialTheme.typography.labelLarge)
