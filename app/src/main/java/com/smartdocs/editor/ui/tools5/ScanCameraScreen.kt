@@ -214,7 +214,8 @@ private fun CameraBody(pageLimit: Int, onDone: (List<Pair<File, PageQuad.Quad?>>
     // FINAL_CHECK_2 Low (K11): QR / barcode mode — the analysis frames are decoded instead of edge-detected
     var qrMode by remember { mutableStateOf(false) }
     var qrFound by remember { mutableStateOf<com.smartdocs.editor.core.tools5.BarcodeScan.Code?>(null) }
-    var qrTick by remember { mutableIntStateOf(0) }
+    // hostile H17: a frame counter of the analyser thread only (it was Compose state written off the main thread)
+    val qrTick = remember { java.util.concurrent.atomic.AtomicInteger() }
     var exposure by remember { mutableIntStateOf(0) }
     var quad by remember { mutableStateOf<PageQuad.Quad?>(null) }
     var frameSize by remember { mutableStateOf(IntSize(4, 3)) }
@@ -299,7 +300,7 @@ private fun CameraBody(pageLimit: Int, onDone: (List<Pair<File, PageQuad.Quad?>>
                 val (px, w, h) = rgba(img)
                 if (qrMode) {
                     quad = null; steady = 0
-                    if (qrFound == null && qrTick++ % 2 == 0) com.smartdocs.editor.core.tools5.BarcodeScan.decode(px, w, h, multiple = false).firstOrNull()?.let { c -> scope.launch { qrFound = c } }
+                    if (qrFound == null && qrTick.getAndIncrement() % 2 == 0) com.smartdocs.editor.core.tools5.BarcodeScan.decode(px, w, h, multiple = false).firstOrNull()?.let { c -> scope.launch { qrFound = c } }
                     return@setImageAnalysisAnalyzer
                 }
                 val q = PageQuad.detect(px, w, h)?.takeIf { it.area() < 0.97f }

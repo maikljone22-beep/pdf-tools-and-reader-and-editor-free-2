@@ -26,6 +26,7 @@
         <exclude domain="file" path="tessdata/" />
         <exclude domain="file" path="ocr_best/" />
         <exclude domain="file" path="trash/" />
+        <exclude domain="file" path="scan_projects/" />
     </cloud-backup>
     <device-transfer>
         <exclude domain="sharedpref" path="cloud_drive.xml" />
