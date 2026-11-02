@@ -468,12 +468,24 @@ private fun fillRect(frame: IntSize, vw: Float, vh: Float): Rect {
     return Rect((vw - w) / 2, (vh - h) / 2, (vw + w) / 2, (vh + h) / 2)
 }
 
+/**
+ * Deep audit E12: the analysis frame's buffers, reused from frame to frame (two full-frame arrays were allocated for
+ * every frame — garbage collection pauses and heat on small phones). Only the analyser thread uses them, and a frame's
+ * pixels are read before the next frame comes.
+ */
+private object FrameBuffers {
+    var raw = IntArray(0); var upright = IntArray(0); var row = ByteArray(0)
+    fun raw(n: Int) = raw.takeIf { it.size == n } ?: IntArray(n).also { raw = it }
+    fun upright(n: Int) = upright.takeIf { it.size == n } ?: IntArray(n).also { upright = it }
+    fun row(n: Int) = row.takeIf { it.size >= n } ?: ByteArray(n).also { row = it }
+}
+
 /** The RGBA analysis frame as upright ARGB pixels (rotated by the frame's rotation). */
 private fun rgba(img: androidx.camera.core.ImageProxy): Triple<IntArray, Int, Int> {
     val plane = img.planes[0]; val buf: ByteBuffer = plane.buffer; val stride = plane.rowStride; val ps = plane.pixelStride
     val w = img.width; val h = img.height
-    val px = IntArray(w * h)
-    val row = ByteArray(stride)
+    val px = FrameBuffers.raw(w * h)
+    val row = FrameBuffers.row(stride)
     for (y in 0 until h) {
         buf.position(y * stride); buf.get(row, 0, min(stride, buf.remaining()))
         var i = 0
@@ -483,12 +495,15 @@ private fun rgba(img: androidx.camera.core.ImageProxy): Triple<IntArray, Int, In
             i += ps
         }
     }
-    return when (img.imageInfo.rotationDegrees) {
-        90 -> Triple(IntArray(w * h) { k -> val x = k % h; val y = k / h; px[(h - 1 - x) * w + y] }, h, w)
-        180 -> Triple(IntArray(w * h) { k -> px[w * h - 1 - k] }, w, h)
-        270 -> Triple(IntArray(w * h) { k -> val x = k % h; val y = k / h; px[x * w + (w - 1 - y)] }, h, w)
-        else -> Triple(px, w, h)
+    val rot = img.imageInfo.rotationDegrees
+    if (rot != 90 && rot != 180 && rot != 270) return Triple(px, w, h)
+    val out = FrameBuffers.upright(w * h)
+    when (rot) {
+        90 -> for (k in 0 until w * h) { val x = k % h; val y = k / h; out[k] = px[(h - 1 - x) * w + y] }
+        180 -> for (k in 0 until w * h) out[k] = px[w * h - 1 - k]
+        else -> for (k in 0 until w * h) { val x = k % h; val y = k / h; out[k] = px[x * w + (w - 1 - y)] }
     }
+    return if (rot == 180) Triple(out, w, h) else Triple(out, h, w)
 }
 
 /** Decode a photo (upright, ≤ 16 MP) into a preview bitmap and detect its page corners. */

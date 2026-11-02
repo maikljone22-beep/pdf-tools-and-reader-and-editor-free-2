@@ -273,10 +273,12 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
         savePrefs()
         // FINAL_CHECK_2 #16: a form needs its text for field recognition. Smart naming no longer forces OCR (switching OCR off
         // did not make saving faster, scanner audit U14): without text it names by kind and date. Pictures need no text.
-        val word = asWord && !kindNeedsPdf(kind)
-        val imgs = asImages && !word && !kindNeedsPdf(kind)
+        // the save decisions live in ScanSavePlan (tested)
+        val fmt = ScanSavePlan.format(asImages, asWord, kind)
+        val word = fmt == ScanSavePlan.Format.WORD
+        val imgs = fmt == ScanSavePlan.Format.JPG
         // Word needs the text of every page
-        val needText = !imgs && (word || autoOcr || kind == ScanKind.BUSINESS_CARD || kind == ScanKind.RECEIPT || kind == ScanKind.FORM)
+        val needText = ScanSavePlan.needsText(fmt, autoOcr, kind)
         val fingers = removeFingers
         val target = appendTo.takeIf { !imgs && !word }; val targetName = appendName
         val k = kind; val rf = rightFirst; val typed = name.trim()
@@ -289,7 +291,7 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
         // "save multiple files": every group is cut into files of N pages
         // deep audit E16: "pages per file" counts output pages — an ID card is two photos, a book photo two pages
         // audit A3: adding to an existing PDF makes one document, whatever "pages per file" says
-        val chunk = when { perFile <= 0 || (target != null && all.size == 1) -> 0; k == ScanKind.ID_CARD -> perFile * 2; k == ScanKind.BOOK -> maxOf(1, perFile / 2); else -> perFile }
+        val chunk = ScanSavePlan.chunk(perFile, k, target != null, all.size)
         val docs = all.flatMap { ScanExtras.chunks(it, chunk) }
         job.launch(when { imgs -> savingImagesMsg; word -> savingWordMsg; else -> savingMsg }) {
             val engine = if (needText) OcrEngine(ctx.applicationContext) else null
@@ -414,9 +416,8 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                     done += g
                   } catch (e: kotlinx.coroutines.CancellationException) {
                     // audit B15: documents saved before the cancel leave the screen, so trying again does not save them twice
-                    val doneSet = done.flatten().toSet()
-                    if (doneSet.isNotEmpty()) {
-                        groups = groups.map { gr -> gr.filter { it !in doneSet } }.filter { it.isNotEmpty() }
+                    if (done.isNotEmpty()) {
+                        groups = ScanSavePlan.remainingAfterCancel(groups, done)
                         // phase 5 R1: the rest is no longer the reopened project — saving it must not replace (delete) it
                         openedProject = null
                     }
@@ -786,7 +787,7 @@ internal fun sizeDim(level: Int) = when (level) { 0 -> 1600; 1 -> 2400; else -> 
 internal fun sizeQuality(level: Int) = when (level) { 0 -> 72; 1 -> 82; else -> 92 }
 
 /** Kinds whose result is read from the text (contact, receipt CSV, fillable fields) need a PDF. */
-internal fun kindNeedsPdf(k: ScanKind) = k == ScanKind.BUSINESS_CARD || k == ScanKind.RECEIPT || k == ScanKind.FORM
+internal fun kindNeedsPdf(k: ScanKind) = ScanSavePlan.needsPdf(k)
 
 /** The pages of one document in a row: tap = edit, long-press and drag = move (right-to-left aware). */
 @Composable
