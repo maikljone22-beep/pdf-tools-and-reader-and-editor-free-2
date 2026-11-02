@@ -347,7 +347,7 @@ private fun CameraBody(pageLimit: Int, onDone: (List<Pair<File, PageQuad.Quad?>>
         // top bar
         Row(Modifier.fillMaxWidth().statusBarsPadding().padding(8.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             // X = done with the pages taken so far (they are kept), or close when there are none
-            IconButton(onClick = { if (capturing) Unit else if (pages.value.isNotEmpty()) finish() else onClose() }) { Icon(Icons.Default.Close, stringResource(if (pages.value.isNotEmpty()) R.string.sc_cam_done else R.string.close), tint = Color.White) }
+            IconButton(onClick = { if (capturing) Unit else if (pages.value.isNotEmpty()) finish() else onClose() }) { Icon(if (pages.value.isNotEmpty()) Icons.Default.Check else Icons.Default.Close, stringResource(if (pages.value.isNotEmpty()) R.string.sc_cam_done else R.string.close), tint = Color.White) }      // red team P15: the icon says "done" too
             Row {
                 val on = stringResource(R.string.sc_state_on); val off = stringResource(R.string.sc_state_off)
                 // scanner audit U8: every toggle says its state (not colour only); the flash names its mode

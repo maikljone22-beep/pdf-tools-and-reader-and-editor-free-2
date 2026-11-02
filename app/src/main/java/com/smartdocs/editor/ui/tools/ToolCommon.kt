@@ -66,6 +66,8 @@ fun ToolScaffold(
     actions: @Composable RowScope.() -> Unit = {},
     /** The top-bar back arrow (default: leave the screen). */
     onBack: (() -> Unit)? = null,
+    /** A bar that stays at the bottom while the content scrolls (the scanner's Save, red team P5). */
+    bottomBar: (@Composable () -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val host = snackbar ?: remember { SnackbarHostState() }
@@ -77,6 +79,7 @@ fun ToolScaffold(
     Scaffold(
         topBar = { AppTopBar(title, onBack = { if (onBack != null) onBack() else nav.popBackStack() }, actions = actions) },
         snackbarHost = { SnackbarHost(host) },
+        bottomBar = { if (bottomBar != null) Surface(tonalElevation = 3.dp) { Box(Modifier.navigationBarsPadding().padding(horizontal = 16.dp, vertical = 8.dp)) { bottomBar() } } },
     ) { pad ->
         val base = Modifier.padding(pad).fillMaxSize()
         Column(

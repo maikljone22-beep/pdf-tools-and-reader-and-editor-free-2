@@ -123,4 +123,9 @@
         <item quantity="one">1 fillable field recognised. Open the file to fill it, or adjust the fields in the form designer.</item>
         <item quantity="other">%1$d fillable fields recognised. Open the file to fill it, or adjust the fields in the form designer.</item>
     </plurals>
+    <string name="sc_text_skipped">Saved without searchable text: the recogniser could not be readied (no connection to download the language models?). Save again later, or use the "Recognise text" tool.</string>
+    <string name="sc_ocr_download_title">Download language models</string>
+    <string name="sc_ocr_download_text">To make the scan\'s text searchable and copyable, the app downloads the language models once (about 10–25 MB). An internet connection is needed.</string>
+    <string name="sc_ocr_download_go">Download and continue</string>
+    <string name="sc_ocr_download_skip">Save without text</string>
 </resources>
