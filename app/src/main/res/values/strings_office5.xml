@@ -230,4 +230,9 @@
     <string name="o5_wrap">التفاف النص</string>
     <string name="o5_zoom_in">تكبير العرض</string>
     <string name="o5_zoom_out">تصغير العرض</string>
+    <string name="o5_recover_title">تعديلات غير محفوظة</string>
+    <string name="o5_recover_text">وُجدت تعديلات لم تُحفظ على هذا الملف (%1$s)، ربما أُغلق التطبيق قبل الحفظ. هل تريد استرجاعها؟</string>
+    <string name="o5_recover_restore">استرجاع</string>
+    <string name="o5_recover_discard">تجاهل</string>
+    <string name="o5_recover_failed">تعذّر فتح نسخة الاسترجاع</string>
 </resources>

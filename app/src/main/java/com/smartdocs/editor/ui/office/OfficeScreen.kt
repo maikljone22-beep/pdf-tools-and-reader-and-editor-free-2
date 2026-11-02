@@ -29,6 +29,7 @@ import com.smartdocs.editor.ui.common.ProgressDialog
 import com.smartdocs.editor.ui.common.ResultSheet
 import com.smartdocs.editor.ui.common.rememberWriteBack
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -36,7 +37,8 @@ import java.io.File
 private sealed interface Loaded {
     data object Loading : Loaded
     class Failed(val file: File?, val legacy: Boolean, val message: String?) : Loaded
-    class Ready(val host: OfficeHost) : Loaded
+    /** [recovery]: unsaved edits of an earlier session that can be restored. */
+    class Ready(val host: OfficeHost, val recovery: Pair<OfficeDocKind, File>? = null) : Loaded
 }
 
 /**
@@ -58,18 +60,11 @@ fun OfficeScreen(nav: NavHostController, uri: String) {
             if (raw == null || !raw.exists()) return@withContext Loaded.Failed(raw, false, null)
             val f = OfficeRoutes.repairName(app, raw)
             try {
-                val host: OfficeHost = when (OfficeRoutes.kindOf(f)) {
-                    OfficeDocKind.WORD -> WordState(WordDoc.open(f), f)
-                    OfficeDocKind.SHEET -> SheetState(XlsxIO5.load(f), f)
-                    OfficeDocKind.CSV -> SheetState(CsvIO.load(f), f)
-                    OfficeDocKind.SLIDES -> SlideState(PptDoc.open(f), f)
-                    OfficeDocKind.TEXT -> TextState(f)
-                    OfficeDocKind.IMPORT -> ImportState(f, PlainImport.read(f))
-                    OfficeDocKind.LEGACY -> return@withContext Loaded.Failed(f, true, null)
-                    OfficeDocKind.NONE -> return@withContext Loaded.Failed(f, false, null)
-                }
+                val kind = OfficeRoutes.kindOf(f)
+                if (kind == OfficeDocKind.LEGACY) return@withContext Loaded.Failed(f, true, null)
+                val host: OfficeHost = openHost(kind, f, f) ?: return@withContext Loaded.Failed(f, false, null)
                 runCatching { app.documents.touchRecent(f) }
-                Loaded.Ready(host)
+                Loaded.Ready(host, OfficeRecovery.pending(ctx, f)?.let { c -> kind to c })
             } catch (e: Throwable) {
                 Loaded.Failed(f, false, e.message ?: e.toString())
             }
@@ -80,8 +75,38 @@ fun OfficeScreen(nav: NavHostController, uri: String) {
         // open-all: old binary Office files and types the editors do not know open read-only in the universal viewer
         is Loaded.Failed -> if (s.file != null && s.message == null && s.file.exists()) com.smartdocs.editor.ui.openall.UniversalViewer(nav, Uri.fromFile(s.file).toString(), 0)
             else FailedScreen(nav, s)
-        is Loaded.Ready -> OfficeChrome(nav, s.host) { host -> state = Loaded.Ready(host) }
+        is Loaded.Ready -> {
+            OfficeChrome(nav, s.host) { host -> state = Loaded.Ready(host) }
+            s.recovery?.let { (kind, copy) ->
+                val scope = rememberCoroutineScope()
+                AlertDialog(
+                    onDismissRequest = {},
+                    title = { Text(stringResource(R.string.o5_recover_title)) },
+                    text = { Text(stringResource(R.string.o5_recover_text, java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT, java.text.DateFormat.SHORT).format(java.util.Date(copy.lastModified())))) },
+                    confirmButton = { TextButton(onClick = {
+                        val host = s.host
+                        scope.launch {
+                            val restored = withContext(Dispatchers.IO) { runCatching { openHost(kind, copy, host.file) }.getOrNull() }
+                            if (restored == null) { OfficeRecovery.clear(ctx, host.file); Toast.makeText(ctx, ctx.getString(R.string.o5_recover_failed), Toast.LENGTH_LONG).show() }
+                            state = Loaded.Ready(restored ?: host)
+                        }
+                    }) { Text(stringResource(R.string.o5_recover_restore)) } },
+                    dismissButton = { TextButton(onClick = { OfficeRecovery.clear(ctx, s.host.file); state = Loaded.Ready(s.host) }) { Text(stringResource(R.string.o5_recover_discard)) } },
+                )
+            }
+        }
     }
+}
+
+/** Opens [src] as the editor of [file] ([src] is a recovery copy when it differs). Null for kinds the editors do not take. */
+private fun openHost(kind: OfficeDocKind, src: File, file: File): OfficeHost? = when (kind) {
+    OfficeDocKind.WORD -> WordState(WordDoc.open(src), file)
+    OfficeDocKind.SHEET -> SheetState(XlsxIO5.load(src), file)
+    OfficeDocKind.CSV -> SheetState(CsvIO.load(src), file)
+    OfficeDocKind.SLIDES -> SlideState(PptDoc.open(src), file)
+    OfficeDocKind.TEXT -> if (src == file) TextState(file) else null
+    OfficeDocKind.IMPORT -> if (src == file) ImportState(file, PlainImport.read(file)) else null
+    OfficeDocKind.LEGACY, OfficeDocKind.NONE -> null
 }
 
 @Composable
@@ -155,6 +180,26 @@ private fun OfficeChrome(nav: NavHostController, host: OfficeHost, replaceHost: 
         onDispose { if (OfficeCommandRegistry.host === host) { OfficeCommandRegistry.host = null; OfficeCommandRegistry.ui = null } }
     }
 
+    // unsaved edits survive the process being killed: a recovery copy after 15 s without edits and when the screen stops
+    var slowAutosave by remember(host) { mutableStateOf(false) }
+    var autosavedTick by remember(host) { mutableStateOf(Int.MIN_VALUE) }
+    fun autosave() {
+        if (!host.modified || host.tick == autosavedTick) return
+        val t0 = android.os.SystemClock.elapsedRealtime()
+        runCatching { OfficeRecovery.write(ctx, host) }
+        autosavedTick = host.tick   // after the write: the sheet editor bumps its tick on every save
+        if (android.os.SystemClock.elapsedRealtime() - t0 > 800) slowAutosave = true   // big file: only when leaving the screen
+    }
+    LaunchedEffect(host) {
+        androidx.compose.runtime.snapshotFlow { host.tick }.collectLatest { kotlinx.coroutines.delay(15_000); if (!slowAutosave) autosave() }
+    }
+    val owner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(owner, host) {
+        val obs = androidx.lifecycle.LifecycleEventObserver { _, e -> if (e == androidx.lifecycle.Lifecycle.Event.ON_STOP) autosave() }
+        owner.lifecycle.addObserver(obs)
+        onDispose { owner.lifecycle.removeObserver(obs) }
+    }
+
     fun save(after: () -> Unit = {}) {
         host.commitPending()
         busy = R.string.o5_saving
@@ -162,6 +207,7 @@ private fun OfficeChrome(nav: NavHostController, host: OfficeHost, replaceHost: 
             val r = withContext(Dispatchers.IO) { runCatching { host.saveTo(host.file) } }
             busy = null
             r.onSuccess {
+                OfficeRecovery.clear(ctx, host.file)
                 writeBack(host.file)
                 com.smartdocs.editor.core.cloud.SaveHooks.onSaved(ctx, host.file)
                 runCatching { app.documents.touchRecent(host.file) }
@@ -254,7 +300,7 @@ private fun OfficeChrome(nav: NavHostController, host: OfficeHost, replaceHost: 
     pdf?.let { ResultSheet(it, nav, onDismiss = { pdf = null }) }
     if (askLeave) UnsavedDialog(
         onSave = { askLeave = false; save { nav.popBackStack() } },
-        onDiscard = { askLeave = false; nav.popBackStack() },
+        onDiscard = { askLeave = false; OfficeRecovery.clear(ctx, host.file); nav.popBackStack() },
         onDismiss = { askLeave = false },
     )
 }

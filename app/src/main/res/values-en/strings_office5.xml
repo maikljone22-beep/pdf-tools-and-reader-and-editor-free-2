@@ -230,4 +230,9 @@
     <string name="o5_wrap">Wrap text</string>
     <string name="o5_zoom_in">Zoom in</string>
     <string name="o5_zoom_out">Zoom out</string>
+    <string name="o5_recover_title">Unsaved changes</string>
+    <string name="o5_recover_text">This file has changes that were not saved (%1$s); the app may have closed before saving. Restore them?</string>
+    <string name="o5_recover_restore">Restore</string>
+    <string name="o5_recover_discard">Discard</string>
+    <string name="o5_recover_failed">The recovery copy could not be opened</string>
 </resources>
