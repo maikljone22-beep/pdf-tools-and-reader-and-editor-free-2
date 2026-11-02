@@ -8,7 +8,7 @@ import java.io.File
 
 /** UI state of the spreadsheet editor: active sheet, selection, formula bar, viewport and clipboard. */
 class SheetState(val wb: Workbook5, override val file: File) : OfficeHost {
-    override val ext: String = if (wb.kind == Workbook5.Kind.CSV) file.extension.lowercase().ifEmpty { "csv" } else "xlsx"
+    override val ext: String = if (wb.kind == Workbook5.Kind.CSV) file.extension.lowercase().ifEmpty { "csv" } else file.extension.lowercase().takeIf { it in setOf("xlsx", "xlsm", "xltx", "xltm") } ?: "xlsx"
     override var tick by mutableIntStateOf(0); private set
     override val modified: Boolean get() = wb.modified
     override val canUndo: Boolean get() = wb.canUndo

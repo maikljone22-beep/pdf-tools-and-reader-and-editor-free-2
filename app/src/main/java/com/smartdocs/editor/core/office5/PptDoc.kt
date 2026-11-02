@@ -262,6 +262,73 @@ class PptDoc private constructor(val pkg: OPackage) {
      * properties of each existing paragraph are kept; extra lines copy the last paragraph.
      */
     fun setShapeText(shape: XElem, text: String) {
+        // hostile review O1: editing rebuilt every paragraph as one run (bold / colour of later words, links, slide
+        // number and date fields lost; soft breaks became new paragraphs). Now paragraphs that did not change are left
+        // alone, and a paragraph edited in one place keeps its runs — only the changed characters move.
+        if (editInPlace(shape, text)) return
+        rebuildShapeText(shape, text)
+    }
+
+    /** The display lines of each paragraph ([shapeText] shows a soft break as a new line). */
+    private fun displayLines(p: XElem): Int = paragraphText(p).count { it == '\u000B' } + 1
+
+    private fun editInPlace(shape: XElem, text: String): Boolean {
+        val paras = paragraphs(shape)
+        if (paras.isEmpty()) return false
+        val old = paras.map { paragraphText(it).replace('\u000B', '\n') }
+        val oldLines = old.flatMap { it.split('\n') }
+        val newLines = text.split('\n')
+        if (oldLines == newLines) return true
+        // only one paragraph's text changed, and the line count of every paragraph is the same
+        if (newLines.size != oldLines.size) return false
+        var line = 0; var changed = -1
+        for ((i, p) in paras.withIndex()) {
+            val n = displayLines(p)
+            if (newLines.subList(line, line + n).joinToString("\n") != old[i]) { if (changed >= 0) return false; changed = i }
+            line += n
+        }
+        if (changed < 0) return true
+        val first = paras.take(changed).sumOf { displayLines(it) }
+        val p = paras[changed]
+        val target = newLines.subList(first, first + displayLines(p)).joinToString("\n")
+        return editRuns(p, old[changed], target)
+    }
+
+    /** Replaces the differing middle of [p]'s text inside its plain runs; false when the change touches a field or break. */
+    private fun editRuns(p: XElem, oldText: String, newText: String): Boolean {
+        var a = 0
+        while (a < oldText.length && a < newText.length && oldText[a] == newText[a]) a++
+        var b = 0
+        while (b < oldText.length - a && b < newText.length - a && oldText[oldText.length - 1 - b] == newText[newText.length - 1 - b]) b++
+        val delEnd = oldText.length - b; val ins = newText.substring(a, newText.length - b)
+        // pieces of the paragraph in order: runs are editable, fields and breaks are not
+        data class Piece(val e: XElem, val start: Int, val len: Int, val run: Boolean)
+        val pieces = ArrayList<Piece>(); var pos = 0
+        for (k in p.elems()) when (k.local) {
+            "r" -> { val l = k.child("t")?.textContent()?.length ?: 0; pieces += Piece(k, pos, l, true); pos += l }
+            "fld" -> { val l = k.child("t")?.textContent()?.length ?: 0; pieces += Piece(k, pos, l, false); pos += l }
+            "br" -> { pieces += Piece(k, pos, 1, false); pos += 1 }
+        }
+        if (pos != oldText.length) return false
+        // the edited range must lie inside runs only
+        if (pieces.any { !it.run && overlaps(it.start, it.len, a, delEnd) }) return false
+        // the run that receives the inserted text: the one holding position a (or the one ending there)
+        val host = pieces.firstOrNull { it.run && a >= it.start && a < it.start + it.len }
+            ?: pieces.lastOrNull { it.run && it.start + it.len == a } ?: pieces.firstOrNull { it.run } ?: return false
+        for (pc in pieces) {
+            if (!pc.run) continue
+            val t = pc.e.child("t") ?: continue
+            val s = t.textContent()
+            val from = (a - pc.start).coerceIn(0, pc.len); val to = (delEnd - pc.start).coerceIn(0, pc.len)
+            val kept = s.substring(0, from) + (if (pc === host) ins else "") + s.substring(maxOf(from, to))
+            if (kept != s) t.setText(kept)
+        }
+        return true
+    }
+
+    private fun overlaps(s: Int, len: Int, a: Int, end: Int) = if (end > a) s < end && s + len > a else s < a && s + len > a
+
+    private fun rebuildShapeText(shape: XElem, text: String) {
         val body = shape.child("txBody") ?: XElem(shape.prefix.let { if (it.isEmpty()) "txBody" else "$it:txBody" }).also { tb ->
             tb.add(XElem("a:bodyPr")).add(XElem("a:lstStyle")); shape.add(tb)
         }
