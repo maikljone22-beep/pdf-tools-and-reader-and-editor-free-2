@@ -61,6 +61,21 @@ class ScanToWordHarness {
                 tsvAll.appendLine("$ri\t$l")
             }
         }
+        // second reading: lines no region reading covered, one at a time (PSM 7) on a white margin
+        if (System.getenv("S2W_SECOND") != "0") ScanToWord.missedLines(clean, w, h, regions, boxes).forEachIndexed { mi, band ->
+            val (pp, pw, ph) = ScanToWord.padded(clean, w, band)
+            val f = File(outDir, "missed.png"); write(pp, pw, ph, f)
+            val base = File(outDir, "missed")
+            val p = ProcessBuilder("tesseract", f.path, base.path, "--tessdata-dir", tessdata, "-l", langs, "--psm", "7", "-c", "preserve_interword_spaces=1", "tsv")
+                .redirectErrorStream(true).start(); p.inputStream.readBytes(); p.waitFor()
+            File(base.path + ".tsv").readLines().drop(1).forEach { l ->
+                val c = l.split('\t'); if (c.size < 12 || c[0] != "5") return@forEach
+                val text = c[11].trim(); if (text.isEmpty()) return@forEach
+                val left = c[6].toInt() + band[0] - 20; val top = c[7].toInt() + band[1] - 20
+                boxes += ScanToWord.OcrBox(text, left, top, left + c[8].toInt(), top + c[9].toInt(), c[10].toFloat(), 90000000 + mi * 100 + c[4].toInt())
+                tsvAll.appendLine("M$mi\t$l")
+            }
+        }
         File(outDir, "ocr.tsv").writeText(tsvAll.toString())
         println("S2W words=${boxes.size} size=${w}x$h meanConf=${"%.1f".format(boxes.map { it.conf }.average())}")
         // 4. page content → layout → Word

@@ -211,7 +211,7 @@ class OcrEngine(private val context: Context, val fast: Boolean = false) : AutoC
      * Recognise one bitmap. Must be called after [init]. Runs on Dispatchers.Default. With [wantWords], doubtful words of
      * Arabic lines get a second reading ([OcrRefine]) and decoration "words" are dropped ([OcrCleanup]).
      */
-    suspend fun recognize(bitmap: Bitmap, wantWords: Boolean = true, singleBlock: Boolean = false): OcrPage = withContext(Dispatchers.Default) {
+    suspend fun recognize(bitmap: Bitmap, wantWords: Boolean = true, singleBlock: Boolean = false, singleLine: Boolean = false): OcrPage = withContext(Dispatchers.Default) {
         cancelled = false
         val m = mode
         // Pro OCR on the server first (user opt-in); any failure falls back to the offline engines below
@@ -226,7 +226,7 @@ class OcrEngine(private val context: Context, val fast: Boolean = false) : AutoC
             val t = api ?: throw OcrException(OcrException.Kind.INIT)
             val w0 = bitmap.width; val h0 = bitmap.height
             // photo → Word: the whole page as one block (automatic segmentation skipped boxed and table areas)
-            t.setPageSegMode(if (singleBlock) TessBaseAPI.PageSegMode.PSM_SINGLE_BLOCK else TessBaseAPI.PageSegMode.PSM_AUTO)
+            t.setPageSegMode(when { singleLine -> TessBaseAPI.PageSegMode.PSM_SINGLE_LINE; singleBlock -> TessBaseAPI.PageSegMode.PSM_SINGLE_BLOCK; else -> TessBaseAPI.PageSegMode.PSM_AUTO })
             t.setImage(bitmap)
             var text = t.utF8Text ?: ""
             var words = ArrayList<OcrWord>()
