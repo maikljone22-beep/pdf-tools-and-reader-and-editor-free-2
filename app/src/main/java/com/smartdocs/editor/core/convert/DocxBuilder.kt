@@ -277,6 +277,8 @@ class DocxBuilder(
     private fun image(b: ImageBlock, page: PageLayout) {
         val img = b.image
         if (img.w < 8f || img.h < 8f) return
+        // audit A5: the text after a picture starts below it (the picture's height was counted twice as a gap)
+        if (pagePitch > 0f) nextTop = b.rect.y1 + pagePitch * 0.2f
         picId++
         val ext = if (img.ext == "png") "png" else "jpeg"
         val name = "image$picId.$ext"

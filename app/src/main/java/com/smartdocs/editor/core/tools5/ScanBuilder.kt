@@ -119,7 +119,9 @@ object ScanBuilder {
     ): ScanBuildResult = withContext(Dispatchers.IO) {
         val text = StringBuilder()
         var count = 0
-        val ocrReady = engine != null && opt.ocrLangs != null && runCatching { engine.ensureLanguages(opt.ocrLangs); engine.init(opt.ocrLangs) }.getOrDefault(false)
+        // audit A8: a cancel is not an OCR failure — it stops the build
+        val ocrReady = engine != null && opt.ocrLangs != null &&
+            try { engine.ensureLanguages(opt.ocrLangs); engine.init(opt.ocrLangs) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { false }
         PDDocument().use { doc ->
             val arabic: PDFont? by lazy { runCatching { PdfOps.arabicFont(ctx, doc) }.getOrNull()?.takeIf { it !is PDType1Font } }
             for (p in pictures) {
@@ -140,7 +142,7 @@ object ScanBuilder {
                 }
                 val img = if (bilevel) LosslessFactory.createFromImage(doc, bmp) else JPEGFactory.createFromImage(doc, bmp, opt.quality.coerceIn(30, 100) / 100f)
                 var ocr: OcrPage? = null
-                if (ocrReady) ocr = runCatching { engine!!.recognize(bmp, wantWords = true) }.getOrNull()
+                if (ocrReady) ocr = try { engine!!.recognize(bmp, wantWords = true) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { null }
                 PDPageContentStream(doc, page).use { cs ->
                     cs.drawImage(img, ox, oy, w, h)
                     ocr?.let { TextLayer.write(cs, it.words, it.imageWidth, it.imageHeight, ox, oy, w, h, arabic) }
