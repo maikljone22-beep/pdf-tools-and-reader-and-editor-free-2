@@ -167,4 +167,6 @@
     <string name="nv_zoom_percent">التكبير</string>
     <string name="nv_zoom_range">المدى %1$d%% – %2$d%%</string>
     <string name="nv_zoom_short">%1$d%%</string>
+    <string name="nl_tab_edit_tools">تعديل أدوات الشريط</string>
+    <string name="nl_tab_tools_title">أدوات إضافية في «%1$s»</string>
 </resources>

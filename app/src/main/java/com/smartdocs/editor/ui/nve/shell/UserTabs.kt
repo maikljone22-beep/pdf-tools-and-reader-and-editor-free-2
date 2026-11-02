@@ -28,6 +28,57 @@ import com.smartdocs.editor.core.nve.shell.UserTab
 import com.smartdocs.editor.ui.reader.ToolChip
 import com.smartdocs.editor.ui.tools.allTools
 
+/** Tools the user added to a built-in reader tab (shown after its own tools). Prefs "nve_shell", key "extra_<TAB>". */
+object NveTabExtras {
+    fun of(ctx: Context, tab: String): List<String> =
+        NveShellPrefs.prefs(ctx).getString("extra_$tab", null)?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() }?.distinct() ?: emptyList()
+    fun set(ctx: Context, tab: String, tools: List<String>) {
+        NveShellPrefs.prefs(ctx).edit().putString("extra_$tab", tools.distinct().take(Customization.MAX_TOOLS_PER_TAB).joinToString(",")).apply()
+        NveShellPrefs.version.intValue++
+    }
+}
+
+/** The tools the user added to built-in tab [tab], as a chip row ([navigateTool] = ReaderActions.navigateTool). Nothing when none. */
+@Composable
+fun NveTabExtrasRow(tab: String, navigateTool: (String) -> Unit) {
+    val ctx = LocalContext.current
+    val settings = com.smartdocs.editor.LocalSettings.current
+    val ids = remember(NveShellPrefs.version.intValue, tab) { NveTabExtras.of(ctx, tab) }
+    val tools = ids.mapNotNull { com.smartdocs.editor.ui.tools.toolDef(it) }.filter { com.smartdocs.editor.core.gaps6.AiGate.allowsTool(settings, it.id) }
+    if (tools.isEmpty()) return
+    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 6.dp, vertical = 2.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+        tools.forEach { t -> ToolChip(t.icon, stringResource(t.label)) { navigateTool(t.id) } }
+    }
+}
+
+/** Pick (and order) up to [Customization.MAX_TOOLS_PER_TAB] tools: checked tools first, in the order they were picked. */
+@Composable
+fun NveToolPickerDialog(title: String, initial: List<String>, onSave: (List<String>) -> Unit, onDismiss: () -> Unit) {
+    val tools = remember { mutableStateListOf<String>().apply { addAll(initial) } }
+    val settings = com.smartdocs.editor.LocalSettings.current
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(shape = MaterialTheme.shapes.extraLarge) {
+            Column(Modifier.padding(16.dp).heightIn(max = 600.dp)) {
+                Text(title, style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(R.string.nl_user_tab_tools, tools.size, Customization.MAX_TOOLS_PER_TAB), style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 4.dp))
+                LazyColumn(Modifier.weight(1f, fill = false)) {
+                    items(allTools.filter { com.smartdocs.editor.core.gaps6.AiGate.allowsTool(settings, it.id) }, key = { it.id }) { t ->
+                        val on = t.id in tools
+                        Row(Modifier.fillMaxWidth().clickable { if (on) tools.remove(t.id) else if (tools.size < Customization.MAX_TOOLS_PER_TAB) tools.add(t.id) }.padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(on, null); Icon(t.icon, null, Modifier.size(20.dp)); Spacer(Modifier.width(8.dp)); Text(stringResource(t.label))
+                        }
+                    }
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    TextButton(onClick = { tools.clear() }) { Text(stringResource(R.string.nl_reset)) }
+                    TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+                    TextButton(onClick = { onSave(tools.toList()) }) { Text(stringResource(R.string.ok)) }
+                }
+            }
+        }
+    }
+}
+
 /** User-defined reader tabs + export / import of the whole shell customisation (prefs "nve_shell"). */
 object NveUserTabs {
     fun tabs(ctx: Context): List<UserTab> = Customization.parseTabs(NveShellPrefs.prefs(ctx).getString("user_tabs", null))

@@ -133,6 +133,8 @@ fun BottomToolbar(state: ReaderState, actions: ReaderActions) {
                 ReaderTab.PAGES -> Unit   // audit 5 G-05: never shown, the Pages tab opens the organizer (ReaderScreen)
                 ReaderTab.CUSTOM -> { if (state.tool != null) PropertyBar(state); com.smartdocs.editor.ui.reader.annot.CustomToolbar(state, actions) }
             }
+            // tools the user added to this built-in tab in Customise toolbar
+            if (nveUser == null && state.tab != ReaderTab.PAGES) com.smartdocs.editor.ui.nve.shell.NveTabExtrasRow(state.tab.name, actions.navigateTool)
         }
     }
 }

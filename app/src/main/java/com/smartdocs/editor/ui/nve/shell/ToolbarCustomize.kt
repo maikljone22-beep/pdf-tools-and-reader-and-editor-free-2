@@ -75,6 +75,11 @@ fun NveToolbarCustomizeSheet(onDismiss: () -> Unit) {
     val hidden = remember { mutableStateListOf<String>().apply { addAll(NveToolbarPrefs.hiddenTabs(ctx)) } }
     val hiddenChips = remember { mutableStateListOf<String>().apply { addAll(NveToolbarPrefs.hiddenChips(ctx)) } }
     fun save() = NveToolbarPrefs.save(ctx, order.toList(), hidden.toSet(), hiddenChips.toSet())
+    var editTools by remember { mutableStateOf<String?>(null) }     // built-in tab whose added tools are edited
+    editTools?.let { tab ->
+        NveToolPickerDialog(stringResource(R.string.nl_tab_tools_title, nveTabLabel(tab)), NveTabExtras.of(ctx, tab),
+            onSave = { NveTabExtras.set(ctx, tab, it); editTools = null }, onDismiss = { editTools = null })
+    }
     ModalBottomSheet(onDismissRequest = { save(); onDismiss() }) {
         LazyColumn(Modifier.fillMaxWidth().heightIn(max = 640.dp).padding(horizontal = 12.dp)) {
             item {
@@ -94,18 +99,20 @@ fun NveToolbarCustomizeSheet(onDismiss: () -> Unit) {
                     },
                     trailingContent = {
                         Row {
+                            // add tools of your choice to this tab (Pages opens the organizer: it has no toolbar)
+                            if (id != "PAGES") IconButton(onClick = { editTools = id }) { Icon(Icons.Default.Edit, stringResource(R.string.nl_tab_edit_tools)) }
                             IconButton(onClick = { if (i > 0) { order.add(i - 1, order.removeAt(i)); save() } }, enabled = i > 0) { Icon(Icons.Default.ArrowUpward, stringResource(R.string.nl_move_up)) }
                             IconButton(onClick = { if (i < order.lastIndex) { order.add(i + 1, order.removeAt(i)); save() } }, enabled = i < order.lastIndex) { Icon(Icons.Default.ArrowDownward, stringResource(R.string.nl_move_down)) }
                         }
                     },
                 )
             }
+            item { NveUserTabsEditor() }
             item { Text(stringResource(R.string.nl_view_chips), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(8.dp, 16.dp, 8.dp, 4.dp)) }
             items(NveToolbarPrefs.VIEW_CHIPS, key = { "c_$it" }) { id ->
                 ListItem(headlineContent = { Text(chipLabel(id)) },
                     leadingContent = { Checkbox(id !in hiddenChips, { on -> if (on) hiddenChips.remove(id) else hiddenChips.add(id); save() }) })
             }
-            item { NveUserTabsEditor() }
             item { Spacer(Modifier.height(24.dp)) }
         }
     }
