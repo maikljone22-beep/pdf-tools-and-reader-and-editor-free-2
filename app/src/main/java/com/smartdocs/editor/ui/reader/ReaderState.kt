@@ -311,6 +311,8 @@ class ReaderState(
                 // share6: rights-managed files -> explanation screen; connected documents -> status / protected key
                 withContext(Dispatchers.IO) { com.smartdocs.editor.core.connected.EnterpriseProtection.detect(f) }?.takeIf { it.blocking }?.let { enterpriseInfo = it; return@launch }
                 var openPw = pw
+                // an annotation edit the app died in the middle of: the file gets back the annotations it took out
+                if (withContext(Dispatchers.IO) { AnnotEditor.recoverInterrupted(f) }) error = str(R.string.rd_annot_recovered)
                 // audit RD-03: the connected-document marker scan can read the whole file, so it no longer runs before
                 // the first page. Only a password-protected file can need it up front (its key comes from the server).
                 var markChecked = false
