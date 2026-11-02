@@ -52,6 +52,11 @@ object ScanToWord {
     /** Stroke width / em from which type reads as bold (regular Arabic book text ≈ 0.07–0.09 em, bold ≈ 0.11–0.16). */
     const val BOLD_EM = 0.105f
 
+    /** OCR confidence under which a word is shown as "check me" in the Word file. */
+    const val UNCERTAIN = 60f
+    /** Light yellow highlight of uncertain words. */
+    const val UNCERTAIN_BG = 0xFFF3A0
+
     private val SIZES = floatArrayOf(8f, 9f, 10f, 11f, 12f, 13f, 14f, 16f, 18f, 20f, 22f, 24f, 28f, 32f, 36f, 40f, 48f)
 
     /**
@@ -281,7 +286,9 @@ object ScanToWord {
     }
 
     fun page(index: Int, px: IntArray, w: Int, h: Int, words1: List<OcrBox>, arabicFont: String, latinFont: String,
-             rules0: List<TableRules.Rule>? = null, lineOf: MutableMap<Int, Int>? = null, crop: (IntArray) -> Pair<ByteArray, String>?): PageContent {
+             rules0: List<TableRules.Rule>? = null, lineOf: MutableMap<Int, Int>? = null, crop: (IntArray) -> Pair<ByteArray, String>?,
+             /** Filled with the glyphs of words read with low confidence (shown highlighted for checking, hostile review H1). */
+             uncertain: MutableSet<Glyph>? = null): PageContent {
         val (pw, ph) = pageSize(w, h)
         val s = pw / w
         val rules = rules0 ?: rules(px, w, h)
@@ -308,8 +315,10 @@ object ScanToWord {
         // (counted on confidently read words only: the misreads are what this test is for)
         val sure = clean.filter { it.conf >= 90f }
         val indicPage = sure.sumOf { w -> w.text.count { it in '٠'..'٩' } } > sure.sumOf { w -> w.text.count { it in '0'..'9' } }
+        // hostile review H1: a number is never dropped silently (heights and dates are what students study) — a Latin
+        // number on an Arabic-Indic page is kept unless it is read with very low confidence, and shows as uncertain
         val kept = clean.filterNot { junk(it) || (arabicPage && it.conf < 80f && it.text.any { c -> c in 'A'..'Z' || c in 'a'..'z' }) ||
-            (indicPage && it.conf < 90f && it.text.any { c -> c in '0'..'9' }) }
+            (indicPage && it.conf < 40f && it.text.any { c -> c in '0'..'9' }) }
         // a whole line read with low confidence is a border, a pattern or a decorated title gone wrong
         // (judged on everything read on the line, the junk included; one surely read word of 3+ letters saves it)
         val lineOk = clean.groupBy { it.line }.mapValues { (_, lw) ->
@@ -336,6 +345,7 @@ object ScanToWord {
         val emPx = body / s
         val pageStroke = widths.values.filter { it > 0f }.sorted().let { if (it.isEmpty()) 0f else it[it.size / 2] }
         val pageBold = pageStroke >= BOLD_EM * emPx
+        val uncertainBoxes = HashSet<OcrBox>()
         val glyphs = ArrayList<Glyph>()
         for ((_, lw) in byLine) {
             val arabic = lw.any { wd -> wd.text.any { it in '؀'..'ۿ' } }
@@ -356,8 +366,10 @@ object ScanToWord {
             for ((k, wd) in sortedLw.withIndex()) {
                 val wordArabic = wd.text.any { it in '؀'..'ۿ' }
                 val base = wd.b * s - (wd.b - wd.t) * s * 0.18f
+                if (uncertain != null && (wd.conf < UNCERTAIN || (indicPage && wd.text.any { it in '0'..'9' } && wd.conf < 90f))) uncertainBoxes += wd
                 glyphs += Glyph(x = wd.l * s, top = wd.t * s, w = (wd.r - wd.l) * s, h = (wd.b - wd.t) * s, baseline = base,
                     text = wd.text, fontSize = size, bold = bold, color = color, font = if (wordArabic || arabic) arabicFont else latinFont)
+                if (wd in uncertainBoxes) uncertain?.add(glyphs.last())
                 lineOf?.set(glyphs.size - 1, lw.first().line)
                 // a space between neighbouring words (before the next one's left edge, even when the boxes touch), so the
                 // analyser never glues two recognised words together
@@ -436,7 +448,8 @@ object ScanToWord {
         val regions = ocrRegions(rules0, w, h)
         val glyphLine = HashMap<Int, Int>()
         val kept = dropWordStrokes(rules0, words1, w, h)
-        val content = page(index, px, w, h, words1, arabicFont, latinFont, kept, glyphLine, crop)
+        val uncertain = java.util.Collections.newSetFromMap(java.util.IdentityHashMap<Glyph, Boolean>())
+        val content = page(index, px, w, h, words1, arabicFont, latinFont, kept, glyphLine, crop, uncertain)
         val s = content.width / w
         // short rules lying on words are not table lines: those under a word are its underline (Decorations keeps only
         // the ones at the baseline, so a letter's own long stroke read as a rule is not)
@@ -462,6 +475,8 @@ object ScanToWord {
                     if (under.isNotEmpty()) Decorations.decorateWords(ls, under, emptyList(), content.width)
                     // a stroke through a word on a photo is a letter's own long stroke (kashida), never a strike-through
                     ls.forEach { l -> l.visual.forEach { it.strike = false } }
+                    // hostile review H1: words read with low confidence are highlighted, so the user checks them
+                    ls.forEach { l -> l.visual.forEach { wd -> if (wd.glyphs.any { it in uncertain }) wd.bg = UNCERTAIN_BG } }
                 }
         }
         val bands = regions.groupBy { it[1] to it[3] }.toSortedMap(compareBy { it.first })
