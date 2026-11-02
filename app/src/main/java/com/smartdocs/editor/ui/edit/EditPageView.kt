@@ -10,6 +10,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitTouchSlopOrCancellation
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.drag
 import androidx.compose.foundation.horizontalScroll
@@ -90,7 +91,15 @@ internal fun EditPageView(c: EditController, modifier: Modifier = Modifier) {
                 .pointerInput(c.mode, scale, pageH, c.model, c.busy) {
                     // selmenu-rest: long-press on a picture / shape opens its menu at the finger; a tap closes it
                     detectTapGestures(
-                        onLongPress = { o -> if (!c.tools5.multi) com.smartdocs.editor.ui.selmenu.SelEditImage.longPress(c, o.x / scale, pageH - o.y / scale, o) },
+                        onLongPress = { o ->
+                            val x = o.x / scale; val y = pageH - o.y / scale
+                            // long-press menu (LP-D): no picture / shape there — a text block under the finger is selected
+                            // with its text tools (a long press on text did nothing)
+                            if (!c.tools5.multi && !com.smartdocs.editor.ui.selmenu.SelEditImage.longPress(c, x, y, o) && !c.busy) {
+                                val onText = c.model?.blocks?.any { x in it.rect.left..it.rect.right && y in it.rect.bottom..it.rect.top } == true
+                                if (onText) { if (c.mode != EditMode.TEXT) { c.clearSelection(); c.mode = EditMode.TEXT }; c.onTap(x, y) }
+                            }
+                        },
                         onTap = { o -> com.smartdocs.editor.ui.selmenu.SelEditImage.dismiss(c); c.onTap(o.x / scale, pageH - o.y / scale) },
                     )
                 }
@@ -123,9 +132,13 @@ internal fun EditPageView(c: EditController, modifier: Modifier = Modifier) {
                         val resize = (p - corner).getDistance() < handle
                         val inside = p.x in (left - handle / 2)..(right + handle / 2) && p.y in (top - handle / 2)..(bottom + handle / 2)
                         if (!resize && !inside) return@awaitEachGesture
-                        down.consume()
+                        // long-press menu (LP-B): the press is claimed only once the finger really moves — consuming the
+                        // down here killed the long press (and the tap) on the selected picture
+                        val first = awaitTouchSlopOrCancellation(down.id) { ch, _ -> ch.consume() } ?: return@awaitEachGesture
                         c.tools5.dragStart(8.dp.toPx() / scale)      // NVE-img: smart alignment
-                        drag(down.id) { ch ->
+                        val d0 = first.position - down.position
+                        c.tools5.drag(resize, d0.x / scale, -d0.y / scale)
+                        drag(first.id) { ch ->
                             val d = ch.positionChange()
                             ch.consume()
                             c.tools5.drag(resize, d.x / scale, -d.y / scale)

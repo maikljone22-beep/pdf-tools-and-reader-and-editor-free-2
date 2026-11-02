@@ -193,6 +193,13 @@ private fun ActivePlayer(state: ReaderState, item: VideoItem, interactive: Boole
             detectTapGestures(
                 onTap = { if (item.options.controls && !host.controlsVisible) host.controlsVisible = true else host.togglePlay() },
                 onDoubleTap = { host.fullscreen = true },
+                // LP-A: a playing video is selected too (pause, then its move / options bar), like the idle one
+                onLongPress = {
+                    host.pause()
+                    val pid = item.pendingId
+                    if (pid != null) state.annots.firstOrNull { it.id == pid }?.let { state.edit.selectPending(it) }
+                    else item.stored?.let { state.edit.selectStored(it) }
+                },
             )
         })
         AutoHide(host)

@@ -59,6 +59,12 @@ class SelEditImage private constructor() {
             val m = c.model ?: return false
             if (c.busy) return false
             val t = c.tools5
+            // long-press menu (LP-B): the selected object where it shows now (moved / resized, not applied yet)
+            val sel = c.image; val pr = c.previewRect()
+            if (sel != null && pr != null && x in minOf(pr.left, pr.right)..maxOf(pr.left, pr.right) && y in minOf(pr.top, pr.bottom)..maxOf(pr.top, pr.bottom)) {
+                val s = of(c); s.forImage = sel; s.at = px; s.moreOpen = false
+                return true
+            }
             val o = t.visibleObjects().filter { x in it.box[0]..it.box[2] && y in it.box[1]..it.box[3] }.minByOrNull { (it.box[2] - it.box[0]) * (it.box[3] - it.box[1]) }
             val item = o?.let { t.itemOf(it) } ?: m.images.lastOrNull { x in it.rect.left..it.rect.right && y in it.rect.bottom..it.rect.top } ?: return false
             if (c.mode != EditMode.IMAGE) { c.clearSelection(); c.mode = EditMode.IMAGE }

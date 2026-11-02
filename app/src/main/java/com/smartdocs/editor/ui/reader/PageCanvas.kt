@@ -166,8 +166,21 @@ fun PageCanvas(
                         if (!state.annot2.onDoubleTap(page, dx, dy)) onDoubleTapNow(p)
                     },
                     onLongPress = { p ->
-                        if (state.tool != null) return@detectTapGestures
                         val s = g.layoutToScreen(p); val (x, y) = g.screenToPdf(s.x, s.y)
+                        // long-press menu (LP-A): a picture / stamp / signature still in its placement frame is put on the
+                        // page and selected, so its action bar shows (the long press used to fall through to the text below)
+                        val pl = state.placement
+                        if (pl != null && pl.page == page && hitPlacement(pl, g, s) != PlacementHandle.NONE) {
+                            state.confirmPlacement(); state.tool = null
+                            state.annots.lastOrNull()?.takeIf { it.page == page }?.let { state.edit.selectPending(it) }
+                            return@detectTapGestures
+                        }
+                        // LP-A: an object under the finger is selected even while a tool stays active (ink, "keep tool"):
+                        // the tool is put down so the object's menu can show; elsewhere the tool keeps the long press
+                        if (state.tool != null) {
+                            if (pl == null && state.edit.selectAt(page, x, y, 8f / g.scale.coerceAtLeast(0.1f))) state.tool = null
+                            return@detectTapGestures
+                        }
                         // an annotation under the finger wins over text selection
                         if (state.placement == null && state.edit.selectAt(page, x, y, 8f / g.scale.coerceAtLeast(0.1f))) return@detectTapGestures
                         if (state.placement == null && com.smartdocs.editor.ui.selmenu.SelHooks.longPressFieldAt(state, page, x, y)) return@detectTapGestures   // selmenu-rest: field menu
