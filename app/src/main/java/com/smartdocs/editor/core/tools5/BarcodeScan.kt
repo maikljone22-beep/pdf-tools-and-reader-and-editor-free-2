@@ -39,5 +39,6 @@ object BarcodeScan {
     }
 
     /** True when [text] looks like something to open (a web address, mail, phone, geo, wifi…). */
-    fun isLink(text: String): Boolean = Regex("^(https?://|mailto:|tel:|geo:|sms:|market://|WIFI:)", RegexOption.IGNORE_CASE).containsMatchIn(text.trim())
+    /** Something another app can open (audit A9/B13: a WIFI: network code is not — no app takes it as a link). */
+    fun isLink(text: String): Boolean = Regex("^(https?://|mailto:|tel:|geo:|sms:|market://)", RegexOption.IGNORE_CASE).containsMatchIn(text.trim())
 }

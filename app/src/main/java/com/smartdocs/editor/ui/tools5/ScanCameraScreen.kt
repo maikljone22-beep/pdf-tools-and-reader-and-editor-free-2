@@ -19,6 +19,8 @@ import androidx.camera.core.resolutionselector.ResolutionStrategy
 import androidx.camera.view.CameraController
 import androidx.camera.view.LifecycleCameraController
 import androidx.camera.view.PreviewView
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -274,14 +276,15 @@ private fun CameraBody(pageLimit: Int, onDone: (List<Pair<File, PageQuad.Quad?>>
                     val s = withContext(Dispatchers.IO) { runCatching { openShot(f) }.getOrNull() }
                     capturing = false
                     when {
-                        s == null -> { f.delete(); status = captureFailed }
+                        // audit B11: a failed shot re-arms auto-capture (it waited for a page change that never comes)
+                        s == null -> { f.delete(); status = captureFailed; armed = true }
                         reviewEach -> shot = s
                         else -> { s.preview.recycle(); addPage(f, s.quad) }
                     }
                 }
             }
             // deep audit E25: a failed capture said nothing
-            override fun onError(e: ImageCaptureException) { scope.launch { capturing = false; f.delete(); status = captureFailed } }
+            override fun onError(e: ImageCaptureException) { scope.launch { capturing = false; f.delete(); status = captureFailed; armed = true } }
         })
     }
 
@@ -398,8 +401,9 @@ private fun CameraBody(pageLimit: Int, onDone: (List<Pair<File, PageQuad.Quad?>>
             if (onKind != null) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 ScanKind.entries.forEach { k ->
                     val sel = k == kind
-                    Text(k.label(), Modifier.clip(RoundedCornerShape(16.dp)).background(if (sel) Color.White else Color.Black.copy(alpha = 0.45f))
-                        .clickable(enabled = !capturing) { onKind(k) }.semantics { selected = sel }.padding(horizontal = 12.dp, vertical = 8.dp),
+                    // audit B18: a real tab for TalkBack, 48 dp tall
+                    Text(k.label(), Modifier.heightIn(min = 48.dp).clip(RoundedCornerShape(16.dp)).background(if (sel) Color.White else Color.Black.copy(alpha = 0.45f))
+                        .selectable(selected = sel, enabled = !capturing, role = androidx.compose.ui.semantics.Role.Tab) { onKind(k) }.padding(horizontal = 12.dp, vertical = 13.dp),
                         color = if (sel) Color.Black else Color.White, style = MaterialTheme.typography.labelLarge)
                 }
             }
@@ -435,7 +439,7 @@ private fun CameraBody(pageLimit: Int, onDone: (List<Pair<File, PageQuad.Quad?>>
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         val copied = stringResource(R.string.sc_copied)
                         TextButton(onClick = { clip.setText(androidx.compose.ui.text.AnnotatedString(c.text)); status = copied }) { Text(stringResource(R.string.copy_text)) }
-                        if (com.smartdocs.editor.core.tools5.BarcodeScan.isLink(c.text) && !c.text.trim().startsWith("WIFI:", true)) TextButton(onClick = {
+                        if (com.smartdocs.editor.core.tools5.BarcodeScan.isLink(c.text)) TextButton(onClick = {
                             runCatching { ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(c.text.trim())).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
                         }) { Text(stringResource(R.string.sc_code_open)) }
                         TextButton(onClick = { qrFound = null }) { Text(stringResource(R.string.sc_cam_qr_again)) }

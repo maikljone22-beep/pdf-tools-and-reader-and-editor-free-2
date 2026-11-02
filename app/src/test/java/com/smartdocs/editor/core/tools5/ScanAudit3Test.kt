@@ -17,4 +17,16 @@ class ScanAudit3Test {
         assertNull(groups.single()[0].second.crop)
         assertEquals(8, groups.single()[1].second.crop!!.size)
     }
+
+    @Test fun wifiCodeIsNoLink() {
+        org.junit.Assert.assertFalse(BarcodeScan.isLink("WIFI:S:home;T:WPA;P:secret;;"))
+        org.junit.Assert.assertTrue(BarcodeScan.isLink(" https://example.com "))
+    }
+
+    @Test fun presetKeepsOutputChoicesAndReadsOldOnes() {
+        val p = ScanPreset("w", format = 2, wordFont = "Arial", size = 1, fingers = false)
+        assertEquals(p, ScanPreset.decode(p.encode()))
+        val old = ScanPreset.decode("name=o;kind=DOCUMENT;paper=FIT;ocr=true;langs=auto;blank=false;per=0;author=")!!
+        assertNull(old.format); assertNull(old.size)
+    }
 }

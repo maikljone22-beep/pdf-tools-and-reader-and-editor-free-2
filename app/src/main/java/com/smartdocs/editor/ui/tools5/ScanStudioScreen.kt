@@ -94,9 +94,15 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
     var autoRotate by remember { mutableStateOf(prefs.getBoolean("auto_rotate", true)) }
     var removeFingers by remember { mutableStateOf(prefs.getBoolean("fingers", true)) }
     var orienting by remember { mutableIntStateOf(0) }
+    // audit B6: saving stops the turning still to do (it used to hold the save button for every page)
+    var orientGen by remember { mutableIntStateOf(0) }
     var advanced by remember { mutableStateOf(false) }
     var nextNewGroup by remember { mutableStateOf(false) }
-    var openedProject by remember { mutableStateOf<ScanProjects.Project?>(null) }
+    // audit B16: kept across process death with the pages (the next save used to copy the project again)
+    var openedProject by androidx.compose.runtime.saveable.rememberSaveable(stateSaver = androidx.compose.runtime.saveable.Saver<ScanProjects.Project?, String>(
+        save = { p -> p?.let { "${it.dir.path}\n${it.name}\n${it.time}\n${it.pages}" } ?: "" },
+        restore = { s -> s.split('\n').takeIf { it.size == 4 }?.let { ScanProjects.Project(File(it[0]), it[1], it[2].toLongOrNull() ?: 0L, it[3].toIntOrNull() ?: 0) }?.takeIf { it.dir.isDirectory } },
+    )) { mutableStateOf<ScanProjects.Project?>(null) }
     var recognised by remember { mutableStateOf("") }
     var resultMime by remember { mutableStateOf("application/pdf") }
     var ownCamera by remember { mutableStateOf(ctx.getSharedPreferences("scan_studio", 0).getBoolean("own_camera", true)) }
@@ -114,7 +120,7 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
         pages.forEach { p -> runCatching { if (p.file.canonicalPath.startsWith(tmp)) p.file.delete() } }
     }
     var recent by remember { mutableStateOf(emptyList<File>()) }
-    fun refreshRecent() { recent = (app.documents.scansDir.listFiles() ?: emptyArray()).filter { it.extension.equals("pdf", true) }.sortedByDescending { it.lastModified() } }
+    fun refreshRecent() { recent = (app.documents.scansDir.listFiles() ?: emptyArray()).filter { it.extension.lowercase() in setOf("pdf", "docx", "jpg") }.sortedByDescending { it.lastModified() } }
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
             refreshRecent()
@@ -161,6 +167,7 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
         if (pages.isEmpty()) return
         orienting += pages.size
         var finished = 0
+        val gen = orientGen
         scope.launch {
             val engine = withContext(Dispatchers.IO) {
                 runCatching { OcrEngine(ctx.applicationContext).takeIf { it.isLanguageInstalled("ara") && it.isLanguageInstalled("eng") } }.getOrNull()
@@ -168,6 +175,7 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
             try {
                 val ready = engine != null && runCatching { engine.init("ara+eng") }.getOrDefault(false)
                 for (p in pages) {
+                    if (gen != orientGen) break
                     try {
                         val turn = withContext(Dispatchers.Default) {
                             val b = ScanImage.preview(p.file, p.edit.copy(filter = ScanFilter.GRAY, rotation = 0, erase = emptyList(), flatten = false), 900) ?: return@withContext 0
@@ -254,6 +262,7 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
     fun save() {
         // audit B5: an undo offered before the save would bring back pages whose pictures the save removes
         snackbar.currentSnackbarData?.dismiss()
+        orientGen++
         val all = groups.filter { it.isNotEmpty() }
         if (all.isEmpty()) return
         savePrefs()
@@ -338,8 +347,8 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                         if (wr.text.isNotBlank()) { if (texts.isNotEmpty()) texts.append("\n\n"); texts.append(wr.text) }
                         return@forEachIndexed
                     }
-                    val pictures = ScanBuilder.pagePictures(g.map { it.file to it.edit }, k, rf, maxDim = sizeDim(sizeLevel), removeFingers = fingers)
-                    val r = ScanBuilder.build(ctx, pictures, tmpOut, ScanBuildOptions(paper = p, quality = sizeQuality(sizeLevel), ocrLangs = ocrLangs), engine) { n -> step(gi * 100 + n, docs.size * 100) }
+                    val pictures = ScanBuilder.pagePictures(g.map { it.file to it.edit }, k, rf, maxDim = sizeDim(lvl), removeFingers = fingers)
+                    val r = ScanBuilder.build(ctx, pictures, tmpOut, ScanBuildOptions(paper = p, quality = sizeQuality(lvl), ocrLangs = ocrLangs), engine) { n -> step(gi * 100 + n, docs.size * 100) }
                     val base = when {
                         typed.isNotEmpty() -> if (docs.size > 1) "${typed}_${gi + 1}" else typed
                         smartName && r.text.isNotBlank() -> SmartNaming.suggest(r.text, k, today, prefixes)
@@ -413,7 +422,7 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                     made.size == 1 -> result = made.first()
                     else -> results = made
                 }
-                if (k == ScanKind.FORM) info = if (fieldsMade > 0) ctx.getString(R.string.t5_form_fields_made, fieldsMade) else ctx.getString(R.string.t5_form_fields_none)
+                if (k == ScanKind.FORM) info = if (fieldsMade > 0) ctx.resources.getQuantityString(R.plurals.sc_form_fields_made, fieldsMade, fieldsMade) else ctx.getString(R.string.t5_form_fields_none)
                 if (!imgs && (k == ScanKind.BUSINESS_CARD || k == ScanKind.RECEIPT)) results = made
                 // Foxit "create a portfolio for all results"
                 if (pf && made.size > 1) {
@@ -495,7 +504,7 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
             Text(stringResource(R.string.sc_projects_size, com.smartdocs.editor.core.files.DocumentRepository.formatSize(total)), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             (if (allProjects) projects else projects.take(6)).forEach { pr ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(stringResource(R.string.pc_saved_scan_row, pr.name, pr.pages), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, maxLines = 1)
+                    Text("${pr.name} (${pluralStringResource(R.plurals.sc_pages_n, pr.pages, pr.pages)})", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, maxLines = 1)
                     TextButton(onClick = { scope.launch {
                         val g = withContext(Dispatchers.IO) { runCatching { ScanProjects.load(pr) }.getOrDefault(emptyList()) }
                         groups = g.map { pages -> pages.map { (f, e) -> ScanPage(f, e) } }; name = pr.name; openedProject = pr
@@ -508,10 +517,16 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
         T5Card(stringResource(R.string.pc_presets), Icons.Default.Bookmarks) {
             if (presets.isNotEmpty()) Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 presets.forEach { ps ->
-                    val active = kind == ps.kind && paper == ps.paper && autoOcr == ps.ocr && langs == ps.langs && removeBlank == ps.removeBlank && perFile == ps.perFile && author == ps.author
+                    val curFormat = if (asWord) 2 else if (asImages) 1 else 0
+                    val active = kind == ps.kind && paper == ps.paper && autoOcr == ps.ocr && langs == ps.langs && removeBlank == ps.removeBlank && perFile == ps.perFile && author == ps.author &&
+                        (ps.format == null || ps.format == curFormat) && (ps.wordFont == null || ps.wordFont == wordFont) && (ps.size == null || ps.size == sizeLevel) && (ps.fingers == null || ps.fingers == removeFingers)
                     val appliedMsg = stringResource(R.string.sc_preset_applied, ps.name)
                     InputChip(active, onClick = {
                         changeKind(ps.kind); paper = ps.paper; autoOcr = ps.ocr; langs = ps.langs; removeBlank = ps.removeBlank; perFile = ps.perFile; author = ps.author; savePrefs()
+                        ps.format?.let { f -> asImages = f == 1; asWord = f == 2 }
+                        ps.wordFont?.let { wordFont = it }; ps.size?.let { sizeLevel = it }; ps.fingers?.let { removeFingers = it }
+                        prefs.edit().putBoolean("as_images", asImages).putBoolean("as_word", asWord).putString("word_font", wordFont).putBoolean("fingers", removeFingers).apply()
+                        ctx.getSharedPreferences("scan_studio", 0).edit().putInt("size", sizeLevel).apply()
                         scope.launch { snackbar.showSnackbar(appliedMsg) }
                     }, label = { Text(ps.name) }, trailingIcon = {
                         IconButton(onClick = { savePresets(presets - ps) }, Modifier.size(32.dp)) { Icon(Icons.Default.Close, stringResource(R.string.pc_preset_delete, ps.name), Modifier.size(18.dp)) }
@@ -521,7 +536,7 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(presetName, { presetName = it }, Modifier.weight(1f), singleLine = true, label = { Text(stringResource(R.string.pc_preset_name)) })
                 TextButton(enabled = presetName.isNotBlank(), onClick = {
-                    val ps = ScanPreset(presetName.trim(), kind, paper, autoOcr, langs, removeBlank, perFile, author)
+                    val ps = ScanPreset(presetName.trim(), kind, paper, autoOcr, langs, removeBlank, perFile, author, if (asWord) 2 else if (asImages) 1 else 0, wordFont, sizeLevel, removeFingers)
                     savePresets(presets.filter { it.name != ps.name } + ps); presetName = ""
                 }) { Text(stringResource(R.string.pc_preset_save)) }
             }
@@ -542,22 +557,24 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                 else ChoiceChips(listOf(0, 1, 2), if (asWord) 2 else if (asImages) 1 else 0, { stringResource(when (it) { 1 -> R.string.sc_format_jpg; 2 -> R.string.sc_format_word; else -> R.string.sc_format_pdf }) }) {
                     asImages = it == 1; asWord = it == 2; prefs.edit().putBoolean("as_images", asImages).putBoolean("as_word", asWord).apply()
                 }
-                if ((!asImages && !asWord) || kindNeedsPdf(kind)) SwitchRow(stringResource(R.string.t5_auto_ocr), autoOcr, stringResource(R.string.t5_auto_ocr_hint)) { autoOcr = it }
-                if (asWord && !kindNeedsPdf(kind)) Text(stringResource(R.string.sc_word_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (asWord && !kindNeedsPdf(kind)) {
+                // audit B8 / B9: options follow the format really saved (card / receipt / form are always PDF)
+                val outWord = asWord && !kindNeedsPdf(kind); val outJpg = asImages && !outWord && !kindNeedsPdf(kind); val outPdf = !outWord && !outJpg
+                if (outPdf) SwitchRow(stringResource(R.string.t5_auto_ocr), autoOcr, stringResource(R.string.t5_auto_ocr_hint)) { autoOcr = it }
+                if (outWord) Text(stringResource(R.string.sc_word_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (outWord) {
                     // the nearest of the common Arabic text faces (a photo cannot tell the exact font)
                     FieldLabel(stringResource(R.string.sc_word_font))
                     ChoiceChips(listOf("Simplified Arabic", "Traditional Arabic", "Arial"), wordFont, { it }) { wordFont = it; prefs.edit().putString("word_font", it).apply() }
                 }
                 // add to an existing PDF (one document only)
-                if (!asImages && !asWord && groups.size == 1) Row(verticalAlignment = Alignment.CenterVertically) {
+                if (outPdf && groups.size == 1) Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(if (appendTo != null) stringResource(R.string.sc_append_target, appendName) else stringResource(R.string.sc_append_none), Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
                     if (appendTo != null) IconButton(onClick = { appendTo = null; appendName = "" }) { Icon(Icons.Default.Close, stringResource(R.string.cancel)) }
                     TextButton(onClick = { runCatching { pickAppend.launch(arrayOf("application/pdf")) } }) { Text(stringResource(R.string.sc_append_pick)) }
                 }
                 if (kind == ScanKind.BOOK) SwitchRow(stringResource(R.string.sc_fingers), removeFingers, stringResource(R.string.sc_fingers_sub)) { removeFingers = it; prefs.edit().putBoolean("fingers", it).apply() }
                 // audit B3: Word always reads the text, so its language is shown even with OCR switched off
-                if (autoOcr || (asWord && !kindNeedsPdf(kind)) || kind == ScanKind.BUSINESS_CARD || kind == ScanKind.RECEIPT) {
+                if ((autoOcr && outPdf) || outWord || kind == ScanKind.BUSINESS_CARD || kind == ScanKind.RECEIPT) {
                     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         listOf("auto", "ara", "eng", "ara+eng", "fra", "ara+fra").forEach { l ->
                             FilterChip(langs == l, { langs = l }, label = { Text(if (l == "auto") stringResource(R.string.t5_lang_auto) else l.split('+').joinToString(" + ") { OcrEngine.label(it) }) })
@@ -566,16 +583,17 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                 }
                 if (kind == ScanKind.BOOK) SwitchRow(stringResource(R.string.t5_book_rtl), rightFirst, stringResource(R.string.t5_book_rtl_hint)) { rightFirst = it }
                 OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.t5_file_name_optional)) },
-                    supportingText = { if (name.isBlank()) Text(stringResource(if (smartName && autoOcr && !asImages) R.string.sc_name_auto_text else R.string.sc_name_auto_date)) })
+                    supportingText = { if (name.isBlank()) Text(stringResource(if (smartName && autoOcr && outPdf) R.string.sc_name_auto_text else R.string.sc_name_auto_date)) })
                 // the rest, folded (15 options in one card were too many)
                 TextButton(onClick = { advanced = !advanced }) { Text(stringResource(R.string.sc_advanced)); Icon(if (advanced) Icons.Default.ExpandLess else Icons.Default.ExpandMore, null) }
                 if (advanced) {
-                    SwitchRow(stringResource(R.string.t5_smart_name), smartName, stringResource(R.string.t5_smart_name_hint)) { smartName = it; savePrefs() }
-                    SwitchRow(stringResource(R.string.pc_scan_remove_blank), removeBlank) { removeBlank = it; savePrefs() }
-                    OutlinedTextField(if (perFile > 0) perFile.toString() else "", { t -> perFile = com.smartdocs.editor.core.edit5.Digits.toWestern(t).filter { it.isDigit() }.take(3).toIntOrNull() ?: 0; savePrefs() },
+                    if (outPdf) SwitchRow(stringResource(R.string.t5_smart_name), smartName, stringResource(R.string.t5_smart_name_hint)) { smartName = it; savePrefs() }
+                    if (outPdf) SwitchRow(stringResource(R.string.pc_scan_remove_blank), removeBlank) { removeBlank = it; savePrefs() }
+                    // audit B2: adding to an existing PDF makes one document, so "pages per file" is hidden meanwhile
+                    if (appendTo == null || groups.size != 1) OutlinedTextField(if (perFile > 0) perFile.toString() else "", { t -> perFile = com.smartdocs.editor.core.edit5.Digits.toWestern(t).filter { it.isDigit() }.take(3).toIntOrNull() ?: 0; savePrefs() },
                         Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.pc_scan_per_file)) }, placeholder = { Text(stringResource(R.string.pc_scan_per_file_all)) },
                         keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number))
-                    if (!asImages) {
+                    if (outPdf) {
                         OutlinedTextField(title, { title = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.pc_doc_title)) })
                         OutlinedTextField(author, { author = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.pc_doc_author)) })
                         SwitchRow(stringResource(R.string.pc_save_pdfa), pdfa, stringResource(R.string.pc_save_pdfa_sub)) { pdfa = it; prefs.edit().putBoolean("pdfa", it).apply() }
@@ -590,7 +608,7 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
             }
             val fmtWord = asWord && !kindNeedsPdf(kind); val fmtJpg = asImages && !fmtWord && !kindNeedsPdf(kind)
             PrimaryButton(stringResource(when { fmtJpg -> R.string.sc_save_images; fmtWord -> R.string.sc_save_word; appendTo != null && groups.size == 1 -> R.string.sc_save_append; else -> R.string.t5_scan_save }),
-                enabled = !job.running && orienting == 0,
+                enabled = !job.running,
                 icon = when { fmtJpg -> Icons.Default.Image; fmtWord -> Icons.Default.Description; else -> Icons.Default.PictureAsPdf }) { save() }
             // FINAL_CHECK_2 Low (K11): QR / barcodes on the scanned pages
             var codes by remember { mutableStateOf<List<Pair<Int, com.smartdocs.editor.core.tools5.BarcodeScan.Code>>?>(null) }
@@ -719,7 +737,8 @@ private fun RecentScanRow(f: File, nav: NavHostController, onDelete: suspend () 
     var confirm by remember { mutableStateOf(false) }
     ListItem(
         modifier = Modifier.clickable { nav.navigate(com.smartdocs.editor.ui.Routes.reader(android.net.Uri.fromFile(f).toString())) },
-        leadingContent = { Icon(Icons.Default.PictureAsPdf, null, tint = MaterialTheme.colorScheme.primary) },
+        // audit B19: Word and picture results are listed too (the reader opens every type)
+        leadingContent = { Icon(when (f.extension.lowercase()) { "docx" -> Icons.Default.Description; "jpg" -> Icons.Default.Image; else -> Icons.Default.PictureAsPdf }, null, tint = MaterialTheme.colorScheme.primary) },
         headlineContent = { Text(f.name, maxLines = 1) },
         supportingContent = { Text("${com.smartdocs.editor.core.files.DocumentRepository.formatSize(f.length())} · ${com.smartdocs.editor.core.files.DocumentRepository.formatDate(f.lastModified())}", maxLines = 1) },
         trailingContent = {
@@ -727,7 +746,7 @@ private fun RecentScanRow(f: File, nav: NavHostController, onDelete: suspend () 
                 IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, stringResource(R.string.pc_cd_more)) }
                 DropdownMenu(menu, { menu = false }) {
                     DropdownMenuItem(text = { Text(stringResource(R.string.open)) }, onClick = { menu = false; nav.navigate(com.smartdocs.editor.ui.Routes.reader(android.net.Uri.fromFile(f).toString())) })
-                    DropdownMenuItem(text = { Text(stringResource(R.string.tool_ocr)) }, onClick = { menu = false; nav.navigate(com.smartdocs.editor.ui.Routes.tool("ocr", android.net.Uri.fromFile(f).toString())) })
+                    if (f.extension.equals("pdf", true)) DropdownMenuItem(text = { Text(stringResource(R.string.tool_ocr)) }, onClick = { menu = false; nav.navigate(com.smartdocs.editor.ui.Routes.tool("ocr", android.net.Uri.fromFile(f).toString())) })
                     DropdownMenuItem(text = { Text(stringResource(R.string.share)) }, onClick = { menu = false; runCatching { ctx.startActivity(android.content.Intent.createChooser(app.documents.shareIntent(listOf(f)), null)) } })
                     DropdownMenuItem(text = { Text(stringResource(R.string.delete)) }, onClick = { menu = false; confirm = true })
                 }
