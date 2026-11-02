@@ -105,7 +105,7 @@ object ScanProjects {
 
     /** One manifest line per page: group|file|filter|brightness|contrast|rotation|despeckle|erase. Pure. */
     fun encode(name: String, groups: List<List<Pair<String, PageEdit>>>): String = buildString {
-        append("name=").append(name.replace("\n", " ")).append('\n')
+        append("name=").append(name.replace(Regex("[\r\n]"), " ")).append('\n')
         groups.forEachIndexed { g, pages ->
             pages.forEach { (f, e) ->
                 val erase = e.erase.joinToString("/") { r -> r.joinToString(",") { "%.4f".format(java.util.Locale.US, it) } }
@@ -127,7 +127,7 @@ object ScanProjects {
             // audit A12: a page file is a plain name inside the project folder
             if (p[1].isBlank() || '/' in p[1] || '\\' in p[1] || p[1].startsWith("..")) return@forEach
             val erase = p.getOrNull(7).orEmpty().split('/').filter { it.isNotBlank() }.mapNotNull { r -> r.split(',').mapNotNull { it.toFloatOrNull() }.takeIf { it.size == 4 }?.toFloatArray() }
-            val e = PageEdit(runCatching { ScanFilter.valueOf(p[2]) }.getOrDefault(ScanFilter.AUTO), p[3].toFloatOrNull() ?: 0f, p[4].toFloatOrNull() ?: 1f, p[5].toIntOrNull() ?: 0,
+            val e = PageEdit(runCatching { ScanFilter.valueOf(p[2]) }.getOrDefault(ScanFilter.AUTO), p[3].toFloatOrNull()?.takeIf { it.isFinite() } ?: 0f, p[4].toFloatOrNull()?.takeIf { it.isFinite() } ?: 1f, p[5].toIntOrNull()?.takeIf { it % 90 == 0 } ?: 0,
                 p.getOrNull(6)?.toBooleanStrictOrNull() ?: false, erase, p.getOrNull(8)?.toBooleanStrictOrNull() ?: false,
                 p.getOrNull(9)?.split(',')?.mapNotNull { it.toFloatOrNull() }?.takeIf { it.size == 8 && it.all { v -> v.isFinite() } }?.toFloatArray())
             byGroup.getOrPut(g) { ArrayList() } += p[1] to e

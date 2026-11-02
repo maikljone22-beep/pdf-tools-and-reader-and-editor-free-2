@@ -73,7 +73,9 @@ data class ScanBuildOptions(
     val ocrLangs: String? = null,
 )
 
-class ScanBuildResult(val file: File, val pages: Int, val text: String)
+class ScanBuildResult(val file: File, val pages: Int, val text: String,
+    /** Text was wanted but the recogniser could not be readied (no connection for the models…): the PDF has no text layer. */
+    val textSkipped: Boolean = false)
 
 /**
  * Scan studio output: page pictures → PDF (JPEG, or lossless for pure black/white pages) with an optional
@@ -116,12 +118,14 @@ object ScanBuilder {
     suspend fun build(
         ctx: Context, pictures: Sequence<ScanOut>, out: File, opt: ScanBuildOptions, engine: OcrEngine?,
         onPage: (Int) -> Unit = {},
+        /** Language models being fetched (red team P1: the PDF save downloaded tens of MB with no sign). */
+        onDownload: (String, Float) -> Unit = { _, _ -> },
     ): ScanBuildResult = withContext(Dispatchers.IO) {
         val text = StringBuilder()
         var count = 0
         // audit A8: a cancel is not an OCR failure — it stops the build
         val ocrReady = engine != null && opt.ocrLangs != null &&
-            try { engine.ensureLanguages(opt.ocrLangs); engine.init(opt.ocrLangs) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { false }
+            try { engine.ensureLanguages(opt.ocrLangs, onDownload); engine.init(opt.ocrLangs) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { false }
         PDDocument().use { doc ->
             val arabic: PDFont? by lazy { runCatching { PdfOps.arabicFont(ctx, doc) }.getOrNull()?.takeIf { it !is PDType1Font } }
             for (p in pictures) {
@@ -155,6 +159,6 @@ object ScanBuilder {
             doc.documentInformation.creator = "SmartDocs"
             doc.save(out)
         }
-        ScanBuildResult(out, count, text.toString())
+        ScanBuildResult(out, count, text.toString(), textSkipped = engine != null && opt.ocrLangs != null && !ocrReady)
     }
 }

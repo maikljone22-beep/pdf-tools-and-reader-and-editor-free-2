@@ -80,17 +80,18 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
     val prefs = remember { ctx.getSharedPreferences("t5_scan", Context.MODE_PRIVATE) }
-    var kind by remember { mutableStateOf(runCatching { ScanKind.valueOf(prefs.getString("kind", "DOCUMENT")!!) }.getOrDefault(ScanKind.DOCUMENT)) }
+    // red team P4: the kind is chosen per scan (an ID card scanned once made the next homework scan stop at 2 pages)
+    var kind by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(ScanKind.DOCUMENT) }      // hostile H9: survives process death
     var groups by androidx.compose.runtime.saveable.rememberSaveable(stateSaver = ScanGroupsSaver) { mutableStateOf<List<List<ScanPage>>>(emptyList()) }
     var paper by remember { mutableStateOf(runCatching { ScanPaper.valueOf(prefs.getString("paper", "FIT")!!) }.getOrDefault(ScanPaper.FIT)) }
     // full camera resolution and light compression (bigger files) instead of 2400 px / JPEG 82
-    var sizeLevel by remember { mutableIntStateOf(ctx.getSharedPreferences("scan_studio", 0).let { sp -> sp.getInt("size", if (sp.getBoolean("high_quality", true)) 2 else 1) }) }
-    var asImages by remember { mutableStateOf(prefs.getBoolean("as_images", false)) }
+    var sizeLevel by remember { mutableIntStateOf(ctx.getSharedPreferences("scan_studio", 0).let { sp -> sp.getInt("size", if (sp.contains("high_quality") && sp.getBoolean("high_quality", true)) 2 else 1) }) }
+    var asImages by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }      // red team P4: the format is chosen per scan
     // scanner essentials: Word output, add to an existing PDF, upright pages, fingers off book edges
-    var asWord by remember { mutableStateOf(prefs.getBoolean("as_word", false)) }
+    var asWord by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
     var wordFont by remember { mutableStateOf(prefs.getString("word_font", "Simplified Arabic") ?: "Simplified Arabic") }
-    var appendTo by remember { mutableStateOf<android.net.Uri?>(null) }
-    var appendName by remember { mutableStateOf("") }
+    var appendTo by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<android.net.Uri?>(null) }
+    var appendName by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("") }
     var autoRotate by remember { mutableStateOf(prefs.getBoolean("auto_rotate", true)) }
     var removeFingers by remember { mutableStateOf(prefs.getBoolean("fingers", true)) }
     var orienting by remember { mutableIntStateOf(0) }
@@ -120,7 +121,12 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
         pages.forEach { p -> runCatching { if (p.file.canonicalPath.startsWith(tmp)) p.file.delete() } }
     }
     var recent by remember { mutableStateOf(emptyList<File>()) }
-    fun refreshRecent() { recent = (app.documents.scansDir.listFiles() ?: emptyArray()).filter { it.extension.lowercase() in setOf("pdf", "docx", "jpg") }.sortedByDescending { it.lastModified() } }
+    fun refreshRecent() {
+        val all = app.documents.scansDir.listFiles() ?: emptyArray()
+        // half-written results (".part_…", left by a killed save) are hidden, and removed once an hour old
+        all.filter { it.name.startsWith(".part_") && System.currentTimeMillis() - it.lastModified() > 3_600_000L }.forEach { it.delete() }
+        recent = all.filter { !it.name.startsWith(".") && it.extension.lowercase() in setOf("pdf", "docx", "jpg") }.sortedByDescending { it.lastModified() }
+    }
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
             refreshRecent()
@@ -132,10 +138,10 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
     var langs by remember { mutableStateOf(prefs.getString("langs", "auto") ?: "auto") }
     var smartName by remember { mutableStateOf(prefs.getBoolean("smart", true)) }
     var rightFirst by remember { mutableStateOf(prefs.getBoolean("rtl_book", true)) }
-    var name by remember { mutableStateOf("") }
+    var name by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("") }
     // Foxit 5: blank-page removal, N pages per file, document information, portfolio of the results, presets
     var removeBlank by remember { mutableStateOf(prefs.getBoolean("blank", false)) }
-    var perFile by remember { mutableStateOf(prefs.getInt("per_file", 0)) }
+    var perFile by remember { mutableStateOf(0) }      // red team P4: per scan
     var title by remember { mutableStateOf("") }
     var author by remember { mutableStateOf(prefs.getString("author", "") ?: "") }
     var portfolio by remember { mutableStateOf(false) }
@@ -144,7 +150,7 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
     var presets by remember { mutableStateOf(ScanPreset.decodeAll(prefs.getString("presets", "") ?: "")) }
     var presetName by remember { mutableStateOf("") }
     // old plan K3: scans kept for later editing
-    var keepProject by remember { mutableStateOf(prefs.getBoolean("keep_project", true)) }
+    var keepProject by remember { mutableStateOf(prefs.getBoolean("keep_project", false)) }
     var projects by remember { mutableStateOf(emptyList<ScanProjects.Project>()) }
     LaunchedEffect(Unit) { projects = withContext(Dispatchers.IO) { runCatching { ScanProjects.list(ctx) }.getOrDefault(emptyList()) } }
     fun savePresets(list: List<ScanPreset>) { presets = list; prefs.edit().putString("presets", ScanPreset.encodeAll(list)).apply() }
@@ -152,8 +158,8 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
     var contact by remember { mutableStateOf<Contact?>(null) }
     var receipt by remember { mutableStateOf<Pair<Receipt, File>?>(null) }
     val job = rememberT5Job()
-    fun savePrefs() = prefs.edit().putString("kind", kind.name).putBoolean("ocr", autoOcr).putString("langs", langs).putBoolean("smart", smartName).putBoolean("rtl_book", rightFirst)
-        .putBoolean("blank", removeBlank).putInt("per_file", perFile).putString("author", author).apply()
+    fun savePrefs() = prefs.edit().putBoolean("ocr", autoOcr).putString("langs", langs).putBoolean("smart", smartName).putBoolean("rtl_book", rightFirst)
+        .putBoolean("blank", removeBlank).putString("author", author).apply()
 
     /** A new kind; pages still on the old kind's defaults follow it (deep audit E8). */
     fun changeKind(nk: ScanKind) {
@@ -259,37 +265,58 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
     val savingImagesMsg = stringResource(R.string.sc_saving_images)
     val savingWordMsg = stringResource(R.string.sc_saving_word)
     val prefixes = mapOf(ScanKind.RECEIPT to stringResource(R.string.t5_prefix_receipt), ScanKind.BUSINESS_CARD to stringResource(R.string.t5_prefix_card), ScanKind.ID_CARD to stringResource(R.string.t5_prefix_id), ScanKind.WHITEBOARD to stringResource(R.string.t5_prefix_board), ScanKind.FORM to stringResource(R.string.t5_prefix_form))
-    fun save() {
+    var askDownload by remember { mutableStateOf(false) }
+    var downloadMb by remember { mutableIntStateOf(0) }
+    val wordNeedsModelsMsg = stringResource(R.string.sc_word_needs_models)
+    val textSkippedMsg = stringResource(R.string.sc_text_skipped)
+    val downloadingFmt = stringResource(R.string.ocr_downloading)
+    /**
+     * [noText]: save without reading the text (the user declined the model download). Red team P1: the first PDF save
+     * fetched tens of MB of language models with no word — now it asks once, with the size.
+     */
+    fun save(noText: Boolean = false, force: Boolean = false) {
         // audit B5: an undo offered before the save would bring back pages whose pictures the save removes
         snackbar.currentSnackbarData?.dismiss()
         orientGen++
         val all = groups.filter { it.isNotEmpty() }
         if (all.isEmpty()) return
         savePrefs()
+        val fmt0 = ScanSavePlan.format(asImages, asWord, kind)
+        // hostile review H5: Word is built from the recognised text — without the models there is no Word file
+        if (noText && fmt0 == ScanSavePlan.Format.WORD) { scope.launch { snackbar.showSnackbar(wordNeedsModelsMsg) }; return }
+        if (!noText && !force && ScanSavePlan.needsText(fmt0, autoOcr, kind)) {
+            // hostile review H2: the real size of what will be fetched, asked every time something is missing
+            val eng = OcrEngine(ctx.applicationContext)
+            val bytes = try { eng.downloadBytes(if (langs == "auto") "ara+eng" else langs) } finally { eng.close() }
+            if (bytes > 0) { downloadMb = ((bytes + 524_288) / 1_048_576).toInt().coerceAtLeast(1); askDownload = true; return }
+        }
         // FINAL_CHECK_2 #16: a form needs its text for field recognition. Smart naming no longer forces OCR (switching OCR off
         // did not make saving faster, scanner audit U14): without text it names by kind and date. Pictures need no text.
-        val word = asWord && !kindNeedsPdf(kind)
-        val imgs = asImages && !word && !kindNeedsPdf(kind)
+        // the save decisions live in ScanSavePlan (tested)
+        val fmt = ScanSavePlan.format(asImages, asWord, kind)
+        val word = fmt == ScanSavePlan.Format.WORD
+        val imgs = fmt == ScanSavePlan.Format.JPG
         // Word needs the text of every page
-        val needText = !imgs && (word || autoOcr || kind == ScanKind.BUSINESS_CARD || kind == ScanKind.RECEIPT || kind == ScanKind.FORM)
+        val needText = !noText && ScanSavePlan.needsText(fmt, autoOcr, kind)
         val fingers = removeFingers
         val target = appendTo.takeIf { !imgs && !word }; val targetName = appendName
         val k = kind; val rf = rightFirst; val typed = name.trim()
         // deep audit E17: the ID card page is an A4 sheet at real card size — another paper shrank or mis-scaled it
         val p = if (k == ScanKind.ID_CARD) ScanPaper.A4 else paper
         val lvl = sizeLevel; val reopened = openedProject
-        val rb = removeBlank; val tt = title; val au = author; val pf = portfolio; val kp = keepProject; val pa = pdfa
+        val rb = removeBlank; val tt = title; val au = author; val pf = portfolio && !imgs; val kp = keepProject; val pa = pdfa
         prefs.edit().putBoolean("keep_project", kp).putBoolean("pdfa", pa).apply()
         val keep = all.map { g -> g.map { it.file to it.edit } }
         // "save multiple files": every group is cut into files of N pages
         // deep audit E16: "pages per file" counts output pages — an ID card is two photos, a book photo two pages
         // audit A3: adding to an existing PDF makes one document, whatever "pages per file" says
-        val chunk = when { perFile <= 0 || target != null -> 0; k == ScanKind.ID_CARD -> perFile * 2; k == ScanKind.BOOK -> maxOf(1, perFile / 2); else -> perFile }
+        val chunk = ScanSavePlan.chunk(perFile, k, target != null, all.size)
         val docs = all.flatMap { ScanExtras.chunks(it, chunk) }
         job.launch(when { imgs -> savingImagesMsg; word -> savingWordMsg; else -> savingMsg }) {
             val engine = if (needText) OcrEngine(ctx.applicationContext) else null
             try {
                 val made = ArrayList<File>(); var lastText = ""; var fieldsMade = 0
+                val downloadFailedMsg = ctx.getString(R.string.pg_ocr_download_failed)
                 val failed = ArrayList<List<ScanPage>>(); val texts = StringBuilder(); val done = ArrayList<List<ScanPage>>(); var firstError: String? = null
                 docs.forEachIndexed { gi, g ->
                   // a failing document no longer stops the others; it stays on screen for another try (audit U30)
@@ -302,7 +329,8 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                             ScanBuilder.pagePictures(g.map { it.file to it.edit }, k, rf, maxDim = sizeDim(lvl), removeFingers = fingers).forEach { o ->
                                 n++
                                 // audit A6: written aside first, so a killed app never leaves half a picture in Scans
-                                val tmp = app.documents.newTemp("t5scan_jpg", "jpg")
+                                // phase 5 R3: next to the result (the temp folder is on another storage, where a rename fails)
+                                val tmp = File(app.documents.scansDir, ".part_${System.nanoTime()}.jpg")
                                 try { tmp.outputStream().use { o.bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, sizeQuality(lvl), it) } } finally { o.bitmap.recycle() }
                                 val f = app.documents.uniqueFile(app.documents.scansDir, "${stamp}_$n", "jpg")
                                 if (!tmp.renameTo(f)) { tmp.copyTo(f, true); tmp.delete() }
@@ -310,6 +338,7 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                             }
                         }
                         step((gi + 1) * 100, docs.size * 100)
+                        done += g      // phase 5 R1: JPG and Word documents count as saved for a cancel too
                         return@forEachIndexed
                     }
                     val today = t5Today()
@@ -335,7 +364,7 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                         val outDocx = app.documents.uniqueFile(app.documents.scansDir, wbase, "docx")
                         val pics = ScanBuilder.pagePictures(g.map { it.file to it.edit }, k, rf, maxDim = maxOf(sizeDim(lvl), 2400), removeFingers = fingers)
                         // audit A6: the document is written aside and moved into Scans only when complete
-                        val tmpDocx = app.documents.newTemp("t5scan_word", "docx")
+                        val tmpDocx = File(app.documents.scansDir, ".part_${System.nanoTime()}.docx")
                         // audit B10: a book photo gives two pages
                         val wordPages = (if (k == ScanKind.BOOK) g.size * 2 else g.size).coerceAtLeast(1)
                         val wr = try {
@@ -345,10 +374,16 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                         runCatching { app.documents.touchRecent(outDocx, wr.pages) }
                         made += outDocx; lastText = wr.text
                         if (wr.text.isNotBlank()) { if (texts.isNotEmpty()) texts.append("\n\n"); texts.append(wr.text) }
+                        done += g
                         return@forEachIndexed
                     }
                     val pictures = ScanBuilder.pagePictures(g.map { it.file to it.edit }, k, rf, maxDim = sizeDim(lvl), removeFingers = fingers)
-                    val r = ScanBuilder.build(ctx, pictures, tmpOut, ScanBuildOptions(paper = p, quality = sizeQuality(lvl), ocrLangs = ocrLangs), engine) { n -> step(gi * 100 + n, docs.size * 100) }
+                    val r = ScanBuilder.build(ctx, pictures, tmpOut, ScanBuildOptions(paper = p, quality = sizeQuality(lvl), ocrLangs = ocrLangs), engine,
+                        onPage = { n -> message = savingMsg; step(gi * 100 + n, docs.size * 100) },
+                        onDownload = { lang, f -> message = String.format(downloadingFmt, OcrEngine.label(lang)); progress = f })
+                    // red team P2: text wanted but the recogniser could not be readied (offline) — say so, instead of a
+                    // silent PDF without text
+                    if (r.textSkipped && info == null) info = textSkippedMsg
                     val base = when {
                         typed.isNotEmpty() -> if (docs.size > 1) "${typed}_${gi + 1}" else typed
                         smartName && r.text.isNotBlank() -> SmartNaming.suggest(r.text, k, today, prefixes)
@@ -394,6 +429,7 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                         runCatching { app.documents.touchRecent(out) }
                         made += out; lastText = r.text
                         if (r.text.isNotBlank()) { if (texts.isNotEmpty()) texts.append("\n\n"); texts.append(r.text) }
+                        done += g
                         return@forEachIndexed
                     }
                     val out = app.documents.uniqueFile(app.documents.scansDir, base)
@@ -404,10 +440,13 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                     done += g
                   } catch (e: kotlinx.coroutines.CancellationException) {
                     // audit B15: documents saved before the cancel leave the screen, so trying again does not save them twice
-                    val doneSet = done.flatten().toSet()
-                    if (doneSet.isNotEmpty()) groups = groups.map { gr -> gr.filter { it !in doneSet } }.filter { it.isNotEmpty() }
+                    if (done.isNotEmpty()) {
+                        groups = ScanSavePlan.remainingAfterCancel(groups, done)
+                        // phase 5 R1: the rest is no longer the reopened project — saving it must not replace (delete) it
+                        openedProject = null
+                    }
                     throw e
-                  } catch (e: Throwable) { failed += g; if (firstError == null) firstError = (e as? IllegalStateException)?.message?.takeIf { m -> m.any { it in '\u0600'..'\u06FF' } } }
+                  } catch (e: Throwable) { failed += g; if (firstError == null) firstError = (e as? IllegalStateException)?.message?.takeIf { m -> m == downloadFailedMsg || m.any { it in '\u0600'..'\u06FF' } } }
                 }
                 recognised = texts.toString()
                 resultMime = when { imgs -> "image/jpeg"; word -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document"; else -> "application/pdf" }
@@ -416,6 +455,7 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                 if (made.isEmpty()) throw IllegalStateException(firstError ?: ctx.getString(R.string.sc_save_failed))
                 // when OCR was only needed for naming / parsing, the text layer stays: it makes the scan searchable
                 when {
+                    (imgs || word) && made.size == 1 -> result = made.first()      // red team P14: one file → the result sheet
                     imgs || word -> results = made
                     k == ScanKind.BUSINESS_CARD -> contact = BusinessCardParser.parse(lastText)
                     k == ScanKind.RECEIPT -> receipt = ReceiptParser.parse(lastText) to made.last()
@@ -452,7 +492,14 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
 
     ToolScaffold(stringResource(R.string.t5_scan_title), nav, snackbar = snackbar, actions = {
         if (groups.isNotEmpty()) IconButton(onClick = { askClear = true }, enabled = !job.running) { Icon(Icons.Default.DeleteSweep, stringResource(R.string.sc_delete_all_pages)) }
-    }, onBack = { if (job.running) Unit else if (groups.isNotEmpty()) askDiscard = true else nav.popBackStack() }) {
+    }, onBack = { if (job.running) Unit else if (groups.isNotEmpty()) askDiscard = true else nav.popBackStack() },
+    // red team P5: Save was two screens below the pages — it stays at the bottom now
+    bottomBar = if (groups.isEmpty()) null else ({
+        val fmtWord = asWord && !kindNeedsPdf(kind); val fmtJpg = asImages && !fmtWord && !kindNeedsPdf(kind)
+        PrimaryButton(stringResource(when { fmtJpg -> R.string.sc_save_images; fmtWord -> R.string.sc_save_word; appendTo != null && groups.size == 1 -> R.string.sc_save_append; else -> R.string.t5_scan_save }),
+            enabled = !job.running,
+            icon = when { fmtJpg -> Icons.Default.Image; fmtWord -> Icons.Default.Description; else -> Icons.Default.PictureAsPdf }) { save() }
+    })) {
         FieldLabel(stringResource(R.string.t5_scan_kind))
         ChoiceChips(ScanKind.entries, kind, { it.label() }) { nk -> changeKind(nk) }
         Text(stringResource(kindHint(kind)), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -472,11 +519,6 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                 ownCamera = it; ctx.getSharedPreferences("scan_studio", 0).edit().putBoolean("own_camera", it).apply()
             }
             SwitchRow(stringResource(R.string.sc_auto_rotate), autoRotate, stringResource(R.string.sc_auto_rotate_sub)) { autoRotate = it; prefs.edit().putBoolean("auto_rotate", it).apply() }
-            // file size: small for sharing (WhatsApp, slow data) / medium / best quality (A4 at 300 dpi)
-            FieldLabel(stringResource(R.string.sc_size))
-            ChoiceChips(listOf(0, 1, 2), sizeLevel, { stringResource(when (it) { 0 -> R.string.sc_size_small; 1 -> R.string.sc_size_medium; else -> R.string.sc_size_best }) }) {
-                sizeLevel = it; ctx.getSharedPreferences("scan_studio", 0).edit().putInt("size", it).apply()
-            }
         }
         if (groups.isNotEmpty()) Text(stringResource(R.string.sc_tap_to_edit), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         groups.forEachIndexed { gi, g ->
@@ -514,8 +556,9 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
             }
             if (projects.size > 6) TextButton(onClick = { allProjects = !allProjects }) { Text(if (allProjects) stringResource(R.string.t5_paper_less) else stringResource(R.string.sc_show_all, projects.size)) }
         }
-        T5Card(stringResource(R.string.pc_presets), Icons.Default.Bookmarks) {
-            if (presets.isNotEmpty()) Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        // red team: the presets card shows only when a preset exists; saving one is under "advanced"
+        if (presets.isNotEmpty()) T5Card(stringResource(R.string.pc_presets), Icons.Default.Bookmarks) {
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 presets.forEach { ps ->
                     val curFormat = if (asWord) 2 else if (asImages) 1 else 0
                     val active = kind == ps.kind && paper == ps.paper && autoOcr == ps.ocr && langs == ps.langs && removeBlank == ps.removeBlank && perFile == ps.perFile && author == ps.author &&
@@ -525,20 +568,13 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                         changeKind(ps.kind); paper = ps.paper; autoOcr = ps.ocr; langs = ps.langs; removeBlank = ps.removeBlank; perFile = ps.perFile; author = ps.author; savePrefs()
                         ps.format?.let { f -> asImages = f == 1; asWord = f == 2 }
                         ps.wordFont?.let { wordFont = it }; ps.size?.let { sizeLevel = it }; ps.fingers?.let { removeFingers = it }
-                        prefs.edit().putBoolean("as_images", asImages).putBoolean("as_word", asWord).putString("word_font", wordFont).putBoolean("fingers", removeFingers).apply()
+                        prefs.edit().putString("word_font", wordFont).putBoolean("fingers", removeFingers).apply()
                         ctx.getSharedPreferences("scan_studio", 0).edit().putInt("size", sizeLevel).apply()
                         scope.launch { snackbar.showSnackbar(appliedMsg) }
                     }, label = { Text(ps.name) }, trailingIcon = {
                         IconButton(onClick = { savePresets(presets - ps) }, Modifier.size(32.dp)) { Icon(Icons.Default.Close, stringResource(R.string.pc_preset_delete, ps.name), Modifier.size(18.dp)) }
                     })
                 }
-            }
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(presetName, { presetName = it }, Modifier.weight(1f), singleLine = true, label = { Text(stringResource(R.string.pc_preset_name)) })
-                TextButton(enabled = presetName.isNotBlank(), onClick = {
-                    val ps = ScanPreset(presetName.trim(), kind, paper, autoOcr, langs, removeBlank, perFile, author, if (asWord) 2 else if (asImages) 1 else 0, wordFont, sizeLevel, removeFingers)
-                    savePresets(presets.filter { it.name != ps.name } + ps); presetName = ""
-                }) { Text(stringResource(R.string.pc_preset_save)) }
             }
         }
         if (groups.isNotEmpty()) {
@@ -551,11 +587,18 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                     else -> it.name.replace("JIS_", "JIS ")
                 } }) { paper = it; prefs.edit().putString("paper", it.name).apply() }
                 TextButton(onClick = { morePaper = !morePaper }) { Text(stringResource(if (morePaper) R.string.t5_paper_less else R.string.t5_paper_more)) }
+                // file size: small for sharing (WhatsApp, slow data) / medium / best quality (A4 at 300 dpi) — red team P6:
+                // a save decision, so it sits here (it was under the capture settings), with a rough size
+                FieldLabel(stringResource(R.string.sc_size))
+                val pagesN = groups.sumOf { it.size } * (if (kind == ScanKind.BOOK) 2 else 1)
+                ChoiceChips(listOf(0, 1, 2), sizeLevel, { stringResource(when (it) { 0 -> R.string.sc_size_small; 1 -> R.string.sc_size_medium; else -> R.string.sc_size_best }) + " · " + sizeEstimate(it, pagesN) }) {
+                    sizeLevel = it; ctx.getSharedPreferences("scan_studio", 0).edit().putInt("size", it).apply()
+                }
                 // scanner audit U23: PDF or pictures
                 FieldLabel(stringResource(R.string.sc_format))
                 if (kindNeedsPdf(kind)) Text(stringResource(R.string.sc_format_pdf_needed), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 else ChoiceChips(listOf(0, 1, 2), if (asWord) 2 else if (asImages) 1 else 0, { stringResource(when (it) { 1 -> R.string.sc_format_jpg; 2 -> R.string.sc_format_word; else -> R.string.sc_format_pdf }) }) {
-                    asImages = it == 1; asWord = it == 2; prefs.edit().putBoolean("as_images", asImages).putBoolean("as_word", asWord).apply()
+                    asImages = it == 1; asWord = it == 2
                 }
                 // audit B8 / B9: options follow the format really saved (card / receipt / form are always PDF)
                 val outWord = asWord && !kindNeedsPdf(kind); val outJpg = asImages && !outWord && !kindNeedsPdf(kind); val outPdf = !outWord && !outJpg
@@ -597,23 +640,27 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                         OutlinedTextField(title, { title = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.pc_doc_title)) })
                         OutlinedTextField(author, { author = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.pc_doc_author)) })
                         SwitchRow(stringResource(R.string.pc_save_pdfa), pdfa, stringResource(R.string.pc_save_pdfa_sub)) { pdfa = it; prefs.edit().putBoolean("pdfa", it).apply() }
-                        if (groups.size > 1 || perFile > 0 || kind == ScanKind.BATCH) SwitchRow(stringResource(R.string.pc_scan_portfolio), portfolio) { portfolio = it }
                     }
+                    // phase 5 R5: Word documents can be bundled too (the switch was hidden for Word but still applied)
+                    if (!outJpg && (groups.size > 1 || perFile > 0 || kind == ScanKind.BATCH)) SwitchRow(stringResource(R.string.pc_scan_portfolio), portfolio) { portfolio = it }
                     SwitchRow(stringResource(R.string.pc_keep_project), keepProject, stringResource(R.string.pc_keep_project_sub)) { keepProject = it; prefs.edit().putBoolean("keep_project", it).apply() }
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(presetName, { presetName = it }, Modifier.weight(1f), singleLine = true, label = { Text(stringResource(R.string.pc_preset_name)) })
+                        TextButton(enabled = presetName.isNotBlank(), onClick = {
+                            val ps = ScanPreset(presetName.trim(), kind, paper, autoOcr, langs, removeBlank, perFile, author, if (asWord) 2 else if (asImages) 1 else 0, wordFont, sizeLevel, removeFingers)
+                            savePresets(presets.filter { it.name != ps.name } + ps); presetName = ""
+                        }) { Text(stringResource(R.string.pc_preset_save)) }
+                    }
                 }
             }
             if (orienting > 0) Row(verticalAlignment = Alignment.CenterVertically) {
                 CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp); Spacer(Modifier.width(8.dp))
                 Text(stringResource(R.string.sc_orienting), style = MaterialTheme.typography.bodySmall)
             }
-            val fmtWord = asWord && !kindNeedsPdf(kind); val fmtJpg = asImages && !fmtWord && !kindNeedsPdf(kind)
-            PrimaryButton(stringResource(when { fmtJpg -> R.string.sc_save_images; fmtWord -> R.string.sc_save_word; appendTo != null && groups.size == 1 -> R.string.sc_save_append; else -> R.string.t5_scan_save }),
-                enabled = !job.running,
-                icon = when { fmtJpg -> Icons.Default.Image; fmtWord -> Icons.Default.Description; else -> Icons.Default.PictureAsPdf }) { save() }
-            // FINAL_CHECK_2 Low (K11): QR / barcodes on the scanned pages
+            // FINAL_CHECK_2 Low (K11): QR / barcodes on the scanned pages (red team P13: under "advanced", not beside Save)
             var codes by remember { mutableStateOf<List<Pair<Int, com.smartdocs.editor.core.tools5.BarcodeScan.Code>>?>(null) }
             var reading by remember { mutableStateOf(false) }
-            OutlinedButton(enabled = !reading, onClick = {
+            if (advanced) OutlinedButton(enabled = !reading, onClick = {
                 reading = true
                 val files = groups.flatten().map { it.file }
                 scope.launch {
@@ -668,6 +715,10 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
             }) { Text(stringResource(if (askDiscard) R.string.sc_discard else R.string.delete), color = MaterialTheme.colorScheme.error) } },
             dismissButton = { TextButton(onClick = { askDiscard = false; askClear = false }) { Text(stringResource(R.string.cancel)) } })
     }
+    if (askDownload) AlertDialog(onDismissRequest = { askDownload = false },
+        title = { Text(stringResource(R.string.sc_ocr_download_title)) }, text = { Text(stringResource(R.string.sc_ocr_download_text, downloadMb)) },
+        confirmButton = { TextButton(onClick = { askDownload = false; save(force = true) }) { Text(stringResource(R.string.sc_ocr_download_go)) } },
+        dismissButton = { TextButton(onClick = { askDownload = false; save(noText = true) }) { Text(stringResource(R.string.sc_ocr_download_skip)) } })
     var askDeleteProject by remember { mutableStateOf<ScanProjects.Project?>(null) }
     askDeleteProject?.let { pr ->
         AlertDialog(onDismissRequest = { askDeleteProject = null }, title = { Text(stringResource(R.string.delete)) }, text = { Text(pr.name) },
@@ -769,9 +820,14 @@ internal val ScanGroupsSaver: androidx.compose.runtime.saveable.Saver<List<List<
 /** Picture side for the size choice: small (sharing), medium, best (A4 at 300 dpi). */
 internal fun sizeDim(level: Int) = when (level) { 0 -> 1600; 1 -> 2400; else -> 3508 }
 internal fun sizeQuality(level: Int) = when (level) { 0 -> 72; 1 -> 82; else -> 92 }
+/** A rough file size for [pages] pages at a size level (measured on text pages: ~0.25 / 0.6 / 1.6 MB a page). */
+internal fun sizeEstimate(level: Int, pages: Int): String {
+    val mb = pages.coerceAtLeast(1) * when (level) { 0 -> 0.25f; 1 -> 0.6f; else -> 1.6f }
+    return if (mb < 1f) "${(mb * 1000).toInt()} KB" else "%.1f MB".format(java.util.Locale.US, mb)
+}
 
 /** Kinds whose result is read from the text (contact, receipt CSV, fillable fields) need a PDF. */
-internal fun kindNeedsPdf(k: ScanKind) = k == ScanKind.BUSINESS_CARD || k == ScanKind.RECEIPT || k == ScanKind.FORM
+internal fun kindNeedsPdf(k: ScanKind) = ScanSavePlan.needsPdf(k)
 
 /** The pages of one document in a row: tap = edit, long-press and drag = move (right-to-left aware). */
 @Composable
