@@ -313,8 +313,10 @@ class PptDoc private constructor(val pkg: OPackage) {
         // the edited range must lie inside runs only
         if (pieces.any { !it.run && overlaps(it.start, it.len, a, delEnd) }) return false
         // the run that receives the inserted text: the one holding position a (or the one ending there)
+        // (phase 7: no run there — e.g. typing after a trailing field or line break — falls back to rebuilding; putting the
+        // text into the first run moved it before the field)
         val host = pieces.firstOrNull { it.run && a >= it.start && a < it.start + it.len }
-            ?: pieces.lastOrNull { it.run && it.start + it.len == a } ?: pieces.firstOrNull { it.run } ?: return false
+            ?: pieces.lastOrNull { it.run && it.start + it.len == a } ?: return false
         for (pc in pieces) {
             if (!pc.run) continue
             val t = pc.e.child("t") ?: continue

@@ -24,13 +24,15 @@ class Trash(val dir: File, private val days: Int = DAYS) {
         val target = File(dir, id)
         val size = if (f.isDirectory) f.walkTopDown().filter { it.isFile }.sumOf { it.length() } else f.length()
         val isDir = f.isDirectory
-        val moved = f.renameTo(target) || runCatching { f.copyRecursively(target, overwrite = true) && f.deleteRecursively() }.getOrDefault(false)
-        if (!moved) { target.deleteRecursively(); return null }
+        // hostile review C12: the record is written first — a file moved in without it was invisible in the trash for
+        // good (storage full); no record, no move
         val p = Properties().apply {
             setProperty("path", f.absolutePath); setProperty("name", f.name); setProperty("deleted", now.toString())
             setProperty("size", size.toString()); setProperty("dir", isDir.toString())
         }
-        metaOf(id).outputStream().use { p.store(it, null) }
+        if (runCatching { metaOf(id).outputStream().use { p.store(it, null) } }.isFailure) { metaOf(id).delete(); return null }
+        val moved = f.renameTo(target) || runCatching { f.copyRecursively(target, overwrite = true) && f.deleteRecursively() }.getOrDefault(false)
+        if (!moved) { target.deleteRecursively(); metaOf(id).delete(); return null }
         return Entry(id, target, f.absolutePath, f.name, now, size, isDir)
     }
 

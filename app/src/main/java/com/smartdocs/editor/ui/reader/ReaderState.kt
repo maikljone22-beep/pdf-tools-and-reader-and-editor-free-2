@@ -824,16 +824,21 @@ class ReaderState(
                 try {
                     withContext(NonCancellable) {
                         // red team R3: candidates from the file as it is now (the shown listing may be a rewrite behind)
-                        val hit = withContext(Dispatchers.IO) {
+                        val hitE = withContext(Dispatchers.IO) {
                             AnnotationWriter.list(f, password).filter { it.page == page && it.subtype == "Ink" && !it.locked && EraseLogic.nearRect(it.rect.left, it.rect.bottom, it.rect.right, it.rect.top, pts, radius + 4f) }
-                                .filter { e -> AnnotationWriter.extract(f, e.page, e.index, password)?.let { a -> EraseLogic.touches(a.paths, a.strokeWidth, pts, radius) } == true }.map { it.index }
+                                .filter { e -> AnnotationWriter.extract(f, e.page, e.index, password)?.let { a -> EraseLogic.touches(a.paths, a.strokeWidth, pts, radius) } == true }
                         }
+                        val hit = hitE.map { it.index }
                         if (hit.isEmpty()) return@withContext
                         val tmp = File(f.parentFile, ".${f.nameWithoutExtension}.saving.pdf")
                         com.smartdocs.editor.core.annot.StoredOps.removeOnly(f, tmp, password, page, hit)
                         swapFile(tmp, str(R.string.fx_erase_stored))
                         writeBackResult = runCatching { app.documents.writeBack(f) }.getOrNull().also { com.smartdocs.editor.core.cloud.SaveHooks.onSaved(app, f) }
-                        if (edit.hasBackup) wroteBackDuringEdit = true
+                        if (edit.hasBackup) {
+                            wroteBackDuringEdit = true
+                            // phase 7: erased from the backup too (highest index first, so the others keep their index)
+                            withContext(Dispatchers.IO) { hitE.sortedByDescending { it.index }.forEach { e -> runCatching { edit.dropFromBackup(e) } } }
+                        }
                     }
                 } catch (ex: Exception) { error = ex.message ?: ex.toString() } finally { saving = false }
             }
@@ -853,7 +858,7 @@ class ReaderState(
                     AnnotationWriter.delete(f, m.page, m.index, tmp, password)
                     swapFile(tmp, str(R.string.hi_del_stored))
                     writeBackResult = runCatching { app.documents.writeBack(f) }.getOrNull().also { com.smartdocs.editor.core.cloud.SaveHooks.onSaved(app, f) }
-                    if (edit.hasBackup) wroteBackDuringEdit = true
+                    if (edit.hasBackup) { wroteBackDuringEdit = true; runCatching { withContext(Dispatchers.IO) { edit.dropFromBackup(m) } } }
                 }
                 if ((edit.target as? AnnotTarget.Stored)?.e == e) edit.clear()
             } catch (ex: Exception) { error = ex.message ?: ex.toString() } finally { saving = false }

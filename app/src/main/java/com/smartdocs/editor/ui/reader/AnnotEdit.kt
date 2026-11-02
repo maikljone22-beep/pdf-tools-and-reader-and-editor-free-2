@@ -173,6 +173,18 @@ class AnnotEditor(private val s: ReaderState) {
             ?: now.singleOrNull { it.page == e.page && it.subtype == e.subtype && close(it.rect, e.rect) }
     }
 
+    /**
+     * Phase 7: a stored annotation the user deleted (or erased) while others were out for editing is deleted from the
+     * backup too, so Discard / Revert put back the edited ones but not the deleted one.
+     */
+    internal suspend fun dropFromBackup(e: AnnotationWriter.Existing) {
+        val b = backup?.takeIf { it.exists() } ?: return
+        val m = locate(b, e) ?: return
+        val tmp = File(b.parentFile, b.name + ".tmp")
+        AnnotationWriter.delete(b, m.page, m.index, tmp, s.password)
+        if (!tmp.renameTo(b)) { tmp.copyTo(b, overwrite = true); tmp.delete() }
+    }
+
     private fun close(a: RectF, b: RectF) = abs(a.left - b.left) < 0.5f && abs(a.right - b.right) < 0.5f && abs(a.top - b.top) < 0.5f && abs(a.bottom - b.bottom) < 0.5f
 
     fun transform(from: RectF, to: RectF) = edit { mapAnnot(it, from, to) }

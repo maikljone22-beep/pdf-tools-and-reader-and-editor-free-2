@@ -19,9 +19,10 @@ object ConvertEngine {
 
     class PasswordNeeded : Exception("password")
 
+    // hostile review C5: at most 32 MB of the document in memory, the rest in a temp file (a 300-page PDF was held whole)
     suspend fun pageCount(src: File, password: String?): Int = withContext(Dispatchers.IO) {
         try {
-            PDDocument.load(src, password.orEmpty()).use { it.numberOfPages }
+            PDDocument.load(src, password.orEmpty(), com.tom_roush.pdfbox.io.MemoryUsageSetting.setupMixed(32L shl 20)).use { it.numberOfPages }
         } catch (e: com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException) { throw PasswordNeeded() }
     }
 
@@ -34,7 +35,7 @@ object ConvertEngine {
         onProgress: (done: Int, total: Int) -> Unit,
         isCancelled: () -> Boolean,
     ): ConvertStats = withContext(Dispatchers.IO) {
-        val doc = try { PDDocument.load(src, password.orEmpty()) } catch (e: com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException) { throw PasswordNeeded() }
+        val doc = try { PDDocument.load(src, password.orEmpty(), com.tom_roush.pdfbox.io.MemoryUsageSetting.setupMixed(32L shl 20)) } catch (e: com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException) { throw PasswordNeeded() }
         val needPictures = opts.format == TargetFormat.PPTX && !opts.pptxEditable
         val session = if (needPictures) {
             try { PdfSession.open(context, src, password) } catch (e: Exception) { runCatching { doc.close() }; throw e }

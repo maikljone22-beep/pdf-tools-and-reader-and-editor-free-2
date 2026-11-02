@@ -125,8 +125,10 @@ object XlsxIO5 {
             else -> v?.trim()?.toDoubleOrNull()?.let { FV.Num(it) } ?: FV.Blank
         }
         // hostile review O3 / O5: kept as written when the app cannot re-create the formula faithfully
+        // (phase 7: the master of a shared group the app cannot parse is kept too — its children point at it)
         val special = fe != null && (fe.attr("t") == "array" || fe.attr("t") == "dataTable" || c.attr("cm") != null || c.attr("vm") != null ||
-            (fe.attr("t") == "shared" && formula == null))
+            (fe.attr("t") == "shared" && formula == null) ||
+            (fe.attr("t") == "shared" && fe.attr("ref") != null && formula != null && FxParser.tryParse(formula) == null))
         val keep = if (special) c.copy() else null
         return if (formula != null) Cell5(formula, FV.Blank, style, -1, value, keep)
             else if (keep != null) Cell5(null, value, style, -1, value, keep)
@@ -250,11 +252,14 @@ object XlsxIO5 {
         for ((k, c) in s.cells) rows.getOrPut(Sheet5.row(k)) { ArrayList() }.add(Sheet5.col(k) to c)
         (s.rowHeights.keys + s.rowAttrs.keys).forEach { rows.getOrPut(it) { ArrayList() } }
         val sd = XElem(p + "sheetData")
+        // phase 7: a kept shared-formula child is written as it was only while its group's master is kept too (an edited
+        // master is written as a plain formula, and a child pointing at a missing group made Excel repair the file)
+        val keptSi = s.cells.values.mapNotNull { it.keep?.child("f")?.takeIf { f -> f.attr("t") == "shared" && f.attr("ref") != null }?.attr("si") }.toSet()
         for ((r, cells) in rows) {
             val re = XElem(p + "row").set("r", (r + 1).toString())
             s.rowAttrs[r]?.forEach { re.attrs.add(XAttr(it.name, it.raw, it.quote)) }
             s.rowHeights[r]?.let { re.set("ht", NumFmt5.general(it.toDouble())); re.set("customHeight", "1") }
-            for ((c, cell) in cells.sortedBy { it.first }) re.add(cellXml(w, s, r, c, cell, p, sst))
+            for ((c, cell) in cells.sortedBy { it.first }) re.add(cellXml(w, s, r, c, orphanFree(cell, keptSi), p, sst))
             sd.add(re)
         }
         root.setOrdered(sd, ORDER)
@@ -303,6 +308,13 @@ object XlsxIO5 {
             view.add(0, pane)
             view.add(1, XElem(p + "selection").set("pane", ap))
         } else if (hadFrozen) { view.removeChildren("pane"); view.removeChildren("selection") }
+    }
+
+    /** A kept shared child whose master is no longer kept: its value only (as before the keep, never a broken group). */
+    private fun orphanFree(cell: Cell5, keptSi: Set<String>): Cell5 {
+        val f = cell.keep?.child("f") ?: return cell
+        if (f.attr("t") != "shared" || f.attr("ref") != null || f.attr("si") in keptSi) return cell
+        return if (cell.formula != null) Cell5(cell.formula, cell.literal, cell.style, cell.sst, cell.cached) else Cell5(null, cell.cached ?: cell.literal, cell.style)
     }
 
     private fun cellXml(w: Workbook5, s: Sheet5, r: Int, c: Int, cell: Cell5, p: String, sst: SstWriter): XElem {

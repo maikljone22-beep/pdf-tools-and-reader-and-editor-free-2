@@ -97,7 +97,8 @@ object ScanBuilder {
             return@sequence
         }
         images.forEach { (f, e) ->
-            val target = if (kind == ScanKind.BOOK) minOf(maxDim * 3 / 2, 4200) else maxDim
+            // a book photo holds two pages, so it is decoded larger — but never past the caller's memory cap on small phones
+            val target = if (kind == ScanKind.BOOK) (if (maxDim <= 2400) maxDim * 5 / 4 else minOf(maxDim * 3 / 2, 4200)) else maxDim
             val b = ScanImage.load(f, minOf(ScanImage.loadDim(target, e.crop), if (kind == ScanKind.BOOK) 4600 else 5300)) ?: return@forEach
             val done = ScanImage.apply(b, e, dewarp = e.flatten && kind != ScanKind.BOOK, maxOut = target)
             // scanner essentials: fingers holding a book open are painted over with the paper

@@ -115,7 +115,7 @@ class AiClient(private val endpoint: String, private val model: String, private 
         val b = Request.Builder().url(url())
             .post(body(messages, stream).toRequestBody("application/json".toMediaType()))
             .header("Content-Type", "application/json")
-        if (apiKey.isNotBlank()) b.header("Authorization", "Bearer $apiKey")
+        if (apiKey.isNotBlank()) { requireHttps(); b.header("Authorization", "Bearer $apiKey") }
         if (appToken.isNotBlank()) b.header("X-App-Token", appToken)
         if (stream) b.header("Accept", "text/event-stream")
         return b.build()
@@ -179,8 +179,11 @@ class AiClient(private val endpoint: String, private val model: String, private 
         if (appToken.isNotBlank()) put("X-App-Token", appToken)
     }
 
+    /** Hostile review C9: the key never travels unencrypted (the endpoint is user-editable; plain HTTP is allowed app-wide). */
+    private fun requireHttps() { if (!endpoint.trim().startsWith("https://", ignoreCase = true)) throw java.io.IOException("insecure AI endpoint (http): use https") }
+
     private fun authed(b: Request.Builder): Request.Builder {
-        if (apiKey.isNotBlank()) b.header("Authorization", "Bearer $apiKey")
+        if (apiKey.isNotBlank()) { requireHttps(); b.header("Authorization", "Bearer $apiKey") }
         if (appToken.isNotBlank()) b.header("X-App-Token", appToken)
         return b
     }
