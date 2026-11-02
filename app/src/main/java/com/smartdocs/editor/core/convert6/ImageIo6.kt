@@ -18,7 +18,6 @@ import com.tom_roush.pdfbox.pdmodel.PDPageContentStream
 import com.tom_roush.pdfbox.pdmodel.common.PDRectangle
 import com.tom_roush.pdfbox.pdmodel.graphics.image.CCITTFactory
 import com.tom_roush.pdfbox.pdmodel.graphics.image.JPEGFactory
-import com.tom_roush.pdfbox.pdmodel.graphics.image.LosslessFactory
 import com.tom_roush.pdfbox.pdmodel.graphics.image.PDImageXObject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
@@ -163,6 +162,7 @@ object ImageIo6 {
         if (!b.hasAlpha()) return b
         val out = Bitmap.createBitmap(b.width, b.height, Bitmap.Config.ARGB_8888)
         Canvas(out).apply { drawColor(Color.WHITE); drawBitmap(b, 0f, 0f, null) }
+        out.setHasAlpha(false)   // or JPEGFactory adds a soft mask again
         return out
     }
 
@@ -211,7 +211,7 @@ object ImageIo6 {
                         val img = if (rawJpeg) runCatching { f.inputStream().use { JPEGFactory.createFromStream(doc, it) } }.getOrNull() else null
                         if (img != null) addPage(doc, img, setup, Images6.pageDpi(img.width, img.height, declaredDpi(f)))
                         else {
-                            val b = decode(f, 3000)
+                            val b = decode(f, if (quality >= 90) 3000 else 1800)   // ~155 dpi on A4: sharp text, a fraction of the bytes
                             try { addPage(doc, xobject(doc, b, quality), setup, Images6.pageDpi(b.width, b.height, declaredDpi(f))) } finally { b.recycle() }
                         }
                     }
@@ -249,8 +249,14 @@ object ImageIo6 {
         }
     }
 
-    private fun xobject(doc: PDDocument, b: Bitmap, quality: Int): PDImageXObject =
-        if (b.hasAlpha()) LosslessFactory.createFromImage(doc, b) else JPEGFactory.createFromImage(doc, b, quality.coerceIn(10, 100) / 100f)
+    /**
+     * Pictures with an alpha channel (screenshots, most PNGs) used to go in lossless: several MB a page, so 140 pages
+     * made a 400 MB PDF. The page under them is white anyway, so they are flattened on white and stored as JPEG.
+     */
+    private fun xobject(doc: PDDocument, b: Bitmap, quality: Int): PDImageXObject {
+        val src = if (b.hasAlpha()) onWhite(b) else b
+        try { return JPEGFactory.createFromImage(doc, src, quality.coerceIn(10, 100) / 100f) } finally { if (src !== b) src.recycle() }
+    }
 
     private fun addPage(doc: PDDocument, img: PDImageXObject, setup: PageSetup, dpi: Float) {
         val p = Images6.place(img.width, img.height, setup.size, setup.orient, setup.fit, setup.marginPt, dpi, setup.customW, setup.customH)

@@ -41,7 +41,7 @@ data class Cv6Opts(
     /** null = keep the source format (image converter). */
     val imgFormat: ImgFmt? = ImgFmt.JPG,
     val dpi: Int = 150,
-    val quality: Int = 85,
+    val quality: Int = 75,
     /** Page images: one ZIP (true) or separate files. */
     val zip: Boolean = true,
     val gray: Boolean = false,
