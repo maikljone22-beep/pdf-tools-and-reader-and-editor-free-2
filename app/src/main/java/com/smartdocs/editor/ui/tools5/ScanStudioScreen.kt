@@ -305,7 +305,10 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                         tmpOut.delete()
                         val l = ocrLangs ?: "ara+eng"
                         engine!!.ensureLanguages(l)
-                        if (!engine.init(l)) throw IllegalStateException(ctx.getString(R.string.sc_save_failed))
+                        // Arabic pages: the stock model and the fine-tuned one together (34 % fewer wrong letters on a bold
+                        // school-book page than the fine-tuned one alone, gaps/SCAN2WORD_REVIEW.md)
+                        val wl = if ("ara" in l.split('+')) "$l+${OcrEngine.ARABIC_FT}" else l
+                        if (!engine.init(wl)) throw IllegalStateException(ctx.getString(R.string.sc_save_failed))
                         val wbase = typed.ifEmpty { (prefixes[k] ?: "Scan") + "_" + SimpleDateFormat("yyyyMMdd_HHmm", Locale.US).format(Date()) } + if (docs.size > 1) "_${gi + 1}" else ""
                         val outDocx = app.documents.uniqueFile(app.documents.scansDir, wbase, "docx")
                         val pics = ScanBuilder.pagePictures(g.map { it.file to it.edit }, k, rf, maxDim = maxOf(sizeDim(lvl), 2400), removeFingers = fingers)

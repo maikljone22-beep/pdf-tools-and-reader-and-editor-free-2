@@ -164,6 +164,8 @@ class ProOcrTest {
         assertEquals("ArabicFT", OcrEngine.effectiveLangs("ara+eng", true, OcrEngineMode.AUTO, false))
         assertEquals("ArabicFT+fra", OcrEngine.effectiveLangs("ara+fra", true, OcrEngineMode.AI, false))
         assertEquals("ara+eng", OcrEngine.effectiveLangs("ara+eng", false, OcrEngineMode.AUTO, false))
+        assertEquals("ara+ArabicFT", OcrEngine.effectiveLangs("ara+eng+ArabicFT", true, OcrEngineMode.AUTO, false))
+        assertEquals("ara+eng", OcrEngine.effectiveLangs("ara+eng+ArabicFT", false, OcrEngineMode.AUTO, false))
         assertEquals("ara+eng", OcrEngine.effectiveLangs("ara+eng", true, OcrEngineMode.TESSERACT, false))
         assertEquals("ara+eng", OcrEngine.effectiveLangs("ara+eng", true, OcrEngineMode.AUTO, true))   // fast quality
         assertEquals("eng+fra", OcrEngine.effectiveLangs("eng+fra", true, OcrEngineMode.AUTO, false))
