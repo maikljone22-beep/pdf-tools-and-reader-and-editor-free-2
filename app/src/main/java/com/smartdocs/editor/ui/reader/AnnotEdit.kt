@@ -167,7 +167,7 @@ class AnnotEditor(private val s: ReaderState) {
      * Red team R3: [e] in the file as it is now — the listing's indices shift after every rewrite, so a stale index
      * could name a neighbour. Same page, subtype and box; the old index only breaks a tie. Call under the save mutex.
      */
-    internal fun locate(f: File, e: AnnotationWriter.Existing): AnnotationWriter.Existing? {
+    internal suspend fun locate(f: File, e: AnnotationWriter.Existing): AnnotationWriter.Existing? {
         val now = AnnotationWriter.list(f, s.password)
         return now.firstOrNull { it.page == e.page && it.subtype == e.subtype && close(it.rect, e.rect) && it.index == e.index }
             ?: now.singleOrNull { it.page == e.page && it.subtype == e.subtype && close(it.rect, e.rect) }
