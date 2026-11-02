@@ -1,5 +1,8 @@
 package com.smartdocs.editor.ui.tools
 
+import androidx.compose.material.icons.filled.SwapVert
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -85,6 +88,8 @@ fun ImagesToPdfScreen(nav: NavHostController) {
     var fitA4 by remember { mutableStateOf(true) }
     var quality by remember { mutableFloatStateOf(85f) }
     var name by remember { mutableStateOf("") }
+    var sortKey by remember { mutableStateOf<com.smartdocs.editor.core.tools5.FileSort?>(null) }
+    var sortDesc by remember { mutableStateOf(false) }
     val pick = rememberImagePicker(multiple = true) { images = images + it }
     val processing = stringResource(R.string.processing)
 
@@ -117,6 +122,18 @@ fun ImagesToPdfScreen(nav: NavHostController) {
                     }
                 }
             }
+        }
+        if (images.size > 1) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
+            // the gallery picker hands photos newest first: sort by name / date taken (again = the other way), or reverse
+            val nameOf = { f: java.io.File -> f.nameWithoutExtension.substringAfter("__", f.nameWithoutExtension).substringBeforeLast('_').substringBeforeLast('_') }
+            fun sortBy(by: com.smartdocs.editor.core.tools5.FileSort) {
+                val desc = sortKey == by && !sortDesc
+                images = com.smartdocs.editor.core.tools5.CombinePlus.sortFiles(images, by, desc, nameOf); sortKey = by; sortDesc = desc
+            }
+            Text(stringResource(R.string.pc_sort), style = MaterialTheme.typography.labelLarge)
+            TextButton(onClick = { sortBy(com.smartdocs.editor.core.tools5.FileSort.NAME) }) { Text(stringResource(R.string.pc_sort_name)) }
+            TextButton(onClick = { sortBy(com.smartdocs.editor.core.tools5.FileSort.TIME) }) { Text(stringResource(R.string.pc_sort_time)) }
+            TextButton(onClick = { images = images.reversed() }) { Icon(Icons.Default.SwapVert, null); Spacer(Modifier.width(4.dp)); Text(stringResource(R.string.pc_reverse_order)) }
         }
         OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.file_name)) }, singleLine = true)
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {

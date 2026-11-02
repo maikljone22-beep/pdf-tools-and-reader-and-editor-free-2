@@ -426,4 +426,10 @@
     <string name="pc_open_after">فتح الملف الناتج عند الانتهاء</string>
     <string name="pc_toc_format">سطر الفهرس لكل ملف</string>
     <string name="pc_toc_format_hint">الحقول: {title} العنوان، {file} اسم الملف، {pages} عدد الصفحات، {n} الرقم، {date} التاريخ</string>
+    <string name="pg_move_to">نقل إلى صفحة رقم…</string>
+    <string name="pg_move_title">نقل الصفحة %1$d</string>
+    <string name="pg_move_many_title">نقل %1$d صفحات محددة</string>
+    <string name="pg_move_label">رقمها الجديد (1–%1$d)</string>
+    <string name="pg_move_go">نقل</string>
+    <string name="pc_reverse_order">عكس الترتيب</string>
 </resources>

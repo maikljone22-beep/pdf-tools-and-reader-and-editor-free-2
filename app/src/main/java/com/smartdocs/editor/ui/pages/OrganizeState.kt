@@ -324,6 +324,13 @@ class OrganizeState(
         apply(remap = { old, _ -> OrganizeLogic.idsAfterReorder(old, order, ::freshId) }) { src, out -> PdfOps.reorder(src, order, out, password) }
     }
 
+    /** Move [pages] so the first of them becomes page [position] (1-based); the moved pages stay selected. */
+    fun moveTo(pages: Collection<Int>, position: Int) {
+        val order = OrganizeLogic.moveTo(pageCount, pages, position) ?: return
+        val moved = pages.map { order.indexOf(it) }.toSet()
+        apply(selectAfter = moved, remap = { old, _ -> OrganizeLogic.idsAfterReorder(old, order, ::freshId) }) { src, out -> PdfOps.reorder(src, order, out, password) }
+    }
+
     /** Move the single selected page one slot towards the start (-1) or the end (+1). */
     fun moveSelected(delta: Int) {
         val idx = selected.singleOrNull() ?: return

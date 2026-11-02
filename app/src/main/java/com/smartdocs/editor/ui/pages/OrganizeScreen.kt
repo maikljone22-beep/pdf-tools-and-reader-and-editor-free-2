@@ -64,6 +64,7 @@ fun OrganizeScreen(nav: NavHostController, uri: String?) {
     var saving by remember { mutableStateOf(false) }
     var snack by remember { mutableStateOf<String?>(null) }
     var redactAsk by remember { mutableStateOf<Int?>(null) }
+    var moveAsk by remember { mutableStateOf<Int?>(null) }
     val ocrHasText = stringResource(R.string.pa_ocr_has_text)
     // thumbnail zoom (Foxit 17 / Nitro 4)
     var cellScale by remember { mutableFloatStateOf(1f) }
@@ -291,6 +292,8 @@ fun OrganizeScreen(nav: NavHostController, uri: String?) {
                             pageAct(R.string.ttpg_open_page) { p -> openPage(p) },
                             // audit 5 G-08: the page's own action; the user's multi-selection is kept
                             pageAct(R.string.pc_page_rotate) { p -> state.rotatePages(setOf(p), 90, keepSelection = true) },
+                            // type the page number it should become (a selection containing the page moves together)
+                            pageAct(R.string.pg_move_to) { p -> moveAsk = p },
                             pageAct(R.string.pc_page_delete) { p -> if (state.pageCount <= 1) snack = cannotDeleteAll else state.deletePages(setOf(p), keepSelection = true) },
                             pageAct(R.string.pc_page_print) { p ->
                                 requirePermission(com.smartdocs.editor.core.security.DocAction.PRINT) {
@@ -343,6 +346,23 @@ fun OrganizeScreen(nav: NavHostController, uri: String?) {
     }
 
     // audit 5 (PAGES, Low): the exit dialog also offers Save (overwrite the original, then leave)
+    moveAsk?.let { p ->
+        val group = if (p in state.selected && state.selected.size > 1) state.selected.sorted() else listOf(p)
+        var text by remember(p) { mutableStateOf("") }
+        val target = com.smartdocs.editor.core.edit5.Digits.toWestern(text).trim().toIntOrNull()
+        val ok = target != null && target in 1..state.pageCount
+        fun go() { if (ok) { moveAsk = null; state.moveTo(group, target!!) } }
+        AlertDialog(onDismissRequest = { moveAsk = null },
+            title = { Text(if (group.size > 1) stringResource(R.string.pg_move_many_title, group.size) else stringResource(R.string.pg_move_title, p + 1)) },
+            text = {
+                OutlinedTextField(text, { text = it.take(6) }, singleLine = true, label = { Text(stringResource(R.string.pg_move_label, state.pageCount)) },
+                    isError = text.isNotBlank() && !ok,
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number, imeAction = androidx.compose.ui.text.input.ImeAction.Done),
+                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { go() }))
+            },
+            confirmButton = { TextButton(onClick = { go() }, enabled = ok && !state.busy) { Text(stringResource(R.string.pg_move_go)) } },
+            dismissButton = { TextButton(onClick = { moveAsk = null }) { Text(stringResource(R.string.cancel)) } })
+    }
     redactAsk?.let { p ->
         AlertDialog(onDismissRequest = { redactAsk = null }, title = { Text(stringResource(R.string.pa_redact_page_q, p + 1)) },
             text = { Text(stringResource(R.string.pa_redact_page_sub)) },
