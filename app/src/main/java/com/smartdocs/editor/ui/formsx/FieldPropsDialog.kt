@@ -191,7 +191,7 @@ private fun AppearanceTab(s: FieldSpec, set: (FieldSpec) -> Unit) {
     if (s.type != FxType.SIGNATURE) {
         Text(stringResource(R.string.fx_font), style = MaterialTheme.typography.labelLarge)
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            FxFont.entries.filter { it != FxFont.ZAPF }.forEach { f -> FilterChip(s.font == f, { set(s.copy(font = f)) }, label = { Text(f.base) }) }
+            FxFont.entries.filter { it != FxFont.ZAPF }.forEach { f -> FilterChip(s.font == f, { set(s.copy(font = f)) }, label = { Text(if (f == FxFont.ARABIC) stringResource(R.string.fx_font_arabic) else f.base) }) }
         }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FilterChip(s.fontSize == 0f, { set(s.copy(fontSize = 0f)) }, label = { Text(stringResource(R.string.fx_auto)) })

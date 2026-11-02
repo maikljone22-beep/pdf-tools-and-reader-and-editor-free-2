@@ -1,6 +1,7 @@
 package com.smartdocs.editor.core.formsx
 
 import com.tom_roush.pdfbox.cos.COSArray
+import com.tom_roush.pdfbox.cos.COSBase
 import com.tom_roush.pdfbox.cos.COSDictionary
 import com.tom_roush.pdfbox.cos.COSFloat
 import com.tom_roush.pdfbox.cos.COSInteger
@@ -58,6 +59,43 @@ object FxAppearance {
         return Da(FxFont.of(tf?.groupValues?.get(1)), tf?.groupValues?.get(2)?.toFloatOrNull() ?: 0f, color)
     }
 
+    /** Source of the embedded Arabic font program (set by the app from its assets; tests point it at the file). */
+    @Volatile var arabicFontSource: (() -> java.io.InputStream)? = null
+    private val arabicFonts = java.util.WeakHashMap<PDDocument, com.tom_roush.pdfbox.pdmodel.font.PDFont>()
+
+    /** The Arabic font of [doc]: the one already in the form's /DR, else embedded once per document. Null without a source. */
+    fun arabicFont(doc: PDDocument): com.tom_roush.pdfbox.pdmodel.font.PDFont? = synchronized(arabicFonts) {
+        arabicFonts[doc]?.let { return it }
+        val fromDr = runCatching { doc.documentCatalog.acroForm?.defaultResources?.getFont(n(FxFont.ARABIC.res)) }.getOrNull()
+        val font = fromDr ?: arabicFontSource?.let { src -> runCatching { src().use { com.tom_roush.pdfbox.pdmodel.font.PDType0Font.load(doc, it, false) } }.getOrNull() }
+        font?.also { arabicFonts[doc] = it }
+    }
+
+    /** The font a field's text should use: Arabic text needs the embedded face (standard fonts have no Arabic glyphs). */
+    fun fontFor(font: FxFont, vararg texts: String): FxFont =
+        if (font != FxFont.ARABIC && font != FxFont.ZAPF && texts.any { com.smartdocs.editor.core.pdf.ArabicShaper.isArabic(it) }) FxFont.ARABIC else font
+
+    /** Font resource for [font]: the embedded Arabic font object, or a standard-14 dictionary. */
+    private fun fontRes(doc: PDDocument, font: FxFont): COSBase =
+        if (font == FxFont.ARABIC) arabicFont(doc)?.cosObject ?: fontDict(FxFont.HELVETICA) else fontDict(font)
+
+    /** A text-showing operand for [text] in [font]: shaped glyph codes for the Arabic face, a literal string otherwise. */
+    fun show(doc: PDDocument, font: FxFont, text: String): String {
+        val af = if (font == FxFont.ARABIC) arabicFont(doc) else null
+        if (af == null) return lit(text)
+        val visual = com.smartdocs.editor.core.pdf.ArabicShaper.shape(text)
+        val bytes = java.io.ByteArrayOutputStream()
+        visual.forEach { ch -> runCatching { af.encode(ch.toString()) }.getOrNull()?.let { bytes.write(it) } }   // glyphs the face lacks are dropped
+        return "<" + bytes.toByteArray().joinToString("") { "%02X".format(it) } + ">"
+    }
+
+    /** Width of [text] at [size]: real metrics for the Arabic face, the standard-font estimate otherwise. */
+    fun widthOf(doc: PDDocument, font: FxFont, text: String, size: Float): Float {
+        val af = (if (font == FxFont.ARABIC) arabicFont(doc) else null) ?: return approxWidth(text, size)
+        val visual = com.smartdocs.editor.core.pdf.ArabicShaper.shape(text)
+        return visual.sumOf { ch -> runCatching { af.getStringWidth(ch.toString()).toDouble() }.getOrDefault(0.0) }.toFloat() / 1000f * size
+    }
+
     /** Standard-14 font dictionary (no font program needed: every viewer has these). */
     fun fontDict(font: FxFont) = COSDictionary().apply {
         setItem(COSName.TYPE, COSName.FONT); setItem(COSName.SUBTYPE, n("Type1")); setItem(COSName.BASE_FONT, n(font.base))
@@ -68,7 +106,7 @@ object FxAppearance {
     fun ensureDr(acro: COSDictionary, font: FxFont) {
         val dr = (acro.getDictionaryObject(COSName.DR) as? COSDictionary) ?: COSDictionary().also { acro.setItem(COSName.DR, it) }
         val fonts = (dr.getDictionaryObject(COSName.FONT) as? COSDictionary) ?: COSDictionary().also { dr.setItem(COSName.FONT, it) }
-        if (fonts.getDictionaryObject(n(font.res)) == null) fonts.setItem(n(font.res), fontDict(font))
+        if (font != FxFont.ARABIC && fonts.getDictionaryObject(n(font.res)) == null) fonts.setItem(n(font.res), fontDict(font))   // the Arabic face is embedded by FxEditor
         if (acro.getString(COSName.DA) == null) acro.setString(COSName.DA, "/Helv 0 Tf 0 g")
         if (font != FxFont.HELVETICA && fonts.getDictionaryObject(n("Helv")) == null) fonts.setItem(n("Helv"), fontDict(FxFont.HELVETICA))
     }
@@ -151,7 +189,7 @@ object FxAppearance {
         s.setItem(COSName.BBOX, COSArray().apply { add(COSFloat(0f)); add(COSFloat(0f)); add(COSFloat(bw)); add(COSFloat(bh)) })
         matrix(rot, w, h)?.let { s.setItem(COSName.MATRIX, it) }
         val res = COSDictionary()
-        if (fonts.isNotEmpty()) res.setItem(COSName.FONT, COSDictionary().apply { fonts.distinct().forEach { setItem(n(it.res), fontDict(it)) } })
+        if (fonts.isNotEmpty()) res.setItem(COSName.FONT, COSDictionary().apply { fonts.distinct().forEach { setItem(n(it.res), fontRes(doc, it)) } })
         s.setItem(COSName.RESOURCES, res)
         return s
     }
@@ -277,7 +315,7 @@ object FxAppearance {
             }
             if (down && s.highlight == FxHighlight.INVERT) sb.append("q 1 1 1 rg 0 0 ${f(w)} ${f(h)} re f Q\n")
             if (s.layout != FxButtonLayout.ICON_ONLY && caption.isNotEmpty()) {
-                val tw = approxWidth(caption, size)
+                val tw = widthOf(doc, s.font, caption, size)
                 val dy = if (down && s.highlight == FxHighlight.PUSH) -1f else 0f
                 val y = when (s.layout) {
                     FxButtonLayout.LABEL_BELOW_ICON -> 2f
@@ -289,7 +327,7 @@ object FxAppearance {
                     FxButtonLayout.LABEL_LEFT_OF_ICON -> 2f
                     else -> ((w - tw) / 2).coerceAtLeast(2f)
                 }
-                sb.append("q BT /${s.font.res} ${f(size)} Tf ${rg(s.textColor, true)} ${f(x)} ${f(y)} Td ${lit(caption)} Tj ET Q\n")
+                sb.append("q BT /${s.font.res} ${f(size)} Tf ${rg(s.textColor, true)} ${f(x)} ${f(y)} Td ${show(doc, s.font, caption)} Tj ET Q\n")
             }
             if (down && s.highlight == FxHighlight.OUTLINE) sb.append("q 2 w 0 0 0 RG 1 1 ${f(w - 2)} ${f(h - 2)} re S Q\n")
             val st = stream(doc, w, h, sb.toString(), listOf(s.font), s.rotation, r.width, r.height)
@@ -339,9 +377,11 @@ object FxAppearance {
         val lines = if (s.multiline) value.split('\n') else listOf(value.replace('\n', ' '))
         var y = if (s.multiline) h - 2f - size else (h - size * 0.7f) / 2
         lines.forEach { line ->
-            val tw = approxWidth(line, size)
-            val x = when (s.align) { 1 -> (w - tw) / 2; 2 -> w - 2f - tw; else -> 2f }
-            sb.append("1 0 0 1 ${f(x)} ${f(y)} Tm ${lit(line)} Tj\n")
+            val tw = widthOf(doc, s.font, line, size)
+            // Arabic lines start at the right unless the field says centred
+            val align = if (s.align == 0 && s.font == FxFont.ARABIC && com.smartdocs.editor.core.pdf.ArabicShaper.isArabic(line)) 2 else s.align
+            val x = when (align) { 1 -> (w - tw) / 2; 2 -> w - 2f - tw; else -> 2f }
+            sb.append("1 0 0 1 ${f(x)} ${f(y)} Tm ${show(doc, s.font, line)} Tj\n")
             y -= size * 1.15f
         }
         sb.append("ET Q EMC\n")

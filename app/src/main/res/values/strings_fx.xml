@@ -292,4 +292,5 @@
     <string name="fx_distribute">توزيع النموذج (مشاركة/بريد)</string>
     <string name="fx_distribute_subject">يرجى تعبئة هذا النموذج</string>
     <string name="fx_distribute_text">يرجى تعبئة النموذج المرفق وإعادته. يمكن جمع الردود في جدول من مصمم النماذج.</string>
+    <string name="fx_font_arabic">عربي (نسخ)</string>
 </resources>
