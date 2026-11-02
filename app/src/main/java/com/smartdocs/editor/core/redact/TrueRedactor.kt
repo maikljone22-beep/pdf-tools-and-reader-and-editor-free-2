@@ -202,18 +202,23 @@ internal object TrueRedactor {
         }
         if (gone.isEmpty()) return 0
         val keep = list.filter { a ->
-            if (a.cosObject in gone) { clearField(a); false }
+            if (a.cosObject in gone) { clearField(doc, a); false }
             else !(a.subtype == "Popup" && (a.cosObject.getDictionaryObject(COSName.PARENT) as? COSDictionary)?.let { it in gone } == true)
         }
         page.annotations = keep
         return gone.size
     }
 
-    /** A removed widget takes its field's value with it. */
-    private fun clearField(a: PDAnnotation) {
+    /**
+     * A removed widget takes its field's value with it. Hostile review E1: a hybrid (XFA) form keeps a second copy of
+     * every value in its XFA data stream — it is dropped too, so the redacted value does not survive there (readers then
+     * use the AcroForm fields, which no longer hold it).
+     */
+    private fun clearField(doc: PDDocument, a: PDAnnotation) {
         if (a.subtype != "Widget") return
         val d = a.cosObject
         val field = if (d.containsKey(COSName.T)) d else d.getDictionaryObject(COSName.PARENT) as? COSDictionary ?: return
         field.removeItem(COSName.V); field.removeItem(COSName.DV)
+        doc.documentCatalog.acroForm?.cosObject?.removeItem(COSName.getPDFName("XFA"))
     }
 }
