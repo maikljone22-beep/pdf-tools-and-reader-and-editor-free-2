@@ -124,10 +124,12 @@ object ScanProjects {
             val p = l.split('|')
             if (p.size < 6) return@forEach
             val g = p[0].toIntOrNull() ?: return@forEach
+            // audit A12: a page file is a plain name inside the project folder
+            if (p[1].isBlank() || '/' in p[1] || '\\' in p[1] || p[1].startsWith("..")) return@forEach
             val erase = p.getOrNull(7).orEmpty().split('/').filter { it.isNotBlank() }.mapNotNull { r -> r.split(',').mapNotNull { it.toFloatOrNull() }.takeIf { it.size == 4 }?.toFloatArray() }
             val e = PageEdit(runCatching { ScanFilter.valueOf(p[2]) }.getOrDefault(ScanFilter.AUTO), p[3].toFloatOrNull() ?: 0f, p[4].toFloatOrNull() ?: 1f, p[5].toIntOrNull() ?: 0,
                 p.getOrNull(6)?.toBooleanStrictOrNull() ?: false, erase, p.getOrNull(8)?.toBooleanStrictOrNull() ?: false,
-                p.getOrNull(9)?.split(',')?.mapNotNull { it.toFloatOrNull() }?.takeIf { it.size == 8 }?.toFloatArray())
+                p.getOrNull(9)?.split(',')?.mapNotNull { it.toFloatOrNull() }?.takeIf { it.size == 8 && it.all { v -> v.isFinite() } }?.toFloatArray())
             byGroup.getOrPut(g) { ArrayList() } += p[1] to e
         }
         return name to byGroup.values.toList()
@@ -138,8 +140,13 @@ object ScanProjects {
         val dir = File(root(ctx), System.currentTimeMillis().toString()).apply { mkdirs() }
         try {
             val named = groups.mapIndexed { g, pages -> pages.mapIndexed { i, (f, e) -> val n = "p${g}_$i.${f.extension.ifBlank { "jpg" }}"; f.copyTo(File(dir, n), true); n to e } }
-            File(dir, "manifest.txt").writeText(encode(name, named))
+            // audit A7: the manifest appears whole or not at all (a project is listed only with its manifest)
+            val tmp = File(dir, "manifest.tmp"); tmp.writeText(encode(name, named))
+            if (!tmp.renameTo(File(dir, "manifest.txt"))) throw java.io.IOException("manifest")
         } catch (e: Exception) { dir.deleteRecursively(); throw e }
+        // audit A7: folders left without a manifest by a killed save are never listed — remove them after an hour
+        (root(ctx).listFiles() ?: emptyArray()).filter { it.isDirectory && it != dir && !File(it, "manifest.txt").isFile && System.currentTimeMillis() - it.lastModified() > 3_600_000L }
+            .forEach { it.deleteRecursively() }
         // the reopened project is replaced only once the new copy is complete, and before pruning (so no other project goes)
         replacing?.takeIf { it.dir != dir }?.let { delete(it) }
         list(ctx).drop(MAX).forEach { it.dir.deleteRecursively() }

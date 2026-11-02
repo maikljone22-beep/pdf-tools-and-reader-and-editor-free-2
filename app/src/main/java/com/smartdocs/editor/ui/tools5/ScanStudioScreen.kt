@@ -197,7 +197,8 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
             if (uris.isNotEmpty()) scope.launch {
                 val files = withContext(Dispatchers.IO) {
                     uris.mapIndexedNotNull { i, u ->
-                        runCatching { val f = app.documents.newTemp("t5scan_$i", "jpg"); ctx.contentResolver.openInputStream(u)?.use { s -> f.outputStream().use { s.copyTo(it) } }; f }.getOrNull()
+                        // audit A10: a picture that cannot be opened is no page (it used to vanish silently later)
+                        runCatching { val f = app.documents.newTemp("t5scan_$i", "jpg"); ctx.contentResolver.openInputStream(u)?.use { s -> f.outputStream().use { s.copyTo(it) } }; f.takeIf { it.length() > 0 } ?: run { f.delete(); null } }.getOrNull()
                     }
                 }
                 addPictures(files, kind == ScanKind.BATCH)
@@ -251,6 +252,8 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
     val savingWordMsg = stringResource(R.string.sc_saving_word)
     val prefixes = mapOf(ScanKind.RECEIPT to stringResource(R.string.t5_prefix_receipt), ScanKind.BUSINESS_CARD to stringResource(R.string.t5_prefix_card), ScanKind.ID_CARD to stringResource(R.string.t5_prefix_id), ScanKind.WHITEBOARD to stringResource(R.string.t5_prefix_board), ScanKind.FORM to stringResource(R.string.t5_prefix_form))
     fun save() {
+        // audit B5: an undo offered before the save would bring back pages whose pictures the save removes
+        snackbar.currentSnackbarData?.dismiss()
         val all = groups.filter { it.isNotEmpty() }
         if (all.isEmpty()) return
         savePrefs()
@@ -271,13 +274,14 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
         val keep = all.map { g -> g.map { it.file to it.edit } }
         // "save multiple files": every group is cut into files of N pages
         // deep audit E16: "pages per file" counts output pages — an ID card is two photos, a book photo two pages
-        val chunk = when { perFile <= 0 -> 0; k == ScanKind.ID_CARD -> perFile * 2; k == ScanKind.BOOK -> maxOf(1, perFile / 2); else -> perFile }
+        // audit A3: adding to an existing PDF makes one document, whatever "pages per file" says
+        val chunk = when { perFile <= 0 || target != null -> 0; k == ScanKind.ID_CARD -> perFile * 2; k == ScanKind.BOOK -> maxOf(1, perFile / 2); else -> perFile }
         val docs = all.flatMap { ScanExtras.chunks(it, chunk) }
         job.launch(when { imgs -> savingImagesMsg; word -> savingWordMsg; else -> savingMsg }) {
             val engine = if (needText) OcrEngine(ctx.applicationContext) else null
             try {
                 val made = ArrayList<File>(); var lastText = ""; var fieldsMade = 0
-                val failed = ArrayList<List<ScanPage>>(); val texts = StringBuilder()
+                val failed = ArrayList<List<ScanPage>>(); val texts = StringBuilder(); val done = ArrayList<List<ScanPage>>()
                 docs.forEachIndexed { gi, g ->
                   // a failing document no longer stops the others; it stays on screen for another try (audit U30)
                   try {
@@ -288,9 +292,12 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                         withContext(Dispatchers.IO) {
                             ScanBuilder.pagePictures(g.map { it.file to it.edit }, k, rf, maxDim = sizeDim(lvl), removeFingers = fingers).forEach { o ->
                                 n++
+                                // audit A6: written aside first, so a killed app never leaves half a picture in Scans
+                                val tmp = app.documents.newTemp("t5scan_jpg", "jpg")
+                                try { tmp.outputStream().use { o.bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, sizeQuality(lvl), it) } } finally { o.bitmap.recycle() }
                                 val f = app.documents.uniqueFile(app.documents.scansDir, "${stamp}_$n", "jpg")
-                                f.outputStream().use { o.bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, sizeQuality(lvl), it) }
-                                o.bitmap.recycle(); made += f
+                                if (!tmp.renameTo(f)) { tmp.copyTo(f, true); tmp.delete() }
+                                made += f
                             }
                         }
                         step((gi + 1) * 100, docs.size * 100)
@@ -312,9 +319,14 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                         val wbase = typed.ifEmpty { (prefixes[k] ?: "Scan") + "_" + SimpleDateFormat("yyyyMMdd_HHmm", Locale.US).format(Date()) } + if (docs.size > 1) "_${gi + 1}" else ""
                         val outDocx = app.documents.uniqueFile(app.documents.scansDir, wbase, "docx")
                         val pics = ScanBuilder.pagePictures(g.map { it.file to it.edit }, k, rf, maxDim = maxOf(sizeDim(lvl), 2400), removeFingers = fingers)
+                        // audit A6: the document is written aside and moved into Scans only when complete
+                        val tmpDocx = app.documents.newTemp("t5scan_word", "docx")
+                        // audit B10: a book photo gives two pages
+                        val wordPages = (if (k == ScanKind.BOOK) g.size * 2 else g.size).coerceAtLeast(1)
                         val wr = try {
-                            com.smartdocs.editor.core.scan2word.ScanToWordRunner.convert(pics, engine, outDocx, wbase, wordFont, "Times New Roman") { n -> step(gi * 100 + minOf(99, n * 100 / g.size.coerceAtLeast(1)), docs.size * 100) }
-                        } catch (e: Throwable) { outDocx.delete(); throw e }
+                            com.smartdocs.editor.core.scan2word.ScanToWordRunner.convert(pics, engine, tmpDocx, wbase, wordFont, "Times New Roman") { n -> step(gi * 100 + minOf(99, n * 100 / wordPages), docs.size * 100) }
+                        } catch (e: Throwable) { tmpDocx.delete(); throw e }
+                        withContext(Dispatchers.IO) { if (!tmpDocx.renameTo(outDocx)) { tmpDocx.copyTo(outDocx, true); tmpDocx.delete() } }
                         runCatching { app.documents.touchRecent(outDocx, wr.pages) }
                         made += outDocx; lastText = wr.text
                         if (wr.text.isNotBlank()) { if (texts.isNotEmpty()) texts.append("\n\n"); texts.append(wr.text) }
@@ -355,7 +367,12 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                         val merged = app.documents.newTemp("t5scan_merge", "pdf")
                         com.smartdocs.editor.core.pdf.PdfOps.merge(listOf(local, tmpOut), merged)
                         tmpOut.delete()
-                        val wrote = withContext(Dispatchers.IO) { runCatching { ctx.contentResolver.openOutputStream(target, "wt")!!.use { o -> merged.inputStream().use { it.copyTo(o) } } }.isSuccess }
+                        val wrote = withContext(Dispatchers.IO) {
+                            val ok = runCatching { ctx.contentResolver.openOutputStream(target, "wt")!!.use { o -> merged.inputStream().use { it.copyTo(o) } } }.isSuccess
+                            // audit A4: "wt" emptied the user's file first — a failed write puts the original back
+                            if (!ok) runCatching { ctx.contentResolver.openOutputStream(target, "wt")!!.use { o -> local.inputStream().use { it.copyTo(o) } } }
+                            ok
+                        }
                         val out = app.documents.uniqueFile(app.documents.scansDir, targetName.substringBeforeLast('.').ifBlank { base })
                         withContext(Dispatchers.IO) { if (!merged.renameTo(out)) { merged.copyTo(out, true); merged.delete() } }
                         info = ctx.getString(if (wrote) R.string.sc_appended_to else R.string.sc_appended_copy, targetName)
@@ -369,7 +386,13 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                     runCatching { app.documents.touchRecent(out, pageCount) }
                     made += out; lastText = r.text
                     if (r.text.isNotBlank()) { if (texts.isNotEmpty()) texts.append("\n\n"); texts.append(r.text) }
-                  } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Throwable) { failed += g }
+                    done += g
+                  } catch (e: kotlinx.coroutines.CancellationException) {
+                    // audit B15: documents saved before the cancel leave the screen, so trying again does not save them twice
+                    val doneSet = done.flatten().toSet()
+                    if (doneSet.isNotEmpty()) groups = groups.map { gr -> gr.filter { it !in doneSet } }.filter { it.isNotEmpty() }
+                    throw e
+                  } catch (e: Throwable) { failed += g }
                 }
                 recognised = texts.toString()
                 resultMime = when { imgs -> "image/jpeg"; word -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document"; else -> "application/pdf" }
@@ -387,9 +410,10 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                 if (!imgs && (k == ScanKind.BUSINESS_CARD || k == ScanKind.RECEIPT)) results = made
                 // Foxit "create a portfolio for all results"
                 if (pf && made.size > 1) {
+                    // audit A2: the documents are saved already — a failing portfolio must not make the pages save again
                     val po = app.documents.uniqueFile(app.documents.scansDir, (typed.ifEmpty { "Scans" }) + "_portfolio")
-                    com.smartdocs.editor.core.tools5.Portfolio.create(ctx, typed.ifEmpty { "Scans" }, made, po)
-                    results = made + po
+                    if (runCatching { com.smartdocs.editor.core.tools5.Portfolio.create(ctx, typed.ifEmpty { "Scans" }, made, po) }.isSuccess) results = made + po
+                    else { po.delete(); info = ctx.getString(R.string.sc_save_failed) }
                 }
                 // only the documents that were saved are kept as a project; a reopened project is replaced (not copied
                 // again) — and only when everything was saved, so its pictures stay while some pages still need a retry
@@ -610,6 +634,9 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
             confirmButton = { TextButton(onClick = {
                 val leaving = askDiscard; askDiscard = false; askClear = false
                 val old = groups.flatten(); groups = emptyList()
+                // audit B1: the next scan is a new document — saving it must not replace (delete) the project opened before
+                openedProject = null; name = ""
+                snackbar.currentSnackbarData?.dismiss()
                 scope.launch(Dispatchers.IO) { dropTemp(old) }
                 if (leaving) nav.popBackStack()
             }) { Text(stringResource(if (askDiscard) R.string.sc_discard else R.string.delete), color = MaterialTheme.colorScheme.error) } },
@@ -630,10 +657,13 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
             page = page, index = pi, count = size,
             onApply = { e, all -> groups = groups.mapIndexed { i, g -> if (i != gi) g else g.mapIndexed { j, p -> if (j == pi || all) p.copy(edit = if (j == pi) e else p.edit.copy(filter = e.filter, brightness = e.brightness, contrast = e.contrast)) else p } }; editing = null },
             onDelete = {
-                val before = groups
-                groups = groups.mapIndexed { i, g -> if (i != gi) g else g.filterIndexed { j, _ -> j != pi } }.filter { it.isNotEmpty() }; editing = null
-                // scanner essentials: a deleted page can be brought back
-                scope.launch { if (snackbar.showSnackbar(pageDeletedMsg, actionLabel = undoLabel, duration = SnackbarDuration.Long) == SnackbarResult.ActionPerformed) groups = before }
+                val before = groups; val opened = openedProject; val nameBefore = name
+                val after = groups.mapIndexed { i, g -> if (i != gi) g else g.filterIndexed { j, _ -> j != pi } }.filter { it.isNotEmpty() }
+                groups = after; editing = null
+                // audit B1: with no page left the next scan is a new document (the opened project is not replaced)
+                if (after.isEmpty()) { openedProject = null; name = "" }
+                // scanner essentials: a deleted page can be brought back — audit B5: only while nothing else changed
+                scope.launch { if (snackbar.showSnackbar(pageDeletedMsg, actionLabel = undoLabel, duration = SnackbarDuration.Long) == SnackbarResult.ActionPerformed && groups === after) { groups = before; openedProject = opened; name = nameBefore } }
             },
             // the editor stays open on the moved page with its edits (moving used to close it and drop them)
             onMove = { e, d -> keep(e); val t = (pi + d).coerceIn(0, size - 1); groups = groups.mapIndexed { i, g -> if (i != gi) g else g.toMutableList().apply { add(t, removeAt(pi)) } }; editing = gi to t },
