@@ -111,6 +111,8 @@ fun ShapeEditorDialog(c: EditController, onClose: () -> Unit) {
     val draft = remember { mutableStateListOf<Float>() }
     var zoom by remember { mutableFloatStateOf(1f) }
     var showStyle by remember { mutableStateOf(false) }
+    /** Where the shape menu opens (page px), null = closed. */
+    var menuAt by remember { mutableStateOf<Offset?>(null) }
 
     LaunchedEffect(page, state.renderVersion, state.file) {
         val f = state.file ?: return@LaunchedEffect
@@ -168,7 +170,21 @@ fun ShapeEditorDialog(c: EditController, onClose: () -> Unit) {
                 // ---- page ----
                 Box(Modifier.weight(1f).fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant)) {
                     PageSurface(c, zoom, shapes, selected, preview, draft, tool, style, radius,
-                        onSelect = { s -> selected = s; preview = null },
+                        onSelect = { s -> selected = s; preview = null; if (s == null) menuAt = null },
+                        // a tap on a shape (whatever tool is on) selects it for editing and opens its menu
+                        onTapShape = { s, at -> draft.clear(); tool = STool.SELECT; if (s.id != (preview ?: selected)?.id) { selected = s; preview = null }; menuAt = at },
+                        menuAt = menuAt, onMenuDismiss = { menuAt = null },
+                        menu = {
+                            val m = preview ?: selected
+                            if (m != null) {
+                                DropdownMenuItem(text = { Text(stringResource(R.string.nh_style)) }, leadingIcon = { Icon(Icons.Default.Palette, null) },
+                                    onClick = { menuAt = null; showStyle = true })
+                                DropdownMenuItem(text = { Text(stringResource(R.string.nh_duplicate)) }, leadingIcon = { Icon(Icons.Default.ContentCopy, null) },
+                                    onClick = { menuAt = null; commitAdd(m.copy(id = 0).moved(12f, -12f)) }, enabled = !c.busy)
+                                DropdownMenuItem(text = { Text(stringResource(R.string.nh_delete)) }, leadingIcon = { Icon(Icons.Default.Delete, null) },
+                                    onClick = { menuAt = null; commitReplace(m.id, null) }, enabled = !c.busy)
+                            }
+                        },
                         onPreview = { preview = it },
                         onDraftDone = { pts -> tool.kind?.let { k ->
                             val st = if (tool == STool.GRADIENT) style.copy(stroke = null, fill = null, gradient = style.gradient ?: Gradient()) else style
@@ -206,6 +222,8 @@ private fun PageSurface(
     c: EditController, zoom: Float, shapes: List<NveShape>, selected: NveShape?, preview: NveShape?, draft: MutableList<Float>,
     tool: STool, style: ShapeStyle, radius: Float,
     onSelect: (NveShape?) -> Unit, onPreview: (NveShape?) -> Unit, onDraftDone: (List<Float>) -> Unit,
+    onTapShape: (NveShape, Offset) -> Unit = { _, _ -> }, menuAt: Offset? = null, onMenuDismiss: () -> Unit = {},
+    menu: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit = {},
 ) {
     val state = c.state
     val density = LocalDensity.current
@@ -230,6 +248,8 @@ private fun PageSurface(
         val curSel by rememberUpdatedState(preview ?: selected)
         val curTool by rememberUpdatedState(tool)
         val curDraftDone by rememberUpdatedState(onDraftDone)
+        val curTapShape by rememberUpdatedState(onTapShape)
+        val curSelect by rememberUpdatedState(onSelect)
         val handle = with(density) { 26.dp.toPx() }
         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
             Box(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).horizontalScroll(rememberScrollState())) {
@@ -285,6 +305,7 @@ private fun PageSurface(
                                             start.fitted(l, min(bt + dy, tp - 2f), max(r + dx, l + 2f), tp)
                                         } else start.moved(dx, dy))
                                     }
+                                    if (!moved && !resizing) curTapShape(hit, down.position)
                                 }
                                 t.byPoints -> {
                                     down.consume()
@@ -295,7 +316,11 @@ private fun PageSurface(
                                         up = ch.position
                                         if (!ch.pressed) break
                                     }
-                                    if ((up - down.position).getDistance() < 24f) { draft.add(x0); draft.add(y0) }
+                                    if ((up - down.position).getDistance() < 24f) {
+                                        // first tap on an existing shape edits it instead of starting a new outline
+                                        val hit = if (draft.isEmpty()) NveShapes.hit(curShapes, x0, y0, 6f / scale.coerceAtLeast(0.1f) + 4f) else null
+                                        if (hit != null) curTapShape(hit, down.position) else { draft.add(x0); draft.add(y0) }
+                                    }
                                 }
                                 else -> {
                                     down.consume()
@@ -315,12 +340,18 @@ private fun PageSurface(
                                     val pts = draft.toList(); draft.clear()
                                     val big = if (t == STool.FREE) pts.size >= 6 else abs(pts[2] - pts[0]) > 2f || abs(pts[3] - pts[1]) > 2f
                                     if (big) curDraftDone(pts)
+                                    else NveShapes.hit(curShapes, x0, y0, 6f / scale.coerceAtLeast(0.1f) + 4f)?.let { curTapShape(it, down.position) }
                                 }
                             }
                         }
                     },
                 ) {
                     bitmap?.let { Image(it.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.FillBounds) }
+                    menuAt?.let { at ->
+                        Box(Modifier.offset { androidx.compose.ui.unit.IntOffset(at.x.roundToInt(), at.y.roundToInt()) }.size(1.dp)) {
+                            DropdownMenu(expanded = true, onDismissRequest = onMenuDismiss, content = menu)
+                        }
+                    }
                     val primary = MaterialTheme.colorScheme.primary
                     Canvas(Modifier.fillMaxSize()) {
                         val dash = PathEffect.dashPathEffect(floatArrayOf(8f, 6f))
