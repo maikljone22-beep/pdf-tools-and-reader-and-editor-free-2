@@ -332,7 +332,10 @@ fun rememberImagePicker(multiple: Boolean = true, onCancel: (() -> Unit)? = null
         scope.launch(Dispatchers.IO) {
             val files = uris.mapIndexedNotNull { i, u ->
                 runCatching {
-                    val f = app.documents.newTemp("img_$i", "jpg")
+                    // the copy keeps the picture's own name after "__" (sorting by name, PDF titles)
+                    val shown = runCatching { ctx.contentResolver.query(u, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c -> if (c.moveToFirst()) c.getString(0) else null } }.getOrNull()
+                        ?.substringBeforeLast('.')?.replace(Regex("""[\\/:*?"<>|\u0000-\u001f]"""), "_")?.take(80)
+                    val f = app.documents.newTemp(if (shown.isNullOrBlank()) "img_$i" else "img_${i}__$shown", "jpg")
                     ctx.contentResolver.openInputStream(u)?.use { s -> f.outputStream().use { s.copyTo(it) } }; f
                 }.getOrNull()
             }

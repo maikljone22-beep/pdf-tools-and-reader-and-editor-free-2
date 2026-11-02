@@ -59,7 +59,22 @@ object CombinePlus {
         return list.sortedWith(if (desc) c.reversed() else c)
     }
 
-    fun sortFiles(files: List<File>, by: FileSort, desc: Boolean): List<File> = sorted(files, by, desc, { it.name }, { it.lastModified() }, { it.length() })
+    /**
+     * Picked files are copies made when they were added, so their own date is the copy time. Photos keep the time they
+     * were taken in EXIF: that is the date used for them. [name] gives the original name (pickers may rename copies).
+     */
+    fun sortFiles(files: List<File>, by: FileSort, desc: Boolean, name: (File) -> String = { it.name }): List<File> {
+        val times = if (by == FileSort.TIME) files.associateWith { takenTime(it) ?: it.lastModified() } else emptyMap()
+        return sorted(files, by, desc, name, { times[it] ?: it.lastModified() }, { it.length() })
+    }
+
+    /** EXIF "date taken" of a photo (milliseconds, device time zone), or null. */
+    fun takenTime(f: File): Long? = runCatching {
+        val e = androidx.exifinterface.media.ExifInterface(f.absolutePath)
+        val raw = e.getAttribute(androidx.exifinterface.media.ExifInterface.TAG_DATETIME_ORIGINAL)
+            ?: e.getAttribute(androidx.exifinterface.media.ExifInterface.TAG_DATETIME) ?: return null
+        java.text.SimpleDateFormat("yyyy:MM:dd HH:mm:ss", java.util.Locale.US).parse(raw)?.time
+    }.getOrNull()
 
     /** Titles nested by level under [parent]; pages outside [map] are skipped. Returns the bookmarks written. */
     internal fun addHeadings(parent: PDOutlineNode, heads: List<E5Bookmark>, pageOf: (Int) -> PDPage?): Int {

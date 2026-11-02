@@ -170,6 +170,10 @@ fun CombineTab(initial: List<File>, job: T5Job, attachSrc: Boolean, srcDesc: Str
                 val order = CombinePlus.sortFiles(entries.map { it.file }, s, desc)
                 entries.clear(); entries.addAll(order.map { byFile.getValue(it) })
             }
+            // pickers often hand the newest first: one tap turns the whole list around
+            TextButton(onClick = { val r = entries.reversed(); entries.clear(); entries.addAll(r) }) {
+                Icon(Icons.Default.SwapVert, null); Spacer(Modifier.width(4.dp)); Text(stringResource(R.string.pc_reverse_order))
+            }
         }
     }
     // FINAL_CHECK_2 #1: page-level view (expand files into pages, move pages between files, drop pages)

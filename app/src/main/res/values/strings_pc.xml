@@ -431,4 +431,5 @@
     <string name="pg_move_many_title">نقل %1$d صفحات محددة</string>
     <string name="pg_move_label">رقمها الجديد (1–%1$d)</string>
     <string name="pg_move_go">نقل</string>
+    <string name="pc_reverse_order">عكس الترتيب</string>
 </resources>
