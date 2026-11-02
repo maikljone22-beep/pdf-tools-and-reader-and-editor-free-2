@@ -292,4 +292,5 @@
     <string name="fx_distribute">Distribute form (share / e-mail)</string>
     <string name="fx_distribute_subject">Please fill in this form</string>
     <string name="fx_distribute_text">Please fill in the attached form and send it back. Returned forms can be collected into a sheet from the form designer.</string>
+    <string name="fx_font_arabic">Arabic (Naskh)</string>
 </resources>

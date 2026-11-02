@@ -54,7 +54,9 @@ enum class FxIconScale(val pdf: String) { ALWAYS("A"), BIGGER("B"), SMALLER("S")
 /** Standard 14 fonts offered for field text (the /DA font resource names Acrobat uses). */
 enum class FxFont(val res: String, val base: String) {
     HELVETICA("Helv", "Helvetica"), HELVETICA_BOLD("HeBo", "Helvetica-Bold"), TIMES("TiRo", "Times-Roman"), TIMES_BOLD("TiBo", "Times-Bold"),
-    COURIER("Cour", "Courier"), COURIER_BOLD("CoBo", "Courier-Bold"), ZAPF("ZaDb", "ZapfDingbats");
+    COURIER("Cour", "Courier"), COURIER_BOLD("CoBo", "Courier-Bold"), ZAPF("ZaDb", "ZapfDingbats"),
+    /** Embedded Arabic face (the same /DR name the form filler uses), the only one that can show Arabic. */
+    ARABIC("SDNaskh", "Noto Naskh Arabic");
     companion object { fun of(res: String?) = entries.firstOrNull { it.res == res } ?: HELVETICA }
 }
 

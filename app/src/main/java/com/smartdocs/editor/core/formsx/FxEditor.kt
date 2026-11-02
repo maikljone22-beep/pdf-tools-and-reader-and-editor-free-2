@@ -338,10 +338,18 @@ object FxEditor {
 
     private fun setFlag(cur: Int, bit: Int, on: Boolean) = if (on) cur or bit else cur and bit.inv()
 
-    private fun writeProps(doc: PDDocument, f: PDTerminalField, s: FieldSpec, created: Boolean) {
+    private fun writeProps(doc: PDDocument, f: PDTerminalField, s0: FieldSpec, created: Boolean) {
         val form = acroForm(doc)
         val cos = f.cosObject
-        FxAppearance.ensureDr(form.cosObject, s.font)
+        // Arabic caption / value / choices: the standard fonts have no Arabic glyphs, so the embedded Arabic face is used
+        val wanted = FxAppearance.fontFor(s0.font, s0.caption, s0.rolloverCaption, s0.downCaption, s0.defaultValue, *s0.items.map { it.first }.toTypedArray())
+        val arabicFont = if (wanted == FxFont.ARABIC) FxAppearance.arabicFont(doc) else null
+        val s = if (wanted == FxFont.ARABIC && arabicFont == null) s0.copy(font = FxFont.HELVETICA) else s0.copy(font = wanted)
+        if (s.font == FxFont.ARABIC) {
+            val dr = form.defaultResources ?: com.tom_roush.pdfbox.pdmodel.PDResources().also { form.defaultResources = it }
+            if (dr.getFont(n(FxFont.ARABIC.res)) == null) dr.put(n(FxFont.ARABIC.res), arabicFont)
+            FxAppearance.ensureDr(form.cosObject, FxFont.HELVETICA)
+        } else FxAppearance.ensureDr(form.cosObject, s.font)
         if (s.tooltip.isNotBlank()) cos.setString(TU, s.tooltip) else cos.removeItem(TU)
         var ff = cos.getInt(COSName.FF, 0)
         ff = setFlag(ff, FF_READONLY, s.readOnly || s.type == FxType.BARCODE)
@@ -445,7 +453,9 @@ object FxEditor {
             if (created) { val dv = s.defaultValue.takeIf { it.isNotEmpty() }?.replace(' ', '_'); cos.setItem(COSName.V, dv?.let { n(it) } ?: COSName.Off); if (dv != null) cos.setItem(COSName.DV, n(dv)) else cos.removeItem(COSName.DV) }
         }
         // text and choice: PdfBox regenerates the look from /DA /MK /Q (needs font metrics: device only)
-        if (f is PDTextField && s.type == FxType.TEXT || f is PDChoice) {
+        // (not for the Arabic face: PdfBox draws its letters unjoined; our appearance above shapes them)
+        if (s.font == FxFont.ARABIC && f is PDChoice) form.needAppearances = true   // viewers draw Arabic choice lists themselves
+        if (s.font != FxFont.ARABIC && (f is PDTextField && s.type == FxType.TEXT || f is PDChoice)) {
             try { f.constructAppearancesPublic() } catch (_: Throwable) { form.needAppearances = true }
         }
     }

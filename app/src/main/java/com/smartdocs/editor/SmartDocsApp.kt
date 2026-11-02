@@ -20,6 +20,8 @@ class SmartDocsApp : Application() {
         com.smartdocs.editor.core.errors.ErrorCenter.install(this)   // error centre: crashes + reported failures, auto-send
         com.smartdocs.editor.core.errors.ErrorCenter.onNew = { com.smartdocs.editor.core.errors.ErrorReporter.schedule(this) }
         com.smartdocs.editor.core.util.CrashLog.install(this)
+        // form designer: Arabic captions and values use the bundled Naskh face
+        com.smartdocs.editor.core.formsx.FxAppearance.arabicFontSource = { assets.open("fonts/NotoNaskhArabic-Regular.ttf") }
         PDFBoxResourceLoader.init(applicationContext)
         db = AppDatabase.build(this)
         settings = SettingsStore(this)
