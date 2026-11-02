@@ -188,7 +188,7 @@ object ToPdf6 {
      * Convert one file to [out]. [info] receives notes for the result sheet (rows not printed, equations as text,
      * pictures left out, pages that could not be read …).
      */
-    suspend fun convert(ctx: Context, f: File, out: File, setup: PageSetup = PageSetup(), quality: Int = 88, bookmarks: Boolean = false,
+    suspend fun convert(ctx: Context, f: File, out: File, setup: PageSetup = PageSetup(), quality: Int = 75, bookmarks: Boolean = false,
                         speakerNotes: Boolean = false, cellComments: Boolean = false, slideRange: String = "", hiddenSlides: Boolean = true,
                         excelFit: Int = ExcelFit.AUTO, emlAttachments: Boolean = false, info: (String) -> Unit = {}): File {
         coroutineContext.ensureActive()

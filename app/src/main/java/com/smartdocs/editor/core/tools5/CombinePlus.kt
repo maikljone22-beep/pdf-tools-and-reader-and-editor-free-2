@@ -111,7 +111,10 @@ object CombinePlus {
                         val outline = PDDocumentOutline()
                         for ((e, pdf, heads) in parts) {
                             coroutineContext.ensureActive()
-                            val sd = E5Io.load(pdf).also { docs += it }
+                            // every part stays open until the result is saved, and PdfBox copies each picture it reads into the
+                            // document's scratch buffer: with the heap buffer (48 MB per part) 184 photo pages filled the 512 MB
+                            // heap and the app crashed. Parts keep their scratch on disk.
+                            val sd = PDDocument.load(pdf, "", com.tom_roush.pdfbox.io.MemoryUsageSetting.setupTempFileOnly()).also { docs += it }
                             val pages = PageSet.parse(com.smartdocs.editor.core.pdf.PdfOps.normalizeRange(e.pages), sd.numberOfPages)
                             if (pages.isEmpty()) throw com.smartdocs.editor.core.convert6.InvalidRange(e.file.name)
                             val start = nd.numberOfPages
