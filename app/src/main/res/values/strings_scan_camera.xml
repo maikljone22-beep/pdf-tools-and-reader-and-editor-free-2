@@ -139,4 +139,10 @@
         <item quantity="many">تم التعرف على %1$d حقلاً قابلاً للتعبئة. افتح الملف واملأه، أو عدّل الحقول من مصمم النماذج.</item>
         <item quantity="other">تم التعرف على %1$d حقل قابل للتعبئة. افتح الملف واملأه، أو عدّل الحقول من مصمم النماذج.</item>
     </plurals>
+    <string name="sc_text_skipped">حُفظ المسح بلا نص قابل للبحث: تعذّر تجهيز القراءة (لا اتصال بالإنترنت لتنزيل نماذج اللغة؟). أعد الحفظ لاحقاً أو استخدم أداة «التعرف على النص».</string>
+    <string name="sc_ocr_download_title">تنزيل نماذج اللغة</string>
+    <string name="sc_ocr_download_text">ليصير النص في المسح قابلاً للبحث والنسخ، يحتاج التطبيق إلى تنزيل نماذج اللغة مرة واحدة: %1$d ميجابايت. يُفضَّل اتصال Wi-Fi.</string>
+    <string name="sc_word_needs_models">ملف Word يُبنى من النص المقروء، فيحتاج نماذج اللغة. نزّلها، أو احفظ بصيغة PDF أو JPG.</string>
+    <string name="sc_ocr_download_go">تنزيل ومتابعة</string>
+    <string name="sc_ocr_download_skip">حفظ بلا نص</string>
 </resources>

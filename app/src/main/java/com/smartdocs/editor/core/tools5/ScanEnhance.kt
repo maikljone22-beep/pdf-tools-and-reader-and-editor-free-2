@@ -39,6 +39,7 @@ object ScanEnhance {
      * picture's own tones are not mistaken for shadow (which would wash the picture out).
      */
     fun paperMap(px: IntArray, w: Int, h: Int): IntArray {
+        if (w <= 0 || h <= 0 || px.isEmpty()) return IntArray(0)
         val bg = PixelOps.background(px, w, h)
         val lum = IntArray(bg.size) { bg[it] and 0xFF }
         val sorted = lum.copyOf().also { it.sort() }

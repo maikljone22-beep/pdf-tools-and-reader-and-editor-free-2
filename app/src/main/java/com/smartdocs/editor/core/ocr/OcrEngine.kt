@@ -113,6 +113,29 @@ class OcrEngine(private val context: Context, val fast: Boolean = false) : AutoC
     /** True when [lang] can be downloaded (it is pinned for this quality). */
     fun isAvailable(lang: String): Boolean = expectedSize(lang) != null
 
+    /**
+     * Hostile review H2: the bytes [ensureLanguages] would download for [langs] — the asked packs plus the optional
+     * Arabic helpers not yet installed (the prompt said "10–25 MB"; it was ~68 MB with every helper).
+     */
+    fun downloadBytes(langs: String): Long {
+        val list = langs.split('+').map { it.trim() }.filter { it.isNotEmpty() }
+        var n = list.filter { !isLanguageInstalled(it) }.sumOf { expectedSize(it, it !in BEST_ONLY && fast) ?: 0L }
+        if ("ara" in list && optionalAllowed()) {
+            if (!isLanguageInstalled(ARABIC_SCRIPT)) n += expectedSize(ARABIC_SCRIPT, false) ?: 0L
+            if (!fast && mode != OcrEngineMode.TESSERACT && FT_URL.isNotEmpty() && !isLanguageInstalled(ARABIC_FT)) n += expectedSize(ARABIC_FT, false) ?: 0L
+            if (mode != OcrEngineMode.TESSERACT) n += ProOcr.missingBytes(context)
+        }
+        return n
+    }
+
+    /**
+     * Hostile review H2: an optional helper that failed to download is not tried again on every save (each try burned
+     * paid data) — only after a day.
+     */
+    private fun optionalAllowed(): Boolean =
+        System.currentTimeMillis() - context.getSharedPreferences("ocr_engine", Context.MODE_PRIVATE).getLong("optional_failed_at", 0L) > 86_400_000L
+    private fun optionalFailed() { context.getSharedPreferences("ocr_engine", Context.MODE_PRIVATE).edit().putLong("optional_failed_at", System.currentTimeMillis()).apply() }
+
     /** Make sure every language in [langs] ("ara+eng") is downloaded. [onProgress] gets (lang, fraction 0..1). */
     suspend fun ensureLanguages(langs: String, onProgress: (String, Float) -> Unit = { _, _ -> }) = withContext(Dispatchers.IO) {
         val list = langs.split('+').map { it.trim() }.filter { it.isNotEmpty() }
@@ -121,22 +144,22 @@ class OcrEngine(private val context: Context, val fast: Boolean = false) : AutoC
         }
         // optional: the Arabic script model reads Arabic-Indic digits (the ara model knows only ٠ and ١). OCR works
         // without it, so a failed download is not an error.
-        if ("ara" in list && !isLanguageInstalled(ARABIC_SCRIPT)) {
+        if ("ara" in list && optionalAllowed() && !isLanguageInstalled(ARABIC_SCRIPT)) {
             try { download(ARABIC_SCRIPT, onProgress) }
             catch (e: kotlinx.coroutines.CancellationException) { throw e }
-            catch (_: Exception) { }
+            catch (_: Exception) { optionalFailed() }
         }
         // optional: the script/Arabic model fine-tuned on the chemistry-book fonts (PRO_OCR_r5 §6), only while it is hosted
-        if ("ara" in list && !fast && mode != OcrEngineMode.TESSERACT && FT_URL.isNotEmpty() && !isLanguageInstalled(ARABIC_FT)) {
+        if ("ara" in list && optionalAllowed() && !fast && mode != OcrEngineMode.TESSERACT && FT_URL.isNotEmpty() && !isLanguageInstalled(ARABIC_FT)) {
             try { download(ARABIC_FT, onProgress) }
             catch (e: kotlinx.coroutines.CancellationException) { throw e }
-            catch (_: Exception) { }
+            catch (_: Exception) { optionalFailed() }
         }
         // optional too: the PP-OCRv5 AI models (12.8 MB) for the AUTO / AI recogniser choice
-        if ("ara" in list && mode != OcrEngineMode.TESSERACT && !ProOcr.isInstalled(context)) {
+        if ("ara" in list && optionalAllowed() && mode != OcrEngineMode.TESSERACT && !ProOcr.isInstalled(context)) {
             try { ProOcr.ensureModels(context) { f -> onProgress("AI", f) } }
             catch (e: kotlinx.coroutines.CancellationException) { throw e }
-            catch (_: Exception) { }
+            catch (_: Exception) { optionalFailed() }
         }
     }
 

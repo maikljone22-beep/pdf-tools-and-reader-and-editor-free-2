@@ -92,7 +92,7 @@ data class ScanPreset(
         .filter { it.second != null }.joinToString(";") { (k, v) -> "$k=" + esc(v!!) }
 
     companion object {
-        private fun esc(v: String) = v.replace("%", "%25").replace(";", "%3B").replace("=", "%3D").replace("\n", " ")
+        private fun esc(v: String) = v.replace("%", "%25").replace(";", "%3B").replace("=", "%3D").replace(Regex("[\r\n]"), " ")
         private fun unesc(v: String) = v.replace("%3D", "=").replace("%3B", ";").replace("%25", "%")
 
         fun decode(line: String): ScanPreset? {

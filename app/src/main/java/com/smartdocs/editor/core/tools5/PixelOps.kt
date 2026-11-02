@@ -101,6 +101,7 @@ object PixelOps {
 
     /** Sauvola adaptive threshold → pure black / white. [window] in px (default: 1/30 of the long side). */
     fun sauvola(px: IntArray, w: Int, h: Int, k: Double = 0.2, window: Int = maxOf(15, maxOf(w, h) / 30)) {
+        if (w <= 0 || h <= 0) return
         val g = gray(px)
         // statistics on a reduced grid for big pages (keeps the two integral images small)
         val f = if (w.toLong() * h > 1_500_000L) 2 else 1
@@ -138,7 +139,7 @@ object PixelOps {
      * profile of the central rows. Returns the x of the gutter.
      */
     fun bindingColumn(px: IntArray, w: Int, h: Int): Int {
-        if (w < 8) return w / 2
+        if (w < 8 || h <= 0) return w / 2
         val prof = DoubleArray(w)
         val ys = (h / 5) until maxOf(h / 5 + 1, h * 4 / 5)
         for (x in 0 until w) { var s = 0L; var n = 0; var y = ys.first; while (y <= ys.last) { s += lum(px[y * w + x]); n++; y += 2 }; prof[x] = if (n > 0) s.toDouble() / n else 255.0 }

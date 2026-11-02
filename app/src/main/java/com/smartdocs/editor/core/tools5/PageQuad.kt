@@ -130,6 +130,9 @@ object PageQuad {
      * longest sides in source pixels, so nothing is lost; [maxDim] caps the long side. Returns the pixels and size.
      */
     fun warp(src: IntArray, w: Int, h: Int, quad: Quad, maxDim: Int = 4096): Triple<IntArray, Int, Int> {
+        // stress test: an empty source, or corners that are not numbers (a corrupt project), are not warped
+        if (w <= 0 || h <= 0 || src.size < w * h) return Triple(src, w, h)
+        if (!(quad.x + quad.y).all { it.isFinite() }) return Triple(src.copyOf(), w, h)
         val q = quad.scaled(w, h)
         val top = hypot(q.x[1] - q.x[0], q.y[1] - q.y[0]); val bottom = hypot(q.x[2] - q.x[3], q.y[2] - q.y[3])
         val left = hypot(q.x[3] - q.x[0], q.y[3] - q.y[0]); val right = hypot(q.x[2] - q.x[1], q.y[2] - q.y[1])
@@ -288,6 +291,7 @@ object PageQuad {
     }
 
     private fun bilinear(src: IntArray, w: Int, h: Int, fx: Double, fy: Double): Int {
+        if (fx.isNaN() || fy.isNaN()) return -1
         val x0 = kotlin.math.floor(fx).toInt(); val y0 = kotlin.math.floor(fy).toInt()
         val tx = (fx - x0).toFloat(); val ty = (fy - y0).toFloat()
         fun at(x: Int, y: Int) = src[y.coerceIn(0, h - 1) * w + x.coerceIn(0, w - 1)]
