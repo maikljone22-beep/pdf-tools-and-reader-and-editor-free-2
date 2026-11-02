@@ -7,6 +7,7 @@ import com.tom_roush.pdfbox.cos.COSBase
 import com.tom_roush.pdfbox.cos.COSDictionary
 import com.tom_roush.pdfbox.cos.COSInteger
 import com.tom_roush.pdfbox.cos.COSName
+import com.tom_roush.pdfbox.cos.COSNull
 import com.tom_roush.pdfbox.cos.COSObject
 import com.tom_roush.pdfbox.cos.COSString
 import com.tom_roush.pdfbox.pdmodel.PDDocument
@@ -116,6 +117,48 @@ object PageOrganize {
             pages.filter { it in 0 until doc.numberOfPages }.distinct().sortedDescending().forEach { doc.removePage(it) }
         }
         FormPrune.prune(doc, goneWidgets)
+        severReferences(doc, gone)
+    }
+
+    /**
+     * Hostile review E3: a deleted page stayed inside the saved file whenever anything still pointed at it — the tag
+     * tree (/Pg of its elements and marked-content references), named destinations, the open action. Every reference
+     * to a deleted page reachable from the catalog is cut, so the page and its content are no longer written.
+     */
+    internal fun severReferences(doc: PDDocument, gone: Set<COSDictionary>) {
+        val seen = java.util.Collections.newSetFromMap(java.util.IdentityHashMap<COSBase, Boolean>())
+        fun target(v: COSBase?): COSBase? = if (v is COSObject) v.`object` else v
+        fun walk(b: COSBase?) {
+            val o = target(b) ?: return
+            if (!seen.add(o)) return
+            when (o) {
+                is COSDictionary -> {
+                    val keys = o.keySet().toList()
+                    for (k in keys) {
+                        val v = target(o.getItem(k))
+                        if (v is COSDictionary && v in gone) o.removeItem(k) else walk(o.getItem(k))
+                    }
+                }
+                is COSArray -> {
+                    var i = 0
+                    while (i < o.size()) {
+                        val v = target(o.get(i))
+                        // a destination array [page /XYZ …] onto a deleted page: the whole destination goes
+                        if (v is COSDictionary && v in gone) { o.set(i, COSNull.NULL) }
+                        else walk(o.get(i))
+                        i++
+                    }
+                }
+                else -> {}
+            }
+        }
+        val cat = doc.documentCatalog.cosObject
+        // the page tree itself no longer holds them; everything else in the catalog is searched
+        for (k in cat.keySet().toList()) if (k != COSName.PAGES) {
+            val v = target(cat.getItem(k))
+            if (v is COSDictionary && v in gone) cat.removeItem(k) else walk(cat.getItem(k))
+        }
+        (target(cat.getItem(COSName.OPEN_ACTION)) as? COSArray)?.let { a -> if (a.size() > 0 && target(a.get(0)) == COSNull.NULL) cat.removeItem(COSName.OPEN_ACTION) }
     }
 
     /**

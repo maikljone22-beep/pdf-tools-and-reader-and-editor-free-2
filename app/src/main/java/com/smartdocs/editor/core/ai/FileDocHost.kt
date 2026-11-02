@@ -44,7 +44,13 @@ class FileDocHostState(private val ctx: Context, private val docs: DocumentRepos
             withContext(Dispatchers.IO) { file.copyTo(backup, overwrite = true); out.delete() }
             e.op(file, out, password)
             if (!out.exists() || out.length() == 0L) throw IllegalStateException("empty result")
-            withContext(Dispatchers.IO) { out.copyTo(file, overwrite = true); out.delete() }
+            // hostile review E4: the assistant's edits pass the signature check like every other save (a signed file
+            // was silently invalidated), and replace the file atomically (a kill mid-copy truncated it)
+            withContext(Dispatchers.IO) {
+                val d = com.smartdocs.editor.core.pdf.SignedGuard.decideWrite(file, out, password, com.smartdocs.editor.core.pdf.SignedGuard.Change.MODIFY)
+                com.smartdocs.editor.core.pdf.SignedGuard.reasonOf(d)?.let { r -> throw com.smartdocs.editor.core.pdf.SignedDocumentException(r, "this file is signed or certified; save as a copy") }
+                com.smartdocs.editor.core.redact.RedactIo.moveInto(out, file)
+            }
             if (e.changesPassword) password = e.newPassword
             refresh()
             backup
@@ -52,7 +58,10 @@ class FileDocHostState(private val ctx: Context, private val docs: DocumentRepos
     }
 
     private suspend fun restore(backup: File, pw: String?) = mutex.withLock {
-        withContext(Dispatchers.IO) { backup.copyTo(file, overwrite = true) }
+        withContext(Dispatchers.IO) {
+            val tmp = File(file.parentFile, ".${file.nameWithoutExtension}.undo.pdf")
+            backup.copyTo(tmp, overwrite = true); com.smartdocs.editor.core.redact.RedactIo.moveInto(tmp, file)
+        }
         password = pw
         refresh()
     }

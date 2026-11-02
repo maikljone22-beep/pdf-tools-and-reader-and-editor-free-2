@@ -581,9 +581,17 @@ object PdfOps {
         } finally { session.closeAsync() }
     }
 
+    /**
+     * Hostile review E8: a form filled by another app that only set NeedAppearances has values without a picture —
+     * flattening drew nothing and the values were lost. Their appearances are built first.
+     */
+    private fun appearancesFirst(af: com.tom_roush.pdfbox.pdmodel.interactive.form.PDAcroForm) {
+        if (af.needAppearances) runCatching { af.refreshAppearances() }
+    }
+
     /** Flatten AcroForm fields only (keeps vector content). */
     suspend fun flattenForms(src: File, out: File, password: String? = null) = withContext(Dispatchers.IO) {
-        load(src, password).use { doc -> doc.documentCatalog.acroForm?.flatten(); saveTo(doc, out) }
+        load(src, password).use { doc -> doc.documentCatalog.acroForm?.let { af -> appearancesFirst(af); af.flatten() }; saveTo(doc, out) }
     }
 
     /** Black out rectangles (page points) and remove the text beneath by rasterising those pages. */
@@ -680,7 +688,7 @@ object PdfOps {
     suspend fun flattenAnnotations(src: File, out: File, password: String? = null): Int = withContext(Dispatchers.IO) {
         var n = 0
         load(src, password).use { doc ->
-            runCatching { doc.documentCatalog.acroForm?.let { af -> af.needAppearances = false; af.flatten(); n += 1 } }
+            runCatching { doc.documentCatalog.acroForm?.let { af -> appearancesFirst(af); af.needAppearances = false; af.flatten(); n += 1 } }
             // the per-page core is shared with "Apply All Signatures" (nitro-fillsign2)
             n += com.smartdocs.editor.core.fillsign2.SignatureFlatten.flattenIn(doc) { true }
             saveTo(doc, out)
