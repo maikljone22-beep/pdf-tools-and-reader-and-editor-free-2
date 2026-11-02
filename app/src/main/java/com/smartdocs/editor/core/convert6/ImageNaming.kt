@@ -39,7 +39,7 @@ object ImageNaming {
         return s
     }
 
-    private val captionStart = Regex("""^\s*(الشكل|شكل|صورة|الصورة|رسم|الرسم|جدول|الجدول|مخطط|المخطط|Figure|Fig\.?|Image|Picture|Table|Chart|Photo|Plate|Illustration)\b""", RegexOption.IGNORE_CASE)
+    private val captionStart = Regex("""^\s*(الشكل|شكل|صورة|الصورة|رسم|الرسم|جدول|الجدول|مخطط|المخطط|Figure|Fig\.?|Image|Picture|Table|Chart|Photo|Plate|Illustration)(?![\p{L}\p{N}_])""", RegexOption.IGNORE_CASE)   // not \b: on JDK 19+ it is ASCII-only, so "الشكل 3" never matched
 
     fun looksLikeCaption(s: String) = captionStart.containsMatchIn(s)
 

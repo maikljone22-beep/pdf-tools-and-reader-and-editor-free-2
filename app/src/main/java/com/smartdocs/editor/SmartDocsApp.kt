@@ -42,6 +42,8 @@ class SmartDocsApp : Application() {
         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
             // convert audit C2 / C11 / A-M14: half-written outputs of a run the system killed, stale temp files
             runCatching { com.smartdocs.editor.core.convert6.Cv6Platform.cleanUp(this@SmartDocsApp, documents) }
+            // scanner: a PDF the app was adding pages to when it died gets its original back
+            runCatching { com.smartdocs.editor.core.tools5.ScanAppendJournal.recover(this@SmartDocsApp) }
             // nitro-fillsign2: temporary signatures of the previous session go first (they are never synced anyway)
             runCatching { com.smartdocs.editor.core.data.TemporarySignatures.cleanUp(this@SmartDocsApp) }
             runCatching { com.smartdocs.editor.core.share5.AppDataSync.autoSyncQuietly(this@SmartDocsApp) }
