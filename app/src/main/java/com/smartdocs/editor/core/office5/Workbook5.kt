@@ -132,7 +132,16 @@ class Workbook5(val book: SheetBook, val styles: XStyles, val pkg: OPackage?, va
             moved[if (rows) Sheet5.key(n, c) else Sheet5.key(r, n)] = cell
         }
         s.cells.clear(); s.cells.putAll(moved)
-        if (rows) s.rowAttrs.clear() else { s.colStyles.clear(); s.colHidden.clear() }
+        // hostile review O4: row / column attributes move with their rows / columns (one insert used to unhide every
+        // hidden row and drop all grouping and column styles)
+        if (rows) {
+            val ra = HashMap<Int, List<XAttr>>(); s.rowAttrs.forEach { (r, v) -> A1.shiftIndex(r, at, count)?.let { ra[it] = v } }
+            s.rowAttrs.clear(); s.rowAttrs.putAll(ra)
+        } else {
+            val cs = HashMap<Int, String>(); s.colStyles.forEach { (c, v) -> A1.shiftIndex(c, at, count)?.let { cs[it] = v } }
+            val ch = HashSet<Int>(); s.colHidden.forEach { c -> A1.shiftIndex(c, at, count)?.let { ch += it } }
+            s.colStyles.clear(); s.colStyles.putAll(cs); s.colHidden.clear(); s.colHidden.addAll(ch)
+        }
         if (rows) {
             val h = HashMap<Int, Float>(); s.rowHeights.forEach { (r, v) -> A1.shiftIndex(r, at, count)?.let { h[it] = v } }
             s.rowHeights.clear(); s.rowHeights.putAll(h)

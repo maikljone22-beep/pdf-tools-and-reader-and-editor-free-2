@@ -16,7 +16,8 @@ data class CellPos(val block: Int, val row: Int, val cell: Int)
  * paragraph, Backspace at its start joins it with the previous one.
  */
 class WordState(val doc: WordDoc, override val file: File) : OfficeHost {
-    override val ext = "docx"
+    // hostile review O8: a macro / template file keeps its type (it was shared and saved as .docx)
+    override val ext = file.extension.lowercase().takeIf { it in setOf("docx", "docm", "dotx", "dotm") } ?: "docx"
     override var tick by mutableIntStateOf(0); private set
     override val modified: Boolean get() = doc.modified
     override val canUndo: Boolean get() = doc.canUndo

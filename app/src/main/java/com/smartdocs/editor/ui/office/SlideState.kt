@@ -8,7 +8,7 @@ import java.io.File
 
 /** UI state of the presentation editor: current slide, selected shape, in-place text editing, slide show. */
 class SlideState(val doc: PptDoc, override val file: File) : OfficeHost {
-    override val ext = "pptx"
+    override val ext = file.extension.lowercase().takeIf { it in setOf("pptx", "pptm", "ppsx", "ppsm", "potx", "potm") } ?: "pptx"
     override var tick by mutableIntStateOf(0); private set
     override val modified: Boolean get() = doc.modified
     override val canUndo: Boolean get() = doc.canUndo
@@ -106,7 +106,11 @@ class SlideState(val doc: PptDoc, override val file: File) : OfficeHost {
 
     fun addTextBox(initial: String) {
         val b = box()
-        val e = doc.changeSlide(current) { doc.addTextBox(current, b[0], b[1], b[2], b[3], initial, rtl = true) }
+        // hostile review O15: the box's direction follows its text (Arabic, or the app language when empty)
+        val rtl = initial.firstOrNull { Character.getDirectionality(it).let { d -> d == Character.DIRECTIONALITY_LEFT_TO_RIGHT || d == Character.DIRECTIONALITY_RIGHT_TO_LEFT || d == Character.DIRECTIONALITY_RIGHT_TO_LEFT_ARABIC } }
+            ?.let { Character.getDirectionality(it) != Character.DIRECTIONALITY_LEFT_TO_RIGHT }
+            ?: (java.util.Locale.getDefault().language in setOf("ar", "fa", "ur", "he"))
+        val e = doc.changeSlide(current) { doc.addTextBox(current, b[0], b[1], b[2], b[3], initial, rtl = rtl) }
         selected = e; bump(); beginText()
     }
 
