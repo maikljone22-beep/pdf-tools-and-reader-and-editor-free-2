@@ -127,6 +127,7 @@ fun PictureBox(img: WImage, widthFraction: Float, selected: Boolean, modifier: M
 }
 
 /** One body paragraph: shown as formatted text, or edited in place when focused. */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun ParagraphBlock(s: WordState, index: Int, v: WPara, contentWidthEmu: Long) {
     val editing = !s.reading && s.focus == index
