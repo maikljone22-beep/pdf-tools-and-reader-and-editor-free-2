@@ -11,6 +11,7 @@ import io.legere.pdfiumandroid.PdfPage
 import io.legere.pdfiumandroid.PdfiumCore
 import io.legere.pdfiumandroid.api.FindFlags
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -52,7 +53,8 @@ class PdfSession private constructor(
             return true
         }
     }
-    private val bitmapCache = object : LruCache<String, Bitmap>(64 * 1024 * 1024) {
+    // red team R11: an eighth of the app's heap (16–64 MB) — a fixed 64 MB was most of a small phone's heap
+    private val bitmapCache = object : LruCache<String, Bitmap>((Runtime.getRuntime().maxMemory() / 8).coerceIn(16L * 1024 * 1024, 64L * 1024 * 1024).toInt()) {
         override fun sizeOf(key: String, value: Bitmap) = value.byteCount
     }
 
@@ -111,14 +113,16 @@ class PdfSession private constructor(
         withContext(Dispatchers.IO) {
             val key = "$index:$width:$height:$nightMode:$annotations"
             bitmapCache.get(key)?.let { return@withContext it }
-            mutex.withLock {
-                bitmapCache.get(key)?.let { return@withLock it }
-                val bmp = Bitmap.createBitmap(width.coerceAtLeast(1), height.coerceAtLeast(1), Bitmap.Config.ARGB_8888)
-                page(index).renderPageBitmap(bmp, 0, 0, width, height, annotations, false, Color.WHITE, Color.WHITE)
-                val out = if (nightMode) invert(bmp) else bmp
-                bitmapCache.put(key, out)
-                out
+            val bmp = mutex.withLock {
+                bitmapCache.get(key)?.let { return@withContext it }
+                Bitmap.createBitmap(width.coerceAtLeast(1), height.coerceAtLeast(1), Bitmap.Config.ARGB_8888).also {
+                    page(index).renderPageBitmap(it, 0, 0, width, height, annotations, false, Color.WHITE, Color.WHITE)
+                }
             }
+            // red team R10: night mode inverts outside the document lock (other pages render meanwhile), in place
+            val out = if (nightMode) invert(bmp) else bmp
+            bitmapCache.put(key, out)
+            out
         }
 
     /**
@@ -148,18 +152,20 @@ class PdfSession private constructor(
             }
         }
 
+    /** Colours inverted in place, a row at a time (red team R10: a whole-page IntArray and a second bitmap were ~60 MB at the zoom cap). */
     private fun invert(src: Bitmap): Bitmap {
         val w = src.width; val h = src.height
-        val px = IntArray(w * h)
-        src.getPixels(px, 0, w, 0, 0, w, h)
-        for (i in px.indices) {
-            val c = px[i]
-            px[i] = (c and 0xFF000000.toInt()) or (0xFFFFFF - (c and 0xFFFFFF))
+        if (!src.isMutable) {
+            val m = src.copy(Bitmap.Config.ARGB_8888, true) ?: return src
+            src.recycle(); return invert(m)
         }
-        val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-        out.setPixels(px, 0, w, 0, 0, w, h)
-        src.recycle()
-        return out
+        val row = IntArray(w)
+        for (y in 0 until h) {
+            src.getPixels(row, 0, w, 0, y, w, 1)
+            for (i in 0 until w) { val c = row[i]; row[i] = (c and 0xFF000000.toInt()) or (0xFFFFFF - (c and 0xFFFFFF)) }
+            src.setPixels(row, 0, w, 0, y, w, 1)
+        }
+        return src
     }
 
     fun invalidateCache() = bitmapCache.evictAll()
@@ -244,6 +250,9 @@ class PdfSession private constructor(
             val hits = ArrayList<SearchHit>()
             for (pi in pages) {
                 if (closed) break
+                // red team R9: a new search (or leaving) stops this one — it kept scanning every page, competing with
+                // rendering, and then overwrote the newer results
+                kotlinx.coroutines.currentCoroutineContext().ensureActive()
                 mutex.withLock {
                     page(pi).openTextPage().use { tp ->
                         val total = tp.textPageCountChars()

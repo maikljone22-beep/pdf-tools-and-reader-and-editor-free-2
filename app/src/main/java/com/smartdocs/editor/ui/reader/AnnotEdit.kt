@@ -163,6 +163,16 @@ class AnnotEditor(private val s: ReaderState) {
         f.copyTo(b, overwrite = true); backup = b
     }
 
+    /**
+     * Red team R3: [e] in the file as it is now — the listing's indices shift after every rewrite, so a stale index
+     * could name a neighbour. Same page, subtype and box; the old index only breaks a tie. Call under the save mutex.
+     */
+    internal suspend fun locate(f: File, e: AnnotationWriter.Existing): AnnotationWriter.Existing? {
+        val now = AnnotationWriter.list(f, s.password)
+        return now.firstOrNull { it.page == e.page && it.subtype == e.subtype && close(it.rect, e.rect) && it.index == e.index }
+            ?: now.singleOrNull { it.page == e.page && it.subtype == e.subtype && close(it.rect, e.rect) }
+    }
+
     private fun close(a: RectF, b: RectF) = abs(a.left - b.left) < 0.5f && abs(a.right - b.right) < 0.5f && abs(a.top - b.top) < 0.5f && abs(a.bottom - b.bottom) < 0.5f
 
     fun transform(from: RectF, to: RectF) = edit { mapAnnot(it, from, to) }
