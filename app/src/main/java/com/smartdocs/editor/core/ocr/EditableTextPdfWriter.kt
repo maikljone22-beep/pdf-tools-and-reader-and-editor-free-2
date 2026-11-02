@@ -51,7 +51,7 @@ class EditableTextPdfWriter(private val context: Context, src: File, password: S
      * Replace page [pageIndex] by [image] (the page rendered in display orientation, must be mutable — it is
      * modified) cleaned of the recognised words, plus the words of [page] as real text.
      */
-    suspend fun replacePage(pageIndex: Int, image: Bitmap, page: OcrPage, minConfidence: Float = 75f, vectorRules: Boolean = true) = withContext(Dispatchers.Default) {
+    suspend fun replacePage(pageIndex: Int, image: Bitmap, page: OcrPage, minConfidence: Float = 65f, vectorRules: Boolean = true) = withContext(Dispatchers.Default) {
         val all = page.words.filter { it.text.isNotBlank() && it.box.width() > 1 && it.box.height() > 1 && it.text.any { c -> c.isLetterOrDigit() } }
         if (all.isEmpty()) return@withContext
         // drop junk "words": far taller than a text line (decorations, borders, big margin marks)
@@ -161,10 +161,18 @@ class EditableTextPdfWriter(private val context: Context, src: File, password: S
         val natural = runCatching { font.getStringWidth(shaped) / 1000f * fontSize }.getOrDefault(0f)
         val targetW = w.box.width() * s
         // visible words were checked to fit (fitsBox); invisible ones may stretch freely to cover their scan for selection
-        cs.setHorizontalScaling(if (natural > 0.5f) (targetW / natural * 100f).coerceIn(if (visible) 75f else 10f, if (visible) 135f else 1000f) else 100f)
+        cs.setHorizontalScaling(if (natural > 0.5f) (targetW / natural * 100f).coerceIn(if (visible) FIT_MIN * 100f else 10f, if (visible) FIT_MAX * 100f else 1000f) else 100f)
         cs.setTextMatrix(Matrix.getTranslateInstance(x, y))
         if (visible) cs.showArabic(text, shaped) else cs.showText(shaped)
     }
+
+    /**
+     * How far a rewritten word may be stretched or squeezed to fill its box. Bold / serif print in photographed pages is
+     * often 40 % wider than our font, so the old 0.75..1.35 left those words as picture only (user report: "That", "car",
+     * "who" not editable).
+     */
+    private val FIT_MIN = 0.65f
+    private val FIT_MAX = 1.5f
 
     /** Natural width of the word in our font is within 0.75..1.35 of its box (no visible stretching). */
     private fun fitsBox(w: OcrWord, s: Float): Boolean = runCatching {
@@ -177,7 +185,7 @@ class EditableTextPdfWriter(private val context: Context, src: File, password: S
         val fontSize = (w.box.height() / ratio * s).coerceIn(3f, 200f)
         val natural = font.getStringWidth(shaped) / 1000f * fontSize
         val k = w.box.width() * s / natural
-        natural > 0.5f && k in 0.75f..1.35f
+        natural > 0.5f && k in FIT_MIN..FIT_MAX
     }.getOrDefault(false)
 
     /** The ring around the word is nearly one colour (paper), so painting over the word leaves no patch. */
@@ -189,9 +197,10 @@ class EditableTextPdfWriter(private val context: Context, src: File, password: S
         val step = maxOf(1, (rt - l) / 40)
         for (y in intArrayOf(r.top - 3, r.bottom + 2)) {
             if (y !in 0 until b.height) continue
-            var x = l; while (x <= rt) { n++; if (kotlin.math.abs(lum(b.getPixel(x, y)) - ref) > 28) off++; x += step }
+            var x = l; while (x <= rt) { n++; if (kotlin.math.abs(lum(b.getPixel(x, y)) - ref) > 40) off++; x += step }
         }
-        return n == 0 || off * 100 / n <= 12
+        // photographed pages: shading, tinted table cells and a ruling line crossing the ring are still "plain" enough
+        return n == 0 || off * 100 / n <= 25
     }
 
     /** Median colour of a 2 px ring just outside [r] — the paper around the word. */
