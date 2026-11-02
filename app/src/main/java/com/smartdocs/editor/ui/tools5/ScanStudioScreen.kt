@@ -420,9 +420,13 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                         com.smartdocs.editor.core.pdf.PdfOps.merge(listOf(local, tmpOut), merged)
                         tmpOut.delete()
                         val wrote = withContext(Dispatchers.IO) {
+                            // the original is kept aside until the write is complete (the app may die in the middle)
+                            val journal = runCatching { com.smartdocs.editor.core.tools5.ScanAppendJournal.begin(ctx, target, local, merged.length()) }.getOrNull()
+                                ?: return@withContext false   // no room for the backup: leave the user's file alone, keep the copy
                             val ok = runCatching { ctx.contentResolver.openOutputStream(target, "wt")!!.use { o -> merged.inputStream().use { it.copyTo(o) } } }.isSuccess
                             // audit A4: "wt" emptied the user's file first — a failed write puts the original back
-                            if (!ok) runCatching { ctx.contentResolver.openOutputStream(target, "wt")!!.use { o -> local.inputStream().use { it.copyTo(o) } } }
+                            val back = ok || runCatching { ctx.contentResolver.openOutputStream(target, "wt")!!.use { o -> local.inputStream().use { it.copyTo(o) } } }.isSuccess
+                            if (back) com.smartdocs.editor.core.tools5.ScanAppendJournal.finish(journal)
                             ok
                         }
                         val out = app.documents.uniqueFile(app.documents.scansDir, targetName.substringBeforeLast('.').ifBlank { base })
