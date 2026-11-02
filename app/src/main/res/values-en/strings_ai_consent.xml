@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ai_consent_title">Send content to the AI service?</string>
+    <string name="ai_consent_body">To run this feature, content from your document (the selected text, the page text or the file text, or a page image when needed) will be sent to the AI service: %1$s.\n\nThis content leaves your device and is processed on that service\'s servers. Nothing is sent if you tap Cancel. You can withdraw consent at any time in Settings → AI.</string>
+    <string name="ai_consent_allow">Allow</string>
+    <string name="ai_consent_cancel">Cancel</string>
+    <string name="ai_consent_declined">Nothing was sent: you did not allow sharing content with the AI service.</string>
+    <string name="ai_consent_setting">Allow sending content to AI</string>
+    <string name="ai_consent_setting_sub">When off, you will be asked before any document content is sent</string>
+</resources>

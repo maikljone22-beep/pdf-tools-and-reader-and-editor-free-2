@@ -74,6 +74,7 @@ open class MainActivity : ComponentActivity() {   // NVE-shell: open for NveWind
                         com.smartdocs.editor.core.review.ReviewPromptHost()
                         com.smartdocs.editor.core.ads.AdsConsentHost()   // share6: UMP consent; no ads ever show without it (no-op when ads are off)
                     }
+                    com.smartdocs.editor.ui.ai.AiConsentHost()   // audit C7: ask before document content is sent to an AI service
                 }
             }
         }
