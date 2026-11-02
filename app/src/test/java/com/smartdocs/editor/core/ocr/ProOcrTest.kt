@@ -166,6 +166,9 @@ class ProOcrTest {
         assertEquals("ara+eng", OcrEngine.effectiveLangs("ara+eng", false, OcrEngineMode.AUTO, false))
         assertEquals("ara+ArabicFT", OcrEngine.effectiveLangs("ara+eng+ArabicFT", true, OcrEngineMode.AUTO, false))
         assertEquals("ara+eng", OcrEngine.effectiveLangs("ara+eng+ArabicFT", false, OcrEngineMode.AUTO, false))
+        // audit A11: fast or Tesseract-only mode never asks for the fine-tuned model
+        assertEquals("ara+eng", OcrEngine.effectiveLangs("ara+eng+ArabicFT", true, OcrEngineMode.AUTO, true))
+        assertEquals("ara+eng", OcrEngine.effectiveLangs("ara+eng+ArabicFT", true, OcrEngineMode.TESSERACT, false))
         assertEquals("ara+eng", OcrEngine.effectiveLangs("ara+eng", true, OcrEngineMode.TESSERACT, false))
         assertEquals("ara+eng", OcrEngine.effectiveLangs("ara+eng", true, OcrEngineMode.AUTO, true))   // fast quality
         assertEquals("eng+fra", OcrEngine.effectiveLangs("eng+fra", true, OcrEngineMode.AUTO, false))

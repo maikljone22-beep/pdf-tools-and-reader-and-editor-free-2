@@ -119,4 +119,8 @@
     <string name="sc_page_deleted">Page deleted</string>
     <string name="sc_undo">Undo</string>
     <string name="sc_word_font">Word text font (closest match)</string>
+    <plurals name="sc_form_fields_made">
+        <item quantity="one">1 fillable field recognised. Open the file to fill it, or adjust the fields in the form designer.</item>
+        <item quantity="other">%1$d fillable fields recognised. Open the file to fill it, or adjust the fields in the form designer.</item>
+    </plurals>
 </resources>

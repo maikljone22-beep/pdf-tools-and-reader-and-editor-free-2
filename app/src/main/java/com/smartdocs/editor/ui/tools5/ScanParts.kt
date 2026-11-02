@@ -230,6 +230,7 @@ fun ReceiptSheet(r0: Receipt, pdf: File, onDismiss: () -> Unit) {
 fun BarcodeResultsDialog(found: List<Pair<Int, com.smartdocs.editor.core.tools5.BarcodeScan.Code>>, onDismiss: () -> Unit) {
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val clip = androidx.compose.ui.platform.LocalClipboardManager.current
+    val copiedMsg = stringResource(R.string.sc_copied)
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.sc_codes_title, found.size)) },
@@ -241,7 +242,8 @@ fun BarcodeResultsDialog(found: List<Pair<Int, com.smartdocs.editor.core.tools5.
                         Text(stringResource(R.string.sc_code_on_page, c.format.replace('_', ' '), page + 1), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                         Text(c.text, style = MaterialTheme.typography.bodyMedium)
                         Row {
-                            TextButton(onClick = { clip.setText(androidx.compose.ui.text.AnnotatedString(c.text)) }) { Text(stringResource(R.string.copy_text)) }
+                            // audit B13: copying says so
+                            TextButton(onClick = { clip.setText(androidx.compose.ui.text.AnnotatedString(c.text)); android.widget.Toast.makeText(ctx, copiedMsg, android.widget.Toast.LENGTH_SHORT).show() }) { Text(stringResource(R.string.copy_text)) }
                             if (com.smartdocs.editor.core.tools5.BarcodeScan.isLink(c.text)) TextButton(onClick = {
                                 runCatching { ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(c.text.trim())).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
                             }) { Text(stringResource(R.string.sc_code_open)) }

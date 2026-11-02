@@ -77,10 +77,19 @@ data class ScanPreset(
     val removeBlank: Boolean = false,
     val perFile: Int = 0,
     val author: String = "",
+    // audit B7: output choices too (null = an older preset that did not hold them: left as they are)
+    /** 0 PDF, 1 JPG, 2 Word. */
+    val format: Int? = null,
+    val wordFont: String? = null,
+    /** Size level (0 small … 2 best). */
+    val size: Int? = null,
+    val fingers: Boolean? = null,
 ) {
     /** One line, `key=value` fields separated by `;` (values escaped). Pure. */
     fun encode(): String = listOf("name" to name, "kind" to kind.name, "paper" to paper.name, "ocr" to ocr.toString(), "langs" to langs,
-        "blank" to removeBlank.toString(), "per" to perFile.toString(), "author" to author).joinToString(";") { (k, v) -> "$k=" + esc(v) }
+        "blank" to removeBlank.toString(), "per" to perFile.toString(), "author" to author,
+        "format" to format?.toString(), "font" to wordFont, "size" to size?.toString(), "fingers" to fingers?.toString())
+        .filter { it.second != null }.joinToString(";") { (k, v) -> "$k=" + esc(v!!) }
 
     companion object {
         private fun esc(v: String) = v.replace("%", "%25").replace(";", "%3B").replace("=", "%3D").replace("\n", " ")
@@ -93,7 +102,8 @@ data class ScanPreset(
                 runCatching { ScanKind.valueOf(m["kind"]!!) }.getOrDefault(ScanKind.DOCUMENT),
                 runCatching { ScanPaper.valueOf(m["paper"]!!) }.getOrDefault(ScanPaper.FIT),
                 m["ocr"]?.toBooleanStrictOrNull() ?: true, m["langs"] ?: "auto",
-                m["blank"]?.toBooleanStrictOrNull() ?: false, m["per"]?.toIntOrNull() ?: 0, m["author"].orEmpty())
+                m["blank"]?.toBooleanStrictOrNull() ?: false, m["per"]?.toIntOrNull() ?: 0, m["author"].orEmpty(),
+                m["format"]?.toIntOrNull()?.takeIf { it in 0..2 }, m["font"]?.takeIf { it.isNotBlank() }, m["size"]?.toIntOrNull()?.takeIf { it in 0..2 }, m["fingers"]?.toBooleanStrictOrNull())
         }
 
         fun decodeAll(text: String): List<ScanPreset> = text.lines().mapNotNull { if (it.isBlank()) null else decode(it) }

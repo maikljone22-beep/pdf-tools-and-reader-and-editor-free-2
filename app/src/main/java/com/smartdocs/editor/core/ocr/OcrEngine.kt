@@ -195,7 +195,8 @@ class OcrEngine(private val context: Context, val fast: Boolean = false) : AutoC
             val eff = effectiveLangs(langs, isLanguageInstalled(ARABIC_FT), mode, fast)
             val t = TessBaseAPI()
             var ok = runCatching { t.init(parent.absolutePath, eff, TessBaseAPI.OEM_LSTM_ONLY) }.getOrDefault(false)
-            usingFt = ok && eff != langs
+            // audit A1: from the languages really loaded (asking for ara+ArabicFT without the model loads plain ara)
+            usingFt = ok && ARABIC_FT in eff.split('+')
             if (!ok && eff != langs) ok = runCatching { t.init(parent.absolutePath, langs, TessBaseAPI.OEM_LSTM_ONLY) }.getOrDefault(false)
             if (!ok) { runCatching { t.recycle() }; return@withContext false }
             t.setPageSegMode(TessBaseAPI.PageSegMode.PSM_AUTO)
@@ -355,7 +356,8 @@ class OcrEngine(private val context: Context, val fast: Boolean = false) : AutoC
         fun effectiveLangs(langs: String, ftInstalled: Boolean, mode: OcrEngineMode, fast: Boolean): String {
             val parts = langs.split('+').map { it.trim() }.filter { it.isNotEmpty() }
             // asked for both (photo → Word: the two models together read bold book pages best), when the model is there
-            if (ARABIC_FT in parts) return (if (ftInstalled) parts.filter { it != "eng" } else parts.filter { it != ARABIC_FT }).distinct().joinToString("+")
+            // (audit A11: not in fast or Tesseract-only mode, where the fine-tuned model is not used)
+            if (ARABIC_FT in parts) return (if (ftInstalled && !fast && mode != OcrEngineMode.TESSERACT) parts.filter { it != "eng" } else parts.filter { it != ARABIC_FT }).distinct().joinToString("+")
             if (!ftInstalled || fast || mode == OcrEngineMode.TESSERACT || "ara" !in parts) return langs
             return parts.filter { it != "eng" }.map { if (it == "ara") ARABIC_FT else it }.distinct().joinToString("+")
         }
