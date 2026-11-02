@@ -107,4 +107,19 @@ class PptDocTest {
         val xml = String(d.pkg.bytes("ppt/slides/slide1.xml")!!)
         assertTrue(xml.indexOf("<p:transition") > xml.indexOf("</p:clrMapOvr>"))
     }
+
+    // hostile review O1
+    @Test fun slideTypoKeepsRunsAndFields() {
+        val sp = XDom.elem("""<p:sp xmlns:p="p" xmlns:a="a"><p:txBody><a:bodyPr/><a:p><a:r><a:rPr b="1"/><a:t>Helo </a:t></a:r><a:r><a:rPr i="1"/><a:t>world</a:t></a:r><a:fld id="x" type="slidenum"><a:t>3</a:t></a:fld></a:p><a:p><a:r><a:t>second</a:t></a:r></a:p></p:txBody></p:sp>""")
+        val d = sample()
+        d.setShapeText(sp, "Hello world3\nsecond")
+        val p0 = sp.child("txBody")!!.children("p")[0]
+        val runs = p0.elems().filter { it.local == "r" }
+        assertEquals(2, runs.size)
+        assertEquals("Hello ", runs[0].child("t")!!.textContent())
+        assertEquals("1", runs[0].child("rPr")!!.attr("b"))
+        assertEquals("world", runs[1].child("t")!!.textContent())
+        assertTrue(p0.elems().any { it.local == "fld" })
+    }
+
 }

@@ -11,9 +11,15 @@ class Cell5(
     val sst: Int = -1,
     /** Value cached in the file (used for functions the engine does not implement). */
     val cached: FV? = null,
+    /**
+     * Hostile review O3 / O5: the cell as it was in the file, for formulas the app cannot rewrite faithfully (array /
+     * dynamic-array formulas, shared formulas whose master it cannot parse). Written back as it was while the cell is
+     * not edited (an edit makes a new [Cell5] without it).
+     */
+    val keep: XElem? = null,
 ) {
-    val isFormula: Boolean get() = formula != null
-    fun withStyle(s: Int) = Cell5(formula, literal, s, sst, cached)
+    val isFormula: Boolean get() = formula != null || keep != null
+    fun withStyle(s: Int) = Cell5(formula, literal, s, sst, cached, keep)
     val isEmpty: Boolean get() = formula == null && literal is FV.Blank
 
     /** Text for the formula bar. */
@@ -133,9 +139,26 @@ class SheetBook {
     /** Result of parsing typed input: the cell content and a number format the input implies (12% → 0%). */
     class Parsed(val formula: String?, val literal: FV, val impliedFormat: String?)
 
+    /**
+     * Hostile review O10: a formula typed on an Arabic keyboard — Arabic-Indic / Persian digits, the Arabic comma «،»
+     * and semicolon «؛» and decimal «٫» — becomes Excel's form; text inside quotes is left as typed.
+     */
+    fun arabicFormula(f: String): String {
+        val sb = StringBuilder(f.length); var inStr = false
+        for (ch in f) {
+            if (ch == '"') inStr = !inStr
+            sb.append(if (inStr) ch else when (ch) {
+                in '٠'..'٩' -> '0' + (ch - '٠'); in '۰'..'۹' -> '0' + (ch - '۰')
+                '،' -> ','; '؛' -> ';'; '٫' -> '.'
+                else -> ch
+            })
+        }
+        return sb.toString()
+    }
+
     fun parseInput(text: String): Parsed {
         if (text.isEmpty()) return Parsed(null, FV.Blank, null)
-        if (text.startsWith("=") && text.length > 1) return Parsed(text.substring(1).trim(), FV.Blank, null)
+        if (text.startsWith("=") && text.length > 1) return Parsed(arabicFormula(text.substring(1).trim()), FV.Blank, null)
         if (text.startsWith("'")) return Parsed(null, FV.Str(text.substring(1)), null)
         val t = text.trim()
         when (t.uppercase()) { "TRUE" -> return Parsed(null, FV.TRUE, null); "FALSE" -> return Parsed(null, FV.FALSE, null) }

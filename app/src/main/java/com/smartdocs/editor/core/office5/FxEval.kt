@@ -32,7 +32,9 @@ class FxEval(val ctx: FxContext) {
         is Fx.Percent -> FV.of(FxCoerce.num(scalar(f.e)) / 100.0)
         is Fx.Bin -> binary(f)
         is Fx.Call -> call(f)
-        is Fx.Name -> FV.NAME
+        // hostile review O2: a defined name the engine does not resolve keeps Excel's cached value (it showed #NAME?
+        // everywhere and wrote #NAME? into the file)
+        is Fx.Name -> throw FxUnsupported("name")
         Fx.Missing -> FV.Blank
     }
 

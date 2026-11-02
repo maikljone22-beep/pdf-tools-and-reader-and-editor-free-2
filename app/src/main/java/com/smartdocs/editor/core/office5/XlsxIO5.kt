@@ -124,7 +124,13 @@ object XlsxIO5 {
             "d" -> v?.let { FxDates.parse(it.replace('T', ' ').substringBefore('.').removeSuffix("Z")) }?.let { FV.Num(it) } ?: FV.Str(v ?: "")
             else -> v?.trim()?.toDoubleOrNull()?.let { FV.Num(it) } ?: FV.Blank
         }
-        return if (formula != null) Cell5(formula, FV.Blank, style, -1, value) else Cell5(null, value, style, sstIdx)
+        // hostile review O3 / O5: kept as written when the app cannot re-create the formula faithfully
+        val special = fe != null && (fe.attr("t") == "array" || fe.attr("t") == "dataTable" || c.attr("cm") != null || c.attr("vm") != null ||
+            (fe.attr("t") == "shared" && formula == null))
+        val keep = if (special) c.copy() else null
+        return if (formula != null) Cell5(formula, FV.Blank, style, -1, value, keep)
+            else if (keep != null) Cell5(null, value, style, -1, value, keep)
+            else Cell5(null, value, style, sstIdx)
     }
 
     // ================= saving =================
@@ -300,6 +306,11 @@ object XlsxIO5 {
     }
 
     private fun cellXml(w: Workbook5, s: Sheet5, r: Int, c: Int, cell: Cell5, p: String, sst: SstWriter): XElem {
+        cell.keep?.let { k ->
+            val e = k.copy().set("r", A1.name(r, c))
+            if (cell.style != 0) e.set("s", cell.style.toString()) else e.removeAttr("s")
+            return e
+        }
         val e = XElem(p + "c").set("r", A1.name(r, c))
         if (cell.style != 0) e.set("s", cell.style.toString())
         if (cell.formula != null) {
