@@ -5,6 +5,11 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.ui.res.stringResource
+import com.smartdocs.editor.R
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.BasicTextField
@@ -131,10 +136,21 @@ fun ParagraphBlock(s: WordState, index: Int, v: WPara, contentWidthEmu: Long) {
         val indent = ((v.indentTwips / 15f) * 0.75f * zoom).coerceIn(0f, 220f).dp + if (v.listLevel >= 0 && v.indentTwips == 0) (18 * (v.listLevel + 1)).dp else 0.dp
         val vpad = if (v.heading != 0) 8.dp else 2.dp
         if (onlyPictures) {
-            Box(Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable(enabled = !s.reading) { s.selectImage(index) },
+            // long-press menu (LP-C): the picture's actions at the picture (they were only in the ribbon's Picture tab)
+            var menu by remember { mutableStateOf(false) }
+            Box(Modifier.fillMaxWidth().padding(vertical = 4.dp).combinedClickable(enabled = !s.reading, onClick = { s.selectImage(index) },
+                onLongClick = { s.selectImage(index); menu = true }),
                 contentAlignment = when (v.align) { PAlign.CENTER -> Alignment.Center; PAlign.END -> Alignment.CenterEnd; else -> Alignment.CenterStart }) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     v.images.forEach { PictureBox(it, it.cx.toFloat() / contentWidthEmu, s.image == index) }
+                }
+                DropdownMenu(expanded = menu && s.image == index, onDismissRequest = { menu = false }) {
+                    DropdownMenuItem(text = { Text(stringResource(R.string.o5_bigger)) }, onClick = { menu = false; s.resizeImage(1.15f) })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.o5_smaller)) }, onClick = { menu = false; s.resizeImage(0.85f) })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.o5_align_start)) }, onClick = { menu = false; s.paragraphs { WordFormat.setAlign(it, PAlign.START) } })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.o5_align_center)) }, onClick = { menu = false; s.paragraphs { WordFormat.setAlign(it, PAlign.CENTER) } })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.o5_align_end)) }, onClick = { menu = false; s.paragraphs { WordFormat.setAlign(it, PAlign.END) } })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.o5_delete), color = MaterialTheme.colorScheme.error) }, onClick = { menu = false; s.deleteBlock() })
                 }
             }
             return@CompositionLocalProvider

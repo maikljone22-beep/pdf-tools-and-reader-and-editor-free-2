@@ -107,12 +107,16 @@ private fun EditCanvas(s: SlideState) {
     val k = widthPx.toFloat() / slide.width
     val sel = s.selectedShape()
     val handle = with(density) { 14.dp.toPx() }
+    // long-press menu (LP-C): the shape's actions at the finger (they were only in the ribbon's Shape tab)
+    var menuAt by remember { mutableStateOf<Offset?>(null) }
+    var colorDlg by remember { mutableIntStateOf(0) }
     Box(Modifier.fillMaxWidth().wrapContentHeight().onSizeChanged { widthPx = it.width.coerceAtLeast(1) }) {
         SlideView(slide, Modifier.fillMaxWidth().background(Color.White)
             .pointerInput(s.current, k) {
                 detectTapGestures(
                     onTap = { p -> s.select(hitShape(s, p, k)) },
                     onDoubleTap = { p -> val e = hitShape(s, p, k); s.select(e); if (e != null) s.beginText() },
+                    onLongPress = { p -> val e = hitShape(s, p, k); if (e != null) { s.select(e); menuAt = p } },
                 )
             }
             .pointerInput(s.current, k, sel?.elem) {
@@ -164,7 +168,20 @@ private fun EditCanvas(s: SlideState) {
         }
         // in-place text editing
         if (sel != null && s.editingText) InPlaceText(s, sel, k)
+        menuAt?.let { at ->
+            Box(Modifier.offset { IntOffset(at.x.roundToInt(), at.y.roundToInt()) }) {
+                DropdownMenu(expanded = s.selected != null, onDismissRequest = { menuAt = null }) {
+                    DropdownMenuItem(text = { Text(stringResource(R.string.o5_edit_text)) }, onClick = { menuAt = null; s.beginText() })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.o5_fill)) }, onClick = { menuAt = null; colorDlg = 1 })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.o5_outline_color)) }, onClick = { menuAt = null; colorDlg = 2 })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.o5_bring_forward)) }, onClick = { menuAt = null; s.reorderShape(1) })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.o5_send_backward)) }, onClick = { menuAt = null; s.reorderShape(-1) })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.o5_delete), color = MaterialTheme.colorScheme.error) }, onClick = { menuAt = null; s.deleteShape() })
+                }
+            }
+        }
     }
+    if (colorDlg != 0) ColorPickerDialog(if (colorDlg == 1) R.string.o5_fill else R.string.o5_outline_color, true, onDismiss = { colorDlg = 0 }) { c -> val w = colorDlg; colorDlg = 0; if (w == 1) s.fill(c) else s.line(c) }
 }
 
 private fun hitShape(s: SlideState, p: Offset, k: Float) =
