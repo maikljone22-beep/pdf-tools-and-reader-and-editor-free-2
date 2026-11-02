@@ -139,8 +139,8 @@ class AnnotEditor(private val s: ReaderState) {
                     val a = AnnotationWriter.extract(f, match.page, match.index, s.password)
                         ?.let { com.smartdocs.editor.core.annot.ForeignKeys.capture(f, s.password, match.page, match.index, it) } ?: return@withContext null
                     if (backup == null) {
-                        val b = File(f.parentFile, ".${f.nameWithoutExtension}.annotedit.pdf")
-                        f.copyTo(b, overwrite = true); backup = b
+                        val b = backupOf(f)
+                        f.copyTo(b, overwrite = true); backup = b; live += b.absolutePath
                     }
                     val tmp = File(f.parentFile, ".${f.nameWithoutExtension}.saving.pdf")
                     AnnotationWriter.delete(f, match.page, match.index, tmp, s.password)
@@ -159,8 +159,8 @@ class AnnotEditor(private val s: ReaderState) {
     internal fun ensureBackup() {
         if (backup != null) return
         val f = s.file ?: return
-        val b = File(f.parentFile, ".${f.nameWithoutExtension}.annotedit.pdf")
-        f.copyTo(b, overwrite = true); backup = b
+        val b = backupOf(f)
+        f.copyTo(b, overwrite = true); backup = b; live += b.absolutePath
     }
 
     /**
@@ -242,7 +242,7 @@ class AnnotEditor(private val s: ReaderState) {
 
     /** After a successful save: the file now holds everything, the backup is no longer needed. */
     fun committed() {
-        backup?.let { runCatching { it.delete() } }; backup = null; replaced.clear()
+        backup?.let { live -= it.absolutePath; runCatching { it.delete() } }; backup = null; replaced.clear()
         if (target is AnnotTarget.Pending) clear()
     }
 
@@ -251,7 +251,33 @@ class AnnotEditor(private val s: ReaderState) {
     /** (backup, file) to restore after the session closed, when the user discarded the edits. */
     fun restoreOnClose(): Pair<File, File>? {
         val b = backup ?: return null; val f = s.file ?: return null
+        live -= b.absolutePath
         return if (discard) b to f else null
+    }
+
+    companion object {
+        /** Backups of edits running in this process (a backup not listed here was left by a process that died). */
+        private val live = java.util.Collections.synchronizedSet(HashSet<String>())
+
+        fun backupOf(f: File) = File(f.parentFile, ".${f.nameWithoutExtension}.annotedit.pdf")
+
+        /**
+         * Editing a stored annotation takes it out of the working file (it lives on as a pending one until Save).
+         * When the app was killed in between, the annotation would be gone for good — and the next save would write
+         * that loss back to the original. Opening the file again puts the copy taken before the edit back.
+         * Returns true when it did. Call before the file is opened.
+         */
+        fun recoverInterrupted(f: File): Boolean {
+            val b = backupOf(f)
+            if (!b.isFile || b.absolutePath in live) return false
+            if (b.length() == 0L) { b.delete(); return false }
+            val tmp = File(f.parentFile, ".${f.nameWithoutExtension}.recover.pdf")
+            return runCatching {
+                b.copyTo(tmp, overwrite = true)
+                if (!tmp.renameTo(f)) { tmp.copyTo(f, overwrite = true); tmp.delete() }
+                b.delete()
+            }.isSuccess
+        }
     }
 }
 

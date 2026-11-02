@@ -391,4 +391,5 @@
     <string name="share_text">مشاركة النص</string>
     <string name="open_with">فتح بواسطة</string>
     <string name="saved_to">تم الحفظ في %1$s</string>
+    <string name="rd_annot_recovered">استُرجعت التعليقات التي كانت قيد التعديل عندما أُغلق التطبيق.</string>
 </resources>
