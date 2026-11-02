@@ -349,7 +349,7 @@ class ReaderState(
                 }
                 val firstOpen = recent == null && startPage < 0
                 scope.launch {
-                    val v = withContext(Dispatchers.IO) { runCatching { com.smartdocs.editor.core.edit5.DocPropsOps.read(f, openPw).view }.getOrNull() } ?: return@launch
+                    val v = openParse.withLock { withContext(Dispatchers.IO) { runCatching { com.smartdocs.editor.core.edit5.DocPropsOps.read(f, openPw).view }.getOrNull() } } ?: return@launch
                     applyInitialView(v, firstOpen)
                 }
                 app.documents.touchRecent(f, s.pageCount, initialPage)
@@ -537,7 +537,7 @@ class ReaderState(
     private fun loadPageFrames() {
         val f = file ?: return; val pw = password
         scope.launch {
-            val frames = withContext(Dispatchers.IO) { runCatching { PageUserFrame.read(f, pw) }.getOrNull() } ?: return@launch
+            val frames = openParse.withLock { withContext(Dispatchers.IO) { runCatching { PageUserFrame.read(f, pw) }.getOrNull() } } ?: return@launch
             androidx.compose.runtime.snapshots.Snapshot.withMutableSnapshot { pageFrames.clear(); pageFrames.putAll(frames) }
         }
     }
@@ -545,8 +545,15 @@ class ReaderState(
     private fun loadExisting() {
         loadPageFrames()
         val f = file ?: return
-        scope.launch { existing = runCatching { AnnotationWriter.list(f, password) }.getOrDefault(emptyList()) }
+        scope.launch { existing = openParse.withLock { runCatching { AnnotationWriter.list(f, password) }.getOrDefault(emptyList()) } }
     }
+
+    /**
+     * The background reads after opening (initial view, page frames, existing annotations) each parse the whole file
+     * with PdfBox; run together on a 400 MB file they exhausted the heap and the next allocation anywhere crashed the
+     * app. One at a time keeps the peak at one parse.
+     */
+    private val openParse = kotlinx.coroutines.sync.Mutex()
 
     // ================= annotations / undo =================
 
