@@ -46,6 +46,8 @@ class SmartDocsApp : Application() {
             runCatching { com.smartdocs.editor.core.convert6.Cv6Platform.cleanUp(this@SmartDocsApp, documents) }
             // scanner: a PDF the app was adding pages to when it died gets its original back
             runCatching { com.smartdocs.editor.core.tools5.ScanAppendJournal.recover(this@SmartDocsApp) }
+            // the library is in app storage (deleted with the app): its documents get a copy in Documents/SmartDocs once
+            runCatching { com.smartdocs.editor.core.files.PublicCopies.publishExisting(this@SmartDocsApp, documents) }
             // nitro-fillsign2: temporary signatures of the previous session go first (they are never synced anyway)
             runCatching { com.smartdocs.editor.core.data.TemporarySignatures.cleanUp(this@SmartDocsApp) }
             runCatching { com.smartdocs.editor.core.share5.AppDataSync.autoSyncQuietly(this@SmartDocsApp) }

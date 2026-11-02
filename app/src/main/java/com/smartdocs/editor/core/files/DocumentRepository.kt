@@ -317,6 +317,8 @@ class DocumentRepository(private val context: Context, private val db: AppDataba
                 favorite = prev?.favorite ?: false, thumbPath = prev?.thumbPath,
             )
         )
+        // a document the app made in its own storage also goes to Documents/SmartDocs (kept after uninstalling)
+        runCatching { PublicCopies.publish(context, this@DocumentRepository, file) }
     }
 
     suspend fun setThumb(file: File, thumb: File) = withContext(Dispatchers.IO) {
