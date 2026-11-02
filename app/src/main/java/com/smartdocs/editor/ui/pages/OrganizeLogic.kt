@@ -23,6 +23,19 @@ object OrganizeLogic {
     }
 
     /** Identities after a reorder: [order][i] is the old index shown at the new position i. A repeated page is a copy (new identity). */
+    /**
+     * New page order after moving [pages] (indexes, kept in their order) so the first of them lands at 1-based
+     * [position] of the result; null when nothing would change or the input is not valid. Pure.
+     */
+    fun moveTo(count: Int, pages: Collection<Int>, position: Int): List<Int>? {
+        val moving = pages.filter { it in 0 until count }.distinct().sorted()
+        if (moving.isEmpty() || position < 1) return null
+        val rest = (0 until count).filter { it !in moving }
+        val at = (position - 1).coerceAtMost(rest.size)
+        val order = rest.take(at) + moving + rest.drop(at)
+        return order.takeIf { it != (0 until count).toList() }
+    }
+
     fun idsAfterReorder(ids: List<Long>, order: List<Int>, fresh: () -> Long): List<Long> {
         val seen = HashSet<Long>()
         return order.map { o -> ids.getOrNull(o)?.takeIf { seen.add(it) } ?: fresh() }

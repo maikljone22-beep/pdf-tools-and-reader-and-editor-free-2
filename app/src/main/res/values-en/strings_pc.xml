@@ -426,4 +426,9 @@
     <string name="pc_open_after">Open the result when done</string>
     <string name="pc_toc_format">TOC line for each file</string>
     <string name="pc_toc_format_hint">Fields: {title}, {file}, {pages}, {n} number, {date}</string>
+    <string name="pg_move_to">Move to page number…</string>
+    <string name="pg_move_title">Move page %1$d</string>
+    <string name="pg_move_many_title">Move %1$d selected pages</string>
+    <string name="pg_move_label">New page number (1–%1$d)</string>
+    <string name="pg_move_go">Move</string>
 </resources>
