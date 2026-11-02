@@ -39,7 +39,8 @@ object ScanToWord {
     /** The physical page in points for a page picture of [w]×[h] px: the standard paper with the nearest shape (A4 when none is close). */
     fun pageSize(w: Int, h: Int): Pair<Float, Float> {
         val land = w > h
-        val ratio = max(w, h).toFloat() / min(w, h).coerceAtLeast(1)
+        // stress test: a strip picture gave a page kilometres long — Word takes pages up to 22 in, so the shape is capped
+        val ratio = (max(w, h).coerceAtLeast(1).toFloat() / min(w, h).coerceAtLeast(1)).coerceAtMost(2.8f)
         val best = PAPERS.minBy { (_, s) -> abs(s.second / s.first - ratio) }
         val s = if (abs(best.second.second / best.second.first - ratio) < 0.06f) best.second else PAPERS[0].second.let { a4 -> a4.first to a4.first * ratio }
         return if (land) s.second to s.first else s
@@ -107,6 +108,7 @@ object ScanToWord {
      * enough. Returned as pixel rectangles (l, t, r, b).
      */
     fun figures(px: IntArray, w: Int, h: Int, words: List<OcrBox>, rules: List<TableRules.Rule>): List<IntArray> {
+        if (w <= 0 || h <= 0) return emptyList()
         val cell = max(6, min(w, h) / 120)
         val gw = (w + cell - 1) / cell; val gh = (h + cell - 1) / cell
         val masked = BooleanArray(w * h)
@@ -174,6 +176,7 @@ object ScanToWord {
      */
     /** The table and box rules of a page picture (shorter ones than the OCR writer uses: table cells are small). */
     fun rules(px: IntArray, w: Int, h: Int): List<TableRules.Rule> {
+        if (w <= 0 || h <= 0 || px.isEmpty()) return emptyList()
         var sum = 0L; for (c in px) sum += lum(c)
         val thr = (sum / px.size * 0.62).toInt()
         val dark = BooleanArray(px.size) { lum(px[it]) < thr }
@@ -208,7 +211,11 @@ object ScanToWord {
             used[b][k] = true
             var s0 = r[0]; var e0 = r[1]; var last = b
             while (last + 1 < n) {
-                val j = runs[last + 1].indices.firstOrNull { !used[last + 1][it] && abs(runs[last + 1][it][0] - s0) <= 14 && abs(runs[last + 1][it][1] - e0) <= 14 } ?: break
+                // the same line in the next row: same ends, or (a slightly slanted rule, stress test) most of it overlapping
+                val j = runs[last + 1].indices.firstOrNull {
+                    val o = runs[last + 1][it]
+                    !used[last + 1][it] && ((abs(o[0] - s0) <= 14 && abs(o[1] - e0) <= 14) || min(o[1], e0) - max(o[0], s0) >= 0.5f * min(o[1] - o[0], e0 - s0))
+                } ?: break
                 used[last + 1][j] = true; s0 = min(s0, runs[last + 1][j][0]); e0 = max(e0, runs[last + 1][j][1]); last++
             }
             val thick = last - b + 1
@@ -253,6 +260,7 @@ object ScanToWord {
     /** Recognised "words" that are noise: no letter or digit, low confidence fragments, stray marks. */
     fun junk(b: OcrBox): Boolean {
         val t = b.text.filterNot { it == '\u200e' || it == '\u200f' }.trim()
+        if (t.isEmpty()) return true      // stress test: a word of bidi marks only crashed on t[0]
         val letters = t.count { it.isLetter() }; val digits = t.count { it.isDigit() }
         // question / answer labels (س١، ج٢) are short but real
         if (t.length <= 3 && t[0] in "سج" && t.drop(1).all { it in '٠'..'٩' || it == ':' }) return false
@@ -460,20 +468,25 @@ object ScanToWord {
         val bodySize = content.glyphs.filter { it.text.isNotBlank() }.map { it.fontSize }.groupingBy { it }.eachCount().maxByOrNull { it.value }?.key ?: 14f
         // tables: runs of consecutive bands cut into 2+ real cells
         val keys = bands.keys.toList()
+        // a table cell is closed by vertical rules on both sides (stress test: the page margins beside a narrower table
+        // became extra empty columns)
+        val vx = rules0.filter { !it.horizontal }.map { (it.x0 + it.x1) / 2 }
+        fun ruledAt(x: Int) = vx.any { abs(it - x) <= w / 60 }
+        fun isCell(r: IntArray) = r[2] - r[0] >= w / 12 && ruledAt(r[0]) && ruledAt(r[2])
         var i = 0
         while (i < keys.size) {
-            val cells0 = bands[keys[i]]!!.filter { it[2] - it[0] >= w / 12 }
+            val cells0 = bands[keys[i]]!!.filter { isCell(it) }
             if (cells0.size >= 2) {
                 var j = i
-                while (j + 1 < keys.size && bands[keys[j + 1]]!!.count { it[2] - it[0] >= w / 12 } >= 2) j++
+                while (j + 1 < keys.size && bands[keys[j + 1]]!!.count { isCell(it) } >= 2) j++
                 val rowsK = keys.subList(i, j + 1)
-                val xs = rowsK.flatMap { k -> bands[k]!!.filter { it[2] - it[0] >= w / 12 }.flatMap { listOf(it[0], it[2]) } }.sorted()
+                val xs = rowsK.flatMap { k -> bands[k]!!.filter { isCell(it) }.flatMap { listOf(it[0], it[2]) } }.sorted()
                     .fold(ArrayList<Int>()) { acc, x -> if (acc.isEmpty() || x - acc.last() > w / 60) acc += x; acc }
                 val colX = xs.map { it * s }
                 val rowY = (rowsK.map { it.first } + rowsK.last().second).map { it * s }
                 val cells = ArrayList<TableCell>()
                 rowsK.forEachIndexed { ri, k ->
-                    bands[k]!!.filter { it[2] - it[0] >= w / 12 }.forEach { c ->
+                    bands[k]!!.filter { isCell(it) }.forEach { c ->
                         val c0 = xs.indexOfFirst { abs(it - c[0]) <= w / 60 }.coerceAtLeast(0)
                         val c1 = xs.indexOfFirst { abs(it - c[2]) <= w / 60 }.let { if (it <= c0) c0 + 1 else it }
                         cells += TableCell(ri, c0, 1, c1 - c0, Rect(c[0] * s, c[1] * s, c[2] * s, c[3] * s), linesIn(c))
