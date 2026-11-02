@@ -102,7 +102,7 @@
     <string name="sc_drop_edits">Keep the edits on this page?</string>
     <string name="sc_discard_edits">Discard</string>
     <string name="sc_format_word">Word file</string>
-    <string name="sc_word_hint">The text is recognised and the scan becomes an editable Word file.</string>
+    <string name="sc_word_hint">The text is recognised and the scan becomes an editable Word file. Words highlighted in yellow were read with low confidence: check them.</string>
     <string name="sc_saving_word">Creating the Word file…</string>
     <string name="sc_save_word">Save as Word</string>
     <string name="sc_save_append">Add the pages to the file</string>

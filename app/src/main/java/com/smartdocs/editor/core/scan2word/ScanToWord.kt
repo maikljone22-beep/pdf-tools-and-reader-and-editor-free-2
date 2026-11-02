@@ -2,6 +2,7 @@ package com.smartdocs.editor.core.scan2word
 
 import com.smartdocs.editor.core.convert.Align
 import com.smartdocs.editor.core.convert.Block
+import com.smartdocs.editor.core.convert.Decorations
 import com.smartdocs.editor.core.convert.Glyph
 import com.smartdocs.editor.core.convert.ImageBlock
 import com.smartdocs.editor.core.convert.LayoutAnalyzer
@@ -38,7 +39,8 @@ object ScanToWord {
     /** The physical page in points for a page picture of [w]×[h] px: the standard paper with the nearest shape (A4 when none is close). */
     fun pageSize(w: Int, h: Int): Pair<Float, Float> {
         val land = w > h
-        val ratio = max(w, h).toFloat() / min(w, h).coerceAtLeast(1)
+        // stress test: a strip picture gave a page kilometres long — Word takes pages up to 22 in, so the shape is capped (A4 width × 2.6 < 1584 pt)
+        val ratio = (max(w, h).coerceAtLeast(1).toFloat() / min(w, h).coerceAtLeast(1)).coerceAtMost(2.6f)
         val best = PAPERS.minBy { (_, s) -> abs(s.second / s.first - ratio) }
         val s = if (abs(best.second.second / best.second.first - ratio) < 0.06f) best.second else PAPERS[0].second.let { a4 -> a4.first to a4.first * ratio }
         return if (land) s.second to s.first else s
@@ -49,6 +51,11 @@ object ScanToWord {
 
     /** Stroke width / em from which type reads as bold (regular Arabic book text ≈ 0.07–0.09 em, bold ≈ 0.11–0.16). */
     const val BOLD_EM = 0.105f
+
+    /** OCR confidence under which a word is shown as "check me" in the Word file. */
+    const val UNCERTAIN = 60f
+    /** Light yellow highlight of uncertain words. */
+    const val UNCERTAIN_BG = 0xFFF3A0
 
     private val SIZES = floatArrayOf(8f, 9f, 10f, 11f, 12f, 13f, 14f, 16f, 18f, 20f, 22f, 24f, 28f, 32f, 36f, 40f, 48f)
 
@@ -106,6 +113,7 @@ object ScanToWord {
      * enough. Returned as pixel rectangles (l, t, r, b).
      */
     fun figures(px: IntArray, w: Int, h: Int, words: List<OcrBox>, rules: List<TableRules.Rule>): List<IntArray> {
+        if (w <= 0 || h <= 0) return emptyList()
         val cell = max(6, min(w, h) / 120)
         val gw = (w + cell - 1) / cell; val gh = (h + cell - 1) / cell
         val masked = BooleanArray(w * h)
@@ -173,6 +181,7 @@ object ScanToWord {
      */
     /** The table and box rules of a page picture (shorter ones than the OCR writer uses: table cells are small). */
     fun rules(px: IntArray, w: Int, h: Int): List<TableRules.Rule> {
+        if (w <= 0 || h <= 0 || px.isEmpty()) return emptyList()
         var sum = 0L; for (c in px) sum += lum(c)
         val thr = (sum / px.size * 0.62).toInt()
         val dark = BooleanArray(px.size) { lum(px[it]) < thr }
@@ -207,6 +216,8 @@ object ScanToWord {
             used[b][k] = true
             var s0 = r[0]; var e0 = r[1]; var last = b
             while (last + 1 < n) {
+                // (joining merely overlapping runs, for slanted rules, merged text rows into blobs on a real page and lost
+                // the table — the stress test's slanted-rule case stays open)
                 val j = runs[last + 1].indices.firstOrNull { !used[last + 1][it] && abs(runs[last + 1][it][0] - s0) <= 14 && abs(runs[last + 1][it][1] - e0) <= 14 } ?: break
                 used[last + 1][j] = true; s0 = min(s0, runs[last + 1][j][0]); e0 = max(e0, runs[last + 1][j][1]); last++
             }
@@ -252,6 +263,7 @@ object ScanToWord {
     /** Recognised "words" that are noise: no letter or digit, low confidence fragments, stray marks. */
     fun junk(b: OcrBox): Boolean {
         val t = b.text.filterNot { it == '\u200e' || it == '\u200f' }.trim()
+        if (t.isEmpty()) return true      // stress test: a word of bidi marks only crashed on t[0]
         val letters = t.count { it.isLetter() }; val digits = t.count { it.isDigit() }
         // question / answer labels (س١، ج٢) are short but real
         if (t.length <= 3 && t[0] in "سج" && t.drop(1).all { it in '٠'..'٩' || it == ':' }) return false
@@ -259,7 +271,7 @@ object ScanToWord {
         if (t.any { it in '0'..'9' } && t.any { it in '٠'..'٩' }) return true
         // one letter four times running: a border or a pattern, not a word (للالللللكيل)
         if (Regex("(.)\\1{3}").containsMatchIn(t)) return true
-        if (letters + digits == 0) return !(t.length == 1 && t[0] in ".:،؛؟?!()-–—*•") || b.conf < 60f
+        if (letters + digits == 0) return !(t.length == 1 && t[0] in ".:،؛؟?!()-–—*•➢") || b.conf < 60f
         if (b.conf < 30f) return true
         // a row of ornaments read as a few letters: the box is far wider than its letters could be
         if (b.r - b.l > (t.length + 1) * 2.5f * (b.b - b.t)) return true
@@ -272,15 +284,28 @@ object ScanToWord {
     }
 
     fun page(index: Int, px: IntArray, w: Int, h: Int, words1: List<OcrBox>, arabicFont: String, latinFont: String,
-             rules0: List<TableRules.Rule>? = null, lineOf: MutableMap<Int, Int>? = null, crop: (IntArray) -> Pair<ByteArray, String>?): PageContent {
+             rules0: List<TableRules.Rule>? = null, lineOf: MutableMap<Int, Int>? = null,
+             /** Filled with the glyphs of words read with low confidence (shown highlighted for checking, hostile review H1). */
+             uncertain: MutableSet<Glyph>? = null, crop: (IntArray) -> Pair<ByteArray, String>?): PageContent {
         val (pw, ph) = pageSize(w, h)
         val s = pw / w
         val rules = rules0 ?: rules(px, w, h)
         // bidi marks the OCR adds are not text
+        // the word that starts each line in reading order (the rightmost on an Arabic line, the leftmost on a Latin one)
+        val lineStart = words1.groupBy { it.line }.values.mapNotNull { lw ->
+            val ar = lw.count { w -> w.text.any { it in '؀'..'ۿ' } } * 2 >= lw.size
+            if (ar) lw.maxByOrNull { it.r } else lw.minByOrNull { it.l }
+        }.toSet()
         val clean = words1.map { wd ->
             val t = wd.text.filterNot { c -> c == '\u200e' || c == '\u200f' || c == '\u200b' }
-            // a bold Arabic comma is read as Arabic zero: a lone ٠ (maybe with a dot) between words is the comma
-            wd.copy(text = if (t.matches(Regex("[٠][.:]*"))) "،" else t)
+            wd.copy(text = when {
+                // a bold Arabic comma is read as Arabic zero: a lone ٠ (maybe with a dot) between words is the comma
+                t.matches(Regex("[٠][.:]*")) -> "،"
+                // list marks at the start of a line: an arrow bullet read as ">" / "»", a round one as "." / "·"
+                wd in lineStart && wd.conf >= 60f && t in setOf(">", "<", "»", "«", "›", "‹", "➢", "➤") -> "➢"
+                wd in lineStart && wd.conf >= 60f && t in setOf(".", "·", "•", "●", "o") -> "•"
+                else -> t
+            })
         }
         // an Arabic page: a Latin "word" read with low confidence is a misread Arabic word or a mark (EGG, Joey, OER…)
         val arabicPage = clean.count { w -> w.text.any { it in '؀'..'ۿ' } } * 10 >= clean.size * 6
@@ -288,8 +313,10 @@ object ScanToWord {
         // (counted on confidently read words only: the misreads are what this test is for)
         val sure = clean.filter { it.conf >= 90f }
         val indicPage = sure.sumOf { w -> w.text.count { it in '٠'..'٩' } } > sure.sumOf { w -> w.text.count { it in '0'..'9' } }
+        // hostile review H1: a number is never dropped silently (heights and dates are what students study) — a Latin
+        // number on an Arabic-Indic page is kept unless it is read with very low confidence, and shows as uncertain
         val kept = clean.filterNot { junk(it) || (arabicPage && it.conf < 80f && it.text.any { c -> c in 'A'..'Z' || c in 'a'..'z' }) ||
-            (indicPage && it.conf < 90f && it.text.any { c -> c in '0'..'9' }) }
+            (indicPage && it.conf < 40f && it.text.any { c -> c in '0'..'9' }) }
         // a whole line read with low confidence is a border, a pattern or a decorated title gone wrong
         // (judged on everything read on the line, the junk included; one surely read word of 3+ letters saves it)
         val lineOk = clean.groupBy { it.line }.mapValues { (_, lw) ->
@@ -316,6 +343,7 @@ object ScanToWord {
         val emPx = body / s
         val pageStroke = widths.values.filter { it > 0f }.sorted().let { if (it.isEmpty()) 0f else it[it.size / 2] }
         val pageBold = pageStroke >= BOLD_EM * emPx
+        val uncertainBoxes = HashSet<OcrBox>()
         val glyphs = ArrayList<Glyph>()
         for ((_, lw) in byLine) {
             val arabic = lw.any { wd -> wd.text.any { it in '؀'..'ۿ' } }
@@ -336,8 +364,10 @@ object ScanToWord {
             for ((k, wd) in sortedLw.withIndex()) {
                 val wordArabic = wd.text.any { it in '؀'..'ۿ' }
                 val base = wd.b * s - (wd.b - wd.t) * s * 0.18f
+                if (uncertain != null && (wd.conf < UNCERTAIN || (indicPage && wd.text.any { it in '0'..'9' } && wd.conf < 90f))) uncertainBoxes += wd
                 glyphs += Glyph(x = wd.l * s, top = wd.t * s, w = (wd.r - wd.l) * s, h = (wd.b - wd.t) * s, baseline = base,
                     text = wd.text, fontSize = size, bold = bold, color = color, font = if (wordArabic || arabic) arabicFont else latinFont)
+                if (wd in uncertainBoxes) uncertain?.add(glyphs.last())
                 lineOf?.set(glyphs.size - 1, lw.first().line)
                 // a space between neighbouring words (before the next one's left edge, even when the boxes touch), so the
                 // analyser never glues two recognised words together
@@ -356,6 +386,47 @@ object ScanToWord {
     fun longRules(rules: List<TableRules.Rule>, w: Int, h: Int) = rules.filter { if (it.horizontal) it.x1 - it.x0 >= w * 0.3f else it.y1 - it.y0 >= h * 0.08f }
 
     /** Short "rules" lying on a recognised word are its own strokes (a kashida), not lines of the page. */
+    /**
+     * Second reading (review: the page reader skipped whole printed lines — a title, «س٣», a line under a table): the
+     * bands of ink inside each region that no recognised word covers, as crops (l, t, r, b) to read one line at a time
+     * (the caller pads them with white: a neighbour line's edge must not be read). [clean] is the page as read (rules painted out).
+     */
+    fun missedLines(clean: IntArray, w: Int, h: Int, regions: List<IntArray>, words: List<OcrBox>): List<IntArray> {
+        val out = ArrayList<IntArray>()
+        val thr = 110
+        val bodyH = words.map { it.b - it.t }.sorted().let { if (it.isEmpty()) h / 40 else it[it.size / 2] }.coerceAtLeast(8)
+        for (r in regions) {
+            val x0 = r[0]; val x1 = r[2]; val rw = x1 - x0
+            if (rw < bodyH * 2) continue
+            // rows with ink: at least a few dark pixels across the region
+            val ink = BooleanArray(r[3] - r[1]) { i -> val y = r[1] + i; var n = 0; for (x in x0 until x1) if (lum(clean[y * w + x]) < thr) n++; n >= 3 }
+            var i = 0
+            while (i < ink.size) {
+                if (!ink[i]) { i++; continue }
+                var j = i; while (j < ink.size && (ink[j] || (j + 1 < ink.size && ink[j + 1]))) j++
+                val t = r[1] + i; val b = r[1] + j
+                if (b - t >= bodyH * 0.45f && b - t <= bodyH * 2.5f) {
+                    val covered = words.filter { it.l < x1 && it.r > x0 && it.t < b && it.b > t }.sumOf { min(it.b, b) - max(it.t, t) }
+                    if (covered < (b - t) / 3) {
+                        var l = x1; var rr = x0
+                        for (y in t until b) for (x in x0 until x1) if (lum(clean[y * w + x]) < thr) { if (x < l) l = x; if (x > rr) rr = x }
+                        if (rr - l >= bodyH) out += intArrayOf(l, t, rr + 1, b)
+                    }
+                }
+                i = j + 1
+            }
+        }
+        return out
+    }
+
+    /** [band] of [clean] on a white margin of [pad] px (for [missedLines]). */
+    fun padded(clean: IntArray, w: Int, band: IntArray, pad: Int = 20): Triple<IntArray, Int, Int> {
+        val bw = band[2] - band[0]; val bh = band[3] - band[1]; val ow = bw + 2 * pad; val oh = bh + 2 * pad
+        val out = IntArray(ow * oh) { -1 }
+        for (y in 0 until bh) System.arraycopy(clean, (band[1] + y) * w + band[0], out, (y + pad) * ow + pad, bw)
+        return Triple(out, ow, oh)
+    }
+
     fun dropWordStrokes(rules: List<TableRules.Rule>, words: List<OcrBox>, w: Int, h: Int): List<TableRules.Rule> {
         val long = longRules(rules, w, h).toSet()
         return rules.filter { r -> r in long || words.none { b ->
@@ -374,8 +445,14 @@ object ScanToWord {
                rules0: List<TableRules.Rule>, crop: (IntArray) -> Pair<ByteArray, String>?): PageLayout {
         val regions = ocrRegions(rules0, w, h)
         val glyphLine = HashMap<Int, Int>()
-        val content = page(index, px, w, h, words1, arabicFont, latinFont, dropWordStrokes(rules0, words1, w, h), glyphLine, crop)
+        val kept = dropWordStrokes(rules0, words1, w, h)
+        val uncertain = java.util.Collections.newSetFromMap(java.util.IdentityHashMap<Glyph, Boolean>())
+        val content = page(index, px, w, h, words1, arabicFont, latinFont, kept, glyphLine, uncertain, crop)
         val s = content.width / w
+        // short rules lying on words are not table lines: those under a word are its underline (Decorations keeps only
+        // the ones at the baseline, so a letter's own long stroke read as a rule is not)
+        val keptSet = kept.toSet()
+        val under = rules0.filter { it.horizontal && it !in keptSet }.map { r -> val y = (r.y0 + r.y1) / 2f * s; Segment(r.x0 * s, y, (r.x1 + 1) * s, y) }
         fun inside(g: Glyph, r: IntArray) = g.x + g.w / 2 >= r[0] * s && g.x + g.w / 2 < r[2] * s && g.top + g.h / 2 >= r[1] * s && g.top + g.h / 2 < r[3] * s
         val blocks = ArrayList<Block>()
         content.images.forEach { blocks += ImageBlock(it) }
@@ -392,25 +469,37 @@ object ScanToWord {
                 if (row != null) row += gs else rows += gs
             }
             return rows.mapNotNull { gs -> LayoutAnalyzer.buildLines(gs).let { ls -> if (ls.isEmpty()) null else if (ls.size == 1) ls[0] else LayoutAnalyzer.lineOf(ls.flatMap { it.words }) } }.sortedBy { it.top }
+                .also { ls ->
+                    if (under.isNotEmpty()) Decorations.decorateWords(ls, under, emptyList(), content.width)
+                    // a stroke through a word on a photo is a letter's own long stroke (kashida), never a strike-through
+                    ls.forEach { l -> l.visual.forEach { it.strike = false } }
+                    // hostile review H1: words read with low confidence are highlighted, so the user checks them
+                    ls.forEach { l -> l.visual.forEach { wd -> if (wd.glyphs.any { it in uncertain }) wd.bg = UNCERTAIN_BG } }
+                }
         }
         val bands = regions.groupBy { it[1] to it[3] }.toSortedMap(compareBy { it.first })
         val bodySize = content.glyphs.filter { it.text.isNotBlank() }.map { it.fontSize }.groupingBy { it }.eachCount().maxByOrNull { it.value }?.key ?: 14f
         // tables: runs of consecutive bands cut into 2+ real cells
         val keys = bands.keys.toList()
+        // a table cell is closed by vertical rules on both sides (stress test: the page margins beside a narrower table
+        // became extra empty columns)
+        val vx = rules0.filter { !it.horizontal }.map { (it.x0 + it.x1) / 2 }
+        fun ruledAt(x: Int) = vx.any { abs(it - x) <= w / 60 }
+        fun isCell(r: IntArray) = r[2] - r[0] >= w / 12 && ruledAt(r[0]) && ruledAt(r[2])
         var i = 0
         while (i < keys.size) {
-            val cells0 = bands[keys[i]]!!.filter { it[2] - it[0] >= w / 12 }
+            val cells0 = bands[keys[i]]!!.filter { isCell(it) }
             if (cells0.size >= 2) {
                 var j = i
-                while (j + 1 < keys.size && bands[keys[j + 1]]!!.count { it[2] - it[0] >= w / 12 } >= 2) j++
+                while (j + 1 < keys.size && bands[keys[j + 1]]!!.count { isCell(it) } >= 2) j++
                 val rowsK = keys.subList(i, j + 1)
-                val xs = rowsK.flatMap { k -> bands[k]!!.filter { it[2] - it[0] >= w / 12 }.flatMap { listOf(it[0], it[2]) } }.sorted()
+                val xs = rowsK.flatMap { k -> bands[k]!!.filter { isCell(it) }.flatMap { listOf(it[0], it[2]) } }.sorted()
                     .fold(ArrayList<Int>()) { acc, x -> if (acc.isEmpty() || x - acc.last() > w / 60) acc += x; acc }
                 val colX = xs.map { it * s }
                 val rowY = (rowsK.map { it.first } + rowsK.last().second).map { it * s }
                 val cells = ArrayList<TableCell>()
                 rowsK.forEachIndexed { ri, k ->
-                    bands[k]!!.filter { it[2] - it[0] >= w / 12 }.forEach { c ->
+                    bands[k]!!.filter { isCell(it) }.forEach { c ->
                         val c0 = xs.indexOfFirst { abs(it - c[0]) <= w / 60 }.coerceAtLeast(0)
                         val c1 = xs.indexOfFirst { abs(it - c[2]) <= w / 60 }.let { if (it <= c0) c0 + 1 else it }
                         cells += TableCell(ri, c0, 1, c1 - c0, Rect(c[0] * s, c[1] * s, c[2] * s, c[3] * s), linesIn(c))

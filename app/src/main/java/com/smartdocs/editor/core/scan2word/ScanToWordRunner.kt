@@ -32,7 +32,8 @@ object ScanToWordRunner {
                 val clean = ScanToWord.forOcr(px, w, h, ScanToWord.longRules(rules, w, h))
                 // each band / table cell recognised alone, so lines of neighbouring cells never mix
                 val boxes = ArrayList<ScanToWord.OcrBox>()
-                ScanToWord.ocrRegions(rules, w, h).forEachIndexed { ri, r ->
+                val regions = ScanToWord.ocrRegions(rules, w, h)
+                regions.forEachIndexed { ri, r ->
                     val rw = r[2] - r[0]; val rh = r[3] - r[1]
                     if (rw < 8 || rh < 8) return@forEachIndexed
                     val ob = Bitmap.createBitmap(rw, rh, Bitmap.Config.ARGB_8888)
@@ -44,6 +45,19 @@ object ScanToWordRunner {
                     ocr.words.forEach { wd ->
                         boxes += ScanToWord.OcrBox(wd.text, r[0] + (wd.box.left * kx).toInt(), r[1] + (wd.box.top * ky).toInt(),
                             r[0] + (wd.box.right * kx).toInt(), r[1] + (wd.box.bottom * ky).toInt(), wd.confidence, ri * 100000 + wd.line)
+                    }
+                }
+                // second reading: printed lines the region reading skipped (a title, a short line), one line at a time
+                ScanToWord.missedLines(clean, w, h, regions, boxes).forEachIndexed { mi, band ->
+                    coroutineContext.ensureActive()
+                    val (pp, pw, ph) = ScanToWord.padded(clean, w, band)
+                    val ob = Bitmap.createBitmap(pp, pw, ph, Bitmap.Config.ARGB_8888)
+                    val ocr = try { engine.recognize(ob, wantWords = true, singleLine = true) } finally { ob.recycle() }
+                    val kx = pw.toFloat() / ocr.imageWidth.coerceAtLeast(1); val ky = ph.toFloat() / ocr.imageHeight.coerceAtLeast(1)
+                    ocr.words.forEach { wd ->
+                        val ox = band[0] - 20; val oy = band[1] - 20
+                        boxes += ScanToWord.OcrBox(wd.text, ox + (wd.box.left * kx).toInt(), oy + (wd.box.top * ky).toInt(),
+                            ox + (wd.box.right * kx).toInt(), oy + (wd.box.bottom * ky).toInt(), wd.confidence, 90_000_000 + mi * 100 + wd.line.coerceAtLeast(0))
                     }
                 }
                 layouts += ScanToWord.layout(n, px, w, h, boxes, arabicFont, latinFont, rules) { f ->
