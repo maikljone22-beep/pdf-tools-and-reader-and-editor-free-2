@@ -84,14 +84,25 @@ class Cv6JobService : Service() {
                 .build()
             ServiceCompat.startForeground(this, ID, n, if (Build.VERSION.SDK_INT >= 29) ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC else 0)
         }.isSuccess
-        if (!ok) stopSelf()
+        // A short job may have ended before the service started: it is stopped here, after startForeground(),
+        // because stopping it earlier crashes the app ("startForegroundService() did not then call startForeground()").
+        synchronized(Companion) { foreground = ok; if (!ok || !wanted) { stopSelfNow(); return START_NOT_STICKY } }
         return START_NOT_STICKY
+    }
+
+    private fun stopSelfNow() {
+        runCatching { ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE) }
+        foreground = false
+        stopSelf()
     }
 
     companion object {
         private const val CHANNEL = "cv6_jobs"
         private const val ID = 0x6c76
         private const val EXTRA_TITLE = "title"
+        /** A job wants the service; the service has called startForeground(). Guarded by Companion. */
+        private var wanted = false
+        private var foreground = false
 
         private fun channel(ctx: Context) {
             if (Build.VERSION.SDK_INT >= 26) ctx.getSystemService(NotificationManager::class.java)
@@ -102,10 +113,16 @@ class Cv6JobService : Service() {
             ?.let { PendingIntent.getActivity(ctx, ID, it.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT) }
 
         fun start(ctx: Context, title: String) {
-            runCatching { androidx.core.content.ContextCompat.startForegroundService(ctx, Intent(ctx, Cv6JobService::class.java).putExtra(EXTRA_TITLE, title)) }
+            synchronized(this) { wanted = true }
+            val started = runCatching { androidx.core.content.ContextCompat.startForegroundService(ctx, Intent(ctx, Cv6JobService::class.java).putExtra(EXTRA_TITLE, title)) }.isSuccess
+            if (!started) synchronized(this) { wanted = false }
         }
 
-        fun stop(ctx: Context) { runCatching { ctx.stopService(Intent(ctx, Cv6JobService::class.java)) } }
+        /** Only a service already in the foreground is stopped here; one still starting stops itself in onStartCommand. */
+        fun stop(ctx: Context) {
+            val now = synchronized(this) { wanted = false; foreground.also { if (it) foreground = false } }
+            if (now) runCatching { ctx.stopService(Intent(ctx, Cv6JobService::class.java)) }
+        }
 
         /** "Conversion finished / failed" when the hub is not on screen. */
         fun notifyDone(ctx: Context, ok: Boolean, text: String) = runCatching {

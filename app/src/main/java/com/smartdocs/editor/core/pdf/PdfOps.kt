@@ -378,7 +378,9 @@ object PdfOps {
         PDDocument(com.tom_roush.pdfbox.io.MemoryUsageSetting.setupTempFileOnly()).use { doc ->
             images.forEach { f ->
                 kotlinx.coroutines.currentCoroutineContext().let { c -> if (c[kotlinx.coroutines.Job]?.isActive == false) throw kotlinx.coroutines.CancellationException("cancelled") }
-                val bmp = decodeScaled(f, 2200) ?: run { skipped(f); return@forEach }
+                // a big photo can still run the heap out next to everything else: retry smaller, then skip it (never crash)
+                val bmp = (try { decodeScaled(f, 2200) } catch (e: OutOfMemoryError) { System.gc(); try { decodeScaled(f, 1400) } catch (e2: OutOfMemoryError) { null } })
+                    ?: run { skipped(f); return@forEach }
                 val img = JPEGFactory.createFromImage(doc, bmp, jpegQuality / 100f)
                 val page = if (fitA4) {
                     val portrait = bmp.height >= bmp.width

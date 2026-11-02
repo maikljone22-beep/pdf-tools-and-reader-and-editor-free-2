@@ -203,7 +203,9 @@ fun BookmarksScreen(nav: NavHostController, uri: String?) {
                                 val cur = OutlineStore.load(s, p).first
                                 withContext(Dispatchers.IO) {
                                     NavIo.edit(s, o, p) { d, changed ->
-                                        com.smartdocs.editor.core.edit5.PageLabelRemap.keep(d) { pages.sortedDescending().forEach { d.removePage(it) } }   // audit 5 E-5
+                                        // phase 7: the page delete of the organizer (links, form fields, tag tree and destinations cut,
+                                        // so the deleted pages are not still written); the outline is rewritten just below
+                                        com.smartdocs.editor.core.edit5.PageOrganize.deleteIn(d, pages, removeBookmarks = false)
                                         OutlineStore.write(d, OutlineNav.afterDelete(cur, pages))
                                         d.pages.forEach { changed += it }
                                     }

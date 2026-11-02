@@ -164,6 +164,8 @@ object PageScrub {
             var i = co.size() - 1
             while (i >= 0) { if (co.getObject(i).let { it is COSDictionary && it in removed }) co.remove(i); i-- }
         }
+        // XFA keeps its own copy of every field value; a redacted field must not survive there.
+        if (removed.isNotEmpty()) form.removeItem(COSName.getPDFName("XFA"))
         return removed.size
     }
 

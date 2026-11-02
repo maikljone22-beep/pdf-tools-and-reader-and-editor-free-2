@@ -117,6 +117,10 @@ class OcrEngine(private val context: Context, val fast: Boolean = false) : AutoC
      * Hostile review H2: the bytes [ensureLanguages] would download for [langs] — the asked packs plus the optional
      * Arabic helpers not yet installed (the prompt said "10–25 MB"; it was ~68 MB with every helper).
      */
+    /** Phase 7: true when an asked language itself is missing (only then is the user asked; helpers alone are not). */
+    fun requiredMissing(langs: String): Boolean =
+        langs.split('+').map { it.trim() }.filter { it.isNotEmpty() }.any { !isLanguageInstalled(it) }
+
     fun downloadBytes(langs: String): Long {
         val list = langs.split('+').map { it.trim() }.filter { it.isNotEmpty() }
         var n = list.filter { !isLanguageInstalled(it) }.sumOf { expectedSize(it, it !in BEST_ONLY && fast) ?: 0L }
@@ -133,7 +137,13 @@ class OcrEngine(private val context: Context, val fast: Boolean = false) : AutoC
      * paid data) — only after a day.
      */
     private fun optionalAllowed(): Boolean =
-        System.currentTimeMillis() - context.getSharedPreferences("ocr_engine", Context.MODE_PRIVATE).getLong("optional_failed_at", 0L) > 86_400_000L
+        System.currentTimeMillis() - context.getSharedPreferences("ocr_engine", Context.MODE_PRIVATE).getLong("optional_failed_at", 0L) > 86_400_000L &&
+            !metered()
+
+    /** Phase 7: the optional helpers (tens of MB) are fetched on Wi-Fi only — never on paid mobile data unasked. */
+    private fun metered(): Boolean = runCatching {
+        (context.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager).isActiveNetworkMetered
+    }.getOrDefault(true)
     private fun optionalFailed() { context.getSharedPreferences("ocr_engine", Context.MODE_PRIVATE).edit().putLong("optional_failed_at", System.currentTimeMillis()).apply() }
 
     /** Make sure every language in [langs] ("ara+eng") is downloaded. [onProgress] gets (lang, fraction 0..1). */

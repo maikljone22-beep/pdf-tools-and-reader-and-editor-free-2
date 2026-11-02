@@ -74,7 +74,8 @@ object ShareImport {
         // one folder per share: the copies keep their real names (convert audit A-M13: titles and bookmarks read
         // "1730000000000_0_IMG_1"); folders older than a day are removed at start-up (A-M14)
         val shareDir = File(dir, System.currentTimeMillis().toString()).apply { mkdirs() }
-        val files = streams(intent).mapIndexedNotNull { i, u ->
+        // hostile review C2: links into this app's own private storage are not read for another app
+        val files = streams(intent).filterNot { com.smartdocs.editor.core.files.IncomingGuard.isPrivate(ctx, it) }.mapIndexedNotNull { i, u ->
             runCatching {
                 val mime = ctx.contentResolver.getType(u) ?: intent.type
                 var name = nameOf(ctx, u)?.let { com.smartdocs.editor.core.files.FileNames.clean(it.substringBeforeLast('.'), 120, "shared_$i") + (it.substringAfterLast('.', "").takeIf { e -> e.isNotEmpty() && e.length <= 8 }?.let { e -> ".$e" } ?: "") } ?: "shared_$i"

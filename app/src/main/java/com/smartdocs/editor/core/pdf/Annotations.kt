@@ -580,7 +580,7 @@ object AnnotationWriter {
                         val subject: String = "")
 
     suspend fun list(src: File, password: String? = null): List<Existing> = withContext(Dispatchers.IO) {
-        val doc = if (password.isNullOrEmpty()) PDDocument.load(src) else PDDocument.load(src, password)
+        val doc = PdfOps.loadRaw(src, password)   // big files spill to a temp file instead of the heap
         doc.use { d ->
             val out = ArrayList<Existing>()
             d.pages.forEachIndexed { pi, page ->
@@ -608,7 +608,7 @@ object AnnotationWriter {
      * Rects use the editor's convention (PDF space, top = larger y).
      */
     suspend fun extract(src: File, page: Int, index: Int, password: String? = null, media: Boolean = true): Annot? = withContext(Dispatchers.IO) {
-        val doc = if (password.isNullOrEmpty()) PDDocument.load(src) else PDDocument.load(src, password)
+        val doc = PdfOps.loadRaw(src, password)   // big files spill to a temp file instead of the heap
         doc.use { d ->
             if (page !in 0 until d.numberOfPages) return@use null
             val list = runCatching { d.getPage(page).annotations }.getOrNull() ?: return@use null

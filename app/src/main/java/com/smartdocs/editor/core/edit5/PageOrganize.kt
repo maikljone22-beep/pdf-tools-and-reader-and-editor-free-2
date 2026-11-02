@@ -126,39 +126,47 @@ object PageOrganize {
      * to a deleted page reachable from the catalog is cut, so the page and its content are no longer written.
      */
     internal fun severReferences(doc: PDDocument, gone: Set<COSDictionary>) {
-        val seen = java.util.Collections.newSetFromMap(java.util.IdentityHashMap<COSBase, Boolean>())
+        // phase 7: iterative (a long outline chain overflowed the stack), the surviving pages are searched too (their
+        // annotations' actions), and a tag element / marked-content reference on a deleted page is removed from its
+        // parent instead of losing only /Pg (its MCIDs then attached to the parent's page)
         fun target(v: COSBase?): COSBase? = if (v is COSObject) v.`object` else v
-        fun walk(b: COSBase?) {
-            val o = target(b) ?: return
-            if (!seen.add(o)) return
+        fun onGone(d: COSDictionary): Boolean = (target(d.getItem(COSName.PG)) as? COSDictionary)?.let { it in gone } == true
+        fun isDest(a: COSArray): Boolean = a.size() > 0 && (target(a.get(0)) as? COSDictionary)?.let { it in gone } == true
+        val seen = java.util.Collections.newSetFromMap(java.util.IdentityHashMap<COSBase, Boolean>())
+        val stack = ArrayDeque<COSBase>()
+        val cat = doc.documentCatalog.cosObject
+        stack.addLast(cat)
+        while (stack.isNotEmpty()) {
+            val o = target(stack.removeLast()) ?: continue
+            if (!seen.add(o) || (o is COSDictionary && o in gone)) continue
             when (o) {
-                is COSDictionary -> {
-                    val keys = o.keySet().toList()
-                    for (k in keys) {
-                        val v = target(o.getItem(k))
-                        if (v is COSDictionary && v in gone) o.removeItem(k) else walk(o.getItem(k))
+                is COSDictionary -> for (k in o.keySet().toList()) {
+                    val v = target(o.getItem(k))
+                    when {
+                        v is COSDictionary && v in gone -> o.removeItem(k)
+                        v is COSDictionary && k != COSName.PARENT && onGone(v) && k != COSName.P -> o.removeItem(k)
+                        v is COSArray && isDest(v) -> o.removeItem(k)      // /D, /Dest, /OpenAction onto a deleted page
+                        v != null -> stack.addLast(v)
                     }
                 }
                 is COSArray -> {
-                    var i = 0
-                    while (i < o.size()) {
+                    var i = o.size() - 1
+                    while (i >= 0) {
                         val v = target(o.get(i))
-                        // a destination array [page /XYZ …] onto a deleted page: the whole destination goes
-                        if (v is COSDictionary && v in gone) { o.set(i, COSNull.NULL) }
-                        else walk(o.get(i))
-                        i++
+                        when {
+                            v is COSDictionary && v in gone -> o.remove(i)
+                            v is COSDictionary && onGone(v) -> o.remove(i)      // tag element, MCR or OBJR on a deleted page
+                            v is COSArray && isDest(v) -> o.set(i, COSNull.NULL)
+                            v != null -> stack.addLast(v)
+                        }
+                        i--
                     }
                 }
                 else -> {}
             }
         }
-        val cat = doc.documentCatalog.cosObject
-        // the page tree itself no longer holds them; everything else in the catalog is searched
-        for (k in cat.keySet().toList()) if (k != COSName.PAGES) {
-            val v = target(cat.getItem(k))
-            if (v is COSDictionary && v in gone) cat.removeItem(k) else walk(cat.getItem(k))
-        }
-        (target(cat.getItem(COSName.OPEN_ACTION)) as? COSArray)?.let { a -> if (a.size() > 0 && target(a.get(0)) == COSNull.NULL) cat.removeItem(COSName.OPEN_ACTION) }
+        // an open action whose destination went is removed whole
+        (target(cat.getItem(COSName.OPEN_ACTION)) as? COSDictionary)?.let { a -> if (!a.containsKey(COSName.D) && a.getNameAsString(COSName.S) == "GoTo") cat.removeItem(COSName.OPEN_ACTION) }
     }
 
     /**

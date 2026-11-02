@@ -123,6 +123,11 @@ class Workbook5(val book: SheetBook, val styles: XStyles, val pkg: OPackage?, va
 
     private fun shift(s: Sheet5, rows: Boolean, at: Int, count: Int) {
         if (count == 0) return
+        // phase 7: cells kept as written (array / data-table / unparsable shared formulas) hold cell references the app
+        // cannot shift — after an insert / delete they are written as plain formulas or values, never with stale ranges
+        for (sh in book.sheets) for ((k, cell) in sh.cells.entries.toList()) if (cell.keep != null) {
+            sh.cells[k] = if (cell.formula != null) Cell5(cell.formula, cell.literal, cell.style, cell.sst, cell.cached) else Cell5(null, cell.cached ?: cell.literal, cell.style)
+        }
         rewriteFormulas(s, rows, at, count)
         val moved = HashMap<Long, Cell5>()
         for ((k, cell) in s.cells) {

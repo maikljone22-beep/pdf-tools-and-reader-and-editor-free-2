@@ -132,6 +132,8 @@ open class MainActivity : ComponentActivity() {   // NVE-shell: open for NveWind
             else -> null
         }
         if (uri == null) return
+        // hostile review C2: never read this app's own private files on another app's request
+        if (com.smartdocs.editor.core.files.IncomingGuard.isPrivate(this, uri)) { Toast.makeText(this, getString(R.string.error_generic), Toast.LENGTH_LONG).show(); return }
         openedByIntent = true
         // fc-settings: invite link → redeem the friend's code and show the invite screen
         if (com.smartdocs.editor.core.gaps6.Referral.isInviteLink(uri.scheme, uri.host, uri.path)) {

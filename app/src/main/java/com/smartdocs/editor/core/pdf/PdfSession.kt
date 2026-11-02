@@ -109,8 +109,9 @@ class PdfSession private constructor(
     }
 
     /** Render a page to a bitmap of exactly [width]x[height] pixels. */
-    suspend fun render(index: Int, width: Int, height: Int, nightMode: Boolean = false, annotations: Boolean = true): Bitmap =
+    suspend fun render(index: Int, w0: Int, h0: Int, nightMode: Boolean = false, annotations: Boolean = true): Bitmap =
         withContext(Dispatchers.IO) {
+            val (width, height) = capped(w0, h0)
             val key = "$index:$width:$height:$nightMode:$annotations"
             bitmapCache.get(key)?.let { return@withContext it }
             val bmp = mutex.withLock {
@@ -129,8 +130,9 @@ class PdfSession private constructor(
      * Render a page into a new bitmap the caller owns (not put in the shared cache, so the caller may recycle it):
      * large one-off renders like the workbench page (tabs audit CM-16).
      */
-    suspend fun renderOwned(index: Int, width: Int, height: Int, nightMode: Boolean = false, annotations: Boolean = true): Bitmap =
+    suspend fun renderOwned(index: Int, w0: Int, h0: Int, nightMode: Boolean = false, annotations: Boolean = true): Bitmap =
         withContext(Dispatchers.IO) {
+            val (width, height) = capped(w0, h0)
             mutex.withLock {
                 val bmp = Bitmap.createBitmap(width.coerceAtLeast(1), height.coerceAtLeast(1), Bitmap.Config.ARGB_8888)
                 page(index).renderPageBitmap(bmp, 0, 0, width, height, annotations, false, Color.WHITE, Color.WHITE)
@@ -151,6 +153,16 @@ class PdfSession private constructor(
                 if (nightMode) invert(bmp) else bmp
             }
         }
+
+    /**
+     * A very tall / wide page (posters, receipts, 1:50 strips) asked at the screen width can need a bitmap of hundreds
+     * of MB; drawing one over ~100 MB crashes the render thread (uncatchable). Keep the aspect, cap the size.
+     */
+    private fun capped(w: Int, h: Int): Pair<Int, Int> {
+        val ww = w.coerceAtLeast(1).toDouble(); val hh = h.coerceAtLeast(1).toDouble()
+        val f = minOf(1.0, MAX_SIDE / maxOf(ww, hh), kotlin.math.sqrt(MAX_PIXELS / (ww * hh)))
+        return if (f >= 1.0) w.coerceAtLeast(1) to h.coerceAtLeast(1) else (ww * f).toInt().coerceAtLeast(1) to (hh * f).toInt().coerceAtLeast(1)
+    }
 
     /** Colours inverted in place, a row at a time (red team R10: a whole-page IntArray and a second bitmap were ~60 MB at the zoom cap). */
     private fun invert(src: Bitmap): Bitmap {
@@ -306,6 +318,8 @@ class PdfSession private constructor(
             coreInstance ?: PdfiumCore(context.applicationContext).also { coreInstance = it }
         }
 
+        private const val MAX_SIDE = 8192.0
+        private const val MAX_PIXELS = 16_000_000.0
         class PasswordRequiredException : Exception("password required")
 
         /** Open a local file. Throws [PasswordRequiredException] when the file is encrypted and no/wrong password given. */

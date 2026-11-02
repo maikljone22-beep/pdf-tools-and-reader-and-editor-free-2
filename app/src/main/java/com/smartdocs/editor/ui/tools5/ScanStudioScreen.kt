@@ -287,7 +287,9 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
         if (!noText && !force && ScanSavePlan.needsText(fmt0, autoOcr, kind)) {
             // hostile review H2: the real size of what will be fetched, asked every time something is missing
             val eng = OcrEngine(ctx.applicationContext)
-            val bytes = try { eng.downloadBytes(if (langs == "auto") "ara+eng" else langs) } finally { eng.close() }
+            val l0 = if (langs == "auto") "ara+eng" else langs
+            // phase 7: asked only when an asked language is missing (helpers alone used to ask on every save)
+            val bytes = try { if (eng.requiredMissing(l0)) eng.downloadBytes(l0) else 0L } finally { eng.close() }
             if (bytes > 0) { downloadMb = ((bytes + 524_288) / 1_048_576).toInt().coerceAtLeast(1); askDownload = true; return }
         }
         // FINAL_CHECK_2 #16: a form needs its text for field recognition. Smart naming no longer forces OCR (switching OCR off
@@ -326,7 +328,7 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                         val stamp = typed.ifEmpty { (prefixes[k] ?: "Scan") + "_" + SimpleDateFormat("yyyyMMdd_HHmm", Locale.US).format(Date()) } + if (docs.size > 1) "_${gi + 1}" else ""
                         var n = 0
                         withContext(Dispatchers.IO) {
-                            ScanBuilder.pagePictures(g.map { it.file to it.edit }, k, rf, maxDim = sizeDim(lvl), removeFingers = fingers).forEach { o ->
+                            ScanBuilder.pagePictures(g.map { it.file to it.edit }, k, rf, maxDim = memCap(ctx, sizeDim(lvl)), removeFingers = fingers).forEach { o ->
                                 n++
                                 // audit A6: written aside first, so a killed app never leaves half a picture in Scans
                                 // phase 5 R3: next to the result (the temp folder is on another storage, where a rename fails)
@@ -362,7 +364,7 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                         if (!engine!!.init(wl)) throw IllegalStateException(ctx.getString(R.string.sc_save_failed))
                         val wbase = typed.ifEmpty { (prefixes[k] ?: "Scan") + "_" + SimpleDateFormat("yyyyMMdd_HHmm", Locale.US).format(Date()) } + if (docs.size > 1) "_${gi + 1}" else ""
                         val outDocx = app.documents.uniqueFile(app.documents.scansDir, wbase, "docx")
-                        val pics = ScanBuilder.pagePictures(g.map { it.file to it.edit }, k, rf, maxDim = maxOf(sizeDim(lvl), 2400), removeFingers = fingers)
+                        val pics = ScanBuilder.pagePictures(g.map { it.file to it.edit }, k, rf, maxDim = memCap(ctx, maxOf(sizeDim(lvl), 2400)), removeFingers = fingers)
                         // audit A6: the document is written aside and moved into Scans only when complete
                         val tmpDocx = File(app.documents.scansDir, ".part_${System.nanoTime()}.docx")
                         // audit B10: a book photo gives two pages
@@ -377,7 +379,7 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                         done += g
                         return@forEachIndexed
                     }
-                    val pictures = ScanBuilder.pagePictures(g.map { it.file to it.edit }, k, rf, maxDim = sizeDim(lvl), removeFingers = fingers)
+                    val pictures = ScanBuilder.pagePictures(g.map { it.file to it.edit }, k, rf, maxDim = memCap(ctx, sizeDim(lvl)), removeFingers = fingers)
                     val r = ScanBuilder.build(ctx, pictures, tmpOut, ScanBuildOptions(paper = p, quality = sizeQuality(lvl), ocrLangs = ocrLangs), engine,
                         onPage = { n -> message = savingMsg; step(gi * 100 + n, docs.size * 100) },
                         onDownload = { lang, f -> message = String.format(downloadingFmt, OcrEngine.label(lang)); progress = f })
@@ -819,6 +821,17 @@ internal val ScanGroupsSaver: androidx.compose.runtime.saveable.Saver<List<List<
 
 /** Picture side for the size choice: small (sharing), medium, best (A4 at 300 dpi). */
 internal fun sizeDim(level: Int) = when (level) { 0 -> 1600; 1 -> 2400; else -> 3508 }
+
+/**
+ * Hostile review H6: on a phone with 3 GB or less (or a small app heap) a page is processed at 2400 px at most — the
+ * best size peaked at 200–280 MB per page there (decode, EXIF copy, warp, filter, finger removal).
+ */
+internal fun memCap(ctx: android.content.Context, dim: Int): Int {
+    val am = ctx.getSystemService(android.content.Context.ACTIVITY_SERVICE) as? android.app.ActivityManager ?: return dim
+    val mi = android.app.ActivityManager.MemoryInfo().also { runCatching { am.getMemoryInfo(it) } }
+    val small = am.isLowRamDevice || (mi.totalMem in 1..3_200_000_000L) || Runtime.getRuntime().maxMemory() < 300L * 1024 * 1024
+    return if (small) minOf(dim, 2400) else dim
+}
 internal fun sizeQuality(level: Int) = when (level) { 0 -> 72; 1 -> 82; else -> 92 }
 /** A rough file size for [pages] pages at a size level (measured on text pages: ~0.25 / 0.6 / 1.6 MB a page). */
 internal fun sizeEstimate(level: Int, pages: Int): String {
