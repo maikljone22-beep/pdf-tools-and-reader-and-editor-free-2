@@ -123,6 +123,7 @@ class AiClient(private val endpoint: String, private val model: String, private 
 
     /** Stream assistant tokens. Emits deltas as they arrive. */
     fun stream(messages: List<ChatMessage>): Flow<String> = flow {
+        consent()
         val resp = http.newCall(request(messages, true)).execute()
         resp.use { r ->
             if (!r.isSuccessful) throw AiException("HTTP ${r.code}: ${r.body?.string()?.take(300)}")
@@ -152,6 +153,7 @@ class AiClient(private val endpoint: String, private val model: String, private 
 
     /** Single non-streaming completion. */
     suspend fun complete(messages: List<ChatMessage>): String = withContext(Dispatchers.IO) {
+        consent()
         http.newCall(request(messages, false)).execute().use { r ->
             val text = r.body?.string().orEmpty()
             if (!r.isSuccessful) throw AiException("HTTP ${r.code}: ${text.take(300)}")
@@ -180,6 +182,9 @@ class AiClient(private val endpoint: String, private val model: String, private 
     }
 
     /** Hostile review C9: the key never travels unencrypted (the endpoint is user-editable; plain HTTP is allowed app-wide). */
+    /** Audit C7: nothing with user content leaves the device before the user agreed (see [AiConsent]). */
+    private suspend fun consent() = AiConsent.ensure(AiConsent.providerName(endpoint))
+
     private fun requireHttps() { if (!endpoint.trim().startsWith("https://", ignoreCase = true)) throw java.io.IOException("insecure AI endpoint (http): use https") }
 
     private fun authed(b: Request.Builder): Request.Builder {
@@ -190,6 +195,7 @@ class AiClient(private val endpoint: String, private val model: String, private 
 
     /** POST a JSON body to [path] (e.g. "/chat/completions") and parse the JSON answer. Throws [AiException] on HTTP errors. */
     suspend fun postJson(path: String, body: JsonObject): JsonObject = withContext(Dispatchers.IO) {
+        consent()
         val req = authed(Request.Builder().url(baseUrl + path).post(body.toString().toRequestBody("application/json".toMediaType())).header("Content-Type", "application/json")).build()
         http.newCall(req).execute().use { r ->
             val text = r.body?.string().orEmpty()
@@ -202,6 +208,7 @@ class AiClient(private val endpoint: String, private val model: String, private 
 
     /** POST a JSON body and return the raw bytes + Content-Type (used for /audio/speech). */
     suspend fun postForBytes(path: String, body: JsonObject): Pair<ByteArray, String?> = withContext(Dispatchers.IO) {
+        consent()
         val req = authed(Request.Builder().url(baseUrl + path).post(body.toString().toRequestBody("application/json".toMediaType())).header("Content-Type", "application/json")).build()
         http.newCall(req).execute().use { r ->
             val bytes = r.body?.bytes() ?: ByteArray(0)
@@ -250,4 +257,4 @@ class AiClient(private val endpoint: String, private val model: String, private 
     }
 }
 
-class AiException(message: String) : Exception(message)
+open class AiException(message: String) : Exception(message)

@@ -133,6 +133,8 @@ fun SettingsScreen(nav: NavHostController) {
             GroupCard(stringResource(R.string.settings_ai), Modifier.nveSettingsAnchor(nveAnchors, "ai")) {
                 G6AiSwitch(s) { b -> upd(b) }      // gaps6: AI master switch
                 if (s.aiEnabled) {
+                val aiConsent by com.smartdocs.editor.core.ai.AiConsent.granted.collectAsState()   // audit C7: withdraw / give consent
+                SwitchRow(stringResource(R.string.ai_consent_setting), aiConsent, subtitle = stringResource(R.string.ai_consent_setting_sub)) { com.smartdocs.editor.core.ai.AiConsent.set(it) }
                 var key by remember(s.aiApiKey) { mutableStateOf(s.aiApiKey) }
                 var endpoint by remember(s.aiEndpoint) { mutableStateOf(s.aiEndpoint) }
                 var model by remember(s.aiModel) { mutableStateOf(s.aiModel) }

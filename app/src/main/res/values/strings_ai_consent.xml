@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ai_consent_title">إرسال المحتوى إلى خدمة الذكاء الاصطناعي؟</string>
+    <string name="ai_consent_body">لتنفيذ هذه الميزة سيُرسَل محتوى من مستندك (النص المحدد أو نص الصفحة أو نص الملف، أو صورة الصفحة عند الحاجة) إلى خدمة الذكاء الاصطناعي: %1$s.\n\nسيغادر هذا المحتوى جهازك ويُعالَج على خوادم تلك الخدمة. لن يُرسَل شيء إن ضغطت «إلغاء». يمكنك سحب الموافقة في أي وقت من الإعدادات ← الذكاء الاصطناعي.</string>
+    <string name="ai_consent_allow">موافق</string>
+    <string name="ai_consent_cancel">إلغاء</string>
+    <string name="ai_consent_declined">لم يُرسَل شيء: لم تتم الموافقة على مشاركة المحتوى مع خدمة الذكاء الاصطناعي.</string>
+    <string name="ai_consent_setting">السماح بإرسال المحتوى إلى الذكاء الاصطناعي</string>
+    <string name="ai_consent_setting_sub">عند الإيقاف سيُطلب إذنك قبل أي إرسال لمحتوى المستندات</string>
+</resources>
