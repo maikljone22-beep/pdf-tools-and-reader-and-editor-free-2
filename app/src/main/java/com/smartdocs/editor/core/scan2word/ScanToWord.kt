@@ -39,8 +39,8 @@ object ScanToWord {
     /** The physical page in points for a page picture of [w]×[h] px: the standard paper with the nearest shape (A4 when none is close). */
     fun pageSize(w: Int, h: Int): Pair<Float, Float> {
         val land = w > h
-        // stress test: a strip picture gave a page kilometres long — Word takes pages up to 22 in, so the shape is capped
-        val ratio = (max(w, h).coerceAtLeast(1).toFloat() / min(w, h).coerceAtLeast(1)).coerceAtMost(2.8f)
+        // stress test: a strip picture gave a page kilometres long — Word takes pages up to 22 in, so the shape is capped (A4 width × 2.6 < 1584 pt)
+        val ratio = (max(w, h).coerceAtLeast(1).toFloat() / min(w, h).coerceAtLeast(1)).coerceAtMost(2.6f)
         val best = PAPERS.minBy { (_, s) -> abs(s.second / s.first - ratio) }
         val s = if (abs(best.second.second / best.second.first - ratio) < 0.06f) best.second else PAPERS[0].second.let { a4 -> a4.first to a4.first * ratio }
         return if (land) s.second to s.first else s
@@ -216,11 +216,9 @@ object ScanToWord {
             used[b][k] = true
             var s0 = r[0]; var e0 = r[1]; var last = b
             while (last + 1 < n) {
-                // the same line in the next row: same ends, or (a slightly slanted rule, stress test) most of it overlapping
-                val j = runs[last + 1].indices.firstOrNull {
-                    val o = runs[last + 1][it]
-                    !used[last + 1][it] && ((abs(o[0] - s0) <= 14 && abs(o[1] - e0) <= 14) || min(o[1], e0) - max(o[0], s0) >= 0.5f * min(o[1] - o[0], e0 - s0))
-                } ?: break
+                // (joining merely overlapping runs, for slanted rules, merged text rows into blobs on a real page and lost
+                // the table — the stress test's slanted-rule case stays open)
+                val j = runs[last + 1].indices.firstOrNull { !used[last + 1][it] && abs(runs[last + 1][it][0] - s0) <= 14 && abs(runs[last + 1][it][1] - e0) <= 14 } ?: break
                 used[last + 1][j] = true; s0 = min(s0, runs[last + 1][j][0]); e0 = max(e0, runs[last + 1][j][1]); last++
             }
             val thick = last - b + 1
@@ -286,9 +284,9 @@ object ScanToWord {
     }
 
     fun page(index: Int, px: IntArray, w: Int, h: Int, words1: List<OcrBox>, arabicFont: String, latinFont: String,
-             rules0: List<TableRules.Rule>? = null, lineOf: MutableMap<Int, Int>? = null, crop: (IntArray) -> Pair<ByteArray, String>?,
+             rules0: List<TableRules.Rule>? = null, lineOf: MutableMap<Int, Int>? = null,
              /** Filled with the glyphs of words read with low confidence (shown highlighted for checking, hostile review H1). */
-             uncertain: MutableSet<Glyph>? = null): PageContent {
+             uncertain: MutableSet<Glyph>? = null, crop: (IntArray) -> Pair<ByteArray, String>?): PageContent {
         val (pw, ph) = pageSize(w, h)
         val s = pw / w
         val rules = rules0 ?: rules(px, w, h)
@@ -449,7 +447,7 @@ object ScanToWord {
         val glyphLine = HashMap<Int, Int>()
         val kept = dropWordStrokes(rules0, words1, w, h)
         val uncertain = java.util.Collections.newSetFromMap(java.util.IdentityHashMap<Glyph, Boolean>())
-        val content = page(index, px, w, h, words1, arabicFont, latinFont, kept, glyphLine, crop, uncertain)
+        val content = page(index, px, w, h, words1, arabicFont, latinFont, kept, glyphLine, uncertain, crop)
         val s = content.width / w
         // short rules lying on words are not table lines: those under a word are its underline (Decorations keeps only
         // the ones at the baseline, so a letter's own long stroke read as a rule is not)
