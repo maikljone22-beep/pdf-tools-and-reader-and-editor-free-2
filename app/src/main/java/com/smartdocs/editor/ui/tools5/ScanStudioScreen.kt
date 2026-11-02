@@ -120,7 +120,12 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
         pages.forEach { p -> runCatching { if (p.file.canonicalPath.startsWith(tmp)) p.file.delete() } }
     }
     var recent by remember { mutableStateOf(emptyList<File>()) }
-    fun refreshRecent() { recent = (app.documents.scansDir.listFiles() ?: emptyArray()).filter { it.extension.lowercase() in setOf("pdf", "docx", "jpg") }.sortedByDescending { it.lastModified() } }
+    fun refreshRecent() {
+        val all = app.documents.scansDir.listFiles() ?: emptyArray()
+        // half-written results (".part_…", left by a killed save) are hidden, and removed once an hour old
+        all.filter { it.name.startsWith(".part_") && System.currentTimeMillis() - it.lastModified() > 3_600_000L }.forEach { it.delete() }
+        recent = all.filter { !it.name.startsWith(".") && it.extension.lowercase() in setOf("pdf", "docx", "jpg") }.sortedByDescending { it.lastModified() }
+    }
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
             refreshRecent()
@@ -278,18 +283,19 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
         // deep audit E17: the ID card page is an A4 sheet at real card size — another paper shrank or mis-scaled it
         val p = if (k == ScanKind.ID_CARD) ScanPaper.A4 else paper
         val lvl = sizeLevel; val reopened = openedProject
-        val rb = removeBlank; val tt = title; val au = author; val pf = portfolio; val kp = keepProject; val pa = pdfa
+        val rb = removeBlank; val tt = title; val au = author; val pf = portfolio && !imgs; val kp = keepProject; val pa = pdfa
         prefs.edit().putBoolean("keep_project", kp).putBoolean("pdfa", pa).apply()
         val keep = all.map { g -> g.map { it.file to it.edit } }
         // "save multiple files": every group is cut into files of N pages
         // deep audit E16: "pages per file" counts output pages — an ID card is two photos, a book photo two pages
         // audit A3: adding to an existing PDF makes one document, whatever "pages per file" says
-        val chunk = when { perFile <= 0 || target != null -> 0; k == ScanKind.ID_CARD -> perFile * 2; k == ScanKind.BOOK -> maxOf(1, perFile / 2); else -> perFile }
+        val chunk = when { perFile <= 0 || (target != null && all.size == 1) -> 0; k == ScanKind.ID_CARD -> perFile * 2; k == ScanKind.BOOK -> maxOf(1, perFile / 2); else -> perFile }
         val docs = all.flatMap { ScanExtras.chunks(it, chunk) }
         job.launch(when { imgs -> savingImagesMsg; word -> savingWordMsg; else -> savingMsg }) {
             val engine = if (needText) OcrEngine(ctx.applicationContext) else null
             try {
                 val made = ArrayList<File>(); var lastText = ""; var fieldsMade = 0
+                val downloadFailedMsg = ctx.getString(R.string.pg_ocr_download_failed)
                 val failed = ArrayList<List<ScanPage>>(); val texts = StringBuilder(); val done = ArrayList<List<ScanPage>>(); var firstError: String? = null
                 docs.forEachIndexed { gi, g ->
                   // a failing document no longer stops the others; it stays on screen for another try (audit U30)
@@ -302,7 +308,8 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                             ScanBuilder.pagePictures(g.map { it.file to it.edit }, k, rf, maxDim = sizeDim(lvl), removeFingers = fingers).forEach { o ->
                                 n++
                                 // audit A6: written aside first, so a killed app never leaves half a picture in Scans
-                                val tmp = app.documents.newTemp("t5scan_jpg", "jpg")
+                                // phase 5 R3: next to the result (the temp folder is on another storage, where a rename fails)
+                                val tmp = File(app.documents.scansDir, ".part_${System.nanoTime()}.jpg")
                                 try { tmp.outputStream().use { o.bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, sizeQuality(lvl), it) } } finally { o.bitmap.recycle() }
                                 val f = app.documents.uniqueFile(app.documents.scansDir, "${stamp}_$n", "jpg")
                                 if (!tmp.renameTo(f)) { tmp.copyTo(f, true); tmp.delete() }
@@ -310,6 +317,7 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                             }
                         }
                         step((gi + 1) * 100, docs.size * 100)
+                        done += g      // phase 5 R1: JPG and Word documents count as saved for a cancel too
                         return@forEachIndexed
                     }
                     val today = t5Today()
@@ -335,7 +343,7 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                         val outDocx = app.documents.uniqueFile(app.documents.scansDir, wbase, "docx")
                         val pics = ScanBuilder.pagePictures(g.map { it.file to it.edit }, k, rf, maxDim = maxOf(sizeDim(lvl), 2400), removeFingers = fingers)
                         // audit A6: the document is written aside and moved into Scans only when complete
-                        val tmpDocx = app.documents.newTemp("t5scan_word", "docx")
+                        val tmpDocx = File(app.documents.scansDir, ".part_${System.nanoTime()}.docx")
                         // audit B10: a book photo gives two pages
                         val wordPages = (if (k == ScanKind.BOOK) g.size * 2 else g.size).coerceAtLeast(1)
                         val wr = try {
@@ -345,6 +353,7 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                         runCatching { app.documents.touchRecent(outDocx, wr.pages) }
                         made += outDocx; lastText = wr.text
                         if (wr.text.isNotBlank()) { if (texts.isNotEmpty()) texts.append("\n\n"); texts.append(wr.text) }
+                        done += g
                         return@forEachIndexed
                     }
                     val pictures = ScanBuilder.pagePictures(g.map { it.file to it.edit }, k, rf, maxDim = sizeDim(lvl), removeFingers = fingers)
@@ -394,6 +403,7 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                         runCatching { app.documents.touchRecent(out) }
                         made += out; lastText = r.text
                         if (r.text.isNotBlank()) { if (texts.isNotEmpty()) texts.append("\n\n"); texts.append(r.text) }
+                        done += g
                         return@forEachIndexed
                     }
                     val out = app.documents.uniqueFile(app.documents.scansDir, base)
@@ -405,9 +415,13 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                   } catch (e: kotlinx.coroutines.CancellationException) {
                     // audit B15: documents saved before the cancel leave the screen, so trying again does not save them twice
                     val doneSet = done.flatten().toSet()
-                    if (doneSet.isNotEmpty()) groups = groups.map { gr -> gr.filter { it !in doneSet } }.filter { it.isNotEmpty() }
+                    if (doneSet.isNotEmpty()) {
+                        groups = groups.map { gr -> gr.filter { it !in doneSet } }.filter { it.isNotEmpty() }
+                        // phase 5 R1: the rest is no longer the reopened project — saving it must not replace (delete) it
+                        openedProject = null
+                    }
                     throw e
-                  } catch (e: Throwable) { failed += g; if (firstError == null) firstError = (e as? IllegalStateException)?.message?.takeIf { m -> m.any { it in '\u0600'..'\u06FF' } } }
+                  } catch (e: Throwable) { failed += g; if (firstError == null) firstError = (e as? IllegalStateException)?.message?.takeIf { m -> m == downloadFailedMsg || m.any { it in '\u0600'..'\u06FF' } } }
                 }
                 recognised = texts.toString()
                 resultMime = when { imgs -> "image/jpeg"; word -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document"; else -> "application/pdf" }
@@ -597,8 +611,9 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                         OutlinedTextField(title, { title = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.pc_doc_title)) })
                         OutlinedTextField(author, { author = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.pc_doc_author)) })
                         SwitchRow(stringResource(R.string.pc_save_pdfa), pdfa, stringResource(R.string.pc_save_pdfa_sub)) { pdfa = it; prefs.edit().putBoolean("pdfa", it).apply() }
-                        if (groups.size > 1 || perFile > 0 || kind == ScanKind.BATCH) SwitchRow(stringResource(R.string.pc_scan_portfolio), portfolio) { portfolio = it }
                     }
+                    // phase 5 R5: Word documents can be bundled too (the switch was hidden for Word but still applied)
+                    if (!outJpg && (groups.size > 1 || perFile > 0 || kind == ScanKind.BATCH)) SwitchRow(stringResource(R.string.pc_scan_portfolio), portfolio) { portfolio = it }
                     SwitchRow(stringResource(R.string.pc_keep_project), keepProject, stringResource(R.string.pc_keep_project_sub)) { keepProject = it; prefs.edit().putBoolean("keep_project", it).apply() }
                 }
             }
