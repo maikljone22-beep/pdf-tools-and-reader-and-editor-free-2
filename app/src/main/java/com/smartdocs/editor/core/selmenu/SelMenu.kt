@@ -61,6 +61,8 @@ enum class SelAction(
     val entity: EntityKind? = null,
 ) {
     // --- fix/thumbs-panel: page thumbnails (acts on the selection when the pressed page is in it, else on that page)
+    // user request: a quick full-screen look at the page (works with unsaved organizer changes)
+    THUMB_VIEW(SelGroup.THUMB, setOf(SelCtx.THUMB)),
     THUMB_OPEN(SelGroup.THUMB, setOf(SelCtx.THUMB)),
     THUMB_SELECT(SelGroup.THUMB, setOf(SelCtx.THUMB)),
     THUMB_DESELECT(SelGroup.THUMB, setOf(SelCtx.THUMB)),
@@ -76,6 +78,8 @@ enum class SelAction(
     // user request: the page as a picture (gallery / share)
     THUMB_SAVE_IMAGE(SelGroup.THUMB, setOf(SelCtx.THUMB), Need.COPY),
     THUMB_SHARE_IMAGE(SelGroup.THUMB, setOf(SelCtx.THUMB), Need.COPY),
+    // the page(s) as a PDF saved where the user picks (Downloads, SD card, Drive …)
+    THUMB_SAVE_DEVICE(SelGroup.THUMB, setOf(SelCtx.THUMB), Need.COPY),
 
     // --- smart actions for detected entities (shown first, like Android's assist item)
     CALL(SelGroup.SMART, TEXTS, Need.COPY, entity = EntityKind.PHONE),

@@ -33,7 +33,9 @@ import com.smartdocs.editor.core.selmenu.Why
  * chosen [SelAction] on [SelThumbs.pages] itself. Disabled items show their reason, like the reader's right-click menu.
  */
 @Composable
-fun ThumbSelMenu(env: SelEnv, pressed: Int, selected: Set<Int>, pageCount: Int, onDismiss: () -> Unit, onItem: (SelAction, List<Int>) -> Unit) {
+fun ThumbSelMenu(env: SelEnv, pressed: Int, selected: Set<Int>, pageCount: Int, onDismiss: () -> Unit,
+                 /** More items of the screen (label, action on the pressed page), after the registry ones. */
+                 extra: List<Pair<Int, (Int) -> Unit>> = emptyList(), onItem: (SelAction, List<Int>) -> Unit) {
     val ctx = LocalContext.current
     val pages = SelThumbs.pages(pressed, selected)
     val items: List<SelItem> = SelThumbs.items(env, pressed, selected, pageCount)
@@ -57,6 +59,8 @@ fun ThumbSelMenu(env: SelEnv, pressed: Int, selected: Set<Int>, pageCount: Int, 
                 },
             )
         }
+        if (extra.isNotEmpty()) HorizontalDivider()
+        extra.forEach { (label, act) -> DropdownMenuItem(text = { Text(stringResource(label)) }, onClick = { onDismiss(); act(pressed) }) }
     }
 }
 

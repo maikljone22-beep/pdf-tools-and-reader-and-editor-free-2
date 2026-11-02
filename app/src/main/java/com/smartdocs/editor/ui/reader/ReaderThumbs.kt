@@ -179,7 +179,7 @@ internal fun ReaderThumbnailsPanel(state: ReaderState, onJump: (Int) -> Unit) {
     }
     fun runAction(a: SelAction, pages: List<Int>, pressed: Int) {
         when (a) {
-            SelAction.THUMB_OPEN -> onJump(pressed)
+            SelAction.THUMB_OPEN, SelAction.THUMB_VIEW -> onJump(pressed)
             SelAction.THUMB_SELECT -> setSelection(selected + pressed)
             SelAction.THUMB_DESELECT -> setSelection(selected - pressed)
             SelAction.THUMB_ROTATE_LEFT -> rotate(pages, -90)

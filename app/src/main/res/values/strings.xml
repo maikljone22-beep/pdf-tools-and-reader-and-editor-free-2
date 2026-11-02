@@ -395,4 +395,8 @@
     <string name="tpn_save_image">حفظ كصورة في المعرض</string>
     <string name="tpn_share_image">مشاركة كصورة</string>
     <string name="tpn_images_saved">حُفظت %1$d صورة في Pictures/SmartDocs</string>
+    <string name="tpn_view">عرض</string>
+    <string name="tpn_save_device">حفظ في الجهاز (PDF)</string>
+    <string name="tpn_saved_device">حُفظ في الجهاز</string>
+    <string name="tpn_save_device_failed">تعذّر الحفظ في الجهاز</string>
 </resources>
