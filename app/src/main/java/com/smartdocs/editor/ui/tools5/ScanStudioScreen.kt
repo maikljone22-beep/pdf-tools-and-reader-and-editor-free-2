@@ -320,6 +320,8 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                 val made = ArrayList<File>(); var lastText = ""; var fieldsMade = 0
                 val downloadFailedMsg = ctx.getString(R.string.pg_ocr_download_failed)
                 val failed = ArrayList<List<ScanPage>>(); val texts = StringBuilder(); val done = ArrayList<List<ScanPage>>(); var firstError: String? = null
+                // pages whose text could not be recognised (numbered across the whole save)
+                val ocrMissed = ArrayList<Int>(); var pageBase = 0
                 docs.forEachIndexed { gi, g ->
                   // a failing document no longer stops the others; it stays on screen for another try (audit U30)
                   try {
@@ -386,6 +388,7 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                     // red team P2: text wanted but the recogniser could not be readied (offline) — say so, instead of a
                     // silent PDF without text
                     if (r.textSkipped && info == null) info = textSkippedMsg
+                    ocrMissed += r.ocrFailedPages.map { it + pageBase }; pageBase += r.pages
                     val base = when {
                         typed.isNotEmpty() -> if (docs.size > 1) "${typed}_${gi + 1}" else typed
                         smartName && r.text.isNotBlank() -> SmartNaming.suggest(r.text, k, today, prefixes)
@@ -490,6 +493,10 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                 withContext(Dispatchers.IO) { dropTemp(savedPages) }
                 groups = failed.toList(); if (failed.isEmpty()) name = ""
                 if (failed.isNotEmpty()) info = ctx.getString(R.string.sc_saved_partly, docs.size - failed.size, docs.size)
+                if (ocrMissed.isNotEmpty()) {
+                    val miss = ctx.getString(R.string.sc_ocr_missed_pages, ocrMissed.size, ScanBuilder.pageList(ocrMissed, ctx.getString(R.string.sc_ocr_pages_sep)))
+                    info = info?.let { "$it\n$miss" } ?: miss
+                }
                 lastScan = made.firstOrNull { it.extension.equals("pdf", true) }
                 withContext(Dispatchers.IO) { refreshRecent() }
             } finally { engine?.close() }

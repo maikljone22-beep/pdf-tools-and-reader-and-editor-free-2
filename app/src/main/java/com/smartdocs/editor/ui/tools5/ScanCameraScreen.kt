@@ -122,6 +122,7 @@ import androidx.exifinterface.media.ExifInterface
 import com.smartdocs.editor.LocalApp
 import com.smartdocs.editor.R
 import com.smartdocs.editor.core.tools5.PageQuad
+import com.smartdocs.editor.core.tools5.ScanAutoFill
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -264,7 +265,7 @@ private fun CameraBody(pageLimit: Int, onDone: (List<Pair<File, PageQuad.Quad?>>
     }
 
     /** Full-resolution capture; the page is kept with its detected corners (or opens in the corner editor). */
-    fun capture() {
+    fun capture(fullFrame: Boolean = false) {
         if (capturing || shot != null) return
         capturing = true
         armed = false; shotSig = lastSig
@@ -275,6 +276,8 @@ private fun CameraBody(pageLimit: Int, onDone: (List<Pair<File, PageQuad.Quad?>>
             override fun onImageSaved(r: ImageCapture.OutputFileResults) {
                 scope.launch {
                     val s = withContext(Dispatchers.IO) { runCatching { openShot(f) }.getOrNull() }
+                    // audit H10: the page filled the frame — keep the whole photo (no crop)
+                    if (fullFrame && s != null) s.quad = PageQuad.Quad.FULL
                     capturing = false
                     when {
                         // audit B11: a failed shot re-arms auto-capture (it waited for a page change that never comes)
@@ -290,10 +293,12 @@ private fun CameraBody(pageLimit: Int, onDone: (List<Pair<File, PageQuad.Quad?>>
     }
 
     // live page edges + auto-capture
-    val captureNow by rememberUpdatedState<() -> Unit>({ capture() })
+    val captureNow by rememberUpdatedState<(Boolean) -> Unit>({ full -> capture(full) })
     var missing by remember { mutableIntStateOf(0) }
     LaunchedEffect(Unit) {
         var last: PageQuad.Quad? = null
+        var prevSig: IntArray? = null
+        var fillSteady = 0
         controller.setImageAnalysisAnalyzer(executor) { img ->
             try {
                 if (shot != null || capturing) { quad = null; steady = 0; return@setImageAnalysisAnalyzer }
@@ -303,21 +308,28 @@ private fun CameraBody(pageLimit: Int, onDone: (List<Pair<File, PageQuad.Quad?>>
                     if (qrFound == null && qrTick.getAndIncrement() % 2 == 0) com.smartdocs.editor.core.tools5.BarcodeScan.decode(px, w, h, multiple = false).firstOrNull()?.let { c -> scope.launch { qrFound = c } }
                     return@setImageAnalysisAnalyzer
                 }
-                val q = PageQuad.detect(px, w, h)?.takeIf { it.area() < 0.97f }
+                val raw = PageQuad.detect(px, w, h)
+                val q = raw?.takeIf { it.area() < 0.97f }
                 val moved = if (q == null || last == null) 1f else q.distance(last!!)
                 last = q
                 val st = if (q != null && moved < 0.012f) steady + 1 else 0
                 val sig = signature(px, w, h)
+                // audit H10: no usable quad but the page fills the frame — steady by the frame signature instead
+                val fill = q == null && ScanAutoFill.fillsFrame(raw?.area(), sig)
+                fillSteady = ScanAutoFill.steadyStep(fillSteady, fill, prevSig?.let { sigDiff(sig, it) } ?: Int.MAX_VALUE)
+                prevSig = sig
+                val fs = fillSteady
                 // sharpness on the analysis thread (it was on the main thread)
-                val sharp = if (autoCapture && q != null && st >= 10) PageQuad.sharpness(px, w, h) > 6.0 else true
+                val sharp = if (autoCapture && ((q != null && st >= 10) || (fill && fs >= 10))) PageQuad.sharpness(px, w, h) > 6.0 else true
                 scope.launch {
                     frameSize = IntSize(w, h); quad = q; steady = st; lastSig = sig
                     // re-arm once the page is gone or clearly different from the last photo
-                    missing = if (q == null) missing + 1 else 0
+                    missing = if (q == null && !fill) missing + 1 else 0
                     if (!armed && !capturing && shot == null && (missing >= 4 || shotSig == null || sigDiff(sig, shotSig!!) > 10)) armed = true
-                    blurry = autoCapture && q != null && st >= 10 && !sharp
+                    blurry = autoCapture && ((q != null && st >= 10) || (fill && fs >= 10)) && !sharp
                     val now = System.currentTimeMillis()
-                    if (autoCapture && armed && q != null && st >= 10 && sharp && now - lastAuto > 1500L && !capturing && shot == null) { lastAuto = now; captureNow() }
+                    if (autoCapture && armed && q != null && st >= 10 && sharp && now - lastAuto > 1500L && !capturing && shot == null) { lastAuto = now; captureNow(false) }
+                    else if (autoCapture && armed && fill && fs >= 10 && sharp && now - lastAuto > 1500L && !capturing && shot == null) { lastAuto = now; captureNow(true) }
                 }
             } finally { img.close() }
         }

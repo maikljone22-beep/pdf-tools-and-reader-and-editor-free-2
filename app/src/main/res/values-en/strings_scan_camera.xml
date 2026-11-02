@@ -129,4 +129,6 @@
     <string name="sc_word_needs_models">A Word file is built from the recognised text, so it needs the language models. Download them, or save as PDF or JPG.</string>
     <string name="sc_ocr_download_go">Download and continue</string>
     <string name="sc_ocr_download_skip">Save without text</string>
+    <string name="sc_ocr_missed_pages">Text was not recognised on %1$d of the pages (%2$s)</string>
+    <string name="sc_ocr_pages_sep">", "</string>
 </resources>

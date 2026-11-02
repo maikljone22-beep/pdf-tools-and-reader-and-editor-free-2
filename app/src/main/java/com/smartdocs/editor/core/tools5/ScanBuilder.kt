@@ -75,7 +75,9 @@ data class ScanBuildOptions(
 
 class ScanBuildResult(val file: File, val pages: Int, val text: String,
     /** Text was wanted but the recogniser could not be readied (no connection for the models…): the PDF has no text layer. */
-    val textSkipped: Boolean = false)
+    val textSkipped: Boolean = false,
+    /** Pages (1-based) whose OCR threw or found no text: they have no text layer (audit: no longer silent). */
+    val ocrFailedPages: List<Int> = emptyList())
 
 /**
  * Scan studio output: page pictures → PDF (JPEG, or lossless for pure black/white pages) with an optional
@@ -124,6 +126,7 @@ object ScanBuilder {
     ): ScanBuildResult = withContext(Dispatchers.IO) {
         val text = StringBuilder()
         var count = 0
+        val ocrFailed = ArrayList<Int>()
         // audit A8: a cancel is not an OCR failure — it stops the build
         val ocrReady = engine != null && opt.ocrLangs != null &&
             try { engine.ensureLanguages(opt.ocrLangs, onDownload); engine.init(opt.ocrLangs) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { false }
@@ -148,6 +151,7 @@ object ScanBuilder {
                 val img = if (bilevel) LosslessFactory.createFromImage(doc, bmp) else JPEGFactory.createFromImage(doc, bmp, opt.quality.coerceIn(30, 100) / 100f)
                 var ocr: OcrPage? = null
                 if (ocrReady) ocr = try { engine!!.recognize(bmp, wantWords = true) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { null }
+                if (ocrReady && ocr?.text.isNullOrBlank()) ocrFailed += count + 1
                 PDPageContentStream(doc, page).use { cs ->
                     cs.drawImage(img, ox, oy, w, h)
                     ocr?.let { TextLayer.write(cs, it.words, it.imageWidth, it.imageHeight, ox, oy, w, h, arabic) }
@@ -160,6 +164,10 @@ object ScanBuilder {
             doc.documentInformation.creator = "SmartDocs"
             doc.save(out)
         }
-        ScanBuildResult(out, count, text.toString(), textSkipped = engine != null && opt.ocrLangs != null && !ocrReady)
+        ScanBuildResult(out, count, text.toString(), textSkipped = engine != null && opt.ocrLangs != null && !ocrReady, ocrFailedPages = ocrFailed)
     }
+
+    /** "3، 7، 9…": the first [max] page numbers joined by [sep], with an ellipsis when there are more. */
+    fun pageList(pages: List<Int>, sep: String, max: Int = 10): String =
+        pages.take(max).joinToString(sep) + if (pages.size > max) "…" else ""
 }
