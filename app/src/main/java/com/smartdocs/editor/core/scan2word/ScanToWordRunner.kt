@@ -15,12 +15,13 @@ import kotlin.coroutines.coroutineContext
 /** Android side of [ScanToWord]: recognise each page picture and write one .docx (pages in order). */
 object ScanToWordRunner {
 
-    class Result(val pages: Int, val text: String)
+    /** [noTextPages]: 1-based pages where OCR found no word (or failed), for the "text not recognised" warning. */
+    class Result(val pages: Int, val text: String, val noTextPages: List<Int> = emptyList())
 
     /** [engine] already initialised with the page languages. Each picture is recycled after use. */
     suspend fun convert(pictures: Sequence<ScanOut>, engine: OcrEngine, out: File, title: String, arabicFont: String, latinFont: String,
                         onPage: (Int) -> Unit = {}): Result = withContext(Dispatchers.Default) {
-        val layouts = ArrayList<PageLayout>(); val text = StringBuilder(); var n = 0
+        val layouts = ArrayList<PageLayout>(); val text = StringBuilder(); var n = 0; val noText = ArrayList<Int>()
         for (o in pictures) {
             coroutineContext.ensureActive()
             val bmp = o.bitmap
@@ -60,6 +61,7 @@ object ScanToWordRunner {
                             ox + (wd.box.right * kx).toInt(), oy + (wd.box.bottom * ky).toInt(), wd.confidence, 90_000_000 + mi * 100 + wd.line.coerceAtLeast(0))
                     }
                 }
+                if (boxes.none { it.text.isNotBlank() }) noText += n + 1
                 layouts += ScanToWord.layout(n, px, w, h, boxes, arabicFont, latinFont, rules) { f ->
                     runCatching {
                         val c = Bitmap.createBitmap(bmp, f[0], f[1], (f[2] - f[0]).coerceAtLeast(1), (f[3] - f[1]).coerceAtLeast(1))
@@ -71,6 +73,6 @@ object ScanToWordRunner {
             n++; onPage(n)
         }
         withContext(Dispatchers.IO) { out.outputStream().use { os -> DocxBuilder(os, title, tight = true).use { b -> layouts.forEach { b.addPage(it) }; b.finish() } } }
-        Result(n, text.toString())
+        Result(n, text.toString(), noText)
     }
 }

@@ -377,6 +377,7 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                         withContext(Dispatchers.IO) { if (!tmpDocx.renameTo(outDocx)) { tmpDocx.copyTo(outDocx, true); tmpDocx.delete() } }
                         runCatching { app.documents.touchRecent(outDocx, wr.pages) }
                         made += outDocx; lastText = wr.text
+                        ocrMissed += wr.noTextPages.map { it + pageBase }; pageBase += wr.pages   // same warning as the PDF path
                         if (wr.text.isNotBlank()) { if (texts.isNotEmpty()) texts.append("\n\n"); texts.append(wr.text) }
                         done += g
                         return@forEachIndexed

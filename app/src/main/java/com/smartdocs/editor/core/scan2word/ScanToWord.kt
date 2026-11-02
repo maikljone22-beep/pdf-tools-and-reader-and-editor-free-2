@@ -42,7 +42,13 @@ object ScanToWord {
         // stress test: a strip picture gave a page kilometres long — Word takes pages up to 22 in, so the shape is capped (A4 width × 2.6 < 1584 pt)
         val ratio = (max(w, h).coerceAtLeast(1).toFloat() / min(w, h).coerceAtLeast(1)).coerceAtMost(2.6f)
         val best = PAPERS.minBy { (_, s) -> abs(s.second / s.first - ratio) }
-        val s = if (abs(best.second.second / best.second.first - ratio) < 0.06f) best.second else PAPERS[0].second.let { a4 -> a4.first to a4.first * ratio }
+        // user report: phone photos (3:4) became Letter or an odd A4-wide page. Only a picture with exactly another
+        // paper's shape keeps it; every ordinary page shape is A4 (the content is scaled to fit, see [page]).
+        val s = when {
+            abs(best.second.second / best.second.first - ratio) < 0.02f -> best.second
+            ratio in 1.2f..1.65f -> PAPERS[0].second
+            else -> PAPERS[0].second.let { a4 -> a4.first to a4.first * ratio }
+        }
         return if (land) s.second to s.first else s
     }
 
@@ -288,7 +294,8 @@ object ScanToWord {
              /** Filled with the glyphs of words read with low confidence (shown highlighted for checking, hostile review H1). */
              uncertain: MutableSet<Glyph>? = null, crop: (IntArray) -> Pair<ByteArray, String>?): PageContent {
         val (pw, ph) = pageSize(w, h)
-        val s = pw / w
+        // the picture fits the page both ways (an A4 page may be a little taller or wider than the photo)
+        val s = minOf(pw / w.coerceAtLeast(1), ph / h.coerceAtLeast(1))
         val rules = rules0 ?: rules(px, w, h)
         // bidi marks the OCR adds are not text
         // the word that starts each line in reading order (the rightmost on an Arabic line, the leftmost on a Latin one)
@@ -448,7 +455,7 @@ object ScanToWord {
         val kept = dropWordStrokes(rules0, words1, w, h)
         val uncertain = java.util.Collections.newSetFromMap(java.util.IdentityHashMap<Glyph, Boolean>())
         val content = page(index, px, w, h, words1, arabicFont, latinFont, kept, glyphLine, uncertain, crop)
-        val s = content.width / w
+        val s = minOf(content.width / w.coerceAtLeast(1), content.height / h.coerceAtLeast(1))   // same scale as [page]
         // short rules lying on words are not table lines: those under a word are its underline (Decorations keeps only
         // the ones at the baseline, so a letter's own long stroke read as a rule is not)
         val keptSet = kept.toSet()

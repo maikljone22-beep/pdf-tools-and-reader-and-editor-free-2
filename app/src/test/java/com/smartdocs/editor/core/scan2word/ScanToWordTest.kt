@@ -14,6 +14,9 @@ class ScanToWordTest {
         assertEquals(595.28f to 841.89f, ScanToWord.pageSize(2480, 3508))   // A4 at 300 dpi
         assertEquals(841.89f to 595.28f, ScanToWord.pageSize(3508, 2480))   // landscape
         assertEquals(498.9f to 708.66f, ScanToWord.pageSize(1760, 2500))    // B5 shape
+        assertEquals(595.28f to 841.89f, ScanToWord.pageSize(3000, 4000))   // 3:4 phone photo: A4, not Letter
+        assertEquals(595.28f to 841.89f, ScanToWord.pageSize(2000, 3100))   // a bit taller than A4: still A4
+        assertEquals(841.89f to 595.28f, ScanToWord.pageSize(4000, 3000))   // landscape photo
     }
 
     @Test fun pointSizeFromBoxHeight() {
