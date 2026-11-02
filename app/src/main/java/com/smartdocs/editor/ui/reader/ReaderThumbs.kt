@@ -191,6 +191,12 @@ internal fun ReaderThumbnailsPanel(state: ReaderState, onJump: (Int) -> Unit) {
             SelAction.THUMB_INSERT_FILE -> { pickFor = PickFor.Insert(pages.max() + 1); pick() }
             SelAction.THUMB_REPLACE -> { pickFor = PickFor.Replace(pages); pick() }
             SelAction.THUMB_PRINT -> print(pages)
+            SelAction.THUMB_SAVE_IMAGE, SelAction.THUMB_SHARE_IMAGE -> state.file?.let { src -> state.scope.launch {
+                runCatching {
+                    if (a == SelAction.THUMB_SHARE_IMAGE) com.smartdocs.editor.ui.pages.PageImageExport.share(ctx, src, state.password, pages)
+                    else { val n = com.smartdocs.editor.ui.pages.PageImageExport.save(ctx, src, state.password, pages); if (n > 0) android.widget.Toast.makeText(ctx, ctx.getString(R.string.tpn_images_saved, n), android.widget.Toast.LENGTH_SHORT).show() }
+                }.onFailure { state.error = it.message }
+            } }
             else -> Unit
         }
     }
@@ -217,7 +223,7 @@ internal fun ReaderThumbnailsPanel(state: ReaderState, onJump: (Int) -> Unit) {
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             val acts = listOf(
                 SelAction.THUMB_ROTATE_LEFT, SelAction.THUMB_ROTATE_RIGHT, SelAction.THUMB_DELETE, SelAction.THUMB_DUPLICATE, SelAction.THUMB_EXTRACT,
-                SelAction.THUMB_INSERT_BLANK, SelAction.THUMB_INSERT_FILE, SelAction.THUMB_REPLACE, SelAction.THUMB_PRINT,
+                SelAction.THUMB_INSERT_BLANK, SelAction.THUMB_INSERT_FILE, SelAction.THUMB_REPLACE, SelAction.THUMB_PRINT, SelAction.THUMB_SAVE_IMAGE, SelAction.THUMB_SHARE_IMAGE,
             )
             acts.forEach { a ->
                 val label = stringResource(com.smartdocs.editor.ui.selmenu.SelBindings.label(a))

@@ -391,4 +391,7 @@
     <string name="share_text">مشاركة النص</string>
     <string name="open_with">فتح بواسطة</string>
     <string name="saved_to">تم الحفظ في %1$s</string>
+    <string name="tpn_save_image">حفظ كصورة في المعرض</string>
+    <string name="tpn_share_image">مشاركة كصورة</string>
+    <string name="tpn_images_saved">حُفظت %1$d صورة في Pictures/SmartDocs</string>
 </resources>

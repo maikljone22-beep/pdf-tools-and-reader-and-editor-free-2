@@ -133,7 +133,7 @@ fun SearchRemoveScreen(nav: NavHostController, uri: String?) {
         topBar = { AppTopBar(stringResource(R.string.ett_sr_title), onBack = { nav.popBackStack() }) },
         bottomBar = {
             if (found.isNotEmpty()) Surface(tonalElevation = 3.dp) {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                     val sel = found.filter { SearchRemove.key(it) in checked }
                     Text(stringResource(R.string.ett_sr_hits, sel.size, sel.map { it.hit.page }.distinct().size), Modifier.weight(1f), style = MaterialTheme.typography.labelLarge)
                     Button(onClick = { confirm = true }, enabled = sel.isNotEmpty() && !runner.running) {

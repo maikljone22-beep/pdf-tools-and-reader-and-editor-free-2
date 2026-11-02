@@ -73,6 +73,9 @@ enum class SelAction(
     THUMB_INSERT_FILE(SelGroup.THUMB, setOf(SelCtx.THUMB), Need.MODIFY, changesContent = true),
     THUMB_REPLACE(SelGroup.THUMB, setOf(SelCtx.THUMB), Need.MODIFY, changesContent = true),
     THUMB_PRINT(SelGroup.THUMB, setOf(SelCtx.THUMB), Need.PRINT),
+    // user request: the page as a picture (gallery / share)
+    THUMB_SAVE_IMAGE(SelGroup.THUMB, setOf(SelCtx.THUMB), Need.COPY),
+    THUMB_SHARE_IMAGE(SelGroup.THUMB, setOf(SelCtx.THUMB), Need.COPY),
 
     // --- smart actions for detected entities (shown first, like Android's assist item)
     CALL(SelGroup.SMART, TEXTS, Need.COPY, entity = EntityKind.PHONE),

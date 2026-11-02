@@ -254,7 +254,7 @@ fun TocSheet(toc: List<TocItem>, onPick: (TocItem) -> Unit, onDismiss: () -> Uni
 fun AttachmentBar(nav: NavHostController, v: ViewFile, atts: List<MailAttachment>) {
     val ctx = LocalContext.current
     Surface(tonalElevation = 3.dp) {
-        Column(Modifier.fillMaxWidth().padding(8.dp)) {
+        Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(8.dp)) {
             Text(stringResource(R.string.oa_attachments, atts.size), style = MaterialTheme.typography.labelLarge)
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 atts.forEachIndexed { i, a ->

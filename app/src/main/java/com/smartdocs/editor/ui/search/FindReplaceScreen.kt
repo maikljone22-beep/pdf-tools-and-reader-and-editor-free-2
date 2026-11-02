@@ -126,7 +126,7 @@ fun FindReplaceScreen(nav: NavHostController, uri: String?) {
         topBar = { AppTopBar(stringResource(R.string.s5_replace_title), onBack = { nav.popBackStack() }) },
         bottomBar = {
             if (matches.isNotEmpty()) Surface(tonalElevation = 3.dp) {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                     val n = matches.filter { matchId(it) in checked }.sumOf { it.ranges.size }
                     Text(stringResource(R.string.s5_n_occurrences, n), Modifier.weight(1f), style = MaterialTheme.typography.labelLarge)
                     Button(onClick = { askConfirm() }, enabled = n > 0 && !runner.running) { Icon(Icons.Default.FindReplace, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.s5_replace_all)) }

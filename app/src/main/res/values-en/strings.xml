@@ -343,4 +343,7 @@
     <string name="share_text">Share text</string>
     <string name="open_with">Open with</string>
     <string name="saved_to">Saved to %1$s</string>
+    <string name="tpn_save_image">Save as image to gallery</string>
+    <string name="tpn_share_image">Share as image</string>
+    <string name="tpn_images_saved">%1$d image(s) saved to Pictures/SmartDocs</string>
 </resources>

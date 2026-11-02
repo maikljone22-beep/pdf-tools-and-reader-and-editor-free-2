@@ -84,7 +84,7 @@ fun EpubViewer(nav: NavHostController, v: ViewFile) {
                 val uiRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
                 CompositionLocalProvider(LocalLayoutDirection provides if (bookRtl) LayoutDirection.Rtl else LayoutDirection.Ltr) {
                     Surface(tonalElevation = 3.dp) {
-                        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                             IconButton(onClick = { go(cur - 1) }, enabled = cur > 0) { Icon(Icons.AutoMirrored.Filled.NavigateBefore, stringResource(R.string.oa_prev)) }
                             CompositionLocalProvider(LocalLayoutDirection provides if (uiRtl) LayoutDirection.Rtl else LayoutDirection.Ltr) {
                                 Text(stringResource(R.string.oa_chapter, cur + 1, spine.size), Modifier.weight(1f), style = MaterialTheme.typography.labelMedium, textAlign = androidx.compose.ui.text.style.TextAlign.Center)

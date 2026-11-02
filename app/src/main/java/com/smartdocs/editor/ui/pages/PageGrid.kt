@@ -79,7 +79,10 @@ fun PageGrid(
     /** fix/thumbs-panel: the page whose long-press menu is open, and that menu (anchored to its cell). */
     menuPage: Int? = null,
     menu: @Composable (Int) -> Unit = {},
+    /** Closes the long-press menu (the press turned into a drag). */
+    onMenuDismiss: () -> Unit = {},
 ) {
+    val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
     val grid = rememberLazyGridState()
     val drag = remember { DragState() }
 
@@ -95,16 +98,21 @@ fun PageGrid(
         columns = GridCells.Adaptive(minCell),
         state = grid,
         modifier = modifier.pointerInput(dragEnabled, pages) {
+            val slop = viewConfiguration.touchSlop * 2
             detectDragGesturesAfterLongPress(
                 onDragStart = { p ->
                     val item = grid.itemAt(p) ?: return@detectDragGesturesAfterLongPress
                     drag.fromPos = item.index; drag.toPos = item.index; drag.offset = Offset.Zero; drag.moved = false
+                    // user report: the menu only came after lifting the finger, and a slight wobble (12 px) cancelled it.
+                    // It opens at the long press; a real drag (beyond the touch slop) closes it and moves the page.
+                    haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                    pages.getOrNull(item.index)?.let(onLongPress)
                 },
                 onDrag = { change, amount ->
                     change.consume()
                     if (!dragEnabled) { drag.moved = false; return@detectDragGesturesAfterLongPress }
                     drag.offset += amount
-                    if (drag.offset.getDistance() > 12f) drag.moved = true
+                    if (!drag.moved && drag.offset.getDistance() > slop) { drag.moved = true; onMenuDismiss() }
                     val from = drag.fromPos ?: return@detectDragGesturesAfterLongPress
                     val info = grid.layoutInfo.visibleItemsInfo.firstOrNull { it.index == from }
                     if (info != null) {
@@ -117,8 +125,7 @@ fun PageGrid(
                 onDragEnd = {
                     val from = drag.fromPos; val to = drag.toPos
                     if (from != null) {
-                        if (!drag.moved) pages.getOrNull(from)?.let(onLongPress)
-                        else if (to != null && to != from) onReorder(from, to)
+                        if (drag.moved && to != null && to != from) onReorder(from, to)
                     }
                     drag.reset()
                 },

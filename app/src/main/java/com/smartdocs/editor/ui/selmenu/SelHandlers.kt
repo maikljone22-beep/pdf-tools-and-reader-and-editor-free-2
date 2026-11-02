@@ -95,7 +95,7 @@ class SelRunner(
             // fix/thumbs-panel: thumbnail items are run by the grid that shows them (ThumbSelMenu), never from the page
             SelAction.THUMB_OPEN, SelAction.THUMB_SELECT, SelAction.THUMB_DESELECT, SelAction.THUMB_ROTATE_LEFT, SelAction.THUMB_ROTATE_RIGHT,
             SelAction.THUMB_DUPLICATE, SelAction.THUMB_DELETE, SelAction.THUMB_EXTRACT, SelAction.THUMB_INSERT_BLANK, SelAction.THUMB_INSERT_FILE,
-            SelAction.THUMB_REPLACE, SelAction.THUMB_PRINT -> Unit
+            SelAction.THUMB_REPLACE, SelAction.THUMB_PRINT, SelAction.THUMB_SAVE_IMAGE, SelAction.THUMB_SHARE_IMAGE -> Unit
             // ---- smart actions
             SelAction.CALL -> e?.let { start(Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + it.value))) }
             SelAction.WHATSAPP -> e?.let { SelEntities.whatsAppUri(it) }?.let { start(Intent(Intent.ACTION_VIEW, Uri.parse(it))) }

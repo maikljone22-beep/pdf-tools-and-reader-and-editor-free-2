@@ -140,7 +140,7 @@ fun ExtractImagesScreen(nav: NavHostController, uri: String?) {
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
             if (items.isNotEmpty()) Surface(tonalElevation = 3.dp) {
-                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.fillMaxWidth().navigationBarsPadding().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     val any = selected.isNotEmpty()
                     Button(enabled = any, onClick = {
                         job.launch(ctx.getString(R.string.processing)) {
