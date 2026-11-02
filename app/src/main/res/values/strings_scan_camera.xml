@@ -145,4 +145,6 @@
     <string name="sc_word_needs_models">ملف Word يُبنى من النص المقروء، فيحتاج نماذج اللغة. نزّلها، أو احفظ بصيغة PDF أو JPG.</string>
     <string name="sc_ocr_download_go">تنزيل ومتابعة</string>
     <string name="sc_ocr_download_skip">حفظ بلا نص</string>
+    <string name="sc_ocr_missed_pages">لم يُتعرّف على النص في %1$d من الصفحات (%2$s)</string>
+    <string name="sc_ocr_pages_sep">"، "</string>
 </resources>
