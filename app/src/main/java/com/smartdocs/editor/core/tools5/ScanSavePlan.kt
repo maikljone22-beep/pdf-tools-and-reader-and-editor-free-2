@@ -27,7 +27,7 @@ object ScanSavePlan {
      */
     fun chunk(perFile: Int, k: ScanKind, appending: Boolean, groups: Int): Int = when {
         perFile <= 0 || (appending && groups == 1) -> 0
-        k == ScanKind.ID_CARD -> perFile * 2
+        k == ScanKind.ID_CARD -> perFile.coerceAtMost(Int.MAX_VALUE / 2) * 2
         k == ScanKind.BOOK -> maxOf(1, perFile / 2)
         else -> perFile
     }
