@@ -90,6 +90,17 @@ open class MainActivity : ComponentActivity() {   // NVE-shell: open for NveWind
             runCatching {
                 val L = com.smartdocs.editor.core.data.AppLang
                 val chosen = app.settings.settings.first().language
+                // Arabic by default, whatever the device language (the app is made for Arabic readers). Once only:
+                // a later choice of "System language" or English in Settings is kept.
+                val lp = getSharedPreferences("fcs_lang", MODE_PRIVATE)
+                if (!lp.getBoolean("arabic_default_v1", false)) {
+                    lp.edit().putBoolean("arabic_default_v1", true).apply()
+                    if (chosen == L.SYSTEM && L.stored(this@MainActivity) == L.SYSTEM) {
+                        app.settings.update { it.copy(language = L.AR) }
+                        L.apply(this@MainActivity, L.AR)
+                        return@runCatching
+                    }
+                }
                 val picked = L.fromSystemPicker(this@MainActivity)
                 when {
                     !L.hasStored(this@MainActivity) -> if (chosen != L.SYSTEM) L.apply(this@MainActivity, chosen) else L.remember(this@MainActivity, chosen)

@@ -13,7 +13,7 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore("s
 data class AppSettings(
     val theme: ThemeMode = ThemeMode.SYSTEM,
     /** fc-settings: "system" (follow the device), "ar" or "en" — see [AppLang]. */
-    val language: String = AppLang.SYSTEM,
+    val language: String = AppLang.AR,   // Arabic unless the user picks another language (MainActivity.syncLanguage)
     val authorName: String = "",
     val autoSave: Boolean = true,
     val restoreSession: Boolean = true,
