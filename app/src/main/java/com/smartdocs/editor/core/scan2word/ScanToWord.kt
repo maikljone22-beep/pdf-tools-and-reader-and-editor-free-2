@@ -450,7 +450,11 @@ object ScanToWord {
                 if (row != null) row += gs else rows += gs
             }
             return rows.mapNotNull { gs -> LayoutAnalyzer.buildLines(gs).let { ls -> if (ls.isEmpty()) null else if (ls.size == 1) ls[0] else LayoutAnalyzer.lineOf(ls.flatMap { it.words }) } }.sortedBy { it.top }
-                .also { if (under.isNotEmpty()) Decorations.decorateWords(it, under, emptyList(), content.width) }
+                .also { ls ->
+                    if (under.isNotEmpty()) Decorations.decorateWords(ls, under, emptyList(), content.width)
+                    // a stroke through a word on a photo is a letter's own long stroke (kashida), never a strike-through
+                    ls.forEach { l -> l.visual.forEach { it.strike = false } }
+                }
         }
         val bands = regions.groupBy { it[1] to it[3] }.toSortedMap(compareBy { it.first })
         val bodySize = content.glyphs.filter { it.text.isNotBlank() }.map { it.fontSize }.groupingBy { it }.eachCount().maxByOrNull { it.value }?.key ?: 14f
