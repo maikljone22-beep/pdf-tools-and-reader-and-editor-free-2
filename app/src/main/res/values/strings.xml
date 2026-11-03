@@ -404,4 +404,7 @@
     <string name="img_move_last">نقل إلى النهاية</string>
     <string name="import_progress">جارٍ إضافة الملفات… %1$d من %2$d</string>
     <string name="tl_add_from_gallery">من المعرض (حتى %1$d صورة)</string>
+    <string name="home_more">المزيد</string>
+    <string name="home_all_tools">كل الأدوات</string>
+    <string name="rd_memory_mode">ملف كبير: فُعّل وضع توفير الذاكرة لفتح أسرع وأكثر ثباتاً.</string>
 </resources>

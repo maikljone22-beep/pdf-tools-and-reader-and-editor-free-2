@@ -54,7 +54,8 @@ class PdfSession private constructor(
         }
     }
     // red team R11: an eighth of the app's heap (16–64 MB) — a fixed 64 MB was most of a small phone's heap
-    private val bitmapCache = object : LruCache<String, Bitmap>((Runtime.getRuntime().maxMemory() / 8).coerceIn(16L * 1024 * 1024, 64L * 1024 * 1024).toInt()) {
+    // memory-saving mode (big documents / small heaps): the smallest cache
+    private val bitmapCache = object : LruCache<String, Bitmap>(if (com.smartdocs.editor.core.util.MemoryMode.low) 16 * 1024 * 1024 else (Runtime.getRuntime().maxMemory() / 8).coerceIn(16L * 1024 * 1024, 64L * 1024 * 1024).toInt()) {
         override fun sizeOf(key: String, value: Bitmap) = value.byteCount
     }
 

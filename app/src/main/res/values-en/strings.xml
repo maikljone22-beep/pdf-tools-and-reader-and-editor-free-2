@@ -356,4 +356,7 @@
     <string name="img_move_last">Move to the end</string>
     <string name="import_progress">Adding files… %1$d of %2$d</string>
     <string name="tl_add_from_gallery">From the gallery (up to %1$d)</string>
+    <string name="home_more">More</string>
+    <string name="home_all_tools">All tools</string>
+    <string name="rd_memory_mode">Large file: memory-saving mode is on for a faster, steadier reader.</string>
 </resources>
