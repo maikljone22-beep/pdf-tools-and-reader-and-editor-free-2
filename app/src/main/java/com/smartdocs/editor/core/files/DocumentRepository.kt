@@ -68,6 +68,21 @@ class DocumentRepository(private val context: Context, private val db: AppDataba
     private fun pendingKey(local: File) = "p:" + local.absolutePath
 
     /**
+     * Start-up repair (review): a write-back the system killed half-way leaves the user's original truncated (0 bytes
+     * or half a file) while the working copy is whole. The write is done again from the working copy; a marker whose
+     * working copy is gone is dropped. Returns how many originals were repaired.
+     */
+    suspend fun repairInterruptedWriteBacks(): Int {
+        var fixed = 0
+        interruptedLocals(origins.all.keys).forEach { path ->
+            val local = File(path)
+            if (!local.exists() || local.length() == 0L || originOf(local) == null) { origins.edit().remove("p:$path").apply(); return@forEach }
+            if (writeBack(local) is WriteBack.Done) fixed++
+        }
+        return fixed
+    }
+
+    /**
      * Rename a document in place, never replacing another file (audit DI-04), and carry its origin link along so a
      * later re-open of the source neither loses write-back nor writes into whatever file takes the old name (DI-03).
      */
@@ -373,6 +388,9 @@ class DocumentRepository(private val context: Context, private val db: AppDataba
     }
 
     companion object {
+        /** Pure: the working copies whose write-back was interrupted, from the origin store's keys. */
+        fun interruptedLocals(keys: Collection<String>): List<String> = keys.filter { it.startsWith("p:") && it.length > 2 }.map { it.substring(2) }.sorted()
+
         /** Throws when a copy of [expected] bytes came out short: [copied] by the stream, [reported] by the provider (-1 = unknown). */
         fun verifyCopied(expected: Long, copied: Long, reported: Long) {
             if (copied != expected) throw java.io.IOException("copied $copied of $expected bytes")

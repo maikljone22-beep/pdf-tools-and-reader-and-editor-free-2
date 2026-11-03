@@ -151,10 +151,22 @@ object AnnotationWriter {
             val signed = !fullSave && SignedSave.isSigned(d)
             if (signed) SignedSave.requireAnnotationsAllowed(d) else PdfOps.reprotect(d, password)
             val (r, pages) = change(d)
-            if (signed) SignedSave.saveIncremental(d, pages.distinct().filter { it in 0 until d.numberOfPages }.map { d.getPage(it) }, out)
-            else d.save(out)
+            val touched = pages.distinct().filter { it in 0 until d.numberOfPages }.map { d.getPage(it) }
+            if (signed) SignedSave.saveIncremental(d, touched, out)
+            else if (useIncremental(fullSave, d.isEncrypted, src.length())) {
+                // review: on big files a full save rewrote every object (minutes on a 400 MB scan, on every autosave);
+                // the change is appended instead, like a signed file. Anything wrong there -> the ordinary full save.
+                val ok = runCatching { SignedSave.saveIncremental(d, touched, out) }.isSuccess    // marks the pages, subsets new fonts
+                if (!ok) { out.delete(); d.save(out) }
+            } else d.save(out)
             r
         }
+
+    /** Files at least this big get their annotation changes appended (incremental save) instead of a full rewrite. */
+    const val INCREMENTAL_MIN = 24L * 1024 * 1024
+
+    /** Pure: whether an annotation save appends ([PDDocument.saveIncremental]) instead of rewriting the file. */
+    fun useIncremental(fullSave: Boolean, encrypted: Boolean, size: Long): Boolean = !fullSave && !encrypted && size >= INCREMENTAL_MIN
 
     /** The per-annotation loop of [commit], separate so a failing writer can be unit tested (audit DI-05). */
     internal fun writeAll(d: PDDocument, annots: List<Annot>, writeOne: (PDPage, Annot) -> Unit): CommitResult {

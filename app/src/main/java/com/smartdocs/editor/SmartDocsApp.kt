@@ -45,6 +45,8 @@ class SmartDocsApp : Application() {
         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
             // convert audit C2 / C11 / A-M14: half-written outputs of a run the system killed, stale temp files
             runCatching { com.smartdocs.editor.core.convert6.Cv6Platform.cleanUp(this@SmartDocsApp, documents) }
+            // review: an original left half-written by a write-back the system killed is written again from the working copy
+            runCatching { documents.repairInterruptedWriteBacks() }
             // scanner: a PDF the app was adding pages to when it died gets its original back
             runCatching { com.smartdocs.editor.core.tools5.ScanAppendJournal.recover(this@SmartDocsApp) }
             // the library is in app storage (deleted with the app): its documents get a copy in Documents/SmartDocs once
