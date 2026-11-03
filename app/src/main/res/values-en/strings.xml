@@ -364,4 +364,6 @@
     <string name="img_job_pending">An earlier conversion stopped at %1$d of %2$d pictures.</string>
     <string name="img_job_resume">Resume</string>
     <string name="resume_title">Continue where you left off</string>
+    <string name="sc_book_quick">Book to one file for WhatsApp</string>
+    <string name="sc_book_quick_sub">Shoot the pages; the rest is automatic: flattened, edges cropped, fingers removed, pages in order, small enough for WhatsApp.</string>
 </resources>

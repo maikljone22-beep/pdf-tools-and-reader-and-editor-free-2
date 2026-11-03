@@ -412,4 +412,6 @@
     <string name="img_job_pending">توقف تحويل سابق عند %1$d من %2$d صورة.</string>
     <string name="img_job_resume">استئناف</string>
     <string name="resume_title">تابع من حيث توقفت</string>
+    <string name="sc_book_quick">كتاب إلى ملف واحد للواتساب</string>
+    <string name="sc_book_quick_sub">صوّر الصفحات، والباقي تلقائي: تسوية الانحناء وقص الحواف وإزالة الأصابع وترتيب الصفحات وحجم صغير مناسب للواتساب.</string>
 </resources>
