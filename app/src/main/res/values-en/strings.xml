@@ -354,4 +354,6 @@
     <string name="tl_add_images_files">More than %1$d pictures? Pick from files</string>
     <string name="img_move_first">Move to the start</string>
     <string name="img_move_last">Move to the end</string>
+    <string name="import_progress">Adding files… %1$d of %2$d</string>
+    <string name="tl_add_from_gallery">From the gallery (up to %1$d)</string>
 </resources>

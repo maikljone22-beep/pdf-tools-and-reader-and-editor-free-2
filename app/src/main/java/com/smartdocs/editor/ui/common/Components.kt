@@ -309,6 +309,8 @@ fun rememberPdfPicker(multiple: Boolean = false, mimes: Array<String> = arrayOf(
     val app = LocalApp.current
     val scope = rememberCoroutineScope()
     val ctx = LocalContext.current
+    var progress by remember { mutableStateOf<Pair<Int, Int>?>(null) }
+    ImportProgressDialog(progress)
     // keep read+write access so edits can be saved back into the picked document itself
     fun persist(u: Uri) { runCatching { ctx.contentResolver.takePersistableUriPermission(u, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION) }
         .onFailure { runCatching { ctx.contentResolver.takePersistableUriPermission(u, Intent.FLAG_GRANT_READ_URI_PERMISSION) } } }
@@ -316,7 +318,8 @@ fun rememberPdfPicker(multiple: Boolean = false, mimes: Array<String> = arrayOf(
         if (uri != null) { persist(uri); scope.launch { runCatching { app.documents.localFile(uri) }.getOrNull()?.let { onPicked(listOf(it)) } } }
     }
     val multi = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
-        if (uris.isNotEmpty()) { uris.forEach { persist(it) }; scope.launch { onPicked(uris.mapNotNull { runCatching { app.documents.localFile(it) }.getOrNull() }) } }
+        // a large pick is not persisted: Android keeps a limited number of grants and would drop the user's older ones
+        if (uris.isNotEmpty()) { if (uris.size <= 20) uris.forEach { persist(it) }; scope.launch { progress = 0 to uris.size; val out = uris.mapIndexedNotNull { i, u -> progress = i to uris.size; runCatching { app.documents.localFile(u) }.getOrNull() }; progress = null; onPicked(out) } }
     }
     return { if (multiple) multi.launch(mimes) else single.launch(mimes) }   // office5: general "open" buttons pass the Office types too
 }
@@ -329,10 +332,15 @@ fun rememberImagePicker(multiple: Boolean = true, onCancel: (() -> Unit)? = null
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val cancel by rememberUpdatedState(onCancel)
+    // hundreds / thousands of pictures take a while to copy: a progress window instead of a screen that looks stuck
+    var progress by remember { mutableStateOf<Pair<Int, Int>?>(null) }
+    ImportProgressDialog(progress)
     fun copyIn(uris: List<android.net.Uri>) {
         if (uris.isEmpty()) { cancel?.invoke(); return }      // tab-view-core E-13: the caller can leave its pick mode
+        progress = 0 to uris.size
         scope.launch(Dispatchers.IO) {
             val files = uris.mapIndexedNotNull { i, u ->
+                if (i % 5 == 0) withContext(Dispatchers.Main) { progress = i to uris.size }
                 runCatching {
                     // the copy keeps the picture's own name after "__" (sorting by name, PDF titles)
                     val shown = runCatching { ctx.contentResolver.query(u, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c -> if (c.moveToFirst()) c.getString(0) else null } }.getOrNull()
@@ -341,7 +349,7 @@ fun rememberImagePicker(multiple: Boolean = true, onCancel: (() -> Unit)? = null
                     ctx.contentResolver.openInputStream(u)?.use { s -> f.outputStream().use { s.copyTo(it) } }; f
                 }.getOrNull()
             }
-            withContext(Dispatchers.Main) { onPicked(files) }
+            withContext(Dispatchers.Main) { progress = null; onPicked(files) }
         }
     }
     // tab-view-core E-16: one image means the single picker (a second pick is no longer silently dropped)
@@ -403,3 +411,18 @@ fun LabeledSlider(label: String, value: Float, range: ClosedFloatingPointRange<F
 
 /** How many pictures the system photo picker lets the user select at once (Android 13+: the device's limit, usually 100). */
 fun imagePickerMax(): Int = if (android.os.Build.VERSION.SDK_INT >= 33) runCatching { android.provider.MediaStore.getPickImagesMaxLimit() }.getOrDefault(100).coerceAtLeast(2) else 100
+
+
+/** "Adding files i / n" while picked files are copied in (null = hidden). */
+@Composable
+fun ImportProgressDialog(p: Pair<Int, Int>?) {
+    if (p == null || p.second < 2) return
+    androidx.compose.ui.window.Dialog(onDismissRequest = {}) {
+        Surface(shape = RoundedCornerShape(20.dp)) {
+            Column(Modifier.padding(24.dp).widthIn(min = 240.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(stringResource(R.string.import_progress, p.first, p.second), style = MaterialTheme.typography.titleSmall)
+                LinearProgressIndicator(progress = { p.first.toFloat() / p.second }, modifier = Modifier.fillMaxWidth())
+            }
+        }
+    }
+}

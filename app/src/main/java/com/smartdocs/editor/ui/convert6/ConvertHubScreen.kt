@@ -105,8 +105,13 @@ fun ConvertHubScreen(nav: NavHostController, uri: String?) {
             if (s.inputs.isNotEmpty()) { s.conv = c; s.sheet = true }
         }
     }
+    var importing by remember { mutableStateOf<Pair<Int, Int>?>(null) }
+    com.smartdocs.editor.ui.common.ImportProgressDialog(importing)
     val multi = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
-        if (uris.isNotEmpty()) scope.launch { onPicked(uris.mapNotNull { runCatching { app.documents.localFile(it) }.getOrNull() }) }
+        if (uris.isNotEmpty()) scope.launch {
+            val out = uris.mapIndexedNotNull { i, u -> importing = i to uris.size; runCatching { app.documents.localFile(u) }.getOrNull() }
+            importing = null; onPicked(out)
+        }
     }
     val single = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { u ->
         if (u != null) scope.launch { runCatching { app.documents.localFile(u) }.getOrNull()?.let { onPicked(listOf(it)) } }
