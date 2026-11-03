@@ -414,4 +414,8 @@
     <string name="resume_title">تابع من حيث توقفت</string>
     <string name="sc_book_quick">كتاب إلى ملف واحد للواتساب</string>
     <string name="sc_book_quick_sub">صوّر الصفحات، والباقي تلقائي: تسوية الانحناء وقص الحواف وإزالة الأصابع وترتيب الصفحات وحجم صغير مناسب للواتساب.</string>
+    <string name="wm_name_quick">اسمي على كل الصفحات (ضغطة واحدة)</string>
+    <string name="wm_name_quick_sub">علامة مائية باسمك بشكل مائل وخفيف على كل صفحة</string>
+    <string name="wm_name_title">اكتب اسمك</string>
+    <string name="wm_name_label">مثال: إعداد الأستاذ/ …</string>
 </resources>

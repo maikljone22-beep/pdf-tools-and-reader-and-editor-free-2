@@ -366,4 +366,8 @@
     <string name="resume_title">Continue where you left off</string>
     <string name="sc_book_quick">Book to one file for WhatsApp</string>
     <string name="sc_book_quick_sub">Shoot the pages; the rest is automatic: flattened, edges cropped, fingers removed, pages in order, small enough for WhatsApp.</string>
+    <string name="wm_name_quick">My name on every page (one tap)</string>
+    <string name="wm_name_quick_sub">A light diagonal watermark with your name on every page</string>
+    <string name="wm_name_title">Your name</string>
+    <string name="wm_name_label">e.g. Prepared by …</string>
 </resources>

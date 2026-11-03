@@ -1,5 +1,6 @@
 package com.smartdocs.editor.ui.edit5
 
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -70,8 +71,41 @@ fun DecorScreen(nav: NavHostController, uri: String?, type: DecorType) {
     }
     val title = stringResource(when (type) { DecorType.WATERMARK -> R.string.e5_wm_title; DecorType.BACKGROUND -> R.string.e5_bg_title; DecorType.SECURITY -> R.string.e5_sec_title })
     val live = spec.isLive
+    val scope = rememberCoroutineScope()
+    var askName by remember { mutableStateOf<String?>(null) }
+    fun applySpec(sp: DecorSpec) {
+        val extra = if (type == DecorType.SECURITY) layers.map { it.copy(user = sp.user) } else emptyList()
+        runner.run(processing) {
+            val name = doc.source?.name ?: "document.pdf"
+            doc.apply(app.documents.tempDir) { s, o, p ->
+                // the first watermark replaces earlier ones, the profile's further watermarks are added on top
+                val all = listOf(sp) + extra
+                var src = s
+                all.forEachIndexed { i, one ->
+                    val dst = if (i == all.lastIndex) o else java.io.File(app.documents.tempDir, "e5_sec_${System.nanoTime()}_$i.pdf")
+                    WatermarkOps.apply(ctx, src, dst, p, one, replace = i == 0, fileName = name)
+                    if (src != s) src.delete()
+                    src = dst
+                }
+            }
+            doc.export(app.documents.docsDir, { d, b -> app.documents.uniqueFile(d, b) }, sp.kind)
+        }
+    }
     ToolScaffold(title, nav, runner) {
         E5FileRow(doc)
+        if (type == DecorType.WATERMARK) ElevatedCard(onClick = {
+            val n = settings.authorName.trim()
+            if (n.isEmpty()) askName = "" else applySpec(nameSpec(n))
+        }, enabled = doc.work != null && !runner.running, modifier = Modifier.fillMaxWidth()) {
+            Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Badge, null, tint = MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(stringResource(R.string.wm_name_quick), style = MaterialTheme.typography.titleSmall)
+                    Text(settings.authorName.ifBlank { stringResource(R.string.wm_name_quick_sub) }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
         if (type == DecorType.SECURITY) Text(stringResource(R.string.e5_sec_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (type == DecorType.SECURITY) {
             // a security-watermark profile holds one or more watermarks (SecurityWatermarkSet)
@@ -254,27 +288,25 @@ fun DecorScreen(nav: NavHostController, uri: String?, type: DecorType) {
         if (runner.results.isNotEmpty()) com.smartdocs.editor.ui.tools.ResultsList(runner.results, nav, "application/pdf")
         logFile?.let { Text(stringResource(R.string.nt_bates_log_saved, it.name), style = MaterialTheme.typography.bodySmall) }
         val ready = doc.work != null && when (spec.source) { DecorSource.TEXT -> spec.text.isNotBlank(); DecorSource.IMAGE -> spec.imagePath.isNotBlank(); DecorSource.COLOR -> true; DecorSource.PDF -> spec.pdfPath.isNotBlank() }
-        PrimaryButton(stringResource(if (existing) R.string.e5_update else R.string.apply), enabled = ready, icon = Icons.Default.BrandingWatermark) {
-            val sp = spec
-            val extra = if (type == DecorType.SECURITY) layers.map { it.copy(user = sp.user) } else emptyList()
-            runner.run(processing) {
-                val name = doc.source?.name ?: "document.pdf"
-                doc.apply(app.documents.tempDir) { s, o, p ->
-                    // the first watermark replaces earlier ones, the profile's further watermarks are added on top
-                    val all = listOf(sp) + extra
-                    var src = s
-                    all.forEachIndexed { i, one ->
-                        val dst = if (i == all.lastIndex) o else java.io.File(app.documents.tempDir, "e5_sec_${System.nanoTime()}_$i.pdf")
-                        WatermarkOps.apply(ctx, src, dst, p, one, replace = i == 0, fileName = name)
-                        if (src != s) src.delete()
-                        src = dst
-                    }
-                }
-                doc.export(app.documents.docsDir, { d, b -> app.documents.uniqueFile(d, b) }, sp.kind)
-            }
-        }
+        PrimaryButton(stringResource(if (existing) R.string.e5_update else R.string.apply), enabled = ready, icon = Icons.Default.BrandingWatermark) { applySpec(spec) }
+    }
+    // one tap: the user's name across every page (user request; teachers wrote "Prepared by …" by hand)
+    askName?.let { typed ->
+        AlertDialog(onDismissRequest = { askName = null }, title = { Text(stringResource(R.string.wm_name_title)) },
+            text = { OutlinedTextField(typed, { askName = it.take(60) }, singleLine = true, label = { Text(stringResource(R.string.wm_name_label)) }) },
+            confirmButton = { TextButton(enabled = typed.isNotBlank(), onClick = {
+                val n = typed.trim(); askName = null
+                scope.launch { app.settings.update { it.copy(authorName = n) } }
+                applySpec(nameSpec(n))
+            }) { Text(stringResource(R.string.apply)) } },
+            dismissButton = { TextButton(onClick = { askName = null }) { Text(stringResource(R.string.cancel)) } })
     }
 }
+
+/** The one-tap name watermark: "إعداد: name" diagonally across the middle of every page, light grey. */
+private fun nameSpec(name: String) = DecorSpec(type = DecorType.WATERMARK, source = DecorSource.TEXT, text = name,
+    style = com.smartdocs.editor.core.edit5.E5TextStyle(size = 40f, color = 0x5C6BC0), opacity = 0.22f, rotation = 35f, scale = 0.7f, user = name)
+
 
 /**
  * The further security watermarks of the profile being edited: each can be edited (swapped with the one in the
