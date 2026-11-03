@@ -210,6 +210,8 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
     }
 
     val scanLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { res ->
+        // review: a cancelled scan must not leave the one-tap save armed for the next, unrelated scan
+        if (res.resultCode != Activity.RESULT_OK) quickBook = false
         if (res.resultCode == Activity.RESULT_OK) {
             val uris = GmsDocumentScanningResult.fromActivityResultIntent(res.data)?.pages?.map { it.imageUri }.orEmpty()
             if (uris.isNotEmpty()) scope.launch {
@@ -220,7 +222,8 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                     }
                 }
                 addPictures(files, kind == ScanKind.BATCH)
-            }
+                if (files.isEmpty()) quickBook = false
+            } else quickBook = false
         }
     }
     val unavailable = stringResource(R.string.t5_scan_unavailable)
@@ -234,8 +237,8 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
                 .setResultFormats(GmsDocumentScannerOptions.RESULT_FORMAT_JPEG).setScannerMode(GmsDocumentScannerOptions.SCANNER_MODE_FULL).build()
             GmsDocumentScanning.getClient(opts).getStartScanIntent(act)
                 .addOnSuccessListener { s -> runCatching { scanLauncher.launch(IntentSenderRequest.Builder(s).build()) } }
-                .addOnFailureListener { scope.launch { snackbar.showSnackbar(unavailable) } }
-        }.onFailure { scope.launch { snackbar.showSnackbar(unavailable) } }
+                .addOnFailureListener { quickBook = false; scope.launch { snackbar.showSnackbar(unavailable) } }
+        }.onFailure { quickBook = false; scope.launch { snackbar.showSnackbar(unavailable) } }
     }
     // S3: photos from the gallery get their page edges found and corrected like camera photos (they were used as is)
     val pickAppend = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { u ->

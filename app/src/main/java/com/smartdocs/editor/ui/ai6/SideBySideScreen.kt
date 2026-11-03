@@ -69,7 +69,7 @@ fun SideBySideScreen(nav: NavHostController, uri: String?) {
         runCatching { src = PdfSession.open(ctx, file) }.onFailure { openError = it.message }
         translatedFile?.let { t -> runCatching { dst = PdfSession.open(ctx, t) } }
     }
-    DisposableEffect(Unit) { onDispose { runCatching { src?.close() }; runCatching { dst?.close() } } }
+    DisposableEffect(Unit) { onDispose { runCatching { src?.closeLater() }; runCatching { dst?.closeLater() } } }
 
     val s = src
     val count = s?.pageCount ?: 0

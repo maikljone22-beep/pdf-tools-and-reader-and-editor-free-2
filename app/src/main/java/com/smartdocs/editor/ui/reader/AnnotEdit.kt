@@ -251,7 +251,6 @@ class AnnotEditor(private val s: ReaderState) {
     /** (backup, file) to restore after the session closed, when the user discarded the edits. */
     fun restoreOnClose(): Pair<File, File>? {
         val b = backup ?: return null; val f = s.file ?: return null
-        live -= b.absolutePath
         return if (discard) b to f else null
     }
 
@@ -260,6 +259,9 @@ class AnnotEditor(private val s: ReaderState) {
         private val live = java.util.Collections.synchronizedSet(HashSet<String>())
 
         fun backupOf(f: File) = File(f.parentFile, ".${f.nameWithoutExtension}.annotedit.pdf")
+
+        /** The closing reader finished its save / restore: the backup is no longer in use by this process. */
+        fun release(b: File) { live -= b.absolutePath }
 
         /**
          * Editing a stored annotation takes it out of the working file (it lives on as a pending one until Save).

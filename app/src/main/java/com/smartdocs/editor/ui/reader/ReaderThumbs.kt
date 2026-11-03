@@ -186,12 +186,13 @@ internal fun ReaderThumbnailsPanel(state: ReaderState, onJump: (Int) -> Unit) {
             SelAction.THUMB_ROTATE_RIGHT -> rotate(pages, 90)
             SelAction.THUMB_DUPLICATE -> duplicate(pages)
             SelAction.THUMB_DELETE -> deleteAsk = pages
-            SelAction.THUMB_EXTRACT -> extract(pages)
+            SelAction.THUMB_EXTRACT, SelAction.THUMB_SAVE_DEVICE -> extract(pages)
             SelAction.THUMB_INSERT_BLANK -> insertBlank(pages.max() + 1)
             SelAction.THUMB_INSERT_FILE -> { pickFor = PickFor.Insert(pages.max() + 1); pick() }
             SelAction.THUMB_REPLACE -> { pickFor = PickFor.Replace(pages); pick() }
             SelAction.THUMB_PRINT -> print(pages)
             SelAction.THUMB_SAVE_IMAGE, SelAction.THUMB_SHARE_IMAGE -> state.file?.let { src -> state.scope.launch {
+                if (!state.guard.check(com.smartdocs.editor.core.security.DocAction.COPY)) return@launch   // review: copy-protected documents
                 runCatching {
                     if (a == SelAction.THUMB_SHARE_IMAGE) com.smartdocs.editor.ui.pages.PageImageExport.share(ctx, src, state.password, pages)
                     else { val n = com.smartdocs.editor.ui.pages.PageImageExport.save(ctx, src, state.password, pages); if (n > 0) android.widget.Toast.makeText(ctx, ctx.getString(R.string.tpn_images_saved, n), android.widget.Toast.LENGTH_SHORT).show() }

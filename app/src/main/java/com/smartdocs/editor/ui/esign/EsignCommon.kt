@@ -37,7 +37,7 @@ fun rememberPdfSession(file: File?, password: String? = null): PdfSession? {
     val ctx = LocalContext.current
     var session by remember(file) { mutableStateOf<PdfSession?>(null) }
     LaunchedEffect(file, password) { session = file?.let { runCatching { PdfSession.open(ctx, it, password) }.getOrNull() } }
-    DisposableEffect(session) { val s = session; onDispose { s?.close() } }
+    DisposableEffect(session) { val s = session; onDispose { s?.closeLater() } }
     return session
 }
 

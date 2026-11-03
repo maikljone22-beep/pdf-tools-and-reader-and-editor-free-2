@@ -23,7 +23,14 @@ object LastScreen {
         p.edit().putString("route", concrete(pattern, map)).putString("pattern", pattern).putString("arg_uri", map["uri"]).putString("arg_id", map["id"]).apply()
     }
 
-    fun clear(ctx: Context) = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().apply()
+    fun clear(ctx: Context) { launch = null; ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().apply() }
+
+    private var read = false
+    @Volatile private var launch: Entry? = null
+    /** The screen the app was left on in its PREVIOUS run, read once per process (review: returning to Home normally
+     *  used to show the card for the screen just left). Offered once: taken (resumed or dismissed) it is gone. */
+    @Synchronized fun atLaunch(ctx: Context): Entry? { if (!read) { read = true; launch = get(ctx) }; return launch }
+    fun taken() { launch = null }
 
     data class Entry(val route: String, val pattern: String, val uri: String?, val id: String?)
 

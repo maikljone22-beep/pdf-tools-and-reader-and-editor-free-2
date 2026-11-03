@@ -54,6 +54,7 @@ fun ImageGridEditor(files: List<File>, onChange: (List<File>) -> Unit) {
     var busy by remember { mutableStateOf(false) }
     var sortKey by remember { mutableStateOf<FileSort?>(null) }
     var desc by remember { mutableStateOf(false) }
+    val latest = rememberUpdatedState(files)
     fun move(from: Int, to: Int) {
         if (from !in files.indices) return
         val l = files.toMutableList(); val f = l.removeAt(from); l.add(to.coerceIn(0, l.size), f); onChange(l)
@@ -64,13 +65,20 @@ fun ImageGridEditor(files: List<File>, onChange: (List<File>) -> Unit) {
         scope.launch {
             val out = withContext(Dispatchers.IO) { runCatching { rotatedCopy(ctx, src, deg) }.getOrNull() }
             busy = false
-            if (out != null) onChange(files.toMutableList().also { if (i < it.size && it[i] == src) it[i] = out })
+            // review: the list may have changed meanwhile (another rotation, a move): use the current one, find the picture
+            if (out != null) { val now = latest.value; val at = now.indexOf(src); if (at >= 0) onChange(now.toMutableList().also { it[at] = out }) }
         }
     }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
             Text(stringResource(R.string.pc_sort), style = MaterialTheme.typography.labelLarge)
-            fun sortBy(by: FileSort) { val d = sortKey == by && !desc; onChange(CombinePlus.sortFiles(files, by, d)); sortKey = by; desc = d }
+            fun sortBy(by: FileSort) {
+                val d = sortKey == by && !desc; val now = files
+                scope.launch {   // review: the date sort reads every picture's EXIF — off the main thread
+                    val sorted = withContext(Dispatchers.IO) { CombinePlus.sortFiles(now, by, d) }
+                    if (latest.value == now) { onChange(sorted); sortKey = by; desc = d }
+                }
+            }
             TextButton(onClick = { sortBy(FileSort.NAME) }) { Text(stringResource(R.string.pc_sort_name)) }
             TextButton(onClick = { sortBy(FileSort.TIME) }) { Text(stringResource(R.string.pc_sort_time)) }
             TextButton(onClick = { onChange(files.reversed()) }) { Icon(Icons.Default.SwapVert, null); Spacer(Modifier.width(4.dp)); Text(stringResource(R.string.pc_reverse_order)) }

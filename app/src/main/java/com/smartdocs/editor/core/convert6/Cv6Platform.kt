@@ -43,5 +43,13 @@ object Cv6Platform {
         OutputJournal.purgeOld(docs.tempDir, day)
         File(ctx.cacheDir, "tmp/shared").takeIf { it.isDirectory }?.let { OutputJournal.purgeOld(it, day) }
         docs.docsDir.listFiles()?.filter { it.name.startsWith(".cv6_") || (it.name.startsWith(".") && it.name.endsWith(".part")) }?.forEach { OutputJournal.deleteQuietly(it) }
+        // review: hidden half-written files of a save / import the system killed (invisible in the app, can be 100s of MB)
+        val hourAgo = System.currentTimeMillis() - 3600_000L
+        docs.docsDir.walkTopDown().maxDepth(4).filter { f -> f.isFile && f.lastModified() < hourAgo && isLeftover(f.name) }
+            .forEach { OutputJournal.deleteQuietly(it) }
     }
+
+    /** Pure: a hidden temporary file of an interrupted save / import (never a user's document or a recovery backup). */
+    fun isLeftover(name: String): Boolean = name.startsWith(".") && (name.endsWith(".import") || name.endsWith(".replace") ||
+        listOf(".saving.pdf", ".tmp", ".sigflat.pdf", ".outline.pdf", ".forms5.pdf", ".rows.pdf", ".restore.pdf", ".annot2.pdf", ".tag.pdf").any { name.endsWith(it) })
 }

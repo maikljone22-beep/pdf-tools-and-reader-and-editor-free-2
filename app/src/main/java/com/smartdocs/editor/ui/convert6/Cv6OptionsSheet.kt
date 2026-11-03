@@ -60,8 +60,9 @@ fun Cv6OptionsSheet(
 ) {
     val ctx = LocalContext.current
     // user request: pictures → PDF opens a full page (thumbnails, a menu per picture), not a bottom sheet
-    val imagesMode = conv.to == com.smartdocs.editor.core.convert6.Fmt.PDF && inputs.isNotEmpty() &&
-        inputs.all { com.smartdocs.editor.core.convert6.FileKind6.of(it).isImage }
+    // decided once when the page opens (review: removing the last picture flipped the full page into a sheet)
+    val imagesMode = remember { conv.to == com.smartdocs.editor.core.convert6.Fmt.PDF && inputs.isNotEmpty() &&
+        inputs.all { com.smartdocs.editor.core.convert6.FileKind6.of(it).isImage } }
     val body: @Composable () -> Unit = {
         Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 28.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {

@@ -57,7 +57,7 @@ fun rememberDocHolder(uri: String?): DocHolder {
     val ctx = LocalContext.current
     // audit 5 T-09: the document the tool was opened on starts with the reader's password
     val h = remember { DocHolder(fileOf(uri)).also { it.password = com.smartdocs.editor.core.pdf.SessionPasswords.get(it.file) } }
-    DisposableEffect(Unit) { onDispose { h.session?.close() } }
+    DisposableEffect(Unit) { onDispose { h.session?.closeLater() } }
     LaunchedEffect(h.file, h.password) {
         h.session?.closeAsync(); h.session = null; h.error = null
         val f = h.file ?: return@LaunchedEffect

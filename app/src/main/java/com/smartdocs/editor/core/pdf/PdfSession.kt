@@ -12,6 +12,7 @@ import io.legere.pdfiumandroid.PdfiumCore
 import io.legere.pdfiumandroid.api.FindFlags
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -299,6 +300,13 @@ class PdfSession private constructor(
      * Blocking close. Waits for any in-flight native call (render, text, search) so PDFium is never
      * freed while another thread is inside it. Safe to call more than once.
      */
+    /** Closes off the main thread (review: close() waits for a render in progress — a screen leaving froze for seconds). */
+    @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
+    fun closeLater() {
+        if (closed) return
+        kotlinx.coroutines.GlobalScope.launch(Dispatchers.IO) { runCatching { closeAsync() } }
+    }
+
     override fun close() {
         if (closed) return
         closed = true
