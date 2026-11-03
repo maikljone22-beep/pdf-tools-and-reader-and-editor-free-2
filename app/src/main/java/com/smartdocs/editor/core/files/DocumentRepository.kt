@@ -41,11 +41,6 @@ class DocumentRepository(private val context: Context, private val db: AppDataba
     // ---- link between a working copy and the document it came from ----
     private val origins = context.getSharedPreferences("origins", Context.MODE_PRIVATE)
 
-    companion object {
-        /** Pure: the working copies whose write-back was interrupted, from the origin store's keys. */
-        fun interruptedLocals(keys: Collection<String>): List<String> = keys.filter { it.startsWith("p:") && it.length > 2 }.map { it.substring(2) }.sorted()
-    }
-
     /** The content URI a local working copy was imported from, or null when the file is our own. */
     fun originOf(local: File): Uri? = origins.getString("l:" + local.absolutePath, null)?.let(Uri::parse)
 
@@ -393,6 +388,9 @@ class DocumentRepository(private val context: Context, private val db: AppDataba
     }
 
     companion object {
+        /** Pure: the working copies whose write-back was interrupted, from the origin store's keys. */
+        fun interruptedLocals(keys: Collection<String>): List<String> = keys.filter { it.startsWith("p:") && it.length > 2 }.map { it.substring(2) }.sorted()
+
         /** Throws when a copy of [expected] bytes came out short: [copied] by the stream, [reported] by the provider (-1 = unknown). */
         fun verifyCopied(expected: Long, copied: Long, reported: Long) {
             if (copied != expected) throw java.io.IOException("copied $copied of $expected bytes")
