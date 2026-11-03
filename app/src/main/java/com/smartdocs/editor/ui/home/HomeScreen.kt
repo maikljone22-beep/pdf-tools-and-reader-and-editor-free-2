@@ -98,7 +98,7 @@ fun HomeScreen(nav: NavHostController) {
     )
     var moreQuick by remember { mutableStateOf(false) }
     // the screen the app was closed on (a reader is covered by "continue reading" below)
-    var lastScreen by remember { mutableStateOf(com.smartdocs.editor.ui.LastScreen.get(ctx)?.takeIf { !it.pattern.startsWith("reader") }) }
+    var lastScreen by remember { mutableStateOf(com.smartdocs.editor.ui.LastScreen.atLaunch(ctx)?.takeIf { !it.pattern.startsWith("reader") }) }
     if (moreQuick) androidx.compose.material3.ModalBottomSheet(onDismissRequest = { moreQuick = false }) {
         Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 24.dp)) {
             quick.drop(5).forEach { qk ->
@@ -172,7 +172,7 @@ fun HomeScreen(nav: NavHostController) {
                                     Text(lastScreenLabel(ls), style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                                 }
                                 TextButton(onClick = { com.smartdocs.editor.ui.LastScreen.clear(ctx); lastScreen = null }) { Text(stringResource(R.string.cancel)) }
-                                Button(onClick = { lastScreen = null; runCatching { nav.navigate(ls.route) } }) { Text(stringResource(R.string.img_job_resume)) }
+                                Button(onClick = { lastScreen = null; com.smartdocs.editor.ui.LastScreen.taken(); runCatching { nav.navigate(ls.route) } }) { Text(stringResource(R.string.img_job_resume)) }
                             }
                         }
                     }

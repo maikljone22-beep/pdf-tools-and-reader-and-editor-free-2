@@ -339,17 +339,23 @@ fun rememberImagePicker(multiple: Boolean = true, onCancel: (() -> Unit)? = null
         if (uris.isEmpty()) { cancel?.invoke(); return }      // tab-view-core E-13: the caller can leave its pick mode
         progress = 0 to uris.size
         scope.launch(Dispatchers.IO) {
+            var failed = 0
             val files = uris.mapIndexedNotNull { i, u ->
                 if (i % 5 == 0) withContext(Dispatchers.Main) { progress = i to uris.size }
+                var made: File? = null
                 runCatching {
                     // the copy keeps the picture's own name after "__" (sorting by name, PDF titles)
                     val shown = runCatching { ctx.contentResolver.query(u, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c -> if (c.moveToFirst()) c.getString(0) else null } }.getOrNull()
                         ?.substringBeforeLast('.')?.replace(Regex("""[\\/:*?"<>|\u0000-\u001f]"""), "_")?.take(80)
-                    val f = app.documents.newTemp(if (shown.isNullOrBlank()) "img_$i" else "img_${i}__$shown", "jpg")
-                    ctx.contentResolver.openInputStream(u)?.use { s -> f.outputStream().use { s.copyTo(it) } }; f
-                }.getOrNull()
+                    val f = app.documents.newTemp(if (shown.isNullOrBlank()) "img_$i" else "img_${i}__$shown", "jpg").also { made = it }
+                    checkNotNull(ctx.contentResolver.openInputStream(u)) { "unreadable" }.use { s -> f.outputStream().use { s.copyTo(it) } }; f
+                }.getOrElse { made?.delete(); failed++; null }      // review: a picture that could not be copied (storage full…) is reported, not silently dropped
             }
-            withContext(Dispatchers.Main) { progress = null; onPicked(files) }
+            withContext(Dispatchers.Main) {
+                progress = null
+                if (failed > 0) android.widget.Toast.makeText(ctx, ctx.getString(com.smartdocs.editor.R.string.img_not_imported, failed), android.widget.Toast.LENGTH_LONG).show()
+                onPicked(files)
+            }
         }
     }
     // tab-view-core E-16: one image means the single picker (a second pick is no longer silently dropped)

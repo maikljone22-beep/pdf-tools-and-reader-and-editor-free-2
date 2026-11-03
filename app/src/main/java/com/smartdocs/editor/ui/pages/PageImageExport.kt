@@ -19,7 +19,7 @@ object PageImageExport {
         var n = 0
         val cr = ctx.contentResolver
         ImageIo6.pagePictures(ctx, src, password, pages, DPI) { i, _, _, jpeg, _, _ ->
-            val name = src.nameWithoutExtension.take(60) + "_p" + (pages.getOrElse(i) { i } + 1) + ".jpg"
+            val name = src.nameWithoutExtension.take(60) + "_p" + (i + 1) + ".jpg"
             val v = ContentValues().apply {
                 put(MediaStore.MediaColumns.DISPLAY_NAME, name); put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
                 put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/SmartDocs"); put(MediaStore.MediaColumns.IS_PENDING, 1)
@@ -40,7 +40,7 @@ object PageImageExport {
         val dir = File(app.documents.tempDir, "page_images").apply { deleteRecursively(); mkdirs() }
         val files = ArrayList<File>()
         ImageIo6.pagePictures(ctx, src, password, pages, DPI) { i, _, _, jpeg, _, _ ->
-            files += File(dir, src.nameWithoutExtension.take(60) + "_p" + (pages.getOrElse(i) { i } + 1) + ".jpg").apply { writeBytes(jpeg) }
+            files += File(dir, src.nameWithoutExtension.take(60) + "_p" + (i + 1) + ".jpg").apply { writeBytes(jpeg) }
         }
         if (files.isNotEmpty()) com.smartdocs.editor.ui.share5.S5Share.shareFiles(ctx, files, "image/jpeg")
     }

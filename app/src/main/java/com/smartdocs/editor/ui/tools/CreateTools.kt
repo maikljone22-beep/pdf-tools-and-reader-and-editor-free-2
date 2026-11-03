@@ -12,6 +12,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -93,11 +94,23 @@ fun ImagesToPdfScreen(nav: NavHostController) {
     var sortDesc by remember { mutableStateOf(false) }
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val job = com.smartdocs.editor.core.tools5.ImagesPdfJob
-    var pending by remember { mutableStateOf(job.pending(ctx)) }
-    LaunchedEffect(job.result) { job.result?.let { runner.result = it; job.result = null } }
-    LaunchedEffect(job.error) { job.error?.let { runner.error = it; job.error = null; pending = job.pending(ctx) } }
+    var pending by remember { mutableStateOf<Pair<Int, Int>?>(null) }
+    LaunchedEffect(job.result) { job.result?.let {
+        runner.result = it; job.result = null
+        if (job.skipped > 0) android.widget.Toast.makeText(ctx, ctx.getString(R.string.img_job_skipped, job.skipped), android.widget.Toast.LENGTH_LONG).show()
+    } }
+    LaunchedEffect(job.error) { job.error?.let { runner.error = it; job.error = null } }
+    // review: after a cancel / failure / stop the interrupted job is offered again (it used to vanish until reopened)
+    LaunchedEffect(job.running) { if (!job.running) pending = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { job.pending(ctx) } }
+    var replaceAsk by remember { mutableStateOf<(() -> Unit)?>(null) }
+    replaceAsk?.let { go ->
+        AlertDialog(onDismissRequest = { replaceAsk = null }, text = { Text(stringResource(R.string.img_job_replace)) },
+            confirmButton = { TextButton(onClick = { replaceAsk = null; go() }) { Text(stringResource(R.string.pg_discard)) } },
+            dismissButton = { TextButton(onClick = { replaceAsk = null }) { Text(stringResource(R.string.cancel)) } })
+    }
     val fromFiles = remember { mutableStateOf<(() -> Unit)?>(null) }
     val pick = rememberImagePicker(multiple = true, unlimited = fromFiles) { images = images + it }
+    val sortScope = rememberCoroutineScope()
     val processing = stringResource(R.string.processing)
 
     ToolScaffold(stringResource(R.string.tool_images_to_pdf), nav, runner, scrollable = false, actions = {
@@ -158,8 +171,11 @@ fun ImagesToPdfScreen(nav: NavHostController) {
             // the gallery picker hands photos newest first: sort by name / date taken (again = the other way), or reverse
             val nameOf = { f: java.io.File -> f.nameWithoutExtension.substringAfter("__", f.nameWithoutExtension).substringBeforeLast('_').substringBeforeLast('_') }
             fun sortBy(by: com.smartdocs.editor.core.tools5.FileSort) {
-                val desc = sortKey == by && !sortDesc
-                images = com.smartdocs.editor.core.tools5.CombinePlus.sortFiles(images, by, desc, nameOf); sortKey = by; sortDesc = desc
+                val desc = sortKey == by && !sortDesc; val now = images
+                sortScope.launch {   // review: date sort reads every picture's EXIF — not on the main thread
+                    val sorted = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.smartdocs.editor.core.tools5.CombinePlus.sortFiles(now, by, desc, nameOf) }
+                    if (images == now) { images = sorted; sortKey = by; sortDesc = desc }
+                }
             }
             Text(stringResource(R.string.pc_sort), style = MaterialTheme.typography.labelLarge)
             TextButton(onClick = { sortBy(com.smartdocs.editor.core.tools5.FileSort.NAME) }) { Text(stringResource(R.string.pc_sort_name)) }
@@ -171,11 +187,12 @@ fun ImagesToPdfScreen(nav: NavHostController) {
             Text(stringResource(R.string.tl_fit_a4), Modifier.weight(1f)); Switch(fitA4, { fitA4 = it })
         }
         LabeledSlider(stringResource(R.string.tl_image_quality), quality, 30f..100f, { quality = it }) { "${it.toInt()}%" }
-        PrimaryButton(stringResource(R.string.tl_create), enabled = images.isNotEmpty(), icon = Icons.Default.PictureAsPdf) {
+        PrimaryButton(stringResource(R.string.tl_create), enabled = images.isNotEmpty() && !job.running, icon = Icons.Default.PictureAsPdf) {
             val list = images.toList(); val fit = fitA4; val q = quality.toInt()
             val base = name.ifBlank { "images_${System.currentTimeMillis() / 1000}" }
             // runs in the background (notification) and resumes after the app was stopped (user request)
-            com.smartdocs.editor.core.tools5.ImagesPdfJob.start(ctx, list, fit, q, base); images = emptyList()
+            val go = { pending = null; job.start(ctx, list, fit, q, base); images = emptyList() }
+            if (pending != null) replaceAsk = go else go()     // review: an interrupted job is not wiped without asking
         }
     }
 }

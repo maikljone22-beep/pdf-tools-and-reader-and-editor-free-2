@@ -90,6 +90,11 @@ class Cv6JobService : Service() {
         return START_NOT_STICKY
     }
 
+    // Android 15+: data-sync work is limited to about 6 hours a day; when the limit is hit the service must stop within
+    // seconds or the app crashes (review). The jobs themselves keep their checkpoints (the pictures job resumes).
+    override fun onTimeout(startId: Int) { synchronized(Companion) { users = 0; wanted = false; stopSelfNow() } }
+    override fun onTimeout(startId: Int, fgsType: Int) { synchronized(Companion) { users = 0; wanted = false; stopSelfNow() } }
+
     private fun stopSelfNow() {
         runCatching { ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE) }
         foreground = false
@@ -103,6 +108,8 @@ class Cv6JobService : Service() {
         /** A job wants the service; the service has called startForeground(). Guarded by Companion. */
         private var wanted = false
         private var foreground = false
+        /** Jobs using the service (hub conversions and the pictures job share it): it stops when the last one ends. */
+        private var users = 0
 
         private fun channel(ctx: Context) {
             if (Build.VERSION.SDK_INT >= 26) ctx.getSystemService(NotificationManager::class.java)
@@ -113,14 +120,17 @@ class Cv6JobService : Service() {
             ?.let { PendingIntent.getActivity(ctx, ID, it.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT) }
 
         fun start(ctx: Context, title: String) {
-            synchronized(this) { wanted = true }
+            synchronized(this) { users++; wanted = true }
             val started = runCatching { androidx.core.content.ContextCompat.startForegroundService(ctx, Intent(ctx, Cv6JobService::class.java).putExtra(EXTRA_TITLE, title)) }.isSuccess
-            if (!started) synchronized(this) { wanted = false }
+            if (!started) synchronized(this) { users = (users - 1).coerceAtLeast(0); wanted = users > 0 }
         }
 
         /** Only a service already in the foreground is stopped here; one still starting stops itself in onStartCommand. */
         fun stop(ctx: Context) {
-            val now = synchronized(this) { wanted = false; foreground.also { if (it) foreground = false } }
+            val now = synchronized(this) {
+                users = (users - 1).coerceAtLeast(0)
+                if (users > 0) false else { wanted = false; foreground.also { if (it) foreground = false } }
+            }
             if (now) runCatching { ctx.stopService(Intent(ctx, Cv6JobService::class.java)) }
         }
 

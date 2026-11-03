@@ -248,7 +248,12 @@ object Optimizer {
         // user report: compression barely shrank photographed pages. A JPEG photo was decoded at full size through
         // PdfBox (a 4000×3000 page = 48 MB): on big files that ran out of memory and the image was silently skipped.
         // JPEG pictures are now decoded straight from their bytes, already subsampled near the target size.
-        val rgbJpeg = isJpeg && raw != null && runCatching { img.colorSpace.numberOfComponents }.getOrDefault(3) != 4
+        // review: only plain colour spaces without a /Decode array (an inverted or indexed / special-colour JPEG decoded
+        // straight from its bytes would come out with wrong colours)
+        val plainCs = runCatching { img.colorSpace }.getOrNull().let { cs -> cs is com.tom_roush.pdfbox.pdmodel.graphics.color.PDDeviceRGB ||
+            cs is com.tom_roush.pdfbox.pdmodel.graphics.color.PDDeviceGray || cs is com.tom_roush.pdfbox.pdmodel.graphics.color.PDICCBased }
+        val noDecode = runCatching { img.cosObject.getDictionaryObject(com.tom_roush.pdfbox.cos.COSName.DECODE) == null }.getOrDefault(false)
+        val rgbJpeg = isJpeg && raw != null && plainCs && noDecode && runCatching { img.colorSpace.numberOfComponents }.getOrDefault(3) != 4
         val bmp0 = (if (rgbJpeg) decodeJpeg(raw!!, if (needScale) maxDim else Int.MAX_VALUE) else null)
             ?: runCatching { img.image }.getOrNull() ?: return null
         var bmp = bmp0
@@ -343,7 +348,8 @@ object Optimizer {
         runCatching {
             res.xObjectNames.toList().forEach { n ->
                 when (val x = runCatching { res.getXObject(n) }.getOrNull()) {
-                    is PDImageXObject -> processImage(c, x, maxDim)?.let { r -> if (r is PDImageXObject) res.put(n, r) else if (r is PDFormXObject) res.put(n, r) }
+                    // one picture running the memory out leaves that picture as it is, not the rest of the page (review)
+                    is PDImageXObject -> (try { processImage(c, x, maxDim) } catch (e: OutOfMemoryError) { System.gc(); null })?.let { r -> if (r is PDImageXObject) res.put(n, r) else if (r is PDFormXObject) res.put(n, r) }
                     is PDFormXObject -> walk(c, x.resources, maxDim, depth + 1)
                     else -> {}
                 }

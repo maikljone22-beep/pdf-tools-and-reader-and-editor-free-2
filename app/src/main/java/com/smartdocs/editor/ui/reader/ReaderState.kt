@@ -500,7 +500,9 @@ class ReaderState(
         val s = session
         if (!saveFirst) session = null
         val restore = edit.restoreOnClose()
-        // side-car states keyed by this reader hold it strongly: drop them (audit ARCH-03)
+        // review: the backup stays "in use" until the save / restore below is done, or reopening the file at once
+        // would take it for an interrupted edit and write the old copy over the save in progress
+        val liveBackup = edit.backupFile keyed by this reader hold it strongly: drop them (audit ARCH-03)
         com.smartdocs.editor.ui.forms5.FormFill.forget(this)
         com.smartdocs.editor.ui.view5.V5State.forget(this)
         com.smartdocs.editor.ui.nve.NveState.forget(this)      // NVE
@@ -524,6 +526,7 @@ class ReaderState(
                 // red team R1: the original was already written without the annotations taken out — put them back there too
                 if (wroteBackDuringEdit) runCatching { app.documents.writeBack(target) }
             }
+            liveBackup?.let { AnnotEditor.release(it) }
             history.dispose()      // the document is closed for good: its history folder goes too
         }
     }

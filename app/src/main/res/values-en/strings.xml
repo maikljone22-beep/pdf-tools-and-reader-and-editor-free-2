@@ -361,6 +361,11 @@
     <string name="rd_memory_mode">Large file: memory-saving mode is on for a faster, steadier reader.</string>
     <string name="img_job_running">Converting… %1$d of %2$d pictures</string>
     <string name="img_job_background">You can leave the app: it keeps converting in the background and notifies you when done.</string>
+    <string name="img_not_imported">%1$d pictures could not be copied (storage may be full) and were not added.</string>
+    <string name="img_job_none">No readable pictures.</string>
+    <string name="img_job_skipped">The file was created, but %1$d pictures could not be read and were left out.</string>
+    <string name="img_job_replace">An earlier conversion was interrupted. Discard it and start the new one?</string>
+    <string name="img_job_preparing">Preparing the pictures…</string>
     <string name="img_job_pending">An earlier conversion stopped at %1$d of %2$d pictures.</string>
     <string name="img_job_resume">Resume</string>
     <string name="resume_title">Continue where you left off</string>

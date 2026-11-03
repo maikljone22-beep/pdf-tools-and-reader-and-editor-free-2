@@ -119,7 +119,11 @@ object PdfOps {
     private fun saveTo(doc: PDDocument, out: File) {
         val tmp = File(out.parentFile ?: out.absoluteFile.parentFile, ".${out.name}.${System.nanoTime()}.tmp")
         try {
-            doc.save(tmp)
+            // flushed to the storage before the rename (review: a power cut right after a save could leave an empty file)
+            java.io.FileOutputStream(tmp).use { fo -> doc.save(java.io.BufferedOutputStream(fo, 1 shl 16).let { b -> object : java.io.FilterOutputStream(b) {
+                override fun write(bytes: ByteArray, off: Int, len: Int) = b.write(bytes, off, len)
+                override fun close() { b.flush() }
+            } }); runCatching { fo.fd.sync() } }
             if (!tmp.renameTo(out)) { tmp.copyTo(out, overwrite = true); tmp.delete() }
         } finally { if (tmp.exists()) tmp.delete() }
     }

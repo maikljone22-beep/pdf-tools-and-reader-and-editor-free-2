@@ -22,5 +22,7 @@ object IncomingGuard {
     internal fun privateRoots(ctx: Context): List<String> = listOfNotNull(
         ctx.applicationInfo.dataDir, ctx.filesDir?.parent, ctx.filesDir?.path, ctx.cacheDir?.path, ctx.noBackupFilesDir?.path,
         ctx.applicationInfo.deviceProtectedDataDir,
+        // review: the app's external folders (Android/data/<package>) are private to it too
+        runCatching { ctx.getExternalFilesDir(null)?.parentFile?.path }.getOrNull(), runCatching { ctx.externalCacheDir?.path }.getOrNull(),
     ).mapNotNull { runCatching { File(it).canonicalPath }.getOrNull() }.distinct()
 }
