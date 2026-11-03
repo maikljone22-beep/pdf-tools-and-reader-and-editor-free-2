@@ -250,8 +250,7 @@ object Optimizer {
         // JPEG pictures are now decoded straight from their bytes, already subsampled near the target size.
         // review: only plain colour spaces without a /Decode array (an inverted or indexed / special-colour JPEG decoded
         // straight from its bytes would come out with wrong colours)
-        val plainCs = runCatching { img.colorSpace }.getOrNull().let { cs -> cs is com.tom_roush.pdfbox.pdmodel.graphics.color.PDDeviceRGB ||
-            cs is com.tom_roush.pdfbox.pdmodel.graphics.color.PDDeviceGray || cs is com.tom_roush.pdfbox.pdmodel.graphics.color.PDICCBased }
+        val plainCs = runCatching { img.colorSpace.name }.getOrNull() in setOf("DeviceRGB", "DeviceGray", "ICCBased")
         val noDecode = runCatching { img.cosObject.getDictionaryObject(com.tom_roush.pdfbox.cos.COSName.DECODE) == null }.getOrDefault(false)
         val rgbJpeg = isJpeg && raw != null && plainCs && noDecode && runCatching { img.colorSpace.numberOfComponents }.getOrDefault(3) != 4
         val bmp0 = (if (rgbJpeg) decodeJpeg(raw!!, if (needScale) maxDim else Int.MAX_VALUE) else null)
