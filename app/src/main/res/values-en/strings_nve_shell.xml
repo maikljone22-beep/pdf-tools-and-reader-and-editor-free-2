@@ -111,7 +111,7 @@
     <string name="nl_user_tab">Custom tab</string>
     <string name="nl_user_tab_add">New tab</string>
     <string name="nl_user_tab_empty">No tools in this tab yet</string>
-    <string name="nl_user_tab_tools">Tools (%1$d of %2$d)</string>
+    <string name="nl_user_tab_tools">Tools (%1$d)</string>
     <string name="nl_n_tools">%1$d tools</string>
     <string name="nl_name">Name</string>
     <string name="nl_cust_export">Export customization</string>

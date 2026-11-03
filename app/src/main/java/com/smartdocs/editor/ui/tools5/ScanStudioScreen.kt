@@ -248,7 +248,7 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
         }
     }
     if (cameraOpen) ScanCameraScreen(
-        pageLimit = when (kind) { ScanKind.ID_CARD, ScanKind.BUSINESS_CARD -> 2; ScanKind.RECEIPT -> 5; else -> 0 },
+        pageLimit = when (kind) { ScanKind.ID_CARD, ScanKind.BUSINESS_CARD -> 2; else -> 0 },   // a card has two sides; receipts were capped at 5
         onDone = { shots -> cameraOpen = false; if (shots.isNotEmpty()) addPictures(shots.map { it.first }, kind == ScanKind.BATCH, shots.map { (_, q) -> q?.let { it.x + it.y } }) },
         onClose = { cameraOpen = false },
         onUseGoogle = { cameraOpen = false; useGoogleOnce = true; launchScanner() },

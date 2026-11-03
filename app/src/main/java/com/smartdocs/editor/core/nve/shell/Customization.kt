@@ -30,8 +30,9 @@ data class Customization(
         .toString(2)
 
     companion object {
-        const val MAX_USER_TABS = 6
-        const val MAX_TOOLS_PER_TAB = 16
+        // user request: no small fixed caps; these only bound an imported customisation file
+        const val MAX_USER_TABS = 1000
+        const val MAX_TOOLS_PER_TAB = 1000
         val ICONS = listOf("star", "work", "edit", "school", "bolt", "build", "favorite", "folder")
 
         private fun JSONObject.strings(key: String): List<String> = optJSONArray(key)?.let { a -> (0 until a.length()).mapNotNull { a.optString(it).takeIf { s -> s.isNotBlank() } } } ?: emptyList()

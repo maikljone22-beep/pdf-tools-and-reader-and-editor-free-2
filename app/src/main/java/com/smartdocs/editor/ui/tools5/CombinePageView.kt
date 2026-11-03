@@ -78,9 +78,11 @@ fun CombinePageView(entries: List<CombineEntry>, onDismiss: () -> Unit, onApply:
             val s = runCatching { PdfSession.open(ctx, e.file, e.password) }.getOrNull() ?: return@forEachIndexed
             try {
                 counts[i] = s.pageCount
-                for (p in 0 until minOf(s.pageCount, MAX_THUMBS_PER_FILE)) {
+                // every page (it stopped at 60 per file); long files get smaller thumbnails
+                val tw = (160 * kotlin.math.sqrt(MAX_THUMBS_PER_FILE.toDouble() / s.pageCount.coerceAtLeast(1)).coerceAtMost(1.0)).toInt().coerceAtLeast(56)
+                for (p in 0 until s.pageCount) {
                     val (w, h) = s.pageSize(p)
-                    val tw = 160; val th = (tw * h / w.coerceAtLeast(1f)).toInt().coerceIn(1, 360)
+                    val th = (tw * h / w.coerceAtLeast(1f)).toInt().coerceIn(1, tw * 3)
                     runCatching { s.renderOwned(p, tw, th, annotations = true) }.getOrNull()?.let { thumbs[i to p] = it }
                 }
             } finally { withContext(NonCancellable) { s.closeAsync() } }

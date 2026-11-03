@@ -43,9 +43,11 @@ fun CombinePagePicker(file: File, password: String?, range: String, onDismiss: (
         try {
             count = s.pageCount
             picked = CombinePick.pagesOf(range, count)
-            for (i in 0 until minOf(count, MAX_THUMBS)) {
+            // every page can be picked (it stopped at 120); long documents get smaller thumbnails (~35 MB in all)
+            val tw = (180 * kotlin.math.sqrt(MAX_THUMBS.toDouble() / count.coerceAtLeast(1)).coerceAtMost(1.0)).toInt().coerceAtLeast(56)
+            for (i in 0 until count) {
                 val (w, h) = s.pageSize(i)
-                val tw = 180; val th = (tw * h / w.coerceAtLeast(1f)).toInt().coerceIn(1, 400)
+                val th = (tw * h / w.coerceAtLeast(1f)).toInt().coerceIn(1, tw * 3)
                 runCatching { s.renderOwned(i, tw, th, annotations = true) }.getOrNull()?.let { thumbs[i] = it }
             }
         } finally { withContext(NonCancellable) { s.closeAsync() } }
@@ -62,9 +64,8 @@ fun CombinePagePicker(file: File, password: String?, range: String, onDismiss: (
                     TextButton(onClick = { picked = (0 until count).toSet() }) { Text(stringResource(R.string.cv9_pick_all)) }
                     TextButton(onClick = { picked = emptySet() }) { Text(stringResource(R.string.cv9_pick_none)) }
                 }
-                if (count > MAX_THUMBS) Text(stringResource(R.string.cv9_pick_more, MAX_THUMBS), style = MaterialTheme.typography.bodySmall)
                 LazyVerticalGrid(GridCells.Adaptive(88.dp), Modifier.heightIn(max = 420.dp)) {
-                    itemsIndexed((0 until minOf(count, MAX_THUMBS)).toList()) { _, i ->
+                    itemsIndexed((0 until count).toList()) { _, i ->
                         val on = i in picked
                         Box(Modifier.padding(4.dp).border(if (on) 2.dp else 1.dp, if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant)
                             .clickable(onClickLabel = (i + 1).toString()) { picked = if (on) picked - i else picked + i }) {

@@ -93,7 +93,6 @@ fun CombineTab(initial: List<File>, job: T5Job, attachSrc: Boolean, srcDesc: Str
                 fun walk(d: DocumentFile, depth: Int) {
                     if (depth > 6) return
                     d.listFiles().sortedBy { it.name.orEmpty() }.forEach { c ->
-                        if (out.size >= 200) return
                         if (c.isDirectory) walk(c, depth + 1) else if (c.isFile && ToPdf.kindOf(c.name.orEmpty()) != SourceKind.UNKNOWN) out += c.uri
                     }
                 }
