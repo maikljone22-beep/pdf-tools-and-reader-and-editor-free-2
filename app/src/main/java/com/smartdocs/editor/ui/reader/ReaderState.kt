@@ -736,7 +736,9 @@ class ReaderState(
             // the pending steps written now become one file step (saving itself is not an undo step)
             val prevPw = password
             val willWrite = forms5.hasPending || annots.isNotEmpty() || edit.hasBackup
-            val before = if (willWrite) runCatching { history.copyIn(edit.backupFile?.takeIf { it.exists() } ?: f) }.getOrNull() else null
+            // review: on a very big file the undo copy doubled every save (400 MB copied each time, storage filling up):
+            // above the big-file size the save is not an undo step (the pending steps still are, until saved)
+            val before = if (willWrite && f.length() < com.smartdocs.editor.core.util.MemoryMode.BIG_FILE) runCatching { history.copyIn(edit.backupFile?.takeIf { it.exists() } ?: f) }.getOrNull() else null
             var wrote = false
             try {
                 // MODULE_forms5: pending form values are written first (FormOps.fillFields -> swapFile)

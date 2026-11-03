@@ -41,6 +41,11 @@ class DocumentRepository(private val context: Context, private val db: AppDataba
     // ---- link between a working copy and the document it came from ----
     private val origins = context.getSharedPreferences("origins", Context.MODE_PRIVATE)
 
+    companion object {
+        /** Pure: the working copies whose write-back was interrupted, from the origin store's keys. */
+        fun interruptedLocals(keys: Collection<String>): List<String> = keys.filter { it.startsWith("p:") && it.length > 2 }.map { it.substring(2) }.sorted()
+    }
+
     /** The content URI a local working copy was imported from, or null when the file is our own. */
     fun originOf(local: File): Uri? = origins.getString("l:" + local.absolutePath, null)?.let(Uri::parse)
 
@@ -66,6 +71,21 @@ class DocumentRepository(private val context: Context, private val db: AppDataba
     fun syncedSourceSizeOf(local: File): Long = syncRecord(local)?.srcSize ?: -1L
 
     private fun pendingKey(local: File) = "p:" + local.absolutePath
+
+    /**
+     * Start-up repair (review): a write-back the system killed half-way leaves the user's original truncated (0 bytes
+     * or half a file) while the working copy is whole. The write is done again from the working copy; a marker whose
+     * working copy is gone is dropped. Returns how many originals were repaired.
+     */
+    suspend fun repairInterruptedWriteBacks(): Int {
+        var fixed = 0
+        interruptedLocals(origins.all.keys).forEach { path ->
+            val local = File(path)
+            if (!local.exists() || local.length() == 0L || originOf(local) == null) { origins.edit().remove("p:$path").apply(); return@forEach }
+            if (writeBack(local) is WriteBack.Done) fixed++
+        }
+        return fixed
+    }
 
     /**
      * Rename a document in place, never replacing another file (audit DI-04), and carry its origin link along so a
