@@ -399,4 +399,5 @@
     <string name="tpn_save_device">حفظ في الجهاز (PDF)</string>
     <string name="tpn_saved_device">حُفظ في الجهاز</string>
     <string name="tpn_save_device_failed">تعذّر الحفظ في الجهاز</string>
+    <string name="tl_add_images_files">أكثر من %1$d صورة؟ اخترها من الملفات</string>
 </resources>

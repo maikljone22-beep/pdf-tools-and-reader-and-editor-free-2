@@ -322,7 +322,9 @@ fun rememberPdfPicker(multiple: Boolean = false, mimes: Array<String> = arrayOf(
 }
 
 @Composable
-fun rememberImagePicker(multiple: Boolean = true, onCancel: (() -> Unit)? = null, onPicked: (List<File>) -> Unit): () -> Unit {
+fun rememberImagePicker(multiple: Boolean = true, onCancel: (() -> Unit)? = null,
+                        /** Receives a launcher of the files picker (no count limit: select all in a folder). */
+                        unlimited: MutableState<(() -> Unit)?>? = null, onPicked: (List<File>) -> Unit): () -> Unit {
     val app = LocalApp.current
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -343,7 +345,10 @@ fun rememberImagePicker(multiple: Boolean = true, onCancel: (() -> Unit)? = null
         }
     }
     // tab-view-core E-16: one image means the single picker (a second pick is no longer silently dropped)
-    val many = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(50)) { uris -> copyIn(uris) }
+    // the system photo picker allows at most getPickImagesMaxLimit() pictures (usually 100); we used to ask for 50
+    val many = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(imagePickerMax())) { uris -> copyIn(uris) }
+    val files = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris -> copyIn(uris) }
+    if (unlimited != null) unlimited.value = { runCatching { files.launch(arrayOf("image/*")) } }
     val one = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri -> copyIn(listOfNotNull(uri)) }
     return {
         // tab-view-core E-16: picked copies older than a day are removed (callers may still use the recent ones)
@@ -394,3 +399,7 @@ fun LabeledSlider(label: String, value: Float, range: ClosedFloatingPointRange<F
         Slider(value, onChange, valueRange = range)
     }
 }
+
+
+/** How many pictures the system photo picker lets the user select at once (Android 13+: the device's limit, usually 100). */
+fun imagePickerMax(): Int = if (android.os.Build.VERSION.SDK_INT >= 33) runCatching { android.provider.MediaStore.getPickImagesMaxLimit() }.getOrDefault(100).coerceAtLeast(2) else 100

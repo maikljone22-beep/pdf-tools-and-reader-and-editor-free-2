@@ -26,6 +26,7 @@ import com.smartdocs.editor.core.pdf.PdfOps
 import com.smartdocs.editor.ui.common.EmptyState
 import com.smartdocs.editor.ui.common.LabeledSlider
 import com.smartdocs.editor.ui.common.rememberImagePicker
+import com.smartdocs.editor.ui.common.imagePickerMax
 import com.smartdocs.editor.ui.common.rememberToolRunner
 import com.tom_roush.pdfbox.pdmodel.common.PDRectangle
 
@@ -90,16 +91,20 @@ fun ImagesToPdfScreen(nav: NavHostController) {
     var name by remember { mutableStateOf("") }
     var sortKey by remember { mutableStateOf<com.smartdocs.editor.core.tools5.FileSort?>(null) }
     var sortDesc by remember { mutableStateOf(false) }
-    val pick = rememberImagePicker(multiple = true) { images = images + it }
+    val fromFiles = remember { mutableStateOf<(() -> Unit)?>(null) }
+    val pick = rememberImagePicker(multiple = true, unlimited = fromFiles) { images = images + it }
     val processing = stringResource(R.string.processing)
 
     ToolScaffold(stringResource(R.string.tool_images_to_pdf), nav, runner, scrollable = false, actions = {
         IconButton(onClick = pick) { Icon(Icons.Default.AddPhotoAlternate, stringResource(R.string.tl_add_images)) }
+        // more than the photo picker's limit: the files picker selects any number (select all in a folder)
+        IconButton(onClick = { fromFiles.value?.invoke() }) { Icon(Icons.Default.FolderOpen, stringResource(R.string.tl_add_images_files, imagePickerMax())) }
     }) {
         if (images.isEmpty()) {
             Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
                 EmptyState(Icons.Default.Collections, stringResource(R.string.tl_no_images)) {
                     Button(onClick = pick) { Icon(Icons.Default.AddPhotoAlternate, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.tl_add_images)) }
+                    TextButton(onClick = { fromFiles.value?.invoke() }) { Icon(Icons.Default.FolderOpen, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.tl_add_images_files, imagePickerMax())) }
                 }
             }
         } else {
