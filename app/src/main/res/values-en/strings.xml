@@ -363,4 +363,5 @@
     <string name="img_job_background">You can leave the app: it keeps converting in the background and notifies you when done.</string>
     <string name="img_job_pending">An earlier conversion stopped at %1$d of %2$d pictures.</string>
     <string name="img_job_resume">Resume</string>
+    <string name="resume_title">Continue where you left off</string>
 </resources>
