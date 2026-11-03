@@ -253,7 +253,7 @@ internal fun MoveDialog(root: File, moving: List<File>, onDismiss: () -> Unit, t
         val excluded = moving.filter { it.isDirectory }.map { it.absolutePath }
         root.walkTopDown().maxDepth(6).filter { it.isDirectory }
             .filter { d -> excluded.none { d.absolutePath == it || d.absolutePath.startsWith("$it/") } }
-            .take(300).toList()
+            .toList()
     }
     AlertDialog(onDismissRequest = onDismiss, icon = { Icon(if (title != null) Icons.Default.FileCopy else Icons.Default.DriveFileMove, null) }, title = { Text(title ?: stringResource(R.string.move_to)) }, text = {
         LazyColumn(Modifier.heightIn(max = 360.dp)) {

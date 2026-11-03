@@ -172,7 +172,6 @@ fun AttachmentsBrowser(
                 fun walk(d: DocumentFile, depth: Int) {
                     if (depth > 8) return
                     d.listFiles().forEach { c ->
-                        if (out.size >= MAX_FOLDER_FILES) return
                         if (c.isDirectory) walk(c, depth + 1) else if (c.isFile) out += c.uri to (c.name to c.type)
                     }
                 }

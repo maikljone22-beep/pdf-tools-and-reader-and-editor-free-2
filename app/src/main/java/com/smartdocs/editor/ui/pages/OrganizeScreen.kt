@@ -371,7 +371,24 @@ fun OrganizeScreen(nav: NavHostController, uri: String?) {
     if (state.busy && state.original != null) ProgressDialog(state.progress ?: stringResource(R.string.pg_applying))
     if (saving) ProgressDialog(stringResource(R.string.processing))
     result?.let { ResultSheet(it, nav, onDismiss = { result = null }) }
-    viewPage?.let { p -> state.work?.let { w -> PageViewDialog(w, state.password, p, state.pageCount, onDismiss = { viewPage = null }) { viewPage = it } } }
+    viewPage?.let { p0 -> state.work?.let { w ->
+        val p = p0.coerceIn(0, (state.pageCount - 1).coerceAtLeast(0))
+        // the viewer carries the page's menu as a toolbar (user request): the same registry items + the organizer's own
+        val env = com.smartdocs.editor.ui.selmenu.organizeThumbEnv(state::allows, com.smartdocs.editor.LocalSettings.current.aiEnabled)
+        val regs = com.smartdocs.editor.core.selmenu.SelThumbs.items(env, p, emptySet(), state.pageCount)
+            .filter { it.enabled && it.action !in setOf(SelAction.THUMB_VIEW, SelAction.THUMB_SELECT, SelAction.THUMB_DESELECT) }
+            .map { item -> Triple(stringResource(com.smartdocs.editor.ui.selmenu.SelBindings.label(item.action)), com.smartdocs.editor.ui.selmenu.SelBindings.icon(item.action), {
+                if (item.action == SelAction.THUMB_OPEN) viewPage = null
+                runThumb(item.action, listOf(p), p)
+            }) }
+        val more = listOf(
+            Triple(stringResource(R.string.pg_move_to), Icons.Default.Pin, { moveAsk = p }),
+            Triple(stringResource(R.string.pc_page_redact), Icons.Default.FormatColorFill, { requirePermission(com.smartdocs.editor.core.security.DocAction.MODIFY) { redactAsk = p } }),
+            Triple(stringResource(R.string.pc_page_ocr), Icons.Default.DocumentScanner, { requirePermission(com.smartdocs.editor.core.security.DocAction.MODIFY) { state.ocrPage(p) } }),
+        )
+        PageViewDialog(w, state.password, p, state.pageCount, onDismiss = { viewPage = null }, tools = regs + more, version = state.version,
+            placeholder = { q -> state.thumbs[state.thumbKey(q)] }) { viewPage = it }
+    } }
 
     insertDialog?.let { kind -> InsertDialog(state, kind, onDismiss = { insertDialog = null }, onLockedFile = { f, at -> lockedInsert = f to at }) }
     // share6 (fid): inserting pages from a password-protected PDF

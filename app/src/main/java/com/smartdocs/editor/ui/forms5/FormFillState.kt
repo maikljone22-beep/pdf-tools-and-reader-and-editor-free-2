@@ -345,7 +345,7 @@ class FormFillState internal constructor(val reader: ReaderState) {
                 // pending edits of fields that no longer exist are dropped
                 edits.keys.filter { it !in m.values }.forEach { edits.remove(it) }
             }
-            m.widgets.map { it.page }.distinct().take(300).forEach { p ->
+            m.widgets.map { it.page }.distinct().forEach { p ->
                 if (p !in rtlPages) reader.scope.launch {
                     val t = runCatching { reader.pageText(p) }.getOrDefault("")
                     val ar = t.count { it.code in 0x0600..0x06FF }; val la = t.count { it in 'a'..'z' || it in 'A'..'Z' }
