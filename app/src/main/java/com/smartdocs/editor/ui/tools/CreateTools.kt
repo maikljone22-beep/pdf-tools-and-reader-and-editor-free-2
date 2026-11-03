@@ -96,15 +96,16 @@ fun ImagesToPdfScreen(nav: NavHostController) {
     val processing = stringResource(R.string.processing)
 
     ToolScaffold(stringResource(R.string.tool_images_to_pdf), nav, runner, scrollable = false, actions = {
-        IconButton(onClick = pick) { Icon(Icons.Default.AddPhotoAlternate, stringResource(R.string.tl_add_images)) }
-        // more than the photo picker's limit: the files picker selects any number (select all in a folder)
-        IconButton(onClick = { fromFiles.value?.invoke() }) { Icon(Icons.Default.FolderOpen, stringResource(R.string.tl_add_images_files, imagePickerMax())) }
+        // user request: no limit at all — the main button is the files picker (any number; select all in a folder),
+        // the gallery picker (the system caps it, usually at 100) stays as the second button
+        IconButton(onClick = { fromFiles.value?.invoke() ?: pick() }) { Icon(Icons.Default.AddPhotoAlternate, stringResource(R.string.tl_add_images)) }
+        IconButton(onClick = pick) { Icon(Icons.Default.PhotoLibrary, stringResource(R.string.tl_add_from_gallery, imagePickerMax())) }
     }) {
         if (images.isEmpty()) {
             Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
                 EmptyState(Icons.Default.Collections, stringResource(R.string.tl_no_images)) {
-                    Button(onClick = pick) { Icon(Icons.Default.AddPhotoAlternate, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.tl_add_images)) }
-                    TextButton(onClick = { fromFiles.value?.invoke() }) { Icon(Icons.Default.FolderOpen, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.tl_add_images_files, imagePickerMax())) }
+                    Button(onClick = { fromFiles.value?.invoke() ?: pick() }) { Icon(Icons.Default.AddPhotoAlternate, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.tl_add_images)) }
+                    TextButton(onClick = pick) { Icon(Icons.Default.PhotoLibrary, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.tl_add_from_gallery, imagePickerMax())) }
                 }
             }
         } else {

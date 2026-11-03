@@ -88,14 +88,25 @@ fun HomeScreen(nav: NavHostController) {
         Quick(Icons.Default.FolderOpen, R.string.open_file, "open") { Brand.tiles.teal },
         Quick(Icons.Default.DocumentScanner, R.string.create_from_scan, "scan") { Brand.tiles.rose },
         Quick(Icons.Default.Image, R.string.create_from_images, "images_to_pdf") { Brand.tiles.purple },
+        Quick(Icons.Default.SwapHoriz, R.string.cv6_title, "convert_hub") { Brand.tiles.green },   // convert6: Convert hub
         Quick(Icons.Default.NoteAdd, R.string.create_blank, "blank") { Brand.tiles.blue },
         Quick(Icons.Default.Dashboard, R.string.g6_from_template, "templates") { Brand.tiles.amber },
-        Quick(Icons.Default.SwapHoriz, R.string.cv6_title, "convert_hub") { Brand.tiles.green },   // convert6: Convert hub
         // NVE-shell: HOME-1 paste from clipboard, HOME-2 page snapshot, feature guides
         Quick(Icons.Default.ContentPaste, R.string.nl_paste, com.smartdocs.editor.ui.nve.shell.NveHomeIds.PASTE) { Brand.tiles.teal },
         Quick(Icons.Default.PhotoCamera, R.string.nl_snapshot, com.smartdocs.editor.ui.nve.shell.NveHomeIds.SNAPSHOT) { Brand.tiles.purple },
         Quick(Icons.Default.School, R.string.nl_guides, com.smartdocs.editor.ui.nve.shell.NveHomeIds.GUIDES) { Brand.tiles.amber },
     )
+    var moreQuick by remember { mutableStateOf(false) }
+    if (moreQuick) androidx.compose.material3.ModalBottomSheet(onDismissRequest = { moreQuick = false }) {
+        Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 24.dp)) {
+            quick.drop(5).forEach { qk ->
+                ListItem(headlineContent = { Text(stringResource(qk.label)) }, leadingContent = { Icon(qk.icon, null) },
+                    modifier = Modifier.clickable { moreQuick = false; runTool(qk.tool) })
+            }
+            ListItem(headlineContent = { Text(stringResource(R.string.home_all_tools)) }, leadingContent = { Icon(Icons.Default.Apps, null) },
+                modifier = Modifier.clickable { moreQuick = false; goTab(Routes.TOOLS) })
+        }
+    }
     val listState = rememberLazyListState()
     val fabExpanded by remember { derivedStateOf { listState.firstVisibleItemIndex == 0 } }
 
@@ -131,10 +142,11 @@ fun HomeScreen(nav: NavHostController) {
                 // ---- quick create ----
                 item(key = "quick") {
                     LazyRow(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        items(quick, key = { it.tool }) { qk ->
+                        // user request: the six most used only; the rest behind "More" (too many tools confused people)
+                        items(quick.take(5) + Quick(Icons.Default.MoreHoriz, R.string.home_more, "__more") { Brand.tiles.blue }, key = { it.tool }) { qk ->
                             val coach = when (qk.tool) { "open" -> com.smartdocs.editor.ui.onboarding.CoachIds.HOME_OPEN; "scan" -> com.smartdocs.editor.ui.onboarding.CoachIds.HOME_SCAN; else -> null }
                             Box(if (coach != null) Modifier.coachTarget(coach) else Modifier) {
-                                QuickCard(qk.icon, stringResource(qk.label), qk.tile()) { runTool(qk.tool) }
+                                QuickCard(qk.icon, stringResource(qk.label), qk.tile()) { if (qk.tool == "__more") moreQuick = true else runTool(qk.tool) }
                             }
                         }
                     }

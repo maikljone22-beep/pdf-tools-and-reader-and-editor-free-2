@@ -311,6 +311,10 @@ class ReaderState(
                 // share6: rights-managed files -> explanation screen; connected documents -> status / protected key
                 withContext(Dispatchers.IO) { com.smartdocs.editor.core.connected.EnterpriseProtection.detect(f) }?.takeIf { it.blocking }?.let { enterpriseInfo = it; return@launch }
                 var openPw = pw
+                // memory-saving mode for big documents (user request: > 200 MB) and small heaps; set before the session opens
+                val low = withContext(Dispatchers.IO) { com.smartdocs.editor.core.util.MemoryMode.lowFor(f) }
+                com.smartdocs.editor.core.util.MemoryMode.low = low
+                if (low && f.length() > com.smartdocs.editor.core.util.MemoryMode.BIG_FILE) error = str(R.string.rd_memory_mode)
                 // an annotation edit the app died in the middle of: the file gets back the annotations it took out
                 if (withContext(Dispatchers.IO) { AnnotEditor.recoverInterrupted(f) }) error = str(R.string.rd_annot_recovered)
                 // audit RD-03: the connected-document marker scan can read the whole file, so it no longer runs before
@@ -350,7 +354,7 @@ class ReaderState(
                     if (mark.protected && st?.locked == true) { runCatching { session?.closeAsync() }; session = null; connectedLocked = true }
                 }
                 val firstOpen = recent == null && startPage < 0
-                scope.launch {
+                if (!low) scope.launch {
                     val v = openParse.withLock { withContext(Dispatchers.IO) { runCatching { com.smartdocs.editor.core.edit5.DocPropsOps.read(f, openPw).view }.getOrNull() } } ?: return@launch
                     applyInitialView(v, firstOpen)
                 }

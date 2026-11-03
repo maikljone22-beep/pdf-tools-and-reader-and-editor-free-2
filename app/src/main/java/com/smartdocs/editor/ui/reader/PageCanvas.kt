@@ -83,7 +83,7 @@ fun PageCanvas(
     val frame = state.pageFrames[page]
     val g = remember(pw, ph, scale, rotation, frame) { PageGeometry(pw, ph, scale, rotation, frame?.rotate ?: 0, frame?.cropX ?: 0f, frame?.cropY ?: 0f) }
     val layout = g.layoutSize
-    val factor = min(1f, MAX_RENDER_PX / max(g.bitmapW, g.bitmapH))
+    val factor = min(1f, (if (com.smartdocs.editor.core.util.MemoryMode.low) 2200f else MAX_RENDER_PX) / max(g.bitmapW, g.bitmapH))   // memory-saving mode
     val renderW = (g.bitmapW * factor).roundToInt().coerceAtLeast(1)
     val renderH = (g.bitmapH * factor).roundToInt().coerceAtLeast(1)
     // quantise so that a continuous pinch does not re-render every frame

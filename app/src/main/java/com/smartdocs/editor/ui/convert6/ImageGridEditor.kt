@@ -8,6 +8,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -75,8 +76,11 @@ fun ImageGridEditor(files: List<File>, onChange: (List<File>) -> Unit) {
             TextButton(onClick = { onChange(files.reversed()) }) { Icon(Icons.Default.SwapVert, null); Spacer(Modifier.width(4.dp)); Text(stringResource(R.string.pc_reverse_order)) }
             if (busy) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
         }
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            files.forEachIndexed { i, f ->
+        // lazy: only the visible thumbnails are loaded (1000+ pictures must not run the memory out)
+        androidx.compose.foundation.lazy.grid.LazyVerticalGrid(androidx.compose.foundation.lazy.grid.GridCells.Adaptive(104.dp),
+            Modifier.fillMaxWidth().heightIn(min = 160.dp, max = 560.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(files.size, key = { k -> files[k].absolutePath + "#" + k }) { i ->
+                val f = files[i]
                 Box {
                     Column(Modifier.width(104.dp).clip(RoundedCornerShape(10.dp)).clickable { menu = i }, horizontalAlignment = Alignment.CenterHorizontally) {
                         Box(Modifier.size(104.dp, 136.dp).clip(RoundedCornerShape(10.dp)).background(Color.White)
