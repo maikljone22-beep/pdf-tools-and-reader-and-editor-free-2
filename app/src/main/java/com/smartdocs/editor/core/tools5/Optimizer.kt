@@ -179,6 +179,22 @@ object Optimizer {
         return maxDim to above
     }
 
+    /** Pure: the power-of-two subsampling that keeps the long side at least [target] (1 = full size). */
+    fun sampleFor(long: Int, target: Int): Int {
+        var s = 1
+        while (target in 1 until Int.MAX_VALUE / 4 && long / (s * 2) >= target) s *= 2
+        return s
+    }
+
+    /** A JPEG decoded from its bytes, subsampled so its long side stays >= [target]; null when Android cannot read it. */
+    private fun decodeJpeg(bytes: ByteArray, target: Int): Bitmap? = runCatching {
+        val o = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, o)
+        if (o.outWidth <= 0 || o.outHeight <= 0) return null
+        val opts = android.graphics.BitmapFactory.Options().apply { inSampleSize = sampleFor(maxOf(o.outWidth, o.outHeight), target) }
+        android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
+    }.getOrNull()
+
     private fun scaled(bmp0: Bitmap, nw: Int, nh: Int, method: Downsample): Bitmap = when (method) {
         Downsample.OFF -> bmp0
         else -> {
@@ -229,10 +245,16 @@ object Optimizer {
         // grayscale: pictures that are grey already are left as they are (convert audit C28: lossless grey scans became bigger JPEGs)
         val colour = c.o.grayImages && !isGray(img)
         if (c.o.grayImages && !colour && !needScale && !c.o.onlyIfSmaller) return null
-        val bmp0 = runCatching { img.image }.getOrNull() ?: return null
+        // user report: compression barely shrank photographed pages. A JPEG photo was decoded at full size through
+        // PdfBox (a 4000×3000 page = 48 MB): on big files that ran out of memory and the image was silently skipped.
+        // JPEG pictures are now decoded straight from their bytes, already subsampled near the target size.
+        val rgbJpeg = isJpeg && raw != null && runCatching { img.colorSpace.numberOfComponents }.getOrDefault(3) != 4
+        val bmp0 = (if (rgbJpeg) decodeJpeg(raw!!, if (needScale) maxDim else Int.MAX_VALUE) else null)
+            ?: runCatching { img.image }.getOrNull() ?: return null
         var bmp = bmp0
-        if (needScale) {
-            val k = maxDim.toFloat() / long
+        val have = maxOf(bmp0.width, bmp0.height)
+        if (needScale && have > maxDim) {
+            val k = maxDim.toFloat() / have
             bmp = scaled(bmp0, (bmp0.width * k).toInt().coerceAtLeast(1), (bmp0.height * k).toInt().coerceAtLeast(1), c.o.downsample)
         }
         if (c.o.grayImages) { val g = toGray(bmp); if (bmp !== bmp0) bmp.recycle(); bmp = g }
