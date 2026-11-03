@@ -352,4 +352,6 @@
     <string name="tpn_saved_device">Saved to the device</string>
     <string name="tpn_save_device_failed">Could not save to the device</string>
     <string name="tl_add_images_files">More than %1$d pictures? Pick from files</string>
+    <string name="img_move_first">Move to the start</string>
+    <string name="img_move_last">Move to the end</string>
 </resources>

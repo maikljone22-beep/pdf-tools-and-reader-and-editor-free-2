@@ -7,6 +7,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -58,7 +59,10 @@ fun Cv6OptionsSheet(
     lockedName: String? = null, lockedWrong: Boolean = false,
 ) {
     val ctx = LocalContext.current
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = MaterialTheme.colorScheme.surfaceContainerLow) {
+    // user request: pictures → PDF opens a full page (thumbnails, a menu per picture), not a bottom sheet
+    val imagesMode = conv.to == com.smartdocs.editor.core.convert6.Fmt.PDF && inputs.isNotEmpty() &&
+        inputs.all { com.smartdocs.editor.core.convert6.FileKind6.of(it).isImage }
+    val body: @Composable () -> Unit = {
         Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 28.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconTile(conv.from.icon(), conv.from.tile(), size = 40.dp, iconSize = 22.dp)
@@ -71,7 +75,7 @@ fun Cv6OptionsSheet(
 
             if (conv.inputs.isNotEmpty()) {
                 FieldLabel(stringResource(R.string.cv6_inputs, inputs.size))
-                FileListEditor(inputs, onInputs)
+                if (imagesMode) ImageGridEditor(inputs, onInputs) else FileListEditor(inputs, onInputs)
                 // s6 Batch: a page range per file (blank = the common range below)
                 if (Opt.RANGE in conv.opts && inputs.size > 1) {
                     FieldLabel(stringResource(R.string.cv9_ranges_per_file))
@@ -108,6 +112,18 @@ fun Cv6OptionsSheet(
                 (Opt.RANGE !in conv.opts || (com.smartdocs.editor.core.pdf.PdfOps.rangeSyntaxOk(o.range) && o.fileRanges.values.all { com.smartdocs.editor.core.pdf.PdfOps.rangeSyntaxOk(it) })) && (!needPassword || password.isNotEmpty()),
                 icon = Icons.Default.SwapHoriz, onClick = onConvert)
         }
+    }
+    if (imagesMode) androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss, properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+            Column(Modifier.fillMaxSize().systemBarsPadding()) {
+                Row(Modifier.fillMaxWidth().padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onDismiss) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.back)) }
+                }
+                Box(Modifier.weight(1f)) { body() }
+            }
+        }
+    } else ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = MaterialTheme.colorScheme.surfaceContainerLow) {
+        body()
     }
 }
 
