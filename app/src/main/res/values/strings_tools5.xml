@@ -54,7 +54,7 @@
     <string name="t5_acc_tagged_annots">التعليقات موسومة</string>
     <string name="t5_acc_tagged_content">المحتوى موسوم</string>
     <string name="t5_acc_tagged_fields">حقول النماذج موسومة</string>
-    <string name="t5_acc_title">فحص إمكانية الوصول</string>
+    <string name="t5_acc_title">فحص سهولة القراءة لذوي الاحتياجات</string>
     <string name="t5_acc_title_rule">عنوان المستند وعرضه</string>
     <string name="t5_accg_alt">النص البديل</string>
     <string name="t5_accg_document">المستند</string>
@@ -178,7 +178,7 @@
     <string name="t5_mm_running">جارٍ تعبئة النسخ…</string>
     <string name="t5_mm_summary">%1$d صف · %2$d عمود · %3$d حقل</string>
     <string name="t5_mm_template">القالب (PDF قابل للتعبئة)</string>
-    <string name="t5_mm_title">الدمج البريدي</string>
+    <string name="t5_mm_title">رسائل جماعية من جدول (دمج بريدي)</string>
     <string name="t5_move_down">تحريك لأسفل</string>
     <string name="t5_move_up">تحريك لأعلى</string>
     <string name="t5_next">التالي</string>
@@ -188,7 +188,7 @@
     <string name="t5_ocr_note">الصفحات التي تحتوي نصاً تُتخطى. تُحمّل حزم اللغات عند أول استخدام.</string>
     <string name="t5_ocr_nothing">لا توجد صفحات تحتاج إلى التعرف الضوئي</string>
     <string name="t5_ocr_run">تعرّف على %1$d ملف</string>
-    <string name="t5_ocr_title">التعرف الضوئي المتقدم</string>
+    <string name="t5_ocr_title">استخراج نص متقدم (OCR)</string>
     <string name="t5_ocr_working">جارٍ التعرف الضوئي…</string>
     <string name="t5_open">فتح</string>
     <string name="t5_opt_attach">حذف المرفقات</string>
@@ -245,7 +245,7 @@
     <string name="t5_pdfa_raster">تحويل الصفحات ذات الخطوط غير المضمنة إلى صور</string>
     <string name="t5_pdfa_raster_hint">وكذلك صفحات CMYK؛ يفقد نصها قابلية النسخ</string>
     <string name="t5_pdfa_selfcheck">نتيجة الملف الناتج</string>
-    <string name="t5_pdfa_title">PDF/A والفحص المسبق</string>
+    <string name="t5_pdfa_title">حفظ للأرشفة (PDF/A) وفحص الملف</string>
     <string name="t5_pf_annot_ap">تعليقات بلا مظهر</string>
     <string name="t5_pf_attachments">ملفات مرفقة</string>
     <string name="t5_pf_checking">جارٍ الفحص المسبق…</string>
@@ -281,7 +281,7 @@
     <string name="t5_portfolio_name">اسم الحافظة</string>
     <string name="t5_portfolio_none">لا توجد ملفات مضمنة في هذا المستند</string>
     <string name="t5_portfolio_open">فتح حافظة</string>
-    <string name="t5_portfolio_title">حافظات PDF</string>
+    <string name="t5_portfolio_title">ملف PDF يجمع عدة ملفات</string>
     <string name="t5_preclean">تنظيف الصورة قبل التعرف</string>
     <string name="t5_preclean_hint">رمادي، إزالة الظلال، تحسين التباين</string>
     <string name="t5_prefix_board">سبورة</string>
@@ -325,7 +325,7 @@
     <string name="t5_receipt_added">أُضيف إلى receipts.csv</string>
     <string name="t5_receipt_share">مشاركة جدول الإيصالات</string>
     <string name="t5_receipt_title">الإيصال</string>
-    <string name="t5_recipes_title">الوصفات والمعالجة الدفعية</string>
+    <string name="t5_recipes_title">خطوات تلقائية لعدة ملفات</string>
     <string name="t5_remove">إزالة</string>
     <string name="t5_review">مراجعة الكلمات غير المؤكدة</string>
     <string name="t5_review_hint">لملف واحد: تصحيح الكلمات منخفضة الثقة قبل الحفظ</string>

@@ -204,7 +204,7 @@
     <string name="cn_tab_sent">أرسلتُها</string>
     <string name="cn_to_sign">بانتظار توقيعك</string>
     <string name="cn_too_big">الملف أكبر من 20 ميغابايت</string>
-    <string name="cn_tool_connected">مستند متصل</string>
+    <string name="cn_tool_connected">مستند متتبَّع عبر الإنترنت</string>
     <string name="cn_tool_connected_desc">تتبّع الإصدارات والقرّاء وألغِ الوصول</string>
     <string name="cn_tool_esign">طلب توقيعات</string>
     <string name="cn_tool_esign_desc">أرسل مستنداً ليوقّعه الآخرون وتابع حالته</string>

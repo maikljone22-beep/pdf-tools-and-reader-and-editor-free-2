@@ -3,7 +3,7 @@
 <resources>
     <!-- tool titles -->
     <string name="s5_global_title">البحث في كل الملفات</string>
-    <string name="s5_mark_title">بحث وتمييز</string>
+    <string name="s5_mark_title">بحث وتظليل</string>
     <string name="s5_replace_title">بحث واستبدال</string>
     <string name="s5_sanitize_title">تنظيف قبل المشاركة</string>
     <string name="s5_protect_title">حماية متقدمة</string>

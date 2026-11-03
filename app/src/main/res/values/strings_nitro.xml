@@ -291,7 +291,7 @@
     <string name="nt_ocr_engine_cloud">OCR احترافي سحابي</string>
     <string name="nt_ocr_engine_note">تلقائي يقرأ كل كلمة بالمحركين ويختار الأدق (نموذج PP-OCRv5 للعربية، تنزيل اختياري 12.8 ميجابايت مع حزمة العربية). السحابي يرسل صورة الصفحة إلى خادم التطبيق ويحتاج إنترنت؛ إن لم يكن متاحاً يُستعمل التعرف دون اتصال.</string>
     <string name="nt_ocr_engine_ai_missing">نموذج الذكاء الاصطناعي غير منزّل بعد: سيُنزّل مع حزمة العربية عند أول تعرف.</string>
-    <string name="nt_ocr_review">مراجعة كلمات التعرف المشكوك فيها</string>
+    <string name="nt_ocr_review">مراجعة الكلمات غير المؤكدة بعد OCR</string>
     <string name="nt_ocr_review_accept">قبول</string>
     <string name="nt_ocr_review_accept_all">قبول الكل كما هي</string>
     <string name="nt_ocr_review_conf">كلمات بثقة أقل من %1$d٪</string>
@@ -307,7 +307,7 @@
     <string name="nt_ocr_thr_fixed">عتبة ثابتة</string>
     <string name="nt_ocr_thr_none">بلا عتبة</string>
     <string name="nt_ocr_thr_value">قيمة العتبة: %1$d</string>
-    <string name="nt_ocr_zone">التعرف الضوئي لمنطقة محددة</string>
+    <string name="nt_ocr_zone">استخراج نص من جزء محدد</string>
     <string name="nt_ocr_zone_add">إضافة كنص قابل للبحث في الصفحة</string>
     <string name="nt_ocr_zone_empty">لم يُتعرَّف على نص في هذه المنطقة</string>
     <string name="nt_ocr_zone_help">اسحب مستطيلاً على الصفحة حول النص المطلوب.</string>
