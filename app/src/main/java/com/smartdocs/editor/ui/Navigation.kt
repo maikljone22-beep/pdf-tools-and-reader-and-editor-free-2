@@ -72,6 +72,14 @@ fun AppNavHost(nav: NavHostController) {
     val backStack by nav.currentBackStackEntryAsState()
     val route = backStack?.destination?.route
     val showBar = tabs.any { it.route == route }
+    // "continue where you left off": remember the screen in use; a main tab means the user left it normally
+    val navCtx = androidx.compose.ui.platform.LocalContext.current
+    androidx.compose.runtime.LaunchedEffect(backStack) {
+        val r = route ?: return@LaunchedEffect
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            if (tabs.any { it.route == r }) LastScreen.clear(navCtx) else LastScreen.save(navCtx, r, backStack?.arguments)
+        }
+    }
     val onTab: (Tab) -> Unit = { t ->
         nav.navigate(t.route) {
             popUpTo(nav.graph.findStartDestination().id) { saveState = true }

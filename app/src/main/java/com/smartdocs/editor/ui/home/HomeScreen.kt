@@ -97,6 +97,8 @@ fun HomeScreen(nav: NavHostController) {
         Quick(Icons.Default.School, R.string.nl_guides, com.smartdocs.editor.ui.nve.shell.NveHomeIds.GUIDES) { Brand.tiles.amber },
     )
     var moreQuick by remember { mutableStateOf(false) }
+    // the screen the app was closed on (a reader is covered by "continue reading" below)
+    var lastScreen by remember { mutableStateOf(com.smartdocs.editor.ui.LastScreen.get(ctx)?.takeIf { !it.pattern.startsWith("reader") }) }
     if (moreQuick) androidx.compose.material3.ModalBottomSheet(onDismissRequest = { moreQuick = false }) {
         Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 24.dp)) {
             quick.drop(5).forEach { qk ->
@@ -158,6 +160,23 @@ fun HomeScreen(nav: NavHostController) {
                 // ---- tool wizard (gaps6); in two-pane mode it lives in the detail pane ----
                 if (!fold.twoPane) item(key = "wizard") { com.smartdocs.editor.ui.gaps6.ToolWizardCard(onOpen = { wizard = true }) }
 
+                // ---- continue any screen the app was closed on (user request) ----
+                lastScreen?.let { ls ->
+                    item(key = "resume_screen") {
+                        Card(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
+                            Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.History, null, tint = MaterialTheme.colorScheme.primary)
+                                Spacer(Modifier.width(10.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(stringResource(R.string.resume_title), style = MaterialTheme.typography.titleSmall)
+                                    Text(lastScreenLabel(ls), style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                                }
+                                TextButton(onClick = { com.smartdocs.editor.ui.LastScreen.clear(ctx); lastScreen = null }) { Text(stringResource(R.string.cancel)) }
+                                Button(onClick = { lastScreen = null; runCatching { nav.navigate(ls.route) } }) { Text(stringResource(R.string.img_job_resume)) }
+                            }
+                        }
+                    }
+                }
                 // ---- continue reading ----
                 recents.firstOrNull()?.let { last ->
                     item(key = "continue") { ContinueCard(last) { openDoc(last) } }
@@ -359,3 +378,12 @@ private fun AddSheet(onDismiss: () -> Unit, onPick: (String) -> Unit) {
     }
 }
 
+
+
+/** "Pictures to PDF", "Convert", or a document's name, for the resume card. */
+@Composable
+private fun lastScreenLabel(e: com.smartdocs.editor.ui.LastScreen.Entry): String {
+    val doc = e.uri?.let { runCatching { android.net.Uri.parse(it).lastPathSegment?.substringAfterLast('/') }.getOrNull() }
+    val tool = e.id?.let { com.smartdocs.editor.ui.tools.toolDef(it) }?.let { stringResource(it.label) }
+    return listOfNotNull(tool, doc).joinToString(" · ").ifBlank { e.pattern.substringBefore('/') }
+}

@@ -198,11 +198,15 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
         }
     }
 
+    // one-tap "book → one small file" (user request): set by the preset button, saves as soon as the pages come back
+    var quickBook by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    var quickSaveTick by remember { mutableIntStateOf(0) }
     fun addPictures(files: List<File>, newGroup: Boolean, crops: List<FloatArray?> = emptyList()) {
         val pages = files.mapIndexed { i, f -> ScanPage(f, PageEdit(filter = kind.defaultFilter(), flatten = kind == ScanKind.BOOK, crop = crops.getOrNull(i))) }
         groups = if (newGroup || nextNewGroup || groups.isEmpty() || kind == ScanKind.BATCH) groups + listOf(pages) else groups.dropLast(1) + listOf(groups.last() + pages)
         nextNewGroup = false
         if (autoRotate && kind != ScanKind.BOOK && kind != ScanKind.ID_CARD && kind != ScanKind.BUSINESS_CARD) orient(pages)
+        if (quickBook && pages.isNotEmpty()) { quickBook = false; quickSaveTick++ }
     }
 
     val scanLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { res ->
@@ -221,7 +225,7 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
     }
     val unavailable = stringResource(R.string.t5_scan_unavailable)
     fun launchScanner() {
-        val limit = when (kind) { ScanKind.ID_CARD, ScanKind.BUSINESS_CARD -> 2; ScanKind.RECEIPT -> 5; else -> 0 }   // 0 = no page limit
+        val limit = when (kind) { ScanKind.ID_CARD, ScanKind.BUSINESS_CARD -> 2; else -> 0 }   // 0 = no page limit (a card has two sides)
         if (ownCamera && !useGoogleOnce) { cameraOpen = true; return }
         useGoogleOnce = false
         val act = ctx.activity() ?: run { scope.launch { snackbar.showSnackbar(unavailable) }; return }
@@ -503,6 +507,7 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
             } finally { engine?.close() }
         }
     }
+    LaunchedEffect(quickSaveTick) { if (quickSaveTick > 0) { kotlinx.coroutines.delay(300); save() } }
 
     ToolScaffold(stringResource(R.string.t5_scan_title), nav, snackbar = snackbar, actions = {
         if (groups.isNotEmpty()) IconButton(onClick = { askClear = true }, enabled = !job.running) { Icon(Icons.Default.DeleteSweep, stringResource(R.string.sc_delete_all_pages)) }
@@ -514,6 +519,22 @@ fun ScanStudioScreen(nav: NavHostController, @Suppress("UNUSED_PARAMETER") uri: 
             enabled = !job.running,
             icon = when { fmtJpg -> Icons.Default.Image; fmtWord -> Icons.Default.Description; else -> Icons.Default.PictureAsPdf }) { save() }
     })) {
+        // one tap: book pages → flattened (curve + edges), fingers removed, one PDF small enough for WhatsApp
+        if (groups.isEmpty()) ElevatedCard(onClick = {
+            changeKind(ScanKind.BOOK); removeFingers = true; prefs.edit().putBoolean("fingers", true).apply()
+            asImages = false; asWord = false; appendTo = null; perFile = 0
+            sizeLevel = 0; ctx.getSharedPreferences("scan_studio", 0).edit().putInt("size", 0).apply()
+            quickBook = true; launchScanner()
+        }, modifier = Modifier.fillMaxWidth()) {
+            Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.MenuBook, null, tint = MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(stringResource(R.string.sc_book_quick), style = MaterialTheme.typography.titleSmall)
+                    Text(stringResource(R.string.sc_book_quick_sub), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
         FieldLabel(stringResource(R.string.t5_scan_kind))
         ChoiceChips(ScanKind.entries, kind, { it.label() }) { nk -> changeKind(nk) }
         Text(stringResource(kindHint(kind)), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
