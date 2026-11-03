@@ -19,7 +19,7 @@ class SelThumbsTest {
     @Test fun offersEveryPageOperation() {
         val a = actions(SelThumbs.items(env(), 0, emptySet(), 5))
         for (x in listOf(SelAction.THUMB_OPEN, SelAction.THUMB_SELECT, SelAction.THUMB_ROTATE_LEFT, SelAction.THUMB_ROTATE_RIGHT, SelAction.THUMB_DUPLICATE,
-                SelAction.THUMB_DELETE, SelAction.THUMB_EXTRACT, SelAction.THUMB_INSERT_BLANK, SelAction.THUMB_INSERT_FILE, SelAction.THUMB_REPLACE, SelAction.THUMB_PRINT))
+                SelAction.THUMB_DELETE, SelAction.THUMB_EXTRACT, SelAction.THUMB_INSERT_BLANK, SelAction.THUMB_INSERT_FILE, SelAction.THUMB_REPLACE, SelAction.THUMB_PRINT, SelAction.THUMB_SAVE_IMAGE, SelAction.THUMB_SHARE_IMAGE, SelAction.THUMB_VIEW))
             assertTrue(x.name, x in a)
         assertFalse(SelAction.THUMB_DESELECT in a)
         // only thumbnail items in this context, none of the text / page-area ones

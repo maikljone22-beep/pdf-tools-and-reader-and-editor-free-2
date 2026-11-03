@@ -81,6 +81,8 @@ fun PageGrid(
     menu: @Composable (Int) -> Unit = {},
     /** Closes the long-press menu (the press turned into a drag). */
     onMenuDismiss: () -> Unit = {},
+    /** The ⋮ button opens this (one menu for tap, long press and ⋮); null = its own [pageActions] list. */
+    onMore: ((Int) -> Unit)? = null,
 ) {
     val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
     val grid = rememberLazyGridState()
@@ -140,7 +142,7 @@ fun PageGrid(
             val dragging = drag.fromPos == pos && drag.moved
             val target = drag.toPos == pos && drag.moved && drag.fromPos != pos
             PageCell(
-                state = state, page = page, dragging = dragging, dropTarget = target, actions = pageActions,
+                state = state, page = page, dragging = dragging, dropTarget = target, actions = pageActions, onMore = onMore,
                 extra = { if (menuPage == page) menu(page) },
                 modifier = Modifier
                     .zIndex(if (dragging) 1f else 0f)
@@ -155,6 +157,7 @@ fun PageGrid(
 
 @Composable
 private fun PageCell(state: OrganizeState, page: Int, dragging: Boolean, dropTarget: Boolean, modifier: Modifier, actions: List<Pair<Int, (Int) -> Unit>>? = null,
+                     onMore: ((Int) -> Unit)? = null,
                      extra: @Composable () -> Unit = {}) {
     val key = state.thumbKey(page)
     val bmp = state.thumbs[key]
@@ -196,7 +199,8 @@ private fun PageCell(state: OrganizeState, page: Int, dragging: Boolean, dropTar
                 modifier = Modifier.padding(top = 4.dp),
             )
             // audit 5 G-14: the page menu stays available in selection mode
-            if (actions != null) Box {
+            if (onMore != null) IconButton(onClick = { onMore(page) }, Modifier.size(28.dp)) { Icon(Icons.Default.MoreVert, stringResource(R.string.pc_page_menu, page + 1), Modifier.size(18.dp)) }
+            else if (actions != null) Box {
                 var open by remember { mutableStateOf(false) }
                 IconButton(onClick = { open = true }, Modifier.size(28.dp)) { Icon(Icons.Default.MoreVert, stringResource(R.string.pc_page_menu, page + 1), Modifier.size(18.dp)) }
                 DropdownMenu(open, { open = false }) {

@@ -149,6 +149,15 @@ fun OrganizeScreen(nav: NavHostController, uri: String?) {
     // fix/thumbs-panel: the thumbnail long-press menu (selection-menu registry, SelCtx.THUMB); a picked PDF is inserted
     // after the pages (false) or replaces them (true)
     var thumbMenu by remember { mutableStateOf<Int?>(null) }
+    var viewPage by remember { mutableStateOf<Int?>(null) }
+    var saveDevice by remember { mutableStateOf<File?>(null) }
+    val saveDeviceLauncher = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
+        val f = saveDevice; saveDevice = null
+        if (uri != null && f != null) scope.launch {
+            val ok = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { runCatching { ctx.contentResolver.openOutputStream(uri, "wt")!!.use { o -> f.inputStream().use { it.copyTo(o) } } }.isSuccess }
+            snack = ctx.getString(if (ok) R.string.tpn_saved_device else R.string.tpn_save_device_failed)
+        }
+    }
     var thumbPick by remember { mutableStateOf<Pair<Boolean, List<Int>>?>(null) }
     var thumbLocked by remember { mutableStateOf<Pair<File, Pair<Boolean, List<Int>>>?>(null) }
     fun useThumbFile(f: File, t: Pair<Boolean, List<Int>>, pw: String?) {
@@ -164,6 +173,14 @@ fun OrganizeScreen(nav: NavHostController, uri: String?) {
     fun runThumb(a: SelAction, pages: List<Int>, p: Int) {
         when (a) {
             SelAction.THUMB_OPEN -> openPage(p)
+            SelAction.THUMB_VIEW -> viewPage = p
+            SelAction.THUMB_SAVE_DEVICE -> requirePermission(com.smartdocs.editor.core.security.DocAction.COPY) {
+                saving = true
+                scope.launch {
+                    try { state.extractPages(pages)?.let { f -> saveDevice = f; saveDeviceLauncher.launch(f.name) } }
+                    catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { snack = state.message(e) } finally { saving = false }
+                }
+            }
             SelAction.THUMB_SELECT -> { state.selectMode = true; state.selected = state.selected + p }
             SelAction.THUMB_DESELECT -> state.toggle(p)
             SelAction.THUMB_ROTATE_LEFT -> state.rotatePages(pages.toSet(), -90, keepSelection = true)
@@ -321,15 +338,23 @@ fun OrganizeScreen(nav: NavHostController, uri: String?) {
                         ),
                         dragEnabled = state.filter == PageFilter.ALL && !state.busy,
                         // user report: one tap selected the page. Selecting starts with a long press (menu → Select) or the select button; a tap opens the page
-                        onTap = { p -> if (state.selectMode) state.toggle(p) else openPage(p) },
+                        onTap = { p -> if (state.selectMode) state.toggle(p) else if (!state.busy) thumbMenu = p },
                         // fix/thumbs-panel: long-press opens the thumbnail menu (Select is one of its items); long-press + drag still moves
                         onLongPress = { p -> if (!state.busy) thumbMenu = p },
                         menuPage = thumbMenu,
+                        onMore = { q -> if (!state.busy) thumbMenu = q },
                         onMenuDismiss = { thumbMenu = null },
                         menu = { p ->
                             com.smartdocs.editor.ui.selmenu.ThumbSelMenu(
                                 com.smartdocs.editor.ui.selmenu.organizeThumbEnv(state::allows, com.smartdocs.editor.LocalSettings.current.aiEnabled),
-                                p, state.selected, state.pageCount, onDismiss = { thumbMenu = null }, onItem = { a, pages -> runThumb(a, pages, p) })
+                                p, state.selected, state.pageCount, onDismiss = { thumbMenu = null },
+                                // user request: one menu — the ⋮ items the registry menu lacks come after it
+                                extra = listOf(
+                                    pageAct(R.string.pg_move_to) { q -> moveAsk = q },
+                                    pageAct(R.string.pc_page_redact) { q -> requirePermission(com.smartdocs.editor.core.security.DocAction.MODIFY) { redactAsk = q } },
+                                    pageAct(R.string.pc_page_ocr) { q -> requirePermission(com.smartdocs.editor.core.security.DocAction.MODIFY) { state.ocrPage(q) } },
+                                ),
+                                onItem = { a, pages -> runThumb(a, pages, p) })
                         },
                         onReorder = { from, to ->
                             val order = (0 until state.pageCount).toMutableList()
@@ -346,6 +371,7 @@ fun OrganizeScreen(nav: NavHostController, uri: String?) {
     if (state.busy && state.original != null) ProgressDialog(state.progress ?: stringResource(R.string.pg_applying))
     if (saving) ProgressDialog(stringResource(R.string.processing))
     result?.let { ResultSheet(it, nav, onDismiss = { result = null }) }
+    viewPage?.let { p -> state.work?.let { w -> PageViewDialog(w, state.password, p, state.pageCount, onDismiss = { viewPage = null }) { viewPage = it } } }
 
     insertDialog?.let { kind -> InsertDialog(state, kind, onDismiss = { insertDialog = null }, onLockedFile = { f, at -> lockedInsert = f to at }) }
     // share6 (fid): inserting pages from a password-protected PDF
