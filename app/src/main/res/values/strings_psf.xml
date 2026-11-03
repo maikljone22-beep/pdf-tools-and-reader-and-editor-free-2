@@ -67,7 +67,7 @@
     <string name="ps_split_bookmarks_found">سيُنشأ ملف لكل مرجعية: %1$d</string>
 
     <!-- Certificate protection -->
-    <string name="ps_cert_protect_title">الحماية بالشهادة</string>
+    <string name="ps_cert_protect_title">حماية بشهادة رقمية</string>
     <string name="ps_cert_tab_encrypt">تشفير</string>
     <string name="ps_cert_tab_open">فتح ملف محمي</string>
     <string name="ps_cert_current_password">كلمة مرور الملف الحالية (إن وُجدت)</string>

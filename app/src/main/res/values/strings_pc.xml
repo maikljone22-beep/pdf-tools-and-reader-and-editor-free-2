@@ -77,7 +77,7 @@
     <string name="pc_page_rotate">تدوير الصفحة</string>
     <string name="pc_page_delete">حذف الصفحة</string>
     <string name="pc_page_print">طباعة الصفحة</string>
-    <string name="pc_page_redact">تنقيح</string>
+    <string name="pc_page_redact">إخفاء معلومات</string>
     <string name="pc_page_ocr">فتح للتعرف الضوئي</string>
     <string name="pc_thumbs_smaller">صور مصغرة أصغر</string>
     <string name="pc_thumbs_larger">صور مصغرة أكبر</string>

@@ -81,11 +81,11 @@
     <string name="scanning_device">جارٍ البحث في الجهاز…</string>
 
     <!-- Tools -->
-    <string name="tool_scan">مسح ضوئي</string>
-    <string name="tool_ocr">التعرف على النص (OCR)</string>
+    <string name="tool_scan">مسح بالكاميرا</string>
+    <string name="tool_ocr">استخراج النص من الصور (OCR)</string>
     <string name="tool_merge">دمج ملفات</string>
     <string name="tool_split">تقسيم</string>
-    <string name="tool_compress">تقليل الحجم</string>
+    <string name="tool_compress">تصغير حجم الملف</string>
     <string name="tool_organize">تنظيم الصفحات</string>
     <string name="tool_protect">حماية بكلمة مرور</string>
     <string name="tool_unlock">إزالة الحماية</string>
@@ -96,14 +96,14 @@
     <string name="tool_pdf_to_images">PDF إلى صور</string>
     <string name="tool_pdf_to_text">PDF إلى نص</string>
     <string name="tool_compare">مقارنة ملفين</string>
-    <string name="tool_redact">تنقيح</string>
-    <string name="tool_flatten">تسطيح</string>
+    <string name="tool_redact">إخفاء معلومات حساسة</string>
+    <string name="tool_flatten">تثبيت التعليقات والنماذج في الصفحة</string>
     <string name="tool_page_numbers">ترقيم الصفحات</string>
     <string name="tool_ai">المساعد الذكي</string>
     <string name="tool_read_aloud">قراءة بصوت عالٍ</string>
     <string name="tool_print">طباعة</string>
     <string name="tool_forms">النماذج</string>
-    <string name="tool_blank">PDF فارغ</string>
+    <string name="tool_blank">ملف PDF جديد فارغ</string>
     <string name="tool_extract_pages">استخراج صفحات</string>
     <string name="tool_rotate">تدوير</string>
     <string name="tool_doc_info">خصائص المستند</string>
@@ -194,7 +194,7 @@
     <string name="sig_create">إنشاء توقيع</string>
     <string name="sig_initials">أحرف أولى</string>
     <string name="sig_tap_to_place">انقر على الصفحة لوضع التوقيع</string>
-    <string name="sig_digital">توقيع رقمي بشهادة</string>
+    <string name="sig_digital">توقيع رقمي معتمد</string>
     <string name="sig_verify">التحقق من التوقيعات</string>
     <string name="sig_valid">التوقيع صالح</string>
     <string name="sig_invalid">التوقيع غير صالح</string>
@@ -414,4 +414,8 @@
     <string name="resume_title">تابع من حيث توقفت</string>
     <string name="sc_book_quick">كتاب إلى ملف واحد للواتساب</string>
     <string name="sc_book_quick_sub">صوّر الصفحات، والباقي تلقائي: تسوية الانحناء وقص الحواف وإزالة الأصابع وترتيب الصفحات وحجم صغير مناسب للواتساب.</string>
+    <string name="wm_name_quick">اسمي على كل الصفحات (ضغطة واحدة)</string>
+    <string name="wm_name_quick_sub">علامة مائية باسمك بشكل مائل وخفيف على كل صفحة</string>
+    <string name="wm_name_title">اكتب اسمك</string>
+    <string name="wm_name_label">مثال: إعداد الأستاذ/ …</string>
 </resources>

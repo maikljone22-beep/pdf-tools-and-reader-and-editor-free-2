@@ -7,7 +7,7 @@
     <string name="nbt_ask_at_run">السؤال عند التشغيل</string>
     <string name="nbt_ask_at_run_sub">تُعرض خيارات هذه الخطوة قبل بدء الوصفة</string>
     <string name="nbt_auto_rotate">تدوير تلقائي حسب الورقة</string>
-    <string name="nbt_batch_print">طباعة دفعة</string>
+    <string name="nbt_batch_print">طباعة عدة ملفات</string>
     <string name="nbt_batch_print_note">يفتح نظام أندرويد نافذة طباعة لكل مهمة. الملفات المحمية بكلمة مرور تُتخطى.</string>
     <string name="nbt_conflict_ask">اسألني قبل التشغيل</string>
     <string name="nbt_conflict_found">%1$d من الملفات الناتجة موجودة مسبقًا</string>

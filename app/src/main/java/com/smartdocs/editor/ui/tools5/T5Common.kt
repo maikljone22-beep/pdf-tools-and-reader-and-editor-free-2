@@ -177,8 +177,8 @@ fun SwitchRow(title: String, checked: Boolean, subtitle: String? = null, enabled
 @Composable
 fun FileListEditor(files: List<File>, onChange: (List<File>) -> Unit, titles: Map<File, String> = emptyMap()) {
     val moveUp = stringResource(R.string.t5_move_up); val moveDown = stringResource(R.string.t5_move_down); val remove = stringResource(R.string.t5_remove)
-    Column {
-        files.forEachIndexed { i, f ->
+    // smoothness: long lists (hundreds of files) are lazy and bounded, so only the visible rows are composed
+    @Composable fun row(i: Int, f: File) =
             ListItem(
                 leadingContent = { Icon(if (f.extension.equals("pdf", true)) Icons.Default.PictureAsPdf else Icons.Default.InsertDriveFile, null, tint = MaterialTheme.colorScheme.primary) },
                 headlineContent = { Text(titles[f] ?: f.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
@@ -191,7 +191,9 @@ fun FileListEditor(files: List<File>, onChange: (List<File>) -> Unit, titles: Ma
                     }
                 },
             )
-        }
+    if (files.size <= 20) Column { files.forEachIndexed { i, f -> row(i, f) } }
+    else androidx.compose.foundation.lazy.LazyColumn(Modifier.fillMaxWidth().heightIn(max = 520.dp)) {
+        items(files.size, key = { k -> files[k].absolutePath + "#" + k }) { i -> row(i, files[i]) }
     }
 }
 
