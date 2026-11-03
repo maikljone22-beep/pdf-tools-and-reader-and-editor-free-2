@@ -166,12 +166,16 @@ fun ImageViewer(nav: NavHostController, v: ViewFile) {
     val scope = rememberCoroutineScope()
     val start = v.file!!
     // the folder's pictures for swiping / slideshow (not for files inside archives or the cache)
-    val siblings = remember(start) {
-        if (OpenAll.isTemporary(ctx, start)) listOf(start)
-        else (start.parentFile?.listFiles()?.filter { it.isFile && FileSniffer.byExtension(it.name).isImage }?.sortedWith { a, b -> com.smartdocs.editor.core.openall.NaturalOrder.compare(a.name, b.name) } ?: listOf(start))
-            .ifEmpty { listOf(start) }
+    // smoothness: the folder is listed off the main thread (a camera folder can hold thousands of pictures)
+    val siblings by produceState(listOf(start), start) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            if (OpenAll.isTemporary(ctx, start)) listOf(start)
+            else (start.parentFile?.listFiles()?.filter { it.isFile && FileSniffer.byExtension(it.name).isImage }?.sortedWith { a, b -> com.smartdocs.editor.core.openall.NaturalOrder.compare(a.name, b.name) } ?: listOf(start))
+                .ifEmpty { listOf(start) }
+        }
     }
-    var index by remember { mutableIntStateOf(siblings.indexOf(start).coerceAtLeast(0)) }
+    var index by remember { mutableIntStateOf(0) }
+    LaunchedEffect(siblings) { if (siblings.size > 1 && siblings.getOrNull(index) != start && index == 0) index = siblings.indexOf(start).coerceAtLeast(0) }
     val file = siblings.getOrElse(index) { start }
     val type = remember(file) { if (file == start) v.type else FileSniffer.of(file) }
     var rotation by remember(file) { mutableFloatStateOf(0f) }

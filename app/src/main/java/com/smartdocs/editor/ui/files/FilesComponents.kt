@@ -249,11 +249,14 @@ private fun InfoLine(label: String, value: String) {
 /** Destination picker: every folder under the documents root (excluding the moved folders themselves). */
 @Composable
 internal fun MoveDialog(root: File, moving: List<File>, onDismiss: () -> Unit, title: String? = null, onMove: (File) -> Unit) {
-    val folders = remember(root, moving) {
-        val excluded = moving.filter { it.isDirectory }.map { it.absolutePath }
-        root.walkTopDown().maxDepth(6).filter { it.isDirectory }
-            .filter { d -> excluded.none { d.absolutePath == it || d.absolutePath.startsWith("$it/") } }
-            .toList()
+    // smoothness: the folder tree is walked off the main thread (it froze the dialog on a big library)
+    val folders by produceState(emptyList<File>(), root, moving) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val excluded = moving.filter { it.isDirectory }.map { it.absolutePath }
+            root.walkTopDown().maxDepth(6).filter { it.isDirectory }
+                .filter { d -> excluded.none { d.absolutePath == it || d.absolutePath.startsWith("$it/") } }
+                .toList()
+        }
     }
     AlertDialog(onDismissRequest = onDismiss, icon = { Icon(if (title != null) Icons.Default.FileCopy else Icons.Default.DriveFileMove, null) }, title = { Text(title ?: stringResource(R.string.move_to)) }, text = {
         LazyColumn(Modifier.heightIn(max = 360.dp)) {
