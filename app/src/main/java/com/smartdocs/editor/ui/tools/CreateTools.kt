@@ -91,6 +91,11 @@ fun ImagesToPdfScreen(nav: NavHostController) {
     var name by remember { mutableStateOf("") }
     var sortKey by remember { mutableStateOf<com.smartdocs.editor.core.tools5.FileSort?>(null) }
     var sortDesc by remember { mutableStateOf(false) }
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val job = com.smartdocs.editor.core.tools5.ImagesPdfJob
+    var pending by remember { mutableStateOf(job.pending(ctx)) }
+    LaunchedEffect(job.result) { job.result?.let { runner.result = it; job.result = null } }
+    LaunchedEffect(job.error) { job.error?.let { runner.error = it; job.error = null; pending = job.pending(ctx) } }
     val fromFiles = remember { mutableStateOf<(() -> Unit)?>(null) }
     val pick = rememberImagePicker(multiple = true, unlimited = fromFiles) { images = images + it }
     val processing = stringResource(R.string.processing)
@@ -101,6 +106,26 @@ fun ImagesToPdfScreen(nav: NavHostController) {
         IconButton(onClick = { fromFiles.value?.invoke() ?: pick() }) { Icon(Icons.Default.AddPhotoAlternate, stringResource(R.string.tl_add_images)) }
         IconButton(onClick = pick) { Icon(Icons.Default.PhotoLibrary, stringResource(R.string.tl_add_from_gallery, imagePickerMax())) }
     }) {
+        // background job: progress, or an interrupted one to resume
+        if (job.running) Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(stringResource(R.string.img_job_running, job.progress.first, job.progress.second), style = MaterialTheme.typography.titleSmall)
+                LinearProgressIndicator(progress = { if (job.progress.second > 0) job.progress.first.toFloat() / job.progress.second else 0f }, modifier = Modifier.fillMaxWidth())
+                Text(stringResource(R.string.img_job_background), style = MaterialTheme.typography.bodySmall)
+                TextButton(onClick = { job.cancel() }) { Text(stringResource(R.string.cancel)) }
+            }
+        } else pending?.let { (done, total) ->
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(stringResource(R.string.img_job_pending, done, total), style = MaterialTheme.typography.titleSmall)
+                    Row {
+                        Button(onClick = { job.resume(ctx); pending = null }) { Text(stringResource(R.string.img_job_resume)) }
+                        Spacer(Modifier.width(8.dp))
+                        TextButton(onClick = { job.discard(ctx); pending = null }) { Text(stringResource(R.string.pg_discard)) }
+                    }
+                }
+            }
+        }
         if (images.isEmpty()) {
             Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
                 EmptyState(Icons.Default.Collections, stringResource(R.string.tl_no_images)) {
@@ -149,11 +174,8 @@ fun ImagesToPdfScreen(nav: NavHostController) {
         PrimaryButton(stringResource(R.string.tl_create), enabled = images.isNotEmpty(), icon = Icons.Default.PictureAsPdf) {
             val list = images.toList(); val fit = fitA4; val q = quality.toInt()
             val base = name.ifBlank { "images_${System.currentTimeMillis() / 1000}" }
-            runner.run(processing) {
-                val out = app.documents.uniqueFile(app.documents.docsDir, base)
-                PdfOps.imagesToPdf(list, out, fit, q)
-                out
-            }
+            // runs in the background (notification) and resumes after the app was stopped (user request)
+            com.smartdocs.editor.core.tools5.ImagesPdfJob.start(ctx, list, fit, q, base); images = emptyList()
         }
     }
 }

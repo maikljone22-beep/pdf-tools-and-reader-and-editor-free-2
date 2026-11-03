@@ -407,4 +407,8 @@
     <string name="home_more">المزيد</string>
     <string name="home_all_tools">كل الأدوات</string>
     <string name="rd_memory_mode">ملف كبير: فُعّل وضع توفير الذاكرة لفتح أسرع وأكثر ثباتاً.</string>
+    <string name="img_job_running">جارٍ التحويل… %1$d من %2$d صورة</string>
+    <string name="img_job_background">يمكنك الخروج من التطبيق: يستمر التحويل في الخلفية وتصلك رسالة عند الانتهاء.</string>
+    <string name="img_job_pending">توقف تحويل سابق عند %1$d من %2$d صورة.</string>
+    <string name="img_job_resume">استئناف</string>
 </resources>
