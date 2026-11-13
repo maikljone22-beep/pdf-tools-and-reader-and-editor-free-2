@@ -117,6 +117,9 @@ object TextDecode {
         return detect(head, truncated = f.length() > head.size)
     }
 
-    /** Whole file decoded (for small files; callers cap the size). */
-    fun readFile(f: File): Decoded = decode(f.readBytes(), truncated = false)
+    /** The file decoded; a file over [com.smartdocs.editor.core.util.FileLimits.VIEW_TEXT] is read only up to that size (these callers only display it). */
+    fun readFile(f: File): Decoded {
+        val max = com.smartdocs.editor.core.util.FileLimits.VIEW_TEXT
+        return if (f.length() <= max) decode(f.readBytes(), truncated = false) else decode(FileSniffer.readHead(f, max.toInt()), truncated = true)
+    }
 }

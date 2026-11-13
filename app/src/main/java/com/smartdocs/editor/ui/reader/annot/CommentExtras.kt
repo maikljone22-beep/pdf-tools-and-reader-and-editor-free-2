@@ -373,14 +373,16 @@ class CommentExtras(private val h: Annot2Host) {
                 kind = when (first.kind) { AnnotKind.NOTE -> "Text"; AnnotKind.FILE_ATTACH -> "FileAttachment"; else -> first.kind.name }
             } else t.stored.firstOrNull()?.let { e ->
                 author = e.author; contents = e.contents; locked = e.locked; subject = e.subject; kind = e.subtype
-                s.file?.let { f -> withContext(Dispatchers.IO) { readMeta(f, s.password, e.page, e.index) } }?.let { (n, ic) -> name = n; icon = ic }
+                s.file?.let { f -> com.smartdocs.editor.core.pdf.ParseGate.run { withContext(Dispatchers.IO) { readMeta(f, s.password, e.page, e.index) } } }?.let { (n, ic) -> name = n; icon = ic }
             }
             props = PropsReq(t, author, subject, name, contents, locked, icon, kind, single)
         }
     }
 
+    // loadRaw spills big streams to temp files (a plain PDDocument.load kept the whole file on the heap), and the
+    // caller takes the shared parse gate so this never runs next to another whole-file parse
     private fun readMeta(f: File, pw: String?, page: Int, index: Int): Pair<String, String>? = runCatching {
-        val d = if (pw.isNullOrEmpty()) com.tom_roush.pdfbox.pdmodel.PDDocument.load(f) else com.tom_roush.pdfbox.pdmodel.PDDocument.load(f, pw)
+        val d = com.smartdocs.editor.core.pdf.PdfOps.loadRaw(f, pw)
         d.use { doc ->
             val cos = doc.getPage(page).annotations[index].cosObject
             AnnotStyle.nameOf(cos) to (cos.getNameAsString(com.tom_roush.pdfbox.cos.COSName.getPDFName("Name")) ?: "")

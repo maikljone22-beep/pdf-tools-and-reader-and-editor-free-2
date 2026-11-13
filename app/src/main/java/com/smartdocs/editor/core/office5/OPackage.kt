@@ -171,7 +171,11 @@ class OPackage private constructor(private var entries: LinkedHashMap<String, By
         const val REL_IMAGE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image"
 
         /** Streams the file: reading it whole first doubled the peak (file bytes + every part) and crashed on large documents. */
-        fun open(file: File): OPackage = file.inputStream().buffered(64 * 1024).use { read(it) }
+        fun open(file: File): OPackage {
+            // parts are held decompressed (images included), so a compressed file over about an eighth of the heap cannot be edited
+            com.smartdocs.editor.core.util.FileLimits.require(file, (Runtime.getRuntime().maxMemory() / 8).coerceAtLeast(16L shl 20))
+            return file.inputStream().buffered(64 * 1024).use { read(it) }
+        }
 
         fun read(bytes: ByteArray): OPackage = read(ByteArrayInputStream(bytes))
 

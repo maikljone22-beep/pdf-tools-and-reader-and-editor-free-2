@@ -6,6 +6,7 @@ import java.io.File
 object CsvIO {
 
     fun load(file: File, rtl: Boolean = true): Workbook5 {
+        com.smartdocs.editor.core.util.FileLimits.require(file, com.smartdocs.editor.core.util.FileLimits.CSV_EDIT)   // every cell becomes an object
         val b = file.readBytes()
         // open-all: shared encoding detection (BOMs, UTF-16 without BOM, UTF-8, Windows-1256 / 1252) and delimiter sniffing
         val (cs, bomLen) = com.smartdocs.editor.core.openall.TextDecode.detect(b)

@@ -26,6 +26,7 @@ object OoxmlReader {
      * falls back to Windows-1256 (common for Arabic files from older Windows tools).
      */
     fun readText(file: File): TextContent {
+        com.smartdocs.editor.core.util.FileLimits.require(file, com.smartdocs.editor.core.util.FileLimits.TEXT_EDIT)   // a huge log would run the app out of memory
         val b = file.readBytes()
         fun dec(cs: Charset, off: Int) = String(b, off, b.size - off, cs)
         return when {

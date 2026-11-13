@@ -65,6 +65,10 @@ fun OfficeScreen(nav: NavHostController, uri: String) {
                 val host: OfficeHost = openHost(kind, f, f) ?: return@withContext Loaded.Failed(f, false, null)
                 runCatching { app.documents.touchRecent(f) }
                 Loaded.Ready(host, OfficeRecovery.pending(ctx, f)?.let { c -> kind to c })
+            } catch (e: com.smartdocs.editor.core.util.FileTooLargeException) {
+                Loaded.Failed(f, false, ctx.getString(R.string.o5_too_large, e.size / (1024 * 1024), e.max / (1024 * 1024)))
+            } catch (e: OutOfMemoryError) {
+                Loaded.Failed(f, false, ctx.getString(R.string.o5_no_memory))
             } catch (e: Throwable) {
                 Loaded.Failed(f, false, e.message ?: e.toString())
             }

@@ -162,10 +162,13 @@ class PdfSession private constructor(
             mutex.withLock {
                 val w = ((clip.width()) * fullWidth).toInt().coerceAtLeast(1)
                 val h = ((clip.height()) * fullHeight).toInt().coerceAtLeast(1)
-                val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
                 val startX = -(clip.left * fullWidth).toInt()
                 val startY = -(clip.top * fullHeight).toInt()
-                page(index).renderPageBitmap(bmp, startX, startY, fullWidth, fullHeight, annotations, false, Color.WHITE, Color.WHITE)
+                fun tile(): Bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888).also {
+                    page(index).renderPageBitmap(it, startX, startY, fullWidth, fullHeight, annotations, false, Color.WHITE, Color.WHITE)
+                }
+                // out of memory: the rendered-page cache is the biggest thing that can be given back; try once more without it
+                val bmp = try { tile() } catch (e: OutOfMemoryError) { bitmapCache.evictAll(); System.gc(); tile() }
                 if (nightMode) invert(bmp) else bmp
             }
         }

@@ -208,6 +208,8 @@
     <string name="o5_tool_new_sheet">مصنف Excel جديد</string>
     <string name="o5_tool_new_slides">عرض تقديمي جديد</string>
     <string name="o5_tool_create">إنشاء ملف جديد</string>
+    <string name="o5_too_large">الملف كبير جداً للتحرير داخل التطبيق (%1$d ميغابايت، الحد %2$d). افتحه بتطبيق آخر أو شاركه.</string>
+    <string name="o5_no_memory">لا توجد ذاكرة كافية لفتح هذا الملف. أغلق التطبيقات الأخرى وحاول مرة أخرى، أو افتحه بتطبيق آخر.</string>
     <string name="o5_tool_new_txt">ملف نصي جديد (TXT)</string>
     <string name="o5_tool_new_md">ملف Markdown جديد (MD)</string>
     <string name="o5_tool_new_html">صفحة HTML جديدة</string>

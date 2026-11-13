@@ -314,7 +314,7 @@ class ReaderState(
                 // memory-saving mode for big documents (user request: > 200 MB) and small heaps; set before the session opens
                 val low = withContext(Dispatchers.IO) { com.smartdocs.editor.core.util.MemoryMode.lowFor(f) }
                 com.smartdocs.editor.core.util.MemoryMode.low = low
-                if (low && f.length() > com.smartdocs.editor.core.util.MemoryMode.BIG_FILE) error = str(R.string.rd_memory_mode)
+                if (low && f.length() > com.smartdocs.editor.core.util.MemoryMode.LARGE_FILE) error = str(R.string.rd_memory_mode)
                 // an annotation edit the app died in the middle of: the file gets back the annotations it took out
                 if (withContext(Dispatchers.IO) { AnnotEditor.recoverInterrupted(f) }) error = str(R.string.rd_annot_recovered)
                 // audit RD-03: the connected-document marker scan can read the whole file, so it no longer runs before
@@ -740,7 +740,7 @@ class ReaderState(
             val willWrite = forms5.hasPending || annots.isNotEmpty() || edit.hasBackup
             // review: on a very big file the undo copy doubled every save (400 MB copied each time, storage filling up):
             // above the big-file size the save is not an undo step (the pending steps still are, until saved)
-            val before = if (willWrite && f.length() < com.smartdocs.editor.core.util.MemoryMode.BIG_FILE) runCatching { history.copyIn(edit.backupFile?.takeIf { it.exists() } ?: f) }.getOrNull() else null
+            val before = if (willWrite && f.length() < com.smartdocs.editor.core.util.MemoryMode.LARGE_FILE) runCatching { history.copyIn(edit.backupFile?.takeIf { it.exists() } ?: f) }.getOrNull() else null
             var wrote = false
             try {
                 // MODULE_forms5: pending form values are written first (FormOps.fillFields -> swapFile)
