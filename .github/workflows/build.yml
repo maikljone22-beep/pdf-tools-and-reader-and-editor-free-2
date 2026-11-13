@@ -98,7 +98,7 @@ jobs:
           script: |
             adb logcat -G 16M
             adb logcat -c
-            ./gradlew :app:connectedDebugAndroidTest -PnoAbiSplits --no-daemon; code=$?; adb logcat -d -s TortureReport:I ParseGate:I > torture-report.txt; adb logcat -d -b crash > torture-crashes.txt; exit $code
+            ./gradlew :app:connectedDebugAndroidTest -PnoAbiSplits --no-daemon; code=$?; adb logcat -d -s TortureReport:I ParseGate:I > torture-report.txt; adb logcat -d -b crash > torture-crashes.txt; adb logcat -d > torture-logcat.txt; exit $code
       - name: Report
         if: always()
         run: |
@@ -119,6 +119,8 @@ jobs:
           path: |
             torture-report.txt
             torture-crashes.txt
+            torture-logcat.txt
+            app/build/outputs/connected_android_test_additional_output/
             app/build/reports/androidTests/
             app/build/outputs/androidTest-results/
           if-no-files-found: ignore

@@ -8,9 +8,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
-import java.awt.image.BufferedImage
-import java.io.ByteArrayOutputStream
-import javax.imageio.ImageIO
 
 /**
  * The torture PDFs are written by hand ([TorturePdf]); if they were malformed, an emulator test that "did not open"
@@ -33,7 +30,8 @@ class TorturePdfTest {
     }
 
     @Test fun scanReachesItsSizeAndEveryPageHoldsItsOwnImage() {
-        val jpeg = ByteArrayOutputStream().also { ImageIO.write(BufferedImage(64, 90, BufferedImage.TYPE_INT_RGB), "jpg", it) }.toByteArray()
+        // any bytes stand in for the picture: this test checks the PDF's structure, the emulator test checks it renders
+        val jpeg = ByteArray(5000) { (it * 31).toByte() }
         val f = tmp.newFile("scan.pdf")
         val target = 200_000L
         val pages = TorturePdf.scan(f, jpeg, 64, 90, target)
