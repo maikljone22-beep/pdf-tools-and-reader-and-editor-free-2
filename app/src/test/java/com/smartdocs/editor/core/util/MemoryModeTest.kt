@@ -8,6 +8,7 @@ class MemoryModeTest {
     @Test fun bigFilesAndSmallHeapsSaveMemory() {
         val mb = 1024L * 1024
         assertFalse(MemoryMode.lowFor(50 * mb, 512 * mb))
+        assertTrue(MemoryMode.lowFor(100 * mb, 512 * mb))     // a big scan: PdfBox parses it into the Java heap
         assertTrue(MemoryMode.lowFor(400 * mb, 512 * mb))     // the 400 MB book
         assertTrue(MemoryMode.lowFor(5 * mb, 128 * mb))       // weak phone
     }

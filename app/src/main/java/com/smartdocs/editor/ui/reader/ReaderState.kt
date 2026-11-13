@@ -563,7 +563,9 @@ class ReaderState(
      * with PdfBox; run together on a 400 MB file they exhausted the heap and the next allocation anywhere crashed the
      * app. One at a time keeps the peak at one parse.
      */
-    private val openParse = kotlinx.coroutines.sync.Mutex()
+    private val openParse = object {
+        suspend fun <T> withLock(block: suspend () -> T): T = com.smartdocs.editor.core.pdf.ParseGate.run(block)
+    }
 
     // ================= annotations / undo =================
 

@@ -421,5 +421,6 @@ class PptDoc private constructor(val pkg: OPackage) {
 
         fun open(file: File): PptDoc = PptDoc(OPackage.open(file))
         fun of(pkg: OPackage): PptDoc = PptDoc(pkg)
+        fun blank(rtl: Boolean = true): PptDoc = PptDoc(PptParts.blankPptx(rtl))
     }
 }

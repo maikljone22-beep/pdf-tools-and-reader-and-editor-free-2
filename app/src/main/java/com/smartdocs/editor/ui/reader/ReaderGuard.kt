@@ -77,22 +77,22 @@ class ReaderGuard(private val s: ReaderState) {
         protectedView = ProtectedView.applies(TrustPrefs.pvMode(ctx), o, priv, TrustPrefs.editingEnabled(ctx, f.absolutePath))
         jsLevel = TrustPrefs.jsLevel(ctx)
         publish()
-        if (withContext(Dispatchers.IO) { SecurityInfoReader.mentionsEncrypt(f) }) info = withContext(Dispatchers.IO) {
+        if (withContext(Dispatchers.IO) { SecurityInfoReader.mentionsEncrypt(f) }) info = com.smartdocs.editor.core.pdf.ParseGate.run { withContext(Dispatchers.IO) {
             runCatching { PdfOps.loadRaw(f, password).use { SecurityInfoReader.of(it) } }.getOrNull()
-        } else info = SecurityInfo.NONE
+        } } else info = SecurityInfo.NONE
         s.scope.launch { scan(f, password) }
         s.scope.launch { refreshSigned(f, password) }
     }
 
     /** Tab audit D8: (re)reads the certification and FieldMDP locks of [f] (on open and after the file was replaced). */
     suspend fun refreshSigned(f: File, password: String?) {
-        signedInfo = withContext(Dispatchers.IO) { runCatching { com.smartdocs.editor.core.pdf.SignedGuard.inspect(f, password) }.getOrNull() }
+        signedInfo = com.smartdocs.editor.core.pdf.ParseGate.run { withContext(Dispatchers.IO) { runCatching { com.smartdocs.editor.core.pdf.SignedGuard.inspect(f, password) }.getOrNull() } }
     }
 
     private suspend fun scan(f: File, password: String?) {
         try {
             val ctx = s.context
-            val found = withContext(Dispatchers.IO) { runCatching { PdfOps.loadRaw(f, password).use { ActionInspector.scan(it) } }.getOrNull() } ?: ActionFindings.EMPTY
+            val found = com.smartdocs.editor.core.pdf.ParseGate.run { withContext(Dispatchers.IO) { runCatching { PdfOps.loadRaw(f, password).use { ActionInspector.scan(it) } }.getOrNull() } } ?: ActionFindings.EMPTY
             findings = found
             if (found.total > 0) {
                 val h = withContext(Dispatchers.IO) { runCatching { TrustPrefs.hashOf(f) }.getOrNull() }

@@ -170,11 +170,14 @@ class OPackage private constructor(private var entries: LinkedHashMap<String, By
         const val R_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
         const val REL_IMAGE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image"
 
-        fun open(file: File): OPackage = read(file.readBytes())
+        /** Streams the file: reading it whole first doubled the peak (file bytes + every part) and crashed on large documents. */
+        fun open(file: File): OPackage = file.inputStream().buffered(64 * 1024).use { read(it) }
 
-        fun read(bytes: ByteArray): OPackage {
+        fun read(bytes: ByteArray): OPackage = read(ByteArrayInputStream(bytes))
+
+        private fun read(input: java.io.InputStream): OPackage {
             val m = LinkedHashMap<String, ByteArray>()
-            ZipInputStream(ByteArrayInputStream(bytes)).use { zin ->
+            ZipInputStream(input).use { zin ->
                 while (true) {
                     val e = zin.nextEntry ?: break
                     if (!e.isDirectory && !m.containsKey(e.name)) m[e.name] = zin.readBytes()

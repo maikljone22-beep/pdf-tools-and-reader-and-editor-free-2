@@ -63,6 +63,8 @@ class PdfSession private constructor(
     @Volatile private var closed = false
     val isClosed: Boolean get() = closed
 
+    init { synchronized(live) { live.add(this) } }
+
     val pageCount: Int = doc.getPageCount()
 
     /** Page size in PDF points (1/72 inch). */
@@ -118,8 +120,11 @@ class PdfSession private constructor(
             bitmapCache.get(key)?.let { return@withContext it }
             val bmp = mutex.withLock {
                 bitmapCache.get(key)?.let { return@withContext it }
-                Bitmap.createBitmap(width.coerceAtLeast(1), height.coerceAtLeast(1), Bitmap.Config.ARGB_8888).also {
-                    page(index).renderPageBitmap(it, 0, 0, width, height, annotations, false, Color.WHITE, Color.WHITE)
+                // out of memory: free the cache and draw this page at half size (the view scales it), not kill the app
+                try { draw(index, width, height, annotations) }
+                catch (e: OutOfMemoryError) {
+                    bitmapCache.evictAll(); System.gc()
+                    draw(index, (width / 2).coerceAtLeast(1), (height / 2).coerceAtLeast(1), annotations)
                 }
             }
             // red team R10: night mode inverts outside the document lock (other pages render meanwhile), in place
@@ -127,6 +132,15 @@ class PdfSession private constructor(
             bitmapCache.put(key, out)
             out
         }
+
+    /** Must be called with [mutex] held. */
+    private fun draw(index: Int, width: Int, height: Int, annotations: Boolean): Bitmap =
+        Bitmap.createBitmap(width.coerceAtLeast(1), height.coerceAtLeast(1), Bitmap.Config.ARGB_8888).also {
+            page(index).renderPageBitmap(it, 0, 0, it.width, it.height, annotations, false, Color.WHITE, Color.WHITE)
+        }
+
+    /** The system is short of memory (see [SmartDocsApp.onTrimMemory]): drop the rendered pages; they are drawn again when needed. */
+    fun trimMemory() = bitmapCache.evictAll()
 
     /**
      * Render a page into a new bitmap the caller owns (not put in the shared cache, so the caller may recycle it):
@@ -322,6 +336,9 @@ class PdfSession private constructor(
 
     companion object {
         private const val MAX_OPEN_PAGES = 12
+        /** Open sessions (weakly held), so a low-memory signal can reach their caches. */
+        private val live: MutableSet<PdfSession> = java.util.Collections.newSetFromMap(java.util.WeakHashMap())
+        fun trimAll() { synchronized(live) { live.toList() }.forEach { runCatching { it.trimMemory() } } }
         @Volatile private var coreInstance: PdfiumCore? = null
         fun core(context: Context): PdfiumCore = coreInstance ?: synchronized(this) {
             coreInstance ?: PdfiumCore(context.applicationContext).also { coreInstance = it }

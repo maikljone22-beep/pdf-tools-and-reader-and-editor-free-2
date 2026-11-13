@@ -56,6 +56,8 @@ object OfficeRoutes {
     fun kindOf(f: File): OfficeDocKind {
         val byName = kindOfName(f.name)
         if (byName != OfficeDocKind.NONE && byName != OfficeDocKind.LEGACY) return byName
+        // opened by the Office screen itself (a file made with "create new"): HTML, JSON, XML… edit as text
+        if (f.extension.lowercase() in CREATABLE_TEXT) return OfficeDocKind.TEXT
         return when (detectOfficeKind(f)) {
             OfficeKind.DOCX -> OfficeDocKind.WORD; OfficeKind.XLSX -> OfficeDocKind.SHEET; OfficeKind.PPTX -> OfficeDocKind.SLIDES
             OfficeKind.LEGACY_DOC, OfficeKind.LEGACY_XLS, OfficeKind.LEGACY_PPT -> OfficeDocKind.LEGACY
@@ -86,6 +88,7 @@ object OfficeRoutes {
         "ppsm" -> "application/vnd.ms-powerpoint.slideshow.macroEnabled.12"; "potx" -> "application/vnd.openxmlformats-officedocument.presentationml.template"
         "potm" -> "application/vnd.ms-powerpoint.template.macroEnabled.12"
         "csv" -> "text/csv"; "txt", "md", "log" -> "text/plain"; "pdf" -> "application/pdf"
+        "html", "htm" -> "text/html"; "json" -> "application/json"; "xml" -> "text/xml"; "css" -> "text/css"; "js" -> "text/javascript"
         "odt" -> "application/vnd.oasis.opendocument.text"; "rtf" -> "application/rtf"
         "doc" -> "application/msword"; "xls" -> "application/vnd.ms-excel"; "ppt" -> "application/vnd.ms-powerpoint"
         else -> "*/*"
@@ -129,13 +132,34 @@ object OfficeRoutes {
 
     fun open(nav: NavHostController, file: File) = nav.navigate(route(Uri.fromFile(file).toString()))
 
-    /** Creates an empty document ("docx" or "xlsx") in the documents folder (right-to-left by default). */
+    /** Extensions the plain-text editor can edit when the user creates them here; existing files of these types keep their own viewers. */
+    val CREATABLE_TEXT = setOf("html", "htm", "json", "xml", "css", "js")
+
+    /** Every extension [createBlank] can make. */
+    val CREATABLE = setOf("docx", "xlsx", "pptx", "txt", "md", "csv") + CREATABLE_TEXT
+
+    /** Starting content of a new text-based file (empty for plain text). */
+    fun starterText(ext: String, rtl: Boolean): String = when (ext) {
+        "md" -> "# \n\n"
+        "html", "htm" -> "<!DOCTYPE html>\n<html lang=\"${if (rtl) "ar" else "en"}\" dir=\"${if (rtl) "rtl" else "ltr"}\">\n<head>\n<meta charset=\"utf-8\">\n" +
+            "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<title></title>\n</head>\n<body>\n\n</body>\n</html>\n"
+        "json" -> "{\n  \n}\n"
+        "xml" -> "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<root>\n</root>\n"
+        else -> ""
+    }
+
+    /**
+     * Creates an empty document in the documents folder (right-to-left by default): Word, Excel, PowerPoint, CSV,
+     * plain text, Markdown, HTML and other text formats ([CREATABLE]).
+     */
     fun createBlank(app: SmartDocsApp, ext: String, baseName: String, rtl: Boolean = true, sheetName: String = "Sheet1"): File {
+        require(ext in CREATABLE) { ext }
         val f = app.documents.uniqueFile(app.documents.docsDir, baseName, ext)
         when (ext) {
             "docx" -> com.smartdocs.editor.core.office5.WordParts.blankDocx(listOf(""), rtl).saveTo(f)
             "xlsx" -> com.smartdocs.editor.core.office5.XlsxIO5.blankPackage(sheetName, rtl).saveTo(f)
-            else -> throw IllegalArgumentException(ext)
+            "pptx" -> com.smartdocs.editor.core.office5.PptParts.blankPptx(rtl).saveTo(f)
+            else -> f.writeText(starterText(ext, rtl))
         }
         return f
     }

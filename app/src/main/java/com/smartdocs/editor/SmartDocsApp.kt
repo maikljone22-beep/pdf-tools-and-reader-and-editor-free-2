@@ -65,6 +65,17 @@ class SmartDocsApp : Application() {
         }
     }
 
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        // the system is running short: drop rendered pages (they are drawn again on demand) before it kills the app
+        if (level >= TRIM_MEMORY_RUNNING_LOW) com.smartdocs.editor.core.pdf.PdfSession.trimAll()
+    }
+
+    override fun onLowMemory() {
+        super.onLowMemory()
+        com.smartdocs.editor.core.pdf.PdfSession.trimAll()
+    }
+
     companion object {
         lateinit var instance: SmartDocsApp; private set
     }
