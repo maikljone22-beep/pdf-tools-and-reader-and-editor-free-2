@@ -6,11 +6,17 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.AccountBalanceWallet
+import androidx.compose.material.icons.filled.Badge
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.DataObject
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Html
+import androidx.compose.material.icons.filled.Quiz
+import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.Slideshow
 import androidx.compose.material.icons.filled.TableChart
 import androidx.compose.material.icons.filled.TableView
@@ -19,11 +25,14 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import com.smartdocs.editor.LocalApp
 import com.smartdocs.editor.R
+import com.smartdocs.editor.core.office5.Templates5
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -43,9 +52,23 @@ private val NEW_KINDS = listOf(
     NewKind("xml", Icons.Default.Code, R.string.o5_tool_new_xml, R.string.o5_new_data_name),
 )
 
+/** One ready-made template: what it builds, its icon, and its name (also the base name of the new file). */
+private class TemplateKind(val kind: Templates5.Kind, val icon: androidx.compose.ui.graphics.vector.ImageVector, val title: Int)
+
+private val TEMPLATES = listOf(
+    TemplateKind(Templates5.Kind.CV, Icons.Default.Badge, R.string.o5_tpl_cv),
+    TemplateKind(Templates5.Kind.LETTER, Icons.Default.Email, R.string.o5_tpl_letter),
+    TemplateKind(Templates5.Kind.EXAM, Icons.Default.Quiz, R.string.o5_tpl_exam),
+    TemplateKind(Templates5.Kind.MINUTES, Icons.Default.Groups, R.string.o5_tpl_minutes),
+    TemplateKind(Templates5.Kind.INVOICE, Icons.Default.Receipt, R.string.o5_tpl_invoice),
+    TemplateKind(Templates5.Kind.BUDGET, Icons.Default.AccountBalanceWallet, R.string.o5_tpl_budget),
+    TemplateKind(Templates5.Kind.SLIDES, Icons.Default.Slideshow, R.string.o5_tpl_slides),
+)
+
 /**
- * Launcher for the Office editors: open any Office/text document, or create a new Word document, workbook,
- * presentation, text, Markdown, HTML, CSV, JSON or XML file. Meant for a Tools entry; shows its own top bar.
+ * Launcher for the Office editors: open any Office/text document, create a new Word document, workbook,
+ * presentation, text, Markdown, HTML, CSV, JSON or XML file, or start from a ready-made template. Meant for a
+ * Tools entry; shows its own top bar.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -56,12 +79,14 @@ fun OfficeStartScreen(nav: NavHostController) {
     val open = rememberOfficeOpener(nav)
     val sheetName = stringResource(R.string.o5_sheet_base) + "1"
     val failed = stringResource(R.string.o5_open_failed)
+    // a template is written in the language the app is shown in
+    val arabic = LocalLayoutDirection.current == LayoutDirection.Rtl
     var busy by remember { mutableStateOf(false) }
-    fun create(ext: String, name: String) {
+    fun create(make: () -> java.io.File) {
         if (busy) return
         busy = true
         scope.launch {
-            val f = withContext(Dispatchers.IO) { runCatching { OfficeRoutes.createBlank(app, ext, name, sheetName = sheetName) }.getOrNull() }
+            val f = withContext(Dispatchers.IO) { runCatching(make).getOrNull() }
             busy = false
             if (f != null) OfficeRoutes.open(nav, f) else Toast.makeText(ctx, failed, Toast.LENGTH_SHORT).show()
         }
@@ -72,7 +97,13 @@ fun OfficeStartScreen(nav: NavHostController) {
             Text(stringResource(R.string.o5_tool_create), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 8.dp))
             NEW_KINDS.forEach { k ->
                 val name = stringResource(k.name)
-                Entry(k.icon, stringResource(k.title), null) { create(k.ext, name) }
+                Entry(k.icon, stringResource(k.title), null) { create { OfficeRoutes.createBlank(app, k.ext, name, sheetName = sheetName) } }
+            }
+            Text(stringResource(R.string.o5_tool_templates), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 8.dp))
+            TEMPLATES.forEach { t ->
+                val name = stringResource(t.title)
+                val type = when (t.kind.ext) { "docx" -> "Word"; "xlsx" -> "Excel"; else -> "PowerPoint" }
+                Entry(t.icon, name, type) { create { OfficeRoutes.createTemplate(app, t.kind, name, arabic) } }
             }
         }
     }

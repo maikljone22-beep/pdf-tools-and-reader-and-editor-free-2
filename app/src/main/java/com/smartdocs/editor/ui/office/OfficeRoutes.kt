@@ -163,6 +163,13 @@ object OfficeRoutes {
         }
         return f
     }
+
+    /** Creates a ready-made document ([com.smartdocs.editor.core.office5.Templates5]) in the documents folder, in Arabic or English. */
+    fun createTemplate(app: SmartDocsApp, kind: com.smartdocs.editor.core.office5.Templates5.Kind, baseName: String, arabic: Boolean): File {
+        val f = app.documents.uniqueFile(app.documents.docsDir, baseName, kind.ext)
+        com.smartdocs.editor.core.office5.Templates5.write(kind, arabic, f)
+        return f
+    }
 }
 
 /** Launches the system picker for any Office/text document and opens it in the Office screen. */
