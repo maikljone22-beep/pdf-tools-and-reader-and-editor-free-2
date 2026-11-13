@@ -44,7 +44,9 @@ class TortureTest {
 
     @Before fun setUp() {
         dir.deleteRecursively(); dir.mkdirs()
-        // no welcome tour in front of the document, no permission prompt over it
+        // no welcome / consent screen in front of the document (MainActivity shows it until AcctPrefs says it is done,
+        // and opens nothing meanwhile), no tour, no permission prompt over it
+        com.smartdocs.editor.core.review.AcctPrefs.completeOnboarding(ctx, analyticsOptIn = false)
         runBlocking { app.settings.update { it.copy(onboardingDone = true) } }
         runCatching { instr.uiAutomation.grantRuntimePermission(ctx.packageName, "android.permission.POST_NOTIFICATIONS") }
     }
