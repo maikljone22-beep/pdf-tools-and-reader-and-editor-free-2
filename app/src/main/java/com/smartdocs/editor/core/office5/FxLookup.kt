@@ -16,7 +16,7 @@ internal fun FxFunctions.registerLookup() {
         else if (t.data.size == 1) t.data[0] else t
     }
     reg("MATCH", "lookup", 2, 3) { a ->
-        val key = lookupKey(a); val t = a.arr(1); val type = a.num(2, 1.0)
+        val key = lookupKey(a); val t = a.arr(1); val type = if (a.size < 3) 1.0 else a.num(2)        // MATCH(x, r,) is an exact match
         if (key is FV.Err) key else if (t.rows != 1 && t.cols != 1) FV.NA else {
             val i = if (type == 0.0) findExact(t.data, key, wildcards = true, reverse = false) else findSorted(t.data, key, ascending = type > 0)
             if (i < 0) FV.NA else FV.Num(i + 1.0)

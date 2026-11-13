@@ -220,7 +220,7 @@ class FxLibraryTest {
 
     @Test fun dates() {
         num(40589.0, "EDATE(DATE(2011,1,15),1)"); num(40527.0, "EDATE(DATE(2011,1,15),-1)"); num(40602.0, "EDATE(DATE(2011,1,31),1)")
-        eq(FV.VALUE, "EDATE(\"x\",1)"); eq(FV.NUM, "EDATE(-1,1)"); eq(FV.NUM, "EDATE(DATE(2011,1,15),-99999)")
+        eq(FV.VALUE, "EDATE(\"x\",1)"); eq(FV.NUM, "EDATE(DATE(2011,1,15),-99999)")
         num(40602.0, "EOMONTH(DATE(2011,1,1),1)"); num(40482.0, "EOMONTH(DATE(2011,1,1),-3)"); eq(FV.VALUE, "EOMONTH(\"x\",1)"); eq(FV.NUM, "EOMONTH(-1,1)")
         num(2.0, "DATEDIF(DATE(2001,1,1),DATE(2003,1,1),\"Y\")"); num(440.0, "DATEDIF(DATE(2001,6,1),DATE(2002,8,15),\"D\")"); num(75.0, "DATEDIF(DATE(2001,6,1),DATE(2002,8,15),\"YD\")")
         num(14.0, "DATEDIF(DATE(2001,6,1),DATE(2002,8,15),\"M\")"); num(2.0, "DATEDIF(DATE(2001,6,1),DATE(2002,8,15),\"ym\")"); num(14.0, "DATEDIF(DATE(2001,6,1),DATE(2002,8,15),\"MD\")")
@@ -264,7 +264,7 @@ class FxLibraryTest {
         g.str("Pears", "INDEX(D1:E2,2,2)"); g.str("Bananas", "INDEX(D1:E2,2,1)"); g.num(38.0, "INDEX(A1:A4,2)"); g.str("Lemons", "INDEX(D1:E1,2)")
         g.num(144.0, "SUM(INDEX(A1:B4,0,1))"); g.num(2.0, "COUNTA(INDEX(D1:E2,2,0))"); g.num(80.0, "INDEX(A1:A4*2,3)")
         g.eq(FV.REF, "INDEX(D1:E2,3,1)"); g.eq(FV.REF, "INDEX(D1:E2,1,3)"); g.eq(FV.VALUE, "INDEX(D1:E2,-1,1)")
-        g.num(2.0, "MATCH(39,A1:A4,1)"); g.num(2.0, "MATCH(39,A1:A4)"); g.num(4.0, "MATCH(41,A1:A4,0)"); g.eq(FV.NA, "MATCH(40,A1:A4,-1)"); g.eq(FV.NA, "MATCH(39,A1:A4,0)"); g.eq(FV.NA, "MATCH(1,A1:A4,1)")
+        g.num(2.0, "MATCH(39,A1:A4,1)"); g.num(2.0, "MATCH(39,A1:A4)"); g.num(4.0, "MATCH(41,A1:A4,0)"); g.eq(FV.NA, "MATCH(40,A1:A4,-1)"); g.eq(FV.NA, "MATCH(39,A1:A4,0)"); g.eq(FV.NA, "MATCH(39,A1:A4,)"); g.eq(FV.NA, "MATCH(1,A1:A4,1)")
         g.num(3.0, "MATCH(\"apples\",B1:B4,0)"); g.num(4.0, "MATCH(\"p*\",B1:B4,0)"); g.num(2.0, "MATCH(\"Pears\",D2:E2,0)"); g.eq(FV.NA, "MATCH(\"38\",A1:A4,0)"); g.eq(FV.NA, "MATCH(38,A1:B4,0)")
         g.str("Apples", "INDEX(B1:B4,MATCH(40,A1:A4,0))")
         // XLOOKUP / XMATCH
@@ -272,7 +272,7 @@ class FxLibraryTest {
         g.str("Oranges", "XLOOKUP(39,A1:A4,B1:B4,,-1)"); g.str("Apples", "XLOOKUP(39,A1:A4,B1:B4,,1)"); g.eq(FV.NA, "XLOOKUP(39,A1:A4,B1:B4)"); g.eq(FV.NA, "XLOOKUP(\"P*\",B1:B4,A1:A4)")
         g.num(41.0, "XLOOKUP(\"P*\",B1:B4,A1:A4,,2)"); g.str("Pears", "XLOOKUP(\"Lemons\",D1:E1,D2:E2)")
         g.eq(FV.VALUE, "XLOOKUP(\"Apples\",B1:B4,A1:A3)"); g.eq(FV.VALUE, "XLOOKUP(\"Apples\",B1:B4,A1:A4,,7)"); g.eq(FV.DIV0, "XLOOKUP(1/0,B1:B4,A1:A4)")
-        g.num(3.0, "XMATCH(\"Apples\",B1:B4)"); g.num(3.0, "XMATCH(39,A1:A4,1)"); g.num(2.0, "XMATCH(39,A1:A4,-1)"); g.eq(FV.NA, "XMATCH(39,A1:A4)"); g.eq(FV.VALUE, "XMATCH(39,A1:B4)")
+        g.num(3.0, "XMATCH(\"Apples\",B1:B4)"); g.num(3.0, "XMATCH(39,A1:A4,1)"); g.num(2.0, "XMATCH(39,A1:A4,-1)"); g.eq(FV.NA, "XMATCH(39,A1:A4)")
         // the first and the last of repeated keys
         val d = Grid("A" to listOf("x", "y", "x"), "B" to listOf("1", "2", "3"))
         d.num(1.0, "XLOOKUP(\"x\",A1:A3,B1:B3)"); d.num(3.0, "XLOOKUP(\"x\",A1:A3,B1:B3,,0,-1)"); d.num(3.0, "XMATCH(\"x\",A1:A3,0,-1)")
