@@ -56,3 +56,82 @@ jobs:
           name: test-reports-${{ github.run_number }}
           path: app/build/reports/tests/
           if-no-files-found: ignore
+
+  # Heavy-file ("torture") tests on an emulator: a 1,000-page PDF, a 500 MB scan, a 50-megapixel photo, Word files full
+  # of photos, a 100,000-row workbook and a 25 MB CSV are opened, scrolled and zoomed; a crash or a full heap fails the
+  # test (app/src/androidTest/.../torture). A separate job, so the APK above is published even when one of these fails.
+  torture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Accept SDK licenses
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      # built before the emulator starts, so a compile error fails here and the two never compete for memory
+      - name: Build app and test APKs
+        run: |
+          chmod +x gradlew
+          set -o pipefail
+          ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest -PnoAbiSplits --no-daemon --stacktrace 2>&1 | tee torture-build.log
+      # tablet screen, Android 13 and a 512 MB app heap: the owner's Samsung Tab S7+ class of device
+      - name: Torture tests
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 33
+          arch: x86_64
+          target: google_apis
+          profile: pixel_c
+          ram-size: 4096M
+          heap-size: 512M
+          disk-size: 8G
+          disable-animations: true
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: |
+            adb logcat -G 16M
+            adb logcat -c
+            ./gradlew :app:connectedDebugAndroidTest -PnoAbiSplits --no-daemon; code=$?; adb logcat -d -s TortureReport:I ParseGate:I > torture-report.txt; adb logcat -d -b crash > torture-crashes.txt; exit $code
+      - name: Report
+        if: always()
+        run: |
+          {
+            echo '### Torture report'
+            echo '```'
+            sed -E 's/^.*TortureReport: //' torture-report.txt 2>/dev/null | grep -v 'ParseGate' || echo '(no report lines: the tests did not run)'
+            echo '```'
+            if [ -s torture-crashes.txt ]; then echo '### Crashes'; echo '```'; head -c 20000 torture-crashes.txt; echo '```'; fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          { grep -E '^e: |error:' torture-build.log 2>/dev/null; grep -E 'FATAL EXCEPTION|OutOfMemoryError' -A6 torture-crashes.txt 2>/dev/null; } | head -40 > errs.txt || true
+          split -l 8 errs.txt part_ || true
+          for f in part_*; do [ -f "$f" ] && echo "::error::$(awk 'BEGIN{ORS="%0A"} {gsub(/%/,"%25"); print}' "$f")"; done; true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: torture-report-${{ github.run_number }}
+          path: |
+            torture-report.txt
+            torture-crashes.txt
+            app/build/reports/androidTests/
+            app/build/outputs/androidTest-results/
+          if-no-files-found: ignore
+
+  # No password, key or token may enter the repository (it is public). .gitleaks.toml lists the known false alarms.
+  secrets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Scan the whole history for secrets
+        run: |
+          curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz | tar -xz gitleaks
+          ./gitleaks git --redact --no-banner .
