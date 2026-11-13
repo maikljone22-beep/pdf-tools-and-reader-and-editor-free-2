@@ -109,7 +109,10 @@ android {
         jniLibs.excludes += setOf("lib/x86/libonnxruntime*.so", "lib/x86_64/libonnxruntime*.so")
         resources.excludes += setOf("META-INF/{AL2.0,LGPL2.1}", "META-INF/DEPENDENCIES", "META-INF/LICENSE*", "META-INF/NOTICE*", "META-INF/versions/9/OSGI-INF/MANIFEST.MF",
             // open-all: commons-io / commons-lang3 / commons-compress are multi-release jars
-            "META-INF/versions/**/module-info.class", "module-info.class")
+            "META-INF/versions/**/module-info.class", "module-info.class",
+            // BouncyCastle's post-quantum parameter tables (Picnic, SIKE: 7.8 MB). The app signs and verifies with RSA / ECDSA
+            // only and never references org.bouncycastle.pqc; the tables are read only when those algorithms are used.
+            "org/bouncycastle/pqc/crypto/picnic/*.properties", "org/bouncycastle/pqc/crypto/sike/*.properties")
     }
 }
 
