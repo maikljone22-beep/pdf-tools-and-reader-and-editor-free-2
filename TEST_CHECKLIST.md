@@ -21,6 +21,24 @@ How to use: do the action, compare with the expected result, and mark the ID ✅
 
 اضبط لغة التطبيق على العربية (الإعدادات ← اللغة) قبل البدء.
 
+## 0. الملفات الكبيرة (ابدأ بها: هنا كان التطبيق ينهار)
+
+النسخة: الفرع `fix/large-file-oom-and-create-new` أو ما بعده. الاختبار الآلي على المحاكي يفتح الملفات نفسها مع كل دفعة (مهمة `torture` في GitHub Actions)، لكنه لا يغني عن التجربة على الجهاز اللوحي الحقيقي.
+
+| # | الإجراء | النتيجة المتوقعة |
+|---|---|---|
+| L1 | افتح ملف PDF من ألف صفحة أو أكثر، واسحب شريط التمرير السريع إلى آخره ثم عُد إلى أوله. | تظهر الصفحات أينما توقفت. لا يتجمّد التطبيق أكثر من ثوانٍ قليلة ولا ينغلق. |
+| L2 | افتح ملف PDF ممسوحًا ضوئيًا أكبر من 100 ميغابايت. مرّر 30 صفحة، ثم كبّر إلى 400% وحرّك الصفحة. | تظهر رسالة «ملف كبير: فُعّل وضع توفير الذاكرة…». تظهر الصفحة الأولى خلال نحو 10 ثوانٍ. لا ينغلق التطبيق. |
+| L3 | في الملف نفسه أضف تظليلًا واحفظ، ثم أغلق الملف وافتحه من جديد. | يبقى التظليل. لا ينغلق التطبيق عند الحفظ. (التراجع عن الحفظ غير متاح للملفات الأكبر من 80 ميغابايت.) |
+| L4 | في الملف نفسه اضغط مطوّلًا على تعليق محفوظ واختر «خصائص». | تُفتح نافذة الخصائص. لا ينغلق التطبيق. |
+| L5 | افتح صورة من كاميرا بدقة 48 ميغابكسل أو أكثر، وكبّرها. | تُعرض الصورة ويعمل التكبير. |
+| L6 | افتح ملف Word فيه 20 صورة أو أكثر (30 إلى 50 ميغابايت) ومرّر إلى آخره. | يُفتح في المحرر وتظهر الصور. |
+| L7 | افتح ملف Word أو PowerPoint أكبر من 64 ميغابايت تقريبًا. | تظهر رسالة «الملف كبير جداً للتحرير داخل التطبيق…» مع زرَّي «فتح بواسطة» و«مشاركة». لا ينغلق التطبيق. |
+| L8 | افتح ملف CSV أكبر من 30 ميغابايت، أو ملفًا نصيًا أكبر من 40 ميغابايت. | الرسالة نفسها. لا ينغلق التطبيق. |
+| L9 | الأدوات ← «فتح مستند Office» ← «إنشاء ملف جديد»: أنشئ ملفًا من كل نوع (Word، Excel، PowerPoint، TXT، MD، HTML، CSV، JSON، XML)، اكتب فيه، احفظ، ثم افتحه من جديد. | يُفتح كل نوع في محرره ويبقى ما كتبته بعد إعادة الفتح. |
+| L10 | افتح ملف PowerPoint الذي أنشأته في L9 بتطبيق WPS أو PowerPoint. | يُفتح مباشرة دون رسالة «إصلاح الملف». |
+| L11 | إن انغلق التطبيق في أي بند: أرسل ملف تقرير الأخطاء مع رقم البند. | — |
+
 ## 1. الملفات الموقَّعة والمُصدَّقة (الأعلى خطرًا)
 
 | # | الإجراء | النتيجة المتوقعة |
@@ -166,6 +184,24 @@ How to use: do the action, compare with the expected result, and mark the ID ✅
 # English section (app UI in English)
 
 Set the app language to English (Settings → Language) before starting. The IDs match the Arabic section.
+
+## 0. Large files (do these first: this is where the app crashed)
+
+Build: branch `fix/large-file-oom-and-create-new` or later. The automated emulator test opens the same kinds of file on every push (the `torture` job in GitHub Actions), but it does not replace a try on the real tablet.
+
+| # | Action | Expected result |
+|---|---|---|
+| L1 | Open a PDF of 1,000 pages or more; drag the fast scroller to the end and back to the start. | Pages appear wherever you stop. The app does not freeze for more than a few seconds and does not close. |
+| L2 | Open a scanned PDF over 100 MB. Scroll 30 pages, then zoom to 400% and pan. | The message "Large file: memory-saving mode is on…" shows. The first page appears within about 10 seconds. The app does not close. |
+| L3 | In the same file add a highlight and save, then close the file and open it again. | The highlight is still there. The app does not close while saving. (Undoing a save is not offered for files over 80 MB.) |
+| L4 | In the same file long-press a saved comment and choose Properties. | The Properties dialog opens. The app does not close. |
+| L5 | Open a camera photo of 48 megapixels or more and zoom in. | The photo shows and zoom works. |
+| L6 | Open a Word file with 20 or more photos (30 to 50 MB) and scroll to the end. | It opens in the editor and the photos show. |
+| L7 | Open a Word or PowerPoint file larger than about 64 MB. | The message "This file is too large to edit inside the app…" shows, with Open with and Share. The app does not close. |
+| L8 | Open a CSV over 30 MB, or a text file over 40 MB. | The same message. The app does not close. |
+| L9 | Tools → "Open Office document" → "Create a new file": create one file of each type (Word, Excel, PowerPoint, TXT, MD, HTML, CSV, JSON, XML), type in it, save, then open it again. | Each type opens in its editor and what you typed is still there after reopening. |
+| L10 | Open the PowerPoint file made in L9 with WPS or PowerPoint. | It opens directly, with no "repair this file" prompt. |
+| L11 | If the app closes on any item: send the error report file with the item's ID. | — |
 
 ## 1. Signed and certified files (highest risk)
 

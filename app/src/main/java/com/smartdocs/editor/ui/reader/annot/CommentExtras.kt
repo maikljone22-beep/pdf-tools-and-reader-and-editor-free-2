@@ -373,7 +373,7 @@ class CommentExtras(private val h: Annot2Host) {
                 kind = when (first.kind) { AnnotKind.NOTE -> "Text"; AnnotKind.FILE_ATTACH -> "FileAttachment"; else -> first.kind.name }
             } else t.stored.firstOrNull()?.let { e ->
                 author = e.author; contents = e.contents; locked = e.locked; subject = e.subject; kind = e.subtype
-                s.file?.let { f -> com.smartdocs.editor.core.pdf.ParseGate.run { withContext(Dispatchers.IO) { readMeta(f, s.password, e.page, e.index) } } }?.let { (n, ic) -> name = n; icon = ic }
+                s.file?.let { f -> com.smartdocs.editor.core.pdf.ParseGate.run("annot-props") { withContext(Dispatchers.IO) { readMeta(f, s.password, e.page, e.index) } } }?.let { (n, ic) -> name = n; icon = ic }
             }
             props = PropsReq(t, author, subject, name, contents, locked, icon, kind, single)
         }

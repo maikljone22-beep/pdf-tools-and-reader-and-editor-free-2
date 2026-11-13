@@ -18,6 +18,7 @@ android {
         versionCode = 5
         versionName = "0.5.0"
         vectorDrawables.useSupportLibrary = true
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // AI proxy (see ai-proxy/README.md): users need no API key when these are set in ai.properties
         val aiProps = Properties().apply { rootProject.file("ai.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) } }
         buildConfigField("String", "AI_PROXY_URL", "\"${aiProps.getProperty("proxyUrl", "")}\"")
@@ -74,7 +75,8 @@ android {
     splits {
         abi {
             // the Play bundle splits by itself; per-ABI APKs only for direct installs
-            isEnable = !gradle.startParameter.taskNames.any { it.contains("bundle", ignoreCase = true) }
+            // -PnoAbiSplits: one APK for the emulator tests (instrumented tests cannot pick between per-ABI splits)
+            isEnable = !gradle.startParameter.taskNames.any { it.contains("bundle", ignoreCase = true) } && !project.hasProperty("noAbiSplits")
             reset()
             include("arm64-v8a", "armeabi-v7a")
             isUniversalApk = true
@@ -87,7 +89,13 @@ android {
     }
     buildFeatures { compose = true; buildConfig = true }
     // JVM unit tests: android.util.Log (called inside PdfBox-Android, e.g. on a second getAcroForm()) returns defaults instead of throwing
-    testOptions { unitTests.isReturnDefaultValues = true }
+    // instrumented (emulator) tests each run in their own process, so one crash fails one test and the rest still run
+    testOptions { unitTests.isReturnDefaultValues = true; execution = "ANDROIDX_TEST_ORCHESTRATOR" }
+    // src/sharedTest: test helpers used by both the JVM unit tests and the emulator tests (the torture-file writers)
+    sourceSets {
+        getByName("test").java.srcDir("src/sharedTest/java")
+        getByName("androidTest").java.srcDir("src/sharedTest/java")
+    }
     packaging {
         // ONNX Runtime only for the ARM phones/tablets (20 MB each for x86 / x86_64); without it the AI OCR is simply off
         jniLibs.excludes += setOf("lib/x86/libonnxruntime*.so", "lib/x86_64/libonnxruntime*.so")
@@ -179,4 +187,12 @@ dependencies {
     implementation("org.bouncycastle:bcprov-jdk15to18:1.72")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
+
+    // emulator "torture" tests (app/src/androidTest): big PDFs / images / Office files must open without killing the app
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test:rules:1.6.1")
+    androidTestImplementation("androidx.test:core-ktx:1.6.1")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test.uiautomator:uiautomator:2.3.0")
+    androidTestUtil("androidx.test:orchestrator:1.5.1")
 }

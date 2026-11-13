@@ -1,0 +1,7 @@
+# Secret scanning (CI job "secrets", and `gitleaks git --redact .` locally). The default rules, plus known false alarms.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Keyboard shortcut tables (NveKey.* names look like API keys to the generic rule)"
+paths = ['''app/src/main/java/com/smartdocs/editor/ui/nve/NveKeys\.kt''']

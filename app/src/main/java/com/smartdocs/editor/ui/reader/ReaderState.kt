@@ -355,7 +355,7 @@ class ReaderState(
                 }
                 val firstOpen = recent == null && startPage < 0
                 if (!low) scope.launch {
-                    val v = openParse.withLock { withContext(Dispatchers.IO) { runCatching { com.smartdocs.editor.core.edit5.DocPropsOps.read(f, openPw).view }.getOrNull() } } ?: return@launch
+                    val v = openParse.withLock("initial-view") { withContext(Dispatchers.IO) { runCatching { com.smartdocs.editor.core.edit5.DocPropsOps.read(f, openPw).view }.getOrNull() } } ?: return@launch
                     applyInitialView(v, firstOpen)
                 }
                 app.documents.touchRecent(f, s.pageCount, initialPage)
@@ -547,7 +547,7 @@ class ReaderState(
     private fun loadPageFrames() {
         val f = file ?: return; val pw = password
         scope.launch {
-            val frames = openParse.withLock { withContext(Dispatchers.IO) { runCatching { PageUserFrame.read(f, pw) }.getOrNull() } } ?: return@launch
+            val frames = openParse.withLock("page-frames") { withContext(Dispatchers.IO) { runCatching { PageUserFrame.read(f, pw) }.getOrNull() } } ?: return@launch
             androidx.compose.runtime.snapshots.Snapshot.withMutableSnapshot { pageFrames.clear(); pageFrames.putAll(frames) }
         }
     }
@@ -555,7 +555,7 @@ class ReaderState(
     private fun loadExisting() {
         loadPageFrames()
         val f = file ?: return
-        scope.launch { existing = openParse.withLock { runCatching { AnnotationWriter.list(f, password) }.getOrDefault(emptyList()) } }
+        scope.launch { existing = openParse.withLock("annotations") { runCatching { AnnotationWriter.list(f, password) }.getOrDefault(emptyList()) } }
     }
 
     /**
@@ -564,7 +564,7 @@ class ReaderState(
      * app. One at a time keeps the peak at one parse.
      */
     private val openParse = object {
-        suspend fun <T> withLock(block: suspend () -> T): T = com.smartdocs.editor.core.pdf.ParseGate.run(block)
+        suspend fun <T> withLock(label: String, block: suspend () -> T): T = com.smartdocs.editor.core.pdf.ParseGate.run(label, block)
     }
 
     // ================= annotations / undo =================
