@@ -135,3 +135,87 @@ jobs:
         run: |
           curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz | tar -xz gitleaks
           ./gitleaks git --redact --no-banner .
+
+  # The "fast" APK: the release code (R8-optimized, not debuggable) signed with the debug key, so it installs on any
+  # device next to the test build. Judge the app's speed with this one; the debug APK above is always slower.
+  # It also proves on every push that the release configuration still builds.
+  fast-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Accept SDK licenses
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+      - name: Build fast APK
+        run: |
+          chmod +x gradlew
+          set -o pipefail
+          ./gradlew :app:assemblePerf --no-daemon --stacktrace 2>&1 | tee build.log
+      - name: Error annotations
+        if: failure()
+        run: |
+          grep -E '^e: |error:|ERROR:|^> |Missing class|What went wrong' -A2 build.log 2>/dev/null | sed 's#file:///home/runner/work/[^/]*/[^/]*/##' | head -80 > errs.txt || true
+          split -l 8 errs.txt part_ || true
+          for f in part_*; do [ -f "$f" ] && echo "::error::$(awk 'BEGIN{ORS="%0A"} {gsub(/%/,"%25"); print}' "$f")"; done; true
+      - name: Artifact name
+        id: name
+        run: echo "n=$(echo '${{ github.head_ref || github.ref_name }}' | tr '/ ' '--')-${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FastAPK-${{ steps.name.outputs.n }}
+          path: app/build/outputs/apk/perf/*.apk
+          if-no-files-found: error
+      # needed to read a crash trace of the fast build (its class and method names are shortened)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FastAPK-mapping-${{ steps.name.outputs.n }}
+          path: app/build/outputs/mapping/perf/mapping.txt
+          if-no-files-found: ignore
+
+  # Speed report: both builds are installed on the tablet emulator and cold-started six times; the report has the
+  # median start time and the app's own breakdown of where the start goes (tag StartupTrace). A fast build that does
+  # not stay running after launch fails this job.
+  speed:
+    needs: [build, fast-apk]
+    if: ${{ !cancelled() && needs.build.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: apks
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Measure cold starts
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 33
+          arch: x86_64
+          target: google_apis
+          profile: pixel_c
+          ram-size: 4096M
+          heap-size: 512M
+          disable-animations: true
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: |
+            bash .github/scripts/measure-startup.sh "$(ls apks/FastAPK-*/*universal*.apk 2>/dev/null | head -1)" com.smartdocs.editor.perf "Fast build (R8-optimized: what users get)"; echo $? > fast.code
+            bash .github/scripts/measure-startup.sh "$(ls apks/SmartDocs-*/*universal*.apk 2>/dev/null | head -1)" com.smartdocs.editor.test "Debug build (the test APK)"; echo $? > debug.code
+            exit $(( $(cat fast.code) + $(cat debug.code) ))
+      - name: Report
+        if: always()
+        run: |
+          { echo '### Speed report (tablet emulator; compare the two builds, not the absolute numbers)'; echo '```'; cat speed-report.txt 2>/dev/null || echo '(nothing was measured)'; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: speed-report-${{ github.run_number }}
+          path: speed-report.txt
+          if-no-files-found: ignore

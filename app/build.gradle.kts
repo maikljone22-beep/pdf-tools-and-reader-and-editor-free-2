@@ -70,6 +70,14 @@ android {
             applicationIdSuffix = ".test"
             versionNameSuffix = "-test"
         }
+        // "fast" build: the release code (R8-optimized, not debuggable) signed with the debug key, so anyone can
+        // install it next to the Play and test builds. This is the build to judge speed with; never published.
+        create("perf") {
+            initWith(getByName("release"))
+            signingConfig = signingConfigs.getByName("debug")
+            applicationIdSuffix = ".perf"
+            versionNameSuffix = "-perf"
+        }
     }
     // one smaller APK per processor type (+ a universal one); Google Play uses the .aab instead
     splits {
