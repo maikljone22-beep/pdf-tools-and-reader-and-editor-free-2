@@ -40,7 +40,7 @@ object EsignComposer {
     }
 
     fun compose(src: File, out: File, req: EsignRequest, values: List<SubmittedValues>, labels: CertText, verifyUrl: String) {
-        PDDocument.load(src).use { doc ->
+        com.smartdocs.editor.core.pdf.PdfLoad.open(src).use { doc ->
             val byId = req.fields.associateBy { it.id }
             for (sv in values) for ((fid, v) in sv.values) {
                 val f = byId[fid] ?: continue

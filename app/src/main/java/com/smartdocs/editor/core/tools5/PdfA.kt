@@ -256,7 +256,7 @@ object PdfA {
         }
         onProgress(total, total)
         // self-check of the written file
-        val after = PDDocument.load(out).use { d ->
+        val after = com.smartdocs.editor.core.pdf.PdfLoad.open(out).use { d ->
             when (opt.standard) {
                 "X" -> Standards.preflight(d, PreflightProfile.PDFX_4, (0 until d.numberOfPages).toList())
                 "E" -> Standards.preflight(d, PreflightProfile.PDFE_1, (0 until d.numberOfPages).toList())

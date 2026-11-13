@@ -42,7 +42,11 @@ class SmartDocsApp : Application() {
         runCatching { com.smartdocs.editor.core.sign.TrustLists.schedule(this) }              // nitro-protect2: monthly EU trusted-list update (when on)
         com.smartdocs.editor.core.convert6.Cv6Platform.install(this)   // convert audit: picture decoder for the writers, localised labels
         runCatching { com.smartdocs.editor.core.tools5.AltTextVision.install(this, settings) }  // pages-convert: AI alt text sees the figure
+        // a saved file is parsed again by its readers (PdfRead also compares size and time; this covers a same-size rewrite)
+        runCatching { com.smartdocs.editor.core.cloud.SaveHooks.listeners += { com.smartdocs.editor.core.pdf.PdfRead.invalidate() } }
         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+            // PdfBox's scratch files of a run the system killed (hundreds of MB for a big document)
+            runCatching { com.smartdocs.editor.core.pdf.PdfLoad.deleteStaleTempFiles(cacheDir) }
             // convert audit C2 / C11 / A-M14: half-written outputs of a run the system killed, stale temp files
             runCatching { com.smartdocs.editor.core.convert6.Cv6Platform.cleanUp(this@SmartDocsApp, documents) }
             // review: an original left half-written by a write-back the system killed is written again from the working copy
@@ -68,12 +72,13 @@ class SmartDocsApp : Application() {
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
         // the system is running short: drop rendered pages (they are drawn again on demand) before it kills the app
-        if (level >= TRIM_MEMORY_RUNNING_LOW) com.smartdocs.editor.core.pdf.PdfSession.trimAll()
+        if (level >= TRIM_MEMORY_RUNNING_LOW) { com.smartdocs.editor.core.pdf.PdfSession.trimAll(); com.smartdocs.editor.core.pdf.PdfRead.invalidate() }
     }
 
     override fun onLowMemory() {
         super.onLowMemory()
         com.smartdocs.editor.core.pdf.PdfSession.trimAll()
+        com.smartdocs.editor.core.pdf.PdfRead.invalidate()
     }
 
     companion object {

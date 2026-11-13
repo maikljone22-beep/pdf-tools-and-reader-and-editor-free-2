@@ -189,7 +189,7 @@ object NveSearchCore {
             val ext = e.name.substringAfterLast('.', "").lowercase()
             val text = when {
                 b.size > 4 && String(b, 0, 5, Charsets.ISO_8859_1) == "%PDF-" -> runCatching {
-                    PDDocument.load(b).use { d -> if (d.isEncrypted) "" else com.tom_roush.pdfbox.text.PDFTextStripper().getText(d) }
+                    com.smartdocs.editor.core.pdf.PdfLoad.open(b).use { d -> if (d.isEncrypted) "" else com.tom_roush.pdfbox.text.PDFTextStripper().getText(d) }
                 }.getOrDefault("")
                 ext in setOf("txt", "csv", "md", "xml", "html", "htm", "json", "tsv", "log") -> runCatching { String(b, Charsets.UTF_8) }.getOrDefault("")
                 else -> ""

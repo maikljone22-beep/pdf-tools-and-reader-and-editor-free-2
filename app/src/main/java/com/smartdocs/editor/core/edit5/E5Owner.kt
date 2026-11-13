@@ -7,6 +7,6 @@ import java.io.File
 object E5Owner {
     /** True for an unencrypted file or one that [password] opens with owner rights; false otherwise (and on errors). */
     fun ownerAccess(file: File, password: String?): Boolean = runCatching {
-        PDDocument.load(file, password.orEmpty()).use { d -> E5Locks.canRemove(d.isEncrypted, d.currentAccessPermission.isOwnerPermission) }
+        com.smartdocs.editor.core.pdf.PdfLoad.open(file, password.orEmpty()).use { d -> E5Locks.canRemove(d.isEncrypted, d.currentAccessPermission.isOwnerPermission) }
     }.getOrDefault(false)
 }

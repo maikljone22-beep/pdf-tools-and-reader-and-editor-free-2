@@ -94,7 +94,7 @@ object CertInspector {
         val bytes = file.readBytes()
         val conv = JcaX509CertificateConverter()
         val out = ArrayList<SigCert>()
-        val doc = if (password.isNullOrEmpty()) PDDocument.load(file) else PDDocument.load(file, password)
+        val doc = if (password.isNullOrEmpty()) com.smartdocs.editor.core.pdf.PdfLoad.open(file) else com.smartdocs.editor.core.pdf.PdfLoad.open(file, password)
         doc.use { d ->
             d.signatureDictionaries.forEachIndexed { i, sig ->
                 val r = runCatching {

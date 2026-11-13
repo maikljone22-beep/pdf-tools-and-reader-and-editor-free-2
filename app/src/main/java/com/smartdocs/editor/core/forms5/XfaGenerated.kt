@@ -248,7 +248,7 @@ object XfaGenerated {
 
     /** True when [file] was produced by [generate]. */
     suspend fun sourceOf(file: File): File? = withContext(Dispatchers.IO) {
-        runCatching { PDDocument.load(file).use { it.documentInformation?.getCustomMetadataValue(KEY_SOURCE) } }.getOrNull()?.let { File(it) }?.takeIf { it.exists() }
+        runCatching { com.smartdocs.editor.core.pdf.PdfLoad.open(file).use { it.documentInformation?.getCustomMetadataValue(KEY_SOURCE) } }.getOrNull()?.let { File(it) }?.takeIf { it.exists() }
     }
 
     /**
@@ -256,7 +256,7 @@ object XfaGenerated {
      * written to [out] (pass the source itself to update it in place). Returns the number of values.
      */
     suspend fun writeBack(generated: File, sourcePassword: String?, out: File? = null): Pair<File, Int> = withContext(Dispatchers.IO) {
-        val (srcPath, mapJson) = PDDocument.load(generated).use { d ->
+        val (srcPath, mapJson) = com.smartdocs.editor.core.pdf.PdfLoad.open(generated).use { d ->
             val info = d.documentInformation ?: throw IllegalStateException("not generated")
             (info.getCustomMetadataValue(KEY_SOURCE) ?: throw IllegalStateException("not generated")) to (info.getCustomMetadataValue(KEY_MAP) ?: "{}")
         }

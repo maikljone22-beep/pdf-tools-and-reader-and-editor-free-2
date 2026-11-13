@@ -415,6 +415,6 @@ class RecipeRunner(private val ctx: Context, private val tempDir: File) {
     /** Smallest reasonable proof that a document opens (used by the batch UI to pre-check passwords). */
     suspend fun opens(f: File, password: String?): Boolean = withContext(Dispatchers.IO) {
         if (ToPdf.kindOf(f.name) != SourceKind.PDF) return@withContext true
-        runCatching { (if (password.isNullOrEmpty()) PDDocument.load(f) else PDDocument.load(f, password)).close(); true }.getOrDefault(false)
+        runCatching { (if (password.isNullOrEmpty()) com.smartdocs.editor.core.pdf.PdfLoad.open(f) else com.smartdocs.editor.core.pdf.PdfLoad.open(f, password)).close(); true }.getOrDefault(false)
     }
 }

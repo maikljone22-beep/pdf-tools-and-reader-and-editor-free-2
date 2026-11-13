@@ -87,7 +87,7 @@ object CollabStore {
 
     /** Marks every annotation currently in the file as coming from others (used right after joining). */
     suspend fun markAllForeign(c: Context, ref: ReviewRef) = withContext(Dispatchers.IO) {
-        PDDocument.load(File(ref.localPath)).use { doc ->
+        com.smartdocs.editor.core.pdf.PdfLoad.open(File(ref.localPath)).use { doc ->
             val changed = CollabAnnots.ensureNames(doc)
             val foreign = map(c, "foreign_${ref.id}")
             CollabAnnots.read(doc).forEach { foreign[it.nm] = "0" }
@@ -98,7 +98,7 @@ object CollabStore {
 
     /** Marks my current annotations as already published (the owner's initial comments travel inside the uploaded PDF). */
     suspend fun markAllPublished(c: Context, ref: ReviewRef) = withContext(Dispatchers.IO) {
-        PDDocument.load(File(ref.localPath)).use { doc ->
+        com.smartdocs.editor.core.pdf.PdfLoad.open(File(ref.localPath)).use { doc ->
             putMap(c, "pub_${ref.id}", CollabAnnots.read(doc).associate { it.nm to it.hash })
         }
     }
@@ -107,7 +107,7 @@ object CollabStore {
     suspend fun publish(c: Context, ref: ReviewRef): Int = withContext(Dispatchers.IO) {
         ioLock.withLock {
             val file = File(ref.localPath)
-            PDDocument.load(file).use { doc ->
+            com.smartdocs.editor.core.pdf.PdfLoad.open(file).use { doc ->
                 if (CollabAnnots.ensureNames(doc)) saveAtomically(doc, file)
                 val foreign = map(c, "foreign_${ref.id}")
                 val published = map(c, "pub_${ref.id}")
@@ -132,7 +132,7 @@ object CollabStore {
         if (CollabLive.isAttached(File(ref.localPath))) { CollabLive.offer(c, ref, remote); upsert(c, (get(c, ref.id) ?: ref).copy(lastSync = System.currentTimeMillis())); return@withContext 0 }
         ioLock.withLock {
             val file = File(ref.localPath)
-            val n = PDDocument.load(file).use { doc ->
+            val n = com.smartdocs.editor.core.pdf.PdfLoad.open(file).use { doc ->
                 val plan = planFor(c, ref, remote, presentNames(doc))
                 if (plan.isEmpty) { markApplied(c, ref, remote, plan); return@use 0 }
                 val count = applyPlan(doc, remote, plan)
@@ -156,7 +156,7 @@ object CollabStore {
         val file = File(ref.localPath)
         if (CollabLive.isAttached(file)) throw DocumentOpen()
         val n = ioLock.withLock {
-            PDDocument.load(file).use { doc ->
+            com.smartdocs.editor.core.pdf.PdfLoad.open(file).use { doc ->
                 val foreign = map(c, "foreign_${ref.id}")
                 val byName = HashMap<String, com.tom_roush.pdfbox.pdmodel.interactive.annotation.PDAnnotation>()
                 doc.pages.forEach { p -> runCatching { p.annotations }.getOrDefault(emptyList()).forEach { a -> a.annotationName?.let { byName[it] = a } } }
@@ -206,7 +206,7 @@ object CollabStore {
     suspend fun mergeInto(c: Context, ref: ReviewRef, src: File, dest: File, password: String?, remote: List<RemoteComment>): CommentMerge.Plan =
         withContext(Dispatchers.IO) {
             ioLock.withLock {
-                PDDocument.load(src, password ?: "").use { doc ->
+                com.smartdocs.editor.core.pdf.PdfLoad.open(src, password ?: "").use { doc ->
                     val plan = planFor(c, ref, remote, presentNames(doc))
                     if (!plan.isEmpty) { applyPlan(doc, remote, plan); saveAtomically(doc, dest, password) }
                     else if (src.absolutePath != dest.absolutePath) src.copyTo(dest, overwrite = true)

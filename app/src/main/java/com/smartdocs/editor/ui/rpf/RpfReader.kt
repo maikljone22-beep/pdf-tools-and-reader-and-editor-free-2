@@ -80,7 +80,7 @@ fun RpfReaderHost(s: ReaderState, switchTo: (DocTab?) -> Unit) {
         val pw = s.password
         val claim = withContext(Dispatchers.IO) {
             runCatching {
-                com.smartdocs.editor.core.pdf.PdfOps.loadRaw(file, pw).use { d ->
+                com.smartdocs.editor.core.pdf.PdfRead.use(file, pw, "pdfa-claim") { d ->
                     val xmp = d.documentCatalog.metadata?.exportXMPMetadata()?.use { it.readBytes().toString(Charsets.UTF_8) } ?: ""
                     com.smartdocs.editor.core.nve.panes.DocNotices.pdfaClaim(xmp)
                 }

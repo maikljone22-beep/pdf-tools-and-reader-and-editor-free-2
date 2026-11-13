@@ -70,7 +70,7 @@ object ScaleStore {
     fun hasMultiple(all: Map<Int, PageScale>): Boolean = all.values.map { it.scale.label() }.distinct().size > 1
 
     suspend fun readAll(src: File, pw: String?): Map<Int, PageScale> = withContext(Dispatchers.IO) {
-        runCatching { (if (pw.isNullOrEmpty()) PDDocument.load(src) else PDDocument.load(src, pw)).use { readAll(it) } }.getOrDefault(emptyMap())
+        runCatching { (if (pw.isNullOrEmpty()) com.smartdocs.editor.core.pdf.PdfLoad.open(src) else com.smartdocs.editor.core.pdf.PdfLoad.open(src, pw)).use { readAll(it) } }.getOrDefault(emptyMap())
     }
 
     suspend fun write(src: File, out: File, pw: String?, pages: Collection<Int>?, scale: MeasureScale, precision: Int, description: String) = withContext(Dispatchers.IO) {

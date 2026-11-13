@@ -69,7 +69,7 @@ object TemplateRenderer {
 
     /** Attach calculate/format/keystroke JavaScript actions, the calculation order and read-only flags. */
     private fun applyScripts(src: File, out: File, scripts: Map<String, FieldScript>, order: List<String>) {
-        PDDocument.load(src).use { doc ->
+        com.smartdocs.editor.core.pdf.PdfLoad.open(src).use { doc ->
             val acro = doc.documentCatalog.acroForm ?: run { src.copyTo(out, true); return }
             val co = COSArray()
             scripts.forEach { (name, s) ->

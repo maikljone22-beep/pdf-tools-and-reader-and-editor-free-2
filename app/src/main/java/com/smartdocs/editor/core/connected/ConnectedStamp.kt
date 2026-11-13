@@ -18,7 +18,7 @@ object ConnectedStamp {
      */
     fun stamp(src: File, out: File, docId: String, key: String?, srcPassword: String? = null) {
         require(ConnMarker.isId(docId)) { "bad id" }
-        val doc = if (srcPassword.isNullOrEmpty()) PDDocument.load(src) else PDDocument.load(src, srcPassword)
+        val doc = if (srcPassword.isNullOrEmpty()) com.smartdocs.editor.core.pdf.PdfLoad.open(src) else com.smartdocs.editor.core.pdf.PdfLoad.open(src, srcPassword)
         doc.use { d ->
             if (d.isEncrypted) { if (srcPassword.isNullOrEmpty()) throw EncryptedSource(); d.isAllSecurityToBeRemoved = true }
             val trailer = d.document.trailer

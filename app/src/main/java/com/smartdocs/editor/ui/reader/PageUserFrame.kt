@@ -13,7 +13,7 @@ data class PageUserFrame(val rotate: Int, val cropX: Float, val cropY: Float) {
         fun normRotate(r: Int): Int = (((r / 90) * 90) % 360 + 360) % 360
 
         /** Frames of the pages that are not "0° at (0, 0)", read once with PdfBox (only the page tree is touched). */
-        fun read(file: File, password: String?): Map<Int, PageUserFrame> = PdfOps.load(file, password).use { d ->
+        suspend fun read(file: File, password: String?): Map<Int, PageUserFrame> = com.smartdocs.editor.core.pdf.PdfRead.use(file, password, "page-frames") { d ->
             val out = HashMap<Int, PageUserFrame>()
             for ((i, p) in d.pages.withIndex()) {
                 val rot = normRotate(p.rotation)

@@ -112,7 +112,7 @@ object ShareBuilder {
 
     /** Trailer /ID[0] (upper-case hex) and the /Info SDReviewId written by [EmailReview.prepare], when present. */
     fun documentIds(f: File, pw: String?): Pair<String?, String?> = runCatching {
-        (if (pw.isNullOrEmpty()) PDDocument.load(f) else PDDocument.load(f, pw)).use { doc ->
+        (if (pw.isNullOrEmpty()) com.smartdocs.editor.core.pdf.PdfLoad.open(f) else com.smartdocs.editor.core.pdf.PdfLoad.open(f, pw)).use { doc ->
             val id = doc.document.documentID?.let { arr -> (arr.getObject(0) as? com.tom_roush.pdfbox.cos.COSString)?.bytes }
             val hex = id?.joinToString("") { "%02X".format(it) }
             hex to doc.documentInformation?.getCustomMetadataValue(EmailReview.INFO_KEY)

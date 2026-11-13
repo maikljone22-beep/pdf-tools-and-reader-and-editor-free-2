@@ -39,7 +39,7 @@ object RevisionSnapshot {
     }
 
     private fun load(bytes: ByteArray, password: String?): PDDocument =
-        if (password.isNullOrEmpty()) PDDocument.load(bytes) else PDDocument.load(bytes, password)
+        if (password.isNullOrEmpty()) com.smartdocs.editor.core.pdf.PdfLoad.open(bytes) else com.smartdocs.editor.core.pdf.PdfLoad.open(bytes, password)
 
     suspend fun changes(file: File, password: String? = null): Report = withContext(Dispatchers.IO) {
         val bytes = file.readBytes()

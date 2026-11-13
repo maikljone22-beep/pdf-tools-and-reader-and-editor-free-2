@@ -199,7 +199,7 @@ object LtvSupport {
         DigitalSignature.ensureProvider()
         require(src.canonicalPath != out.canonicalPath) { "addDss: out must differ from src" }
         val fileBytes = src.readBytes()
-        PDDocument.load(src).use { doc ->
+        com.smartdocs.editor.core.pdf.PdfLoad.open(src).use { doc ->
             val sigs = doc.signatureDictionaries
             if (sigs.isEmpty()) throw IllegalStateException("no signatures")
             val catalog = doc.documentCatalog.cosObject
@@ -266,7 +266,7 @@ object LtvSupport {
     fun addDocTimestamp(src: File, out: File, tsaUrl: String = TsaClient.DEFAULT_URL) {
         DigitalSignature.ensureProvider()
         require(src.canonicalPath != out.canonicalPath) { "addDocTimestamp: out must differ from src" }
-        PDDocument.load(src).use { doc ->
+        com.smartdocs.editor.core.pdf.PdfLoad.open(src).use { doc ->
             val sig = PDSignature().apply {
                 setType(COSName.DOC_TIME_STAMP)
                 setFilter(PDSignature.FILTER_ADOBE_PPKLITE)

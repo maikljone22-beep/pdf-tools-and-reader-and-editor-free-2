@@ -75,7 +75,7 @@ object PrintPipeline {
         files.forEach { m.addSource(it) }
         m.destinationFileName = out.absolutePath
         m.mergeDocuments(com.tom_roush.pdfbox.io.MemoryUsageSetting.setupMixed(48L shl 20))
-        PDDocument.load(out).use { it.numberOfPages }
+        com.smartdocs.editor.core.pdf.PdfLoad.open(out).use { it.numberOfPages }
     }
 
     /** Comment summary PDF of [src] (thumbnails with numbered markers and the list). Returns the number of comments. */

@@ -303,7 +303,7 @@ object DigitalSignature {
         val warnings = ArrayList<String>()
         try {
             var input = src
-            val (wasEncrypted, priorSigs) = (if (password.isNullOrEmpty()) PDDocument.load(src) else PDDocument.load(src, password)).use { d ->
+            val (wasEncrypted, priorSigs) = (if (password.isNullOrEmpty()) com.smartdocs.editor.core.pdf.PdfLoad.open(src) else com.smartdocs.editor.core.pdf.PdfLoad.open(src, password)).use { d ->
                 d.isEncrypted to runCatching { d.signatureDictionaries.isNotEmpty() }.getOrDefault(false)
             }
             // audit D5: the pre-steps rewrite the whole file, which would break the earlier signatures
@@ -340,7 +340,7 @@ object DigitalSignature {
                     if (priorSigs) throw SignedDocumentException(SignedDocumentException.Reason.INCREMENTAL_FAILED,
                         "this protected file is already signed and could not be signed without breaking the earlier signatures", e)
                     val decrypted = tmp("plain")
-                    (if (password.isNullOrEmpty()) PDDocument.load(input) else PDDocument.load(input, password)).use { it.isAllSecurityToBeRemoved = true; it.save(decrypted) }
+                    (if (password.isNullOrEmpty()) com.smartdocs.editor.core.pdf.PdfLoad.open(input) else com.smartdocs.editor.core.pdf.PdfLoad.open(input, password)).use { it.isAllSecurityToBeRemoved = true; it.save(decrypted) }
                     warnings += "ENCRYPTION_REMOVED"
                     signInto(decrypted, signedOut, identity, options, tgt, draw)
                 }
@@ -395,7 +395,7 @@ object DigitalSignature {
         ensureProvider()
         val signer = CmsSigner(identity, options.tsaUrl?.takeIf { it.isNotBlank() }, options.pades, options.digest)
         // loadRaw keeps an encrypted file's security handler, so the incremental update is encrypted like the file
-        (if (password == null) PDDocument.load(input) else PdfOps.loadRaw(input, password)).use { d ->
+        (if (password == null) com.smartdocs.editor.core.pdf.PdfLoad.open(input) else PdfOps.loadRaw(input, password)).use { d ->
             if (options.certifyLevel in 1..3 && d.signatureDictionaries.isNotEmpty())
                 throw IllegalStateException("certification must be the first signature")
             if (SignedSave.certifyLevel(d) == 1 || d.signatureDictionaries.any { SigFields.lockOf(d, it)?.docPermission == 1 })
@@ -506,7 +506,7 @@ object DigitalSignature {
         val fileLength = file.length()
         val revEnds = com.smartdocs.editor.core.sign.RevisionDiff.revisionEnds(file)
         val results = ArrayList<VerifyResult>()
-        (if (password.isNullOrEmpty()) PDDocument.load(file) else PDDocument.load(file, password)).use { doc ->
+        (if (password.isNullOrEmpty()) com.smartdocs.editor.core.pdf.PdfLoad.open(file) else com.smartdocs.editor.core.pdf.PdfLoad.open(file, password)).use { doc ->
             val ltv = com.smartdocs.editor.core.sign.LtvSupport.hasDss(doc)
             // Foxit "ignore document validation info": the embedded DSS responses are not used for revocation
             val material = if (!revocation) null

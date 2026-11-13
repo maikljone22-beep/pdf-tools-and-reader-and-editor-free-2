@@ -58,7 +58,7 @@ object CommentStore {
     private val CREATION = COSName.getPDFName("CreationDate")
     private val POPUP = COSName.getPDFName("Popup")
 
-    private fun open(src: File, pw: String?): PDDocument = if (pw.isNullOrEmpty()) PDDocument.load(src) else PDDocument.load(src, pw)
+    private fun open(src: File, pw: String?): PDDocument = if (pw.isNullOrEmpty()) com.smartdocs.editor.core.pdf.PdfLoad.open(src) else com.smartdocs.editor.core.pdf.PdfLoad.open(src, pw)
 
     /** "D:YYYYMMDDHHmmSS+HH'mm'" → epoch ms (0 when unparsable). */
     fun parseDate(s: String?): Long {
@@ -95,7 +95,7 @@ object CommentStore {
 
     /** Every visible comment of the document with its replies, latest review status and group parent. */
     suspend fun load(src: File, pw: String? = null): List<CommentItem> = withContext(Dispatchers.IO) {
-        open(src, pw).use { doc ->
+        com.smartdocs.editor.core.pdf.PdfRead.use(src, pw, "comments") { doc ->
             val out = ArrayList<CommentItem>()
             doc.pages.forEachIndexed { pi, page ->
                 val list = runCatching { page.annotations }.getOrNull() ?: return@forEachIndexed

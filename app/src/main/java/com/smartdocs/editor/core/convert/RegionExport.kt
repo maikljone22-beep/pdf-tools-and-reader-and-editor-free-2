@@ -37,7 +37,7 @@ object RegionExport {
      */
     suspend fun export(src: File, password: String?, page: Int, left: Float, bottomY: Float, right: Float, topY: Float,
                        format: TargetFormat, out: File, title: String, fallbackText: String): Boolean = withContext(Dispatchers.IO) {
-        PDDocument.load(src, password.orEmpty()).use { doc ->
+        com.smartdocs.editor.core.pdf.PdfLoad.open(src, password.orEmpty()).use { doc ->
             val p = doc.getPage(page)
             val rotated = ((p.rotation % 360) + 360) % 360 != 0
             val layout = if (rotated) null else {

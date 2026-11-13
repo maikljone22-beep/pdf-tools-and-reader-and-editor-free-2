@@ -14,7 +14,7 @@ object PageInsert {
         files.forEach { m.addSource(it) }
         m.destinationFileName = out.absolutePath
         m.mergeDocuments(MemoryUsageSetting.setupTempFileOnly())
-        return PDDocument.load(out).use { it.numberOfPages }
+        return com.smartdocs.editor.core.pdf.PdfLoad.open(out).use { it.numberOfPages }
     }
 
     /**
@@ -22,9 +22,9 @@ object PageInsert {
      * written to [out]. Returns the page count of the result.
      */
     fun into(target: File, pages: File, at: Int, out: File, targetPassword: String? = null): Int {
-        PDDocument.load(target, targetPassword ?: "").use { dst ->
+        com.smartdocs.editor.core.pdf.PdfLoad.open(target, targetPassword ?: "").use { dst ->
             if (dst.isEncrypted) dst.isAllSecurityToBeRemoved = false
-            PDDocument.load(pages).use { src ->
+            com.smartdocs.editor.core.pdf.PdfLoad.open(pages).use { src ->
                 val n0 = dst.numberOfPages
                 val pos = if (at < 0 || at > n0) n0 else at
                 // import at the end, then move the imported pages to [pos]

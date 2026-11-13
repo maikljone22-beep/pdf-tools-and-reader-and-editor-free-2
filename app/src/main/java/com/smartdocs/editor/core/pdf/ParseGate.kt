@@ -30,6 +30,9 @@ object ParseGate {
     /** The latest parses, oldest first. */
     fun stats(): List<Stat> = recent.toList()
 
+    /** The gate without a measurement: housekeeping that must not run next to a parse (closing a shared document). */
+    suspend fun <T> quiet(block: suspend () -> T): T = mutex.withLock { block() }
+
     suspend fun <T> run(label: String = "parse", block: suspend () -> T): T = mutex.withLock {
         val rt = Runtime.getRuntime()
         fun usedMb() = (rt.totalMemory() - rt.freeMemory()) shr 20

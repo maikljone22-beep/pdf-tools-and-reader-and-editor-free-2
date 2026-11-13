@@ -70,7 +70,7 @@ object E5Locks {
     suspend fun probe(file: File, password: String?): LockState = withContext(Dispatchers.IO) { probeNow(file, password) }
 
     fun probeNow(file: File, password: String?): LockState = try {
-        val doc = if (password.isNullOrEmpty()) PDDocument.load(file) else PDDocument.load(file, password)
+        val doc = if (password.isNullOrEmpty()) com.smartdocs.editor.core.pdf.PdfLoad.open(file) else com.smartdocs.editor.core.pdf.PdfLoad.open(file, password)
         doc.use { if (it.isEncrypted) LockState.UNLOCKED else LockState.OPEN }
     } catch (e: Exception) {
         if (!isPasswordError(e)) throw e

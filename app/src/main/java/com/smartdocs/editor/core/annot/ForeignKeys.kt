@@ -65,7 +65,7 @@ object ForeignKeys {
      * /NM to match it by later (its own, or a new one when the annotation had none).
      */
     fun capture(src: File, password: String?, page: Int, index: Int, a: Annot): Annot = runCatching {
-        val saved = (if (password.isNullOrEmpty()) PDDocument.load(src) else PDDocument.load(src, password)).use { d ->
+        val saved = (if (password.isNullOrEmpty()) com.smartdocs.editor.core.pdf.PdfLoad.open(src) else com.smartdocs.editor.core.pdf.PdfLoad.open(src, password)).use { d ->
             d.getPage(page).annotations.getOrNull(index)?.cosObject?.let { snapshot(it) }
         } ?: return a
         val nm = a.nm ?: ("sd-fk-" + System.nanoTime().toString(36))

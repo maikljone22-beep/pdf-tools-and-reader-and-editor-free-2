@@ -229,7 +229,7 @@ object PageBoxOps {
     // ---------------- page labels ----------------
 
     suspend fun readLabels(src: File, password: String?): Pair<List<LabelRange>, Int> = withContext(Dispatchers.IO) {
-        E5Io.load(src, password).use { doc ->
+        com.smartdocs.editor.core.pdf.PdfRead.use(src, password, "page-labels") { doc ->
             val pl = runCatching { doc.documentCatalog.pageLabels }.getOrNull()
             val ranges = ArrayList<LabelRange>()
             if (pl != null) for (start in pl.pageIndices) {

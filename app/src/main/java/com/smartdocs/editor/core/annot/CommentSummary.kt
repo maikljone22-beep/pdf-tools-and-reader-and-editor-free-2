@@ -116,8 +116,8 @@ object CommentSummary {
      * (7.71 "print document with comments summary"). Returns the page count of [out].
      */
     suspend fun appendSummary(base: File, pw: String?, summary: File, out: File): Int = withContext(Dispatchers.IO) {
-        (if (pw.isNullOrEmpty()) PDDocument.load(base) else PDDocument.load(base, pw)).use { d ->
-            PDDocument.load(summary).use { s ->
+        (if (pw.isNullOrEmpty()) com.smartdocs.editor.core.pdf.PdfLoad.open(base) else com.smartdocs.editor.core.pdf.PdfLoad.open(base, pw)).use { d ->
+            com.smartdocs.editor.core.pdf.PdfLoad.open(summary).use { s ->
                 d.isAllSecurityToBeRemoved = true
                 com.tom_roush.pdfbox.multipdf.PDFMergerUtility().appendDocument(d, s)
                 d.save(out)

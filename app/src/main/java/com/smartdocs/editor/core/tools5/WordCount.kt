@@ -46,7 +46,7 @@ object WordCount {
 
     /** Counts of the pages in [range] ("" = all) of [file]. */
     suspend fun ofPdf(file: File, password: String?, range: String = ""): WordCountResult = withContext(Dispatchers.IO) {
-        (if (password.isNullOrEmpty()) PDDocument.load(file) else PDDocument.load(file, password)).use { doc ->
+        (if (password.isNullOrEmpty()) com.smartdocs.editor.core.pdf.PdfLoad.open(file) else com.smartdocs.editor.core.pdf.PdfLoad.open(file, password)).use { doc ->
             val pages = PageSet.parse(range, doc.numberOfPages)
             val st = PDFTextStripper().apply { sortByPosition = true }
             pages.fold(WordCountResult(0, 0, 0, 0, 0, 0)) { acc, p ->

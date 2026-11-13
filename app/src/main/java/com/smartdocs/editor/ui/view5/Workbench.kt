@@ -100,7 +100,7 @@ fun WorkbenchSheet(v: V5State, measureFirst: Boolean, onMessage: (String) -> Uni
     val stored by produceState(emptyList<com.smartdocs.editor.core.view5.StoredEdit.Editable>(), m.page, s.renderVersion, m.tool == WTool.ADJUST) {
         val f = s.file
         value = if (m.tool != WTool.ADJUST || f == null) emptyList() else withContext(Dispatchers.IO) {
-            runCatching { (if (s.password.isNullOrEmpty()) com.tom_roush.pdfbox.pdmodel.PDDocument.load(f) else com.tom_roush.pdfbox.pdmodel.PDDocument.load(f, s.password))
+            runCatching { (if (s.password.isNullOrEmpty()) com.smartdocs.editor.core.pdf.PdfLoad.open(f) else com.smartdocs.editor.core.pdf.PdfLoad.open(f, s.password))
                 .use { com.smartdocs.editor.core.view5.StoredEdit.read(it, m.page) } }.getOrDefault(emptyList())
         }
     }

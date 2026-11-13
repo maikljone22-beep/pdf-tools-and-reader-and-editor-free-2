@@ -48,8 +48,9 @@ object PdfOps {
 
     /** Load without re-protecting: for incremental saves, which keep the original security handler ([SignedSave]). */
     internal fun loadRaw(src: File, password: String? = null): PDDocument =
-        // new large streams (embedded videos, 100+ MB) spill to temp files instead of the heap
-        PDDocument.load(src, password ?: "", com.tom_roush.pdfbox.io.MemoryUsageSetting.setupMixed(48L shl 20))
+        // PdfBox copies every stream of the file into its scratch storage on load: small files keep it on the heap,
+        // bigger ones use a temp file (PdfLoad.memoryFor), so opening a large document cannot fill the heap
+        PDDocument.load(src, password ?: "", PdfLoad.memoryFor(src.length()))
 
     /** Re-protect an encrypted [doc] (loaded with [loadRaw]) like its source, so a full save keeps its protection. */
     internal fun reprotect(doc: PDDocument, password: String?) {
@@ -682,7 +683,7 @@ object PdfOps {
 
     /** True when the file carries an encryption dictionary (open password and/or permissions password). */
     suspend fun isEncrypted(src: File, password: String? = null): Boolean = withContext(Dispatchers.IO) {
-        (if (password.isNullOrEmpty()) PDDocument.load(src) else PDDocument.load(src, password)).use { it.isEncrypted }
+        loadRaw(src, password).use { it.isEncrypted }
     }
 
     /**

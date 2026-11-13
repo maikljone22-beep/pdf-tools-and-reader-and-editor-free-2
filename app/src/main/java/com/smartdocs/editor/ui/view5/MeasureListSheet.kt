@@ -41,7 +41,7 @@ fun MeasureListSheet(v: V5State) {
     val found by produceState<List<MeasureWriter.Found>?>(null, s.renderVersion) {
         val f = s.file ?: run { value = emptyList(); return@produceState }
         value = withContext(Dispatchers.IO) {
-            runCatching { (if (s.password.isNullOrEmpty()) PDDocument.load(f) else PDDocument.load(f, s.password)).use { MeasureWriter.list(it) } }.getOrDefault(emptyList())
+            runCatching { (if (s.password.isNullOrEmpty()) com.smartdocs.editor.core.pdf.PdfLoad.open(f) else com.smartdocs.editor.core.pdf.PdfLoad.open(f, s.password)).use { MeasureWriter.list(it) } }.getOrDefault(emptyList())
         }
     }
     ModalBottomSheet(onDismissRequest = { v.close() }) {

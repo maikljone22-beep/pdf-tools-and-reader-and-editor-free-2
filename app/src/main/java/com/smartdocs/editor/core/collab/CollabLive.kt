@@ -95,7 +95,7 @@ object CollabLive {
     fun offer(c: Context, r: ReviewRef, list: List<RemoteComment>) {
         val f = file ?: return
         if (ref?.id != r.id) return
-        val present = runCatching { com.tom_roush.pdfbox.pdmodel.PDDocument.load(f).use { CollabStore.presentNames(it) } }.getOrDefault(emptySet())
+        val present = runCatching { com.smartdocs.editor.core.pdf.PdfLoad.open(f).use { CollabStore.presentNames(it) } }.getOrDefault(emptySet())
         val plan = CollabStore.planFor(c, r, list, present)
         val wanted = plan.upserts.toSet() + plan.deletes
         pending = list.filter { it.nm in wanted }

@@ -77,22 +77,23 @@ class ReaderGuard(private val s: ReaderState) {
         protectedView = ProtectedView.applies(TrustPrefs.pvMode(ctx), o, priv, TrustPrefs.editingEnabled(ctx, f.absolutePath))
         jsLevel = TrustPrefs.jsLevel(ctx)
         publish()
-        if (withContext(Dispatchers.IO) { SecurityInfoReader.mentionsEncrypt(f) }) info = com.smartdocs.editor.core.pdf.ParseGate.run("security-info") { withContext(Dispatchers.IO) {
-            runCatching { PdfOps.loadRaw(f, password).use { SecurityInfoReader.of(it) } }.getOrNull()
-        } } else info = SecurityInfo.NONE
+        if (withContext(Dispatchers.IO) { SecurityInfoReader.mentionsEncrypt(f) }) info =
+            runCatching { com.smartdocs.editor.core.pdf.PdfRead.use(f, password, "security-info") { SecurityInfoReader.of(it) } }.getOrNull()
+        else info = SecurityInfo.NONE
         s.scope.launch { scan(f, password) }
         s.scope.launch { refreshSigned(f, password) }
     }
 
     /** Tab audit D8: (re)reads the certification and FieldMDP locks of [f] (on open and after the file was replaced). */
     suspend fun refreshSigned(f: File, password: String?) {
-        signedInfo = com.smartdocs.editor.core.pdf.ParseGate.run("signatures") { withContext(Dispatchers.IO) { runCatching { com.smartdocs.editor.core.pdf.SignedGuard.inspect(f, password) }.getOrNull() } }
+        signedInfo = runCatching { com.smartdocs.editor.core.pdf.PdfRead.use(f, password, "signatures") { com.smartdocs.editor.core.pdf.SignedGuard.inspect(it) } }
+            .getOrDefault(com.smartdocs.editor.core.pdf.SignedGuard.Info.NONE)
     }
 
     private suspend fun scan(f: File, password: String?) {
         try {
             val ctx = s.context
-            val found = com.smartdocs.editor.core.pdf.ParseGate.run("action-scan") { withContext(Dispatchers.IO) { runCatching { PdfOps.loadRaw(f, password).use { ActionInspector.scan(it) } }.getOrNull() } } ?: ActionFindings.EMPTY
+            val found = runCatching { com.smartdocs.editor.core.pdf.PdfRead.use(f, password, "action-scan") { ActionInspector.scan(it) } }.getOrNull() ?: ActionFindings.EMPTY
             findings = found
             if (found.total > 0) {
                 val h = withContext(Dispatchers.IO) { runCatching { TrustPrefs.hashOf(f) }.getOrNull() }

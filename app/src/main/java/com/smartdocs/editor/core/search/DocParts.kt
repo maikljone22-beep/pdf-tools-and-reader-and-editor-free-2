@@ -110,7 +110,7 @@ object DocParts {
         return runCatching {
             if (stream.length > MAX_ATTACHMENT) return ""
             val bytes = stream.createInputStream().use { it.readBytes() }
-            if (ext == "pdf") PDDocument.load(bytes).use { d -> com.tom_roush.pdfbox.text.PDFTextStripper().also { it.endPage = 200 }.getText(d) }
+            if (ext == "pdf") com.smartdocs.editor.core.pdf.PdfLoad.open(bytes).use { d -> com.tom_roush.pdfbox.text.PDFTextStripper().also { it.endPage = 200 }.getText(d) }
             else String(bytes, Charsets.UTF_8)
         }.getOrDefault("").replace(Regex("\\s+"), " ").trim().take(200_000)
     }

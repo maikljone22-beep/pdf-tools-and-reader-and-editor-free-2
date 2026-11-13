@@ -27,7 +27,7 @@ object CommentOps5 {
 
     data class Extra(val quads: List<FloatArray>, val checked: Boolean)
 
-    private fun open(src: File, pw: String?): PDDocument = if (pw.isNullOrEmpty()) PDDocument.load(src) else PDDocument.load(src, pw)
+    private fun open(src: File, pw: String?): PDDocument = if (pw.isNullOrEmpty()) com.smartdocs.editor.core.pdf.PdfLoad.open(src) else com.smartdocs.editor.core.pdf.PdfLoad.open(src, pw)
 
     /** (page, index) → quads (each [x0, y0, x1, y1], y up) and the latest private checkmark. */
     suspend fun extras(src: File, pw: String?): Map<Pair<Int, Int>, Extra> = withContext(Dispatchers.IO) {

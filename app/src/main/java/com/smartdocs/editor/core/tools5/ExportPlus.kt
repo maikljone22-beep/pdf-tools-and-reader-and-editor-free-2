@@ -82,7 +82,7 @@ object ExportPlus {
 
     /** PDF → RTF through the converter's layout analysis (paragraphs, headings, tables, RTL). */
     suspend fun rtf(src: File, password: String?, out: File, pages: List<Int> = emptyList(), onProgress: (Int, Int) -> Unit = { _, _ -> }): File = withContext(Dispatchers.IO) {
-        val doc = if (password.isNullOrEmpty()) PDDocument.load(src) else PDDocument.load(src, password)
+        val doc = if (password.isNullOrEmpty()) com.smartdocs.editor.core.pdf.PdfLoad.open(src) else com.smartdocs.editor.core.pdf.PdfLoad.open(src, password)
         doc.use { d ->
             val ex = PdfContentExtractor(d)
             val list = pages.filter { it in 0 until d.numberOfPages }.ifEmpty { (0 until d.numberOfPages).toList() }

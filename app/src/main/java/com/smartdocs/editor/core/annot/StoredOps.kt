@@ -65,7 +65,7 @@ object StoredOps {
 
     /** /NM of every annotation of [page], by index. */
     fun namesOf(src: File, pw: String?, page: Int): Map<Int, String?> {
-        val doc = if (pw.isNullOrEmpty()) PDDocument.load(src) else PDDocument.load(src, pw)
+        val doc = if (pw.isNullOrEmpty()) com.smartdocs.editor.core.pdf.PdfLoad.open(src) else com.smartdocs.editor.core.pdf.PdfLoad.open(src, pw)
         return doc.use { d ->
             if (page !in 0 until d.numberOfPages) return@use emptyMap()
             d.getPage(page).annotations.mapIndexed { i, an -> i to an.annotationName }.toMap()

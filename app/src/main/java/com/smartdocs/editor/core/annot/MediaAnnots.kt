@@ -16,7 +16,7 @@ object MediaAnnots {
     /** Extract the file embedded in file-attachment annotation [index] of [page] into [dir]; null when none. */
     suspend fun extractAt(src: File, pw: String?, page: Int, index: Int, dir: File): Pair<File, String>? = withContext(Dispatchers.IO) {
         dir.mkdirs()
-        val doc = if (pw.isNullOrEmpty()) PDDocument.load(src) else PDDocument.load(src, pw)
+        val doc = if (pw.isNullOrEmpty()) com.smartdocs.editor.core.pdf.PdfLoad.open(src) else com.smartdocs.editor.core.pdf.PdfLoad.open(src, pw)
         doc.use { d ->
             if (page !in 0 until d.numberOfPages) return@use null
             val any = d.getPage(page).annotations.getOrNull(index) ?: return@use null

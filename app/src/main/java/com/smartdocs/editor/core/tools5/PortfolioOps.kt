@@ -49,7 +49,7 @@ object PortfolioOps {
                 if (!it.name.endsWith(".pdf", true) && it.mime != "application/pdf") continue
                 val bytes = bytesOf(doc, it.key) ?: continue
                 runCatching {
-                    PDDocument.load(bytes).use { pd ->
+                    com.smartdocs.editor.core.pdf.PdfLoad.open(bytes).use { pd ->
                         val st = PDFTextStripper()
                         for (p in 0 until pd.numberOfPages) {
                             coroutineContext.ensureActive()

@@ -19,7 +19,7 @@ object CollabFlows {
         val dir = CollabStore.reviewsDir(c)
         val local = unique(dir, source.name)
         // give every comment an /NM before sharing so others can reply to / merge them by id
-        PDDocument.load(source).use { doc ->
+        com.smartdocs.editor.core.pdf.PdfLoad.open(source).use { doc ->
             if (doc.isEncrypted) throw Encrypted()
             CollabAnnots.ensureNames(doc)
             doc.save(local)

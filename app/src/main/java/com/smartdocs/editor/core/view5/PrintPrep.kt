@@ -90,7 +90,7 @@ object PrintPrep {
             if (nveMarked != null) pages = pages.filter { it in nveMarked }
             if (o.reverse) pages = pages.reversed()
             if (pages.isEmpty()) throw IllegalArgumentException("empty range")
-            val extra = o.appendix?.takeIf { it.exists() }?.let { runCatching { PDDocument.load(it) }.getOrNull() }
+            val extra = o.appendix?.takeIf { it.exists() }?.let { runCatching { com.smartdocs.editor.core.pdf.PdfLoad.open(it) }.getOrNull() }
             try {
                 PDDocument().use { dst ->
                     val lu = LayerUtility(dst)

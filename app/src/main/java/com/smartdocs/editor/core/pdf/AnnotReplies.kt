@@ -26,7 +26,7 @@ object AnnotReplies {
 
     private val IRT: COSName = COSName.getPDFName("IRT")
 
-    private fun load(src: File, password: String?): PDDocument = if (password.isNullOrEmpty()) PDDocument.load(src) else PDDocument.load(src, password)
+    private fun load(src: File, password: String?): PDDocument = if (password.isNullOrEmpty()) com.smartdocs.editor.core.pdf.PdfLoad.open(src) else com.smartdocs.editor.core.pdf.PdfLoad.open(src, password)
 
     private fun parentRef(an: PDAnnotation): COSDictionary? = an.cosObject.getDictionaryObject(IRT) as? COSDictionary
 

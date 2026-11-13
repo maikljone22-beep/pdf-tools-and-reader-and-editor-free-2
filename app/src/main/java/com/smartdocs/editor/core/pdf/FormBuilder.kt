@@ -32,7 +32,7 @@ data class NewField(
 object FormBuilder {
 
     private fun load(src: File, password: String?): PDDocument =
-        if (password.isNullOrEmpty()) PDDocument.load(src) else PDDocument.load(src, password)
+        if (password.isNullOrEmpty()) com.smartdocs.editor.core.pdf.PdfLoad.open(src) else com.smartdocs.editor.core.pdf.PdfLoad.open(src, password)
 
     private fun acroForm(doc: PDDocument): PDAcroForm {
         val existing = doc.documentCatalog.acroForm

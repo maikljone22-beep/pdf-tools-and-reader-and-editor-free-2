@@ -46,9 +46,8 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 /** Open [file] read-only (no re-protection: nothing is saved) and run [block] on the IO dispatcher. */
-internal suspend fun <T> readDoc(file: File, password: String?, block: (PDDocument) -> T): T = withContext(Dispatchers.IO) {
-    PdfOps.loadRaw(file, password).use(block)
-}
+internal suspend fun <T> readDoc(file: File, password: String?, block: (PDDocument) -> T): T =
+    com.smartdocs.editor.core.pdf.PdfRead.use(file, password, "pane", block)   // the parsed document every open-time reader shares
 
 /** Result of loading a pane's data: still loading, failed, or the value. */
 private sealed interface Load<out T> {

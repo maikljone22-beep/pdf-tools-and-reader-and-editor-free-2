@@ -151,7 +151,7 @@ object Optimizer {
     }
 
     suspend fun auditFile(src: File, password: String?): SpaceAudit = withContext(Dispatchers.IO) {
-        (if (password.isNullOrEmpty()) PDDocument.load(src) else PDDocument.load(src, password)).use { audit(it, src.length()) }
+        (if (password.isNullOrEmpty()) com.smartdocs.editor.core.pdf.PdfLoad.open(src) else com.smartdocs.editor.core.pdf.PdfLoad.open(src, password)).use { audit(it, src.length()) }
     }
 
     private fun toGray(b: Bitmap): Bitmap {
@@ -427,7 +427,7 @@ object Optimizer {
         var kept = false
         // a protected input saved unprotected must not be swapped back for the protected original
         if (o.onlyIfSmaller && out.length() >= src.length() && (password.isNullOrEmpty() || o.keepProtection)) { src.copyTo(out, overwrite = true); kept = true }
-        val after = (if (password.isNullOrEmpty()) runCatching { PDDocument.load(out) }.getOrElse { PDDocument.load(out, "") } else runCatching { PDDocument.load(out, password) }.getOrElse { PDDocument.load(out) })
+        val after = (if (password.isNullOrEmpty()) runCatching { com.smartdocs.editor.core.pdf.PdfLoad.open(out) }.getOrElse { com.smartdocs.editor.core.pdf.PdfLoad.open(out, "") } else runCatching { com.smartdocs.editor.core.pdf.PdfLoad.open(out, password) }.getOrElse { com.smartdocs.editor.core.pdf.PdfLoad.open(out) })
             .use { audit(it, out.length()) }
         OptimizeResult(before, after, changed, kept, fonts, OptimizeExtras.tips(after, o, kept), subset, cleaned, merged, flattened)
     }

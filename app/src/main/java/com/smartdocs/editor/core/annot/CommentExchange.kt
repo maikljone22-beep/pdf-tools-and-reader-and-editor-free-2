@@ -28,7 +28,7 @@ object CommentExchange {
     private val POPUP = COSName.getPDFName("Popup")
     private val SKIP = setOf("Link", "Popup", "Widget")
 
-    private fun open(src: File, pw: String?): PDDocument = if (pw.isNullOrEmpty()) PDDocument.load(src) else PDDocument.load(src, pw)
+    private fun open(src: File, pw: String?): PDDocument = if (pw.isNullOrEmpty()) com.smartdocs.editor.core.pdf.PdfLoad.open(src) else com.smartdocs.editor.core.pdf.PdfLoad.open(src, pw)
 
     // ======================= XFDF export =======================
 

@@ -592,8 +592,7 @@ object AnnotationWriter {
                         val subject: String = "")
 
     suspend fun list(src: File, password: String? = null): List<Existing> = withContext(Dispatchers.IO) {
-        val doc = PdfOps.loadRaw(src, password)   // big files spill to a temp file instead of the heap
-        doc.use { d ->
+        PdfRead.use(src, password, "annotations") { d ->
             val out = ArrayList<Existing>()
             d.pages.forEachIndexed { pi, page ->
                 // a single malformed annotation (missing /Rect, bad dictionary) must not hide the whole list

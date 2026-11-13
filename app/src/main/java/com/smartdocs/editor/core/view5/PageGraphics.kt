@@ -66,7 +66,7 @@ object PageGraphics {
     }
 
     suspend fun scan(src: File, pw: String?, pageIndex: Int): Result = withContext(Dispatchers.IO) {
-        (if (pw.isNullOrEmpty()) PDDocument.load(src) else PDDocument.load(src, pw)).use { scan(it, pageIndex) }
+        (if (pw.isNullOrEmpty()) com.smartdocs.editor.core.pdf.PdfLoad.open(src) else com.smartdocs.editor.core.pdf.PdfLoad.open(src, pw)).use { scan(it, pageIndex) }
     }
 
     /** Images of several pages at once (one document load). */
@@ -82,7 +82,7 @@ object PageGraphics {
 
     /** [ReflowExtras] of several pages at once (one document load); a page that fails gets nothing extra. */
     suspend fun reflowExtras(src: File, pw: String?, pages: IntRange): Map<Int, ReflowExtras> = withContext(Dispatchers.IO) {
-        (if (pw.isNullOrEmpty()) PDDocument.load(src) else PDDocument.load(src, pw)).use { d ->
+        (if (pw.isNullOrEmpty()) com.smartdocs.editor.core.pdf.PdfLoad.open(src) else com.smartdocs.editor.core.pdf.PdfLoad.open(src, pw)).use { d ->
             pages.filter { it in 0 until d.numberOfPages }.associateWith { p ->
                 val r = runCatching { scan(d, p, maxSegments = 4000) }.getOrNull()
                 val rules = r?.segments.orEmpty().map { (a, b) -> RRule(a.x.toFloat(), a.y.toFloat(), b.x.toFloat(), b.y.toFloat()) }

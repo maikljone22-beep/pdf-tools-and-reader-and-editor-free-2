@@ -101,7 +101,7 @@ object EmailReview {
         var authors = emptyList<String>()
         val inc = when (kind) {
             Kind.PDF -> runCatching {
-                PDDocument.load(f).use { doc ->
+                com.smartdocs.editor.core.pdf.PdfLoad.open(f).use { doc ->
                     val id = (doc.document.documentID?.getObject(0) as? COSString)?.bytes?.joinToString("") { "%02X".format(it) }
                     authors = doc.pages.flatMap { p -> runCatching { p.annotations }.getOrDefault(emptyList()) }
                         .mapNotNull { (it as? PDAnnotationMarkup)?.titlePopup?.takeIf { t -> t.isNotBlank() } }.distinct()

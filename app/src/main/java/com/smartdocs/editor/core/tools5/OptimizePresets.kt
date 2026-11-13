@@ -62,7 +62,7 @@ object OptimizePresets {
         val sample = File(tempDir, "opt_est_${System.nanoTime()}.pdf"); val out = File(tempDir, "opt_est_out_${System.nanoTime()}.pdf")
         try {
             var total: Int
-            (if (password.isNullOrEmpty()) PDDocument.load(src) else PDDocument.load(src, password)).use { doc ->
+            (if (password.isNullOrEmpty()) com.smartdocs.editor.core.pdf.PdfLoad.open(src) else com.smartdocs.editor.core.pdf.PdfLoad.open(src, password)).use { doc ->
                 total = doc.numberOfPages
                 if (doc.isEncrypted) doc.isAllSecurityToBeRemoved = true
                 if (total > samplePages) {

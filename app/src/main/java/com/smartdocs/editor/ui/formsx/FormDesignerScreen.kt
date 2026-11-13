@@ -117,7 +117,7 @@ fun FormDesignerScreen(nav: NavHostController, uri: String?) {
         scope.launch {
             runCatching {
                 withContext(Dispatchers.IO) {
-                    com.tom_roush.pdfbox.pdmodel.PDDocument.load(w).use { d ->
+                    com.smartdocs.editor.core.pdf.PdfLoad.open(w).use { d ->
                         ctx.contentResolver.openOutputStream(u)?.use { out -> FormData.export(d, exportFormat, out, st.source?.name) }
                     }
                 }
@@ -141,7 +141,7 @@ fun FormDesignerScreen(nav: NavHostController, uri: String?) {
         combineFiles = files
         scope.launch {
             val rows = withContext(Dispatchers.IO) {
-                files.mapNotNull { f -> runCatching { com.tom_roush.pdfbox.pdmodel.PDDocument.load(f).use { d -> f.name to FormData.values(d) } }.getOrNull() }
+                files.mapNotNull { f -> runCatching { com.smartdocs.editor.core.pdf.PdfLoad.open(f).use { d -> f.name to FormData.values(d) } }.getOrNull() }
             }
             combineCsv = FormData.collect(rows, appendTo)
             csvSaver.launch("forms.csv")
@@ -444,7 +444,7 @@ private fun DesignSurface(st: DesignerState, modifier: Modifier, onCreate: (FxRe
             }) {
             bmp?.let { Image(it.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.FillBounds) } ?: CircularProgressIndicator(Modifier.align(Alignment.Center))
             val primary = MaterialTheme.colorScheme.primary
-            val tabOrder = remember(st.version, st.page, st.showTabNumbers) { if (st.showTabNumbers) st.work?.let { f -> runCatching { com.tom_roush.pdfbox.pdmodel.PDDocument.load(f).use { d -> FxEditor.tabOrder(d, st.page, st.specs) } }.getOrNull() } else null }
+            val tabOrder = remember(st.version, st.page, st.showTabNumbers) { if (st.showTabNumbers) st.work?.let { f -> runCatching { com.smartdocs.editor.core.pdf.PdfLoad.open(f).use { d -> FxEditor.tabOrder(d, st.page, st.specs) } }.getOrNull() } else null }
             Canvas(Modifier.fillMaxSize()) {
                 val a = dragA; val b = dragB
                 val dx = if (dragMode == 1 && a != null && b != null) b.x - a.x else 0f

@@ -56,7 +56,7 @@ object DocPropsOps {
     private fun deref(b: COSBase?): COSBase? = if (b is COSObject) b.getObject() else b
 
     suspend fun read(src: File, password: String?): DocProps = withContext(Dispatchers.IO) {
-        E5Io.load(src, password).use { doc ->
+        com.smartdocs.editor.core.pdf.PdfRead.use(src, password, "doc-props") { doc ->
             val info = doc.documentInformation
             val cat = doc.documentCatalog
             val cd = cat.cosObject

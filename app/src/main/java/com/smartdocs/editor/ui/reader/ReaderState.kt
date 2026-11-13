@@ -280,7 +280,7 @@ class ReaderState(
         val ans = try { d.await() } finally { ownerPrompt = null }
         if (ans == null) return false
         if (ans.isEmpty()) { ownerAsked = true; return true }
-        val owner = withContext(Dispatchers.IO) { runCatching { com.smartdocs.editor.core.pdf.PdfOps.loadRaw(f, ans).use { it.currentAccessPermission?.isOwnerPermission == true } }.getOrDefault(false) }
+        val owner = runCatching { com.smartdocs.editor.core.pdf.PdfRead.use(f, ans, "owner-check") { it.currentAccessPermission?.isOwnerPermission == true } }.getOrDefault(false)
         if (!owner) { error = str(R.string.tvc_owner_wrong); return false }
         ownerAsked = true
         saveMutex.withLock { withContext(NonCancellable) {
@@ -355,7 +355,7 @@ class ReaderState(
                 }
                 val firstOpen = recent == null && startPage < 0
                 if (!low) scope.launch {
-                    val v = openParse.withLock("initial-view") { withContext(Dispatchers.IO) { runCatching { com.smartdocs.editor.core.edit5.DocPropsOps.read(f, openPw).view }.getOrNull() } } ?: return@launch
+                    val v = runCatching { com.smartdocs.editor.core.edit5.DocPropsOps.read(f, openPw).view }.getOrNull() ?: return@launch
                     applyInitialView(v, firstOpen)
                 }
                 app.documents.touchRecent(f, s.pageCount, initialPage)
@@ -412,7 +412,7 @@ class ReaderState(
         scope.launch {
             val found = withContext(Dispatchers.IO) {
                 runCatching {
-                    com.smartdocs.editor.core.pdf.PdfOps.loadRaw(f, pw).use { d ->
+                    com.smartdocs.editor.core.pdf.PdfRead.use(f, pw, "fill-sign-targets") { d ->
                         // a real form is filled through its fields; only flat pages get detected targets
                         if (d.documentCatalog.acroForm?.fields?.isNotEmpty() == true || page !in 0 until d.numberOfPages) emptyList()
                         else com.smartdocs.editor.core.formsx.FieldRecognition.scanPage(d, page)
@@ -547,7 +547,7 @@ class ReaderState(
     private fun loadPageFrames() {
         val f = file ?: return; val pw = password
         scope.launch {
-            val frames = openParse.withLock("page-frames") { withContext(Dispatchers.IO) { runCatching { PageUserFrame.read(f, pw) }.getOrNull() } } ?: return@launch
+            val frames = runCatching { PageUserFrame.read(f, pw) }.getOrNull() ?: return@launch
             androidx.compose.runtime.snapshots.Snapshot.withMutableSnapshot { pageFrames.clear(); pageFrames.putAll(frames) }
         }
     }
@@ -555,17 +555,11 @@ class ReaderState(
     private fun loadExisting() {
         loadPageFrames()
         val f = file ?: return
-        scope.launch { existing = openParse.withLock("annotations") { runCatching { AnnotationWriter.list(f, password) }.getOrDefault(emptyList()) } }
+        scope.launch { existing = runCatching { AnnotationWriter.list(f, password) }.getOrDefault(emptyList()) }
     }
 
-    /**
-     * The background reads after opening (initial view, page frames, existing annotations) each parse the whole file
-     * with PdfBox; run together on a 400 MB file they exhausted the heap and the next allocation anywhere crashed the
-     * app. One at a time keeps the peak at one parse.
-     */
-    private val openParse = object {
-        suspend fun <T> withLock(label: String, block: suspend () -> T): T = com.smartdocs.editor.core.pdf.ParseGate.run(label, block)
-    }
+    // The background reads after opening (initial view, page frames, existing annotations…) each used to parse the
+    // whole file with PdfBox, all at once. They now share one parsed document, one reader at a time: PdfRead.
 
     // ================= annotations / undo =================
 

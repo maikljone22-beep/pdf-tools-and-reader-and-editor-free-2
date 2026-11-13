@@ -97,7 +97,7 @@ fun BoxScope.SigFieldSheet(reader: ReaderState, nav: NavHostController) {
     LaunchedEffect(w) {
         withContext(Dispatchers.IO) {
             runCatching {
-                field = SigFields.list(file, reader.password).firstOrNull { it.name == w.name }
+                field = com.smartdocs.editor.core.pdf.PdfRead.use(file, reader.password, "sig-fields") { SigFields.list(it) }.firstOrNull { it.name == w.name }
                 if (field?.signed == true) result = VerifyCache.results(file, reader.password).firstOrNull { it.fieldName == w.name }
             }.onFailure { error = it.message ?: it.toString() }
         }
@@ -213,7 +213,7 @@ internal object VerifyCache {
     fun results(f: File, password: String?): List<DigitalSignature.VerifyResult> {
         val k = Key(f.path, f.length(), f.lastModified())
         synchronized(cache) { cache[k]?.let { return it } }
-        val r = if (SigFields.list(f, password).none { it.signed }) emptyList() else {
+        val r = if (com.smartdocs.editor.core.pdf.PdfRead.blocking(f, password, "sig-fields") { SigFields.list(it) }.none { it.signed }) emptyList() else {
             // an append-only change (incremental save) keeps the earlier signatures' bytes: only new ones are checked
             val prev = synchronized(last) { last[f.path] }
             val appended = prev != null && f.length() >= prev.length && tail(f, prev.length)?.contentEquals(prev.tail) == true

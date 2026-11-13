@@ -82,7 +82,7 @@ object Portfolio {
     private val COLLECTION = COSName.getPDFName("Collection")
 
     suspend fun isPortfolio(src: File, password: String? = null): Boolean = withContext(Dispatchers.IO) {
-        runCatching { PdfOps.load(src, password).use { it.documentCatalog.cosObject.containsKey(COLLECTION) } }.getOrDefault(false)
+        runCatching { com.smartdocs.editor.core.pdf.PdfRead.use(src, password, "portfolio") { it.documentCatalog.cosObject.containsKey(COLLECTION) } }.getOrDefault(false)
     }
 
     suspend fun parts(src: File, password: String? = null): List<PortfolioPart> = withContext(Dispatchers.IO) {
