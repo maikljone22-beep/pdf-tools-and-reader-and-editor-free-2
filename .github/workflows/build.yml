@@ -4,7 +4,7 @@ name: Build APK
 # work-in-progress branch and test it. Only main is the integration branch (merged by one session).
 on:
   push:
-    branches: [ '**' ]
+    branches: [ '**', '!marketing/**' ]   # marketing/** has its own workflow (promo.yml)
   pull_request:
   workflow_dispatch:
 
@@ -98,7 +98,7 @@ jobs:
           script: |
             adb logcat -G 16M
             adb logcat -c
-            ./gradlew :app:connectedDebugAndroidTest -PnoAbiSplits --no-daemon; code=$?; adb logcat -d -s TortureReport:I ParseGate:I > torture-report.txt; adb logcat -d -b crash > torture-crashes.txt; adb logcat -d > torture-logcat.txt; exit $code
+            ./gradlew :app:connectedDebugAndroidTest -PnoAbiSplits --no-daemon -Pandroid.testInstrumentationRunnerArguments.package=com.smartdocs.editor.torture; code=$?; adb logcat -d -s TortureReport:I ParseGate:I > torture-report.txt; adb logcat -d -b crash > torture-crashes.txt; adb logcat -d > torture-logcat.txt; exit $code
       - name: Report
         if: always()
         run: |
