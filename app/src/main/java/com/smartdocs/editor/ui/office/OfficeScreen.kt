@@ -36,7 +36,8 @@ import java.io.File
 
 private sealed interface Loaded {
     data object Loading : Loaded
-    class Failed(val file: File?, val legacy: Boolean, val message: String?) : Loaded
+    /** [explained]: [message] already says what happened and what to do, so the general "may be damaged" text is left out. */
+    class Failed(val file: File?, val legacy: Boolean, val message: String?, val explained: Boolean = false) : Loaded
     /** [recovery]: unsaved edits of an earlier session that can be restored. */
     class Ready(val host: OfficeHost, val recovery: Pair<OfficeDocKind, File>? = null) : Loaded
 }
@@ -66,9 +67,9 @@ fun OfficeScreen(nav: NavHostController, uri: String) {
                 runCatching { app.documents.touchRecent(f) }
                 Loaded.Ready(host, OfficeRecovery.pending(ctx, f)?.let { c -> kind to c })
             } catch (e: com.smartdocs.editor.core.util.FileTooLargeException) {
-                Loaded.Failed(f, false, ctx.getString(R.string.o5_too_large, e.size / (1024 * 1024), e.max / (1024 * 1024)))
+                Loaded.Failed(f, false, ctx.getString(R.string.o5_too_large, e.size / (1024 * 1024), e.max / (1024 * 1024)), explained = true)
             } catch (e: OutOfMemoryError) {
-                Loaded.Failed(f, false, ctx.getString(R.string.o5_no_memory))
+                Loaded.Failed(f, false, ctx.getString(R.string.o5_no_memory), explained = true)
             } catch (e: Throwable) {
                 Loaded.Failed(f, false, e.message ?: e.toString())
             }
@@ -122,8 +123,11 @@ private fun FailedScreen(nav: NavHostController, s: Loaded.Failed) {
         Spacer(Modifier.height(12.dp))
         Text(stringResource(if (s.legacy) R.string.o5_legacy_title else R.string.o5_open_failed), style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
         Spacer(Modifier.height(8.dp))
-        Text(stringResource(if (s.legacy) R.string.o5_legacy_text else R.string.o5_open_failed_text), textAlign = TextAlign.Center)
-        s.message?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 8.dp)) }
+        if (s.explained && s.message != null) Text(s.message, textAlign = TextAlign.Center)
+        else {
+            Text(stringResource(if (s.legacy) R.string.o5_legacy_text else R.string.o5_open_failed_text), textAlign = TextAlign.Center)
+            s.message?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 8.dp)) }
+        }
         Spacer(Modifier.height(16.dp))
         s.file?.let { f ->
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

@@ -37,6 +37,7 @@ How to use: do the action, compare with the expected result, and mark the ID ✅
 | L8 | افتح ملف CSV أكبر من 30 ميغابايت، أو ملفًا نصيًا أكبر من 40 ميغابايت. | الرسالة نفسها. لا ينغلق التطبيق. |
 | L9 | الأدوات ← «فتح مستند Office» ← «إنشاء ملف جديد»: أنشئ ملفًا من كل نوع (Word، Excel، PowerPoint، TXT، MD، HTML، CSV، JSON، XML)، اكتب فيه، احفظ، ثم افتحه من جديد. | يُفتح كل نوع في محرره ويبقى ما كتبته بعد إعادة الفتح. |
 | L10 | افتح ملف PowerPoint الذي أنشأته في L9 بتطبيق WPS أو PowerPoint. | يُفتح مباشرة دون رسالة «إصلاح الملف». |
+| L12 | من تطبيق آخر (مدير الملفات أو تيليجرام) افتح ملفًا كبيرًا بهذا التطبيق. | يظهر مربع «جارٍ فتح الملف…» إلى أن يُفتح الملف، بدل شاشة لا يتغيّر فيها شيء. |
 | L11 | إن انغلق التطبيق في أي بند: أرسل ملف تقرير الأخطاء مع رقم البند. | — |
 
 ## 1. الملفات الموقَّعة والمُصدَّقة (الأعلى خطرًا)
@@ -201,6 +202,7 @@ Build: branch `fix/large-file-oom-and-create-new` or later. The automated emulat
 | L8 | Open a CSV over 30 MB, or a text file over 40 MB. | The same message. The app does not close. |
 | L9 | Tools → "Open Office document" → "Create a new file": create one file of each type (Word, Excel, PowerPoint, TXT, MD, HTML, CSV, JSON, XML), type in it, save, then open it again. | Each type opens in its editor and what you typed is still there after reopening. |
 | L10 | Open the PowerPoint file made in L9 with WPS or PowerPoint. | It opens directly, with no "repair this file" prompt. |
+| L12 | From another app (a file manager or Telegram) open a large file with this app. | An "Opening the file…" box shows until the file opens, instead of a screen where nothing changes. |
 | L11 | If the app closes on any item: send the error report file with the item's ID. | — |
 
 ## 1. Signed and certified files (highest risk)

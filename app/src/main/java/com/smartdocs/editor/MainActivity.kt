@@ -28,6 +28,8 @@ val LocalSettings = compositionLocalOf { AppSettings() }
 open class MainActivity : ComponentActivity() {   // NVE-shell: open for NveWindowActivity (second reader window)
     private val incoming = MutableStateFlow<Uri?>(null)
     private val incomingRoute = MutableStateFlow<String?>(null)
+    /** Name of the document being copied in from another app (null: none): the "Opening the file…" box. */
+    private val importing = MutableStateFlow<String?>(null)
     private var openedByIntent = false
 
     // volume keys / keyboard page turning in the reader
@@ -76,6 +78,8 @@ open class MainActivity : ComponentActivity() {   // NVE-shell: open for NveWind
                         com.smartdocs.editor.core.ads.AdsConsentHost()   // share6: UMP consent; no ads ever show without it (no-op when ads are off)
                     }
                     com.smartdocs.editor.ui.ai.AiConsentHost()   // audit C7: ask before document content is sent to an AI service
+                    val importName by importing.collectAsStateWithLifecycle()
+                    com.smartdocs.editor.ui.common.ImportingIndicator(importName)   // a big file takes many seconds to copy in
                 }
             }
         }
@@ -177,7 +181,8 @@ open class MainActivity : ComponentActivity() {   // NVE-shell: open for NveWind
         if (com.smartdocs.editor.ui.openall.OpenAll.isStreamedMedia(this, uri)) { incoming.value = uri; return }
         val app = application as SmartDocsApp
         lifecycleScope.launch {
-            val local = runCatching { app.documents.localFile(uri) }.getOrNull()
+            importing.value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { runCatching { com.smartdocs.editor.ui.openall.OpenAll.displayName(this@MainActivity, uri) }.getOrNull() }.orEmpty()
+            val local = try { runCatching { app.documents.localFile(uri) }.getOrNull() } finally { importing.value = null }
             if (local != null) incoming.value = Uri.fromFile(local)
             else Toast.makeText(this@MainActivity, getString(R.string.error_generic), Toast.LENGTH_LONG).show()
         }

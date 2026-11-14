@@ -192,7 +192,7 @@ class DocumentRepository(private val context: Context, private val db: AppDataba
         val tmp = File(target.parentFile, ".${target.name}.import")
         // red team R17: a copy that fails half-way (storage full, provider gone) leaves no partial file behind
         try {
-            context.contentResolver.openInputStream(uri)?.use { i -> tmp.outputStream().use { o -> i.copyTo(o) } }
+            context.contentResolver.openInputStream(uri)?.use { i -> tmp.outputStream().use { o -> i.copyTo(o, 256 * 1024) } }   // 8 KB steps were slow on big files
                 ?: throw IllegalStateException("cannot open $uri")
         } catch (e: Throwable) { tmp.delete(); throw e }
         if (!extKnown && replace == null) {

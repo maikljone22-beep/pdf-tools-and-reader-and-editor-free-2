@@ -42,6 +42,10 @@ class PdfSession private constructor(
 ) : AutoCloseable {
 
     private val mutex = Mutex()
+    // Memory-saving mode: PDFium keeps what it decoded for a page while the page is open. After scrolling a 500 MB
+    // scan with twelve pages open the native heap stood at 678 MB (torture test); the pages on screen and their
+    // neighbours are enough.
+    private val maxOpenPages = if (com.smartdocs.editor.core.util.MemoryMode.low) LOW_MEMORY_OPEN_PAGES else MAX_OPEN_PAGES
     /**
      * Small LRU of open native pages. Only the pages around the viewport stay loaded; older ones are closed,
      * otherwise scrolling through a long document keeps every page in native memory until the app is killed.
@@ -49,7 +53,7 @@ class PdfSession private constructor(
      */
     private val pageCache = object : LinkedHashMap<Int, PdfPage>(16, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Int, PdfPage>): Boolean {
-            if (size <= MAX_OPEN_PAGES) return false
+            if (size <= maxOpenPages) return false
             runCatching { eldest.value.close() }
             return true
         }
@@ -339,6 +343,7 @@ class PdfSession private constructor(
 
     companion object {
         private const val MAX_OPEN_PAGES = 12
+        private const val LOW_MEMORY_OPEN_PAGES = 4
         /** Open sessions (weakly held), so a low-memory signal can reach their caches. */
         private val live: MutableSet<PdfSession> = java.util.Collections.newSetFromMap(java.util.WeakHashMap())
         fun trimAll() { synchronized(live) { live.toList() }.forEach { runCatching { it.trimMemory() } } }

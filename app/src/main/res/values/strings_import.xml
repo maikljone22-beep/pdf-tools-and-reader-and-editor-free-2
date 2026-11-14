@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="imp_opening">جارٍ فتح الملف…</string>
+    <string name="imp_opening_sub">الملفات الكبيرة تحتاج بعض الوقت.</string>
+</resources>
