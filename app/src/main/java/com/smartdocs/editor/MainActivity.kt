@@ -38,6 +38,7 @@ open class MainActivity : ComponentActivity() {   // NVE-shell: open for NveWind
     override fun attachBaseContext(newBase: android.content.Context) = super.attachBaseContext(com.smartdocs.editor.core.data.AppLang.wrap(newBase))
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        com.smartdocs.editor.core.util.StartupTrace.activityCreateBegins()
         installSplashScreen()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -79,6 +80,8 @@ open class MainActivity : ComponentActivity() {   // NVE-shell: open for NveWind
             }
         }
         com.smartdocs.editor.ui.view5.V5Shortcuts.publish(this)
+        // startup timing: the first frame of a cold start closes the trace (one log line, tag StartupTrace)
+        androidx.core.view.OneShotPreDrawListener.add(window.decorView) { com.smartdocs.editor.core.util.StartupTrace.firstFrame() }
     }
 
     /**
