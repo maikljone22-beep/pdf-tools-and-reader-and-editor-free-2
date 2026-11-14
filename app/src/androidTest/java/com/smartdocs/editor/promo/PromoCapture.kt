@@ -95,8 +95,22 @@ class PromoCapture {
         device.swipe(w * 3 / 4, h / 2, w / 4, h / 2, 50); pause(1000); device.swipe(w / 4, h / 2, w * 3 / 4, h / 2, 50); pause(800)
     }
 
+    // the slide strip is at the bottom of the phone layout, first slide on the right: tapping a thumbnail shows that slide
     @Test fun d_slides() = template(Templates5.Kind.SLIDES, "عرض تقديمي.pptx", PPTX, "slides") {
-        pause(1500); repeat(2) { device.swipe(w * 3 / 4, h / 3, w / 4, h / 3, 40); pause(1500) }; device.swipe(w / 4, h / 3, w * 3 / 4, h / 3, 40); pause(1000)
+        val y = (h * 0.865f).toInt()
+        pause(1300)
+        for (x in listOf(0.62f, 0.36f, 0.12f, 0.62f, 0.88f)) { device.click((w * x).toInt(), y); pause(1400) }
+    }
+
+    /** The other ready-made documents, as stills for the templates part of the video. */
+    @Test fun g_templates() {
+        for ((kind, name, tag) in listOf(
+            Triple(Templates5.Kind.LETTER, "خطاب رسمي.docx", "tpl_letter"), Triple(Templates5.Kind.EXAM, "ورقة اختبار.docx", "tpl_exam"),
+            Triple(Templates5.Kind.MINUTES, "محضر اجتماع.docx", "tpl_minutes"), Triple(Templates5.Kind.BUDGET, "ميزانية شهرية.xlsx", "tpl_budget"),
+        )) {
+            val f = File(work, name).also { Templates5.write(kind, true, it) }
+            runCatching { open(f, if (kind.ext == "xlsx") XLSX else DOCX) { shot(tag) } }
+        }
     }
 
     @Test fun e_tools() {

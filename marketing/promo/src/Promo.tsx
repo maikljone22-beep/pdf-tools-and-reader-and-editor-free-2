@@ -73,7 +73,7 @@ const Scene: React.FC<{dur: number; children: React.ReactNode}> = ({dur, childre
 
 // ------------------------------------------------------------------------------------------------ type
 
-/** A headline that arrives word by word. A word that starts with * takes the accent colour. */
+/** A headline that arrives word by word. A word marked with * takes the accent colour. */
 const Headline: React.FC<{text: string; delay?: number; size?: number; top?: number; accent?: string}> = ({text, delay = 0, size = 84, top = 140, accent = C.amber}) => {
   const frame = useCurrentFrame();
   const {fps} = useVideoConfig();
@@ -82,8 +82,8 @@ const Headline: React.FC<{text: string; delay?: number; size?: number; top?: num
       {text.split(' ').map((w, i) => {
         const s = spring({frame: frame - delay - i * 3, fps, config: {damping: 13, mass: 0.7}});
         return (
-          <span key={i} style={{display: 'inline-block', margin: '0 0.13em', opacity: Math.min(1, s * 1.4), transform: `translateY(${interpolate(s, [0, 1], [56, 0])}px) scale(${interpolate(s, [0, 1], [0.86, 1])})`, color: w.startsWith('*') ? accent : undefined}}>
-            {w.replace(/^\*/, '')}
+          <span key={i} style={{display: 'inline-block', margin: '0 0.13em', opacity: Math.min(1, s * 1.4), transform: `translateY(${interpolate(s, [0, 1], [56, 0])}px) scale(${interpolate(s, [0, 1], [0.86, 1])})`, color: w.includes('*') ? accent : undefined}}>
+            {w.replace('*', '')}
           </span>
         );
       })}
@@ -216,16 +216,51 @@ const FileCards: React.FC<{gatherAt: number}> = ({gatherAt}) => {
   );
 };
 
-const Brand: React.FC<{nameSize?: number}> = ({nameSize = 92}) => {
+const Brand: React.FC<{nameSize?: number; dy?: number}> = ({nameSize = 92, dy = 0}) => {
   const f = useCurrentFrame();
   const s = useAppear(2, 10);
   const ring = interpolate(f, [4, 44], [0.6, 2.4], clamp);
   return (
     <>
-      <div style={{position: 'absolute', left: 540 - 250, top: 560, width: 500, height: 500, borderRadius: '50%', border: `6px solid ${C.sky}`, opacity: interpolate(f, [4, 44], [0.7, 0], clamp), transform: `scale(${ring})`}} />
-      <div style={{position: 'absolute', left: 540 - 170, top: 640, transform: `scale(${s}) rotate(${interpolate(s, [0, 1], [-25, 0])}deg)`}}><AppIcon size={340} /></div>
-      <Headline text="محرر الملفات الذكي" delay={14} top={1060} size={nameSize} />
+      <div style={{position: 'absolute', left: 540 - 250, top: 560 + dy, width: 500, height: 500, borderRadius: '50%', border: `6px solid ${C.sky}`, opacity: interpolate(f, [4, 44], [0.7, 0], clamp), transform: `scale(${ring})`}} />
+      <div style={{position: 'absolute', left: 540 - 170, top: 640 + dy, transform: `scale(${s}) rotate(${interpolate(s, [0, 1], [-25, 0])}deg)`}}><AppIcon size={340} /></div>
+      <Headline text="محرر الملفات الذكي" delay={14} top={1060 + dy} size={nameSize} />
     </>
+  );
+};
+
+/** The four file families as a row of pills (Latin names, so left to right). */
+const Formats: React.FC<{top: number; delay: number}> = ({top, delay}) => {
+  const frame = useCurrentFrame();
+  const {fps} = useVideoConfig();
+  const items = [['PDF', '#E53935'], ['Word', '#1E88E5'], ['Excel', '#2E7D32'], ['PowerPoint', '#F4511E']];
+  return (
+    <div style={{position: 'absolute', top, left: 0, right: 0, display: 'flex', justifyContent: 'center', gap: 18, direction: 'ltr'}}>
+      {items.map(([label, color], i) => {
+        const s = spring({frame: frame - delay - i * 5, fps, config: {damping: 12, mass: 0.7}});
+        return (
+          <div key={label} style={{padding: '14px 28px', borderRadius: 999, background: color, color: '#FFFFFF', fontFamily, fontWeight: 700, fontSize: 38, boxShadow: '0 16px 40px rgba(0,0,0,0.35)', opacity: Math.min(1, s * 1.5), transform: `translateY(${interpolate(s, [0, 1], [70, 0])}px) scale(${interpolate(s, [0, 1], [0.7, 1])})`}}>
+            {label}
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+/** One large label under the phone that changes with what the phone shows. */
+const Caption: React.FC<{items: {at: number; text: string}[]; top: number}> = ({items, top}) => {
+  const frame = useCurrentFrame();
+  const {fps} = useVideoConfig();
+  const i = items.reduce((last, it, k) => (frame >= it.at ? k : last), -1);
+  if (i < 0) return null;
+  const s = spring({frame: frame - items[i].at, fps, config: {damping: 12, mass: 0.6}});
+  return (
+    <div style={{position: 'absolute', top, left: 0, right: 0, display: 'flex', justifyContent: 'center'}}>
+      <div style={{direction: 'rtl', padding: '18px 44px', borderRadius: 999, background: C.amber, color: C.ink, fontFamily, fontWeight: 900, fontSize: 50, boxShadow: '0 22px 60px rgba(0,0,0,0.45)', transform: `scale(${interpolate(s, [0, 1], [0.6, 1])})`, opacity: Math.min(1, s * 1.6)}}>
+        {items[i].text}
+      </div>
+    </div>
   );
 };
 
@@ -296,24 +331,27 @@ const ExcelScene: React.FC = () => (
   </Scene>
 );
 
-const TEMPLATES = ['سيرة ذاتية', 'فاتورة', 'خطاب رسمي', 'ورقة اختبار', 'ميزانية شهرية', 'محضر اجتماع'];
+// the ready-made documents, each shown for two thirds of a second with its name under the phone
+const TEMPLATES = [
+  {image: 'word.png', text: 'سيرة ذاتية'}, {image: 'excel.png', text: 'فاتورة'}, {image: 'tpl_letter.png', text: 'خطاب رسمي'},
+  {image: 'tpl_exam.png', text: 'ورقة اختبار'}, {image: 'tpl_budget.png', text: 'ميزانية شهرية'}, {image: 'tpl_minutes.png', text: 'محضر اجتماع'},
+];
+const TPL_FROM = 112;
+const TPL_STEP = 21;
 
 const SlidesScene: React.FC = () => (
   <Scene dur={S.tools - S.slides}>
     <Headline text="عروض تقديمية و*قوالب *جاهزة" top={110} size={80} />
     <Phone tilt={5}>
       <Reel parts={[
-        {from: 0, dur: 118, video: 'slides_use.mp4', image: 'slides.png', startFrom: 30},
-        {from: 118, dur: 122, video: 'office_templates.mp4', image: 'office_templates.png', startFrom: 24},
+        {from: 0, dur: TPL_FROM, video: 'slides_use.mp4', image: 'slides.png', startFrom: 30},
+        ...TEMPLATES.map((t, i) => ({from: TPL_FROM + i * TPL_STEP, dur: TPL_STEP, image: t.image})),
       ]} />
     </Phone>
-    {TEMPLATES.map((t, i) => (
-      <Chip key={t} text={t} side={i % 2 === 0 ? 'right' : 'left'} top={610 + i * 150} delay={122 + i * 9} color={[C.teal, C.sky, C.amber][i % 3]} size={34} />
-    ))}
+    <Chip text="شرائح وانتقالات" side="right" top={700} delay={30} color={C.sky} />
+    <Caption top={1690} items={TEMPLATES.map((t, i) => ({at: TPL_FROM + i * TPL_STEP, text: t.text}))} />
   </Scene>
 );
-
-const TOOLS = ['دمج الملفات', 'ضغط الحجم', 'تحويل الصيغ', 'التعرّف على النص العربي', 'توقيع', 'حماية بكلمة مرور'];
 
 const ToolsScene: React.FC = () => (
   <Scene dur={S.end - S.tools}>
@@ -324,9 +362,10 @@ const ToolsScene: React.FC = () => (
         {from: 150, dur: 90, video: 'tools_search.mp4', image: 'tools_search.png', startFrom: 20},
       ]} />
     </Phone>
-    {TOOLS.map((t, i) => (
-      <Chip key={t} text={t} side={i % 2 === 0 ? 'left' : 'right'} top={600 + i * 150} delay={30 + i * 12} color={[C.amber, C.teal, C.sky][i % 3]} size={34} />
-    ))}
+    <Chip text="دمج وضغط الملفات" side="left" top={640} delay={30} color={C.amber} size={34} />
+    <Chip text="تحويل الصيغ" side="right" top={930} delay={55} size={34} />
+    <Chip text="التعرّف على النص العربي" side="left" top={1220} delay={80} color={C.sky} size={34} />
+    <Chip text="توقيع وحماية" side="right" top={1500} delay={105} color={C.amber} size={34} />
   </Scene>
 );
 
@@ -334,9 +373,10 @@ const EndScene: React.FC = () => {
   const f = useCurrentFrame();
   return (
     <AbsoluteFill style={{opacity: interpolate(f, [0, 10], [0, 1], clamp)}}>
-      <Headline text="كل ملفاتك. *تطبيق *واحد." top={230} size={96} delay={6} />
-      <Brand nameSize={84} />
-      <Sub text="صُمّم للعربية أولًا" delay={44} top={1220} size={50} />
+      <Headline text="كل ملفاتك. *تطبيق *واحد." top={300} size={100} delay={6} />
+      <Brand nameSize={88} dy={130} />
+      <Sub text="صُمّم للعربية أولًا" delay={44} top={1350} size={52} />
+      <Formats top={1500} delay={58} />
     </AbsoluteFill>
   );
 };
