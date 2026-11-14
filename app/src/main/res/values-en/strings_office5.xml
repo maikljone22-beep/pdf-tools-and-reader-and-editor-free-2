@@ -221,6 +221,14 @@
     <string name="o5_new_html_name">Page</string>
     <string name="o5_new_csv_name">Table</string>
     <string name="o5_new_data_name">Data</string>
+    <string name="o5_tool_templates">Templates</string>
+    <string name="o5_tpl_cv">CV (résumé)</string>
+    <string name="o5_tpl_letter">Formal letter</string>
+    <string name="o5_tpl_exam">Exam paper</string>
+    <string name="o5_tpl_minutes">Meeting minutes</string>
+    <string name="o5_tpl_invoice">Invoice</string>
+    <string name="o5_tpl_budget">Monthly budget</string>
+    <string name="o5_tpl_slides">Short presentation</string>
     <string name="o5_tool_open">Open Office document</string>
     <string name="o5_tool_open_sub">Word, Excel, PowerPoint, CSV and text</string>
     <string name="o5_tr_fade">Fade</string>
