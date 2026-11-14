@@ -3,10 +3,12 @@ import {AbsoluteFill, Easing, Img, OffthreadVideo, Sequence, interpolate, spring
 import {loadFont} from '@remotion/google-fonts/Cairo';
 import footage from './footage.json';
 
-// The SmartDocs promo: 60 s, vertical. Motion graphics around real recordings of the app (public/footage, recorded
-// by the "capture" job). Cuts fall on a 120 BPM grid (one bar = 2 s = 60 frames), so a 120 BPM track fits.
+// The SmartDocs promo: 58 s, vertical. Motion graphics around real recordings of the app (public/footage, recorded
+// by the "capture" job). The cuts follow the voice-over, which starts 0.4 s in and is added after rendering
+// (voice line starts, in video seconds: 0.4, 4.95, 8.06, 10.37, 13.21, 15.88, 17.67, 22.4, 28.83, 35.88, 38.22,
+// 41.76, 44.03, 48.01, 50.78, 53.02, 54.19; it ends at 55.3).
 export const FPS = 30;
-export const TOTAL = 60 * FPS;
+export const TOTAL = 58 * FPS;
 
 const {fontFamily} = loadFont('normal', {weights: ['500', '700', '900'], subsets: ['arabic', 'latin']});
 const F = footage as {files: Record<string, number>; durations: Record<string, number>};
@@ -266,13 +268,13 @@ const Caption: React.FC<{items: {at: number; text: string}[]; top: number}> = ({
 
 // ------------------------------------------------------------------------------------------------ scenes
 
-const S = {hook: 0, brand: 180, pdf: 300, word: 660, excel: 900, slides: 1140, tools: 1380, end: 1620};
+const S = {hook: 0, brand: 228, pdf: 306, word: 666, excel: 858, slides: 1070, tools: 1247, end: 1516};
 
 const Hook: React.FC = () => (
   <Scene dur={S.brand - S.hook + 10}>
-    <Sequence from={0} durationInFrames={92} layout="none"><Scene dur={92}><Headline text="كل يوم… ملفات من كل نوع" top={170} size={88} /></Scene></Sequence>
-    <Sequence from={86} layout="none"><Headline text="*تطبيق *واحد يفتحها كلها" top={170} size={92} /></Sequence>
-    <FileCards gatherAt={150} />
+    <Sequence from={0} durationInFrames={150} layout="none"><Scene dur={150}><Headline text="كل يوم… ملفات من كل نوع" top={170} size={88} /></Scene></Sequence>
+    <Sequence from={146} layout="none"><Headline text="*تطبيق *واحد يفتحها كلها" top={170} size={92} /></Sequence>
+    <FileCards gatherAt={198} />
   </Scene>
 );
 
@@ -288,14 +290,14 @@ const PdfScene: React.FC = () => (
     <Headline text="افتح أي *PDF مهما كان حجمه" top={110} size={82} />
     <Phone>
       <Reel parts={[
-        {from: 0, dur: 205, video: 'pdf_scroll.mp4', image: 'pdf_page.png', startFrom: 30},
-        {from: 205, dur: 78, image: 'pdf_comment_tab.png'},
-        {from: 283, dur: 80, image: 'pdf_night.png'},
+        {from: 0, dur: 218, video: 'pdf_scroll.mp4', image: 'pdf_page.png', startFrom: 30},
+        {from: 218, dur: 70, image: 'pdf_comment_tab.png'},
+        {from: 288, dur: 72, image: 'pdf_night.png'},
       ]} />
     </Phone>
-    <Chip text="ملفات بمئات الميغابايت" side="right" top={640} delay={45} />
-    <Chip text="تكبير وتمرير بسلاسة" side="left" top={1010} delay={105} color={C.sky} />
-    <Chip text="علّق وظلّل ووقّع" side="right" top={1330} delay={212} color={C.amber} />
+    <Chip text="ملفات بمئات الميغابايت" side="right" top={640} delay={90} />
+    <Chip text="تكبير وتمرير بسلاسة" side="left" top={1010} delay={170} color={C.sky} />
+    <Chip text="علّق وظلّل ووقّع" side="right" top={1330} delay={224} color={C.amber} />
     <Chip text="وضع ليلي مريح للعين" side="left" top={760} delay={290} color="#7C4DFF" />
   </Scene>
 );
@@ -304,9 +306,9 @@ const WordScene: React.FC = () => (
   <Scene dur={S.excel - S.word}>
     <Headline text="حرّر مستندات *Word" top={110} size={90} />
     <Sub text="سيرة ذاتية جاهزة في ثوانٍ" delay={14} top={300} />
-    <Phone tilt={5}><Reel parts={[{from: 0, dur: 240, video: 'word_use.mp4', image: 'word.png', startFrom: 30}]} /></Phone>
-    <Chip text="تنسيق كامل للنص" side="left" top={700} delay={50} color={C.sky} />
-    <Chip text="عربي من اليمين إلى اليسار" side="right" top={1180} delay={110} />
+    <Phone tilt={5}><Reel parts={[{from: 0, dur: 192, video: 'word_use.mp4', image: 'word.png', startFrom: 30}]} /></Phone>
+    <Chip text="تنسيق كامل للنص" side="left" top={700} delay={63} color={C.sky} />
+    <Chip text="عربي من اليمين إلى اليسار" side="right" top={1180} delay={111} />
   </Scene>
 );
 
@@ -325,19 +327,19 @@ const Counter: React.FC<{to: number; label: string; delay: number; top: number}>
 const ExcelScene: React.FC = () => (
   <Scene dur={S.slides - S.excel}>
     <Headline text="جداول *Excel بصيغها ودوالّها" top={110} size={80} />
-    <Phone><Reel parts={[{from: 0, dur: 240, video: 'excel_use.mp4', image: 'excel.png', startFrom: 30}]} /></Phone>
-    <Counter to={187} label="دالة جاهزة" delay={40} top={620} />
-    <Chip text="فواتير وميزانيات" side="left" top={1150} delay={110} color={C.sky} />
+    <Phone><Reel parts={[{from: 0, dur: 212, video: 'excel_use.mp4', image: 'excel.png', startFrom: 30}]} /></Phone>
+    <Counter to={187} label="دالة جاهزة" delay={66} top={620} />
+    <Chip text="فواتير وميزانيات" side="left" top={1150} delay={150} color={C.sky} />
   </Scene>
 );
 
-// the ready-made documents, each shown for two thirds of a second with its name under the phone
+// the ready-made documents, each shown for half a second with its name under the phone
 const TEMPLATES = [
   {image: 'word.png', text: 'سيرة ذاتية'}, {image: 'excel.png', text: 'فاتورة'}, {image: 'tpl_letter.png', text: 'خطاب رسمي'},
   {image: 'tpl_exam.png', text: 'ورقة اختبار'}, {image: 'tpl_budget.png', text: 'ميزانية شهرية'}, {image: 'tpl_minutes.png', text: 'محضر اجتماع'},
 ];
-const TPL_FROM = 112;
-const TPL_STEP = 21;
+const TPL_FROM = 72;
+const TPL_STEP = 17;
 
 const SlidesScene: React.FC = () => (
   <Scene dur={S.tools - S.slides}>
@@ -348,7 +350,7 @@ const SlidesScene: React.FC = () => (
         ...TEMPLATES.map((t, i) => ({from: TPL_FROM + i * TPL_STEP, dur: TPL_STEP, image: t.image})),
       ]} />
     </Phone>
-    <Chip text="شرائح وانتقالات" side="right" top={700} delay={30} color={C.sky} />
+    <Chip text="شرائح وانتقالات" side="right" top={700} delay={18} color={C.sky} />
     <Caption top={1690} items={TEMPLATES.map((t, i) => ({at: TPL_FROM + i * TPL_STEP, text: t.text}))} />
   </Scene>
 );
@@ -358,14 +360,14 @@ const ToolsScene: React.FC = () => (
     <Headline text="أكثر من *50 أداة… وبحث يجدها" top={110} size={80} />
     <Phone>
       <Reel parts={[
-        {from: 0, dur: 150, video: 'tools_scroll.mp4', image: 'tools.png', startFrom: 28},
-        {from: 150, dur: 90, video: 'tools_search.mp4', image: 'tools_search.png', startFrom: 20},
+        {from: 0, dur: 190, video: 'tools_scroll.mp4', image: 'tools.png', startFrom: 28},
+        {from: 190, dur: 79, video: 'tools_search.mp4', image: 'tools_search.png', startFrom: 20},
       ]} />
     </Phone>
-    <Chip text="دمج وضغط الملفات" side="left" top={640} delay={30} color={C.amber} size={34} />
-    <Chip text="تحويل الصيغ" side="right" top={930} delay={55} size={34} />
-    <Chip text="التعرّف على النص العربي" side="left" top={1220} delay={80} color={C.sky} size={34} />
-    <Chip text="توقيع وحماية" side="right" top={1500} delay={105} color={C.amber} size={34} />
+    <Chip text="دمج وضغط الملفات" side="left" top={640} delay={74} color={C.amber} size={34} />
+    <Chip text="تحويل الصيغ" side="right" top={930} delay={112} size={34} />
+    <Chip text="التعرّف على النص العربي" side="left" top={1220} delay={136} color={C.sky} size={34} />
+    <Chip text="توقيع وحماية" side="right" top={1500} delay={160} color={C.amber} size={34} />
   </Scene>
 );
 
@@ -373,10 +375,10 @@ const EndScene: React.FC = () => {
   const f = useCurrentFrame();
   return (
     <AbsoluteFill style={{opacity: interpolate(f, [0, 10], [0, 1], clamp)}}>
-      <Headline text="كل ملفاتك. *تطبيق *واحد." top={300} size={100} delay={6} />
+      <Headline text="كل ملفاتك. *تطبيق *واحد." top={300} size={100} delay={72} />
       <Brand nameSize={88} dy={130} />
-      <Sub text="صُمّم للعربية أولًا" delay={44} top={1350} size={52} />
-      <Formats top={1500} delay={58} />
+      <Sub text="صُمّم للعربية أولًا" delay={128} top={1350} size={52} />
+      <Formats top={1500} delay={142} />
     </AbsoluteFill>
   );
 };

@@ -11,8 +11,26 @@ concurrency:
   group: promo-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+  actions: read
+
 jobs:
+  # "reuse-footage:<run id>" in the commit message renders with the recordings of that earlier run (no emulator, about 12 minutes)
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      footage_run: ${{ steps.p.outputs.run }}
+    steps:
+      - id: p
+        env:
+          MSG: ${{ github.event.head_commit.message }}
+        run: |
+          echo "run=$(printf '%s' "$MSG" | grep -oE 'reuse-footage:[0-9]+' | head -1 | grep -oE '[0-9]+')" >> "$GITHUB_OUTPUT"
+
   capture:
+    needs: plan
+    if: ${{ needs.plan.outputs.footage_run == '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -56,7 +74,8 @@ jobs:
           if-no-files-found: error
 
   render:
-    needs: capture
+    needs: [plan, capture]
+    if: ${{ always() && (needs.capture.result == 'success' || needs.capture.result == 'skipped') }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     defaults:
@@ -71,6 +90,8 @@ jobs:
         with:
           name: promo-footage
           path: marketing/promo/public/footage
+          run-id: ${{ needs.plan.outputs.footage_run || github.run_id }}
+          github-token: ${{ github.token }}
       - name: Install
         run: npm install --no-audit --no-fund
       - name: List the footage for the video
@@ -83,7 +104,7 @@ jobs:
       - name: Render stills
         if: always()
         run: |
-          for f in 45 150 300 480 660 840 1020 1200 1380 1560 1740; do npx remotion still src/index.ts Promo "out/still-$f.png" --frame=$f --scale=0.5 || true; done
+          for f in 110 262 420 600 760 960 1110 1180 1230 1380 1480 1660; do npx remotion still src/index.ts Promo "out/still-$f.png" --frame=$f --scale=0.5 || true; done
       - uses: actions/upload-artifact@v4
         if: always()
         with:
