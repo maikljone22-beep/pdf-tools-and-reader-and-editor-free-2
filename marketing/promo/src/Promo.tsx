@@ -159,19 +159,19 @@ const Phone: React.FC<{children: React.ReactNode; enter?: number; top?: number; 
 };
 
 /** One piece of footage after another inside the same phone, with a short cross-fade. */
-const Reel: React.FC<{parts: {from: number; dur: number; video?: string; image?: string; startFrom?: number; rate?: number}[]}> = ({parts}) => (
+const Reel: React.FC<{parts: {from: number; dur: number; video?: string; image?: string; startFrom?: number; rate?: number; fade?: number}[]}> = ({parts}) => (
   <>
     {parts.map((p, i) => (
-      <Sequence key={i} from={p.from} durationInFrames={p.dur + 8} layout="none">
-        <Fade><Media video={p.video} image={p.image} startFrom={p.startFrom} rate={p.rate} /></Fade>
+      <Sequence key={i} from={p.from} durationInFrames={p.dur + (p.fade ?? 8)} layout="none">
+        <Fade frames={p.fade ?? 8}><Media video={p.video} image={p.image} startFrom={p.startFrom} rate={p.rate} /></Fade>
       </Sequence>
     ))}
   </>
 );
 
-const Fade: React.FC<{children: React.ReactNode}> = ({children}) => {
+const Fade: React.FC<{children: React.ReactNode; frames: number}> = ({children, frames}) => {
   const f = useCurrentFrame();
-  return <AbsoluteFill style={{opacity: interpolate(f, [0, 8], [0, 1], clamp)}}>{children}</AbsoluteFill>;
+  return <AbsoluteFill style={{opacity: interpolate(f, [0, Math.max(1, frames)], [0, 1], clamp)}}>{children}</AbsoluteFill>;
 };
 
 // ------------------------------------------------------------------------------------------------ brand
@@ -347,7 +347,7 @@ const SlidesScene: React.FC = () => (
     <Phone tilt={5}>
       <Reel parts={[
         {from: 0, dur: TPL_FROM, video: 'slides_use.mp4', image: 'slides.png', startFrom: 30},
-        ...TEMPLATES.map((t, i) => ({from: TPL_FROM + i * TPL_STEP, dur: TPL_STEP, image: t.image})),
+        ...TEMPLATES.map((t, i) => ({from: TPL_FROM + i * TPL_STEP, dur: TPL_STEP, image: t.image, fade: 2})),   // quick cuts
       ]} />
     </Phone>
     <Chip text="شرائح وانتقالات" side="right" top={700} delay={18} color={C.sky} />
