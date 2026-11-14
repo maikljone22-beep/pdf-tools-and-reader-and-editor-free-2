@@ -2,6 +2,7 @@ package com.smartdocs.editor.core.office5
 
 import java.math.RoundingMode
 import kotlin.math.abs
+import kotlin.math.truncate
 
 /** Implementation of one worksheet function. */
 fun interface FxImpl { fun call(a: FxArgs): FV }
@@ -10,7 +11,8 @@ class FxFn(val name: String, val category: String, val minArgs: Int, val maxArgs
 
 /**
  * Function registry. Adding a function is one [reg] call; [FxArgs] gives lazy, Excel-coerced arguments.
- * Categories group the function list in the UI ("math", "stat", "logical", "text", "date", "lookup", "info").
+ * Categories group the function list in the UI ("math", "stat", "logical", "text", "date", "lookup", "info", "fin").
+ * The larger families are registered from their own files (FxMath, FxStat, FxText, FxDate, FxLookup, FxFinance).
  */
 object FxFunctions {
     private val map = HashMap<String, FxFn>()
@@ -23,7 +25,7 @@ object FxFunctions {
         map[name] = FxFn(name, category, min, max, volatile, impl)
     }
 
-    private const val MANY = 255
+    internal const val MANY = 255
 
     init {
         // ---------------- math ----------------
@@ -66,11 +68,33 @@ object FxFunctions {
         }
         reg("IFERROR", "logical", 2) { a -> val v = a.value(0); if (v is FV.Err) a.value(1) else v }
         reg("IFNA", "logical", 2) { a -> val v = a.value(0); if (v == FV.NA) a.value(1) else v }
-        reg("AND", "logical", 1, MANY) { a -> logical(a, true) }
-        reg("OR", "logical", 1, MANY) { a -> logical(a, false) }
+        reg("AND", "logical", 1, MANY) { a -> logical(a, true) { x, y -> x && y } }
+        reg("OR", "logical", 1, MANY) { a -> logical(a, false) { x, y -> x || y } }
+        reg("XOR", "logical", 1, MANY) { a -> logical(a, false) { x, y -> x != y } }
         reg("NOT", "logical", 1) { a -> FV.Bool(!a.bool(0)) }
         reg("TRUE", "logical", 0) { FV.TRUE }
         reg("FALSE", "logical", 0) { FV.FALSE }
+        reg("IFS", "logical", 2, MANY) { a ->
+            var out: FV = FV.NA; var i = 0
+            while (i + 1 < a.size) {
+                val c = a.value(i)
+                if (c is FV.Err) { out = c; break }
+                if (FxCoerce.bool(c)) { out = a.value(i + 1); break }
+                i += 2
+            }
+            out
+        }
+        reg("SWITCH", "logical", 3, MANY) { a ->
+            val x = a.value(0)
+            // pairs of (value, result) after the expression; a last unpaired argument is the default
+            var hit = -1; var i = 1
+            while (x !is FV.Err && hit < 0 && i + 1 < a.size) {
+                val v = a.value(i)
+                if (v !is FV.Err && FxCoerce.compare(x, v) == 0) hit = i + 1
+                i += 2
+            }
+            if (x is FV.Err) x else if (hit >= 0) a.value(hit) else if (a.size % 2 == 0) a.value(a.size - 1) else FV.NA
+        }
         // ---------------- text ----------------
         reg("CONCAT", "text", 1, MANY) { a -> val sb = StringBuilder(); a.each { v, _ -> sb.append(FxCoerce.str(v)) }; FV.Str(sb.toString()) }
         reg("CONCATENATE", "text", 1, MANY) { a -> FV.Str((0 until a.size).joinToString("") { a.str(it) }) }
@@ -106,10 +130,38 @@ object FxFunctions {
         reg("ISTEXT", "info", 1) { a -> FV.Bool(a.value(0) is FV.Str) }
         reg("ISERROR", "info", 1) { a -> FV.Bool(a.value(0) is FV.Err) }
         reg("NA", "info", 0) { FV.NA }
+        reg("ISERR", "info", 1) { a -> val v = a.value(0); FV.Bool(v is FV.Err && v != FV.NA) }
+        reg("ISNA", "info", 1) { a -> FV.Bool(a.value(0) == FV.NA) }
+        reg("ISLOGICAL", "info", 1) { a -> FV.Bool(a.value(0) is FV.Bool) }
+        reg("ISNONTEXT", "info", 1) { a -> FV.Bool(a.value(0) !is FV.Str) }
+        reg("ISEVEN", "info", 1) { a -> FV.Bool(parity(a) == 0.0) }
+        reg("ISODD", "info", 1) { a -> FV.Bool(parity(a) != 0.0) }
+        reg("N", "info", 1) { a -> when (val v = a.value(0)) { is FV.Num -> v; is FV.Err -> v; is FV.Bool -> FV.Num(if (v.v) 1.0 else 0.0); else -> FV.Num(0.0) } }
+        reg("TYPE", "info", 1) { a ->
+            val v = a.raw(0).let { if (it is FV.Arr && it.data.size == 1) it.data[0] else it }
+            FV.Num(when (v) { is FV.Arr -> 64.0; is FV.Err -> 16.0; is FV.Bool -> 4.0; is FV.Str -> 2.0; else -> 1.0 })
+        }
+        reg("ERROR.TYPE", "info", 1) { a ->
+            val i = (a.value(0) as? FV.Err)?.let { ERROR_TYPES.indexOf(it.code) } ?: -1
+            if (i < 0) FV.NA else FV.Num(i + 1.0)
+        }
+        registerMath(); registerStat(); registerText(); registerDate(); registerLookup(); registerFinance()
     }
 
-    private fun logical(a: FxArgs, and: Boolean): FV {
-        var any = false; var acc = and
+    /** ERROR.TYPE numbers its errors 1..8 in this order. */
+    private val ERROR_TYPES = listOf("#NULL!", "#DIV/0!", "#VALUE!", "#REF!", "#NAME?", "#NUM!", "#N/A", "#GETTING_DATA")
+
+    /** Remainder by 2 of the truncated argument of ISEVEN / ISODD (a boolean is #VALUE! there). */
+    private fun parity(a: FxArgs): Double {
+        val v = a.value(0); if (v is FV.Bool) throw FxError(FV.VALUE)
+        return abs(truncate(FxCoerce.num(v))) % 2
+    }
+
+    /** Lookups never match a number with text that looks like it, nor an empty cell with 0. */
+    internal fun sameKind(a: FV, b: FV) = (a is FV.Num && b is FV.Num) || (a is FV.Str && b is FV.Str) || (a is FV.Bool && b is FV.Bool)
+
+    private inline fun logical(a: FxArgs, first: Boolean, op: (Boolean, Boolean) -> Boolean): FV {
+        var any = false; var acc = first
         a.each { v, ref ->
             val b: Boolean? = when (v) {
                 is FV.Bool -> v.v
@@ -118,7 +170,7 @@ object FxFunctions {
                 is FV.Str -> if (ref) null else FxCoerce.bool(v)
                 else -> null
             }
-            if (b != null) { any = true; acc = if (and) acc && b else acc || b }
+            if (b != null) { any = true; acc = op(acc, b) }
         }
         return if (!any) FV.VALUE else FV.Bool(acc)
     }

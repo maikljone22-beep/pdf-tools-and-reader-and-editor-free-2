@@ -28,6 +28,7 @@
     <string name="o5_bullets">Bullets</string>
     <string name="o5_cancel">Cancel</string>
     <string name="o5_cat_date">Date &amp; time</string>
+    <string name="o5_cat_fin">Financial</string>
     <string name="o5_cat_info">Information</string>
     <string name="o5_cat_logical">Logical</string>
     <string name="o5_cat_lookup">Lookup &amp; reference</string>

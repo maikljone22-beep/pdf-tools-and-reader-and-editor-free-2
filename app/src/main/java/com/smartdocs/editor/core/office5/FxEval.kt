@@ -16,8 +16,13 @@ class FxUnsupported(val name: String) : RuntimeException(name, null, false, fals
 
 /** Evaluates formula trees. Areas evaluate to [FV.Arr]; [scalar] applies Excel's implicit intersection. */
 class FxEval(val ctx: FxContext) {
+    /** Above 0 while an array-typed argument (SUMPRODUCT, LOOKUP, INDEX, MATCH…) is evaluated: operators work element by element. */
+    private var arrayDepth = 0
 
     fun evaluate(f: Fx): FV = try { scalar(f) } catch (e: FxError) { e.err }
+
+    /** Value of [f] the way an array formula computes it: `A1:A3*B1:B3` gives an array instead of using implicit intersection. */
+    fun evalArray(f: Fx): FV { arrayDepth++; try { return eval(f) } finally { arrayDepth-- } }
 
     /** Value of [f]; an area becomes an array. */
     fun eval(f: Fx): FV = when (f) {
@@ -28,8 +33,8 @@ class FxEval(val ctx: FxContext) {
         is Fx.Ref -> { checkSheet(f.sheet); ctx.value(f.sheet, f.ref.row, f.ref.col) }
         is Fx.Area -> area(f)
         is Fx.Paren -> eval(f.e)
-        is Fx.Unary -> { val v = FxCoerce.num(scalar(f.e)); FV.of(if (f.op == '-') -v else v) }
-        is Fx.Percent -> FV.of(FxCoerce.num(scalar(f.e)) / 100.0)
+        is Fx.Unary -> map(f.e) { x -> val v = FxCoerce.num(x); FV.of(if (f.op == '-') -v else v) }
+        is Fx.Percent -> map(f.e) { x -> FV.of(FxCoerce.num(x) / 100.0) }
         is Fx.Bin -> binary(f)
         is Fx.Call -> call(f)
         // hostile review O2: a defined name the engine does not resolve keeps Excel's cached value (it showed #NAME?
@@ -65,6 +70,9 @@ class FxEval(val ctx: FxContext) {
         val v = eval(f)
         if (v !is FV.Arr) return v
         if (v.rows == 1 && v.cols == 1) return v[0, 0]
+        // inside an array argument Excel would apply the function to every element; the engine does not, so the cell
+        // keeps Excel's cached value instead of showing a wrong one
+        if (arrayDepth > 0) throw FxUnsupported("array")
         if (f is Fx.Area) {
             val b = bounds(f)
             if (b.cols == 1 && ctx.row in b.r1..b.r2) return v[ctx.row - b.r1, 0]
@@ -74,10 +82,46 @@ class FxEval(val ctx: FxContext) {
         return v.first()
     }
 
+    /** Operand of an operator: a scalar, or the whole array while an array argument is evaluated. */
+    private fun operand(f: Fx): FV =
+        if (arrayDepth == 0) scalar(f) else eval(f).let { if (it is FV.Arr && it.rows == 1 && it.cols == 1) it[0, 0] else it }
+
+    /** One element of an array result: an error stays in its own element. */
+    private inline fun element(f: () -> FV): FV = try { f() } catch (e: FxError) { e.err }
+
+    private inline fun map(f: Fx, op: (FV) -> FV): FV {
+        val v = operand(f)
+        return if (v is FV.Arr) FV.Arr(v.rows, v.cols, Array(v.data.size) { i -> element { op(v.data[i]) } }) else op(v)
+    }
+
     private fun binary(f: Fx.Bin): FV {
+        if (arrayDepth > 0) {
+            val a = operand(f.a); val b = operand(f.b)
+            if (a is FV.Arr || b is FV.Arr) return zip(f.op, a, b)
+            return if (a is FV.Err) a else if (b is FV.Err) b else binOp(f.op, a, b)
+        }
         val a = scalar(f.a); if (a is FV.Err) return a
         val b = scalar(f.b); if (b is FV.Err) return b
-        return when (f.op) {
+        return binOp(f.op, a, b)
+    }
+
+    /** Element-wise operator over arrays: a scalar, a single row or a single column is repeated, other size mismatches give #N/A. */
+    private fun zip(op: String, a: FV, b: FV): FV.Arr {
+        val rows = maxOf((a as? FV.Arr)?.rows ?: 1, (b as? FV.Arr)?.rows ?: 1)
+        val cols = maxOf((a as? FV.Arr)?.cols ?: 1, (b as? FV.Arr)?.cols ?: 1)
+        fun at(v: FV, r: Int, c: Int): FV {
+            if (v !is FV.Arr) return v
+            val rr = if (v.rows == 1) 0 else r; val cc = if (v.cols == 1) 0 else c
+            return if (rr < v.rows && cc < v.cols) v[rr, cc] else FV.NA
+        }
+        return FV.Arr(rows, cols, Array(rows * cols) { i ->
+            val x = at(a, i / cols, i % cols); val y = at(b, i / cols, i % cols)
+            if (x is FV.Err) x else if (y is FV.Err) y else element { binOp(op, x, y) }
+        })
+    }
+
+    private fun binOp(op: String, a: FV, b: FV): FV {
+        return when (op) {
             "+" -> FV.of(FxCoerce.num(a) + FxCoerce.num(b))
             "-" -> FV.of(FxCoerce.num(a) - FxCoerce.num(b))
             "*" -> FV.of(FxCoerce.num(a) * FxCoerce.num(b))
@@ -101,7 +145,8 @@ class FxEval(val ctx: FxContext) {
         val name = f.name.removePrefix("_XLFN.").removePrefix("_XLWS.").removePrefix("COM.MICROSOFT.")
         val fn = FxFunctions[name] ?: throw FxUnsupported(name)
         if (f.args.size < fn.minArgs || f.args.size > fn.maxArgs) return FV.VALUE
-        return try { fn.impl.call(FxArgs(this, f.args)) } catch (e: FxError) { e.err }
+        return try { fn.impl.call(FxArgs(this, f.args)) } catch (e: FxError) { e.err } catch (e: FxUnsupported) { throw e }
+        catch (e: RuntimeException) { FV.VALUE } // a function must never take the sheet down: an unforeseen argument is #VALUE!
     }
 }
 
@@ -123,6 +168,9 @@ class FxArgs(val ev: FxEval, val nodes: List<Fx>) {
 
     /** Array (or 1x1 array of a scalar) of argument [i]. */
     fun array(i: Int): FV.Arr = when (val v = raw(i)) { is FV.Arr -> v; else -> FV.Arr(1, 1, arrayOf(v)) }
+
+    /** Like [array] for parameters Excel types as arrays: operators in the argument work element by element. */
+    fun arr(i: Int): FV.Arr = when (val v = if (missing(i)) FV.Blank else ev.evalArray(nodes[i])) { is FV.Arr -> v; else -> FV.Arr(1, 1, arrayOf(v)) }
 
     /**
      * Calls [f] for each value of every argument from [from], Excel aggregate style: values inside references

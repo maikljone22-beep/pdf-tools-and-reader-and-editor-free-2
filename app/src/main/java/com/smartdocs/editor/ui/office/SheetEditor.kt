@@ -112,7 +112,7 @@ private fun FormulaBar(s: SheetState) {
 }
 
 private val CATEGORIES = listOf("math" to R.string.o5_cat_math, "stat" to R.string.o5_cat_stat, "logical" to R.string.o5_cat_logical, "text" to R.string.o5_cat_text,
-    "date" to R.string.o5_cat_date, "lookup" to R.string.o5_cat_lookup, "info" to R.string.o5_cat_info)
+    "date" to R.string.o5_cat_date, "lookup" to R.string.o5_cat_lookup, "info" to R.string.o5_cat_info, "fin" to R.string.o5_cat_fin)
 
 @Composable
 fun FunctionsDialog(onDismiss: () -> Unit, onPick: (String) -> Unit) {
