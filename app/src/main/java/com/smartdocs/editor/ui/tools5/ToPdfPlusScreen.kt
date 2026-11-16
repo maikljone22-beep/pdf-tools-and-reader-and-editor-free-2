@@ -267,10 +267,13 @@ fun ShareToPdfScreen(nav: NavHostController) {
     T5JobUi(job, nav, snackbar)
 }
 
-/** [SharePayload] as plain values for saved instance state (the copies stay in the cache folder of the share). */
-private val SharePayloadSaver = androidx.compose.runtime.saveable.Saver<MutableState<SharePayload?>, List<String?>>(
-    save = { s -> s.value?.let { p -> listOf(p.url, p.text, p.html, p.subject) + p.files.map { it.absolutePath } } ?: emptyList() },
-    restore = { l -> mutableStateOf(if (l.size < 4) null else SharePayload(l.drop(4).filterNotNull().map(::File).filter { it.exists() }, l[0], l[1], l[2], l[3])) },
+/** [SharePayload] as plain values for saved instance state (the local copies stay in the share folder). */
+internal val SharePayloadSaver = androidx.compose.runtime.saveable.Saver<MutableState<SharePayload?>, List<String?>>(
+    save = { s -> s.value?.let { p -> listOf(p.url, p.text, p.html, p.subject, "failed:${p.failedFiles}") + p.files.map { it.absolutePath } } ?: emptyList() },
+    restore = { l ->
+        val hasCount = l.getOrNull(4)?.startsWith("failed:") == true
+        mutableStateOf(if (l.size < 4) null else SharePayload(l.drop(if (hasCount) 5 else 4).filterNotNull().map(::File).filter { it.exists() }, l[0], l[1], l[2], l[3], if (hasCount) l[4]?.substringAfter(':')?.toIntOrNull() ?: 0 else 0))
+    },
 )
 
 private val FileListSaver = androidx.compose.runtime.saveable.Saver<List<File>, List<String>>(

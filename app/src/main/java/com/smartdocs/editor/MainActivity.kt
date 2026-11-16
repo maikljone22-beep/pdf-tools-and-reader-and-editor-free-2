@@ -28,6 +28,7 @@ val LocalSettings = compositionLocalOf { AppSettings() }
 open class MainActivity : ComponentActivity() {   // NVE-shell: open for NveWindowActivity (second reader window)
     private val incoming = MutableStateFlow<Uri?>(null)
     private val incomingRoute = MutableStateFlow<String?>(null)
+    private val incomingImportProgress = MutableStateFlow<Pair<Int, Int>?>(null)
     private var openedByIntent = false
 
     // volume keys / keyboard page turning in the reader
@@ -41,7 +42,8 @@ open class MainActivity : ComponentActivity() {   // NVE-shell: open for NveWind
         installSplashScreen()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        handleIntent(intent)
+        if (savedInstanceState == null || savedInstanceState.getBoolean("smartdocs.import_pending")) handleIntent(intent)
+        else openedByIntent = savedInstanceState.getBoolean("smartdocs.opened_by_intent")
         syncLanguage()
         com.smartdocs.editor.core.billing.BillingManager.get(this).refreshAsync() // re-verify the Pro entitlement
         setContent {
@@ -61,6 +63,8 @@ open class MainActivity : ComponentActivity() {   // NVE-shell: open for NveWind
                             uri?.let { val ext = (it.lastPathSegment ?: "").substringAfterLast('.', "").lowercase()
                                 nav.navigate(if (ext == "xfdf" || ext == "fdf") com.smartdocs.editor.ui.share5.Share5Routes.returned(it.toString()) else Routes.reader(it.toString())); incoming.value = null }
                         }
+                        val importProgress by incomingImportProgress.collectAsStateWithLifecycle()
+                        importProgress?.let { (done, total) -> com.smartdocs.editor.ui.common.ProgressDialog(getString(R.string.shared_importing, done, total)) }
                         val route by incomingRoute.collectAsStateWithLifecycle()
                         LaunchedEffect(route) { route?.let { nav.navigate(it); incomingRoute.value = null } }
                         // NVE-shell: drag and drop a PDF / Office / image file onto the window opens it
@@ -71,6 +75,7 @@ open class MainActivity : ComponentActivity() {   // NVE-shell: open for NveWind
                         com.smartdocs.editor.ui.reader.view.RestoreLastSession(nav, enabled = !openedByIntent)
                         com.smartdocs.editor.ui.cloud.DeepLinkHandler(nav)
                         com.smartdocs.editor.ui.security.DocSecurityHost()   // nitro-protect: Internet-access / file-launch questions of documents
+                        com.smartdocs.editor.ui.updates.UpdatesPromptHost(nav)
                         com.smartdocs.editor.core.review.ReviewPromptHost()
                         com.smartdocs.editor.core.ads.AdsConsentHost()   // share6: UMP consent; no ads ever show without it (no-op when ads are off)
                     }
@@ -111,7 +116,13 @@ open class MainActivity : ComponentActivity() {   // NVE-shell: open for NveWind
         }
     }
 
-    override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); handleIntent(intent) }
+    override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); setIntent(intent); handleIntent(intent) }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putBoolean("smartdocs.import_pending", incomingImportProgress.value != null)
+        outState.putBoolean("smartdocs.opened_by_intent", openedByIntent)
+        super.onSaveInstanceState(outState)
+    }
 
     override fun onProvideKeyboardShortcuts(data: MutableList<android.view.KeyboardShortcutGroup>?, menu: android.view.Menu?, deviceId: Int) {
         super.onProvideKeyboardShortcuts(data, menu, deviceId); data?.addAll(com.smartdocs.editor.ui.view5.V5Keys.groups(this))
@@ -119,20 +130,23 @@ open class MainActivity : ComponentActivity() {   // NVE-shell: open for NveWind
 
     private fun handleIntent(intent: Intent?) {
         if (com.smartdocs.editor.ui.view5.V5Shortcuts.handleIntent(this, intent)) return
-        if (com.smartdocs.editor.core.tools5.ShareImport.handles(intent)) {
+        if (com.smartdocs.editor.core.tools5.ShareImport.handles(intent) &&
+            !(intent?.action == Intent.ACTION_SEND && com.smartdocs.editor.ui.nve.shell.NveConvertTargets.forComponent(intent.component?.className) != null)) {
             openedByIntent = true
             val app = application as SmartDocsApp
             val i = intent!!
             lifecycleScope.launch {
+                incomingImportProgress.value = 0 to 0
                 // a failing share (revoked permission, unreadable stream) must not take the app down
                 val read = runCatching {
                     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                        com.smartdocs.editor.core.tools5.ShareImport.read(this@MainActivity, i, java.io.File(app.documents.tempDir, "shared"))
+                        com.smartdocs.editor.core.tools5.ShareImport.read(this@MainActivity, i, java.io.File(app.documents.docsDir, "Shared")) { done, total -> incomingImportProgress.value = done to total }
                     }
                 }
+                incomingImportProgress.value = null
                 read.onSuccess {
                     com.smartdocs.editor.core.tools5.ShareImport.pending = it
-                    incomingRoute.value = Routes.tool("share_to_pdf")
+                    incomingRoute.value = Routes.tool(if (it.files.isNotEmpty()) "share_actions" else "share_to_pdf")
                 }.onFailure { Toast.makeText(this@MainActivity, getString(R.string.error_generic), Toast.LENGTH_LONG).show() }
             }
             return

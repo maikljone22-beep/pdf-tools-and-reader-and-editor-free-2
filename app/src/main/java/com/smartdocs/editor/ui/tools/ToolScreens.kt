@@ -22,11 +22,16 @@ import com.smartdocs.editor.ui.stamps.StampsScreen
 @Composable
 fun ToolScreens(nav: NavHostController, id: String, uri: String?) {
     val source = remember(uri) { uri?.let { runCatching { java.io.File(android.net.Uri.parse(it).path!!) }.getOrNull()?.takeIf { f -> f.exists() } } }
-    androidx.compose.runtime.CompositionLocalProvider(com.smartdocs.editor.ui.common.LocalToolSource provides source) { ToolScreensInner(nav, id, uri) }
+    val batchAction: (() -> Unit)? = if (id.startsWith("bulk_") || id in setOf("batch", "share_actions", "share_to_pdf")) null else { { nav.navigate(com.smartdocs.editor.ui.Routes.tool("bulk_$id", uri)) } }
+    androidx.compose.runtime.CompositionLocalProvider(
+        com.smartdocs.editor.ui.common.LocalToolSource provides source,
+        com.smartdocs.editor.ui.common.LocalBatchAction provides batchAction,
+    ) { ToolScreensInner(nav, id, uri) }
 }
 
 @Composable
 private fun ToolScreensInner(nav: NavHostController, id: String, uri: String?) {
+    if (id.startsWith("bulk_")) { com.smartdocs.editor.ui.tools5.BulkToolsScreen(nav, uri, id.removePrefix("bulk_")); return }
     // nav-prefs (PREF-8): AI routes are unreachable while AI is off (Settings switch or offline mode)
     if (!com.smartdocs.editor.core.gaps6.AiGate.allowsTool(com.smartdocs.editor.LocalSettings.current, id)) { com.smartdocs.editor.ui.settings.NpfAiOffScreen(nav); return }
     when (id) {
@@ -60,6 +65,7 @@ private fun ToolScreensInner(nav: NavHostController, id: String, uri: String?) {
         "compare_basic" -> CompareScreen(nav, uri)
         "scan_studio" -> com.smartdocs.editor.ui.tools5.ScanStudioScreen(nav, uri)
         "to_pdf_plus" -> com.smartdocs.editor.ui.tools5.ToPdfPlusScreen(nav, uri)
+        "share_actions" -> com.smartdocs.editor.ui.tools5.SharedActionScreen(nav)
         "share_to_pdf" -> com.smartdocs.editor.ui.tools5.ShareToPdfScreen(nav)
         "pdfa" -> com.smartdocs.editor.ui.tools5.PdfAScreen(nav, uri)
         "optimize" -> com.smartdocs.editor.ui.tools5.OptimizeScreen(nav, uri)

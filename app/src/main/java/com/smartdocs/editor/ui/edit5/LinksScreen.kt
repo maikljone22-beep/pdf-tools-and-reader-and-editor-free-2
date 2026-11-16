@@ -33,6 +33,9 @@ import com.smartdocs.editor.ui.common.rememberToolRunner
 import com.smartdocs.editor.ui.tools.ChoiceChips
 import com.smartdocs.editor.ui.tools.PrimaryButton
 import com.smartdocs.editor.ui.tools.ToolScaffold
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -67,6 +70,10 @@ fun LinksScreen(nav: NavHostController, uri: String?) {
     var selected by remember { mutableStateOf<List<Int>>(emptyList()) }     // annotation indexes, in selection order
     var auto by remember { mutableStateOf<AutoTool?>(null) }
     var webLinks by remember { mutableStateOf(false) }     // fix/links-bookmarks: View / Append web links
+    var bulkEditing by remember { mutableStateOf(false) }
+    var bulkSpec by remember { mutableStateOf(com.smartdocs.editor.core.edit5.BulkLinkSpec()) }
+    var removing by remember(doc.source) { mutableStateOf<Boolean?>(null) }
+    var linksError by remember { mutableStateOf<String?>(null) }
     var step by remember { mutableFloatStateOf(1f) }
     val processing = stringResource(R.string.processing)
     val doneN = stringResource(R.string.e5_links_added_n)
@@ -75,15 +82,35 @@ fun LinksScreen(nav: NavHostController, uri: String?) {
 
     LaunchedEffect(doc.work, doc.version, page) {
         val w = doc.work ?: return@LaunchedEffect
-        links = runCatching { LinkOps.list(w, doc.password, page) }.getOrDefault(emptyList())
-        selected = selected.filter { i -> links.any { it.index == i } }
+        links = emptyList()
+        linksError = null
+        try {
+            links = LinkOps.list(w, doc.password, page)
+            selected = selected.filter { i -> links.any { it.index == i } }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            linksError = e.message ?: ctx.getString(R.string.error_generic)
+        }
     }
     LaunchedEffect(page) { selected = emptyList() }
     fun run(op: suspend (File, File, String?) -> Unit, after: (() -> Unit)? = null) {
+        if (busy || doc.work == null) return
         busy = true
         scope.launch {
-            runCatching { doc.apply(app.documents.tempDir, op) }.onFailure { snack.showSnackbar(it.message ?: it.toString()) }
-            busy = false; after?.invoke()
+            var failure: Exception? = null
+            try {
+                doc.apply(app.documents.tempDir, op)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                failure = e
+            } finally {
+                // Dismiss the modal before showing feedback, including on cancellation.
+                busy = false
+            }
+            if (failure != null) snack.showSnackbar(failure.message ?: ctx.getString(R.string.error_generic))
+            else after?.invoke()
         }
     }
     /** New rects for the selected links of this page. */
@@ -96,27 +123,23 @@ fun LinksScreen(nav: NavHostController, uri: String?) {
     }
     /** Run a text-based tool over [pages]: [make] returns the specs of one page from its text and character boxes. */
     fun textTool(pages: List<Int>, make: (Int, String, List<RectF>) -> List<LinkSpec>) {
-        busy = true
-        scope.launch {
-            var n = 0
-            runCatching {
-                doc.apply(app.documents.tempDir) { src, out, pw ->
-                    val s = PdfSession.open(ctx, src, pw)
-                    val add = try { pages.associateWith { p -> make(p, s.text(p), s.charBoxes(p)) }.filterValues { it.isNotEmpty() } } finally { s.closeAsync() }
-                    n = add.values.sumOf { it.size }
-                    if (n > 0) LinkOps.add(src, out, pw, add) else src.copyTo(out, overwrite = true)
-                }
-            }.onFailure { snack.showSnackbar(it.message ?: it.toString()) }
-            busy = false
-            snack.showSnackbar(doneN.format(n))
-        }
+        var n = 0
+        run({ src, out, pw ->
+            val session = PdfSession.open(ctx, src, pw)
+            val add = try {
+                pages.associateWith { p -> make(p, session.text(p), session.charBoxes(p)) }.filterValues { it.isNotEmpty() }
+            } finally { session.closeAsync() }
+            n = add.values.sumOf { it.size }
+            if (n > 0) LinkOps.add(src, out, pw, add)
+            else withContext(Dispatchers.IO) { src.copyTo(out, overwrite = true) }
+        }) { scope.launch { snack.showSnackbar(doneN.format(n)) } }
     }
 
     ToolScaffold(stringResource(R.string.e5_links_title), nav, runner, snackbar = snack, actions = {
         IconButton(onClick = { selecting = !selecting; selected = emptyList() }) {
             Icon(Icons.Default.Checklist, stringResource(R.string.nbm_select), tint = if (selecting) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
         }
-        IconButton(onClick = { scope.launch { doc.undo() } }, enabled = doc.canUndo) { Icon(Icons.AutoMirrored.Filled.Undo, stringResource(R.string.e5_undo)) }
+        IconButton(onClick = { scope.launch { doc.undo() } }, enabled = doc.canUndo && !busy) { Icon(Icons.AutoMirrored.Filled.Undo, stringResource(R.string.e5_undo)) }
     }) {
         E5FileRow(doc)
         val info = doc.infos.getOrNull(page)
@@ -159,7 +182,8 @@ fun LinksScreen(nav: NavHostController, uri: String?) {
                     }
                 }
                 E5Section(stringResource(R.string.e5_links_on_page, links.size)) {
-                    if (links.isEmpty()) Text(stringResource(R.string.e5_links_none), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    linksError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                    if (links.isEmpty() && linksError == null) Text(stringResource(R.string.e5_links_none), color = MaterialTheme.colorScheme.onSurfaceVariant)
                     links.forEach { l ->
                         val sel = l.index in selected
                         ListItem(headlineContent = { Text(linkSummary(l.spec), maxLines = 1, overflow = TextOverflow.Ellipsis) },
@@ -172,14 +196,15 @@ fun LinksScreen(nav: NavHostController, uri: String?) {
                     }
                 }
                 E5Section(stringResource(R.string.e5_links_tools)) {
+                    OutlinedButton(onClick = { bulkEditing = true }, Modifier.fillMaxWidth(), enabled = !busy) { Text(stringResource(R.string.bulk_links_title)) }
                     OutlinedButton(onClick = { auto = AutoTool.URLS }, Modifier.fillMaxWidth()) { Icon(Icons.Default.AddLink, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.e5_links_linkify)) }
                     OutlinedButton(onClick = { auto = AutoTool.PAGE_NUMBERS }, Modifier.fillMaxWidth()) { Icon(Icons.Default.FormatListNumbered, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.nbm_auto_page_links)) }
                     OutlinedButton(onClick = { auto = AutoTool.CROSS_REFS }, Modifier.fillMaxWidth()) { Icon(Icons.Default.Shortcut, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.nbm_xref_links)) }
                     OutlinedButton(onClick = { auto = AutoTool.KEYWORD }, Modifier.fillMaxWidth()) { Icon(Icons.Default.Key, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.nbm_keyword_links)) }
                     OutlinedButton(onClick = { webLinks = true }, Modifier.fillMaxWidth()) { Icon(Icons.Default.Public, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.lbm_web_links)) }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = { var n = 0; run({ s, o, p -> n = LinkOps.removeAll(s, o, p, webOnly = true) }) { scope.launch { snack.showSnackbar(removedN.format(n)) } } }, Modifier.weight(1f)) { Text(stringResource(R.string.e5_links_remove_web)) }
-                        OutlinedButton(onClick = { var n = 0; run({ s, o, p -> n = LinkOps.removeAll(s, o, p, webOnly = false) }) { scope.launch { snack.showSnackbar(removedN.format(n)) } } }, Modifier.weight(1f)) { Text(stringResource(R.string.e5_links_remove_all)) }
+                        OutlinedButton(onClick = { removing = true }, Modifier.weight(1f), enabled = !busy) { Text(stringResource(R.string.e5_links_remove_web)) }
+                        OutlinedButton(onClick = { removing = false }, Modifier.weight(1f), enabled = !busy) { Text(stringResource(R.string.e5_links_remove_all)) }
                     }
                 }
             }, preview = {
@@ -195,19 +220,38 @@ fun LinksScreen(nav: NavHostController, uri: String?) {
                     links.forEach { l -> e5Box(map(info.rectToDisplay(l.spec.rect)), when { l.index in selected -> Color(0xFFEF6C00); l.editable -> Color(0xFF1565C0); else -> Color.Gray }) }
                 }
             })
-            PrimaryButton(stringResource(R.string.e5_save_copy), enabled = doc.changed, icon = Icons.Default.Save) {
+            PrimaryButton(stringResource(R.string.e5_save_copy), enabled = doc.changed && !busy, icon = Icons.Default.Save) {
                 runner.run(processing) { doc.export(app.documents.docsDir, { d, b -> app.documents.uniqueFile(d, b) }, "links") }
             }
         }
     }
     if (busy) com.smartdocs.editor.ui.common.ProgressDialog(processing)
+    removing?.let { webOnly ->
+        RemoveLinksDialog(webOnly, page, doc.pageCount, onDismiss = { removing = null }) { pages ->
+            removing = null
+            var n = 0
+            run({ src, out, password -> n = LinkOps.removeAll(src, out, password, webOnly, pages.toSet()) }) {
+                scope.launch { snack.showSnackbar(removedN.format(n)) }
+            }
+        }
+    }
+    val changedLinks = stringResource(R.string.bulk_links_changed)
+    if (bulkEditing && doc.work != null) BulkLinksSheet(doc.work!!, doc.password, doc.infos, page, bulkSpec, onDismiss = { bulkEditing = false }) { settings ->
+        bulkSpec = settings; bulkEditing = false
+        var count = 0
+        run({ src, out, password -> count = com.smartdocs.editor.core.edit5.BulkLinkOps.apply(ctx, src, out, password, settings) }) {
+            scope.launch { snack.showSnackbar(changedLinks.format(count)) }
+        }
+    }
     val appended = stringResource(R.string.lbm_web_appended)
     val w0 = doc.work
     if (webLinks && w0 != null) WebLinksSheet(w0, doc.password, doc.pageCount, page, onDismiss = { webLinks = false }) { parts, bm, byDomain, relink ->
         webLinks = false
         var n = 0
-        run({ s, o, p -> n = WebCapture.append(s, o, p, parts, bm, byDomain, relink) }) {
-            parts.forEach { runCatching { it.second.delete() } }
+        run({ s, o, p ->
+            try { n = WebCapture.append(s, o, p, parts, bm, byDomain, relink) }
+            finally { withContext(Dispatchers.IO) { parts.forEach { it.second.delete() } } }
+        }) {
             scope.launch { snack.showSnackbar(appended.format(n)) }
         }
     }
@@ -241,6 +285,33 @@ fun LinksScreen(nav: NavHostController, uri: String?) {
             }
         }
     }
+}
+
+@Composable
+private fun RemoveLinksDialog(webOnly: Boolean, current: Int, pageCount: Int, onDismiss: () -> Unit, onRun: (List<Int>) -> Unit) {
+    var selectedScope by remember { mutableStateOf(Scope.CURRENT) }
+    var range by remember { mutableStateOf("") }
+    val pages = when (selectedScope) {
+        Scope.ALL -> (0 until pageCount).toList()
+        Scope.CURRENT -> listOf(current).filter { it in 0 until pageCount }
+        Scope.RANGE -> if (range.isNotBlank() && com.smartdocs.editor.core.pdf.PdfOps.rangeSyntaxOk(range))
+            com.smartdocs.editor.core.pdf.PdfOps.parseRange(range, pageCount) else emptyList()
+    }
+    AlertDialog(onDismissRequest = onDismiss,
+        title = { Text(stringResource(if (webOnly) R.string.e5_links_remove_web else R.string.e5_links_remove_all)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(stringResource(R.string.e5_links_remove_help))
+                ChoiceChips(listOf(Scope.CURRENT, Scope.ALL, Scope.RANGE), selectedScope, {
+                    stringResource(when (it) { Scope.ALL -> R.string.nbm_all_pages; Scope.CURRENT -> R.string.nbm_current_page; Scope.RANGE -> R.string.nbm_page_range })
+                }) { selectedScope = it }
+                if (selectedScope == Scope.RANGE) OutlinedTextField(range, { range = it }, Modifier.fillMaxWidth(),
+                    singleLine = true, label = { Text(stringResource(R.string.nbm_page_range)) },
+                    placeholder = { Text("1-3, 5") }, isError = range.isNotEmpty() && pages.isEmpty())
+            }
+        },
+        confirmButton = { Button(onClick = { onRun(pages) }, enabled = pages.isNotEmpty()) { Text(stringResource(R.string.delete)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } })
 }
 
 private fun alignLabel(m: LinkGeom.Align) = when (m) {

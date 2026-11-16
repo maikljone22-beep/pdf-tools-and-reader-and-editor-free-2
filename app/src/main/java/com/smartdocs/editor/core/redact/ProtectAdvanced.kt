@@ -61,7 +61,17 @@ class NonLatinPasswordException : IllegalArgumentException("passwords with these
  * permissions cannot be lifted by re-entering the open password. [ProtectOptions.scope] also offers "everything
  * except metadata" and "attachments only" ([ScopedSecurityHandler]).
  */
+data class ProtectionSourceInfo(val security: com.smartdocs.editor.core.security.SecurityInfo, val signed: Boolean)
+
 object ProtectAdvanced {
+    /** Read the input with its CURRENT password before enabling changes to its protection. */
+    suspend fun inspectSource(src: File, currentPassword: String?): ProtectionSourceInfo = withContext(Dispatchers.IO) {
+        PdfOps.loadRaw(src, currentPassword).use { doc ->
+            ProtectionSourceInfo(com.smartdocs.editor.core.security.SecurityInfoReader.of(doc),
+                com.smartdocs.editor.core.pdf.SignedSave.isSigned(doc))
+        }
+    }
+
 
     fun accessPermission(p: Permissions): AccessPermission = AccessPermission().apply {
         setCanPrint(p.print)

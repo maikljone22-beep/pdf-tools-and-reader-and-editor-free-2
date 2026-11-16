@@ -46,6 +46,7 @@ import com.smartdocs.editor.ui.common.FilePickRow
 import com.smartdocs.editor.ui.common.rememberPdfPicker
 import com.smartdocs.editor.ui.tools.ChoiceChips
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
 import java.io.File
 
@@ -53,7 +54,15 @@ import java.io.File
  * Working copy of a document for the edit5 tools: every change is applied to a temp copy (undo keeps the previous
  * copies), the original is only replaced when the user saves from the result sheet.
  */
-class E5Doc(initial: File?) {
+class E5Doc(initial: File?, private val privateWorkDir: File? = null) {
+    private val filesLock = Any()
+    private var generation = 0
+
+    private fun newWorkingFile(tempDir: File): File {
+        val dir = privateWorkDir ?: tempDir
+        check(dir.isDirectory || dir.mkdirs()) { "Cannot create document working directory" }
+        return File(dir, "e5_${System.nanoTime()}.pdf")
+    }
     var source by mutableStateOf(initial); private set
     var work by mutableStateOf<File?>(null); private set
     // audit 5 E-13: the reader's password for the route file, so an open document is not asked for again
@@ -86,7 +95,8 @@ class E5Doc(initial: File?) {
     fun submitPassword(pw: String) { password = pw; error = null; cancelled = false; needPassword = false }
 
     /** audit 5 E-18: the working copy and the undo copies are temp files: removed when the screen goes away. */
-    fun dispose() {
+    fun dispose() = synchronized(filesLock) {
+        generation++
         runCatching { work?.delete() }; undo.forEach { runCatching { it.delete() } }
         undo.clear(); work = null
     }
@@ -94,51 +104,96 @@ class E5Doc(initial: File?) {
     /** Open (or reopen after a password was typed): copy to a temp working file and read page geometry. */
     suspend fun open(tempDir: File) {
         val src = source ?: return
+        val pw = password
+        val (token, existing) = synchronized(filesLock) { generation to work }
+        val candidate = existing ?: newWorkingFile(tempDir)
         error = null
         try {
-            val w = work ?: File(tempDir, "e5_${System.nanoTime()}.pdf").also { withContext(Dispatchers.IO) { src.copyTo(it, overwrite = true) } }
-            work = w
-            try { infos = PageBoxOps.pageInfos(w, password) } catch (e: Exception) { work = null; w.delete(); throw e }
-            needPassword = false; wrongPassword = false
+            if (existing == null) withContext(Dispatchers.IO) { src.copyTo(candidate, overwrite = true) }
+            val newInfos = PageBoxOps.pageInfos(candidate, pw)
+            synchronized(filesLock) {
+                if (generation != token) throw CancellationException("Document session changed")
+                work = candidate; infos = newInfos
+                needPassword = false; wrongPassword = false
+            }
+        } catch (e: CancellationException) {
+            if (existing == null) candidate.delete()
+            throw e
         } catch (e: Exception) {
-            if (com.smartdocs.editor.core.edit5.E5Locks.isPasswordError(e)) { wrongPassword = !password.isNullOrEmpty(); needPassword = true }
-            else error = e.message ?: e.toString()
+            if (existing == null) candidate.delete()
+            synchronized(filesLock) {
+                if (generation != token) return
+                if (com.smartdocs.editor.core.edit5.E5Locks.isPasswordError(e)) {
+                    wrongPassword = !pw.isNullOrEmpty(); needPassword = true
+                } else error = e.message ?: e.toString()
+            }
         }
     }
 
     /** Apply [op] (reads `src`, writes `out`) to the working copy. */
     suspend fun apply(tempDir: File, op: suspend (src: File, out: File, pw: String?) -> Unit) {
-        val w = work ?: return
-        val out = File(tempDir, "e5_${System.nanoTime()}.pdf")
-        op(w, out, password)
-        if (!out.exists() || out.length() == 0L) throw IllegalStateException("empty result")
-        undo += w
-        if (undo.size > 12) undo.removeAt(0).delete()
-        work = out
-        infos = PageBoxOps.pageInfos(out, password)
-        changed = true; version++
+        val (token, w) = synchronized(filesLock) { generation to (work ?: error("no document")) }
+        val out = newWorkingFile(tempDir)
+        val newInfos = try {
+            op(w, out, password)
+            if (!out.exists() || out.length() == 0L) throw IllegalStateException("empty result")
+            PageBoxOps.pageInfos(out, password)
+        } catch (e: Throwable) {
+            out.delete()
+            throw e
+        }
+        synchronized(filesLock) {
+            if (generation != token || work != w) {
+                out.delete()
+                throw CancellationException("Document session changed")
+            }
+            undo += w
+            if (undo.size > 12) undo.removeAt(0).delete()
+            work = out
+            infos = newInfos
+            changed = true; version++
+        }
     }
 
     suspend fun undo() {
-        val prev = undo.removeLastOrNull() ?: return
-        work?.delete(); work = prev
+        val prev = synchronized(filesLock) {
+            val previous = undo.removeLastOrNull() ?: return
+            work?.delete(); work = previous
+            previous
+        }
         infos = runCatching { PageBoxOps.pageInfos(prev, password) }.getOrDefault(infos)
         changed = undo.isNotEmpty(); version++
     }
 
     /** Copy of the working file in the documents folder (shown in the result sheet). */
     suspend fun export(docsDir: File, unique: (File, String) -> File, suffix: String): File = withContext(Dispatchers.IO) {
-        val w = work ?: error("no document")
-        val out = unique(docsDir, (source?.nameWithoutExtension ?: "document") + "_" + suffix)
-        w.copyTo(out, overwrite = true)
-        // audit 5 E-1: the result is this tool's document, transformed (the result sheet may offer "Save in original")
-        com.smartdocs.editor.core.pdf.ToolOutputs.record(out, source)
+        // Open the descriptor while disposal/undo cannot unlink the working file. Once open,
+        // Android can finish reading it even if the screen closes or undo removes its directory entry.
+        val (original, input) = synchronized(filesLock) {
+            val w = work ?: error("no document")
+            source to w.inputStream()
+        }
+        input.use { stream ->
+            var output: File? = null
+            try {
+                val out = unique(docsDir, (original?.nameWithoutExtension ?: "document") + "_" + suffix)
+                output = out
+                out.outputStream().use { stream.copyTo(it) }
+                com.smartdocs.editor.core.pdf.ToolOutputs.record(out, original)
+            } catch (e: Throwable) {
+                output?.delete()
+                throw e
+            }
+        }
     }
 }
 
 @Composable
 fun rememberE5Doc(uri: String?): E5Doc {
-    val doc = remember(uri) { E5Doc(uri?.let { u -> runCatching { File(Uri.parse(u).path!!) }.getOrNull()?.takeIf { it.exists() } }) }
+    val ctx = LocalContext.current
+    // Session edits are user work, not disposable cache. Keep them outside cache/tmp until disposal.
+    val workDir = remember { File(ctx.filesDir, "edit_work") }
+    val doc = remember(uri) { E5Doc(uri?.let { u -> runCatching { File(Uri.parse(u).path!!) }.getOrNull()?.takeIf { it.exists() } }, workDir) }
     val app = LocalApp.current
     LaunchedEffect(doc.source, doc.needPassword, doc.password, doc.cancelled, doc.version) {
         if (doc.source != null && doc.work == null && !doc.needPassword && !doc.cancelled && doc.error == null) doc.open(app.documents.tempDir)
@@ -188,14 +243,22 @@ fun E5PageView(
 ) {
     val ctx = LocalContext.current
     var bmp by remember { mutableStateOf<Bitmap?>(null) }
+    var renderError by remember { mutableStateOf<String?>(null) }
+    var retry by remember { mutableIntStateOf(0) }
+    val previewError = stringResource(R.string.e5_preview_failed)
     var size by remember { mutableStateOf(IntSize.Zero) }
-    LaunchedEffect(file, page, version, password) {
+    LaunchedEffect(file, page, version, password, retry) {
         bmp = null
+        renderError = null
         val f = file ?: return@LaunchedEffect
-        bmp = runCatching {
+        try {
             val s = PdfSession.open(ctx, f, password)
-            try { val (w, h) = s.pageSize(page); s.render(page, 900, (if (w > 0f) 900 * h / w else 1273f).toInt().coerceIn(1, 4500)) } finally { s.closeAsync() }
-        }.getOrNull()
+            bmp = try { val (w, h) = s.pageSize(page); s.render(page, 900, (if (w > 0f) 900 * h / w else 1273f).toInt().coerceIn(1, 4500)) } finally { s.closeAsync() }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            renderError = previewError
+        }
     }
     val dw = info?.displayW ?: 595f; val dh = info?.displayH ?: 842f
     val ratio = (dw / dh).let { if (it.isNaN() || dh <= 0f) 0.707f else it }.coerceIn(0.2f, 5f)   // NaN → aspectRatio() throws
@@ -219,11 +282,17 @@ fun E5PageView(
         }
         .pointerInput(onTap, dw, dh) { if (onTap != null) detectTapGestures { o -> val (x, y) = toDisplay(o); onTap(x, y) } }) {
         bmp?.let { Image(it.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.FillBounds) }
-            ?: CircularProgressIndicator(Modifier.align(Alignment.Center).size(28.dp))
+        if (bmp == null && renderError == null && file != null) CircularProgressIndicator(Modifier.align(Alignment.Center).size(28.dp))
         Canvas(Modifier.fillMaxSize()) {
             overlay(map)
             drag?.let { r -> val n = Rect(minOf(r.left, r.right), minOf(r.top, r.bottom), maxOf(r.left, r.right), maxOf(r.top, r.bottom))
                 drawRect(Color(0x332196F3), n.topLeft, n.size); drawRect(Color(0xFF2196F3), n.topLeft, n.size, style = Stroke(2f)) }
+        }
+        renderError?.let { message ->
+            Column(Modifier.align(Alignment.Center).padding(16.dp)) {
+                Text(message, color = MaterialTheme.colorScheme.error)
+                TextButton(onClick = { retry++ }) { Text(stringResource(R.string.tte5_retry)) }
+            }
         }
     }
 }

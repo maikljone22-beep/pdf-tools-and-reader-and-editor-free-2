@@ -364,4 +364,7 @@
     <string name="e5_crop_center_content">توسيط المحتوى</string>
     <string name="e5_crop_page_size_apply">تطبيق حجم الصفحة</string>
     <string name="e5_labels_from_bookmarks">من الإشارات المرجعية</string>
+    <string name="e5_links_remove_help">اختر الصفحات التي تريد حذف الروابط منها. يُحذف الرابط القابل للنقر فقط، ويبقى النص أو الصورة على الصفحة. احفظ النتيجة لتصدير التغييرات.</string>
+    <string name="e5_preview_failed">تعذر عرض معاينة الصفحة.</string>
+    <string name="security_current_password_hint">أدخل كلمة المرور الحالية لفتح الملف. كلمة المرور الجديدة التي اخترتها للحماية تُطبّق بعد فتحه.</string>
 </resources>

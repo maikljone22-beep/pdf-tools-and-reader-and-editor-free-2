@@ -27,7 +27,7 @@ import com.smartdocs.editor.core.redact.ProtectAdvanced
 import com.smartdocs.editor.core.redact.ProtectOptions
 import com.smartdocs.editor.core.redact.SecurityProfile
 import com.smartdocs.editor.ui.common.*
-import com.smartdocs.editor.ui.search.PasswordDialog
+import com.smartdocs.editor.ui.tools.FilePasswordDialog
 import com.smartdocs.editor.ui.search.fileOf
 import kotlinx.coroutines.launch
 import java.io.File
@@ -40,12 +40,13 @@ fun ProtectAdvancedScreen(nav: NavHostController, uri: String?) {
     val runner = rememberToolRunner()
     var file by remember { mutableStateOf(fileOf(uri)) }
     // T-09: the password the reader opened this document with
-    var current by remember { mutableStateOf(com.smartdocs.editor.core.pdf.SessionPasswords.get(file)) }
-    var signed by remember { mutableStateOf(false) }
+    var current by remember(file) { mutableStateOf(com.smartdocs.editor.core.pdf.SessionPasswords.get(file)) }
+    var inputInfo by remember(file, current) { mutableStateOf<com.smartdocs.editor.core.redact.ProtectionSourceInfo?>(null) }
+    var inputError by remember(file, current) { mutableStateOf<String?>(null) }
+    var probeVersion by remember(file) { mutableIntStateOf(0) }
     /** audit 5 P-L: a generated owner password, shown in a dialog with a copy action before the result sheet. */
     var generatedOwner by remember { mutableStateOf<String?>(null) }
-    var encrypted by remember { mutableStateOf(false) }
-    var askCurrent by remember { mutableStateOf(false) }
+    var askCurrent by remember(file) { mutableStateOf(false) }
     var openPw by remember { mutableStateOf("") }
     var openPw2 by remember { mutableStateOf("") }
     var ownerPw by remember { mutableStateOf("") }
@@ -58,48 +59,33 @@ fun ProtectAdvancedScreen(nav: NavHostController, uri: String?) {
     var info by remember { mutableStateOf<String?>(null) }
     var showProfiles by remember { mutableStateOf(false) }
     val snack = remember { SnackbarHostState() }
-    val pick = rememberPdfPicker { it.firstOrNull()?.let { f -> file = f; current = null } }
+    val pick = rememberPdfPicker { it.firstOrNull()?.let { f -> file = f } }
 
-    LaunchedEffect(file) {
-        val f = file ?: return@LaunchedEffect
-        // an open password makes the plain load fail: the file is encrypted and its password is needed
-        val needPassword = runCatching { PdfOps.isEncrypted(f); false }.getOrElse { it is com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException }
-        encrypted = needPassword || runCatching { PdfOps.isEncrypted(f) }.getOrDefault(false)
-        if (needPassword && current == null) askCurrent = true
-    }
-    // audit 5 R-4: a signed input gets a warning (the protected copy keeps no signature values)
-    LaunchedEffect(file, current) {
-        val f = file ?: run { signed = false; return@LaunchedEffect }
-        val pw = current
-        signed = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.smartdocs.editor.core.pdf.SignedSave.isSigned(f, pw) }
-    }
     val wrongPwMsg = stringResource(R.string.ttrd_wrong_password)
     val failedMsg = stringResource(R.string.ttrd_failed)
     val latinMsg = stringResource(R.string.ttrd_latin1_only)
-    // nitro-protect2 "Change Settings": the current algorithm, permissions and metadata option (passwords stay empty)
-    var needsOwner by remember { mutableStateOf(false) }
-    var prefilled by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(file, current, encrypted) {
-        val f = file ?: return@LaunchedEffect
-        if (!encrypted) { needsOwner = false; return@LaunchedEffect }
-        val pw = current
-        // audit 5 P-11: a wrong current password is said and asked again (it was swallowed, and Protect failed later)
-        val read = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-            runCatching { PdfOps.loadRaw(f, pw).use { com.smartdocs.editor.core.security.SecurityInfoReader.of(it) } }
-        }
-        val info = read.getOrElse { e ->
-            if (e is com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException && pw != null) {
-                current = null; askCurrent = true
-                snack.showSnackbar(wrongPwMsg)
+    val encrypted = inputInfo?.security?.encrypted == true
+    val signed = inputInfo?.signed == true
+    val needsOwner = inputInfo?.let { com.smartdocs.editor.core.security.ReaderRestrictions.restricted(it.security) } == true
+    var prefilled by remember(file) { mutableStateOf(false) }
+    LaunchedEffect(file, current, probeVersion) {
+        inputInfo = null
+        inputError = null
+        val src = file ?: return@LaunchedEffect
+        try {
+            val inspected = ProtectAdvanced.inspectSource(src, current)
+            inputInfo = inspected
+            if (!prefilled) com.smartdocs.editor.core.redact.ProtectPrefills.from(inspected.security)?.let { p ->
+                algo = p.algo; perms = p.permissions; restrict = p.restrict; scope = p.scope
+                prefilled = true
             }
-            return@LaunchedEffect
-        }
-        // opened without the permissions password: the author's restrictions may not be changed (or dropped) here
-        needsOwner = com.smartdocs.editor.core.security.ReaderRestrictions.restricted(info)
-        val key = f.absolutePath + "|" + pw
-        if (prefilled == key) return@LaunchedEffect
-        com.smartdocs.editor.core.redact.ProtectPrefills.from(info)?.let { p ->
-            algo = p.algo; perms = p.permissions; restrict = p.restrict; scope = p.scope; prefilled = key
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException) {
+            inputError = wrongPwMsg
+            askCurrent = true
+        } catch (e: Exception) {
+            inputError = failedMsg
         }
     }
     val mismatch = openPw.isNotEmpty() && openPw != openPw2
@@ -115,13 +101,20 @@ fun ProtectAdvancedScreen(nav: NavHostController, uri: String?) {
     val ownerFmt = stringResource(R.string.s5_owner_generated)
     fun protect() {
         val src = file ?: return
+        if (inputInfo == null || needsOwner || askCurrent || runner.running) return
         val o = ProtectOptions(openPw, if (restrict) ownerPw else "", algo, effective, scope)
         val typedOwner = if (restrict) ownerPw else ""
         val pw = current
         runner.run(msg) {
             val out = app.documents.uniqueFile(app.documents.docsDir, src.nameWithoutExtension + "_protected")
             val owner = try { ProtectAdvanced.protect(src, out, pw, o) }
-                catch (e: com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException) { throw IllegalStateException(wrongPwMsg, e) }
+                catch (e: com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException) {
+                    out.delete()
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        inputInfo = null; inputError = wrongPwMsg; askCurrent = true
+                    }
+                    return@run null
+                }
                 catch (e: com.smartdocs.editor.core.redact.NonLatinPasswordException) { throw IllegalStateException(latinMsg, e) }
                 catch (e: kotlinx.coroutines.CancellationException) { throw e }
                 catch (e: Exception) { throw IllegalStateException(failedMsg, e) }
@@ -145,7 +138,7 @@ fun ProtectAdvancedScreen(nav: NavHostController, uri: String?) {
         },
         bottomBar = {
             Surface(tonalElevation = 3.dp) {
-                Button(onClick = ::protect, enabled = file != null && !mismatch && !nothing && !runner.running && !needsOwner && !notLatin && !ownerSame, modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 10.dp)) {
+                Button(onClick = ::protect, enabled = file != null && inputInfo != null && !askCurrent && !mismatch && !nothing && !runner.running && !needsOwner && !notLatin && !ownerSame, modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 10.dp)) {
                     Icon(Icons.Default.EnhancedEncryption, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.s5_protect_apply))
                 }
             }
@@ -153,8 +146,12 @@ fun ProtectAdvancedScreen(nav: NavHostController, uri: String?) {
     ) { pad ->
         Column(Modifier.padding(pad).fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp)) {
             FilePickRow(file, stringResource(R.string.open_file), pick)
+            inputError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            if (file != null && inputInfo == null && !askCurrent) TextButton(onClick = { probeVersion++ }) {
+                Text(stringResource(R.string.tte5_retry))
+            }
             if (encrypted) Text(stringResource(R.string.s5_already_encrypted), Modifier.padding(top = 6.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            if (prefilled != null) Text(stringResource(R.string.np2_change_prefilled), Modifier.padding(top = 4.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+            if (prefilled) Text(stringResource(R.string.np2_change_prefilled), Modifier.padding(top = 4.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
             if (needsOwner) Text(stringResource(R.string.np2_change_needs_owner), Modifier.padding(top = 4.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             if (needsOwner) TextButton(onClick = { askCurrent = true }) { Text(stringResource(R.string.np2_change_enter_owner)) }
             if (signed) Text(stringResource(R.string.ttrd_signed_warning), Modifier.padding(top = 4.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
@@ -231,7 +228,15 @@ fun ProtectAdvancedScreen(nav: NavHostController, uri: String?) {
             onDismiss = { showProfiles = false },
         )
     }
-    if (askCurrent) PasswordDialog(onDismiss = { askCurrent = false }) { current = it; askCurrent = false }
+    val passwordFile = file
+    if (askCurrent && passwordFile != null) FilePasswordDialog(passwordFile,
+        onUnlocked = { pw ->
+            com.smartdocs.editor.core.pdf.SessionPasswords.put(passwordFile, pw)
+            current = pw; askCurrent = false; probeVersion++
+        },
+        onRemove = { askCurrent = false },
+        message = stringResource(if (needsOwner) R.string.np2_change_needs_owner else R.string.security_current_password_hint),
+        removeLabel = stringResource(R.string.cancel))
     if (runner.running) ProgressDialog(runner.message)
     val owner = generatedOwner
     if (owner != null && result != null) OwnerPasswordDialog(owner) { generatedOwner = null }

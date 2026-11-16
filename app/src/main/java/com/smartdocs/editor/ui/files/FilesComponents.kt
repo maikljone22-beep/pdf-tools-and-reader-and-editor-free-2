@@ -116,7 +116,7 @@ internal fun FileRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box {
-            ThumbBox(thumb, 46.dp, if (f.isDirectory) 46.dp else 60.dp, kind = kindOf(f))
+            ThumbBox(thumb, 46.dp, if (f.isDirectory) 46.dp else 60.dp, kind = kindOf(f), file = f)
             androidx.compose.animation.AnimatedVisibility(visible = selecting, modifier = Modifier.align(Alignment.BottomEnd), enter = scaleIn(), exit = scaleOut()) { SelectBadge(checked, Modifier.offset(4.dp, 4.dp)) }
         }
         Spacer(Modifier.width(14.dp))
@@ -155,7 +155,7 @@ internal fun FileGridItem(f: File, checked: Boolean, selecting: Boolean, modifie
             .combinedClickable(onClick = onOpen, onLongClick = onLongPress).padding(8.dp),
     ) {
         Box {
-            ThumbBox(thumb, 0.dp, 0.dp, kind = kindOf(f), modifier = Modifier.fillMaxWidth().aspectRatio(if (f.isDirectory) 1.2f else 0.78f))
+            ThumbBox(thumb, 0.dp, 0.dp, kind = kindOf(f), file = f, modifier = Modifier.fillMaxWidth().aspectRatio(if (f.isDirectory) 1.2f else 0.78f))
             androidx.compose.animation.AnimatedVisibility(visible = selecting, modifier = Modifier.align(Alignment.TopStart).padding(6.dp), enter = scaleIn(), exit = scaleOut()) { SelectBadge(checked) }
         }
         Spacer(Modifier.height(6.dp))
@@ -176,7 +176,7 @@ internal fun DeviceList(files: List<DeviceFile>, query: String, sort: Sort, grid
         items(list, key = { it.uri.toString() }) { d ->
             val thumb = deviceThumb(d)
             Column(Modifier.animateItem().clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surfaceContainerLow).clickable { nav.navigate(Routes.reader(d.uri.toString())) }.padding(8.dp)) {
-                ThumbBox(thumb, 0.dp, 0.dp, kind = com.smartdocs.editor.ui.home.kindOfName(d.name), modifier = Modifier.fillMaxWidth().aspectRatio(0.78f))
+                ThumbBox(thumb, 0.dp, 0.dp, kind = com.smartdocs.editor.ui.home.kindOfName(d.name), file = com.smartdocs.editor.ui.home.thumbnailFile(d.uri.toString()), modifier = Modifier.fillMaxWidth().aspectRatio(0.78f))
                 Spacer(Modifier.height(6.dp))
                 Text(d.name, style = MaterialTheme.typography.labelLarge, maxLines = 2, overflow = TextOverflow.Ellipsis, minLines = 2)
                 Text(DocumentRepository.formatSize(d.size), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -189,7 +189,7 @@ internal fun DeviceList(files: List<DeviceFile>, query: String, sort: Sort, grid
                 Modifier.animateItem().fillMaxWidth().clickable { nav.navigate(Routes.reader(d.uri.toString())) }.padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                ThumbBox(thumb, 46.dp, 60.dp, kind = com.smartdocs.editor.ui.home.kindOfName(d.name))
+                ThumbBox(thumb, 46.dp, 60.dp, kind = com.smartdocs.editor.ui.home.kindOfName(d.name), file = com.smartdocs.editor.ui.home.thumbnailFile(d.uri.toString()))
                 Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
                     Text(d.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)

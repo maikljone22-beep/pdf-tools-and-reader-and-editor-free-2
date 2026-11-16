@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="update_title">App updates</string>
+    <string name="update_check">Check for updates</string>
+    <string name="update_installed">Installed version: %1$s (%2$d)</string>
+    <string name="update_auto">Check daily when opening the app</string>
+    <string name="update_checking">Checking for updates…</string>
+    <string name="update_current">No newer version is available in this update channel.</string>
+    <string name="update_unpublished">An update channel has not been published for this build. The update manifest and signed APK must be uploaded to the download source.</string>
+    <string name="update_available">Update available: %1$s</string>
+    <string name="update_size">Download size: %1$d MB</string>
+    <string name="update_download">Download update</string>
+    <string name="update_progress">Downloaded %1$d%%</string>
+    <string name="update_verifying">Verifying update file and signature…</string>
+    <string name="update_verified">The file and its signing compatibility with the installed app have been verified.</string>
+    <string name="update_install">Install update</string>
+    <string name="update_allow_install">Allow update installation</string>
+    <string name="update_install_hint">If asked, allow installation from this app, then return and tap Install. Android will display the update confirmation.</string>
+    <string name="update_source">HTTPS update source</string>
+    <string name="update_default_source">Restore default source</string>
+    <string name="update_invalid_feed">The update manifest is invalid or unsupported.</string>
+    <string name="update_https">Use a valid HTTPS URL without a username, password, or fragment.</string>
+    <string name="update_wrong_package">This update is for a different application or channel.</string>
+    <string name="update_incompatible">This release is incompatible with your Android version or device processor.</string>
+    <string name="update_checksum">The download is incomplete or does not match the expected checksum. Download it again.</string>
+    <string name="update_signature">The update signing certificate is incompatible with the installed app. Use the original signing key.</string>
+    <string name="update_bad_version">The APK version does not match the manifest or is not newer than the installed app.</string>
+    <string name="update_install_failed">Could not open installation. Check the installation permission and try again.</string>
+    <string name="update_connection_failed">Could not connect to the update source or download the file. Check your connection and try again.</string>
+    <string name="update_prompt">You can download and install this release from App updates.</string>
+    <string name="update_later">Later</string>
+    <string name="update_cancelling">Cancelling…</string>
+</resources>

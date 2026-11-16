@@ -82,7 +82,7 @@ object LinkOps {
             val pages = if (pageFilter != null) listOf(pageFilter) else (0 until doc.numberOfPages).toList()
             for (p in pages) {
                 if (p !in 0 until doc.numberOfPages) continue
-                val annots = runCatching { doc.getPage(p).annotations }.getOrNull() ?: continue
+                val annots = doc.getPage(p).annotations
                 annots.forEachIndexed { i, a -> if (a is PDAnnotationLink) decode(doc, a)?.let { (s, ok) -> out += PageLinkInfo(p, i, s, ok) } }
             }
             out
@@ -205,12 +205,14 @@ object LinkOps {
         }
     }
 
-    /** Remove every link ([webOnly] = only URI / mailto links). Returns how many were removed. */
-    suspend fun removeAll(src: File, out: File, password: String?, webOnly: Boolean): Int = withContext(Dispatchers.IO) {
+    /** Remove links on [pages] (null = entire document). Empty pages removes nothing. */
+    suspend fun removeAll(src: File, out: File, password: String?, webOnly: Boolean, pages: Set<Int>? = null): Int = withContext(Dispatchers.IO) {
         var n = 0
         NavIo.edit(src, out, password) { doc, changed ->
-            for (pg in doc.pages) {
-                val annots = runCatching { pg.annotations }.getOrNull() ?: continue
+            for ((index, pg) in doc.pages.withIndex()) {
+                if (pages != null && index !in pages) continue
+                // Do not silently report success if an annotation array cannot be read.
+                val annots = pg.annotations
                 val keep = annots.filter { a ->
                     val drop = a is PDAnnotationLink && (!webOnly || a.cosObject.getCOSDictionary(COSName.A)?.getNameAsString(COSName.S) == "URI")
                     if (drop) n++
@@ -220,6 +222,27 @@ object LinkOps {
             }
         }
         n
+    }
+
+    /** Replace actions in one save, preserving annotation geometry and border appearance. */
+    suspend fun replaceTargets(src: File, out: File, password: String?, targets: Map<Int, Set<Int>>, uri: String): Int = withContext(Dispatchers.IO) {
+        require(uri.isNotBlank())
+        var count = 0
+        NavIo.edit(src, out, password) { doc, changed ->
+            targets.forEach { (index, selected) ->
+                if (index !in 0 until doc.numberOfPages) return@forEach
+                val page = doc.getPage(index)
+                page.annotations.forEachIndexed { i, annotation ->
+                    if (i in selected && annotation is PDAnnotationLink) {
+                        annotation.cosObject.removeItem(COSName.DEST)
+                        annotation.cosObject.removeItem(COSName.AA)
+                        annotation.action = com.tom_roush.pdfbox.pdmodel.interactive.action.PDActionURI().apply { this.uri = LinkDetect.normalizeUrl(uri) }
+                        count++; changed += page
+                    }
+                }
+            }
+        }
+        count
     }
 
     private fun relativeName(target: String, doc: File): String {

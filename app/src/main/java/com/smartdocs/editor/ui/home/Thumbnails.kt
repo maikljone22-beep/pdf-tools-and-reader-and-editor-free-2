@@ -4,6 +4,10 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
 import androidx.compose.foundation.background
+import androidx.compose.material3.IconButton
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.ui.res.stringResource
+import com.smartdocs.editor.R
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -123,27 +127,36 @@ fun rememberFileThumb(f: File): String? {
 
 /** Page-like thumbnail frame: image when available, otherwise a colored type tile. */
 @Composable
-fun ThumbBox(path: String?, w: Dp, h: Dp, kind: String = "pdf", modifier: Modifier = Modifier) {
+fun ThumbBox(path: String?, w: Dp, h: Dp, kind: String = "pdf", modifier: Modifier = Modifier, file: File? = null) {
     val ctx = LocalContext.current
+    val revision = CustomThumbnails.version
+    val custom = remember(file, revision) { file?.let { CustomThumbnails.choice(ctx, it) } }
+    val shown = if (custom == null) path else custom.takeIf { it.isNotEmpty() }
+    var editing by remember(file) { mutableStateOf(false) }
     val shape = RoundedCornerShape(10.dp)
     val tiles = Brand.tiles
     val tile = when (kind) { "folder" -> tiles.amber; "image", "video" -> tiles.purple; "pdf" -> tiles.rose; "sheet", "audio" -> tiles.green; "slides", "archive" -> tiles.amber; else -> tiles.blue }
     Box(
         modifier.then(if (w > 0.dp) Modifier.size(w, h) else Modifier).clip(shape)
-            .background(if (path != null) MaterialTheme.colorScheme.surfaceContainerLowest else tile.container)
+            .background(if (shown != null) MaterialTheme.colorScheme.surfaceContainerLowest else tile.container)
             .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f), shape),
         contentAlignment = Alignment.Center,
     ) {
-        if (path != null && File(path).exists()) {
+        if (shown != null && File(shown).exists()) {
             AsyncImage(
-                model = ImageRequest.Builder(ctx).data(File(path)).memoryCacheKey(path).crossfade(true).build(),
+                model = ImageRequest.Builder(ctx).data(File(shown)).memoryCacheKey(shown).crossfade(true).build(),
                 contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop,
             )
         } else {
             val icon = when (kind) { "folder" -> Icons.Default.Folder; "image" -> Icons.Default.Image; "pdf" -> Icons.Default.PictureAsPdf; else -> com.smartdocs.editor.ui.openall.OpenAllThumbs.icon(kind) }
             Icon(icon, null, Modifier.size(if (w > 0.dp) (minOf(w.value, h.value) * 0.45f).dp else 36.dp), tint = tile.content)
         }
+        if (file != null && file.isFile) IconButton(onClick = { editing = true }, modifier = Modifier.align(Alignment.BottomEnd).size(28.dp)
+            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.85f), RoundedCornerShape(8.dp))) {
+            Icon(Icons.Default.Edit, stringResource(R.string.thumb_edit), Modifier.size(16.dp))
+        }
     }
+    if (editing && file != null) ThumbnailEditor(file) { editing = false }
 }
 
 fun kindOf(f: File): String = if (f.isDirectory) "folder" else kindOfName(f.name)

@@ -308,7 +308,7 @@ private fun ContinueCard(d: RecentDoc, onResume: () -> Unit) {
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).animateContentSize(),
     ) {
         Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-            ThumbBox(thumb, 60.dp, 80.dp, kind = kindOfName(d.name))
+            ThumbBox(thumb, 60.dp, 80.dp, kind = kindOfName(d.name), file = thumbnailFile(d.uri))
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
                 Text(stringResource(R.string.ds_continue_reading), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)

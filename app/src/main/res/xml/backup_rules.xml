@@ -26,4 +26,5 @@
     <exclude domain="file" path="ocr_best/" />
     <exclude domain="file" path="trash/" />
     <exclude domain="file" path="scan_projects/" />
+    <exclude domain="file" path="app_updates/" />
 </full-backup-content>

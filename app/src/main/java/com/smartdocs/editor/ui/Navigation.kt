@@ -156,6 +156,7 @@ fun AppNavHost(nav: NavHostController) {
                     composable(Routes.CLOUD) { CloudScreen(nav) }
                     composable(Routes.ACCOUNT) { AccountScreen(nav) }
                     composable(Routes.SETTINGS) { SettingsScreen(nav) }
+                    composable(com.smartdocs.editor.ui.updates.UPDATES_ROUTE) { com.smartdocs.editor.ui.updates.UpdatesScreen(nav) }
                     composable(
                         Routes.READER,
                         arguments = listOf(navArgument("uri") { type = NavType.StringType }, navArgument("page") { type = NavType.IntType; defaultValue = -1 }),

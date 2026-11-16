@@ -27,7 +27,7 @@ import java.util.Date
 import java.util.Locale
 
 /** What another app shared with "Share to PDF": files (copied locally), a URL, plain text or HTML. */
-class SharePayload(val files: List<File>, val url: String?, val text: String?, val html: String?, val subject: String?) {
+class SharePayload(val files: List<File>, val url: String?, val text: String?, val html: String?, val subject: String?, val failedFiles: Int = 0) {
     val isEmpty: Boolean get() = files.isEmpty() && url.isNullOrBlank() && text.isNullOrBlank() && html.isNullOrBlank()
 }
 
@@ -37,22 +37,16 @@ object ShareImport {
     /** Set by MainActivity.handleIntent, consumed by ShareToPdfScreen. */
     @Volatile var pending: SharePayload? = null
 
-    /** True for share intents this module should take: several files, or shared text / links (one shared file is opened in-app). */
-    fun handles(intent: Intent?): Boolean {
-        intent ?: return false
-        return when (intent.action) {
-            Intent.ACTION_SEND_MULTIPLE -> true
-            // open-all: one shared file opens in the in-app viewer (which offers Convert to PDF); text / links still go here
-            Intent.ACTION_SEND -> intent.type != "application/pdf" && streams(intent).isEmpty()
-            else -> false
-        }
-    }
+    /** Every incoming share first offers an action; ACTION_VIEW continues to open directly. */
+    fun handles(intent: Intent?): Boolean = intent?.action == Intent.ACTION_SEND || intent?.action == Intent.ACTION_SEND_MULTIPLE
 
     @Suppress("DEPRECATION")
-    private fun streams(intent: Intent): List<Uri> = when (intent.action) {
-        Intent.ACTION_SEND_MULTIPLE ->
+    private fun streams(intent: Intent): List<Uri> {
+        val extras = if (intent.action == Intent.ACTION_SEND_MULTIPLE)
             (if (Build.VERSION.SDK_INT >= 33) intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM, Uri::class.java) else intent.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM)).orEmpty()
-        else -> listOfNotNull(if (Build.VERSION.SDK_INT >= 33) intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java) else intent.getParcelableExtra(Intent.EXTRA_STREAM))
+        else listOfNotNull(if (Build.VERSION.SDK_INT >= 33) intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java) else intent.getParcelableExtra(Intent.EXTRA_STREAM))
+        val clip = intent.clipData?.let { data -> (0 until data.itemCount).mapNotNull { data.getItemAt(it).uri } }.orEmpty()
+        return (extras + clip).distinctBy { it.toString() }
     }
 
     private fun nameOf(ctx: Context, u: Uri): String? = runCatching {
@@ -70,26 +64,33 @@ object ShareImport {
     }
 
     /** Copy the shared streams into [dir] (the senders' grants are temporary) and collect the text extras. Blocking: call off the main thread. */
-    fun read(ctx: Context, intent: Intent, dir: File): SharePayload {
+    fun read(ctx: Context, intent: Intent, dir: File, progress: (Int, Int) -> Unit = { _, _ -> }): SharePayload {
         // one folder per share: the copies keep their real names (convert audit A-M13: titles and bookmarks read
         // "1730000000000_0_IMG_1"); folders older than a day are removed at start-up (A-M14)
-        val shareDir = File(dir, System.currentTimeMillis().toString()).apply { mkdirs() }
+        val incoming = streams(intent)
+        val shareDir = File(dir, System.currentTimeMillis().toString() + "_" + System.nanoTime())
+        if (incoming.isNotEmpty()) check(shareDir.mkdirs() || shareDir.isDirectory)
         // hostile review C2: links into this app's own private storage are not read for another app
-        val files = streams(intent).filterNot { com.smartdocs.editor.core.files.IncomingGuard.isPrivate(ctx, it) }.mapIndexedNotNull { i, u ->
+        val allowed = incoming.filterNot { com.smartdocs.editor.core.files.IncomingGuard.isPrivate(ctx, it) }
+        val files = allowed.mapIndexedNotNull { i, u ->
+            progress(i, allowed.size)
+            var staged: File? = null
             runCatching {
                 val mime = ctx.contentResolver.getType(u) ?: intent.type
                 var name = nameOf(ctx, u)?.let { com.smartdocs.editor.core.files.FileNames.clean(it.substringBeforeLast('.'), 120, "shared_$i") + (it.substringAfterLast('.', "").takeIf { e -> e.isNotEmpty() && e.length <= 8 }?.let { e -> ".$e" } ?: "") } ?: "shared_$i"
                 if (!name.contains('.')) name += "." + extFor(mime)
-                val f = com.smartdocs.editor.core.files.FileNames.unique(shareDir, name.substringBeforeLast('.'), name.substringAfterLast('.'))
+                val f = com.smartdocs.editor.core.files.FileNames.unique(shareDir, name.substringBeforeLast('.'), name.substringAfterLast('.')).also { staged = it }
                 ctx.contentResolver.openInputStream(u)?.use { s -> f.outputStream().use { s.copyTo(it) } } ?: return@runCatching null
                 f
-            }.getOrNull()
+            }.getOrElse { staged?.delete(); null }
         }
+        progress(allowed.size, allowed.size)
+        if (files.isEmpty()) shareDir.delete()
         val text = intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString()
         val html = intent.getStringExtra(Intent.EXTRA_HTML_TEXT)
         val url = text?.trim()?.takeIf { t -> !t.contains('\n') && (t.startsWith("http://") || t.startsWith("https://")) }
             ?: text?.let { Regex("""https?://\S+""").find(it)?.value }?.takeIf { text.trim().length < 300 }
-        return SharePayload(files, url, if (url != null && text?.trim() == url) null else text, html, intent.getStringExtra(Intent.EXTRA_SUBJECT))
+        return SharePayload(files, url, if (url != null && text?.trim() == url) null else text, html, intent.getStringExtra(Intent.EXTRA_SUBJECT), incoming.size - files.size)
     }
 }
 

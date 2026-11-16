@@ -55,7 +55,7 @@ fun HomeDetailPane(doc: RecentDoc?, nav: NavHostController, onTool: (String) -> 
     val app = LocalApp.current
     val file = remember(doc.uri) { Uri.parse(doc.uri).path?.let { File(it) } }
     DetailScaffold(
-        thumb = { ThumbBox(rememberDocThumb(doc), 180.dp, 240.dp) },
+        thumb = { ThumbBox(rememberDocThumb(doc), 180.dp, 240.dp, file = file) },
         title = doc.name,
         meta = buildList {
             if (doc.pageCount > 0) add(stringResource(R.string.g6_pages_count, doc.pageCount))
@@ -87,7 +87,7 @@ fun FileDetailPane(file: File?, nav: NavHostController, onOpenFolder: (File) -> 
     val uri = Uri.fromFile(file).toString()
     val isPdf = file.extension.equals("pdf", true)
     DetailScaffold(
-        thumb = { ThumbBox(if (file.isDirectory) null else rememberFileThumb(file), 180.dp, if (file.isDirectory) 180.dp else 240.dp, kind = kindOf(file)) },
+        thumb = { ThumbBox(if (file.isDirectory) null else rememberFileThumb(file), 180.dp, if (file.isDirectory) 180.dp else 240.dp, kind = kindOf(file), file = file) },
         title = file.name,
         meta = if (file.isDirectory) stringResource(R.string.g6_items, file.listFiles()?.size ?: 0)
             else "${file.extension.uppercase()} · ${DocumentRepository.formatSize(file.length())} · ${DocumentRepository.formatDate(file.lastModified())}",

@@ -47,13 +47,19 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 
+val LocalBatchAction = staticCompositionLocalOf<(() -> Unit)?> { null }
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppTopBar(title: String, onBack: (() -> Unit)? = null, actions: @Composable RowScope.() -> Unit = {}) {
+    val batchAction = LocalBatchAction.current
     TopAppBar(
         title = { Text(title, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis) },
         navigationIcon = { if (onBack != null) IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.back)) } },
-        actions = actions,
+        actions = {
+            actions()
+            batchAction?.let { launch -> IconButton(onClick = launch) { Icon(Icons.Default.LibraryAdd, stringResource(R.string.bulk_title)) } }
+        },
         colors = TopAppBarDefaults.topAppBarColors(
             containerColor = MaterialTheme.colorScheme.surface,
             scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer,
@@ -382,7 +388,8 @@ fun FilePickRow(file: File?, label: String, onPick: () -> Unit) {
         border = BorderStroke(1.dp, if (file == null) MaterialTheme.colorScheme.outlineVariant else MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
     ) {
         Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconTile(Icons.Default.PictureAsPdf, Brand.tiles.rose, size = 44.dp)
+            if (file != null) com.smartdocs.editor.ui.home.ThumbBox(com.smartdocs.editor.ui.home.rememberFileThumb(file), 44.dp, 44.dp, file = file)
+            else IconTile(Icons.Default.PictureAsPdf, Brand.tiles.rose, size = 44.dp)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)

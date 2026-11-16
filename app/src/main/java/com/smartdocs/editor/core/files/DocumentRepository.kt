@@ -94,6 +94,7 @@ class DocumentRepository(private val context: Context, private val db: AppDataba
     }
 
     private fun moveOriginKeys(from: String, to: String) {
+        runCatching { com.smartdocs.editor.ui.home.CustomThumbnails.relocate(context, File(from), File(to)) }
         val e = origins.edit()
         origins.getString("l:$from", null)?.let { uri -> e.putString("l:$to", uri).putString("o:$uri", to) }
         for (k in listOf("s:", "n:")) origins.getString(k + from, null)?.let { e.putString(k + to, it) }

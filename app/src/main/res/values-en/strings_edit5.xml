@@ -364,4 +364,7 @@
     <string name="e5_crop_center_content">Centre the content</string>
     <string name="e5_crop_page_size_apply">Apply page size</string>
     <string name="e5_labels_from_bookmarks">From the bookmarks</string>
+    <string name="e5_links_remove_help">Choose which pages to remove links from. This removes clickable links; text and images stay on the page. Save the result to export your changes.</string>
+    <string name="e5_preview_failed">Could not display the page preview.</string>
+    <string name="security_current_password_hint">Enter the current password to open this file. The new protection password is applied after the file opens.</string>
 </resources>
