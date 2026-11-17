@@ -211,6 +211,9 @@ object LinkOps {
         NavIo.edit(src, out, password) { doc, changed ->
             for ((index, pg) in doc.pages.withIndex()) {
                 if (pages != null && index !in pages) continue
+                // Otherwise NveLinks immediately recreates tappable URLs from the printed text.
+                com.smartdocs.editor.core.pdf.AutoLinkPolicy.disable(pg)
+                changed += pg
                 // Do not silently report success if an annotation array cannot be read.
                 val annots = pg.annotations
                 val keep = annots.filter { a ->

@@ -16,7 +16,6 @@ import com.smartdocs.editor.core.nve.UrlFinder
 import com.smartdocs.editor.ui.reader.PageGeometry
 import com.smartdocs.editor.ui.reader.ReaderIntents
 import com.smartdocs.editor.ui.reader.ReaderState
-import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.launch
 
 /**
@@ -25,28 +24,36 @@ import kotlinx.coroutines.launch
  */
 object NveLinks {
     private class PageUrls(val list: List<Pair<String, List<RectF>>>)
-    private val cache = ConcurrentHashMap<String, PageUrls>()
-    private fun key(s: ReaderState, page: Int) = "${s.fileUri}#${s.renderVersion}#$page"
+    private val cache = object : LinkedHashMap<String, PageUrls>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, PageUrls>) = size > 24
+    }
+    private fun key(s: ReaderState, page: Int) = "${s.session?.sessionId}#${s.renderVersion}#$page"
 
     fun confirmLinks(s: ReaderState): Boolean = NveState.of(s).prefs.getBoolean("link_confirm", true)
     fun autoLinks(s: ReaderState): Boolean = NveState.of(s).prefs.getBoolean("auto_links", true)
 
     /** Find the URLs of [page] in the background (cached per document version). */
     fun prefetch(s: ReaderState, page: Int) {
-        if (page !in 0 until s.pageCount || cache.containsKey(key(s, page))) return
+        val session = s.session ?: return
+        val cacheKey = key(s, page)
+        if (!autoLinks(s) || page !in 0 until s.pageCount || synchronized(cache) { cache.containsKey(cacheKey) }) return
         s.scope.launch {
+            if (!session.allowsAutoLinks(page)) {
+                synchronized(cache) { cache[cacheKey] = PageUrls(emptyList()) }
+                return@launch
+            }
             val text = s.pageText(page); val boxes = s.charBoxes(page)
             val found = UrlFinder.find(text).map { (url, range) ->
                 url to com.smartdocs.editor.ui.reader.TextSelectionLogic.rects(boxes, range.first, minOf(range.last, boxes.size - 1))
             }
-            cache[key(s, page)] = PageUrls(found)
+            if (s.session === session && key(s, page) == cacheKey) synchronized(cache) { cache[cacheKey] = PageUrls(found) }
         }
     }
 
     /** PageCanvas hook: a tap at PDF ([x], [y]) on a plain-text URL shows the link sheet. True when consumed. */
     fun tapUrl(s: ReaderState, page: Int, x: Float, y: Float): Boolean {
         if (!autoLinks(s)) return false
-        val urls = cache[key(s, page)] ?: run { prefetch(s, page); return false }
+        val urls = synchronized(cache) { cache[key(s, page)] } ?: run { prefetch(s, page); return false }
         val hit = urls.list.firstOrNull { (_, rects) -> rects.any { r -> val n = PageGeometry.normPdf(r); x in n.left - 2f..n.right + 2f && y in n.bottom - 2f..n.top + 2f } } ?: return false
         NveState.of(s).linkPreview = hit.first
         return true

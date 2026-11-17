@@ -15,8 +15,8 @@ android {
         applicationId = "com.smartdocs.editor"
         minSdk = 26
         targetSdk = 36
-        versionCode = 6
-        versionName = "0.5.1"
+        versionCode = 7
+        versionName = "0.5.2"
         vectorDrawables.useSupportLibrary = true
         // AI proxy (see ai-proxy/README.md): users need no API key when these are set in ai.properties
         val aiProps = Properties().apply { rootProject.file("ai.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) } }

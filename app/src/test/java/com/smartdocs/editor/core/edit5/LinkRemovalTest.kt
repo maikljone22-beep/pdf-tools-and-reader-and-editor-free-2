@@ -1,6 +1,7 @@
 package com.smartdocs.editor.core.edit5
 
 import com.tom_roush.pdfbox.cos.COSName
+import com.smartdocs.editor.core.pdf.AutoLinkPolicy
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDPage
 import com.tom_roush.pdfbox.pdmodel.common.PDRectangle
@@ -54,6 +55,7 @@ class LinkRemovalTest {
         assertEquals(listOf(1, 2, 1), counts(out))
         assertEquals(listOf(2, 2, 2), counts(src))
         PDDocument.load(out).use { doc ->
+            assertEquals(setOf(0, 2), AutoLinkPolicy.disabledPages(doc))
             for (page in doc.pages) assertEquals(1, page.annotations.count { it is PDAnnotationText })
             assertNull(doc.getPage(0).annotations.filterIsInstance<PDAnnotationLink>().single().action)
         }
@@ -63,12 +65,14 @@ class LinkRemovalTest {
         val src = source(); val out = tmp.newFile()
         assertEquals(2, LinkOps.removeAll(src, out, null, webOnly = false, pages = setOf(1)))
         assertEquals(listOf(2, 0, 2), counts(out))
+        PDDocument.load(out).use { assertEquals(setOf(1), AutoLinkPolicy.disabledPages(it)) }
     }
 
     @Test fun emptyScopeNeverFallsBackToWholeDocument() = runBlocking {
         val src = source(); val out = tmp.newFile()
         assertEquals(0, LinkOps.removeAll(src, out, null, webOnly = false, pages = emptySet()))
         assertEquals(listOf(2, 2, 2), counts(out))
+        PDDocument.load(out).use { assertTrue(AutoLinkPolicy.disabledPages(it).isEmpty()) }
     }
 
     @Test fun wholeDocumentDeletionPersistsAndRepeatingItReturnsZero() = runBlocking {
@@ -82,7 +86,10 @@ class LinkRemovalTest {
         val src = source("secret"); val out = tmp.newFile()
         assertEquals(2, LinkOps.removeAll(src, out, "secret", webOnly = false, pages = setOf(1)))
         assertEquals(listOf(2, 0, 2), counts(out, "secret"))
-        PDDocument.load(out, "secret").use { assertTrue(it.isEncrypted) }
+        PDDocument.load(out, "secret").use {
+            assertTrue(it.isEncrypted)
+            assertEquals(setOf(1), AutoLinkPolicy.disabledPages(it))
+        }
     }
 
     @Test fun selectedDeletionUsesAnnotationIndexesNotLinkListIndexes() = runBlocking {
@@ -92,6 +99,54 @@ class LinkRemovalTest {
         PDDocument.load(out).use { doc ->
             assertEquals("Keep this comment", doc.getPage(1).annotations.first().contents)
         }
+    }
+
+    @Test fun automaticUrlDetectionIsDisabledEvenWithoutAnyLinkAnnotations() = runBlocking {
+        val src = tmp.newFile(); val out = tmp.newFile(); val exported = tmp.newFile()
+        val printed = "https://t.me/USMLENBME2CK"
+        PDDocument().use { doc ->
+            repeat(3) {
+                val page = PDPage(); doc.addPage(page)
+                val font = com.tom_roush.pdfbox.cos.COSDictionary().apply {
+                    setName(COSName.TYPE, "Font"); setName(COSName.SUBTYPE, "Type1"); setName(COSName.BASE_FONT, "Helvetica")
+                }
+                page.resources = com.tom_roush.pdfbox.pdmodel.PDResources().apply {
+                    cosObject.setItem(COSName.FONT, com.tom_roush.pdfbox.cos.COSDictionary().apply { setItem(COSName.getPDFName("F1"), font) })
+                }
+                page.setContents(com.tom_roush.pdfbox.pdmodel.common.PDStream(doc).apply {
+                    createOutputStream().use { it.write("BT /F1 12 Tf 10 20 Td ($printed) Tj ET".toByteArray()) }
+                })
+            }
+            doc.save(src)
+        }
+        assertEquals(0, LinkOps.removeAll(src, out, null, webOnly = true, pages = setOf(1)))
+        out.copyTo(exported, overwrite = true)
+        PDDocument.load(exported).use {
+            assertEquals(setOf(1), AutoLinkPolicy.disabledPages(it))
+            assertTrue(it.getPage(1).contents.use { stream -> stream.readBytes().toString(Charsets.UTF_8) }.contains(printed))
+            assertTrue(it.getPage(1).annotations.isEmpty())
+        }
+        PDDocument.load(src).use { assertTrue(AutoLinkPolicy.disabledPages(it).isEmpty()) }
+    }
+
+    @Test fun repeatedRemovalPreservesEarlierPagePolicies() = runBlocking {
+        val src = source(); val first = tmp.newFile(); val second = tmp.newFile()
+        LinkOps.removeAll(src, first, null, webOnly = false, pages = setOf(0))
+        LinkOps.removeAll(first, second, null, webOnly = true, pages = setOf(2))
+        PDDocument.load(second).use { doc ->
+            assertEquals(setOf(0, 2), AutoLinkPolicy.disabledPages(doc))
+            val moved = doc.getPage(0)
+            doc.removePage(moved); doc.addPage(moved)
+            assertEquals(setOf(1, 2), AutoLinkPolicy.disabledPages(doc))
+        }
+    }
+
+    @Test fun removalReportDistinguishesStoredLinksFromDisabledDetection() = runBlocking {
+        val src = source(); val out = tmp.newFile()
+        val report = LinkRemoval.apply(android.content.ContextWrapper(null), src, out, null,
+            webOnly = true, pages = setOf(0, 2, 100), eraseText = false)
+        assertEquals(LinkRemoval.Report(2, 0, 2), report)
+        PDDocument.load(out).use { assertEquals(setOf(0, 2), AutoLinkPolicy.disabledPages(it)) }
     }
     @Test fun replacingTargetsChangesOnlySelectedAnnotationsAndPersists() = runBlocking {
         val src = source(); val out = tmp.newFile()

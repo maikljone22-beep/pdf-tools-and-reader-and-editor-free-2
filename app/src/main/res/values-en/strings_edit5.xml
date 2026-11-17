@@ -364,7 +364,11 @@
     <string name="e5_crop_center_content">Centre the content</string>
     <string name="e5_crop_page_size_apply">Apply page size</string>
     <string name="e5_labels_from_bookmarks">From the bookmarks</string>
-    <string name="e5_links_remove_help">Choose which pages to remove links from. This removes clickable links; text and images stay on the page. Save the result to export your changes.</string>
+    <string name="e5_links_remove_help">Choose the pages. PDF links are removed and automatic linking of printed addresses is disabled in the SmartDocs reader for these pages. Text and images remain unless you choose text removal below. Save and open the exported copy.</string>
     <string name="e5_preview_failed">Could not display the page preview.</string>
     <string name="security_current_password_hint">Enter the current password to open this file. The new protection password is applied after the file opens.</string>
+    <string name="e5_links_erase_text">Also remove link text and printed web addresses</string>
+    <string name="e5_links_erase_text_help">Removes selectable text within link areas and detected web addresses. This can include other text inside a link rectangle; review the preview before saving and use Undo if needed. Addresses inside images without a text layer require manually marking the area in Redact. Other readers may automatically recognise any remaining address.</string>
+    <string name="e5_links_removed_detail">Removed %1$d PDF links; automatic linking disabled on %2$d pages. Text removal areas: %3$d. Save the result.</string>
+    <string name="e5_links_erase_incomplete">Some web addresses could not be removed from the text. Changes were not applied. Mark their areas manually in Redact.</string>
 </resources>

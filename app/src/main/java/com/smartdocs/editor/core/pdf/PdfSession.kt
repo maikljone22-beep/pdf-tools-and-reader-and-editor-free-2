@@ -39,7 +39,27 @@ class PdfSession private constructor(
     private val core: PdfiumCore,
     private val doc: PdfDocument,
     val file: File,
+    private val password: String?,
 ) : AutoCloseable {
+
+    val sessionId: Long = nextSessionId.incrementAndGet()
+    private val autoLinkMutex = Mutex()
+    private var disabledAutoLinkPages: Set<Int>? = null
+
+    /** Resolve once per open session; never regenerate links when policy cannot be read. */
+    suspend fun allowsAutoLinks(index: Int): Boolean = withContext(Dispatchers.IO) {
+        autoLinkMutex.withLock {
+            if (closed || index !in 0 until pageCount) return@withLock false
+            if (disabledAutoLinkPages == null) {
+                disabledAutoLinkPages = try {
+                    PdfOps.loadRaw(file, password).use { AutoLinkPolicy.disabledPages(it) }
+                } catch (e: java.io.IOException) {
+                    return@withLock false
+                }
+            }
+            index !in disabledAutoLinkPages!!
+        }
+    }
 
     private val mutex = Mutex()
     /**
@@ -321,6 +341,7 @@ class PdfSession private constructor(
     }
 
     companion object {
+        private val nextSessionId = java.util.concurrent.atomic.AtomicLong()
         private const val MAX_OPEN_PAGES = 12
         @Volatile private var coreInstance: PdfiumCore? = null
         fun core(context: Context): PdfiumCore = coreInstance ?: synchronized(this) {
@@ -343,7 +364,7 @@ class PdfSession private constructor(
                 if ("password" in msg || "pdfium" in msg && "security" in msg || e is io.legere.pdfiumandroid.api.PdfPasswordException) throw PasswordRequiredException()
                 throw e
             }
-            PdfSession(core, doc, file)
+            PdfSession(core, doc, file, password)
         }
     }
 }

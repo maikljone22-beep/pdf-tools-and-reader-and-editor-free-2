@@ -77,7 +77,6 @@ fun LinksScreen(nav: NavHostController, uri: String?) {
     var step by remember { mutableFloatStateOf(1f) }
     val processing = stringResource(R.string.processing)
     val doneN = stringResource(R.string.e5_links_added_n)
-    val removedN = stringResource(R.string.e5_links_removed_n)
     val hint = stringResource(R.string.e5_links_hint)
 
     LaunchedEffect(doc.work, doc.version, page) {
@@ -227,11 +226,11 @@ fun LinksScreen(nav: NavHostController, uri: String?) {
     }
     if (busy) com.smartdocs.editor.ui.common.ProgressDialog(processing)
     removing?.let { webOnly ->
-        RemoveLinksDialog(webOnly, page, doc.pageCount, onDismiss = { removing = null }) { pages ->
+        RemoveLinksDialog(webOnly, page, doc.pageCount, onDismiss = { removing = null }) { pages, eraseText ->
             removing = null
-            var n = 0
-            run({ src, out, password -> n = LinkOps.removeAll(src, out, password, webOnly, pages.toSet()) }) {
-                scope.launch { snack.showSnackbar(removedN.format(n)) }
+            var report: com.smartdocs.editor.core.edit5.LinkRemoval.Report? = null
+            run({ src, out, password -> report = com.smartdocs.editor.core.edit5.LinkRemoval.apply(ctx, src, out, password, webOnly, pages.toSet(), eraseText) }) {
+                report?.let { result -> scope.launch { snack.showSnackbar(ctx.getString(R.string.e5_links_removed_detail, result.annotations, result.pages, result.textAreas)) } }
             }
         }
     }
@@ -288,8 +287,9 @@ fun LinksScreen(nav: NavHostController, uri: String?) {
 }
 
 @Composable
-private fun RemoveLinksDialog(webOnly: Boolean, current: Int, pageCount: Int, onDismiss: () -> Unit, onRun: (List<Int>) -> Unit) {
-    var selectedScope by remember { mutableStateOf(Scope.CURRENT) }
+private fun RemoveLinksDialog(webOnly: Boolean, current: Int, pageCount: Int, onDismiss: () -> Unit, onRun: (List<Int>, Boolean) -> Unit) {
+    var selectedScope by remember { mutableStateOf(Scope.ALL) }
+    var eraseText by remember { mutableStateOf(false) }
     var range by remember { mutableStateOf("") }
     val pages = when (selectedScope) {
         Scope.ALL -> (0 until pageCount).toList()
@@ -300,8 +300,10 @@ private fun RemoveLinksDialog(webOnly: Boolean, current: Int, pageCount: Int, on
     AlertDialog(onDismissRequest = onDismiss,
         title = { Text(stringResource(if (webOnly) R.string.e5_links_remove_web else R.string.e5_links_remove_all)) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(stringResource(R.string.e5_links_remove_help))
+                SwitchRow(stringResource(R.string.e5_links_erase_text), eraseText) { eraseText = it }
+                if (eraseText) Text(stringResource(R.string.e5_links_erase_text_help), style = MaterialTheme.typography.bodySmall)
                 ChoiceChips(listOf(Scope.CURRENT, Scope.ALL, Scope.RANGE), selectedScope, {
                     stringResource(when (it) { Scope.ALL -> R.string.nbm_all_pages; Scope.CURRENT -> R.string.nbm_current_page; Scope.RANGE -> R.string.nbm_page_range })
                 }) { selectedScope = it }
@@ -310,7 +312,7 @@ private fun RemoveLinksDialog(webOnly: Boolean, current: Int, pageCount: Int, on
                     placeholder = { Text("1-3, 5") }, isError = range.isNotEmpty() && pages.isEmpty())
             }
         },
-        confirmButton = { Button(onClick = { onRun(pages) }, enabled = pages.isNotEmpty()) { Text(stringResource(R.string.delete)) } },
+        confirmButton = { Button(onClick = { onRun(pages, eraseText) }, enabled = pages.isNotEmpty()) { Text(stringResource(R.string.delete)) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } })
 }
 
